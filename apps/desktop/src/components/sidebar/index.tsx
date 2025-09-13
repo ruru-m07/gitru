@@ -11,7 +11,7 @@ import {
 	Settings,
 	Star,
 } from "lucide-react";
-import AvatarDropdown from "./avatarDropdown";
+// import AvatarDropdown from "./avatarDropdown";
 import SideBarItems from "./items";
 
 const Sidebar = () => {
@@ -65,10 +65,10 @@ const Sidebar = () => {
 									"shadcn",
 									"shadcn-ui",
 									"vercel",
-								].map((v, i) => (
+								].map((v) => (
 									<Button
 										className="size-8 p-0"
-										key={i}
+										key={v}
 										variant="ghost"
 										size={"icon"}
 									>

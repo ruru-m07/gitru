@@ -15,7 +15,6 @@
 				"title": "tauriapp",
 				"width": 1600,
 				"height": 870,
-				"transparent": true,
 				"hiddenTitle": true,
 				"titleBarStyle": "Overlay",
 				"trafficLightPosition": {

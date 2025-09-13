@@ -1,0 +1,15 @@
+[package]
+name = "git"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tauri = { version = "2", features = [] }
+git2 = "0.20"
+serde = "1.0.219"
+tauri-plugin-typegen = "0.1.1"
+specta = "1.0.5"
+
+[lib]
+name = "git"
+path = "src/lib.rs"
