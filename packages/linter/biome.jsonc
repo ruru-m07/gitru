@@ -6,7 +6,8 @@
 			"a11y": {
 				"noNoninteractiveElementInteractions": "off",
 				"noSvgWithoutTitle": "off",
-				"noStaticElementInteractions": "off"
+				"noStaticElementInteractions": "off",
+				"noLabelWithoutControl": "off"
 			},
 			"nursery": {
 				"useMaxParams": "off"

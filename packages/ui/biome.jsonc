@@ -2,6 +2,6 @@
 	"$schema": "../../node_modules/@biomejs/biome/configuration_schema.json",
 	"extends": ["@noutify/linter/biome.jsonc"],
 	"linter": {
-		"includes": ["./src/**/*.{ts,tsx,js,jsx,json,css,scss,md,mdx}"]
+		"includes": ["./src/**/*.{ts,tsx,js,jsx,json,css,scss,md,mdx}", "!**/*.css"]
 	}
 }
