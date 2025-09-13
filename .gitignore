@@ -26,7 +26,8 @@ coverage
 out/
 build
 dist
-
+*.local
+target/
 
 # Debug
 npm-debug.log*
@@ -36,3 +37,12 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
+
+# Editor directories and files
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
