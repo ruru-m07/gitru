@@ -23,6 +23,7 @@
 		"tailwindcss": "^4.1.11"
 	},
 	"dependencies": {
+		"@base-ui-components/react": "^1.0.0-beta.3",
 		"@internationalized/date": "^3.7.0",
 		"@radix-ui/react-accordion": "^1.2.11",
 		"@radix-ui/react-avatar": "^1.1.3",

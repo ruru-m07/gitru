@@ -1,24 +1,17 @@
 import { Button } from "@noutify/ui/components/button";
 import { CaretRightIcon } from "@radix-ui/react-icons";
+import { useCanGoBack, useRouterState } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, GitPullRequestArrow, Plus } from "lucide-react";
-import { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { useHistoryTracker } from "./hooks/useHistoryTracker";
 
 type CustomTitleBarProps = {
 	restrictedPaths: string[];
 };
 
 const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
-	const [isMac, setIsMac] = useState(false);
+	const routerState = useRouterState();
+	const pathname = routerState.location.pathname;
 
-	const { canGoBack, canGoForward } = useHistoryTracker();
-	const navigate = useNavigate();
-	const { pathname } = useLocation();
-
-	useEffect(() => {
-		setIsMac(navigator.platform.toUpperCase().indexOf("MAC") >= 0);
-	}, []);
+	const canGoBack = useCanGoBack();
 
 	if (restrictedPaths.includes(pathname)) {
 		return null;
@@ -26,25 +19,25 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
 
 	return (
 		<div
-			className="h-10 bg-background flex items-center justify-between px-4 select-none border-b"
+			className="h-[var(--main-custom-header-height)] bg-background flex items-center justify-between relative px-4 select-none _border-b"
 			data-tauri-drag-region
 			style={{
 				// @ts-expect-error - ¯\_(ツ)_/¯
 				WebkitAppRegion: "drag",
-				paddingLeft: isMac ? "80px" : "16px",
 			}}
 		>
 			{restrictedPaths.includes(pathname) ? null : (
 				<>
 					<div
-						className="flex items-center"
+						className="flex items-center absolute"
 						style={{
 							// @ts-expect-error - ¯\_(ツ)_/¯
 							WebkitAppRegion: "no-drag",
+							paddingLeft: "66px",
 						}}
 					>
 						<Button
-							onClick={() => navigate(-1)}
+							onClick={() => window.history.back()}
 							disabled={!canGoBack}
 							size={"icon"}
 							className="size-7"
@@ -53,8 +46,8 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
 							<ArrowLeft size={16} aria-hidden="true" />
 						</Button>
 						<Button
-							onClick={() => navigate(1)}
-							disabled={!canGoForward}
+							onClick={() => window.history.forward()}
+							disabled={true} // TODO;
 							size={"icon"}
 							className="size-7"
 							variant="ghost"
@@ -62,6 +55,9 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
 							<ArrowRight size={16} aria-hidden="true" />
 						</Button>
 					</div>
+
+					<div />
+
 					<div
 						// className="flex-1 max-w-[16rem] mx-4"
 						className="flex items-center max-w-[40rem] mx-4 gap-2"

@@ -49,35 +49,15 @@
 :root {
 	--font-sans: Geist;
 	--font-mono: GeistMono;
-}
 
-.titlebar {
-	height: 30px;
-	background: #329ea3;
-	user-select: none;
-	display: grid;
-	grid-template-columns: auto max-content;
-	position: fixed;
-	top: 0;
-	left: 0;
-	right: 0;
-}
-.titlebar > .controls {
-	display: flex;
-}
-.titlebar button {
-	appearance: none;
-	padding: 0;
-	margin: 0;
-	border: none;
-	display: inline-flex;
-	justify-content: center;
-	align-items: center;
-	width: 30px;
-	background-color: transparent;
-}
-.titlebar button:hover {
-	background: #5bbec3;
+	/* ? Custom Properties */
+	--main-custom-header-height: 40px;
+	--main-window-height: calc(100vh - var(--main-custom-header-height));
+
+	--main-left-sidebar-width: 40px;
+	--main-actual-content-width: calc(100vw - var(--main-left-sidebar-width));
+
+	--main-actual-content-padding: 8px;
 }
 
 *[data-tauri-drag-region] {
