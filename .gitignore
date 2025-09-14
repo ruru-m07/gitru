@@ -37,6 +37,7 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
+.temp/
 
 # Editor directories and files
 .idea
