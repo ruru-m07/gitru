@@ -10,13 +10,9 @@ export const FileStatusSchema = z.object({
 	path: z.string(),
 	status: z.string(),
 });
+
 export const GetStatusResponseSchema = z.object({
 	files: z.array(FileStatusSchema),
-});
-
-export const AddParamsSchema = z.object({
-	a: z.number(),
-	b: z.number(),
 });
 
 export const GetStatusParamsSchema = z.object({
@@ -28,13 +24,18 @@ export const GetStatusSingleFileParamsSchema = z.object({
 	file_path: z.string(),
 });
 
-export type AddParams = z.infer<typeof AddParamsSchema>;
+export const AddParamsSchema = z.object({
+	a: z.number(),
+	b: z.number(),
+});
 
 export type GetStatusParams = z.infer<typeof GetStatusParamsSchema>;
 
 export type GetStatusSingleFileParams = z.infer<
 	typeof GetStatusSingleFileParamsSchema
 >;
+
+export type AddParams = z.infer<typeof AddParamsSchema>;
 
 export type GetStatusResponse = z.infer<typeof GetStatusResponseSchema>;
 
