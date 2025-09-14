@@ -8,16 +8,6 @@ import { invoke } from '@tauri-apps/api/core';
 
 import * as types from './types';
 
-export async function getStatus(params: types.GetStatusParams): Promise<types.GetStatusResponse> {
-  const validatedParams = types.GetStatusParamsSchema.parse(params);
-  return invoke('get_status', validatedParams);
-}
-
-export async function getStatusSingleFile(params: types.GetStatusSingleFileParams): Promise<types.FileStatus> {
-  const validatedParams = types.GetStatusSingleFileParamsSchema.parse(params);
-  return invoke('get_status_single_file', validatedParams);
-}
-
 export async function myCustomCommand(): Promise<void> {
   return invoke('my_custom_command');
 }
@@ -25,5 +15,18 @@ export async function myCustomCommand(): Promise<void> {
 export async function add(params: types.AddParams): Promise<number> {
   const validatedParams = types.AddParamsSchema.parse(params);
   return invoke('add', validatedParams);
+}
+
+export async function getStatus(params: types.GetStatusParams): Promise<types.GetStatusResponse> {
+  const validatedParams = types.GetStatusParamsSchema.parse(params);
+  return invoke('get_status', validatedParams);
+}
+
+export async function generateFileStatus(): Promise<types.FileStatus> {
+  return invoke('generate_file_status');
+}
+
+export async function generateFileStatusKind(): Promise<types.FileStatusKind> {
+  return invoke('generate_file_status_kind');
 }
 

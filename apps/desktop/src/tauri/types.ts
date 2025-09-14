@@ -4,39 +4,36 @@
  * Do not edit manually - regenerate using: cargo tauri-typegen generate
  */
 
-import { z } from "zod";
+import { z } from 'zod';
+
+export const FileStatusKindSchema = z.enum(["IndexNew", "IndexModified", "IndexDeleted", "IndexRenamed", "IndexTypechange", "WorktreeNew", "WorktreeModified", "WorktreeDeleted", "WorktreeRenamed", "WorktreeTypechange", "WorktreeUnreadable", "Clean"]);
 
 export const FileStatusSchema = z.object({
-	path: z.string(),
-	status: z.string(),
+  path: z.string(),
+  status: z.array(FileStatusKindSchema),
 });
 
 export const GetStatusResponseSchema = z.object({
-	files: z.array(FileStatusSchema),
-});
-
-export const GetStatusParamsSchema = z.object({
-	repo_path: z.string(),
-});
-
-export const GetStatusSingleFileParamsSchema = z.object({
-	repo_path: z.string(),
-	file_path: z.string(),
+  files: z.array(FileStatusSchema),
 });
 
 export const AddParamsSchema = z.object({
-	a: z.number(),
-	b: z.number(),
+  a: z.number(),
+  b: z.number(),
 });
+
+export const GetStatusParamsSchema = z.object({
+  repo_path: z.string(),
+});
+
+export type AddParams = z.infer<typeof AddParamsSchema>;
 
 export type GetStatusParams = z.infer<typeof GetStatusParamsSchema>;
 
-export type GetStatusSingleFileParams = z.infer<
-	typeof GetStatusSingleFileParamsSchema
->;
-
-export type AddParams = z.infer<typeof AddParamsSchema>;
+export type FileStatusKind = z.infer<typeof FileStatusKindSchema>;
 
 export type GetStatusResponse = z.infer<typeof GetStatusResponseSchema>;
 
 export type FileStatus = z.infer<typeof FileStatusSchema>;
+
+

@@ -23,7 +23,11 @@ function App() {
 						repo_path: "/Users/ruru/sandbox/noutify",
 					});
 					data.files.forEach((file) => {
-						console.log(file.path, file.status);
+						file.status
+							.filter((s) => s !== "Clean")
+							.forEach((status) => {
+								console.log(file.path, status);
+							});
 					});
 				}}
 			>
