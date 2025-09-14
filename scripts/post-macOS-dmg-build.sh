@@ -6,11 +6,13 @@ y_position_icons=438
 
 x_position_icons_app_link=$((full_width - x_position_icons))
 
+rm -rf ./dist/*
+
 create-dmg \
   --volname "Noutify" \
   --background "assets/dmg-background.png" \
   --volicon "target/release/bundle/dmg/icon.icns" \
-  --window-pos 230 195 \
+  --window-pos 230 150 \
   --window-size $full_width $full_height \
   --icon-size 200 \
   --icon "noutify.app" $x_position_icons $y_position_icons \
