@@ -30,9 +30,9 @@ export type AddParams = z.infer<typeof AddParamsSchema>;
 
 export type GetStatusParams = z.infer<typeof GetStatusParamsSchema>;
 
-export type FileStatusKind = z.infer<typeof FileStatusKindSchema>;
-
 export type GetStatusResponse = z.infer<typeof GetStatusResponseSchema>;
+
+export type FileStatusKind = z.infer<typeof FileStatusKindSchema>;
 
 export type FileStatus = z.infer<typeof FileStatusSchema>;
 
