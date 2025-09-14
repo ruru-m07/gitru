@@ -1,0 +1,2 @@
+bun install
+cargo build
