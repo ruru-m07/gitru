@@ -9,7 +9,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             ipc::commands::add,
             git::commands::get_status,
-            // git::commands::get_status_single_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,3 +1,8 @@
+import {
+	Avatar,
+	AvatarFallback,
+	AvatarImage,
+} from "@noutify/ui/components/avatar";
 import { Button } from "@noutify/ui/components/button";
 import { ScrollArea } from "@noutify/ui/components/scroll-area";
 import { TooltipProvider } from "@noutify/ui/components/tooltip";
@@ -32,22 +37,22 @@ const Sidebar = () => {
 								{
 									icon: Inbox,
 									name: "Inbox",
-									href: "/inbox",
+									href: "/app/inbox",
 								},
 								{
 									icon: GitPullRequestArrow,
 									name: "pull requests",
-									href: "/pulls",
+									href: "/app/pulls",
 								},
 								{
 									icon: CircleDot,
 									name: "Issues",
-									href: "/issues",
+									href: "/app/issues",
 								},
 								{
 									icon: FolderGit2,
 									name: "Local Git",
-									href: "/git",
+									href: "/app/git",
 								},
 							]}
 						/>
@@ -72,13 +77,13 @@ const Sidebar = () => {
 										variant="ghost"
 										size={"icon"}
 									>
-										<img
-											src={`https://github.com/${v}.png`}
-											alt="vercel"
-											width={25}
-											height={25}
-											className="rounded-md"
-										/>
+										<Avatar className="rounded-md size-7">
+											<AvatarImage
+												src={`https://github.com/${v}.png`}
+												alt={v}
+											/>
+											<AvatarFallback></AvatarFallback>
+										</Avatar>
 									</Button>
 								))}
 								<Button variant="ghost" size={"icon"} className="size-8 p-0">

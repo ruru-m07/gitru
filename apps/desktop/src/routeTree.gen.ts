@@ -12,8 +12,11 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthRouteRouteImport } from './routes/auth/route'
 import { Route as AppRouteRouteImport } from './routes/app/route'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AuthOnboardingIndexRouteImport } from './routes/auth/onboarding/index'
+import { Route as AppPullsIndexRouteImport } from './routes/app/pulls/index'
+import { Route as AppIssuesIndexRouteImport } from './routes/app/issues/index'
+import { Route as AppInboxIndexRouteImport } from './routes/app/inbox/index'
+import { Route as AppGitIndexRouteImport } from './routes/app/git/index'
 
 const AuthRouteRoute = AuthRouteRouteImport.update({
   id: '/auth',
@@ -30,28 +33,50 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppIndexRoute = AppIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => AppRouteRoute,
-} as any)
 const AuthOnboardingIndexRoute = AuthOnboardingIndexRouteImport.update({
   id: '/onboarding/',
   path: '/onboarding/',
   getParentRoute: () => AuthRouteRoute,
+} as any)
+const AppPullsIndexRoute = AppPullsIndexRouteImport.update({
+  id: '/pulls/',
+  path: '/pulls/',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppIssuesIndexRoute = AppIssuesIndexRouteImport.update({
+  id: '/issues/',
+  path: '/issues/',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppInboxIndexRoute = AppInboxIndexRouteImport.update({
+  id: '/inbox/',
+  path: '/inbox/',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppGitIndexRoute = AppGitIndexRouteImport.update({
+  id: '/git/',
+  path: '/git/',
+  getParentRoute: () => AppRouteRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteRouteWithChildren
   '/auth': typeof AuthRouteRouteWithChildren
-  '/app/': typeof AppIndexRoute
+  '/app/git': typeof AppGitIndexRoute
+  '/app/inbox': typeof AppInboxIndexRoute
+  '/app/issues': typeof AppIssuesIndexRoute
+  '/app/pulls': typeof AppPullsIndexRoute
   '/auth/onboarding': typeof AuthOnboardingIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/app': typeof AppRouteRouteWithChildren
   '/auth': typeof AuthRouteRouteWithChildren
-  '/app': typeof AppIndexRoute
+  '/app/git': typeof AppGitIndexRoute
+  '/app/inbox': typeof AppInboxIndexRoute
+  '/app/issues': typeof AppIssuesIndexRoute
+  '/app/pulls': typeof AppPullsIndexRoute
   '/auth/onboarding': typeof AuthOnboardingIndexRoute
 }
 export interface FileRoutesById {
@@ -59,15 +84,43 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/app': typeof AppRouteRouteWithChildren
   '/auth': typeof AuthRouteRouteWithChildren
-  '/app/': typeof AppIndexRoute
+  '/app/git/': typeof AppGitIndexRoute
+  '/app/inbox/': typeof AppInboxIndexRoute
+  '/app/issues/': typeof AppIssuesIndexRoute
+  '/app/pulls/': typeof AppPullsIndexRoute
   '/auth/onboarding/': typeof AuthOnboardingIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/app' | '/auth' | '/app/' | '/auth/onboarding'
+  fullPaths:
+    | '/'
+    | '/app'
+    | '/auth'
+    | '/app/git'
+    | '/app/inbox'
+    | '/app/issues'
+    | '/app/pulls'
+    | '/auth/onboarding'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/app' | '/auth/onboarding'
-  id: '__root__' | '/' | '/app' | '/auth' | '/app/' | '/auth/onboarding/'
+  to:
+    | '/'
+    | '/app'
+    | '/auth'
+    | '/app/git'
+    | '/app/inbox'
+    | '/app/issues'
+    | '/app/pulls'
+    | '/auth/onboarding'
+  id:
+    | '__root__'
+    | '/'
+    | '/app'
+    | '/auth'
+    | '/app/git/'
+    | '/app/inbox/'
+    | '/app/issues/'
+    | '/app/pulls/'
+    | '/auth/onboarding/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -99,13 +152,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/app/': {
-      id: '/app/'
-      path: '/'
-      fullPath: '/app/'
-      preLoaderRoute: typeof AppIndexRouteImport
-      parentRoute: typeof AppRouteRoute
-    }
     '/auth/onboarding/': {
       id: '/auth/onboarding/'
       path: '/onboarding'
@@ -113,15 +159,49 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthOnboardingIndexRouteImport
       parentRoute: typeof AuthRouteRoute
     }
+    '/app/pulls/': {
+      id: '/app/pulls/'
+      path: '/pulls'
+      fullPath: '/app/pulls'
+      preLoaderRoute: typeof AppPullsIndexRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/issues/': {
+      id: '/app/issues/'
+      path: '/issues'
+      fullPath: '/app/issues'
+      preLoaderRoute: typeof AppIssuesIndexRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/inbox/': {
+      id: '/app/inbox/'
+      path: '/inbox'
+      fullPath: '/app/inbox'
+      preLoaderRoute: typeof AppInboxIndexRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/git/': {
+      id: '/app/git/'
+      path: '/git'
+      fullPath: '/app/git'
+      preLoaderRoute: typeof AppGitIndexRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
   }
 }
 
 interface AppRouteRouteChildren {
-  AppIndexRoute: typeof AppIndexRoute
+  AppGitIndexRoute: typeof AppGitIndexRoute
+  AppInboxIndexRoute: typeof AppInboxIndexRoute
+  AppIssuesIndexRoute: typeof AppIssuesIndexRoute
+  AppPullsIndexRoute: typeof AppPullsIndexRoute
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
-  AppIndexRoute: AppIndexRoute,
+  AppGitIndexRoute: AppGitIndexRoute,
+  AppInboxIndexRoute: AppInboxIndexRoute,
+  AppIssuesIndexRoute: AppIssuesIndexRoute,
+  AppPullsIndexRoute: AppPullsIndexRoute,
 }
 
 const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(

@@ -6,7 +6,7 @@ import {
 	TooltipTrigger,
 } from "@noutify/ui/components/tooltip";
 import { cn } from "@noutify/ui/lib/utils";
-import { Link } from "@tanstack/react-router";
+import { Link, useLocation } from "@tanstack/react-router";
 import type { LucideIcon } from "lucide-react";
 import type React from "react";
 
@@ -19,6 +19,7 @@ type Item = {
 const SideBarItems: React.FC<{
 	items: Item[];
 }> = ({ items }) => {
+	const location = useLocation();
 	return items.map((item: Item) => (
 		<div key={item.name}>
 			<Tooltip>
@@ -28,6 +29,7 @@ const SideBarItems: React.FC<{
 						className={cn(
 							buttonVariants({ variant: "ghost", size: "icon" }),
 							"size-8",
+							location.pathname === item.href && "bg-accent",
 						)}
 					>
 						<item.icon

@@ -3,7 +3,7 @@ import { cn } from "@noutify/ui/lib/utils";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { getStatus } from "@/tauri";
 
-export const Route = createFileRoute("/app/")({
+export const Route = createFileRoute("/app/git/")({
 	component: App,
 });
 
@@ -20,14 +20,14 @@ function App() {
 				onClick={async () => {
 					const data = await getStatus({
 						repo_path: "/Users/ruru/sandbox/noutify",
-					});
+					})
 					data.files.forEach((file) => {
 						file.status
 							.filter((s) => s !== "Clean")
 							.forEach((status) => {
 								console.log(file.path, status);
-							});
-					});
+							})
+					})
 				}}
 			>
 				Click me!
@@ -55,5 +55,5 @@ function App() {
 				</Link>
 			</div>
 		</div>
-	);
+	)
 }
