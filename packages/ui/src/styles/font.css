@@ -1,0 +1,42 @@
+/* Geist (sans) */
+@font-face {
+	font-family: "Geist";
+	src:
+		url("/fonts/Geist/webfonts/Geist[wght].woff2") format("woff2"),
+		url("/fonts/Geist/variable/Geist[wght].ttf") format("truetype");
+	font-weight: 100 900;
+	font-style: normal;
+	font-display: swap;
+}
+@font-face {
+	font-family: "Geist";
+	src:
+		url("/fonts/Geist/webfonts/Geist-Italic[wght].woff2") format("woff2"),
+		url("/fonts/Geist/variable/Geist-Italic[wght].ttf") format("truetype");
+	font-weight: 100 900;
+	font-style: italic;
+	font-display: swap;
+}
+
+/* GeistMono (monospace) */
+@font-face {
+	font-family: "GeistMono";
+	src:
+		url("/fonts/GeistMono/webfonts/GeistMono[wght].woff2") format("woff2"),
+		url("/fonts/GeistMono/variable/GeistMono[wght].ttf") format("truetype");
+	font-weight: 100 900;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: "GeistMono";
+	src:
+		url("/fonts/GeistMono/webfonts/GeistMono-Italic[wght].woff2")
+		format("woff2"),
+		url("/fonts/GeistMono/variable/GeistMono-Italic[wght].ttf")
+		format("truetype");
+	font-weight: 100 900;
+	font-style: italic;
+	font-display: swap;
+}

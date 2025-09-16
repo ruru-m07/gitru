@@ -1,11 +1,12 @@
 import { createRouter, RouterProvider } from "@tanstack/react-router";
+import { ThemeProvider as NextThemesProvider } from "next-themes";
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
-
 import reportWebVitals from "./reportWebVitals.ts";
 import { routeTree } from "./routeTree.gen";
 
-import "./App.css";
+import "./app.css";
+import { colorKeyList } from "./lib/colors.ts";
 
 // Create a new router instance
 const router = createRouter({
@@ -30,7 +31,14 @@ if (rootElement && !rootElement.innerHTML) {
 	const root = ReactDOM.createRoot(rootElement);
 	root.render(
 		<StrictMode>
-			<RouterProvider router={router} />
+			<NextThemesProvider
+				disableTransitionOnChange
+				defaultTheme="dark-classic"
+				enableColorScheme
+				themes={colorKeyList}
+			>
+				<RouterProvider router={router} />
+			</NextThemesProvider>
 		</StrictMode>,
 	);
 }

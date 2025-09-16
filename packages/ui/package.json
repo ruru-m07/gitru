@@ -5,6 +5,8 @@
 	"private": true,
 	"exports": {
 		"./globals.css": "./src/styles/globals.css",
+		"./schema.css": "./src/styles/schema.css",
+		"./font.css": "./src/styles/font.css",
 		"./postcss.config": "./postcss.config.mjs",
 		"./lib/*": "./src/lib/*.ts",
 		"./components/*": "./src/components/*.tsx",
