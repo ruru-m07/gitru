@@ -7,6 +7,7 @@ import { routeTree } from "./routeTree.gen";
 
 import "./app.css";
 import { colorKeyList } from "./lib/colors.ts";
+import { useLastPageStore } from "./store/useLastPageStore.ts";
 
 // Create a new router instance
 const router = createRouter({
@@ -18,12 +19,26 @@ const router = createRouter({
 	defaultPreloadStaleTime: 0,
 });
 
+router.subscribe("onResolved", (state) => {
+	useLastPageStore.getState().setLastPage(state.toLocation.href);
+});
+
 // Register the router instance for type safety
 declare module "@tanstack/react-router" {
 	interface Register {
 		router: typeof router;
 	}
 }
+
+async function redirectToLastPage() {
+	const { lastPage } = useLastPageStore.getState();
+	// If not already on the lastPage, navigate before initial render
+	if (window.location.pathname + window.location.search !== lastPage) {
+		await router.navigate({ to: lastPage });
+	}
+}
+
+await redirectToLastPage();
 
 // Render the app
 const rootElement = document.getElementById("root");
