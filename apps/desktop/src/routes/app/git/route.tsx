@@ -6,7 +6,6 @@ import {
 } from "@noutify/ui/components/accordion";
 import { Badge } from "@noutify/ui/components/badge";
 import { Button, buttonVariants } from "@noutify/ui/components/button";
-import { Checkbox } from "@noutify/ui/components/checkbox";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -38,7 +37,6 @@ import {
 	SquareDot,
 	SquarePlus,
 	SquareX,
-	Trash2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -55,34 +53,34 @@ export const Route = createFileRoute("/app/git")({
 });
 
 function GitPageLayout() {
-	const items = [
-		{ label: "Soft", desc: "Undo commit, keep changes staged", disable: false },
-		{
-			label: "Mixed",
-			desc: "Undo commit, keep changes in working directory",
-			disable: false,
-		},
-		{
-			label: "Hard",
-			desc: "Undo commit and delete all changes",
-			disable: false,
-		},
-		{
-			label: "Revert",
-			desc: "Add a new commit that reverts the last one",
-			disable: false,
-		},
-		{
-			label: "Amend",
-			desc: "Modify the previous commit",
-			disable: false,
-		},
-		{
-			label: "Rebase",
-			desc: "Drop or edit any previous commit",
-			disable: true,
-		},
-	] as const;
+	// const items = [
+	// 	{ label: "Soft", desc: "Undo commit, keep changes staged", disable: false },
+	// 	{
+	// 		label: "Mixed",
+	// 		desc: "Undo commit, keep changes in working directory",
+	// 		disable: false,
+	// 	},
+	// 	{
+	// 		label: "Hard",
+	// 		desc: "Undo commit and delete all changes",
+	// 		disable: false,
+	// 	},
+	// 	{
+	// 		label: "Revert",
+	// 		desc: "Add a new commit that reverts the last one",
+	// 		disable: false,
+	// 	},
+	// 	{
+	// 		label: "Amend",
+	// 		desc: "Modify the previous commit",
+	// 		disable: false,
+	// 	},
+	// 	{
+	// 		label: "Rebase",
+	// 		desc: "Drop or edit any previous commit",
+	// 		disable: true,
+	// 	},
+	// ] as const;
 
 	const [status, setStatus] = useState<FileStatus[]>([]);
 
@@ -419,12 +417,14 @@ export function getStatusIcon(type: FileStatusKind[]) {
 	// PRIORITY: unreadable > deleted > renamed/typechange > modified > new
 	if (kinds.has("WorktreeUnreadable")) {
 		return (
-			<AlertTriangle className="text-orange-500" size={20} title="Unreadable" />
+			// Unreadable
+			<AlertTriangle className="text-orange-500" size={20} />
 		);
 	}
 
 	if (kinds.has("IndexDeleted") || kinds.has("WorktreeDeleted")) {
-		return <SquareX className="text-red-500" size={20} title="Deleted" />;
+		// Deleted
+		return <SquareX className="text-red-500" size={20} />;
 	}
 
 	if (
@@ -434,24 +434,24 @@ export function getStatusIcon(type: FileStatusKind[]) {
 		kinds.has("WorktreeTypechange")
 	) {
 		return (
-			<CornerUpRight
-				className="text-purple-500"
-				size={20}
-				title="Renamed / Type Changed"
-			/>
+			// Renamed / Type Changed
+			<CornerUpRight className="text-purple-500" size={20} />
 		);
 	}
 
 	if (kinds.has("IndexModified") || kinds.has("WorktreeModified")) {
-		return <SquareDot className="text-yellow-500" size={20} title="Modified" />;
+		// Modified
+		return <SquareDot className="text-yellow-500" size={20} />;
 	}
 
 	if (kinds.has("IndexNew") || kinds.has("WorktreeNew")) {
 		return (
-			<SquarePlus className="text-green-500" size={20} title="New / Added" />
+			// New / Added
+			<SquarePlus className="text-green-500" size={20} />
 		);
 	}
 
 	// If nothing matched, show a neutral icon or nothing
-	return <EyeOff className="text-gray-400" size={20} title="Unchanged" />;
+	// Unchanged
+	return <EyeOff className="text-gray-400" size={20} />;
 }

@@ -1,7 +1,6 @@
-import { Button, buttonVariants } from "@noutify/ui/components/button";
+import { buttonVariants } from "@noutify/ui/components/button";
 import { cn } from "@noutify/ui/lib/utils";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { getStatus } from "@/tauri";
 
 export const Route = createFileRoute("/app/git/")({
 	component: App,
@@ -16,22 +15,6 @@ function App() {
 			)}
 		>
 			<span className="text-4xl font-semibold">Hello ;D</span>
-			<Button
-				onClick={async () => {
-					const data = await getStatus({
-						repo_path: "/Users/ruru/sandbox/noutify",
-					});
-					data.files.forEach((file) => {
-						file.status
-							.filter((s) => s !== "Clean")
-							.forEach((status) => {
-								console.log(file.path, status);
-							});
-					});
-				}}
-			>
-				Click me!
-			</Button>
 			<div className={cn("flex items-center justify-center flex-col")}>
 				<Link
 					className={cn(
