@@ -15,6 +15,9 @@
 			"complexity": {
 				"noExcessiveCognitiveComplexity": "off"
 			},
+			"correctness": {
+				"useUniqueElementIds": "off"
+			},
 			"suspicious": {
 				"noArrayIndexKey": "off",
 				"noConsole": "off"

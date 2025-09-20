@@ -2,9 +2,9 @@ import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { ThemeProvider as NextThemesProvider } from "next-themes";
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
+import { Toaster } from "sonner";
 import reportWebVitals from "./reportWebVitals.ts";
 import { routeTree } from "./routeTree.gen";
-
 import "./app.css";
 import { colorKeyList } from "./lib/colors.ts";
 import { useLastPageStore } from "./store/useLastPageStore.ts";
@@ -53,6 +53,7 @@ if (rootElement && !rootElement.innerHTML) {
 				themes={colorKeyList}
 			>
 				<RouterProvider router={router} />
+				<Toaster />
 			</NextThemesProvider>
 		</StrictMode>,
 	);

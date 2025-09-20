@@ -11,7 +11,7 @@ function App() {
 	return (
 		<div
 			className={cn(
-				"ml-[var(--main-actual-content-padding)] bg-accent h-full w-full px-2 rounded-md",
+				"ml-[var(--main-actual-content-padding)] h-full w-full px-2 rounded-md",
 				"flex items-center justify-center flex-col",
 			)}
 		>
@@ -20,14 +20,14 @@ function App() {
 				onClick={async () => {
 					const data = await getStatus({
 						repo_path: "/Users/ruru/sandbox/noutify",
-					})
+					});
 					data.files.forEach((file) => {
 						file.status
 							.filter((s) => s !== "Clean")
 							.forEach((status) => {
 								console.log(file.path, status);
-							})
-					})
+							});
+					});
 				}}
 			>
 				Click me!
@@ -55,5 +55,5 @@ function App() {
 				</Link>
 			</div>
 		</div>
-	)
+	);
 }

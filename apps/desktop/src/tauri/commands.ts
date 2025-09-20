@@ -8,15 +8,6 @@ import { invoke } from '@tauri-apps/api/core';
 
 import * as types from './types';
 
-export async function myCustomCommand(): Promise<void> {
-  return invoke('my_custom_command');
-}
-
-export async function add(params: types.AddParams): Promise<number> {
-  const validatedParams = types.AddParamsSchema.parse(params);
-  return invoke('add', validatedParams);
-}
-
 export async function getStatus(params: types.GetStatusParams): Promise<types.GetStatusResponse> {
   const validatedParams = types.GetStatusParamsSchema.parse(params);
   return invoke('get_status', validatedParams);
@@ -28,5 +19,15 @@ export async function generateFileStatus(): Promise<types.FileStatus> {
 
 export async function generateFileStatusKind(): Promise<types.FileStatusKind> {
   return invoke('generate_file_status_kind');
+}
+
+export async function addLocalGitRepo(params: types.AddLocalGitRepoParams): Promise<types.GitRepoResponse> {
+  const validatedParams = types.AddLocalGitRepoParamsSchema.parse(params);
+  return invoke('add_local_git_repo', validatedParams);
+}
+
+export async function exportType(params: types.ExportTypeParams): Promise<void> {
+  const validatedParams = types.ExportTypeParamsSchema.parse(params);
+  return invoke('export_type', validatedParams);
 }
 

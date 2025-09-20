@@ -17,11 +17,13 @@ pub fn collect_statuses(
         .filter_map(|entry| {
             let path = entry.path()?.into();
             let s = entry.status();
+            let status = human_readable_status(s);
 
-            Some(FileStatus {
-                path: path,
-                status: human_readable_status(s),
-            })
+            if status.len() == 0 {
+                return None;
+            }
+
+            Some(FileStatus { path: path, status })
         })
         .collect();
 
@@ -64,7 +66,7 @@ fn human_readable_status(status: Status) -> Vec<FileStatusKind> {
         parts.push(FileStatusKind::WorktreeUnreadable);
     }
     if parts.is_empty() {
-        parts.push(FileStatusKind::Clean);
+        // ! nothing
     }
     parts
 }

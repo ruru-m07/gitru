@@ -4,4 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+serde = "1.0.225"
 tauri = { version = "2", features = [] }
+uuid = { version = "1", features = ["v4"] }

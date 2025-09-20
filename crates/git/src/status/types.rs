@@ -16,7 +16,6 @@ pub enum FileStatusKind {
     WorktreeRenamed,
     WorktreeTypechange,
     WorktreeUnreadable,
-    Clean,
 }
 
 #[derive(Debug, Serialize)]
