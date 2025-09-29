@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useDiffViewStore } from "@/components/diff/useDiffViewStore";
 import { useAppStore } from "@/store/useAppStore";
 import {
 	addLocalGitRepo,
@@ -121,7 +122,7 @@ function GitPageLayout() {
 					onClick={() => {
 						setRepoSelectIsOpen(!repoSelectIsOpen);
 					}}
-					className="flex justify-between items-center border-b px-2 pt-2 pb-1 hover:bg-accent/40 cursor-pointer"
+					className="flex justify-between items-center border-b px-2 pt-2 pb-1 hover:bg-accent/40 cursor-pointer min-h-14 max-h-14"
 					type="button"
 				>
 					<div className="flex-col flex items-start">
@@ -136,6 +137,26 @@ function GitPageLayout() {
 						<ChevronDown size={18} />
 					)}
 				</button>
+				<div className="grid grid-cols-2 border-b w-full min-h-9 max-h-9">
+					<button
+						type="button"
+						className={cn(
+							buttonVariants({ variant: "ghost" }),
+							"h-full rounded-none hover:border-border border-l border-transparent",
+						)}
+					>
+						Changes
+					</button>
+					<button
+						type="button"
+						className={cn(
+							buttonVariants({ variant: "ghost" }),
+							"h-full rounded-none border-l",
+						)}
+					>
+						History
+					</button>
+				</div>
 				{repoSelectIsOpen ? (
 					<ScrollArea type="scroll" className="max-h-full flex-1">
 						<div className="w-full p-2 border-b flex justify-between items-center gap-2">
@@ -375,11 +396,19 @@ interface EachStatusProps {
 }
 
 export default function EachStatus({ file, type }: EachStatusProps) {
+	const { setSelectedFilePath, setSelectedFileStatus } = useDiffViewStore();
+
 	return (
+		// biome-ignore lint/a11y/noStaticElementInteractions: who cares
+		// biome-ignore lint/a11y/useKeyWithClickEvents: who cares
 		<div
 			className={cn(
-				"flex relative cursor-pointer hover:bg-muted items-center px-2 py-1 border-l",
+				"flex relative cursor-pointer hover:bg-muted items-center px-2 py-1",
 			)}
+			onClick={() => {
+				setSelectedFilePath(file.path);
+				setSelectedFileStatus(file.status);
+			}}
 		>
 			<div className="flex items-center w-full min-w-0">
 				<div className="flex-shrink-0">{getStatusIcon(file.status)}</div>

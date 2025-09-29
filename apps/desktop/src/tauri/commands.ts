@@ -8,6 +8,11 @@ import { invoke } from '@tauri-apps/api/core';
 
 import * as types from './types';
 
+export async function getDiff(params: types.GetDiffParams): Promise<string> {
+  const validatedParams = types.GetDiffParamsSchema.parse(params);
+  return invoke('get_diff', validatedParams);
+}
+
 export async function getStatus(params: types.GetStatusParams): Promise<types.GetStatusResponse> {
   const validatedParams = types.GetStatusParamsSchema.parse(params);
   return invoke('get_status', validatedParams);

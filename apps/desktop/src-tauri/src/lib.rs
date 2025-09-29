@@ -9,6 +9,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             ipc::commands::add_local_git_repo,
+            git::diff::get_diff,
             git::commands::get_status,
         ])
         .run(tauri::generate_context!())
