@@ -1,7 +1,11 @@
 use tauri::command;
 
-use crate::status::{
-    FileStatus, FileStatusKind, collect_statuses, default_status_options, types::GetStatusResponse,
+use crate::{
+    diff::FileVersion,
+    status::{
+        FileStatus, FileStatusKind, collect_statuses, default_status_options,
+        types::GetStatusResponse,
+    },
 };
 
 #[command(rename_all = "snake_case")]
@@ -18,5 +22,10 @@ pub fn generate_file_status() -> FileStatus {
 
 #[tauri::command(rename_all = "snake_case")]
 pub fn generate_file_status_kind() -> FileStatusKind {
+    todo!()
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn generate_file_version() -> FileVersion {
     todo!()
 }
