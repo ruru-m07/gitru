@@ -9,7 +9,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             ipc::commands::add_local_git_repo,
+            git::diff::get_diff,
             git::commands::get_status,
+            git::commands::git_add,
+            git::commands::git_remove,
+            git::commands::git_discard,
+            git::commands::commit,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

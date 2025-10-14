@@ -20,3 +20,9 @@
 *[data-tauri-drag-region] {
 	app-region: drag;
 }
+
+html[data-theme="dark-classic"] .shiki,
+html[data-theme="dark-classic"] .shiki span {
+	background-color: var(--shiki-dark-classic-bg) !important;
+	color: var(--shiki-dark-classic) !important;
+}

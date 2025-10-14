@@ -1,8 +1,26 @@
+use git2::{Commit, Repository};
+use serde::Serialize;
 use tauri::command;
 
-use crate::status::{
-    FileStatus, FileStatusKind, collect_statuses, default_status_options, types::GetStatusResponse,
+use crate::{
+    diff::FileVersion,
+    status::{
+        FileStatus, FileStatusKind, collect_statuses, default_status_options,
+        types::GetStatusResponse,
+    },
 };
+
+#[derive(Serialize)]
+pub struct GitResult {
+    success: bool,
+    message: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct CommitResult {
+    success: bool,
+    message: Option<String>,
+}
 
 #[command(rename_all = "snake_case")]
 pub fn get_status(repo_path: &str) -> Result<GetStatusResponse, String> {
@@ -11,6 +29,260 @@ pub fn get_status(repo_path: &str) -> Result<GetStatusResponse, String> {
     Ok(GetStatusResponse { files })
 }
 
+// git add <file>
+#[tauri::command(rename_all = "snake_case")]
+pub fn git_add(repo_path: &str, file: &str) -> GitResult {
+    let repo = match Repository::open(repo_path) {
+        Ok(r) => r,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to open repo: {e}")),
+            };
+        }
+    };
+
+    let mut index = match repo.index() {
+        Ok(i) => i,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to open index: {e}")),
+            };
+        }
+    };
+
+    if file == "." {
+        if let Err(e) = index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None) {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to add all: {e}")),
+            };
+        }
+    } else {
+        if let Err(e) = index.add_path(std::path::Path::new(file)) {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to add {file}: {e}")),
+            };
+        }
+    }
+
+    if let Err(e) = index.write() {
+        return GitResult {
+            success: false,
+            message: Some(format!("Failed to write index: {e}")),
+        };
+    }
+
+    GitResult {
+        success: true,
+        message: None,
+    }
+}
+
+// git restore --staged <file>
+#[tauri::command(rename_all = "snake_case")]
+pub fn git_remove(repo_path: &str, file: &str) -> GitResult {
+    let repo = match Repository::open(repo_path) {
+        Ok(r) => r,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to open repo: {e}")),
+            };
+        }
+    };
+
+    let mut index = match repo.index() {
+        Ok(i) => i,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to open index: {e}")),
+            };
+        }
+    };
+
+    if file == "." {
+        if let Err(e) = index.clear() {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to clear index: {e}")),
+            };
+        }
+    } else {
+        if let Err(e) = index.remove_path(std::path::Path::new(file)) {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to unstage {file}: {e}")),
+            };
+        }
+    }
+
+    if let Err(e) = index.write() {
+        return GitResult {
+            success: false,
+            message: Some(format!("Failed to write index: {e}")),
+        };
+    }
+
+    GitResult {
+        success: true,
+        message: None,
+    }
+}
+
+// git restore <file>
+#[tauri::command(rename_all = "snake_case")]
+pub fn git_discard(repo_path: &str, file: &str) -> GitResult {
+    let repo = match Repository::open(repo_path) {
+        Ok(r) => r,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to open repo: {e}")),
+            };
+        }
+    };
+
+    let obj = match repo.head() {
+        Ok(head) => match head.peel(git2::ObjectType::Commit) {
+            Ok(obj) => obj,
+            Err(e) => {
+                return GitResult {
+                    success: false,
+                    message: Some(format!("Failed to peel HEAD: {e}")),
+                };
+            }
+        },
+        Err(_) => {
+            return GitResult {
+                success: false,
+                message: Some("No HEAD to discard from".into()),
+            };
+        }
+    };
+
+    let res = if file == "." {
+        repo.checkout_tree(&obj, None)
+    } else {
+        let mut opts = git2::build::CheckoutBuilder::new();
+        opts.path(std::path::Path::new(file)).force();
+        repo.checkout_tree(&obj, Some(&mut opts))
+    };
+
+    if let Err(e) = res {
+        return GitResult {
+            success: false,
+            message: Some(format!("Failed to discard {file}: {e}")),
+        };
+    }
+
+    GitResult {
+        success: true,
+        message: None,
+    }
+}
+
+// git commit <file>
+#[tauri::command(rename_all = "snake_case")]
+pub fn commit(
+    repo_path: &str,
+    message: &str,
+    description: Option<&str>,
+    co_authors: Option<Vec<&str>>,
+) -> CommitResult {
+    // open the repository
+    let repo = match Repository::open(repo_path) {
+        Ok(r) => r,
+        Err(e) => {
+            return CommitResult {
+                success: false,
+                message: Some(format!("Failed to open repo: {e}")),
+            };
+        }
+    };
+
+    // combine message + optional description + co-authors
+    let mut full_message = message.to_string();
+
+    if let Some(desc) = description {
+        full_message.push_str("\n\n");
+        full_message.push_str(desc);
+    }
+
+    if let Some(authors) = co_authors {
+        for a in authors {
+            full_message.push_str(&format!("\nCo-authored-by: {a}"));
+        }
+    }
+
+    // get default user identity
+    let sig = match repo.signature() {
+        Ok(s) => s,
+        Err(e) => {
+            return CommitResult {
+                success: false,
+                message: Some(format!("Failed to get signature: {e}")),
+            };
+        }
+    };
+
+    // load index (staged changes)
+    let mut index = match repo.index() {
+        Ok(i) => i,
+        Err(e) => {
+            return CommitResult {
+                success: false,
+                message: Some(format!("Failed to open index: {e}")),
+            };
+        }
+    };
+
+    // write the current index to a tree
+    let tree_oid = match index.write_tree() {
+        Ok(oid) => oid,
+        Err(e) => {
+            return CommitResult {
+                success: false,
+                message: Some(format!("Failed to write tree: {e}")),
+            };
+        }
+    };
+
+    let tree = match repo.find_tree(tree_oid) {
+        Ok(t) => t,
+        Err(e) => {
+            return CommitResult {
+                success: false,
+                message: Some(format!("Failed to find tree: {e}")),
+            };
+        }
+    };
+
+    // determine parents (previous commit)
+    let parent_commit: Option<Commit> = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
+
+    let parents: Vec<&Commit> = match parent_commit {
+        Some(ref c) => vec![c],
+        None => vec![],
+    };
+
+    // perform the commit
+    match repo.commit(Some("HEAD"), &sig, &sig, &full_message, &tree, &parents) {
+        Ok(_) => CommitResult {
+            success: true,
+            message: None,
+        },
+        Err(e) => CommitResult {
+            success: false,
+            message: Some(format!("Commit failed: {e}")),
+        },
+    }
+}
+
+// damm stuff
 #[tauri::command(rename_all = "snake_case")]
 pub fn generate_file_status() -> FileStatus {
     todo!()
@@ -18,5 +290,10 @@ pub fn generate_file_status() -> FileStatus {
 
 #[tauri::command(rename_all = "snake_case")]
 pub fn generate_file_status_kind() -> FileStatusKind {
+    todo!()
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn generate_file_version() -> FileVersion {
     todo!()
 }

@@ -4,30 +4,74 @@
  * Do not edit manually - regenerate using: cargo tauri-typegen generate
  */
 
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from "@tauri-apps/api/core";
 
-import * as types from './types';
+import * as types from "./types";
 
-export async function getStatus(params: types.GetStatusParams): Promise<types.GetStatusResponse> {
-  const validatedParams = types.GetStatusParamsSchema.parse(params);
-  return invoke('get_status', validatedParams);
+export async function getDiff(
+	params: types.GetDiffParams,
+): Promise<types.GetDiffResponse> {
+	const validatedParams = types.GetDiffParamsSchema.parse(params);
+	return invoke("get_diff", validatedParams);
+}
+
+export async function addLocalGitRepo(
+	params: types.AddLocalGitRepoParams,
+): Promise<types.GitRepoResponse> {
+	const validatedParams = types.AddLocalGitRepoParamsSchema.parse(params);
+	return invoke("add_local_git_repo", validatedParams);
+}
+
+export async function exportType(
+	params: types.ExportTypeParams,
+): Promise<void> {
+	const validatedParams = types.ExportTypeParamsSchema.parse(params);
+	return invoke("export_type", validatedParams);
+}
+
+export async function getStatus(
+	params: types.GetStatusParams,
+): Promise<types.GetStatusResponse> {
+	const validatedParams = types.GetStatusParamsSchema.parse(params);
+	return invoke("get_status", validatedParams);
+}
+
+export async function gitAdd(
+	params: types.GitAddParams,
+): Promise<types.GitResult> {
+	const validatedParams = types.GitAddParamsSchema.parse(params);
+	return invoke("git_add", validatedParams);
+}
+
+export async function gitRemove(
+	params: types.GitRemoveParams,
+): Promise<types.GitResult> {
+	const validatedParams = types.GitRemoveParamsSchema.parse(params);
+	return invoke("git_remove", validatedParams);
+}
+
+export async function gitDiscard(
+	params: types.GitDiscardParams,
+): Promise<types.GitResult> {
+	const validatedParams = types.GitDiscardParamsSchema.parse(params);
+	return invoke("git_discard", validatedParams);
+}
+
+export async function commit(
+	params: types.CommitParams,
+): Promise<types.CommitResult> {
+	const validatedParams = types.CommitParamsSchema.parse(params);
+	return invoke("commit", validatedParams);
 }
 
 export async function generateFileStatus(): Promise<types.FileStatus> {
-  return invoke('generate_file_status');
+	return invoke("generate_file_status");
 }
 
 export async function generateFileStatusKind(): Promise<types.FileStatusKind> {
-  return invoke('generate_file_status_kind');
+	return invoke("generate_file_status_kind");
 }
 
-export async function addLocalGitRepo(params: types.AddLocalGitRepoParams): Promise<types.GitRepoResponse> {
-  const validatedParams = types.AddLocalGitRepoParamsSchema.parse(params);
-  return invoke('add_local_git_repo', validatedParams);
+export async function generateFileVersion(): Promise<types.FileVersion> {
+	return invoke("generate_file_version");
 }
-
-export async function exportType(params: types.ExportTypeParams): Promise<void> {
-  const validatedParams = types.ExportTypeParamsSchema.parse(params);
-  return invoke('export_type', validatedParams);
-}
-

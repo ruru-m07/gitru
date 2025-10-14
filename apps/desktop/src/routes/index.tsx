@@ -1,3 +1,4 @@
+import { Button } from "@noutify/ui/components/button";
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/")({
@@ -5,5 +6,22 @@ export const Route = createFileRoute("/")({
 });
 
 function App() {
-	window.location.href = "/app";
+	return (
+		<div>
+			<Button
+				onClick={() => {
+					window.location.href = "/app";
+				}}
+			>
+				go to /app
+			</Button>
+			<Button
+				onClick={() => {
+					window.location.href = "/auth/onboarding";
+				}}
+			>
+				go to /auth/onboarding
+			</Button>
+		</div>
+	);
 }

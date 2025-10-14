@@ -40,12 +40,14 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useDiffViewStore } from "@/components/diff/useDiffViewStore";
 import { useAppStore } from "@/store/useAppStore";
 import {
 	addLocalGitRepo,
 	type FileStatus,
 	type FileStatusKind,
 	getStatus,
+	gitAdd,
 } from "@/tauri";
 
 export const Route = createFileRoute("/app/git")({
@@ -121,7 +123,7 @@ function GitPageLayout() {
 					onClick={() => {
 						setRepoSelectIsOpen(!repoSelectIsOpen);
 					}}
-					className="flex justify-between items-center border-b px-2 pt-2 pb-1 hover:bg-accent/40 cursor-pointer"
+					className="flex justify-between items-center border-b px-2 pt-2 pb-1 hover:bg-accent/40 cursor-pointer min-h-14 max-h-14"
 					type="button"
 				>
 					<div className="flex-col flex items-start">
@@ -236,6 +238,26 @@ function GitPageLayout() {
 					</ScrollArea>
 				) : (
 					<>
+						<div className="grid grid-cols-2 border-b w-full min-h-9 max-h-9">
+							<button
+								type="button"
+								className={cn(
+									buttonVariants({ variant: "ghost" }),
+									"h-full rounded-none hover:border-border border-l border-transparent",
+								)}
+							>
+								Changes
+							</button>
+							<button
+								type="button"
+								className={cn(
+									buttonVariants({ variant: "ghost" }),
+									"h-full rounded-none border-l",
+								)}
+							>
+								History
+							</button>
+						</div>
 						<div className="max-h-full overflow-auto flex-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
 							{/* <div className="w-full p-2 border-b flex justify-between items-center">
 								<Checkbox />
@@ -259,7 +281,7 @@ function GitPageLayout() {
 									] as const
 								).map((cell) => {
 									if (!cell.data || cell.data.length === 0) {
-										return null; // Skip rendering if no data
+										return null;
 									}
 									return (
 										<AccordionItem
@@ -375,11 +397,19 @@ interface EachStatusProps {
 }
 
 export default function EachStatus({ file, type }: EachStatusProps) {
+	const { setSelectedFilePath, setSelectedFileStatus } = useDiffViewStore();
+	const { selectedRepository } = useAppStore();
 	return (
+		// biome-ignore lint/a11y/noStaticElementInteractions: who cares
+		// biome-ignore lint/a11y/useKeyWithClickEvents: who cares
 		<div
 			className={cn(
-				"flex relative cursor-pointer hover:bg-muted items-center px-2 py-1 border-l",
+				"flex relative cursor-pointer hover:bg-muted border-l border-transparent hover:border-border items-center px-2 py-1",
 			)}
+			onClick={() => {
+				setSelectedFilePath(file.path);
+				setSelectedFileStatus(file.status);
+			}}
 		>
 			<div className="flex items-center w-full min-w-0">
 				<div className="flex-shrink-0">{getStatusIcon(file.status)}</div>
@@ -400,7 +430,24 @@ export default function EachStatus({ file, type }: EachStatusProps) {
 				</div>
 				{type === "Changes" && (
 					<div className="flex ml-2 flex-shrink-0">
-						<Button className="h-8 w-8" variant={"ghost"}>
+						<Button
+							onClick={async (e) => {
+								e.stopPropagation();
+								if (selectedRepository?.path) {
+									const { success, message } = await gitAdd({
+										repo_path: selectedRepository?.path,
+										file: file.path,
+									});
+									if (success) {
+										toast.success("File staged");
+									} else {
+										toast.error(message || "Failed to stage file");
+									}
+								}
+							}}
+							className="h-8 w-8"
+							variant={"ghost"}
+						>
 							<Plus size={20} strokeWidth={1.25} />
 						</Button>
 					</div>
