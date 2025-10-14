@@ -33,6 +33,8 @@ declare module "@tanstack/react-router" {
 async function redirectToLastPage() {
 	const { lastPage } = useLastPageStore.getState();
 	// If not already on the lastPage, navigate before initial render
+	if (!lastPage) return;
+	if (lastPage === "/") return;
 	if (window.location.pathname + window.location.search !== lastPage) {
 		await router.navigate({ to: lastPage });
 	}

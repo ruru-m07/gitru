@@ -4,72 +4,92 @@
  * Do not edit manually - regenerate using: cargo tauri-typegen generate
  */
 
-import { z } from "zod";
+import { z } from 'zod';
 
-export const FileStatusKindSchema = z.enum([
-	"IndexNew",
-	"IndexModified",
-	"IndexDeleted",
-	"IndexRenamed",
-	"IndexTypechange",
-	"WorktreeNew",
-	"WorktreeModified",
-	"WorktreeDeleted",
-	"WorktreeRenamed",
-	"WorktreeTypechange",
-	"WorktreeUnreadable",
-]);
+export const FileStatusKindSchema = z.enum(["IndexNew", "IndexModified", "IndexDeleted", "IndexRenamed", "IndexTypechange", "WorktreeNew", "WorktreeModified", "WorktreeDeleted", "WorktreeRenamed", "WorktreeTypechange", "WorktreeUnreadable"]);
 
 export const RepoSitoryStoreSchema = z.object({
-	id: z.string(),
-	name: z.string(),
-	path: z.string(),
-	origin: z.string().optional(),
-	branch: z.string().optional(),
+  id: z.string(),
+  name: z.string(),
+  path: z.string(),
+  origin: z.string().optional(),
+  branch: z.string().optional(),
 });
 
 export const GitRepoResponseSchema = z.object({
-	error: z.string().optional(),
-	success: RepoSitoryStoreSchema.optional(),
+  error: z.string().optional(),
+  success: RepoSitoryStoreSchema.optional(),
+});
+
+export const CommitResultSchema = z.object({
+  success: z.boolean(),
+  message: z.string().optional(),
+});
+
+export const GitResultSchema = z.object({
+  success: z.boolean(),
+  message: z.string().optional(),
 });
 
 export const FileVersionSchema = z.object({
-	content: z.string(),
-	encoding: z.string().nullable(),
-	is_binary: z.boolean(),
-	byte_length: z.number(),
-});
-
-export const GetDiffResponseSchema = z.object({
-	file_path: z.string(),
-	head: FileVersionSchema.nullable(),
-	workdir: FileVersionSchema.nullable(),
+  content: z.string(),
+  encoding: z.string().optional(),
+  is_binary: z.boolean(),
+  byte_length: z.number(),
 });
 
 export const FileStatusSchema = z.object({
-	path: z.string(),
-	status: z.array(FileStatusKindSchema),
+  path: z.string(),
+  status: z.array(FileStatusKindSchema),
 });
 
 export const GetStatusResponseSchema = z.object({
-	files: z.array(FileStatusSchema),
+  files: z.array(FileStatusSchema),
+});
+
+export const GetDiffResponseSchema = z.object({
+  file_path: z.string(),
+  head: FileVersionSchema.optional(),
+  workdir: FileVersionSchema.optional(),
 });
 
 export const GetDiffParamsSchema = z.object({
-	repo_path: z.string(),
-	file_path: z.string(),
+  repo_path: z.string(),
+  file_path: z.string(),
 });
 
 export const AddLocalGitRepoParamsSchema = z.object({
-	repo_path: z.string(),
+  repo_path: z.string(),
 });
 
 export const ExportTypeParamsSchema = z.object({
-	_a: RepoSitoryStoreSchema,
+  _a: RepoSitoryStoreSchema,
 });
 
 export const GetStatusParamsSchema = z.object({
-	repo_path: z.string(),
+  repo_path: z.string(),
+});
+
+export const GitAddParamsSchema = z.object({
+  repo_path: z.string(),
+  file: z.string(),
+});
+
+export const GitRemoveParamsSchema = z.object({
+  repo_path: z.string(),
+  file: z.string(),
+});
+
+export const GitDiscardParamsSchema = z.object({
+  repo_path: z.string(),
+  file: z.string(),
+});
+
+export const CommitParamsSchema = z.object({
+  repo_path: z.string(),
+  message: z.string(),
+  description: z.string().optional(),
+  co_authors: z.array(z.string()).optional(),
 });
 
 export type GetDiffParams = z.infer<typeof GetDiffParamsSchema>;
@@ -80,16 +100,30 @@ export type ExportTypeParams = z.infer<typeof ExportTypeParamsSchema>;
 
 export type GetStatusParams = z.infer<typeof GetStatusParamsSchema>;
 
+export type GitAddParams = z.infer<typeof GitAddParamsSchema>;
+
+export type GitRemoveParams = z.infer<typeof GitRemoveParamsSchema>;
+
+export type GitDiscardParams = z.infer<typeof GitDiscardParamsSchema>;
+
+export type CommitParams = z.infer<typeof CommitParamsSchema>;
+
 export type FileStatusKind = z.infer<typeof FileStatusKindSchema>;
 
 export type GitRepoResponse = z.infer<typeof GitRepoResponseSchema>;
 
-export type GetDiffResponse = z.infer<typeof GetDiffResponseSchema>;
+export type CommitResult = z.infer<typeof CommitResultSchema>;
 
 export type RepoSitoryStore = z.infer<typeof RepoSitoryStoreSchema>;
 
-export type GetStatusResponse = z.infer<typeof GetStatusResponseSchema>;
+export type GitResult = z.infer<typeof GitResultSchema>;
 
 export type FileVersion = z.infer<typeof FileVersionSchema>;
 
+export type GetStatusResponse = z.infer<typeof GetStatusResponseSchema>;
+
+export type GetDiffResponse = z.infer<typeof GetDiffResponseSchema>;
+
 export type FileStatus = z.infer<typeof FileStatusSchema>;
+
+

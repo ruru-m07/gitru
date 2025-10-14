@@ -1,7 +1,8 @@
+/** biome-ignore-all lint/correctness/noUnusedVariables: experimentel */
 import { Card, CardContent } from "@noutify/ui/components/card";
 import { structuredPatch } from "diff";
 import { Loader2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
 	type BundledLanguage,
 	createHighlighter,
@@ -527,7 +528,7 @@ export function DiffViewer({
 		return buildDiffSegments(hunks, beforeLines, afterLines);
 	}, [diff, binaryVersion, hunks, beforeLines, afterLines]);
 
-	const [expandedSkips, setExpandedSkips] = useState<Set<string>>(new Set());
+	const [_expandedSkips, setExpandedSkips] = useState<Set<string>>(new Set());
 
 	useEffect(() => {
 		if (!diff) {
@@ -538,17 +539,17 @@ export function DiffViewer({
 		setExpandedSkips(new Set());
 	}, [diff]);
 
-	const toggleSkip = useCallback((id: string) => {
-		setExpandedSkips((prev) => {
-			const next = new Set(prev);
-			if (next.has(id)) {
-				next.delete(id);
-			} else {
-				next.add(id);
-			}
-			return next;
-		});
-	}, []);
+	// const toggleSkip = useCallback((id: string) => {
+	// 	setExpandedSkips((prev) => {
+	// 		const next = new Set(prev);
+	// 		if (next.has(id)) {
+	// 			next.delete(id);
+	// 		} else {
+	// 			next.add(id);
+	// 		}
+	// 		return next;
+	// 	});
+	// }, []);
 
 	const hasAnyRows = hunks.some((hunk) => hunk.lines.length > 0);
 
@@ -749,7 +750,7 @@ export function DiffViewer({
 	}
 
 	return (
-		<Card className="overflow-hidden rounded-none border border-border/50">
+		<Card className="overflow-hidden rounded-none border-0">
 			{/* {treatAsNewFile || treatAsDeletedFile ? (
 				<div
 					className={`px-4 py-2 text-xs font-medium border-b border-border/50 ${treatAsNewFile ? "bg-emerald-500/10 text-emerald-300" : "bg-red-500/10 text-red-300"}`}
@@ -763,17 +764,17 @@ export function DiffViewer({
 				<div className="divide-y divide-border/50">
 					{segments.map((segment) => {
 						if (segment.type === "skip") {
-							const isExpanded = expandedSkips.has(segment.id);
-							const lineCount = segment.lines.length;
-							const oldCount =
-								segment.oldStart > 0 && segment.oldEnd >= segment.oldStart
-									? segment.oldEnd - segment.oldStart + 1
-									: 0;
-							const newCount =
-								segment.newStart > 0 && segment.newEnd >= segment.newStart
-									? segment.newEnd - segment.newStart + 1
-									: 0;
-							const header = `@@ -${formatRange(segment.oldStart, oldCount)} +${formatRange(segment.newStart, newCount)} @@`;
+							// const isExpanded = expandedSkips.has(segment.id);
+							// const lineCount = segment.lines.length;
+							// const oldCount =
+							// 	segment.oldStart > 0 && segment.oldEnd >= segment.oldStart
+							// 		? segment.oldEnd - segment.oldStart + 1
+							// 		: 0;
+							// const newCount =
+							// 	segment.newStart > 0 && segment.newEnd >= segment.newStart
+							// 		? segment.newEnd - segment.newStart + 1
+							// 		: 0;
+							// const header = `@@ -${formatRange(segment.oldStart, oldCount)} +${formatRange(segment.newStart, newCount)} @@`;
 
 							return (
 								<div key={segment.id} className="bg-primary/5">
