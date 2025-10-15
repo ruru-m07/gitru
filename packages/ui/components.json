@@ -1,20 +1,20 @@
 {
-	"$schema": "https://ui.shadcn.com/schema.json",
-	"style": "new-york",
-	"rsc": true,
-	"tsx": true,
-	"tailwind": {
-		"config": "tailwind.config.ts",
-		"css": "src/styles/globals.css",
-		"baseColor": "zinc",
-		"cssVariables": true
-	},
-	"iconLibrary": "lucide",
-	"aliases": {
-		"components": "@noutify/ui/components",
-		"utils": "@noutify/ui/lib",
-		"hooks": "@noutify/ui/hooks",
-		"lib": "@noutify/ui/lib/utils",
-		"ui": "@noutify/ui/components"
-	}
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "new-york",
+  "rsc": true,
+  "tsx": true,
+  "tailwind": {
+    "config": "tailwind.config.ts",
+    "css": "src/styles/globals.css",
+    "baseColor": "zinc",
+    "cssVariables": true
+  },
+  "iconLibrary": "lucide",
+  "aliases": {
+    "components": "@gitru/ui/components",
+    "utils": "@gitru/ui/lib",
+    "hooks": "@gitru/ui/hooks",
+    "lib": "@gitru/ui/lib/utils",
+    "ui": "@gitru/ui/components"
+  }
 }

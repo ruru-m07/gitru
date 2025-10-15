@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@noutify/ui/lib/utils";
+import { cn } from "@gitru/ui/lib/utils";
 import * as HoverCardPrimitive from "@radix-ui/react-hover-card";
 import * as React from "react";
 

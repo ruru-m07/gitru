@@ -1,7 +1,7 @@
-import { buttonVariants } from "@noutify/ui/components/button";
-import { Label } from "@noutify/ui/components/label";
-import { RadioGroup, RadioGroupItem } from "@noutify/ui/components/radio-group";
-import { cn } from "@noutify/ui/lib/utils";
+import { buttonVariants } from "@gitru/ui/components/button";
+import { Label } from "@gitru/ui/components/label";
+import { RadioGroup, RadioGroupItem } from "@gitru/ui/components/radio-group";
+import { cn } from "@gitru/ui/lib/utils";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ChevronRightIcon } from "lucide-react";
 import { useTheme } from "next-themes";

@@ -5,8 +5,8 @@
 // 	Avatar,
 // 	AvatarFallback,
 // 	AvatarImage,
-// } from "@noutify/ui/components/avatar";
-// import { Button } from "@noutify/ui/components/button";
+// } from "@gitru/ui/components/avatar";
+// import { Button } from "@gitru/ui/components/button";
 // import {
 // 	DropdownMenu,
 // 	DropdownMenuContent,
@@ -14,9 +14,9 @@
 // 	DropdownMenuLabel,
 // 	DropdownMenuSeparator,
 // 	DropdownMenuTrigger,
-// } from "@noutify/ui/components/dropdown-menu";
-// import { Slider } from "@noutify/ui/components/slider";
-// import { cn } from "@noutify/ui/lib/utils";
+// } from "@gitru/ui/components/dropdown-menu";
+// import { Slider } from "@gitru/ui/components/slider";
+// import { cn } from "@gitru/ui/lib/utils";
 // import type { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 // import { LogOut } from "lucide-react";
 // import type React from "react";

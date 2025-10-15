@@ -1,5 +1,5 @@
 /** biome-ignore-all lint/correctness/noUnusedVariables: experimentel */
-import { Card, CardContent } from "@noutify/ui/components/card";
+import { Card, CardContent } from "@gitru/ui/components/card";
 import { structuredPatch } from "diff";
 import { Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";

@@ -1,5 +1,5 @@
 {
-	"extends": "@noutify/tsconfig/react-library.json",
+	"extends": "@gitru/tsconfig/react-library.json",
 	"compilerOptions": {
 		"outDir": "dist"
 	},

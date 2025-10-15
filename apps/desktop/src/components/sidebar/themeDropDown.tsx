@@ -10,7 +10,7 @@ import {
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger
-} from '@noutify/ui/components/dropdown-menu'
+} from '@gitru/ui/components/dropdown-menu'
 import { useTheme } from 'next-themes'
 
 const ThemeDropDown = () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@noutify/ui/lib/utils";
+import { cn } from "@gitru/ui/lib/utils";
 import * as RadioGroupPrimitive from "@radix-ui/react-radio-group";
 import type * as React from "react";
 

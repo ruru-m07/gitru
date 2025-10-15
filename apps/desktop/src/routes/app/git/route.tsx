@@ -3,25 +3,25 @@ import {
 	AccordionContent,
 	AccordionItem,
 	AccordionTrigger,
-} from "@noutify/ui/components/accordion";
-import { Badge } from "@noutify/ui/components/badge";
-import { Button, buttonVariants } from "@noutify/ui/components/button";
+} from "@gitru/ui/components/accordion";
+import { Badge } from "@gitru/ui/components/badge";
+import { Button, buttonVariants } from "@gitru/ui/components/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
-} from "@noutify/ui/components/dropdown-menu";
-import { Input } from "@noutify/ui/components/input";
-import { Label } from "@noutify/ui/components/label";
+} from "@gitru/ui/components/dropdown-menu";
+import { Input } from "@gitru/ui/components/input";
+import { Label } from "@gitru/ui/components/label";
 import {
 	ResizableHandle,
 	ResizablePanel,
 	ResizablePanelGroup,
-} from "@noutify/ui/components/resizable";
-import { ScrollArea } from "@noutify/ui/components/scroll-area";
-import { Textarea } from "@noutify/ui/components/textarea";
-import { cn } from "@noutify/ui/lib/utils";
+} from "@gitru/ui/components/resizable";
+import { ScrollArea } from "@gitru/ui/components/scroll-area";
+import { Textarea } from "@gitru/ui/components/textarea";
+import { cn } from "@gitru/ui/lib/utils";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { open } from "@tauri-apps/plugin-dialog";
 import {

@@ -1,16 +1,16 @@
 {
-	"name": "@noutify/linter",
-	"private": true,
-	"version": "1.0.0",
-	"main": "index.js",
-	"description": "A shared linter configuration for Noutify projects. (*biome's)",
-	"author": "ruru <ruru.dev07@gmail.com>",
-	"exports": {
-		"./biome.jsonc": "./biome.jsonc"
-	},
-	"license": "MIT",
-	"dependencies": {
-		"@biomejs/biome": "^2.2.0",
-		"ultracite": "5.3.3"
-	}
+  "name": "@gitru/linter",
+  "private": true,
+  "version": "1.0.0",
+  "main": "index.js",
+  "description": "A shared linter configuration for Gitru projects. (*biome's)",
+  "author": "ruru <ruru.dev07@gmail.com>",
+  "exports": {
+    "./biome.jsonc": "./biome.jsonc"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@biomejs/biome": "^2.2.0",
+    "ultracite": "5.3.3"
+  }
 }

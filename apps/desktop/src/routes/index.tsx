@@ -1,4 +1,4 @@
-import { Button } from "@noutify/ui/components/button";
+import { Button } from "@gitru/ui/components/button";
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/")({

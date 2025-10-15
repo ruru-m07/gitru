@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@noutify/ui/lib/utils";
+import { cn } from "@gitru/ui/lib/utils";
 import * as SwitchPrimitives from "@radix-ui/react-switch";
 import * as React from "react";
 
