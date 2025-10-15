@@ -1,27 +1,27 @@
 {
-	"name": "noutify",
-	"private": true,
-	"scripts": {
-		"build": "turbo run build",
-		"dev": "turbo run dev",
-		"lint": "turbo run lint",
-		"format": "prettier --write \"**/*.{ts,tsx,md}\"",
-		"check-types": "turbo run check-types"
-	},
-	"devDependencies": {
-		"prettier": "^3.6.2",
-		"turbo": "^2.5.6",
-		"typescript": "5.9.2"
-	},
-	"engines": {
-		"node": ">=18"
-	},
-	"packageManager": "bun@1.2.19",
-	"workspaces": [
-		"apps/*",
-		"packages/*"
-	],
-	"dependencies": {
-		"zod": "^4.1.12"
-	}
+  "name": "gitru",
+  "private": true,
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "check-types": "turbo run check-types"
+  },
+  "devDependencies": {
+    "prettier": "^3.6.2",
+    "turbo": "^2.5.8",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "packageManager": "bun@1.2.19",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "dependencies": {
+    "zod": "^4.1.12"
+  }
 }

@@ -1,4 +1,4 @@
-import { cn } from "@noutify/ui/lib/utils";
+import { cn } from "@gitru/ui/lib/utils";
 import type * as React from "react";
 
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {

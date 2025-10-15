@@ -1,4 +1,4 @@
-import { Button } from "@noutify/ui/components/button";
+import { Button } from "@gitru/ui/components/button";
 import { CaretRightIcon } from "@radix-ui/react-icons";
 import { useCanGoBack, useRouterState } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, GitPullRequestArrow, Plus } from "lucide-react";

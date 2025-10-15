@@ -1,11 +1,11 @@
-import { buttonVariants } from "@noutify/ui/components/button";
+import { buttonVariants } from "@gitru/ui/components/button";
 
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipTrigger,
-} from "@noutify/ui/components/tooltip";
-import { cn } from "@noutify/ui/lib/utils";
+} from "@gitru/ui/components/tooltip";
+import { cn } from "@gitru/ui/lib/utils";
 import { Link, useLocation } from "@tanstack/react-router";
 import type { LucideIcon } from "lucide-react";
 import type React from "react";

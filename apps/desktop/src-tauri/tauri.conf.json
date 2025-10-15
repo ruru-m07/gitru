@@ -1,41 +1,41 @@
 {
-	"$schema": "https://schema.tauri.app/config/2",
-	"productName": "noutify",
-	"version": "0.1.0",
-	"identifier": "com.ruru.noutify",
-	"build": {
-		"beforeDevCommand": "bun run dev",
-		"devUrl": "http://localhost:1420",
-		"beforeBuildCommand": "bun run build",
-		"frontendDist": "../dist"
-	},
-	"app": {
-		"windows": [
-			{
-				"title": "tauriapp",
-				"width": 1600,
-				"height": 870,
-				"hiddenTitle": true,
-				"titleBarStyle": "Overlay",
-				"trafficLightPosition": {
-					"x": 18,
-					"y": 18
-				}
-			}
-		],
-		"security": {
-			"csp": null
-		}
-	},
-	"bundle": {
-		"active": true,
-		"targets": ["dmg", "msi", "appimage", "nsis", "rpm", "deb", "app"],
-		"icon": [
-			"icons/32x32.png",
-			"icons/128x128.png",
-			"icons/128x128@2x.png",
-			"icons/icon.icns",
-			"icons/icon.ico"
-		]
-	}
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "gitru",
+  "version": "0.1.0",
+  "identifier": "com.ruru.gitru",
+  "build": {
+    "beforeDevCommand": "bun run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "bun run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "tauriapp",
+        "width": 1600,
+        "height": 870,
+        "hiddenTitle": true,
+        "titleBarStyle": "Overlay",
+        "trafficLightPosition": {
+          "x": 18,
+          "y": 18
+        }
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg", "msi", "appimage", "nsis", "rpm", "deb", "app"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
 }

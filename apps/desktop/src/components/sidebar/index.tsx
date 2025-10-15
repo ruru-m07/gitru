@@ -2,10 +2,10 @@ import {
 	Avatar,
 	AvatarFallback,
 	AvatarImage,
-} from "@noutify/ui/components/avatar";
-import { Button } from "@noutify/ui/components/button";
-import { ScrollArea } from "@noutify/ui/components/scroll-area";
-import { TooltipProvider } from "@noutify/ui/components/tooltip";
+} from "@gitru/ui/components/avatar";
+import { Button } from "@gitru/ui/components/button";
+import { ScrollArea } from "@gitru/ui/components/scroll-area";
+import { TooltipProvider } from "@gitru/ui/components/tooltip";
 import {
 	BookMarked,
 	CircleDot,

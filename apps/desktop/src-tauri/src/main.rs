@@ -1,4 +1,4 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 fn main() {
-    noutify_lib::run()
+    gitru_lib::run()
 }

@@ -15,9 +15,8 @@
 		"strict": true,
 		"target": "ES2022",
 		"jsx": "react-jsx",
-		"baseUrl": ".",
 		"paths": {
-			"@noutify/ui/*": ["./src/*"]
+			"@gitru/ui/*": ["./src/*"]
 		}
 	},
 	"include": ["."],

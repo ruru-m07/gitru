@@ -1,11 +1,11 @@
-import { Button } from "@noutify/ui/components/button";
+import { Button } from "@gitru/ui/components/button";
 import {
 	Popover,
 	PopoverContent,
 	PopoverTrigger,
-} from "@noutify/ui/components/popover";
-import { ScrollArea } from "@noutify/ui/components/scroll-area";
-import { cn } from "@noutify/ui/lib/utils";
+} from "@gitru/ui/components/popover";
+import { ScrollArea } from "@gitru/ui/components/scroll-area";
+import { cn } from "@gitru/ui/lib/utils";
 import { createFileRoute } from "@tanstack/react-router";
 import { ChevronDown, ChevronsUp, GitBranch, Settings } from "lucide-react";
 import { useEffect, useState } from "react";

@@ -1,4 +1,4 @@
-import { cn } from "@noutify/ui/lib/utils";
+import { cn } from "@gitru/ui/lib/utils";
 import React from "react";
 
 const H1 = React.forwardRef<
