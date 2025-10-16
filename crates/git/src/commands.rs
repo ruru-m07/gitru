@@ -105,10 +105,31 @@ pub fn git_remove(repo_path: &str, file: &str) -> GitResult {
     };
 
     if file == "." {
-        if let Err(e) = index.clear() {
+        // Unstage all files by resetting index to HEAD
+        let head = match repo.head() {
+            Ok(h) => h,
+            Err(e) => {
+                return GitResult {
+                    success: false,
+                    message: Some(format!("Failed to get HEAD: {e}")),
+                };
+            }
+        };
+
+        let tree = match head.peel_to_tree() {
+            Ok(t) => t,
+            Err(e) => {
+                return GitResult {
+                    success: false,
+                    message: Some(format!("Failed to get tree: {e}")),
+                };
+            }
+        };
+
+        if let Err(e) = index.read_tree(&tree) {
             return GitResult {
                 success: false,
-                message: Some(format!("Failed to clear index: {e}")),
+                message: Some(format!("Failed to reset index: {e}")),
             };
         }
     } else {
@@ -177,6 +198,32 @@ pub fn git_discard(repo_path: &str, file: &str) -> GitResult {
             success: false,
             message: Some(format!("Failed to discard {file}: {e}")),
         };
+    }
+
+    // Remove untracked files
+    if file == "." {
+        // Get all untracked files
+        let mut opts = git2::StatusOptions::new();
+        opts.include_untracked(true);
+
+        if let Ok(statuses) = repo.statuses(Some(&mut opts)) {
+            for entry in statuses.iter() {
+                if entry.status().is_wt_new() {
+                    if let Some(path) = entry.path() {
+                        let full_path = std::path::Path::new(repo_path).join(path);
+                        let _ = std::fs::remove_file(full_path);
+                    }
+                }
+            }
+        }
+    } else {
+        // Check if specific file is untracked
+        let file_path = std::path::Path::new(repo_path).join(file);
+        if let Ok(status) = repo.status_file(std::path::Path::new(file)) {
+            if status.is_wt_new() {
+                let _ = std::fs::remove_file(file_path);
+            }
+        }
     }
 
     GitResult {

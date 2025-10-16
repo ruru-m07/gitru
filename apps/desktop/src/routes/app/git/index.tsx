@@ -17,48 +17,61 @@ import { EmptyGitDiffSVG } from "./EmptyGitDiffSVG";
 import { getStatusIcon } from "./route";
 import { SplitSVG } from "./splitSVG";
 import { UnifiedSVG } from "./unifiedSVG";
+import { useGitRepository, useFileDiff } from "@/lib/git";
 
 export const Route = createFileRoute("/app/git/")({
 	component: App,
 });
 
 function App() {
-	const [diffData, setDiffData] = useState<GetDiffResponse | null>(null);
 	const { selectedFilePath, selectedFileStatus, setViewMode } =
 		useDiffViewStore();
 	const { selectedRepository } = useAppStore();
-
+	
+	// Use the OOP Git architecture to get repository instance
+	const repo = useGitRepository(
+		selectedRepository?.path || null,
+		selectedRepository?.name
+	);
+	
+	// Use the useFileDiff hook which automatically listens to invalidation events
+	const { diff } = useFileDiff(repo, selectedFilePath || null);
+	
+	// Convert diff string to GetDiffResponse format for DiffViewer
+	const [diffData, setDiffData] = useState<GetDiffResponse | null>(null);
+	
 	useEffect(() => {
+		if (!selectedFilePath || !selectedRepository || !diff) {
+			setDiffData(null);
+			return;
+		}
+		
+		// Fetch the full diff data structure from backend
+		// (The useFileDiff gives us the content, but DiffViewer needs the full structure)
 		let isCancelled = false;
-
+		
 		(async () => {
-			if (!selectedFilePath || !selectedRepository) {
-				setDiffData(null);
-				return;
-			}
-
 			try {
-				setDiffData(null);
 				const data = await getDiff({
 					file_path: selectedFilePath,
 					repo_path: selectedRepository.path,
 				});
-
+				
 				if (!isCancelled) {
 					setDiffData(data);
 				}
 			} catch (error) {
-				console.error("Failed to fetch diff", error);
+				console.error("Failed to fetch diff structure", error);
 				if (!isCancelled) {
 					setDiffData(null);
 				}
 			}
 		})();
-
+		
 		return () => {
 			isCancelled = true;
 		};
-	}, [selectedFilePath, selectedRepository]);
+	}, [selectedFilePath, selectedRepository, diff]); // Re-fetch when diff changes!
 
 	return (
 		<>

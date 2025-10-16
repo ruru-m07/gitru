@@ -1,5 +1,6 @@
 use git;
 use ipc;
+use watcher;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -7,6 +8,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
+        .manage(watcher::commands::WatcherState::default())
         .invoke_handler(tauri::generate_handler![
             ipc::commands::add_local_git_repo,
             git::diff::get_diff,
@@ -15,6 +17,10 @@ pub fn run() {
             git::commands::git_remove,
             git::commands::git_discard,
             git::commands::commit,
+            watcher::commands::start_watching,
+            watcher::commands::stop_watching,
+            watcher::commands::rescan_repository,
+            watcher::commands::get_watcher_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
