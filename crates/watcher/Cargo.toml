@@ -1,0 +1,38 @@
+[package]
+name = "watcher"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# File system watching
+notify = { version = "6.1", features = ["serde"] }
+notify-debouncer-full = "0.3"
+
+# Gitignore handling
+ignore = "0.4"
+
+# Async runtime
+tokio = { version = "1.40", features = ["full"] }
+futures = "0.3"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Utilities
+uuid = { version = "1.10", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+
+# Collections
+dashmap = "6.1"
+tauri = "2.8.5"
+
+
+[dev-dependencies]
+tempfile = "3.13"
+tokio-test = "0.4"
