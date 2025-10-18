@@ -4,9 +4,21 @@
  * Do not edit manually - regenerate using: cargo tauri-typegen generate
  */
 
-import { z } from 'zod';
+import { z } from "zod";
 
-export const FileStatusKindSchema = z.enum(["IndexNew", "IndexModified", "IndexDeleted", "IndexRenamed", "IndexTypechange", "WorktreeNew", "WorktreeModified", "WorktreeDeleted", "WorktreeRenamed", "WorktreeTypechange", "WorktreeUnreadable"]);
+export const FileStatusKindSchema = z.enum([
+  "IndexNew",
+  "IndexModified",
+  "IndexDeleted",
+  "IndexRenamed",
+  "IndexTypechange",
+  "WorktreeNew",
+  "WorktreeModified",
+  "WorktreeDeleted",
+  "WorktreeRenamed",
+  "WorktreeTypechange",
+  "WorktreeUnreadable",
+]);
 
 export const RepoSitoryStoreSchema = z.object({
   id: z.string(),
@@ -125,5 +137,3 @@ export type GetStatusResponse = z.infer<typeof GetStatusResponseSchema>;
 export type GetDiffResponse = z.infer<typeof GetDiffResponseSchema>;
 
 export type FileStatus = z.infer<typeof FileStatusSchema>;
-
-

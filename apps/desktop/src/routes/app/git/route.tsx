@@ -7,14 +7,6 @@ import {
 import { Badge } from "@gitru/ui/components/badge";
 import { Button, buttonVariants } from "@gitru/ui/components/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@gitru/ui/components/dropdown-menu";
-import { Input } from "@gitru/ui/components/input";
-import { Label } from "@gitru/ui/components/label";
-import {
   Dialog,
   DialogClose,
   DialogContent,
@@ -24,6 +16,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@gitru/ui/components/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@gitru/ui/components/dropdown-menu";
+import { Input } from "@gitru/ui/components/input";
+import { Label } from "@gitru/ui/components/label";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -50,12 +50,12 @@ import {
   SquareX,
   Undo2,
 } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { useDiffViewStore } from "@/components/diff/useDiffViewStore";
+import { useGit } from "@/lib/git";
 import { useAppStore } from "@/store/useAppStore";
 import { addLocalGitRepo, type FileStatus, type FileStatusKind } from "@/tauri";
-import { useGit } from "@/lib/git";
-import { useState } from "react";
 
 export const Route = createFileRoute("/app/git")({
   component: GitPageLayout,
@@ -74,13 +74,13 @@ function GitPageLayout() {
   // Use the new OOP-based Git hook - automatically watches and invalidates
   const { status, operations } = useGit(
     selectedRepository?.path || null,
-    selectedRepository?.name
+    selectedRepository?.name,
   );
 
   return (
     <ResizablePanelGroup
       className={cn(
-        "ml-[var(--main-actual-content-padding)] bg-accent/35 ring-1 ring-inset ring-border h-full w-full rounded-md flex overflow-hidden"
+        "ml-[var(--main-actual-content-padding)] bg-accent/35 ring-1 ring-inset ring-border h-full w-full rounded-md flex overflow-hidden",
       )}
       direction="horizontal"
       autoSaveId="git-page-layout"
@@ -193,7 +193,7 @@ function GitPageLayout() {
                     onClick={(e) => {
                       e.stopPropagation();
                       setRepositories(
-                        repositories.filter((r) => r.id !== repo.id)
+                        repositories.filter((r) => r.id !== repo.id),
                       );
                       toast.success("Repository removed");
 
@@ -215,7 +215,7 @@ function GitPageLayout() {
                 type="button"
                 className={cn(
                   buttonVariants({ variant: "ghost" }),
-                  "h-full rounded-none hover:border-border border-l border-transparent"
+                  "h-full rounded-none hover:border-border border-l border-transparent",
                 )}
               >
                 Changes
@@ -224,7 +224,7 @@ function GitPageLayout() {
                 type="button"
                 className={cn(
                   buttonVariants({ variant: "ghost" }),
-                  "h-full rounded-none border-l"
+                  "h-full rounded-none border-l",
                 )}
               >
                 History
@@ -264,7 +264,7 @@ function GitPageLayout() {
                     >
                       <AccordionTrigger
                         className={cn(
-                          "justify-start sticky top-0 rounded-none px-3 gap-2 py-0 hover:no-underline [&>svg]:-order-1"
+                          "justify-start sticky top-0 rounded-none px-3 gap-2 py-0 hover:no-underline [&>svg]:-order-1",
                         )}
                       >
                         <div className="flex items-center justify-between w-full">
@@ -285,7 +285,7 @@ function GitPageLayout() {
                                     buttonVariants({
                                       variant: "ghost",
                                       className: "h-8 w-8",
-                                    })
+                                    }),
                                   )}
                                 >
                                   <Plus size={20} strokeWidth={1.25} />
@@ -302,7 +302,7 @@ function GitPageLayout() {
                                   buttonVariants({
                                     variant: "ghost",
                                     className: "h-8 w-8",
-                                  })
+                                  }),
                                 )}
                               >
                                 <Minus size={20} strokeWidth={1.25} />
@@ -356,7 +356,7 @@ function GitPageLayout() {
         className={cn(
           // 'w-[calc(100vw-(var(--sidebar-width)+var(--inbox-width)+(var(--margin)))+3.5rem)]',
           "w-full relative",
-          repoSelectIsOpen && "_blur-sm cursor-pointer"
+          repoSelectIsOpen && "_blur-sm cursor-pointer",
         )}
         onClick={() => {
           if (repoSelectIsOpen) {
@@ -386,7 +386,8 @@ export default function EachStatus({
   onAdd,
   onUnstage,
 }: EachStatusProps) {
-  const { setSelectedFilePath, setSelectedFileStatus, selectedFilePath } = useDiffViewStore();
+  const { setSelectedFilePath, setSelectedFileStatus, selectedFilePath } =
+    useDiffViewStore();
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: who cares
@@ -394,7 +395,7 @@ export default function EachStatus({
     <div
       className={cn(
         "flex relative cursor-pointer hover:bg-muted border-l border-transparent hover:border-border items-center px-2 py-1",
-		selectedFilePath === file.path && "bg-muted! border-border"
+        selectedFilePath === file.path && "bg-muted! border-border",
       )}
       onClick={() => {
         setSelectedFilePath(file.path);
@@ -516,7 +517,7 @@ const DiscardChangesDialog = ({ fileName }: { fileName: string }) => {
 
   const { operations } = useGit(
     selectedRepository?.path || null,
-    selectedRepository?.name
+    selectedRepository?.name,
   );
 
   return (

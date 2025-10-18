@@ -9,19 +9,19 @@
 @source "../**/*.{ts,tsx}";
 
 summary {
-	@apply cursor-pointer;
+  @apply cursor-pointer;
 }
 
 @font-face {
-	font-family: "Junicode";
-	src: url("/font/JunicodeVF-Roman-subset.woff2") format("woff2");
+  font-family: "Junicode";
+  src: url("/font/JunicodeVF-Roman-subset.woff2") format("woff2");
 }
 
 .title {
-	font-family: "Junicode", serif;
-	font-feature-settings: "swsh" 1;
+  font-family: "Junicode", serif;
+  font-feature-settings: "swsh" 1;
 }
 
 button {
-	cursor: pointer;
+  cursor: pointer;
 }

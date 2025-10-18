@@ -1,13 +1,13 @@
-import { create } from 'zustand';
-import { immer } from 'zustand/middleware/immer';
-import { enableMapSet } from 'immer';
+import { enableMapSet } from "immer";
+import { create } from "zustand";
+import { immer } from "zustand/middleware/immer";
 import type {
   FileEvent,
   FileEventType,
   WatcherError,
   WatcherStats,
-} from '@/types/watcher';
-import { WatcherState } from '@/types/watcher';
+} from "@/types/watcher";
+import { WatcherState } from "@/types/watcher";
 
 // File state representation
 export interface FileState {
@@ -108,8 +108,8 @@ export const useFileWatcherStore = create<FileWatcherState>()(
         for (const event of events) {
           // Update file state based on event type
           switch (event.event_type) {
-            case 'created':
-            case 'modified':
+            case "created":
+            case "modified":
               state.files.set(event.path, {
                 path: event.path,
                 absolutePath: event.absolute_path,
@@ -124,11 +124,11 @@ export const useFileWatcherStore = create<FileWatcherState>()(
               });
               break;
 
-            case 'deleted':
+            case "deleted":
               state.files.delete(event.path);
               break;
 
-            case 'renamed':
+            case "renamed":
               // Remove old path and add new path
               if (event.metadata?.old_path) {
                 state.files.delete(event.metadata.old_path);
@@ -151,7 +151,10 @@ export const useFileWatcherStore = create<FileWatcherState>()(
           // Add to recent events
           state.recentEvents.unshift(event);
           if (state.recentEvents.length > state.maxRecentEvents) {
-            state.recentEvents = state.recentEvents.slice(0, state.maxRecentEvents);
+            state.recentEvents = state.recentEvents.slice(
+              0,
+              state.maxRecentEvents,
+            );
           }
 
           // Notify path-specific subscribers
@@ -246,14 +249,16 @@ export const useFileWatcherStore = create<FileWatcherState>()(
 
     getFilesByType: (eventType) => {
       const { files } = get();
-      return Array.from(files.values()).filter((file) => file.eventType === eventType);
+      return Array.from(files.values()).filter(
+        (file) => file.eventType === eventType,
+      );
     },
 
     getFilesInDirectory: (dirPath) => {
       const { files } = get();
-      const normalizedDir = dirPath.endsWith('/') ? dirPath : `${dirPath}/`;
+      const normalizedDir = dirPath.endsWith("/") ? dirPath : `${dirPath}/`;
       return Array.from(files.values()).filter((file) =>
-        file.path.startsWith(normalizedDir)
+        file.path.startsWith(normalizedDir),
       );
     },
 
@@ -266,7 +271,7 @@ export const useFileWatcherStore = create<FileWatcherState>()(
       const { files } = get();
       return files.size;
     },
-  }))
+  })),
 );
 
 // Selector hooks for optimized rendering
@@ -277,11 +282,14 @@ export const useWatcherState = () =>
     watcherId: state.watcherId,
   }));
 
-export const useWatcherStats = () => useFileWatcherStore((state) => state.stats);
+export const useWatcherStats = () =>
+  useFileWatcherStore((state) => state.stats);
 
-export const useWatcherError = () => useFileWatcherStore((state) => state.lastError);
+export const useWatcherError = () =>
+  useFileWatcherStore((state) => state.lastError);
 
-export const useFileCount = () => useFileWatcherStore((state) => state.getFileCount());
+export const useFileCount = () =>
+  useFileWatcherStore((state) => state.getFileCount());
 
 export const useFile = (path: string) =>
   useFileWatcherStore((state) => state.getFile(path));
@@ -313,6 +321,6 @@ export function useFileWatcherSubscription(callback: () => void) {
 }
 
 // Type-safe version of React import for the hooks
-import React from 'react';
+import React from "react";
 
 enableMapSet();

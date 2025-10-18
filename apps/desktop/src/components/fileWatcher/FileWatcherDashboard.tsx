@@ -1,17 +1,19 @@
-import React, { useState } from 'react';
-import { useFileWatcher } from '@/services/fileWatcher';
+import React, { useState } from "react";
+import { useFileWatcher } from "@/services/fileWatcher";
 import {
-  useFileWatcherStore,
   useFileCount,
+  useFileWatcherStore,
   useRecentEvents,
-} from '@/store/useFileWatcherStore';
-import type { WatcherConfig } from '@/types/watcher';
+} from "@/store/useFileWatcherStore";
+import type { WatcherConfig } from "@/types/watcher";
 
 /**
  * Component for controlling the file watcher
  */
 export function FileWatcherControl() {
-  const [repoPath, setRepoPath] = useState('/Users/ruru/Projects/voiceweave-monorepo');
+  const [repoPath, setRepoPath] = useState(
+    "/Users/ruru/Projects/voiceweave-monorepo",
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,7 +34,7 @@ export function FileWatcherControl() {
 
       await startWatching(repoPath, config);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start watching');
+      setError(err instanceof Error ? err.message : "Failed to start watching");
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -46,7 +48,7 @@ export function FileWatcherControl() {
     try {
       await stopWatching();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to stop watching');
+      setError(err instanceof Error ? err.message : "Failed to stop watching");
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -78,12 +80,10 @@ export function FileWatcherControl() {
           <div className="flex items-center gap-2">
             <div
               className={`w-3 h-3 rounded-full ${
-                isActive ? 'bg-green-500' : 'bg-gray-400'
+                isActive ? "bg-green-500" : "bg-gray-400"
               }`}
             />
-            <span className="text-sm font-medium">
-              Status: {state}
-            </span>
+            <span className="text-sm font-medium">Status: {state}</span>
           </div>
           <div className="text-sm text-gray-600">
             Files tracked: {fileCount}
@@ -104,14 +104,14 @@ export function FileWatcherControl() {
             disabled={isActive || isLoading}
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
-            {isLoading ? 'Starting...' : 'Start Watching'}
+            {isLoading ? "Starting..." : "Start Watching"}
           </button>
           <button
             onClick={handleStop}
             disabled={!isActive || isLoading}
             className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
-            {isLoading ? 'Stopping...' : 'Stop Watching'}
+            {isLoading ? "Stopping..." : "Stop Watching"}
           </button>
         </div>
       </div>
@@ -142,7 +142,7 @@ export function RecentEventsPanel() {
                 <span className="font-mono text-xs">{event.path}</span>
                 <span
                   className={`px-2 py-1 rounded text-xs font-medium ${getEventTypeColor(
-                    event.event_type
+                    event.event_type,
                   )}`}
                 >
                   {event.event_type}
@@ -161,16 +161,16 @@ export function RecentEventsPanel() {
 
 function getEventTypeColor(eventType: string): string {
   switch (eventType) {
-    case 'created':
-      return 'bg-green-100 text-green-800';
-    case 'modified':
-      return 'bg-blue-100 text-blue-800';
-    case 'deleted':
-      return 'bg-red-100 text-red-800';
-    case 'renamed':
-      return 'bg-yellow-100 text-yellow-800';
+    case "created":
+      return "bg-green-100 text-green-800";
+    case "modified":
+      return "bg-blue-100 text-blue-800";
+    case "deleted":
+      return "bg-red-100 text-red-800";
+    case "renamed":
+      return "bg-yellow-100 text-yellow-800";
     default:
-      return 'bg-gray-100 text-gray-800';
+      return "bg-gray-100 text-gray-800";
   }
 }
 
@@ -179,12 +179,12 @@ function getEventTypeColor(eventType: string): string {
  */
 export function FileListPanel() {
   const files = useFileWatcherStore((state) => state.getFiles());
-  const [sortBy, setSortBy] = useState<'name' | 'modified'>('modified');
+  const [sortBy, setSortBy] = useState<"name" | "modified">("modified");
 
   const sortedFiles = React.useMemo(() => {
     const sorted = [...files];
     sorted.sort((a, b) => {
-      if (sortBy === 'name') {
+      if (sortBy === "name") {
         return a.path.localeCompare(b.path);
       } else {
         return (
@@ -202,7 +202,7 @@ export function FileListPanel() {
         <h2 className="text-xl font-bold">Tracked Files</h2>
         <select
           value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as 'name' | 'modified')}
+          onChange={(e) => setSortBy(e.target.value as "name" | "modified")}
           className="px-3 py-1 border rounded text-sm"
         >
           <option value="modified">Sort by Modified</option>
@@ -223,7 +223,9 @@ export function FileListPanel() {
                 <div className="font-mono text-xs truncate">{file.path}</div>
                 {file.metadata && (
                   <div className="text-xs text-gray-500">
-                    {file.metadata.isDirectory ? 'Directory' : formatBytes(file.metadata.size)}
+                    {file.metadata.isDirectory
+                      ? "Directory"
+                      : formatBytes(file.metadata.size)}
                   </div>
                 )}
               </div>
@@ -239,12 +241,12 @@ export function FileListPanel() {
 }
 
 function formatBytes(bytes?: number): string {
-  if (bytes === undefined) return 'Unknown';
-  if (bytes === 0) return '0 B';
+  if (bytes === undefined) return "Unknown";
+  if (bytes === 0) return "0 B";
   const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const sizes = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${Math.round(bytes / Math.pow(k, i) * 100) / 100} ${sizes[i]}`;
+  return `${Math.round((bytes / k ** i) * 100) / 100} ${sizes[i]}`;
 }
 
 /**

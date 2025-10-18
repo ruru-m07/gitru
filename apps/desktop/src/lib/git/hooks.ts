@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback } from "react";
-import { GitRepository } from "./GitRepository";
-import { gitRepositoryManager } from "./GitRepositoryManager";
+import { useCallback, useEffect, useState } from "react";
 import type { FileStatus } from "@/tauri/types";
+import type { GitRepository } from "./GitRepository";
+import { gitRepositoryManager } from "./GitRepositoryManager";
 
 /**
  * Hook to get a Git repository instance
@@ -9,7 +9,7 @@ import type { FileStatus } from "@/tauri/types";
  */
 export function useGitRepository(
   path: string | null,
-  name: string = "Repository"
+  name: string = "Repository",
 ) {
   const [repo, setRepo] = useState<GitRepository | null>(null);
 
@@ -60,7 +60,7 @@ export function useRepositoryStatus(repo: GitRepository | null) {
         setLoading(false);
       }
     },
-    [repo]
+    [repo],
   );
 
   // Subscribe to status changes
@@ -98,7 +98,7 @@ export function useRepositoryStatus(repo: GitRepository | null) {
  */
 export function useFileDiff(
   repo: GitRepository | null,
-  filePath: string | null
+  filePath: string | null,
 ) {
   const [diff, setDiff] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -122,7 +122,7 @@ export function useFileDiff(
         setLoading(false);
       }
     },
-    [repo, filePath]
+    [repo, filePath],
   );
 
   // Subscribe to diff changes for this specific file
@@ -167,7 +167,7 @@ export function useGitOperations(repo: GitRepository | null) {
       if (!repo) return false;
       return repo.add(filePath);
     },
-    [repo]
+    [repo],
   );
 
   const unstage = useCallback(
@@ -175,7 +175,7 @@ export function useGitOperations(repo: GitRepository | null) {
       if (!repo) return false;
       return repo.unstage(filePath);
     },
-    [repo]
+    [repo],
   );
 
   const discard = useCallback(
@@ -183,7 +183,7 @@ export function useGitOperations(repo: GitRepository | null) {
       if (!repo) return false;
       return repo.discard(filePath);
     },
-    [repo]
+    [repo],
   );
 
   const commit = useCallback(
@@ -191,7 +191,7 @@ export function useGitOperations(repo: GitRepository | null) {
       if (!repo) return false;
       return repo.commit(message, description);
     },
-    [repo]
+    [repo],
   );
 
   const addAll = useCallback(async () => {
@@ -230,10 +230,10 @@ export function useGit(path: string | null, name?: string) {
 
   // Separate staged and unstaged changes
   const stagedChanges = status.filter((file) =>
-    file.status.some((s) => s.startsWith("Index"))
+    file.status.some((s) => s.startsWith("Index")),
   );
   const unstagedChanges = status.filter((file) =>
-    file.status.some((s) => s.startsWith("Worktree"))
+    file.status.some((s) => s.startsWith("Worktree")),
   );
 
   // Subscribe to commit events
@@ -305,7 +305,7 @@ export function useCurrentBranch(repo: GitRepository | null) {
  */
 export function useCommitHistory(
   repo: GitRepository | null,
-  options?: { limit?: number; skip?: number }
+  options?: { limit?: number; skip?: number },
 ) {
   const [commits, setCommits] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);

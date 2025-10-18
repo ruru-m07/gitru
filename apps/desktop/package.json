@@ -37,7 +37,6 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
-    "@gitru/linter": "*",
     "@gitru/ui": "*",
     "@tauri-apps/cli": "^2",
     "@types/react": "^19.1.8",

@@ -647,20 +647,20 @@
     --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 20% / 0.07);
     --shadow-xs: 0px 2px 0px 0px hsl(0 0% 20% / 0.07);
     --shadow-sm:
-      0px 2px 0px 0px hsl(0 0% 20% / 0.15),
-      0px 1px 2px -1px hsl(0 0% 20% / 0.15);
+      0px 2px 0px 0px hsl(0 0% 20% / 0.15), 0px 1px 2px -1px
+      hsl(0 0% 20% / 0.15);
     --shadow:
-      0px 2px 0px 0px hsl(0 0% 20% / 0.15),
-      0px 1px 2px -1px hsl(0 0% 20% / 0.15);
+      0px 2px 0px 0px hsl(0 0% 20% / 0.15), 0px 1px 2px -1px
+      hsl(0 0% 20% / 0.15);
     --shadow-md:
-      0px 2px 0px 0px hsl(0 0% 20% / 0.15),
-      0px 2px 4px -1px hsl(0 0% 20% / 0.15);
+      0px 2px 0px 0px hsl(0 0% 20% / 0.15), 0px 2px 4px -1px
+      hsl(0 0% 20% / 0.15);
     --shadow-lg:
-      0px 2px 0px 0px hsl(0 0% 20% / 0.15),
-      0px 4px 6px -1px hsl(0 0% 20% / 0.15);
+      0px 2px 0px 0px hsl(0 0% 20% / 0.15), 0px 4px 6px -1px
+      hsl(0 0% 20% / 0.15);
     --shadow-xl:
-      0px 2px 0px 0px hsl(0 0% 20% / 0.15),
-      0px 8px 10px -1px hsl(0 0% 20% / 0.15);
+      0px 2px 0px 0px hsl(0 0% 20% / 0.15), 0px 8px 10px -1px
+      hsl(0 0% 20% / 0.15);
     --shadow-2xl: 0px 2px 0px 0px hsl(0 0% 20% / 0.38);
   }
 }
