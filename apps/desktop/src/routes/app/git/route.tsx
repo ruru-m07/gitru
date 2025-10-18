@@ -386,14 +386,15 @@ export default function EachStatus({
   onAdd,
   onUnstage,
 }: EachStatusProps) {
-  const { setSelectedFilePath, setSelectedFileStatus } = useDiffViewStore();
+  const { setSelectedFilePath, setSelectedFileStatus, selectedFilePath } = useDiffViewStore();
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: who cares
     // biome-ignore lint/a11y/useKeyWithClickEvents: who cares
     <div
       className={cn(
-        "flex relative cursor-pointer hover:bg-muted border-l border-transparent hover:border-border items-center px-2 py-1"
+        "flex relative cursor-pointer hover:bg-muted border-l border-transparent hover:border-border items-center px-2 py-1",
+		selectedFilePath === file.path && "bg-muted! border-border"
       )}
       onClick={() => {
         setSelectedFilePath(file.path);

@@ -1,5 +1,5 @@
 import { FileWatcherDashboard } from '@/components/fileWatcher/FileWatcherDashboard'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/app/inbox/')({
   component: RouteComponent,
@@ -7,8 +7,8 @@ export const Route = createFileRoute('/app/inbox/')({
 
 function RouteComponent() {
   return <div>
-    <FileWatcherDashboard />
-
-    
+    <Link to='/auth/onboarding'>
+      Go to Onboarding
+    </Link>
   </div>
 }

@@ -1,6 +1,6 @@
 /** biome-ignore-all lint/correctness/noUnusedVariables: experimentel */
 import { Card, CardContent } from "@gitru/ui/components/card";
-import { structuredPatch } from "diff";
+import { diffChars, diffWords, structuredPatch } from "diff";
 import { Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -480,6 +480,21 @@ export function DiffViewer({
 		})();
 	}, [highlighter, language]);
 
+	const computeInlineDiff = (
+    oldText: string,
+    newText: string,
+): Array<{ value: string; added?: boolean; removed?: boolean }> => {
+    // Use word-level diff for better readability
+    const changes = diffWords(oldText, newText);
+    
+    // Fallback to character-level if words are too similar
+    if (changes.length === 1 && !changes[0].added && !changes[0].removed) {
+        return diffChars(oldText, newText);
+    }
+    
+    return changes;
+};
+
 	const statusSet = useMemo(() => new Set(status ?? []), [status]);
 	const treatAsNewFile =
 		statusSet.has("WorktreeNew") ||
@@ -602,13 +617,13 @@ export function DiffViewer({
 
 						return (
 							<tr key={key} className={`${bgClass} diff-hover`}>
-								<td className="tabular-nums text-center align-middle py-1 px-2 diff-line-number-bg w-14 text-muted-foreground text-xs select-none">
+								<td className={`tabular-nums text-center align-middle py-1 px-2 ${line.type === "removed" && "diff-line-number-bg-removed"} ${line.type === "added" && "diff-line-number-bg-added"}  diff-line-number-bg w-14 text-muted-foreground text-xs select-none`}>
 									{line.lineNumberOld ?? ""}
 								</td>
-								<td className="tabular-nums text-center align-middle py-1 px-2 diff-line-number-bg w-14 text-muted-foreground text-xs select-none">
+								<td className={`tabular-nums text-center align-middle py-1 px-2 ${line.type === "removed" && "diff-line-number-bg-removed"}  ${line.type === "added" && "diff-line-number-bg-added"} diff-line-number-bg w-14 text-muted-foreground text-xs select-none`}>
 									{line.lineNumberNew ?? ""}
 								</td>
-								<td className="pl-3 pr-2 text-sm font-mono font-medium leading-6 whitespace-pre">
+								<td className="pl-3 pr-2 text-sm font-mono leading-6 whitespace-pre">
 									<HighlightedLine className={textClass} html={highlighted} />
 								</td>
 							</tr>
@@ -670,11 +685,11 @@ export function DiffViewer({
 
 								return (
 									<tr key={key}>
-										<td className="tabular-nums text-center align-middle py-1 px-2 diff-line-number-bg w-14 text-muted-foreground text-xs select-none">
+										<td className={`tabular-nums text-center align-middle py-1 px-2  w-14 text-muted-foreground text-xs select-none ${leftBg ? "diff-line-number-bg-removed" : "diff-line-number-bg"} ${leftBg}`}>
 											{pair.left?.lineNumberOld ?? ""}
 										</td>
 										<td
-											className={`truncate text-sm font-mono font-medium leading-6 whitespace-pre border-r max-w-[10vw] ${leftBg}`}
+											className={`truncate text-sm font-mono leading-6 whitespace-pre border-r max-w-[10vw] ${leftBg}`}
 										>
 											{pair.left ? (
 												<HighlightedLine
@@ -688,11 +703,11 @@ export function DiffViewer({
 												</span>
 											)}
 										</td>
-										<td className="tabular-nums text-center align-middle py-1 px-2 diff-line-number-bg w-14 text-muted-foreground text-xs select-none">
+										<td className={`tabular-nums text-center align-middle py-1 px-2 ${rightBg ? "diff-line-number-bg-added" : "diff-line-number-bg"} ${rightBg} w-14 text-muted-foreground text-xs select-none`}>
 											{pair.right?.lineNumberNew ?? ""}
 										</td>
 										<td
-											className={`truncate text-sm font-mono font-medium leading-6 whitespace-pre max-w-[10vw] ${rightBg}`}
+											className={`truncate text-sm font-mono leading-6 whitespace-pre max-w-[10vw] ${rightBg}`}
 										>
 											{pair.right ? (
 												<HighlightedLine
@@ -817,7 +832,7 @@ export function DiffViewer({
 									<span className="font-mono text-xs sm:text-sm text-primary/80">
 										{hunk.header}
 									</span>
-									<span className="flex items-center gap-2 text-xs font-medium">
+									<span className="flex items-center gap-2 text-xs">
 										<span className="text-green-700 tabular-nums">
 											+{hunk.additions}
 										</span>

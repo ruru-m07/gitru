@@ -19,7 +19,7 @@
 		"editor.defaultFormatter": "biomejs.biome"
 	},
 	"[css]": {
-		"editor.defaultFormatter": "biomejs.biome"
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
 	},
 	"[graphql]": {
 		"editor.defaultFormatter": "biomejs.biome"

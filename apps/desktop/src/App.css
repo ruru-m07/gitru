@@ -4,25 +4,26 @@
 @import "@gitru/ui/globals.css";
 
 :root {
-	--font-sans: Geist;
-	--font-mono: GeistMono;
+  --font-sans: Geist;
+  --font-mono: GeistMono;
 
-	/* ? Custom Properties */
-	--main-custom-header-height: 40px;
-	--main-window-height: calc(100vh - var(--main-custom-header-height));
+  /* ? Custom Properties */
+  --main-custom-header-height: 40px;
+  --main-window-height: calc(100vh - var(--main-custom-header-height));
 
-	--main-left-sidebar-width: 40px;
-	--main-actual-content-width: calc(100vw - var(--main-left-sidebar-width));
+  --main-left-sidebar-width: 40px;
+  --main-actual-content-width: calc(100vw - var(--main-left-sidebar-width));
 
-	--main-actual-content-padding: 8px;
+  --main-actual-content-padding: 8px;
 }
 
 *[data-tauri-drag-region] {
-	app-region: drag;
+  app-region: drag;
 }
 
-html[data-theme="dark-classic"] .shiki,
-html[data-theme="dark-classic"] .shiki span {
-	background-color: var(--shiki-dark-classic-bg) !important;
-	color: var(--shiki-dark-classic) !important;
+html[data-theme="dark-classic"] {
+  span {
+    background-color: var(--shiki-dark-classic-bg) !important;
+    color: var(--shiki-dark-classic) !important;
+  }
 }
