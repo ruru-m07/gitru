@@ -1,17 +1,28 @@
-import { invoke } from '@tauri-apps/api/core';
-import type { FileStatus } from '@/tauri/types';
-import { fileWatcherService } from '@/services/fileWatcher';
-import { commit, getDiff, getStatus, gitAdd, gitDiscard, gitRemove } from '@/tauri';
+import { invoke } from "@tauri-apps/api/core";
+import { fileWatcherService } from "@/services/fileWatcher";
+import {
+  commit,
+  getDiff,
+  getStatus,
+  gitAdd,
+  gitDiscard,
+  gitRemove,
+} from "@/tauri";
+import type { FileStatus } from "@/tauri/types";
 
 /**
  * Event emitter for repository changes
  */
-type RepositoryEventType = 'status-changed' | 'diff-changed' | 'commit' | 'error';
+type RepositoryEventType =
+  | "status-changed"
+  | "diff-changed"
+  | "commit"
+  | "error";
 type EventCallback = (data?: unknown) => void;
 
 /**
  * OOP-based Git Repository Manager
- * 
+ *
  * Handles all Git operations for a single repository with:
  * - Automatic file watching and cache invalidation
  * - Event-based notifications for UI updates
@@ -24,7 +35,8 @@ export class GitRepository {
   private statusCache: FileStatus[] | null = null;
   private diffCache: Map<string, string> = new Map();
   private isWatching = false;
-  private eventListeners: Map<RepositoryEventType, Set<EventCallback>> = new Map();
+  private eventListeners: Map<RepositoryEventType, Set<EventCallback>> =
+    new Map();
   private statusPromise: Promise<FileStatus[]> | null = null;
   private diffPromises: Map<string, Promise<string>> = new Map();
   private unsubscribeWatcher: (() => void) | null = null;
@@ -37,10 +49,10 @@ export class GitRepository {
 
   private initializeEventListeners() {
     // Initialize event listener sets
-    this.eventListeners.set('status-changed', new Set());
-    this.eventListeners.set('diff-changed', new Set());
-    this.eventListeners.set('commit', new Set());
-    this.eventListeners.set('error', new Set());
+    this.eventListeners.set("status-changed", new Set());
+    this.eventListeners.set("diff-changed", new Set());
+    this.eventListeners.set("commit", new Set());
+    this.eventListeners.set("error", new Set());
   }
 
   /**
@@ -68,12 +80,19 @@ export class GitRepository {
 
     try {
       // Check if watcher service is already active for this path
-      const { useFileWatcherStore } = await import('@/store/useFileWatcherStore');
+      const { useFileWatcherStore } = await import(
+        "@/store/useFileWatcherStore"
+      );
       const currentRepoPath = useFileWatcherStore.getState().repoPath;
-      
+
       // If already watching the same path, just subscribe to changes
-      if (currentRepoPath === this.path && useFileWatcherStore.getState().isActive) {
-        console.log(`Watcher already active for ${this.path}, subscribing to changes`);
+      if (
+        currentRepoPath === this.path &&
+        useFileWatcherStore.getState().isActive
+      ) {
+        console.log(
+          `Watcher already active for ${this.path}, subscribing to changes`,
+        );
         this.subscribeToFileChanges();
         this.isWatching = true;
         return;
@@ -89,8 +108,8 @@ export class GitRepository {
       this.subscribeToFileChanges();
       this.isWatching = true;
     } catch (error) {
-      console.error('Failed to start watching repository:', error);
-      this.emit('error', { type: 'watch-failed', error });
+      console.error("Failed to start watching repository:", error);
+      this.emit("error", { type: "watch-failed", error });
     }
   }
 
@@ -110,10 +129,10 @@ export class GitRepository {
       // Don't stop the watcher service here - let the manager or service handle it
       // This prevents stopping the watcher if other repositories are still using it
       this.isWatching = false;
-      
+
       console.log(`Stopped watching repository: ${this.name}`);
     } catch (error) {
-      console.error('Failed to stop watching repository:', error);
+      console.error("Failed to stop watching repository:", error);
     }
   }
 
@@ -123,57 +142,67 @@ export class GitRepository {
   private subscribeToFileChanges() {
     // Unsubscribe from previous subscription if exists
     if (this.unsubscribeWatcher) {
-      console.log('[GitRepository] Already subscribed, unsubscribing first');
+      console.log("[GitRepository] Already subscribed, unsubscribing first");
       this.unsubscribeWatcher();
       this.unsubscribeWatcher = null;
     }
 
     // Import the store dynamically to avoid circular dependencies
-    import('@/store/useFileWatcherStore').then(({ useFileWatcherStore }) => {
+    import("@/store/useFileWatcherStore").then(({ useFileWatcherStore }) => {
       // Double-check we haven't subscribed in the meantime
       if (this.unsubscribeWatcher) {
-        console.log('[GitRepository] Race condition detected, already subscribed');
+        console.log(
+          "[GitRepository] Race condition detected, already subscribed",
+        );
         return;
       }
 
-      console.log(`[GitRepository] Subscribing to file changes for ${this.name}`);
-      
+      console.log(
+        `[GitRepository] Subscribing to file changes for ${this.name}`,
+      );
+
       // Subscribe to Zustand store changes (not Immer state)
-      this.unsubscribeWatcher = useFileWatcherStore.subscribe((state, prevState) => {
-        // Only invalidate if files actually changed
-        if (state.files !== prevState.files) {
-          console.log(`[GitRepository:${this.name}] Files changed, invalidating caches`);
-          
-          // Always invalidate status when files change
-          this.invalidateStatus();
-          
-          // Invalidate specific file diffs that changed
-          const changedPaths = new Set<string>();
-          
-          // Check which files were added/modified
-          state.files.forEach((file, path) => {
-            const prevFile = prevState.files.get(path);
-            if (!prevFile || prevFile.lastModified !== file.lastModified) {
-              changedPaths.add(path);
-            }
-          });
-          
-          // Check which files were deleted
-          prevState.files.forEach((_file, path) => {
-            if (!state.files.has(path)) {
-              changedPaths.add(path);
-            }
-          });
-          
-          // Invalidate diffs for changed files
-          if (changedPaths.size > 0) {
-            console.log(`[GitRepository:${this.name}] Invalidating diffs for ${changedPaths.size} files`);
-            changedPaths.forEach(path => {
-              this.invalidateDiffs(path);
+      this.unsubscribeWatcher = useFileWatcherStore.subscribe(
+        (state, prevState) => {
+          // Only invalidate if files actually changed
+          if (state.files !== prevState.files) {
+            console.log(
+              `[GitRepository:${this.name}] Files changed, invalidating caches`,
+            );
+
+            // Always invalidate status when files change
+            this.invalidateStatus();
+
+            // Invalidate specific file diffs that changed
+            const changedPaths = new Set<string>();
+
+            // Check which files were added/modified
+            state.files.forEach((file, path) => {
+              const prevFile = prevState.files.get(path);
+              if (!prevFile || prevFile.lastModified !== file.lastModified) {
+                changedPaths.add(path);
+              }
             });
+
+            // Check which files were deleted
+            prevState.files.forEach((_file, path) => {
+              if (!state.files.has(path)) {
+                changedPaths.add(path);
+              }
+            });
+
+            // Invalidate diffs for changed files
+            if (changedPaths.size > 0) {
+              console.log(
+                `[GitRepository:${this.name}] Invalidating diffs for ${changedPaths.size} files`,
+              );
+              changedPaths.forEach((path) => {
+                this.invalidateDiffs(path);
+              });
+            }
           }
-        }
-      });
+        },
+      );
     });
   }
 
@@ -201,7 +230,7 @@ export class GitRepository {
   private emit(event: RepositoryEventType, data?: unknown) {
     const listeners = this.eventListeners.get(event);
     if (listeners) {
-      listeners.forEach(callback => callback(data));
+      listeners.forEach((callback) => callback(data));
     }
   }
 
@@ -221,11 +250,11 @@ export class GitRepository {
     }
 
     this.statusPromise = this.fetchStatus();
-    
+
     try {
       const status = await this.statusPromise;
       this.statusCache = status;
-      this.emit('status-changed', status);
+      this.emit("status-changed", status);
       return status;
     } finally {
       this.statusPromise = null;
@@ -242,8 +271,8 @@ export class GitRepository {
       });
       return result.files;
     } catch (error) {
-      console.error('Failed to get status:', error);
-      this.emit('error', { type: 'status-failed', error });
+      console.error("Failed to get status:", error);
+      this.emit("error", { type: "status-failed", error });
       return [];
     }
   }
@@ -253,13 +282,16 @@ export class GitRepository {
    */
   invalidateStatus() {
     this.statusCache = null;
-    this.emit('status-changed', null);
+    this.emit("status-changed", null);
   }
 
   /**
    * Get diff for a specific file (cached)
    */
-  async getDiff(filePath: string, options?: { force?: boolean }): Promise<string> {
+  async getDiff(
+    filePath: string,
+    options?: { force?: boolean },
+  ): Promise<string> {
     // Return cached diff if available and not forced
     if (!options?.force && this.diffCache.has(filePath)) {
       return this.diffCache.get(filePath)!;
@@ -276,7 +308,7 @@ export class GitRepository {
     try {
       const diff = await promise;
       this.diffCache.set(filePath, diff);
-      this.emit('diff-changed', { filePath, diff });
+      this.emit("diff-changed", { filePath, diff });
       return diff;
     } finally {
       this.diffPromises.delete(filePath);
@@ -292,12 +324,12 @@ export class GitRepository {
         repo_path: this.path,
         file_path: filePath,
       });
-      
+
       // Handle binary files
       if (result.head?.is_binary || result.workdir?.is_binary) {
-        return 'Binary file (not shown)';
+        return "Binary file (not shown)";
       }
-      
+
       // Return the actual diff content
       // The backend returns { head?: {content}, workdir?: {content} }
       // For now, just return the workdir content or an empty string
@@ -305,16 +337,16 @@ export class GitRepository {
       if (result.workdir?.content) {
         return result.workdir.content;
       }
-      
+
       if (result.head?.content) {
         return result.head.content;
       }
-      
-      return '';
+
+      return "";
     } catch (error) {
-      console.error('Failed to get diff:', error);
-      this.emit('error', { type: 'diff-failed', error, filePath });
-      return '';
+      console.error("Failed to get diff:", error);
+      this.emit("error", { type: "diff-failed", error, filePath });
+      return "";
     }
   }
 
@@ -324,10 +356,10 @@ export class GitRepository {
   invalidateDiffs(filePath?: string) {
     if (filePath) {
       this.diffCache.delete(filePath);
-      this.emit('diff-changed', { filePath });
+      this.emit("diff-changed", { filePath });
     } else {
       this.diffCache.clear();
-      this.emit('diff-changed', null);
+      this.emit("diff-changed", null);
     }
   }
 
@@ -346,12 +378,12 @@ export class GitRepository {
         this.invalidateStatus();
         return true;
       } else {
-        this.emit('error', { type: 'add-failed', message: result.message });
+        this.emit("error", { type: "add-failed", message: result.message });
         return false;
       }
     } catch (error) {
-      console.error('Failed to add file:', error);
-      this.emit('error', { type: 'add-failed', error });
+      console.error("Failed to add file:", error);
+      this.emit("error", { type: "add-failed", error });
       return false;
     }
   }
@@ -361,7 +393,6 @@ export class GitRepository {
    */
   async unstage(filePath: string): Promise<boolean> {
     try {
-      
       const result = await gitRemove({
         repo_path: this.path,
         file: filePath,
@@ -371,12 +402,12 @@ export class GitRepository {
         this.invalidateStatus();
         return true;
       } else {
-        this.emit('error', { type: 'unstage-failed', message: result.message });
+        this.emit("error", { type: "unstage-failed", message: result.message });
         return false;
       }
     } catch (error) {
-      console.error('Failed to unstage file:', error);
-      this.emit('error', { type: 'unstage-failed', error });
+      console.error("Failed to unstage file:", error);
+      this.emit("error", { type: "unstage-failed", error });
       return false;
     }
   }
@@ -386,7 +417,6 @@ export class GitRepository {
    */
   async discard(filePath: string): Promise<boolean> {
     try {
-      
       const result = await gitDiscard({
         repo_path: this.path,
         file: filePath,
@@ -397,12 +427,12 @@ export class GitRepository {
         this.invalidateDiffs();
         return true;
       } else {
-        this.emit('error', { type: 'discard-failed', message: result.message });
+        this.emit("error", { type: "discard-failed", message: result.message });
         return false;
       }
     } catch (error) {
-      console.error('Failed to discard changes:', error);
-      this.emit('error', { type: 'discard-failed', error });
+      console.error("Failed to discard changes:", error);
+      this.emit("error", { type: "discard-failed", error });
       return false;
     }
   }
@@ -412,27 +442,27 @@ export class GitRepository {
    */
   async commit(message: string, description?: string): Promise<boolean> {
     try {
-      const fullMessage = description ? `${message}\n\n${description}` : message;
-      
-      const result = await commit(
-        {
-          repo_path: this.path,
-          message: fullMessage,
-        }
-      );
+      const fullMessage = description
+        ? `${message}\n\n${description}`
+        : message;
+
+      const result = await commit({
+        repo_path: this.path,
+        message: fullMessage,
+      });
 
       if (result.success) {
         this.invalidateStatus();
         this.invalidateDiffs();
-        this.emit('commit', { message });
+        this.emit("commit", { message });
         return true;
       } else {
-        this.emit('error', { type: 'commit-failed', message: result.message });
+        this.emit("error", { type: "commit-failed", message: result.message });
         return false;
       }
     } catch (error) {
-      console.error('Failed to commit:', error);
-      this.emit('error', { type: 'commit-failed', error });
+      console.error("Failed to commit:", error);
+      this.emit("error", { type: "commit-failed", error });
       return false;
     }
   }
@@ -444,19 +474,19 @@ export class GitRepository {
     try {
       const result = await gitAdd({
         repo_path: this.path,
-        file: '.'
+        file: ".",
       });
 
       if (result.success) {
         this.invalidateStatus();
         return true;
       } else {
-        this.emit('error', { type: 'add-all-failed', message: result.message });
+        this.emit("error", { type: "add-all-failed", message: result.message });
         return false;
       }
     } catch (error) {
-      console.error('Failed to add all:', error);
-      this.emit('error', { type: 'add-all-failed', error });
+      console.error("Failed to add all:", error);
+      this.emit("error", { type: "add-all-failed", error });
       return false;
     }
   }
@@ -465,19 +495,22 @@ export class GitRepository {
     try {
       const result = await gitRemove({
         repo_path: this.path,
-        file: '.'
+        file: ".",
       });
 
       if (result.success) {
         this.invalidateStatus();
-        return true;  
+        return true;
       } else {
-        this.emit('error', { type: 'remove-all-failed', message: result.message });
+        this.emit("error", {
+          type: "remove-all-failed",
+          message: result.message,
+        });
         return false;
       }
     } catch (error) {
-      console.error('Failed to remove all:', error);
-      this.emit('error', { type: 'remove-all-failed', error });
+      console.error("Failed to remove all:", error);
+      this.emit("error", { type: "remove-all-failed", error });
       return false;
     }
   }
@@ -487,13 +520,13 @@ export class GitRepository {
    */
   async getCurrentBranch(): Promise<string | null> {
     try {
-      const result = await invoke<{ branch: string }>('git_current_branch', {
+      const result = await invoke<{ branch: string }>("git_current_branch", {
         repoPath: this.path,
       });
       return result.branch;
     } catch (error) {
-      console.error('Failed to get current branch:', error);
-      this.emit('error', { type: 'branch-failed', error });
+      console.error("Failed to get current branch:", error);
+      this.emit("error", { type: "branch-failed", error });
       return null;
     }
   }
@@ -501,17 +534,20 @@ export class GitRepository {
   /**
    * Get commit history
    */
-  async getHistory(options?: { limit?: number; skip?: number }): Promise<any[]> {
+  async getHistory(options?: {
+    limit?: number;
+    skip?: number;
+  }): Promise<any[]> {
     try {
-      const result = await invoke<{ commits: any[] }>('git_history', {
+      const result = await invoke<{ commits: any[] }>("git_history", {
         repoPath: this.path,
         limit: options?.limit || 50,
         skip: options?.skip || 0,
       });
       return result.commits;
     } catch (error) {
-      console.error('Failed to get history:', error);
-      this.emit('error', { type: 'history-failed', error });
+      console.error("Failed to get history:", error);
+      this.emit("error", { type: "history-failed", error });
       return [];
     }
   }

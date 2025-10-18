@@ -17,6 +17,7 @@ pub fn run() {
             git::commands::git_remove,
             git::commands::git_discard,
             git::commands::commit,
+            git::branch::list_branch,
             watcher::commands::start_watching,
             watcher::commands::stop_watching,
             watcher::commands::rescan_repository,

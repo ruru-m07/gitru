@@ -1,4 +1,4 @@
-import { GitRepository } from './GitRepository';
+import { GitRepository } from "./GitRepository";
 
 /**
  * Manages multiple Git repositories
@@ -25,7 +25,7 @@ export class GitRepositoryManager {
    */
   getRepository(path: string, name: string): GitRepository {
     // Normalize path
-    const normalizedPath = path.replace(/\\/g, '/').replace(/\/$/, '');
+    const normalizedPath = path.replace(/\\/g, "/").replace(/\/$/, "");
 
     if (!this.repositories.has(normalizedPath)) {
       const repo = new GitRepository(normalizedPath, name);
@@ -39,7 +39,7 @@ export class GitRepositoryManager {
    * Check if repository exists
    */
   hasRepository(path: string): boolean {
-    const normalizedPath = path.replace(/\\/g, '/').replace(/\/$/, '');
+    const normalizedPath = path.replace(/\\/g, "/").replace(/\/$/, "");
     return this.repositories.has(normalizedPath);
   }
 
@@ -47,9 +47,9 @@ export class GitRepositoryManager {
    * Remove a repository and clean up resources
    */
   async removeRepository(path: string): Promise<void> {
-    const normalizedPath = path.replace(/\\/g, '/').replace(/\/$/, '');
+    const normalizedPath = path.replace(/\\/g, "/").replace(/\/$/, "");
     const repo = this.repositories.get(normalizedPath);
-    
+
     if (repo) {
       await repo.dispose();
       this.repositories.delete(normalizedPath);
@@ -67,7 +67,9 @@ export class GitRepositoryManager {
    * Clean up all repositories
    */
   async dispose(): Promise<void> {
-    const promises = Array.from(this.repositories.values()).map(repo => repo.dispose());
+    const promises = Array.from(this.repositories.values()).map((repo) =>
+      repo.dispose(),
+    );
     await Promise.all(promises);
     this.repositories.clear();
   }

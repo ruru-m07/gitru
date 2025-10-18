@@ -1,10 +1,10 @@
 // File watcher event types (matching Rust backend)
 
 export enum FileEventType {
-  Created = 'created',
-  Modified = 'modified',
-  Deleted = 'deleted',
-  Renamed = 'renamed',
+  Created = "created",
+  Modified = "modified",
+  Deleted = "deleted",
+  Renamed = "renamed",
 }
 
 export interface FileMetadata {
@@ -29,20 +29,20 @@ export interface BatchUpdate {
 }
 
 export enum WatcherState {
-  Initializing = 'initializing',
-  Active = 'active',
-  Paused = 'paused',
-  Stopped = 'stopped',
-  Error = 'error',
+  Initializing = "initializing",
+  Active = "active",
+  Paused = "paused",
+  Stopped = "stopped",
+  Error = "error",
 }
 
 export enum WatcherErrorType {
-  PermissionDenied = 'permission_denied',
-  PathNotFound = 'path_not_found',
-  WatcherCrashed = 'watcher_crashed',
-  GitignoreParseError = 'gitignore_parse_error',
-  BackpressureExceeded = 'backpressure_exceeded',
-  Unknown = 'unknown',
+  PermissionDenied = "permission_denied",
+  PathNotFound = "path_not_found",
+  WatcherCrashed = "watcher_crashed",
+  GitignoreParseError = "gitignore_parse_error",
+  BackpressureExceeded = "backpressure_exceeded",
+  Unknown = "unknown",
 }
 
 export interface WatcherError {

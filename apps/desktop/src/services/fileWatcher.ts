@@ -1,15 +1,15 @@
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { invoke } from '@tauri-apps/api/core';
-import { useFileWatcherStore } from '@/store/useFileWatcherStore';
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useFileWatcherStore } from "@/store/useFileWatcherStore";
 import type {
   BatchUpdate,
+  StartWatchingResponse,
+  StopWatchingResponse,
   WatcherConfig,
   WatcherError,
   WatcherStateChanged,
   WatcherStats,
-  StartWatchingResponse,
-  StopWatchingResponse,
-} from '@/types/watcher';
+} from "@/types/watcher";
 
 /**
  * Service for managing file watcher integration with Tauri backend
@@ -24,11 +24,11 @@ export class FileWatcherService {
    */
   async startWatching(
     repoPath: string,
-    config?: WatcherConfig
+    config?: WatcherConfig,
   ): Promise<StartWatchingResponse> {
     // If already starting a watcher, wait for it
     if (this.startingWatcher) {
-      console.log('[FileWatcher] Already starting watcher, waiting...');
+      console.log("[FileWatcher] Already starting watcher, waiting...");
       return this.startingWatcher;
     }
 
@@ -62,13 +62,13 @@ export class FileWatcherService {
    */
   private async doStartWatching(
     repoPath: string,
-    config?: WatcherConfig
+    config?: WatcherConfig,
   ): Promise<StartWatchingResponse> {
     const store = useFileWatcherStore.getState();
 
     try {
       // Call Tauri command
-      const response = await invoke<StartWatchingResponse>('start_watching', {
+      const response = await invoke<StartWatchingResponse>("start_watching", {
         repoPath,
         config,
       });
@@ -81,13 +81,15 @@ export class FileWatcherService {
         // Setup event listeners
         await this.setupEventListeners();
 
-        console.log(`Started watching ${repoPath} with ID ${response.watcher_id}`);
+        console.log(
+          `Started watching ${repoPath} with ID ${response.watcher_id}`,
+        );
         return response;
       } else {
-        throw new Error(response.error || 'Failed to start watching');
+        throw new Error(response.error || "Failed to start watching");
       }
     } catch (error) {
-      console.error('Failed to start watching:', error);
+      console.error("Failed to start watching:", error);
       throw error;
     }
   }
@@ -104,7 +106,7 @@ export class FileWatcherService {
 
     try {
       // Call Tauri command
-      await invoke<StopWatchingResponse>('stop_watching', {
+      await invoke<StopWatchingResponse>("stop_watching", {
         watcherId: store.watcherId,
       });
 
@@ -114,9 +116,9 @@ export class FileWatcherService {
       // Clear store
       store.clear();
 
-      console.log('Stopped watching');
+      console.log("Stopped watching");
     } catch (error) {
-      console.error('Failed to stop watching:', error);
+      console.error("Failed to stop watching:", error);
       throw error;
     }
   }
@@ -134,52 +136,52 @@ export class FileWatcherService {
     try {
       // Listen for batch updates (primary event)
       const unlistenBatch = await listen<BatchUpdate>(
-        'watcher:batch-update',
+        "watcher:batch-update",
         (event) => {
           console.log(
-            `Received batch update: ${event.payload.events.length} events`
+            `Received batch update: ${event.payload.events.length} events`,
           );
           store.applyBatchUpdate(event.payload.events);
-        }
+        },
       );
       this.unlisteners.push(unlistenBatch);
 
       // Listen for errors
       const unlistenError = await listen<WatcherError>(
-        'watcher:error',
+        "watcher:error",
         (event) => {
-          console.error('Watcher error:', event.payload);
+          console.error("Watcher error:", event.payload);
           store.handleError(event.payload);
-        }
+        },
       );
       this.unlisteners.push(unlistenError);
 
       // Listen for state changes
       const unlistenState = await listen<WatcherStateChanged>(
-        'watcher:state-changed',
+        "watcher:state-changed",
         (event) => {
           console.log(
-            `Watcher state changed: ${event.payload.old_state} -> ${event.payload.new_state}`
+            `Watcher state changed: ${event.payload.old_state} -> ${event.payload.new_state}`,
           );
           store.setState(event.payload.new_state);
-        }
+        },
       );
       this.unlisteners.push(unlistenState);
 
       // Listen for statistics (if enabled)
       const unlistenStats = await listen<WatcherStats>(
-        'watcher:stats',
+        "watcher:stats",
         (event) => {
-          console.log('Watcher stats:', event.payload);
+          console.log("Watcher stats:", event.payload);
           store.updateStats(event.payload);
-        }
+        },
       );
       this.unlisteners.push(unlistenStats);
 
       this.isListening = true;
-      console.log('Event listeners setup complete');
+      console.log("Event listeners setup complete");
     } catch (error) {
-      console.error('Failed to setup event listeners:', error);
+      console.error("Failed to setup event listeners:", error);
       this.cleanup();
       throw error;
     }
@@ -203,17 +205,17 @@ export class FileWatcherService {
     const store = useFileWatcherStore.getState();
 
     if (!store.watcherId) {
-      throw new Error('No active watcher');
+      throw new Error("No active watcher");
     }
 
     try {
-      await invoke('rescan_repository', {
+      await invoke("rescan_repository", {
         watcherId: store.watcherId,
         fullRescan,
       });
-      console.log('Repository rescan triggered');
+      console.log("Repository rescan triggered");
     } catch (error) {
-      console.error('Failed to rescan repository:', error);
+      console.error("Failed to rescan repository:", error);
       throw error;
     }
   }
@@ -225,15 +227,15 @@ export class FileWatcherService {
     const store = useFileWatcherStore.getState();
 
     if (!store.watcherId) {
-      throw new Error('No active watcher');
+      throw new Error("No active watcher");
     }
 
     try {
-      return await invoke('get_watcher_state', {
+      return await invoke("get_watcher_state", {
         watcherId: store.watcherId,
       });
     } catch (error) {
-      console.error('Failed to get watcher state:', error);
+      console.error("Failed to get watcher state:", error);
       throw error;
     }
   }

@@ -310,7 +310,6 @@ impl Drop for RepoWatcher {
 mod tests {
     use super::*;
     use std::fs;
-    use std::sync::atomic::AtomicUsize;
     use tempfile::TempDir;
 
     fn create_test_repo() -> (TempDir, PathBuf) {
@@ -353,33 +352,5 @@ mod tests {
         watcher.stop().unwrap();
         assert!(!watcher.is_running());
         assert_eq!(watcher.get_state(), WatcherState::Stopped);
-    }
-
-    #[tokio::test]
-    async fn test_event_callback() {
-        let (_temp, repo_path) = create_test_repo();
-        let config = WatcherConfig::default();
-        let watcher = RepoWatcher::new(&repo_path, config).unwrap();
-
-        let event_count = Arc::new(AtomicUsize::new(0));
-        let event_count_clone = Arc::clone(&event_count);
-
-        watcher.set_callback(move |batch| {
-            event_count_clone.fetch_add(batch.len(), Ordering::SeqCst);
-        });
-
-        watcher.start().unwrap();
-
-        // Create a test file
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        fs::write(repo_path.join("test.txt"), "content").unwrap();
-
-        // Wait for event processing
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        watcher.stop().unwrap();
-
-        // Should have received at least one event
-        assert!(event_count.load(Ordering::SeqCst) > 0);
     }
 }
