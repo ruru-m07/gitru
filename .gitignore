@@ -38,7 +38,6 @@ yarn-error.log*
 .DS_Store
 *.pem
 .temp/
-routeTree.gen.ts
 
 # Editor directories and files
 .idea
