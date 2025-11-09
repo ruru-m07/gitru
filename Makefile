@@ -11,7 +11,7 @@ NC := \033[0m
 ##@ General
 
 help: ## Display this help message
-	@echo "$(CYAN)Noutify Build System$(NC)"
+	@echo "$(CYAN)Gitru Build System$(NC)"
 	@echo ""
 	@awk 'BEGIN {FS = ":.*##"; printf "Usage:\n  make $(CYAN)<target>$(NC)\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  $(CYAN)%-20s$(NC) %s\n", $$1, $$2 } /^##@/ { printf "\n$(YELLOW)%s$(NC)\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
