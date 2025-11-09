@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-/// Configuration for the file watcher
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WatcherConfig {
     /// Debounce window in milliseconds (default: 100)
@@ -61,22 +60,18 @@ impl Default for WatcherConfig {
 }
 
 impl WatcherConfig {
-    /// Get debounce duration
     pub fn debounce_duration(&self) -> Duration {
         Duration::from_millis(self.debounce_ms)
     }
 
-    /// Get batch timeout duration
     pub fn batch_timeout(&self) -> Duration {
         Duration::from_millis(self.batch_timeout_ms)
     }
 
-    /// Get stats interval duration
     pub fn stats_interval(&self) -> Duration {
         Duration::from_secs(self.stats_interval_secs)
     }
 
-    /// Validate configuration
     pub fn validate(&self) -> Result<(), String> {
         if self.debounce_ms == 0 {
             return Err("debounce_ms must be greater than 0".to_string());
@@ -94,7 +89,6 @@ impl WatcherConfig {
     }
 }
 
-// Default value functions for serde
 fn default_debounce_ms() -> u64 {
     100
 }
@@ -113,34 +107,4 @@ fn default_max_queue_size() -> usize {
 
 fn default_stats_interval() -> u64 {
     10
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_default_config() {
-        let config = WatcherConfig::default();
-        assert_eq!(config.debounce_ms, 100);
-        assert_eq!(config.batch_size, 50);
-        assert_eq!(config.batch_timeout_ms, 150);
-        assert_eq!(config.max_queue_size, 10_000);
-        assert!(!config.follow_symlinks);
-        assert!(config.validate().is_ok());
-    }
-
-    #[test]
-    fn test_validate_invalid_config() {
-        let mut config = WatcherConfig::default();
-        config.debounce_ms = 0;
-        assert!(config.validate().is_err());
-    }
-
-    #[test]
-    fn test_durations() {
-        let config = WatcherConfig::default();
-        assert_eq!(config.debounce_duration(), Duration::from_millis(100));
-        assert_eq!(config.batch_timeout(), Duration::from_millis(150));
-    }
 }

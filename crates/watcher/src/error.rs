@@ -42,7 +42,6 @@ pub enum WatcherError {
     Internal(String),
 }
 
-// Convert notify errors
 impl From<notify::Error> for WatcherError {
     fn from(err: notify::Error) -> Self {
         use notify::ErrorKind;
@@ -61,7 +60,6 @@ impl From<notify::Error> for WatcherError {
     }
 }
 
-// Convert ignore errors
 impl From<ignore::Error> for WatcherError {
     fn from(err: ignore::Error) -> Self {
         if let Some(io_err) = err.io_error() {

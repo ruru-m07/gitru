@@ -33,5 +33,15 @@
   },
   "[rust]": {
     "editor.defaultFormatter": "rust-lang.rust-analyzer"
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/bower_components": true,
+    "**/*.code-search": true,
+    "**/dist": true,
+    "**/build": true,
+    "**/.git": true,
+    "**/.temp": true,
+    "bun.lock": true
   }
 }

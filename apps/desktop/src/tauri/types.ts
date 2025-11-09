@@ -6,6 +6,19 @@
 
 import { z } from "zod";
 
+export const GitResultSchema = z.object({
+  success: z.boolean(),
+  message: z.string().optional(),
+});
+
+export const RepoSitoryStoreSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  path: z.string(),
+  origin: z.string().optional(),
+  branch: z.string().optional(),
+});
+
 export const FileStatusKindSchema = z.enum([
   "IndexNew",
   "IndexModified",
@@ -20,12 +33,20 @@ export const FileStatusKindSchema = z.enum([
   "WorktreeUnreadable",
 ]);
 
-export const RepoSitoryStoreSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  path: z.string(),
-  origin: z.string().optional(),
-  branch: z.string().optional(),
+export const StopWatchingResponseSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+});
+
+export const WatcherConfigSchema = z.object({
+  debounce_ms: z.number(),
+  batch_size: z.number(),
+  batch_timeout_ms: z.number(),
+  max_queue_size: z.number(),
+  follow_symlinks: z.boolean(),
+  extra_ignores: z.array(z.string()),
+  emit_stats: z.boolean(),
+  stats_interval_secs: z.number(),
 });
 
 export const GitRepoResponseSchema = z.object({
@@ -33,14 +54,36 @@ export const GitRepoResponseSchema = z.object({
   success: RepoSitoryStoreSchema.optional(),
 });
 
+export const FileStatusSchema = z.object({
+  path: z.string(),
+  status: z.array(FileStatusKindSchema),
+});
+
 export const CommitResultSchema = z.object({
   success: z.boolean(),
   message: z.string().optional(),
 });
 
-export const GitResultSchema = z.object({
+export const StartWatchingResponseSchema = z.object({
   success: z.boolean(),
-  message: z.string().optional(),
+  watcher_id: z.string(),
+  error: z.string().optional(),
+});
+
+export const GetStatusResponseSchema = z.object({
+  files: z.array(FileStatusSchema),
+});
+
+export const WatcherStateInfoSchema = z.object({
+  is_active: z.boolean(),
+  repo_path: z.string(),
+  uptime_seconds: z.number(),
+});
+
+export const RescanResponseSchema = z.object({
+  success: z.boolean(),
+  files_found: z.number(),
+  error: z.string().optional(),
 });
 
 export const FileVersionSchema = z.object({
@@ -50,13 +93,11 @@ export const FileVersionSchema = z.object({
   byte_length: z.number(),
 });
 
-export const FileStatusSchema = z.object({
-  path: z.string(),
-  status: z.array(FileStatusKindSchema),
-});
-
-export const GetStatusResponseSchema = z.object({
-  files: z.array(FileStatusSchema),
+export const BranchSchema = z.object({
+  name: z.string(),
+  display_name: z.string(),
+  is_remote: z.boolean(),
+  remote: z.string().optional(),
 });
 
 export const GetDiffResponseSchema = z.object({
@@ -68,14 +109,6 @@ export const GetDiffResponseSchema = z.object({
 export const GetDiffParamsSchema = z.object({
   repo_path: z.string(),
   file_path: z.string(),
-});
-
-export const AddLocalGitRepoParamsSchema = z.object({
-  repo_path: z.string(),
-});
-
-export const ExportTypeParamsSchema = z.object({
-  _a: RepoSitoryStoreSchema,
 });
 
 export const GetStatusParamsSchema = z.object({
@@ -104,11 +137,46 @@ export const CommitParamsSchema = z.object({
   co_authors: z.array(z.string()).optional(),
 });
 
+export const CurrentBranchParamsSchema = z.object({
+  repo_path: z.string(),
+});
+
+export const ListBranchParamsSchema = z.object({
+  repo_path: z.string(),
+});
+
+export const SwitchBranchParamsSchema = z.object({
+  repo_path: z.string(),
+  branch_name: z.string(),
+});
+
+export const StartWatchingParamsSchema = z.object({
+  repo_path: z.string(),
+  config: WatcherConfigSchema.optional(),
+});
+
+export const StopWatchingParamsSchema = z.object({
+  watcher_id: z.string(),
+});
+
+export const GetWatcherStateParamsSchema = z.object({
+  watcher_id: z.string(),
+});
+
+export const RescanRepositoryParamsSchema = z.object({
+  watcher_id: z.string(),
+  full_rescan: z.boolean().optional(),
+});
+
+export const AddLocalGitRepoParamsSchema = z.object({
+  repo_path: z.string(),
+});
+
+export const ExportTypeParamsSchema = z.object({
+  _a: RepoSitoryStoreSchema,
+});
+
 export type GetDiffParams = z.infer<typeof GetDiffParamsSchema>;
-
-export type AddLocalGitRepoParams = z.infer<typeof AddLocalGitRepoParamsSchema>;
-
-export type ExportTypeParams = z.infer<typeof ExportTypeParamsSchema>;
 
 export type GetStatusParams = z.infer<typeof GetStatusParamsSchema>;
 
@@ -120,20 +188,52 @@ export type GitDiscardParams = z.infer<typeof GitDiscardParamsSchema>;
 
 export type CommitParams = z.infer<typeof CommitParamsSchema>;
 
-export type FileStatusKind = z.infer<typeof FileStatusKindSchema>;
+export type CurrentBranchParams = z.infer<typeof CurrentBranchParamsSchema>;
 
-export type GitRepoResponse = z.infer<typeof GitRepoResponseSchema>;
+export type ListBranchParams = z.infer<typeof ListBranchParamsSchema>;
 
-export type CommitResult = z.infer<typeof CommitResultSchema>;
+export type SwitchBranchParams = z.infer<typeof SwitchBranchParamsSchema>;
 
-export type RepoSitoryStore = z.infer<typeof RepoSitoryStoreSchema>;
+export type StartWatchingParams = z.infer<typeof StartWatchingParamsSchema>;
+
+export type StopWatchingParams = z.infer<typeof StopWatchingParamsSchema>;
+
+export type GetWatcherStateParams = z.infer<typeof GetWatcherStateParamsSchema>;
+
+export type RescanRepositoryParams = z.infer<
+  typeof RescanRepositoryParamsSchema
+>;
+
+export type AddLocalGitRepoParams = z.infer<typeof AddLocalGitRepoParamsSchema>;
+
+export type ExportTypeParams = z.infer<typeof ExportTypeParamsSchema>;
 
 export type GitResult = z.infer<typeof GitResultSchema>;
 
-export type FileVersion = z.infer<typeof FileVersionSchema>;
+export type RepoSitoryStore = z.infer<typeof RepoSitoryStoreSchema>;
+
+export type FileStatusKind = z.infer<typeof FileStatusKindSchema>;
+
+export type StopWatchingResponse = z.infer<typeof StopWatchingResponseSchema>;
+
+export type WatcherConfig = z.infer<typeof WatcherConfigSchema>;
+
+export type GitRepoResponse = z.infer<typeof GitRepoResponseSchema>;
+
+export type FileStatus = z.infer<typeof FileStatusSchema>;
+
+export type CommitResult = z.infer<typeof CommitResultSchema>;
+
+export type StartWatchingResponse = z.infer<typeof StartWatchingResponseSchema>;
 
 export type GetStatusResponse = z.infer<typeof GetStatusResponseSchema>;
 
-export type GetDiffResponse = z.infer<typeof GetDiffResponseSchema>;
+export type WatcherStateInfo = z.infer<typeof WatcherStateInfoSchema>;
 
-export type FileStatus = z.infer<typeof FileStatusSchema>;
+export type RescanResponse = z.infer<typeof RescanResponseSchema>;
+
+export type FileVersion = z.infer<typeof FileVersionSchema>;
+
+export type Branch = z.infer<typeof BranchSchema>;
+
+export type GetDiffResponse = z.infer<typeof GetDiffResponseSchema>;

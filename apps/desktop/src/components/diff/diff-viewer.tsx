@@ -1,437 +1,20 @@
-/** biome-ignore-all lint/correctness/noUnusedVariables: experimentel */
 import { Card, CardContent } from "@gitru/ui/components/card";
-import { structuredPatch } from "diff";
-import { Loader2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import {
-  type BundledLanguage,
-  createHighlighter,
-  type Highlighter,
-} from "shiki";
+import { FoldVertical } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FileStatusKind, GetDiffResponse } from "@/tauri";
-import { vesperLight } from "./custome-themes";
+import { DiffHunk, DiffRow, DiffSegment } from "./diff-types";
+import {
+  buildDiffSegments,
+  buildHunksFromDiff,
+  computeInlineDiff,
+  escapeHtml,
+  formatBytes,
+  formatRange,
+  resolveLanguage,
+  splitLines,
+} from "./diff-utils";
+import { HighlightedLine, highlighter } from "./highlighter";
 import { useDiffViewStore } from "./useDiffViewStore";
-
-type DiffRowType = "added" | "removed" | "context";
-
-interface DiffRow {
-  type: DiffRowType;
-  content: string;
-  lineNumberOld?: number;
-  lineNumberNew?: number;
-  metadata?: boolean;
-}
-
-interface DiffHunk {
-  id: string;
-  header: string;
-  lines: DiffRow[];
-  additions: number;
-  deletions: number;
-  oldStart: number;
-  newStart: number;
-  oldLines: number;
-  newLines: number;
-}
-
-const DEFAULT_LANGUAGE = "plaintext" as BundledLanguage;
-const DEFAULT_CONTEXT_LINES = 3;
-
-type DiffSegment =
-  | { type: "hunk"; hunk: DiffHunk }
-  | {
-      type: "skip";
-      id: string;
-      oldStart: number;
-      oldEnd: number;
-      newStart: number;
-      newEnd: number;
-      lines: DiffRow[];
-    };
-
-function HighlightedLine({
-  html,
-  className,
-}: {
-  html: string;
-  className?: string;
-}) {
-  return (
-    // biome-ignore lint/security/noDangerouslySetInnerHtml: Shiki generates sanitized HTML for syntax highlighting
-    <span className={className} dangerouslySetInnerHTML={{ __html: html }} />
-  );
-}
-
-const EXTENSION_LANGUAGE_MAP: Record<string, BundledLanguage | undefined> = {
-  ts: "typescript",
-  tsx: "tsx",
-  js: "javascript",
-  jsx: "jsx",
-  py: "python",
-  css: "css",
-  html: "html",
-  json: "json",
-  txt: "plaintext" as BundledLanguage,
-  lock: "json",
-  sh: "bash",
-  bash: "bash",
-  rs: "rust",
-  rust: "rust",
-  java: "java",
-  make: "makefile",
-  docker: "dockerfile",
-  dockerfile: "dockerfile",
-  yaml: "yaml",
-  yml: "yaml",
-  csv: "csv",
-  markdown: "markdown",
-  md: "markdown",
-  mdx: "mdx" as BundledLanguage,
-};
-
-const SPECIAL_FILENAMES: Record<string, BundledLanguage | undefined> = {
-  makefile: "makefile",
-  dockerfile: "dockerfile",
-  gitignore: "bash",
-  gitattributes: "bash",
-  jenkinsfile: "groovy" as BundledLanguage,
-  procfile: "bash",
-  vagrantfile: "ruby" as BundledLanguage,
-  brewfile: "ruby" as BundledLanguage,
-};
-
-const ALWAYS_AVAILABLE_LANGS = [
-  "typescript",
-  "javascript",
-  "tsx",
-  "jsx",
-  "json",
-  "css",
-  "html",
-  "bash",
-  "python",
-  "diff",
-  "plaintext" as BundledLanguage,
-  "rs",
-  "rust",
-  "makefile",
-  "make",
-  "docker",
-  "dockerfile",
-  "java",
-  "csv",
-  "yaml",
-  "markdown",
-  "md",
-  "mdx",
-  "groovy",
-  "ruby",
-] as BundledLanguage[];
-
-const splitLines = (content: string): string[] => {
-  if (!content) {
-    return [];
-  }
-
-  const lines = content.split(/\r?\n/);
-  if (lines.length > 0 && lines[lines.length - 1] === "") {
-    lines.pop();
-  }
-
-  return lines;
-};
-
-const escapeHtml = (value: string): string =>
-  value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-const formatRange = (start: number, count: number) => {
-  const normalizedStart = Math.max(start, 0);
-  if (count <= 0) {
-    return `${normalizedStart},0`;
-  }
-
-  return count === 1 ? `${normalizedStart}` : `${normalizedStart},${count}`;
-};
-
-const buildRowsFromSingleContent = (
-  content: string,
-  variant: "added" | "removed",
-): DiffRow[] => {
-  const lines = splitLines(content);
-  return lines.map((line, index) =>
-    variant === "added"
-      ? {
-          type: "added" as const,
-          content: line,
-          lineNumberNew: index + 1,
-        }
-      : {
-          type: "removed" as const,
-          content: line,
-          lineNumberOld: index + 1,
-        },
-  );
-};
-
-const buildHunksFromDiff = (
-  before: string,
-  after: string,
-  options: { treatAsNewFile: boolean; treatAsDeletedFile: boolean },
-): DiffHunk[] => {
-  const patch = structuredPatch("head", "workdir", before, after, "", "", {
-    context: DEFAULT_CONTEXT_LINES,
-    // TODO: will be made configurable later
-    ignoreWhitespace: false,
-  });
-
-  if (patch.hunks.length === 0) {
-    if (options.treatAsNewFile) {
-      const rows = buildRowsFromSingleContent(after, "added");
-      return [
-        {
-          id: "hunk-0",
-          header: `@@ -0,0 +1,${Math.max(rows.length, 1)} @@`,
-          lines: rows,
-          additions: rows.length,
-          deletions: 0,
-          oldStart: 0,
-          newStart: rows.length > 0 ? 1 : 0,
-          oldLines: 0,
-          newLines: rows.length,
-        },
-      ];
-    }
-
-    if (options.treatAsDeletedFile) {
-      const rows = buildRowsFromSingleContent(before, "removed");
-      return [
-        {
-          id: "hunk-0",
-          header: `@@ -1,${Math.max(rows.length, 1)} +0,0 @@`,
-          lines: rows,
-          additions: 0,
-          deletions: rows.length,
-          oldStart: rows.length > 0 ? 1 : 0,
-          newStart: 0,
-          oldLines: rows.length,
-          newLines: 0,
-        },
-      ];
-    }
-
-    return [];
-  }
-
-  return patch.hunks.map((hunk, index) => {
-    let oldLine = hunk.oldStart;
-    let newLine = hunk.newStart;
-    const rows: DiffRow[] = [];
-    let additions = 0;
-    let deletions = 0;
-
-    for (const rawLine of hunk.lines) {
-      if (!rawLine.length) continue;
-      const indicator = rawLine[0];
-      const content = rawLine.slice(1);
-
-      switch (indicator) {
-        case " ":
-          rows.push({
-            type: "context",
-            content,
-            lineNumberOld: oldLine++,
-            lineNumberNew: newLine++,
-          });
-          break;
-        case "-":
-          rows.push({
-            type: "removed",
-            content,
-            lineNumberOld: oldLine++,
-          });
-          deletions += 1;
-          break;
-        case "+":
-          rows.push({
-            type: "added",
-            content,
-            lineNumberNew: newLine++,
-          });
-          additions += 1;
-          break;
-        case "\\":
-          rows.push({
-            type: "context",
-            content: rawLine,
-            metadata: true,
-          });
-          break;
-        default:
-          break;
-      }
-    }
-
-    const header = `@@ -${formatRange(hunk.oldStart, hunk.oldLines)} +${formatRange(hunk.newStart, hunk.newLines)} @@`;
-
-    return {
-      id: `hunk-${index}`,
-      header,
-      lines: rows,
-      additions,
-      deletions,
-      oldStart: hunk.oldStart,
-      newStart: hunk.newStart,
-      oldLines: hunk.oldLines,
-      newLines: hunk.newLines,
-    };
-  });
-};
-
-const buildSkipSegment = (
-  oldStart: number,
-  oldEnd: number,
-  newStart: number,
-  newEnd: number,
-  index: number,
-  beforeLines: string[],
-  afterLines: string[],
-): DiffSegment | null => {
-  const hasOld = oldStart > 0 && oldEnd >= oldStart;
-  const hasNew = newStart > 0 && newEnd >= newStart;
-
-  if (!hasOld && !hasNew) {
-    return null;
-  }
-
-  let currentOld = hasOld ? oldStart : 0;
-  let currentNew = hasNew ? newStart : 0;
-  const lines: DiffRow[] = [];
-
-  while ((hasOld && currentOld <= oldEnd) || (hasNew && currentNew <= newEnd)) {
-    const oldLineNumber =
-      hasOld && currentOld <= oldEnd ? currentOld : undefined;
-    const newLineNumber =
-      hasNew && currentNew <= newEnd ? currentNew : undefined;
-    const content =
-      (typeof newLineNumber === "number"
-        ? afterLines[newLineNumber - 1]
-        : undefined) ??
-      (typeof oldLineNumber === "number"
-        ? beforeLines[oldLineNumber - 1]
-        : "") ??
-      "";
-
-    lines.push({
-      type: "context",
-      content,
-      lineNumberOld: oldLineNumber,
-      lineNumberNew: newLineNumber,
-    });
-
-    if (typeof oldLineNumber === "number") {
-      currentOld += 1;
-    }
-    if (typeof newLineNumber === "number") {
-      currentNew += 1;
-    }
-  }
-
-  if (lines.length === 0) {
-    return null;
-  }
-
-  return {
-    type: "skip",
-    id: `skip-${index}-${oldStart}-${oldEnd}-${newStart}-${newEnd}`,
-    oldStart: hasOld ? oldStart : 0,
-    oldEnd: hasOld ? oldEnd : 0,
-    newStart: hasNew ? newStart : 0,
-    newEnd: hasNew ? newEnd : 0,
-    lines,
-  };
-};
-
-const buildDiffSegments = (
-  hunks: DiffHunk[],
-  beforeLines: string[],
-  afterLines: string[],
-): DiffSegment[] => {
-  if (hunks.length === 0) {
-    return [];
-  }
-
-  const segments: DiffSegment[] = [];
-  let previousOldEnd = 0;
-  let previousNewEnd = 0;
-
-  const totalOldLines = beforeLines.length;
-  const totalNewLines = afterLines.length;
-
-  hunks.forEach((hunk, index) => {
-    const gapOldStart = previousOldEnd + 1;
-    const gapOldEnd = hunk.oldStart > 0 ? Math.max(hunk.oldStart - 1, 0) : 0;
-    const gapNewStart = previousNewEnd + 1;
-    const gapNewEnd = hunk.newStart > 0 ? Math.max(hunk.newStart - 1, 0) : 0;
-
-    const skip = buildSkipSegment(
-      gapOldStart,
-      gapOldEnd,
-      gapNewStart,
-      gapNewEnd,
-      index,
-      beforeLines,
-      afterLines,
-    );
-
-    if (skip) {
-      segments.push(skip);
-    }
-
-    segments.push({ type: "hunk", hunk });
-
-    const hunkOldEnd =
-      hunk.oldLines > 0 ? hunk.oldStart + hunk.oldLines - 1 : hunk.oldStart - 1;
-    const hunkNewEnd =
-      hunk.newLines > 0 ? hunk.newStart + hunk.newLines - 1 : hunk.newStart - 1;
-
-    previousOldEnd = Math.max(previousOldEnd, hunkOldEnd);
-    previousNewEnd = Math.max(previousNewEnd, hunkNewEnd);
-  });
-
-  const trailingSkip = buildSkipSegment(
-    previousOldEnd + 1,
-    totalOldLines,
-    previousNewEnd + 1,
-    totalNewLines,
-    hunks.length,
-    beforeLines,
-    afterLines,
-  );
-
-  if (trailingSkip) {
-    segments.push(trailingSkip);
-  }
-
-  return segments;
-};
-
-const formatBytes = (bytes: number) => {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-};
-
-const resolveLanguage = (filePath: string): BundledLanguage => {
-  const fileName = filePath.split("/").pop() || "";
-  const lower = fileName.toLowerCase();
-
-  if (lower.includes(".")) {
-    const extension = lower.split(".").pop() || "";
-    return EXTENSION_LANGUAGE_MAP[extension] ?? DEFAULT_LANGUAGE;
-  }
-
-  return SPECIAL_FILENAMES[lower] ?? DEFAULT_LANGUAGE;
-};
 
 export function DiffViewer({
   diff,
@@ -443,30 +26,8 @@ export function DiffViewer({
   status?: FileStatusKind[];
 }) {
   const { viewMode } = useDiffViewStore();
-  const [highlighter, setHighlighter] = useState<Highlighter | null>(null);
   const language = useMemo(() => resolveLanguage(filePath), [filePath]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const hl = await createHighlighter({
-          themes: ["vesper", vesperLight],
-          langs: ALWAYS_AVAILABLE_LANGS,
-        });
-        if (!cancelled) {
-          setHighlighter(hl);
-        }
-      } catch (error) {
-        console.error("Failed to initialize Shiki highlighter:", error);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const [expandedSkips, setExpandedSkips] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!highlighter) return;
@@ -528,30 +89,20 @@ export function DiffViewer({
     return buildDiffSegments(hunks, beforeLines, afterLines);
   }, [diff, binaryVersion, hunks, beforeLines, afterLines]);
 
-  const [_expandedSkips, setExpandedSkips] = useState<Set<string>>(new Set());
+  const toggleSkip = useCallback((id: string) => {
+    setExpandedSkips((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
 
-  useEffect(() => {
-    if (!diff) {
-      setExpandedSkips(new Set());
-      return;
-    }
-
-    setExpandedSkips(new Set());
-  }, [diff]);
-
-  // const toggleSkip = useCallback((id: string) => {
-  // 	setExpandedSkips((prev) => {
-  // 		const next = new Set(prev);
-  // 		if (next.has(id)) {
-  // 			next.delete(id);
-  // 		} else {
-  // 			next.add(id);
-  // 		}
-  // 		return next;
-  // 	});
-  // }, []);
-
-  const hasAnyRows = hunks.some((hunk) => hunk.lines.length > 0);
+  // TODO(ruru-m07): will implement empty svg and something batter later
+  // const hasAnyRows = hunks.some((hunk) => hunk.lines.length > 0);
 
   const highlight = useMemo(() => {
     if (!highlighter) {
@@ -564,7 +115,7 @@ export function DiffViewer({
       }
 
       try {
-        const html = highlighter.codeToHtml(code, {
+        const html = highlighter!.codeToHtml(code, {
           lang: language,
           themes: {
             light: "vesper-light",
@@ -593,9 +144,57 @@ export function DiffViewer({
             if (line.type === "removed") bgClass = "diff-removed";
 
             const key = `${keyPrefix}-${line.lineNumberOld ?? "x"}-${line.lineNumberNew ?? "y"}-${index}`;
-            const highlighted = line.metadata
-              ? escapeHtml(line.content)
-              : highlight(line.content);
+
+            let contentHtml: string;
+
+            // For changed lines, compute inline diff
+            if (
+              (line.type === "added" || line.type === "removed") &&
+              !line.metadata
+            ) {
+              // Find the corresponding opposite line for inline diff
+              const oppositeType = line.type === "added" ? "removed" : "added";
+              const oppositeLine = lines.find(
+                (l, i) => l.type === oppositeType && Math.abs(i - index) <= 1, // Look at adjacent lines
+              );
+
+              if (oppositeLine) {
+                const oldText =
+                  line.type === "removed" ? line.content : oppositeLine.content;
+                const newText =
+                  line.type === "added" ? line.content : oppositeLine.content;
+                const inlineDiff = computeInlineDiff(oldText, newText);
+
+                // Build HTML with inline highlighting
+                const parts = inlineDiff
+                  .filter((part) => {
+                    if (line.type === "removed") return !part.added;
+                    if (line.type === "added") return !part.removed;
+                    return true;
+                  })
+                  .map((part) => {
+                    const highlighted = highlight(part.value);
+                    if (
+                      (line.type === "removed" && part.removed) ||
+                      (line.type === "added" && part.added)
+                    ) {
+                      // Stronger highlight for actual changes
+                      return `<span class="diff-word-${line.type}">${highlighted}</span>`;
+                    }
+                    return highlighted;
+                  })
+                  .join("");
+
+                contentHtml = parts;
+              } else {
+                contentHtml = highlight(line.content);
+              }
+            } else {
+              contentHtml = line.metadata
+                ? escapeHtml(line.content)
+                : highlight(line.content);
+            }
+
             const textClass = line.metadata
               ? "italic text-muted-foreground"
               : undefined;
@@ -603,17 +202,23 @@ export function DiffViewer({
             return (
               <tr key={key} className={`${bgClass} diff-hover`}>
                 <td
-                  className={`tabular-nums text-center align-middle py-1 px-2 ${line.type === "removed" && "diff-line-number-bg-removed"} ${line.type === "added" && "diff-line-number-bg-added"}  diff-line-number-bg w-14 text-muted-foreground text-xs select-none`}
+                  className={`border-r py-1 w-12 text-muted-foreground text-xs select-none diff-line-number-segment-td ${line.type === "removed" && "diff-line-number-bg-removed"} ${line.type === "added" && "diff-line-number-bg-added"} diff-line-number-bg`}
                 >
-                  {line.lineNumberOld ?? ""}
+                  {/* // ! we can do text-right if we want a better number alignment */}
+                  <span className="px-3 block w-full text-center _text-right tabular-nums">
+                    {line.lineNumberOld ?? ""}
+                  </span>
                 </td>
                 <td
-                  className={`tabular-nums text-center align-middle py-1 px-2 ${line.type === "removed" && "diff-line-number-bg-removed"}  ${line.type === "added" && "diff-line-number-bg-added"} diff-line-number-bg w-14 text-muted-foreground text-xs select-none`}
+                  className={`border-r py-1 w-12 text-muted-foreground text-xs select-none diff-line-number-segment-td ${line.type === "removed" && "diff-line-number-bg-removed"} ${line.type === "added" && "diff-line-number-bg-added"} diff-line-number-bg`}
                 >
-                  {line.lineNumberNew ?? ""}
+                  {/* // ! we can do text-right if we want a better number alignment */}
+                  <span className="px-3 block w-full text-center _text-right tabular-nums">
+                    {line.lineNumberNew ?? ""}
+                  </span>
                 </td>
-                <td className="pl-3 pr-2 text-sm font-mono leading-6 whitespace-pre">
-                  <HighlightedLine className={textClass} html={highlighted} />
+                <td className="pl-3 pr-2 text-sm font-mono leading-6 whitespace-pre bg-[var(--diff-segment-bg-unified)]">
+                  <HighlightedLine className={textClass} html={contentHtml} />
                 </td>
               </tr>
             );
@@ -651,9 +256,9 @@ export function DiffViewer({
     }
 
     return (
-      <div className="overflow-x-auto">
+      <div>
         <div className="flex">
-          <table className="w-full border-collapse diff-content">
+          <table className="table-fixed w-full border-collapse diff-content">
             <tbody>
               {grouped.map((pair, index) => {
                 const leftBg =
@@ -661,30 +266,79 @@ export function DiffViewer({
                 const rightBg =
                   pair.right?.type === "added" ? "diff-added" : "";
                 const key = `${keyPrefix}-${pair.left?.lineNumberOld ?? "x"}-${pair.right?.lineNumberNew ?? "y"}-${index}`;
-                const leftHtml = pair.left
-                  ? pair.left.metadata
-                    ? escapeHtml(pair.left.content)
-                    : highlight(pair.left.content)
-                  : "";
-                const rightHtml = pair.right
-                  ? pair.right.metadata
-                    ? escapeHtml(pair.right.content)
-                    : highlight(pair.right.content)
-                  : "";
+
+                let leftHtml = "";
+                let rightHtml = "";
+
+                // Compute inline diff for paired removed/added lines
+                if (
+                  pair.left &&
+                  pair.right &&
+                  pair.left.type === "removed" &&
+                  pair.right.type === "added" &&
+                  !pair.left.metadata &&
+                  !pair.right.metadata
+                ) {
+                  const inlineDiff = computeInlineDiff(
+                    pair.left.content,
+                    pair.right.content,
+                  );
+
+                  // Build left side (removed) HTML
+                  const leftParts = inlineDiff
+                    .filter((part) => !part.added)
+                    .map((part) => {
+                      const highlighted = highlight(part.value);
+                      if (part.removed) {
+                        return `<span class="diff-word-removed">${highlighted}</span>`;
+                      }
+                      return highlighted;
+                    })
+                    .join("");
+                  leftHtml = leftParts;
+
+                  // Build right side (added) HTML
+                  const rightParts = inlineDiff
+                    .filter((part) => !part.removed)
+                    .map((part) => {
+                      const highlighted = highlight(part.value);
+                      if (part.added) {
+                        return `<span class="diff-word-added">${highlighted}</span>`;
+                      }
+                      return highlighted;
+                    })
+                    .join("");
+                  rightHtml = rightParts;
+                } else {
+                  // Regular highlighting without inline diff
+                  leftHtml = pair.left
+                    ? pair.left.metadata
+                      ? escapeHtml(pair.left.content)
+                      : highlight(pair.left.content)
+                    : "";
+                  rightHtml = pair.right
+                    ? pair.right.metadata
+                      ? escapeHtml(pair.right.content)
+                      : highlight(pair.right.content)
+                    : "";
+                }
 
                 return (
-                  <tr key={key}>
-                    <td
-                      className={`tabular-nums text-center align-middle py-1 px-2  w-14 text-muted-foreground text-xs select-none ${leftBg ? "diff-line-number-bg-removed" : "diff-line-number-bg"} ${leftBg}`}
+                  <div key={key} className="grid grid-cols-[auto_1fr_auto_1fr]">
+                    <div
+                      className={`py-1 w-12 text-muted-foreground diff-line-number-segment-td text-xs select-none ${leftBg ? "diff-line-number-bg-removed" : "diff-line-number-bg border-r"} ${leftBg}`}
                     >
-                      {pair.left?.lineNumberOld ?? ""}
-                    </td>
-                    <td
-                      className={`truncate text-sm font-mono leading-6 whitespace-pre border-r max-w-[10vw] ${leftBg}`}
+                      {/* // ! we can do text-right if we want a better number alignment */}
+                      <span className="px-3 block w-full text-center _text-right tabular-nums">
+                        {pair.left?.lineNumberOld ?? ""}
+                      </span>
+                    </div>
+                    <div
+                      className={`truncate text-sm font-mono leading-6 whitespace-pre _max-w-[10vw] ${leftBg}`}
                     >
                       {pair.left ? (
                         <HighlightedLine
-                          className={`pl-3 pr-2 ${pair.left?.metadata ? "italic text-muted-foreground" : ""}`}
+                          className={`_text-wrap _flex-wrap pl-3 pr-2 ${pair.left?.metadata ? "italic text-muted-foreground" : ""}`}
                           html={leftHtml}
                         />
                       ) : (
@@ -693,18 +347,21 @@ export function DiffViewer({
                           <div className="_border-x border-x-(--pattern-fg) bg-[image:repeating-linear-gradient(315deg,_var(--pattern-fg)_0,_var(--pattern-fg)_1px,_transparent_0,_transparent_50%)] bg-[size:10px_10px] bg-fixed"></div>
                         </span>
                       )}
-                    </td>
-                    <td
-                      className={`tabular-nums text-center align-middle py-1 px-2 ${rightBg ? "diff-line-number-bg-added" : "diff-line-number-bg"} ${rightBg} w-14 text-muted-foreground text-xs select-none`}
+                    </div>
+                    <div
+                      className={`py-1 w-12 text-muted-foreground diff-line-number-segment-td text-xs select-none ${rightBg ? "diff-line-number-bg-added" : "diff-line-number-bg border-x"} ${rightBg}`}
                     >
-                      {pair.right?.lineNumberNew ?? ""}
-                    </td>
-                    <td
-                      className={`truncate text-sm font-mono leading-6 whitespace-pre max-w-[10vw] ${rightBg}`}
+                      {/* // ! we can do text-right if we want a better number alignment */}
+                      <span className="px-3 block w-full text-center _text-right tabular-nums">
+                        {pair.right?.lineNumberNew ?? ""}
+                      </span>
+                    </div>
+                    <div
+                      className={`truncate text-sm font-mono leading-6 whitespace-pre _max-w-[10vw] ${rightBg}`}
                     >
                       {pair.right ? (
                         <HighlightedLine
-                          className={`pl-3 pr-2 ${pair.right?.metadata ? "italic text-muted-foreground" : ""}`}
+                          className={`_text-wrap _flex-wrap pl-3 pr-2 ${pair.right?.metadata ? "italic text-muted-foreground" : ""}`}
                           html={rightHtml}
                         />
                       ) : (
@@ -713,8 +370,8 @@ export function DiffViewer({
                           <div className="_border-x border-x-(--pattern-fg) bg-[image:repeating-linear-gradient(315deg,_var(--pattern-fg)_0,_var(--pattern-fg)_1px,_transparent_0,_transparent_50%)] bg-[size:10px_10px] bg-fixed"></div>
                         </span>
                       )}
-                    </td>
-                  </tr>
+                    </div>
+                  </div>
                 );
               })}
             </tbody>
@@ -723,14 +380,6 @@ export function DiffViewer({
       </div>
     );
   };
-
-  if (!diff) {
-    return (
-      <div className="flex justify-center items-center p-8">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
 
   if (binaryVersion) {
     return (
@@ -745,20 +394,22 @@ export function DiffViewer({
     );
   }
 
-  if (!hasAnyRows) {
-    return (
-      <Card className="overflow-hidden rounded-none border border-border/50">
-        <CardContent className="p-6">
-          <p className="text-sm text-muted-foreground">
-            No content to display for this file.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
+  // TODO(ruru-m07): will implement empty svg and something batter later
+  // if (!hasAnyRows) {
+  //   return (
+  //     <Card className="overflow-hidden rounded-none border border-border/50">
+  //       <CardContent className="p-6">
+  //         <p className="text-sm text-muted-foreground">
+  //           No content to display for this file.
+  //         </p>
+  //       </CardContent>
+  //     </Card>
+  //   );
+  // }
 
   return (
     <Card className="overflow-hidden rounded-none border-0">
+      {/* // TODO(ruru-m07): will do something better here */}
       {/* {treatAsNewFile || treatAsDeletedFile ? (
 				<div
 					className={`px-4 py-2 text-xs font-medium border-b border-border/50 ${treatAsNewFile ? "bg-emerald-500/10 text-emerald-300" : "bg-red-500/10 text-red-300"}`}
@@ -772,47 +423,45 @@ export function DiffViewer({
         <div className="divide-y divide-border/50">
           {segments.map((segment) => {
             if (segment.type === "skip") {
-              // const isExpanded = expandedSkips.has(segment.id);
+              const isExpanded = expandedSkips.has(segment.id);
               // const lineCount = segment.lines.length;
-              // const oldCount =
-              // 	segment.oldStart > 0 && segment.oldEnd >= segment.oldStart
-              // 		? segment.oldEnd - segment.oldStart + 1
-              // 		: 0;
-              // const newCount =
-              // 	segment.newStart > 0 && segment.newEnd >= segment.newStart
-              // 		? segment.newEnd - segment.newStart + 1
-              // 		: 0;
-              // const header = `@@ -${formatRange(segment.oldStart, oldCount)} +${formatRange(segment.newStart, newCount)} @@`;
+              const oldCount =
+                segment.oldStart > 0 && segment.oldEnd >= segment.oldStart
+                  ? segment.oldEnd - segment.oldStart + 1
+                  : 0;
+              const newCount =
+                segment.newStart > 0 && segment.newEnd >= segment.newStart
+                  ? segment.newEnd - segment.newStart + 1
+                  : 0;
+              const header = `@@ -${formatRange(segment.oldStart, oldCount)} +${formatRange(segment.newStart, newCount)} @@`;
 
               return (
-                <div key={segment.id} className="bg-primary/5">
-                  {/* <button
-										type="button"
-										onClick={() => toggleSkip(segment.id)}
-										className="flex w-full items-center justify-between gap-4 px-4 py-2 text-left text-primary transition hover:bg-primary/10"
-									>
-										<span className="flex items-center gap-2">
-											{isExpanded ? (
-												<ChevronDown className="h-4 w-4 shrink-0" />
-											) : (
-												<ChevronRight className="h-4 w-4 shrink-0" />
-											)}
-											<span className="font-mono text-xs sm:text-sm">
-												{header}
-											</span>
-										</span>
-										<span className="text-xs font-medium text-muted-foreground">
-											{isExpanded ? "Hide" : "Show"} {lineCount} unchanged{" "}
-											{lineCount === 1 ? "line" : "lines"}
-										</span>
-									</button> */}
-                  {/* {isExpanded ? (
-										<div className="border-t border-border/40">
-											{viewMode === "split"
-												? renderSplitView(segment.lines, segment.id)
-												: renderUnifiedView(segment.lines, segment.id)}
-										</div>
-									) : null} */}
+                <div key={segment.id} className="">
+                  {isExpanded ? (
+                    <div className="bg-[var(--diff-segment-diff-bg)] [--diff-segment-bg-unified:var(--diff-segment-diff-bg)] diff-line-number-segment">
+                      {viewMode === "split"
+                        ? renderSplitView(segment.lines, segment.id)
+                        : renderUnifiedView(segment.lines, segment.id)}
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-4 bg-[var(--diff-segment-bg)] _border-y-[0.5px] _border-primary/10">
+                      <div className="flex items-center">
+                        <div
+                          onClick={() => toggleSkip(segment.id)}
+                          className="w-[calc(calc(var(--spacing)_*_12))] py-1.5 border-r text-muted-foreground hover:text-foreground cursor-pointer border-[var(--diff-segment-expend-button-border)] hover:bg-[var(--diff-segment-expend-button-bg-hover)] bg-[var(--diff-segment-expend-button-bg)] flex items-center justify-center"
+                        >
+                          <FoldVertical size={16} />
+                        </div>
+                        <span className="font-mono text-xs sm:text-sm text-muted-foreground pl-3 py-1">
+                          {header}
+                        </span>
+                      </div>
+                      <span className="flex items-center gap-2 text-xs pr-4">
+                        {/* // TODO(ruru-m07):  */}
+                        {/* {lineCount} */}
+                      </span>
+                    </div>
+                  )}
                 </div>
               );
             }
@@ -821,20 +470,29 @@ export function DiffViewer({
 
             return (
               <div key={hunk.id} className="bg-background">
-                <div className="flex items-center justify-between gap-4 bg-primary/10 px-4 py-1">
-                  <span className="font-mono text-xs sm:text-sm text-primary/80">
-                    {hunk.header}
-                  </span>
-                  <span className="flex items-center gap-2 text-xs">
-                    <span className="text-green-700 tabular-nums">
-                      +{hunk.additions}
+                {/* // TODO(ruru): find out a way to show the header only when there are changes */}
+                {/* {false ? null : (
+                  <div className="flex items-center justify-between gap-4 bg-primary/10 border-y border-primary/10">
+                    <div className="flex items-center">
+                      <div className="w-[calc(calc(var(--spacing)_*_12)+1px)] py-1.5 border-r text-muted-foreground hover:text-foreground cursor-pointer border-primary/10 hover:bg-primary/30 flex items-center justify-center">
+                        <FoldVertical size={16} />
+                      </div>
+                      <span className="font-mono text-xs sm:text-sm text-primary/80 pl-3 py-1">
+                        {hunk.header}
+                      </span>
+                    </div>
+                    <span className="flex items-center gap-2 text-xs pr-4">
+                      <span className="text-green-700 tabular-nums">
+                        +{hunk.additions}
+                      </span>
+                      <span className="text-red-700 tabular-nums">
+                        -{hunk.deletions}
+                      </span>
                     </span>
-                    <span className="text-red-700 tabular-nums">
-                      -{hunk.deletions}
-                    </span>
-                  </span>
-                </div>
-                <div className="border-t border-border/40">
+                  </div>
+                )} */}
+
+                <div className="_border-t _border-border/40">
                   {viewMode === "split"
                     ? renderSplitView(hunk.lines, hunk.id)
                     : renderUnifiedView(hunk.lines, hunk.id)}

@@ -1,10 +1,12 @@
 use git;
 use ipc;
+use tauri_plugin_window_state;
 use watcher;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
@@ -18,6 +20,8 @@ pub fn run() {
             git::commands::git_discard,
             git::commands::commit,
             git::branch::list_branch,
+            git::branch::current_branch,
+            git::branch::switch_branch,
             watcher::commands::start_watching,
             watcher::commands::stop_watching,
             watcher::commands::rescan_repository,

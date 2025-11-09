@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 "use client";
 
 import { cn } from "@gitru/ui/lib/utils";

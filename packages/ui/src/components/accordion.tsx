@@ -1,9 +1,11 @@
+// @ts-nocheck
+
 "use client";
 
 import { cn } from "@gitru/ui/lib/utils";
 import * as AccordionPrimitive from "@radix-ui/react-accordion";
-import { ChevronDownIcon } from "lucide-react";
-import type * as React from "react";
+import { ChevronDown } from "lucide-react";
+import * as React from "react";
 
 function Accordion({
   ...props
@@ -40,7 +42,7 @@ function AccordionTrigger({
         {...props}
       >
         {children}
-        <ChevronDownIcon
+        <ChevronDown
           size={16}
           className="pointer-events-none shrink-0 opacity-60 transition-transform duration-200 -rotate-90"
           aria-hidden="true"

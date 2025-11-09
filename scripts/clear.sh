@@ -1,9 +1,8 @@
 list=(
   ".turbo"
   "node_modules"
-  "dist"
-  "build"
-  ".next"
+  "apps/desktop/dist"
+  "apps/desktop/node_modules"
   "target"
 )
 

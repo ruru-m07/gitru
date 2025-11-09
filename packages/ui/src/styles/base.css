@@ -79,6 +79,14 @@
   --diff-line-number-bg-added-color: var(--diff-line-number-bg-added-color);
   --diff-line-number-bg-added-border: var(--diff-line-number-bg-added-border);
 
+  --diff-segment-bg: var(--diff-segment-bg);
+  --diff-segment-expend-button-border: var(--diff-segment-expend-button-border);
+  --diff-segment-expend-button-bg: var(--diff-segment-expend-button-bg);
+  --diff-segment-expend-button-bg-hover: var(
+    --diff-segment-expend-button-bg-hover
+  );
+  --diff-segment-diff-bg: var(--diff-segment-diff-bg);
+
   @keyframes accordion-down {
     from {
       height: 0;
@@ -105,7 +113,7 @@
   If we ever want to remove these styles, we need to add an explicit border
   color utility to any element that depends on these defaults.
 */
-@layer base {
+/* @layer base {
   *,
   ::after,
   ::before,
@@ -113,7 +121,7 @@
   ::file-selector-button {
     border-color: var(--color-gray-200, currentcolor);
   }
-}
+} */
 
 @layer base {
   :root,
@@ -174,48 +182,70 @@
     --diff-line-number-bg-added-bg: #d9f7e0;
     --diff-line-number-bg-added-color: #49900e;
     --diff-line-number-bg-added-border: #b6efc2;
+
+    --diff-segment-bg: #ddf4ff;
+    --diff-segment-expend-button-border: #94d5fd6b;
+    --diff-segment-expend-button-bg: #bee5fe;
+    --diff-segment-expend-button-bg-hover: #7fd1f7;
+    --diff-segment-diff-bg: #d1edfe90;
+
+    .diff-line-number-segment .diff-line-number-segment-td {
+      background: var(--diff-segment-expend-button-bg) !important;
+      color: #0c79ab !important;
+      border-right: 1px solid var(--diff-segment-expend-button-border) !important;
+      border-left: 1px solid var(--diff-segment-expend-button-border) !important;
+    }
+
+    .diff-added {
+      background-color: var(--diff-added-bg);
+    }
+
+    .diff-removed {
+      background-color: var(--diff-removed-bg);
+    }
+
+    .diff-line-number-bg {
+      background-color: var(--diff-line-number-bg);
+      @apply border-border/60;
+    }
+
+    .diff-line-number-bg-removed {
+      background-color: var(--diff-line-number-bg-removed-bg);
+      color: var(--diff-line-number-bg-removed-color) !important;
+      @apply border-x border-[var(--diff-line-number-bg-removed-border)];
+    }
+
+    .diff-line-number-bg-added {
+      background: var(--diff-line-number-bg-added-bg);
+      color: var(--diff-line-number-bg-added-color) !important;
+      @apply border-x border-[var(--diff-line-number-bg-added-border)];
+    }
+
+    .diff-word-added {
+      background-color: color-mix(
+        in srgb,
+        var(--diff-line-number-bg-added-color) 30%,
+        transparent
+      ) !important;
+      border-radius: 2px;
+      padding: 0 2px;
+    }
+
+    .diff-word-removed {
+      background-color: color-mix(
+        in srgb,
+        var(--diff-line-number-bg-removed-color) 30%,
+        transparent
+      ) !important;
+      border-radius: 2px;
+      padding: 0 2px;
+    }
   }
 
   html[data-theme="dark"],
   html[data-theme="dark-classic"],
   .dark-classic,
   .dark {
-    /* --background: oklch(16.842% 0.00002 271.152); --color-zinc-950 */
-    /* --background: oklch(0% 0 0); 
-		--foreground: oklch(0.985 0 0); 
-		--card: oklch(0.141 0.005 285.823); 
-		--card-foreground: oklch(0.985 0 0); 
-		--popover: oklch(0.141 0.005 285.823); 
-		--popover-foreground: oklch(0.985 0 0); 
-		--primary: oklch(0.985 0 0); 
-		--primary-foreground: oklch(0.21 0.006 285.885); 
-		--secondary: oklch(0.274 0.006 286.033); 
-		--secondary-foreground: oklch(0.985 0 0); 
-		--muted: oklch(0.21 0.006 285.885); 
-		--muted-foreground: oklch(0.65 0.01 286); 
-		--accent: oklch(0.21 0.006 285.885); 
-		--accent-foreground: oklch(0.985 0 0); 
-		--destructive: oklch(49.883% 0.18041 26.247); 
-		--destructive-foreground: oklch(0.637 0.237 25.331); 
-		--border: oklch(0.274 0.006 286.033); 
-		--input: oklch(0.274 0.006 286.033); 
-		--ring: oklch(0.442 0.017 285.786); 
-		
-		--chart-1: oklch(0.488 0.243 264.376); 
-		--chart-2: oklch(0.696 0.17 162.48); 
-		--chart-3: oklch(0.769 0.188 70.08); 
-		--chart-4: oklch(0.627 0.265 303.9); 
-		--chart-5: oklch(0.645 0.246 16.439); 
-		
-		--sidebar: oklch(0.205 0 0); 
-		--sidebar-foreground: oklch(0.985 0 0); 
-		--sidebar-primary: oklch(0.488 0.243 264.376); 
-		--sidebar-primary-foreground: oklch(0.985 0 0); 
-		--sidebar-accent: oklch(0.269 0 0); 
-		--sidebar-accent-foreground: oklch(0.985 0 0); 
-		--sidebar-border: oklch(0.274 0.006 286.033); 
-		--sidebar-ring: oklch(0.442 0.017 285.786);  */
-
     --background: oklch(0% 0 0);
     --foreground: oklch(0.985 0 0);
     --card: oklch(0.205 0 0);
@@ -250,15 +280,44 @@
 
     --diff-added-bg: #122a20;
     --diff-removed-bg: #2b181e;
-    --diff-line-number-bg: #0000000d;
+    --diff-line-number-bg: rgba(255, 255, 255, 0.085);
 
-    --diff-line-number-bg-removed-bg: #602727;
-    --diff-line-number-bg-removed-color: #ff9a9f;
-    --diff-line-number-bg-removed-border: #a5494e;
+    --diff-line-number-bg-removed-bg: rgb(96, 39, 39);
+    --diff-line-number-bg-removed-color: rgb(255, 154, 159);
+    --diff-line-number-bg-removed-border: rgba(165, 73, 78, 0.4);
 
-    --diff-line-number-bg-added-bg: #1d4b2a;
-    --diff-line-number-bg-added-color: #87cb50;
-    --diff-line-number-bg-added-border: rgb(83, 151, 98);
+    --diff-line-number-bg-added-bg: rgb(29, 75, 42);
+    --diff-line-number-bg-added-color: rgb(80, 203, 96);
+    --diff-line-number-bg-added-border: rgba(83, 151, 98, 0.4);
+
+    --diff-segment-bg: #112036;
+    --diff-segment-expend-button-border: rgba(42, 95, 202, 0.4);
+    --diff-segment-expend-button-bg: #0d2c6b85;
+    --diff-segment-expend-button-bg-hover: #206feb;
+    --diff-segment-diff-bg: #2a5fca1d;
+
+    .diff-line-number-bg {
+      background-color: var(--diff-line-number-bg);
+      @apply border-l-border/50 border-border;
+    }
+
+    .diff-line-number-bg-removed {
+      background-color: var(--diff-line-number-bg-removed-bg);
+      color: var(--diff-line-number-bg-removed-color) !important;
+      @apply border-x border-l-[var(--diff-line-number-bg-removed-border)]/50 border-r-[var(--diff-line-number-bg-removed-border)];
+    }
+
+    .diff-line-number-bg-added {
+      background: var(--diff-line-number-bg-added-bg);
+      color: var(--diff-line-number-bg-added-color) !important;
+      @apply border-x border-l-[var(--diff-line-number-bg-added-border)]/50 border-r-[var(--diff-line-number-bg-added-border)];
+    }
+
+    .diff-line-number-segment .diff-line-number-segment-td {
+      background: var(--diff-segment-expend-button-bg) !important;
+      color: #4e8af9 !important;
+      border-right: 1px solid var(--diff-segment-expend-button-border) !important;
+    }
   }
 
   html[data-theme="light-claude"],
@@ -672,42 +731,4 @@
   body {
     @apply bg-background text-foreground;
   }
-}
-
-.diff-added {
-  background-color: var(--diff-added-bg);
-}
-
-.diff-removed {
-  background-color: var(--diff-removed-bg);
-}
-
-.diff-line-number-bg {
-  background-color: var(--diff-line-number-bg);
-  @apply border-r;
-}
-
-.diff-line-number-bg-removed {
-  background-color: var(--diff-line-number-bg-removed-bg);
-  color: var(--diff-line-number-bg-removed-color) !important;
-  @apply border-r border-[var(--diff-line-number-bg-removed-border)];
-}
-
-.diff-line-number-bg-added {
-  background: var(--diff-line-number-bg-added-bg);
-  color: var(--diff-line-number-bg-added-color) !important;
-  @apply border-r border-[var(--diff-line-number-bg-added-border)];
-}
-
-/* Add to your global CSS file */
-.diff-word-added {
-  background-color: rgba(46, 160, 67, 0.4) !important;
-  border-radius: 2px;
-  padding: 0 2px;
-}
-
-.diff-word-removed {
-  background-color: rgba(248, 81, 73, 0.4) !important;
-  border-radius: 2px;
-  padding: 0 2px;
 }

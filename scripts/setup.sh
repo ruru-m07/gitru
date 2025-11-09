@@ -1,2 +1,0 @@
-bun install
-cargo build

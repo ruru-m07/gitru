@@ -15,20 +15,6 @@ export async function getDiff(
   return invoke("get_diff", validatedParams);
 }
 
-export async function addLocalGitRepo(
-  params: types.AddLocalGitRepoParams,
-): Promise<types.GitRepoResponse> {
-  const validatedParams = types.AddLocalGitRepoParamsSchema.parse(params);
-  return invoke("add_local_git_repo", validatedParams);
-}
-
-export async function exportType(
-  params: types.ExportTypeParams,
-): Promise<void> {
-  const validatedParams = types.ExportTypeParamsSchema.parse(params);
-  return invoke("export_type", validatedParams);
-}
-
 export async function getStatus(
   params: types.GetStatusParams,
 ): Promise<types.GetStatusResponse> {
@@ -74,4 +60,67 @@ export async function generateFileStatusKind(): Promise<types.FileStatusKind> {
 
 export async function generateFileVersion(): Promise<types.FileVersion> {
   return invoke("generate_file_version");
+}
+
+export async function currentBranch(
+  params: types.CurrentBranchParams,
+): Promise<types.Branch> {
+  const validatedParams = types.CurrentBranchParamsSchema.parse(params);
+  return invoke("current_branch", validatedParams);
+}
+
+export async function listBranch(
+  params: types.ListBranchParams,
+): Promise<types.Branch[]> {
+  const validatedParams = types.ListBranchParamsSchema.parse(params);
+  return invoke("list_branch", validatedParams);
+}
+
+export async function switchBranch(
+  params: types.SwitchBranchParams,
+): Promise<types.GitResult> {
+  const validatedParams = types.SwitchBranchParamsSchema.parse(params);
+  return invoke("switch_branch", validatedParams);
+}
+
+export async function startWatching(
+  params: types.StartWatchingParams,
+): Promise<types.StartWatchingResponse> {
+  const validatedParams = types.StartWatchingParamsSchema.parse(params);
+  return invoke("start_watching", validatedParams);
+}
+
+export async function stopWatching(
+  params: types.StopWatchingParams,
+): Promise<types.StopWatchingResponse> {
+  const validatedParams = types.StopWatchingParamsSchema.parse(params);
+  return invoke("stop_watching", validatedParams);
+}
+
+export async function getWatcherState(
+  params: types.GetWatcherStateParams,
+): Promise<types.WatcherStateInfo> {
+  const validatedParams = types.GetWatcherStateParamsSchema.parse(params);
+  return invoke("get_watcher_state", validatedParams);
+}
+
+export async function rescanRepository(
+  params: types.RescanRepositoryParams,
+): Promise<types.RescanResponse> {
+  const validatedParams = types.RescanRepositoryParamsSchema.parse(params);
+  return invoke("rescan_repository", validatedParams);
+}
+
+export async function addLocalGitRepo(
+  params: types.AddLocalGitRepoParams,
+): Promise<types.GitRepoResponse> {
+  const validatedParams = types.AddLocalGitRepoParamsSchema.parse(params);
+  return invoke("add_local_git_repo", validatedParams);
+}
+
+export async function exportType(
+  params: types.ExportTypeParams,
+): Promise<void> {
+  const validatedParams = types.ExportTypeParamsSchema.parse(params);
+  return invoke("export_type", validatedParams);
 }

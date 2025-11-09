@@ -16,6 +16,5 @@ pub use events::{
 pub use filter::GitignoreFilter;
 pub use watcher::RepoWatcher;
 
-// Re-export commonly used types
 pub use chrono::{DateTime, Utc};
 pub use uuid::Uuid;

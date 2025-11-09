@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, State};
 
-// App state for managing watchers
 #[derive(Default)]
 pub struct WatcherState {
     watchers: Arc<Mutex<HashMap<String, Arc<RepoWatcher>>>>,
@@ -30,7 +29,6 @@ impl WatcherState {
     }
 }
 
-// Response types
 #[derive(Debug, Serialize)]
 pub struct StartWatchingResponse {
     pub success: bool,
@@ -61,7 +59,6 @@ pub struct WatcherStateInfo {
     pub uptime_seconds: u64,
 }
 
-// Tauri commands
 #[tauri::command]
 pub async fn start_watching(
     repo_path: String,
@@ -72,7 +69,6 @@ pub async fn start_watching(
     let watcher_id = uuid::Uuid::new_v4().to_string();
     let config = config.unwrap_or_default();
 
-    // Create watcher
     let watcher = match RepoWatcher::new(&repo_path, config) {
         Ok(w) => w,
         Err(e) => {
@@ -84,18 +80,14 @@ pub async fn start_watching(
         }
     };
 
-    // Setup event callback to emit to frontend
-    let watcher_id_clone = watcher_id.clone();
     let app_handle_clone = app_handle.clone();
 
     watcher.set_callback(move |batch: BatchUpdate| {
-        // Emit batch update event to frontend
         if let Err(e) = app_handle_clone.emit("watcher:batch-update", &batch) {
             eprintln!("Failed to emit batch update: {}", e);
         }
     });
 
-    // Start watching
     if let Err(e) = watcher.start() {
         return Ok(StartWatchingResponse {
             success: false,
@@ -104,10 +96,8 @@ pub async fn start_watching(
         });
     }
 
-    // Store watcher
     state.insert(watcher_id.clone(), watcher);
 
-    // Emit state change event
     let _ = app_handle.emit(
         "watcher:state-changed",
         serde_json::json!({
@@ -139,7 +129,6 @@ pub async fn stop_watching(
             });
         }
 
-        // Emit state change event
         let _ = app_handle.emit(
             "watcher:state-changed",
             serde_json::json!({
@@ -181,12 +170,9 @@ pub async fn get_watcher_state(
 #[tauri::command]
 pub async fn rescan_repository(
     watcher_id: String,
-    full_rescan: Option<bool>,
     state: State<'_, WatcherState>,
 ) -> Result<RescanResponse, String> {
     if let Some(watcher) = state.get(&watcher_id) {
-        // For now, just reload gitignore rules
-        // Full rescan would require additional implementation
         if let Err(e) = watcher.reload_gitignore() {
             return Ok(RescanResponse {
                 success: false,
@@ -197,7 +183,7 @@ pub async fn rescan_repository(
 
         Ok(RescanResponse {
             success: true,
-            files_found: 0, // Would require walking the directory to count
+            files_found: 0,
             error: None,
         })
     } else {
@@ -209,7 +195,6 @@ pub async fn rescan_repository(
     }
 }
 
-// Helper to emit error events
 pub fn emit_watcher_error(
     app_handle: &AppHandle,
     watcher_id: &str,

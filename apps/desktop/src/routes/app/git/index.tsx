@@ -13,7 +13,12 @@ import { DiffViewer } from "@/components/diff/diff-viewer";
 import { useDiffViewStore } from "@/components/diff/useDiffViewStore";
 import { useFileDiff, useGitRepository } from "@/lib/git";
 import { useAppStore } from "@/store/useAppStore";
-import { type GetDiffResponse, getDiff } from "@/tauri";
+import {
+  currentBranch,
+  type GetDiffResponse,
+  getDiff,
+  listBranch,
+} from "@/tauri";
 import { EmptyGitDiffSVG } from "./EmptyGitDiffSVG";
 import { getStatusIcon } from "./route";
 import { SplitSVG } from "./splitSVG";
@@ -28,16 +33,13 @@ function App() {
     useDiffViewStore();
   const { selectedRepository } = useAppStore();
 
-  // Use the OOP Git architecture to get repository instance
   const repo = useGitRepository(
     selectedRepository?.path || null,
     selectedRepository?.name,
   );
 
-  // Use the useFileDiff hook which automatically listens to invalidation events
   const { diff } = useFileDiff(repo, selectedFilePath || null);
 
-  // Convert diff string to GetDiffResponse format for DiffViewer
   const [diffData, setDiffData] = useState<GetDiffResponse | null>(null);
 
   useEffect(() => {
@@ -46,8 +48,6 @@ function App() {
       return;
     }
 
-    // Fetch the full diff data structure from backend
-    // (The useFileDiff gives us the content, but DiffViewer needs the full structure)
     let isCancelled = false;
 
     (async () => {
@@ -71,7 +71,7 @@ function App() {
     return () => {
       isCancelled = true;
     };
-  }, [selectedFilePath, selectedRepository, diff]); // Re-fetch when diff changes!
+  }, [selectedFilePath, selectedRepository, diff]);
 
   return (
     <>
@@ -79,6 +79,15 @@ function App() {
         <Button
           className="flex border-r justify-between items-center h-full rounded-none hover:border-t w-72"
           variant={"ghost"}
+          onClick={async () => {
+            const data = await currentBranch({
+              repo_path: selectedRepository?.path || "",
+            });
+            const data2 = await listBranch({
+              repo_path: selectedRepository?.path || "",
+            });
+            console.log({ data, data2 });
+          }}
         >
           <div className="flex items-center justify-center gap-4">
             <GitBranch className="size-6" />

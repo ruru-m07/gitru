@@ -16,6 +16,22 @@ pub struct GitResult {
     message: Option<String>,
 }
 
+impl GitResult {
+    pub fn success() -> Self {
+        Self {
+            success: true,
+            message: None,
+        }
+    }
+
+    pub fn error(msg: impl Into<String>) -> Self {
+        Self {
+            success: false,
+            message: Some(msg.into()),
+        }
+    }
+}
+
 #[derive(Serialize)]
 pub struct CommitResult {
     success: bool,
@@ -60,11 +76,24 @@ pub fn git_add(repo_path: &str, file: &str) -> GitResult {
             };
         }
     } else {
-        if let Err(e) = index.add_path(std::path::Path::new(file)) {
-            return GitResult {
-                success: false,
-                message: Some(format!("Failed to add {file}: {e}")),
-            };
+        let file_path = std::path::Path::new(file);
+        let full_path = std::path::Path::new(repo_path).join(file_path);
+
+        if full_path.exists() {
+            if let Err(e) = index.add_path(file_path) {
+                return GitResult {
+                    success: false,
+                    message: Some(format!("Failed to add {file}: {e}")),
+                };
+            }
+        } else {
+            // ? File doesn't exist (deleted), remove it from the index
+            if let Err(e) = index.remove_path(file_path) {
+                return GitResult {
+                    success: false,
+                    message: Some(format!("Failed to stage deletion of {file}: {e}")),
+                };
+            }
         }
     }
 
@@ -84,6 +113,8 @@ pub fn git_add(repo_path: &str, file: &str) -> GitResult {
 // git restore --staged <file>
 #[tauri::command(rename_all = "snake_case")]
 pub fn git_remove(repo_path: &str, file: &str) -> GitResult {
+    println!("{:?} --- {:?}", repo_path, file);
+
     let repo = match Repository::open(repo_path) {
         Ok(r) => r,
         Err(e) => {
@@ -104,28 +135,29 @@ pub fn git_remove(repo_path: &str, file: &str) -> GitResult {
         }
     };
 
+    // Get HEAD tree
+    let head = match repo.head() {
+        Ok(h) => h,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to get HEAD: {e}")),
+            };
+        }
+    };
+
+    let tree = match head.peel_to_tree() {
+        Ok(t) => t,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to get tree: {e}")),
+            };
+        }
+    };
+
     if file == "." {
         // Unstage all files by resetting index to HEAD
-        let head = match repo.head() {
-            Ok(h) => h,
-            Err(e) => {
-                return GitResult {
-                    success: false,
-                    message: Some(format!("Failed to get HEAD: {e}")),
-                };
-            }
-        };
-
-        let tree = match head.peel_to_tree() {
-            Ok(t) => t,
-            Err(e) => {
-                return GitResult {
-                    success: false,
-                    message: Some(format!("Failed to get tree: {e}")),
-                };
-            }
-        };
-
         if let Err(e) = index.read_tree(&tree) {
             return GitResult {
                 success: false,
@@ -133,11 +165,43 @@ pub fn git_remove(repo_path: &str, file: &str) -> GitResult {
             };
         }
     } else {
-        if let Err(e) = index.remove_path(std::path::Path::new(file)) {
-            return GitResult {
-                success: false,
-                message: Some(format!("Failed to unstage {file}: {e}")),
-            };
+        // For a specific file, we need to reset it to the HEAD version
+        let tree_entry = tree.get_path(std::path::Path::new(file));
+
+        match tree_entry {
+            Ok(entry) => {
+                // File exists in HEAD, restore it to that version
+                let index_entry = git2::IndexEntry {
+                    ctime: git2::IndexTime::new(0, 0),
+                    mtime: git2::IndexTime::new(0, 0),
+                    dev: 0,
+                    ino: 0,
+                    mode: entry.filemode() as u32,
+                    uid: 0,
+                    gid: 0,
+                    file_size: 0,
+                    id: entry.id(),
+                    flags: 0,
+                    flags_extended: 0,
+                    path: file.as_bytes().to_vec(),
+                };
+
+                if let Err(e) = index.add(&index_entry) {
+                    return GitResult {
+                        success: false,
+                        message: Some(format!("Failed to reset {file} to HEAD: {e}")),
+                    };
+                }
+            }
+            Err(_) => {
+                // File doesn't exist in HEAD (it's a new file), so remove it from index
+                if let Err(e) = index.remove_path(std::path::Path::new(file)) {
+                    return GitResult {
+                        success: false,
+                        message: Some(format!("Failed to unstage {file}: {e}")),
+                    };
+                }
+            }
         }
     }
 

@@ -12,14 +12,14 @@
   "app": {
     "windows": [
       {
-        "title": "tauriapp",
+        "title": "gitru",
         "width": 1600,
         "height": 870,
         "hiddenTitle": true,
         "titleBarStyle": "Overlay",
         "trafficLightPosition": {
-          "x": 18,
-          "y": 18
+          "x": 19,
+          "y": 22
         }
       }
     ],
@@ -28,6 +28,30 @@
     }
   },
   "bundle": {
+    "macOS": {
+      "dmg": {
+        "background": "../public/assets/dmg-background.png",
+        "windowPosition": {
+          "x": 230,
+          "y": 150
+        },
+        "appPosition": {
+          "x": 400,
+          "y": 438
+        },
+        "applicationFolderPosition": {
+          "x": 1092,
+          "y": 438
+        },
+        "windowSize": {
+          "height": 760,
+          "width": 1492
+        }
+      },
+      "files": {},
+      "hardenedRuntime": true,
+      "minimumSystemVersion": "10.13"
+    },
     "active": true,
     "targets": ["dmg", "msi", "appimage", "nsis", "rpm", "deb", "app"],
     "icon": [

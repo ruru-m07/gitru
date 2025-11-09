@@ -397,6 +397,7 @@ export class GitRepository {
         repo_path: this.path,
         file: filePath,
       });
+      console.log({ result, filePath });
 
       if (result.success) {
         this.invalidateStatus();
