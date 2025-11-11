@@ -1,9 +1,8 @@
 name: 'ship'
 
 on:
-  push:
-    tags:
-      - 'v*'
+  release: 
+    types: [published]
   workflow_dispatch:
 
 concurrency:
@@ -22,19 +21,12 @@ jobs:
           - platform: 'macos-latest'
             args: '--target universal-apple-darwin'
             target: 'universal-apple-darwin'
-          # (Optional) If you still want separate architecture builds, you could keep them
-          # - platform: 'macos-latest'
-          #   args: '--target aarch64-apple-darwin'
-          #   target: 'aarch64-apple-darwin'
-          # - platform: 'macos-latest'
-          #   args: '--target x86_64-apple-darwin'
-          #   target: 'x86_64-apple-darwin'
-          # - platform: 'ubuntu-22.04'
-          #   args: ''
-          #   target: ''
-          # - platform: 'windows-latest'
-          #   args: ''
-          #   target: ''
+          - platform: 'ubuntu-22.04'
+            args: ''
+            target: ''
+          - platform: 'windows-latest'
+            args: ''
+            target: ''
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -55,17 +47,6 @@ jobs:
         run: |
           rustup target add aarch64-apple-darwin
           rustup target add x86_64-apple-darwin
-
-      - name: Install OpenSSL and set env (macOS only)
-        if: matrix.platform == 'macos-latest'
-        run: |
-          brew update
-          brew install openssl@3
-          prefix=$(brew --prefix openssl@3)
-          echo "OPENSSL_DIR=$prefix" >> $GITHUB_ENV
-          echo "OPENSSL_LIB_DIR=$prefix/lib" >> $GITHUB_ENV
-          echo "OPENSSL_INCLUDE_DIR=$prefix/include" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig" >> $GITHUB_ENV
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -98,17 +79,6 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'v__VERSION__'
-          releaseBody: |
-            ## What's Changed
-
-            See the assets below to download this version and install.
-
-            ### Installation
-            - **macOS**: Download the `.dmg` file
-            - **Windows**: Download the `.msi` file  
-            - **Linux**: Download the `.AppImage` file
-
-            Full changelog: https://github.com/ruru-m07/noutify-v2-stageing/compare/v__PREVIOUS_VERSION__...v__VERSION__
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}

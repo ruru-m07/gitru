@@ -32,6 +32,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-window-state = "2"
 serde_json = "1.0.145"
 tauri-plugin-updater = "2.9.0"
+openssl = { version = "0.10.75", features = ["vendored"] } 
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
