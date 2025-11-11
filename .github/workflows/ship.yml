@@ -29,12 +29,12 @@ jobs:
           # - platform: 'macos-latest'
           #   args: '--target x86_64-apple-darwin'
           #   target: 'x86_64-apple-darwin'
-          - platform: 'ubuntu-22.04'
-            args: ''
-            target: ''
-          - platform: 'windows-latest'
-            args: ''
-            target: ''
+          # - platform: 'ubuntu-22.04'
+          #   args: ''
+          #   target: ''
+          # - platform: 'windows-latest'
+          #   args: ''
+          #   target: ''
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -55,6 +55,17 @@ jobs:
         run: |
           rustup target add aarch64-apple-darwin
           rustup target add x86_64-apple-darwin
+
+      - name: Install OpenSSL and set env (macOS only)
+        if: matrix.platform == 'macos-latest'
+        run: |
+          brew update
+          brew install openssl@3
+          prefix=$(brew --prefix openssl@3)
+          echo "OPENSSL_DIR=$prefix" >> $GITHUB_ENV
+          echo "OPENSSL_LIB_DIR=$prefix/lib" >> $GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=$prefix/include" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig" >> $GITHUB_ENV
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -83,9 +94,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
         with:
           tagName: v__VERSION__
-          releaseName: 'Gitru v__VERSION__'
+          releaseName: 'v__VERSION__'
           releaseBody: |
             ## What's Changed
 
