@@ -31,22 +31,14 @@
     "createUpdaterArtifacts": true,
     "macOS": {
       "dmg": {
-        "background": "../public/assets/dmg-background.png",
-        "windowPosition": {
-          "x": 230,
-          "y": 150
-        },
+        "background": "assets/dmg-background.png",
         "appPosition": {
-          "x": 400,
-          "y": 438
+          "x": 180,
+          "y": 140
         },
         "applicationFolderPosition": {
-          "x": 1092,
-          "y": 438
-        },
-        "windowSize": {
-          "height": 760,
-          "width": 1492
+          "x": 480,
+          "y": 140
         }
       },
       "files": {},
