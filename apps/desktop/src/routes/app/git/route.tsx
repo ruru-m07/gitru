@@ -17,12 +17,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@gitru/ui/components/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@gitru/ui/components/dropdown-menu";
 import { Input } from "@gitru/ui/components/input";
 import {
   InputGroup,
@@ -31,6 +25,12 @@ import {
 } from "@gitru/ui/components/input-group";
 import { Kbd } from "@gitru/ui/components/kbd";
 import { Label } from "@gitru/ui/components/label";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@gitru/ui/components/menu";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -145,15 +145,13 @@ function GitPageLayout() {
                     </div>
                   </div>
                   <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button size={"sm"}>
-                        Add
-                        <ChevronDownIcon
-                          className="-me-1 opacity-60"
-                          size={16}
-                          aria-hidden="true"
-                        />
-                      </Button>
+                    <DropdownMenuTrigger render={<Button size={"sm"} />}>
+                      Add
+                      <ChevronDownIcon
+                        className="-me-1 opacity-60"
+                        size={16}
+                        aria-hidden="true"
+                      />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent className="min-w-(--radix-dropdown-menu-trigger-width)">
                       <DropdownMenuItem
