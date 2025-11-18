@@ -126,7 +126,7 @@
 @layer base {
   :root,
   .light {
-    --radius: 0.8rem;
+    --radius: 0.65rem;
     --background: oklch(1 0 0); /* --color-white */
     --foreground: oklch(0.141 0.005 285.823); /* --color-zinc-950 */
     --card: oklch(1 0 0); /* --color-white */

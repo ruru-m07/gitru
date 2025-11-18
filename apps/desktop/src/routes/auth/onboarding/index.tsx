@@ -84,25 +84,22 @@ const SchemaSelector = () => {
         className="gap-10 grid grid-cols-3"
       >
         {Colors.map(({ key, name }) => (
-          // <div
-          // 	key={key}
-          // 	className={`border-input ${key} has-data-[state=checked]:border-primary/50 relative flex w-full items-start gap-2 rounded-md border p-4 shadow-xs outline-none`}
-          // 	style={{
-          // 		backgroundColor: "var(--background)",
-          // 		color: "var(--foreground)",
-          // 		border:
-          // 			mounted && theme === key
-          // 				? `1px solid var(--primary)`
-          // 				: `1px solid var(--border)`,
-          // 	}}
-          // >
-          <div
+          <label
             key={key}
-            className={`relative flex w-full items-start ${key} gap-2 rounded-md border p-4 shadow-xs outline-none ${mounted && theme === key ? "ring-2 ring-primary" : "ring-1 ring-border"}`}
-            style={{
-              backgroundColor: "var(--background)",
-              color: "var(--foreground)",
-            }}
+            htmlFor={`${id}-${key}`}
+            className={cn(
+              key,
+              "relative flex w-full items-start gap-2 rounded-md border p-4 shadow-xs outline-none",
+              mounted && theme === key
+                ? "border-2 border-[var(--primary)]"
+                : "border-2 border-transparent",
+            )}
+            style={
+              {
+                backgroundColor: "var(--background)",
+                color: "var(--foreground)",
+              } as React.CSSProperties
+            }
           >
             <div className="flex flex-col">
               <div className="flex items-center justify-between mb-4">
@@ -145,7 +142,7 @@ const SchemaSelector = () => {
                 )}
               </div>
             </div>
-          </div>
+          </label>
         ))}
       </RadioGroup>
       <div className="mt-10 flex items-center justify-center">
