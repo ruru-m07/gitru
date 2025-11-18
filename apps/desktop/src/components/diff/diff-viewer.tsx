@@ -408,7 +408,7 @@ export function DiffViewer({
   // }
 
   return (
-    <Card className="overflow-hidden rounded-none border-0">
+    <Card className="overflow-hidden rounded-none border-0 py-0">
       {/* // TODO(ruru-m07): will do something better here */}
       {/* {treatAsNewFile || treatAsDeletedFile ? (
 				<div

@@ -1,24 +1,14 @@
-"use client";
-
 import { cn } from "@gitru/ui/lib/utils";
 import * as React from "react";
 
-const Label = React.forwardRef<
-  HTMLLabelElement,
-  React.LabelHTMLAttributes<HTMLLabelElement>
->(
-  // eslint-disable-next-line react/prop-types
-  ({ className, ...props }, ref) => (
+function Label({ className, ...props }: React.ComponentProps<"label">) {
+  return (
     <label
-      ref={ref}
-      className={cn(
-        "text-sm font-medium leading-4 text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
-        className,
-      )}
+      data-slot="label"
+      className={cn("inline-flex items-center gap-2 text-sm/4", className)}
       {...props}
     />
-  ),
-);
-Label.displayName = "Label";
+  );
+}
 
 export { Label };

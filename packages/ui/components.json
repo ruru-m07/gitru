@@ -12,9 +12,12 @@
   "iconLibrary": "lucide",
   "aliases": {
     "components": "@gitru/ui/components",
-    "utils": "@gitru/ui/lib",
-    "hooks": "@gitru/ui/hooks",
+    "utils": "@gitru/ui/lib/utils",
+    "ui": "@gitru/ui/components",
     "lib": "@gitru/ui/lib/utils",
-    "ui": "@gitru/ui/components"
+    "hooks": "@gitru/ui/hooks"
+  },
+  "registries": {
+    "@coss": "https://coss.com/ui/r/{name}.json"
   }
 }

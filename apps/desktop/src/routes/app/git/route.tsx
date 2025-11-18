@@ -24,6 +24,12 @@ import {
   DropdownMenuTrigger,
 } from "@gitru/ui/components/dropdown-menu";
 import { Input } from "@gitru/ui/components/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupTextarea,
+} from "@gitru/ui/components/input-group";
+import { Kbd } from "@gitru/ui/components/kbd";
 import { Label } from "@gitru/ui/components/label";
 import {
   ResizableHandle,
@@ -31,7 +37,8 @@ import {
   ResizablePanelGroup,
 } from "@gitru/ui/components/resizable";
 import { ScrollArea } from "@gitru/ui/components/scroll-area";
-import { Textarea } from "@gitru/ui/components/textarea";
+import { Separator } from "@gitru/ui/components/separator";
+import { Tabs, TabsList, TabsPanel, TabsTab } from "@gitru/ui/components/tabs";
 import { cn } from "@gitru/ui/lib/utils";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -53,10 +60,12 @@ import {
   Minus,
   Plus,
   SearchIcon,
+  Sparkles,
   SquareDot,
   SquarePlus,
   SquareX,
   Undo2,
+  UserPlus,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -99,7 +108,7 @@ function GitPageLayout() {
           defaultSize={18}
           minSize={18}
           maxSize={44}
-          className="flex flex-col h-full justify-between"
+          className="flex flex-col h-full"
         >
           <button
             onClick={() => {
@@ -122,254 +131,275 @@ function GitPageLayout() {
               <ChevronDown size={18} />
             )}
           </button>
-          {repoSelectIsOpen ? (
-            <ScrollArea type="scroll" className="max-h-full flex-1">
-              <div className="w-full p-2 border-b flex justify-between items-center gap-2">
-                <div className="relative">
-                  <Input
-                    className="peer ps-9 pe-9 h-8 border-border"
-                    placeholder="Filter..."
-                  />
-                  <div className="text-muted-foreground/80 pointer-events-none absolute inset-y-0 start-0 flex items-center justify-center ps-3 peer-disabled:opacity-50">
-                    <SearchIcon size={16} />
+          <div className="h-[calc(100vh_-_calc(var(--spacing)_*_14)_-_calc(var(--spacing)_*_9)_-_calc(var(--spacing)_*_3))]">
+            {repoSelectIsOpen ? (
+              <ScrollArea className="max-h-full _flex-1">
+                <div className="w-full p-2 border-b flex justify-between items-center gap-2">
+                  <div className="relative">
+                    <Input
+                      className="peer ps-9 pe-9 h-8 border-border"
+                      placeholder="Filter..."
+                    />
+                    <div className="text-muted-foreground/80 pointer-events-none absolute inset-y-0 start-0 flex items-center justify-center ps-3 peer-disabled:opacity-50">
+                      <SearchIcon size={16} />
+                    </div>
                   </div>
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button size={"sm"}>
-                      Add
-                      <ChevronDownIcon
-                        className="-me-1 opacity-60"
-                        size={16}
-                        aria-hidden="true"
-                      />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="min-w-(--radix-dropdown-menu-trigger-width)">
-                    <DropdownMenuItem
-                      onClick={async () => {
-                        console.log(repositories);
-                      }}
-                    >
-                      Clone repository...
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={async () => {
-                        const folder = await open({
-                          directory: true,
-                          multiple: false,
-                        });
-
-                        if (folder) {
-                          if (repositories.find((r) => r.path === folder)) {
-                            toast.error("Repository already added");
-                            return;
-                          }
-
-                          const data = await addLocalGitRepo({
-                            repo_path: folder,
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size={"sm"}>
+                        Add
+                        <ChevronDownIcon
+                          className="-me-1 opacity-60"
+                          size={16}
+                          aria-hidden="true"
+                        />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="min-w-(--radix-dropdown-menu-trigger-width)">
+                      <DropdownMenuItem
+                        onClick={async () => {
+                          console.log(repositories);
+                        }}
+                      >
+                        Clone repository...
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={async () => {
+                          const folder = await open({
+                            directory: true,
+                            multiple: false,
                           });
 
-                          if (data.error) {
-                            toast.error(data.error);
-                            return;
-                          }
-                          if (data.success) {
-                            setRepositories([...repositories, data.success]);
-                            setSelectedRepository(data.success);
-                            toast.success("Repository added successfully!");
-                          }
-                        }
-                      }}
-                    >
-                      Add local repository
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-              <div className="">
-                {repositories.map((repo) => (
-                  <button
-                    className="py-2 px-2 flex w-full justify-between items-center hover:bg-accent/55 cursor-pointer"
-                    key={repo.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedRepository(repo);
-                      setRepoSelectIsOpen(false);
-                    }}
-                  >
-                    <span>{repo.name}</span>
-                    <Button
-                      variant={"ghost"}
-                      size={"icon"}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setRepositories(
-                          repositories.filter((r) => r.id !== repo.id),
-                        );
-                        toast.success("Repository removed");
+                          if (folder) {
+                            if (repositories.find((r) => r.path === folder)) {
+                              toast.error("Repository already added");
+                              return;
+                            }
 
-                        if (selectedRepository?.id === repo.id) {
-                          setSelectedRepository(null);
-                        }
-                      }}
-                    >
-                      <Minus size={16} />
-                    </Button>
-                  </button>
-                ))}
-              </div>
-            </ScrollArea>
-          ) : (
-            <>
-              <div className="grid grid-cols-2 w-full min-h-9 max-h-9">
-                <button
-                  type="button"
-                  className={cn(
-                    buttonVariants({ variant: "ghost" }),
-                    "h-full rounded-none border-border _border-b border-l border-l-transparent hover:border-l-border",
-                  )}
-                >
-                  Changes
-                </button>
-                <button
-                  type="button"
-                  className={cn(
-                    buttonVariants({ variant: "ghost" }),
-                    "h-full rounded-none border-l border-b rounded-bl-sm",
-                  )}
-                >
-                  History
-                </button>
-              </div>
-              <div className="max-h-full overflow-auto flex-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                {/* <div className="w-full p-2 border-b flex justify-between items-center">
-								<Checkbox />
-								<span className="text-sm">{status.length} Changed Files</span>
-								<div />
-							</div> */}
-                {/* <div className="max-w-full">
-								{status.map((file) => (
-									<EachStatus key={file.path} file={file} type="Changes" />
-								))}
-							</div> */}
-                <Accordion
-                  type="multiple"
-                  defaultValue={["Staged Changes", "Changes"]}
-                  className="w-full divide-y"
-                >
-                  {(
-                    [
-                      { name: "Staged Changes", data: status.stagedChanges },
-                      { name: "Changes", data: status.unstagedChanges },
-                    ] as const
-                  ).map((cell) => {
-                    if (!cell.data || cell.data.length === 0) {
-                      return null;
-                    }
-                    return (
-                      <AccordionItem
-                        defaultChecked
-                        value={cell.name}
-                        key={cell.name}
-                        className="pt-2 pb-2"
+                            const data = await addLocalGitRepo({
+                              repo_path: folder,
+                            });
+
+                            if (data.error) {
+                              toast.error(data.error);
+                              return;
+                            }
+                            if (data.success) {
+                              setRepositories([...repositories, data.success]);
+                              setSelectedRepository(data.success);
+                              toast.success("Repository added successfully!");
+                            }
+                          }
+                        }}
                       >
-                        <AccordionTrigger
-                          className={cn(
-                            "justify-start sticky top-0 rounded-none px-3 gap-2 py-0 hover:no-underline [&>svg]:-order-1",
-                          )}
-                        >
-                          <div className="flex items-center justify-between w-full">
-                            <span className="text-sm font-medium">
-                              {cell.name}
-                            </span>
-                            <div className="flex items-center gap-1 pointer-events-auto">
-                              {cell.name === "Changes" && (
-                                <>
-                                  <DiscardChangesDialog fileName="." />
+                        Add local repository
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <div className="">
+                  {repositories.map((repo) => (
+                    <button
+                      className="py-2 px-2 flex w-full justify-between items-center hover:bg-accent/55 cursor-pointer"
+                      key={repo.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedRepository(repo);
+                        setRepoSelectIsOpen(false);
+                      }}
+                    >
+                      <span>{repo.name}</span>
+                      <Button
+                        variant={"ghost"}
+                        size={"icon"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRepositories(
+                            repositories.filter((r) => r.id !== repo.id),
+                          );
+                          toast.success("Repository removed");
 
-                                  <div
-                                    onClick={async (event) => {
-                                      event.stopPropagation();
-                                      await operations.addAll();
-                                    }}
-                                    className={cn(
-                                      buttonVariants({
-                                        variant: "ghost",
-                                        className: "h-8 w-8",
-                                      }),
+                          if (selectedRepository?.id === repo.id) {
+                            setSelectedRepository(null);
+                          }
+                        }}
+                      >
+                        <Minus size={16} />
+                      </Button>
+                    </button>
+                  ))}
+                </div>
+              </ScrollArea>
+            ) : (
+              <>
+                <Tabs
+                  defaultValue="tab-1"
+                  className={"gap-0 h-full flex flex-col"}
+                >
+                  <TabsList
+                    className={"rounded-none w-full border-l border-b shrink-0"}
+                  >
+                    <TabsTab className={"rounded-none! ml-px"} value="tab-1">
+                      Changes
+                    </TabsTab>
+                    <TabsTab className={"rounded-none!"} value="tab-2">
+                      History
+                    </TabsTab>
+                  </TabsList>
+                  <TabsPanel
+                    value="tab-1"
+                    className={"flex-1 flex flex-col min-h-0"}
+                  >
+                    <div className="flex-1 overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                      <Accordion
+                        defaultValue={["Staged Changes", "Changes"]}
+                        className="w-full divide-y"
+                      >
+                        {(
+                          [
+                            {
+                              name: "Staged Changes",
+                              data: status.stagedChanges,
+                            },
+                            {
+                              name: "Changes",
+                              data: status.unstagedChanges,
+                            },
+                          ] as const
+                        ).map((cell) => {
+                          if (!cell.data || cell.data.length === 0) {
+                            return null;
+                          }
+                          return (
+                            <AccordionItem
+                              value={cell.name}
+                              key={cell.name}
+                              className="pt-2 pb-2"
+                            >
+                              <AccordionTrigger
+                                className={cn(
+                                  "items-center rounded-none px-3 gap-2 py-0 hover:no-underline [&>svg]:mb-1 [&>svg]:-order-1",
+                                )}
+                              >
+                                <div className="flex items-center justify-between w-full">
+                                  <span className="text-sm font-medium">
+                                    {cell.name}
+                                  </span>
+                                  <div className="flex items-center gap-1 pointer-events-auto">
+                                    {cell.name === "Changes" && (
+                                      <>
+                                        <DiscardChangesDialog fileName="." />
+
+                                        <div
+                                          onClick={async (event) => {
+                                            event.stopPropagation();
+                                            await operations.addAll();
+                                          }}
+                                          className={cn(
+                                            buttonVariants({
+                                              variant: "ghost",
+                                              className: "h-8 w-8",
+                                            }),
+                                          )}
+                                        >
+                                          <Plus size={20} strokeWidth={1.25} />
+                                        </div>
+                                      </>
                                     )}
-                                  >
-                                    <Plus size={20} strokeWidth={1.25} />
+                                    {cell.name === "Staged Changes" && (
+                                      <div
+                                        onClick={async (event) => {
+                                          event.stopPropagation();
+                                          await operations.removeAll();
+                                        }}
+                                        className={cn(
+                                          buttonVariants({
+                                            variant: "ghost",
+                                            className: "h-8 w-8",
+                                          }),
+                                        )}
+                                      >
+                                        <Minus size={20} strokeWidth={1.25} />
+                                      </div>
+                                    )}
+                                    <Badge variant={"secondary"}>
+                                      {cell.data?.length}
+                                    </Badge>
                                   </div>
-                                </>
-                              )}
-                              {cell.name === "Staged Changes" && (
-                                <div
-                                  onClick={async (event) => {
-                                    event.stopPropagation();
-                                    await operations.removeAll();
-                                  }}
-                                  className={cn(
-                                    buttonVariants({
-                                      variant: "ghost",
-                                      className: "h-8 w-8",
-                                    }),
-                                  )}
-                                >
-                                  <Minus size={20} strokeWidth={1.25} />
                                 </div>
-                              )}
-                              <Badge variant={"secondary"}>
-                                {cell.data?.length}
-                              </Badge>
-                            </div>
-                          </div>
-                        </AccordionTrigger>
-                        <AccordionContent className="text-muted-foreground  pb-1">
-                          {cell.data?.map((v) => (
-                            <EachStatus
-                              key={v.path}
-                              file={v}
-                              type={cell.name}
-                              onAdd={
-                                cell.name === "Changes"
-                                  ? operations.add
-                                  : undefined
-                              }
-                              onUnstage={
-                                cell.name === "Staged Changes"
-                                  ? operations.unstage
-                                  : undefined
-                              }
-                            />
-                          ))}
-                        </AccordionContent>
-                      </AccordionItem>
-                    );
-                  })}
-                </Accordion>
-              </div>
-              <div className="flex flex-col gap-2 justify-between items-center border-t px-2 py-2 bg-accent/40">
-                <Input
-                  placeholder="Summary (required)"
-                  className="h-8 border-border"
-                />
-                <Textarea placeholder="Description" className="border-border" />
-                <Button className="w-full" size={"sm"}>
-                  Commit to main
-                </Button>
-              </div>
-            </>
-          )}
+                              </AccordionTrigger>
+                              <AccordionContent className="text-muted-foreground pb-1">
+                                {cell.data?.map((v) => (
+                                  <EachStatus
+                                    key={v.path}
+                                    file={v}
+                                    type={cell.name}
+                                    onAdd={
+                                      cell.name === "Changes"
+                                        ? operations.add
+                                        : undefined
+                                    }
+                                    onUnstage={
+                                      cell.name === "Staged Changes"
+                                        ? operations.unstage
+                                        : undefined
+                                    }
+                                  />
+                                ))}
+                              </AccordionContent>
+                            </AccordionItem>
+                          );
+                        })}
+                      </Accordion>
+                    </div>
+                    <div className="shrink-0 border-l border-b rounded-bl-md flex flex-col gap-2 justify-between items-center border-t px-2 py-2 bg-accent">
+                      <Input
+                        placeholder="Summary (required)"
+                        className="h-8 _border-border"
+                      />
+                      <InputGroup>
+                        <InputGroupTextarea placeholder="Description" />
+                        <InputGroupAddon align="block-end">
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            className="rounded-full opacity-50 hover:opacity-100"
+                            aria-label="Add Co Authors"
+                          >
+                            <UserPlus size={16} />
+                          </Button>
+                          <Separator
+                            orientation="vertical"
+                            className={"h-[80%] mx-0"}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            className="rounded-full opacity-50 hover:opacity-100"
+                            aria-label="Add files"
+                          >
+                            <Sparkles size={16} />
+                          </Button>
+                        </InputGroupAddon>
+                      </InputGroup>
+                      <Button className="w-full">Commit to main</Button>
+                    </div>
+                  </TabsPanel>
+                  <TabsPanel value="tab-2">
+                    <p className="p-4 text-center text-xs text-muted-foreground">
+                      Tab 2 content
+                    </p>
+                  </TabsPanel>
+                </Tabs>
+              </>
+            )}
+          </div>
         </ResizablePanel>
       }
-      <ResizableHandle withHandle />
+      <ResizableHandle className="cursor-grab!" withHandle />
       {
-        // @ts-ignore
         <ResizablePanel
           className={cn(
-            // 'w-[calc(100vw-(var(--sidebar-width)+var(--inbox-width)+(var(--margin)))+3.5rem)]',
             "w-full relative",
             repoSelectIsOpen && "_blur-sm cursor-pointer",
           )}
@@ -429,18 +459,16 @@ export default function EachStatus({
           <div className="flex items-center w-full min-w-0">
             <div className="flex-shrink-0">{getStatusIcon(file.status)}</div>
             <div className="flex items-center ml-2 min-w-0 flex-1">
-              <Label className="flex cursor-pointer items-center min-w-0 w-full">
+              <Label className="flex cursor-pointer items-center min-w-0 w-full gap-0">
                 {file?.path.split("/").slice(0, -1).join("/") && (
                   <>
                     <span className="text-muted-foreground truncate">
                       {file.path.split("/").slice(0, -1).join("/")}
                     </span>
-                    <span className="text-muted-foreground flex-shrink-0">
-                      /
-                    </span>
+                    <span className="text-muted-foreground">/</span>
                   </>
                 )}
-                <span className="flex-shrink-0 font-medium">
+                <span className="flex-shrink-0 font-medium text-foreground">
                   {file?.path.split("/").slice(-1)[0]}
                 </span>
               </Label>
@@ -603,17 +631,19 @@ const DiscardChangesDialog = ({ fileName }: { fileName: string }) => {
         setOpen(open);
       }}
     >
-      <DialogTrigger asChild>
-        <Button
-          onClick={(e) => {
-            e.stopPropagation();
-            setOpen(true);
-          }}
-          className="h-8 w-8"
-          variant={"ghost"}
-        >
-          <Undo2 size={20} strokeWidth={1.25} />
-        </Button>
+      <DialogTrigger
+        render={
+          <Button
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(true);
+            }}
+            className="h-8 w-8"
+            variant={"ghost"}
+          />
+        }
+      >
+        <Undo2 size={20} strokeWidth={1.25} />
       </DialogTrigger>
       <DialogContent className="min-w-[600px]">
         <div className="flex flex-col items-center gap-2">
@@ -641,25 +671,30 @@ const DiscardChangesDialog = ({ fileName }: { fileName: string }) => {
           </DialogHeader>
         </div>
 
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1"
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-              disabled={isDeleteLoading}
-            >
-              Cancel
-            </Button>
+        <DialogFooter className="grid grid-cols-2 p-3!">
+          <DialogClose
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                size={"lg"}
+                onClick={(e) => {
+                  e.stopPropagation();
+                }}
+                disabled={isDeleteLoading}
+              />
+            }
+          >
+            Cancel
+            <Kbd>Esc</Kbd>
           </DialogClose>
           <Button
             type="button"
             className="flex-1"
             variant={"destructive"}
             disabled={isDeleteLoading}
+            size={"lg"}
             onClick={async (e) => {
               e.stopPropagation();
               setIsDeleteLoading(true);
@@ -677,6 +712,9 @@ const DiscardChangesDialog = ({ fileName }: { fileName: string }) => {
             }}
           >
             Discard
+            <Kbd className="bg-background/30 text-background">
+              {/* <CornerDownLeft /> */}↵
+            </Kbd>
           </Button>
         </DialogFooter>
       </DialogContent>

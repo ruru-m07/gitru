@@ -33,7 +33,7 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
             style={{
               // @ts-expect-error - ¯\_(ツ)_/¯
               WebkitAppRegion: "no-drag",
-              paddingLeft: "66px",
+              paddingLeft: "70px",
             }}
           >
             <Button
@@ -73,14 +73,14 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
                 strokeWidth={2}
                 aria-hidden="true"
               />{" "}
-              <div className="flex items-center gap-1 text-muted-foreground font-semibold">
+              <div className="flex items-center gap-1 text-muted-foreground">
                 ruru-m07
                 <CaretRightIcon />
-                noutify
+                gitru
                 <CaretRightIcon />
                 pulls
                 <CaretRightIcon />
-                #69
+                <span className="text-foreground">#69</span>
               </div>
             </div>
           </div>

@@ -77,7 +77,7 @@ function App() {
     <>
       <div className="w-full min-h-14 max-h-14 h-14 border-b flex">
         <Button
-          className="flex border-r justify-between items-center h-full rounded-none hover:border-t w-72"
+          className="flex border-r-border! justify-between items-center h-full rounded-none hover:border-t w-72"
           variant={"ghost"}
           onClick={async () => {
             const data = await currentBranch({
@@ -101,7 +101,7 @@ function App() {
           <ChevronDown size={18} />
         </Button>
         <Button
-          className="flex border-r justify-between items-center h-full rounded-none hover:border-t w-72"
+          className="flex border-r-border! justify-between items-center h-full rounded-none hover:border-t w-72"
           variant={"ghost"}
         >
           <div className="flex items-center justify-center gap-4">
@@ -128,17 +128,19 @@ function App() {
         </div>
         <div>
           <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="relative"
-                aria-label="Open notifications"
-              >
-                <Settings size={16} aria-hidden="true" />
-              </Button>
+            <PopoverTrigger
+              render={
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="relative"
+                  aria-label="Open notifications"
+                />
+              }
+            >
+              <Settings size={16} aria-hidden="true" />
             </PopoverTrigger>
-            <PopoverContent className="w-80 p-4 mr-4 mt-0.5">
+            <PopoverContent className="w-80 mr-4 py-0 px-0 mt-0.5">
               <div className="flex items-center justify-center">
                 <div className="flex flex-col items-center gap-2 w-full">
                   <Button
@@ -174,13 +176,17 @@ function App() {
         </div>
       </div>
       {selectedFilePath ? (
-        <ScrollArea className={cn("h-full w-full")}>
+        <ScrollArea
+          className={cn(
+            "h-[calc(100vh_-_calc(var(--spacing)_*_14)_-_calc(var(--spacing)_*_9)_-_calc(var(--spacing)_*_12))] w-full",
+          )}
+        >
           <DiffViewer
             diff={diffData}
             filePath={selectedFilePath}
             status={selectedFileStatus}
           />
-          <div className="h-40" />
+          {/* <div className="h-40" /> */}
         </ScrollArea>
       ) : (
         <div className="w-full flex items-center justify-center h-full">
