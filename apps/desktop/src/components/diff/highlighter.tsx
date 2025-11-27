@@ -42,6 +42,7 @@ export const EXTENSION_LANGUAGE_MAP: Record<
   csv: "csv",
   markdown: "markdown",
   md: "markdown",
+  toml: "toml",
   mdx: "mdx" as BundledLanguage,
 };
 
@@ -82,6 +83,7 @@ const ALWAYS_AVAILABLE_LANGS = [
   "mdx",
   "groovy",
   "ruby",
+  "toml",
 ] as BundledLanguage[];
 
 let cancelled = false;

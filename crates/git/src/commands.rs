@@ -1,36 +1,10 @@
 use git2::{Commit, Repository};
 use serde::Serialize;
-use tauri::command;
 
 use crate::{
-    diff::FileVersion,
-    status::{
-        FileStatus, FileStatusKind, collect_statuses, default_status_options,
-        types::GetStatusResponse,
-    },
+    status::{collect_statuses, default_status_options},
+    types::{GetStatusResponse, GitResult},
 };
-
-#[derive(Serialize)]
-pub struct GitResult {
-    success: bool,
-    message: Option<String>,
-}
-
-impl GitResult {
-    pub fn success() -> Self {
-        Self {
-            success: true,
-            message: None,
-        }
-    }
-
-    pub fn error(msg: impl Into<String>) -> Self {
-        Self {
-            success: false,
-            message: Some(msg.into()),
-        }
-    }
-}
 
 #[derive(Serialize)]
 pub struct CommitResult {
@@ -38,7 +12,7 @@ pub struct CommitResult {
     message: Option<String>,
 }
 
-#[command(rename_all = "snake_case")]
+#[tauri::command]
 pub fn get_status(repo_path: &str) -> Result<GetStatusResponse, String> {
     let mut opts = default_status_options();
     let files = collect_statuses(repo_path, &mut opts)?;
@@ -46,7 +20,7 @@ pub fn get_status(repo_path: &str) -> Result<GetStatusResponse, String> {
 }
 
 // git add <file>
-#[tauri::command(rename_all = "snake_case")]
+#[tauri::command]
 pub fn git_add(repo_path: &str, file: &str) -> GitResult {
     let repo = match Repository::open(repo_path) {
         Ok(r) => r,
@@ -111,7 +85,7 @@ pub fn git_add(repo_path: &str, file: &str) -> GitResult {
 }
 
 // git restore --staged <file>
-#[tauri::command(rename_all = "snake_case")]
+#[tauri::command]
 pub fn git_remove(repo_path: &str, file: &str) -> GitResult {
     println!("{:?} --- {:?}", repo_path, file);
 
@@ -219,7 +193,7 @@ pub fn git_remove(repo_path: &str, file: &str) -> GitResult {
 }
 
 // git restore <file>
-#[tauri::command(rename_all = "snake_case")]
+#[tauri::command]
 pub fn git_discard(repo_path: &str, file: &str) -> GitResult {
     let repo = match Repository::open(repo_path) {
         Ok(r) => r,
@@ -297,7 +271,7 @@ pub fn git_discard(repo_path: &str, file: &str) -> GitResult {
 }
 
 // git commit <file>
-#[tauri::command(rename_all = "snake_case")]
+#[tauri::command]
 pub fn commit(
     repo_path: &str,
     message: &str,
@@ -391,20 +365,4 @@ pub fn commit(
             message: Some(format!("Commit failed: {e}")),
         },
     }
-}
-
-// damm stuff
-#[tauri::command(rename_all = "snake_case")]
-pub fn generate_file_status() -> FileStatus {
-    todo!()
-}
-
-#[tauri::command(rename_all = "snake_case")]
-pub fn generate_file_status_kind() -> FileStatusKind {
-    todo!()
-}
-
-#[tauri::command(rename_all = "snake_case")]
-pub fn generate_file_version() -> FileVersion {
-    todo!()
 }

@@ -4,8 +4,6 @@ export {
   gitRepositoryManager,
 } from "./GitRepositoryManager";
 export {
-  useCommitHistory,
-  useCurrentBranch,
   useFileDiff,
   useGit,
   useGitOperations,

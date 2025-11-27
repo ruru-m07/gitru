@@ -21,7 +21,9 @@
   app-region: drag;
 }
 
-html[data-theme="dark-classic"] {
+html[data-theme="dark-classic"],
+html[data-theme="dark-caffeine"],
+html[data-theme="dark-claude"] {
   span {
     background-color: var(--shiki-dark-classic-bg) !important;
     color: var(--shiki-dark-classic) !important;

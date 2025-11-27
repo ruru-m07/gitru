@@ -6,14 +6,21 @@ import { cn } from "@gitru/ui/lib/utils";
 
 function ScrollArea({
   className,
+  classNameRoot,
   children,
   orientation,
+  hiddenScrollbar = false,
   ...props
 }: ScrollAreaPrimitive.Root.Props & {
   orientation?: "horizontal" | "vertical" | "both";
+  classNameRoot?: string;
+  hiddenScrollbar?: boolean;
 }) {
   return (
-    <ScrollAreaPrimitive.Root className="min-h-0" {...props}>
+    <ScrollAreaPrimitive.Root
+      className={cn("min-h-0", classNameRoot)}
+      {...props}
+    >
       <ScrollAreaPrimitive.Viewport
         data-slot="scroll-area-viewport"
         className={cn(
@@ -23,13 +30,17 @@ function ScrollArea({
       >
         {children}
       </ScrollAreaPrimitive.Viewport>
-      {orientation === "both" ? (
+      {hiddenScrollbar ? null : (
         <>
-          <ScrollBar orientation="vertical" />
-          <ScrollBar orientation="horizontal" />
+          {orientation === "both" ? (
+            <>
+              <ScrollBar orientation="vertical" />
+              <ScrollBar orientation="horizontal" />
+            </>
+          ) : (
+            <ScrollBar orientation={orientation} />
+          )}
         </>
-      ) : (
-        <ScrollBar orientation={orientation} />
       )}
       <ScrollAreaPrimitive.Corner data-slot="scroll-area-corner" />
     </ScrollAreaPrimitive.Root>

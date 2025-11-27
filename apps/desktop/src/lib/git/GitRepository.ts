@@ -1,4 +1,3 @@
-import { invoke } from "@tauri-apps/api/core";
 import { fileWatcherService } from "@/services/fileWatcher";
 import {
   commit,
@@ -267,7 +266,7 @@ export class GitRepository {
   private async fetchStatus(): Promise<FileStatus[]> {
     try {
       const result = await getStatus({
-        repo_path: this.path,
+        repoPath: this.path,
       });
       return result.files;
     } catch (error) {
@@ -321,8 +320,8 @@ export class GitRepository {
   private async fetchDiff(filePath: string): Promise<string> {
     try {
       const result = await getDiff({
-        repo_path: this.path,
-        file_path: filePath,
+        repoPath: this.path,
+        filePath: filePath,
       });
 
       // Handle binary files
@@ -369,7 +368,7 @@ export class GitRepository {
   async add(filePath: string): Promise<boolean> {
     try {
       const result = await gitAdd({
-        repo_path: this.path,
+        repoPath: this.path,
         file: filePath,
       });
 
@@ -394,7 +393,7 @@ export class GitRepository {
   async unstage(filePath: string): Promise<boolean> {
     try {
       const result = await gitRemove({
-        repo_path: this.path,
+        repoPath: this.path,
         file: filePath,
       });
       console.log({ result, filePath });
@@ -419,7 +418,7 @@ export class GitRepository {
   async discard(filePath: string): Promise<boolean> {
     try {
       const result = await gitDiscard({
-        repo_path: this.path,
+        repoPath: this.path,
         file: filePath,
       });
 
@@ -448,7 +447,7 @@ export class GitRepository {
         : message;
 
       const result = await commit({
-        repo_path: this.path,
+        repoPath: this.path,
         message: fullMessage,
       });
 
@@ -474,7 +473,7 @@ export class GitRepository {
   async addAll(): Promise<boolean> {
     try {
       const result = await gitAdd({
-        repo_path: this.path,
+        repoPath: this.path,
         file: ".",
       });
 
@@ -495,7 +494,7 @@ export class GitRepository {
   async removeAll(): Promise<boolean> {
     try {
       const result = await gitRemove({
-        repo_path: this.path,
+        repoPath: this.path,
         file: ".",
       });
 
@@ -513,43 +512,6 @@ export class GitRepository {
       console.error("Failed to remove all:", error);
       this.emit("error", { type: "remove-all-failed", error });
       return false;
-    }
-  }
-
-  /**
-   * Get current branch name
-   */
-  async getCurrentBranch(): Promise<string | null> {
-    try {
-      const result = await invoke<{ branch: string }>("git_current_branch", {
-        repoPath: this.path,
-      });
-      return result.branch;
-    } catch (error) {
-      console.error("Failed to get current branch:", error);
-      this.emit("error", { type: "branch-failed", error });
-      return null;
-    }
-  }
-
-  /**
-   * Get commit history
-   */
-  async getHistory(options?: {
-    limit?: number;
-    skip?: number;
-  }): Promise<any[]> {
-    try {
-      const result = await invoke<{ commits: any[] }>("git_history", {
-        repoPath: this.path,
-        limit: options?.limit || 50,
-        skip: options?.skip || 0,
-      });
-      return result.commits;
-    } catch (error) {
-      console.error("Failed to get history:", error);
-      this.emit("error", { type: "history-failed", error });
-      return [];
     }
   }
 

@@ -7,8 +7,11 @@ type ViewMode = "split" | "unified";
 interface DiffViewState {
   viewMode: ViewMode;
   setViewMode: (mode: ViewMode) => void;
-  selectedFilePath?: string;
-  setSelectedFilePath: (path: string) => void;
+  selectedFilePath?: {
+    path: string;
+    newPath?: string;
+  };
+  setSelectedFilePath: (path?: { path: string; newPath?: string }) => void;
   selectedFileStatus?: FileStatusKind[];
   setSelectedFileStatus: (status: FileStatusKind[]) => void;
 }

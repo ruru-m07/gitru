@@ -1,6 +1,6 @@
 use git2::{Repository, Status, StatusOptions};
 
-use crate::status::{FileStatus, FileStatusKind};
+use crate::types::{FileStatus, FileStatusKind};
 
 pub fn collect_statuses(
     repo_path: &str,
@@ -15,7 +15,6 @@ pub fn collect_statuses(
     let result = statuses
         .iter()
         .filter_map(|entry| {
-            let path = entry.path()?.into();
             let s = entry.status();
             let status = human_readable_status(s);
 
@@ -23,7 +22,34 @@ pub fn collect_statuses(
                 return None;
             }
 
-            Some(FileStatus { path: path, status })
+            // For renamed files, get both old and new paths
+            let (path, new_path) = if s.is_index_renamed() {
+                // Index rename: HEAD -> Index
+                if let Some(diff) = entry.head_to_index() {
+                    let old_path = diff.old_file().path().map(|p| p.to_string_lossy().into());
+                    let new_path = diff.new_file().path().map(|p| p.to_string_lossy().into());
+                    (old_path?, new_path)
+                } else {
+                    (entry.path()?.into(), None)
+                }
+            } else if s.is_wt_renamed() {
+                // Working tree rename: Index -> Workdir
+                if let Some(diff) = entry.index_to_workdir() {
+                    let old_path = diff.old_file().path().map(|p| p.to_string_lossy().into());
+                    let new_path = diff.new_file().path().map(|p| p.to_string_lossy().into());
+                    (old_path?, new_path)
+                } else {
+                    (entry.path()?.into(), None)
+                }
+            } else {
+                (entry.path()?.into(), None)
+            };
+
+            Some(FileStatus {
+                path,
+                new_path,
+                status,
+            })
         })
         .collect();
 
