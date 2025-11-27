@@ -126,7 +126,7 @@ function App() {
         <>
           <div className="w-full h-[37px] border-b flex justify-between items-center">
             <div className="items-center h-full px-2 flex gap-2">
-              {selectedFileStatus && getStatusIcon(selectedFileStatus)}
+              {getStatusIcon(selectedFileStatus)}
               <span className="flex items-center">
                 <span className="text-muted-foreground/75">
                   {selectedFilePath

@@ -1,6 +1,5 @@
 use git2::{Commit, Repository};
 use serde::Serialize;
-use std::time::Instant;
 
 #[derive(Serialize, Clone, Debug)]
 pub struct Author {
@@ -26,13 +25,11 @@ pub struct CommitInfo {
 
 #[tauri::command]
 pub fn history(repo_path: &str, skip: usize, limit: usize) -> Result<Vec<CommitInfo>, String> {
-    let start_time = Instant::now();
-
     let repo = Repository::open(repo_path).map_err(|e| e.to_string())?;
 
     let mut revwalk = repo.revwalk().map_err(|e| e.to_string())?;
 
-    revwalk.push_head().unwrap();
+    revwalk.push_head().map_err(|e| e.to_string())?;
 
     let mut commits = Vec::with_capacity(limit);
 
@@ -49,17 +46,13 @@ pub fn history(repo_path: &str, skip: usize, limit: usize) -> Result<Vec<CommitI
         });
     }
 
-    let end_time = Instant::now();
-    let duration = end_time.duration_since(start_time);
-    println!("History function took: {:?}", duration);
-
     Ok(commits)
 }
 
-/// extracting auther, coAuther and commiter from the &Commit
-/// typecaly it;s streate formward to get auther and committer
-/// to get the get co-authers we can look for patter in commit.message() || commit.body()
-/// if line.starts_with("Co-authored-by:") then we can procsess to get {name} <{email}>
+/// Extracting author, co-author and committer from the &Commit
+/// Typically it's straightforward to get author and committer
+/// To get the co-authors we can look for pattern in commit.message() || commit.body()
+/// if line.starts_with("Co-authored-by:") then we can process to get {name} <{email}>
 fn extract_all_authors(commit: &Commit) -> CommitAuthors {
     let author = Author {
         name: commit.author().name().unwrap_or("").to_string(),

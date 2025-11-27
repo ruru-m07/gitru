@@ -125,7 +125,6 @@ function GitPageLayout() {
           limit: 100,
           skip: 0,
         });
-        console.log(data);
         setCommitHistory(data);
       }
     })();
@@ -402,12 +401,6 @@ function GitPageLayout() {
                         <div className="w-full h-full flex flex-col items-center justify-center">
                           <div className="relative">
                             <GitBranch className="opacity-50 size-12 mb-4 text-muted-foreground" />
-                            {/* <Badge
-                              variant={"secondary"}
-                              className="scale-105 border border-muted-foreground tabular-nums font-mono absolute top-5 left-5"
-                            >
-                              0
-                            </Badge> */}
                           </div>
                           <span className="flex justify-center text-sm text-muted-foreground">
                             No changes, Look in!
@@ -495,18 +488,16 @@ function GitPageLayout() {
                                   </Tooltip>
                                   {commit.authors.co_authors.map(
                                     (coAuthor, idx) => (
-                                      <Tooltip>
+                                      <Tooltip key={`${idx}-tooltip-coauthor`}>
                                         <TooltipTrigger
                                           style={{
                                             zIndex:
                                               commit.authors.co_authors.length -
                                               idx,
                                           }}
+                                          key={`${idx}-tooltip-trigger-coauthor`}
                                         >
-                                          <Avatar
-                                            className="ring-2 ring-background rounded-sm size-4 -ml-[0.2rem] group-hover:ml-0.5 transition-all duration-100"
-                                            key={idx}
-                                          >
+                                          <Avatar className="ring-2 ring-background rounded-sm size-4 -ml-[0.2rem] group-hover:ml-0.5 transition-all duration-100">
                                             <AvatarImage
                                               alt="U1"
                                               src={`https://avatars.githubusercontent.com/u/e?email=${coAuthor.email}&s=64`}
@@ -622,7 +613,6 @@ export default function EachStatus({
               file.status.includes("IndexRenamed") ||
               file.status.includes("WorktreeRenamed")
             ) {
-              console.log(file);
               setSelectedFilePath({
                 path: file.path,
                 newPath: file.new_path,
@@ -882,14 +872,12 @@ const DiscardChangesDialog = ({ fileName }: { fileName: string }) => {
               setIsDeleteLoading(true);
 
               try {
-                console.log("gooo");
                 await operations.discard(fileName);
               } catch (error) {
                 toast.error("Unabel to discard changes");
               } finally {
                 setIsDeleteLoading(false);
                 setOpen(false);
-                console.log("gooo11");
               }
             }}
           >

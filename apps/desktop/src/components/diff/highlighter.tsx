@@ -92,7 +92,7 @@ export let highlighter: null | Highlighter = null;
 
 (async () => {
   try {
-    var hl = await createHighlighter({
+    const hl = await createHighlighter({
       themes: ["vesper", vesperLight],
       langs: ALWAYS_AVAILABLE_LANGS,
     });
