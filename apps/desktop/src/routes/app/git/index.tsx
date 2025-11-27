@@ -129,12 +129,10 @@ function App() {
               {getStatusIcon(selectedFileStatus)}
               <span className="flex items-center">
                 <span className="text-muted-foreground/75">
-                  {selectedFilePath
-                    ? selectedFilePath?.path?.slice(
-                        0,
-                        selectedFilePath?.path?.lastIndexOf("/"),
-                      )
-                    : ""}
+                  {selectedFilePath?.path?.slice(
+                    0,
+                    selectedFilePath?.path?.lastIndexOf("/"),
+                  )}
                   /
                 </span>
                 <span>{selectedFilePath?.path?.split("/").pop()}</span>
@@ -150,11 +148,10 @@ function App() {
               {selectedFilePath?.newPath ? (
                 <span className="flex items-center">
                   <span className="text-muted-foreground/75">
-                    {selectedFilePath &&
-                      selectedFilePath?.newPath?.slice(
-                        0,
-                        selectedFilePath?.newPath?.lastIndexOf("/"),
-                      )}
+                    {selectedFilePath?.newPath?.slice(
+                      0,
+                      selectedFilePath?.newPath?.lastIndexOf("/"),
+                    )}
                     /
                   </span>
                   <span>{selectedFilePath?.newPath?.split("/").pop()}</span>
