@@ -1,5 +1,9 @@
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import {
+  createJSONStorage,
+  persist,
+  subscribeWithSelector,
+} from "zustand/middleware";
 import type { RepoSitoryStore } from "@/tauri/types";
 import { createTauriStorage } from "./tauriStoreAdapter";
 
@@ -13,18 +17,20 @@ type AppState = {
 };
 
 export const useAppStore = create<AppState>()(
-  persist(
-    (set) => ({
-      selectedRepository: null,
-      setSelectedRepository: (repo) => set({ selectedRepository: repo }),
-      repositories: [],
-      setRepositories: (repos) => set({ repositories: repos }),
-      repoSelectIsOpen: false,
-      setRepoSelectIsOpen: (isOpen) => set({ repoSelectIsOpen: isOpen }),
-    }),
-    {
-      name: "app-data",
-      storage: createJSONStorage(() => createTauriStorage()),
-    },
+  subscribeWithSelector(
+    persist(
+      (set) => ({
+        selectedRepository: null,
+        setSelectedRepository: (repo) => set({ selectedRepository: repo }),
+        repositories: [],
+        setRepositories: (repos) => set({ repositories: repos }),
+        repoSelectIsOpen: false,
+        setRepoSelectIsOpen: (isOpen) => set({ repoSelectIsOpen: isOpen }),
+      }),
+      {
+        name: "app-data",
+        storage: createJSONStorage(() => createTauriStorage()),
+      },
+    ),
   ),
 );

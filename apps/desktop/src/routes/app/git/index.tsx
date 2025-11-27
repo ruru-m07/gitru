@@ -17,7 +17,7 @@ import {
 import { useEffect, useState } from "react";
 import { DiffViewer } from "@/components/diff/diff-viewer";
 import { useDiffViewStore } from "@/components/diff/useDiffViewStore";
-import { useFileDiff, useGitRepository } from "@/lib/git";
+import { useDiff } from "@/state/hooks";
 import { useAppStore } from "@/store/useAppStore";
 import {
   currentBranch,
@@ -39,12 +39,7 @@ function App() {
     useDiffViewStore();
   const { selectedRepository } = useAppStore();
 
-  const repo = useGitRepository(
-    selectedRepository?.path || null,
-    selectedRepository?.name,
-  );
-
-  const { diff } = useFileDiff(repo, selectedFilePath?.path || null);
+  const { data: diff } = useDiff(selectedFilePath?.path || null);
 
   const [diffData, setDiffData] = useState<GetDiffResponse | null>(null);
 

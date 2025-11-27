@@ -82,11 +82,11 @@ import {
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useDiffViewStore } from "@/components/diff/useDiffViewStore";
-import { useGit } from "@/lib/git";
 import {
   formatUnixSecondsToDateTime,
   timeAgoFromUnixSeconds,
 } from "@/lib/time";
+import { useRepositoryActions, useStatus } from "@/state/hooks";
 import { useAppStore } from "@/store/useAppStore";
 import {
   addLocalGitRepo,
@@ -110,12 +110,17 @@ function GitPageLayout() {
     selectedRepository,
   } = useAppStore();
 
-  const { status, operations } = useGit(
-    selectedRepository?.path || null,
-    selectedRepository?.name,
-  );
+  const { data: status, isLoading: isStatusLoading } = useStatus();
+  const actions = useRepositoryActions();
 
   const [commitHistory, setCommitHistory] = useState<CommitInfo[]>([]);
+
+  const stagedChanges = status?.files.filter((file) =>
+    file.status.some((s) => s.startsWith("Index")),
+  );
+  const unstagedChanges = status?.files.filter((file) =>
+    file.status.some((s) => s.startsWith("Worktree")),
+  );
 
   useEffect(() => {
     (async () => {
@@ -287,125 +292,137 @@ function GitPageLayout() {
                     tabIndex={-1}
                   >
                     <div className="flex-1 overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                      {status &&
-                      (status.stagedChanges?.length > 0 ||
-                        status.unstagedChanges?.length > 0) ? (
-                        <Accordion
-                          defaultValue={["Staged Changes", "Changes"]}
-                          className="w-full divide-y"
-                          multiple={true}
-                        >
-                          {(
-                            [
-                              {
-                                name: "Staged Changes",
-                                data: status.stagedChanges,
-                              },
-                              {
-                                name: "Changes",
-                                data: status.unstagedChanges,
-                              },
-                            ] as const
-                          ).map((cell) => {
-                            if (!cell.data || cell.data.length === 0) {
-                              return null;
-                            }
-                            return (
-                              <AccordionItem
-                                value={cell.name}
-                                key={cell.name}
-                                className="pt-2 pb-2"
-                              >
-                                <AccordionTrigger
-                                  className={cn(
-                                    "items-center rounded-none px-3 gap-2 py-0 hover:no-underline [&>svg]:mb-1 [&>svg]:-rotate-90 [&[data-panel-open]>svg]:rotate-0 [&>svg]:-order-1",
-                                  )}
-                                >
-                                  <div className="flex items-center justify-between w-full">
-                                    <span className="text-sm font-medium">
-                                      {cell.name}
-                                    </span>
-                                    <div className="flex items-center gap-1 pointer-events-auto">
-                                      {cell.name === "Changes" && (
-                                        <>
-                                          <DiscardChangesDialog fileName="." />
-
-                                          <div
-                                            onClick={async (event) => {
-                                              event.stopPropagation();
-                                              await operations.addAll();
-                                            }}
-                                            className={cn(
-                                              buttonVariants({
-                                                variant: "ghost",
-                                                className: "h-8 w-8",
-                                              }),
-                                            )}
-                                          >
-                                            <Plus
-                                              size={20}
-                                              strokeWidth={1.25}
-                                            />
-                                          </div>
-                                        </>
-                                      )}
-                                      {cell.name === "Staged Changes" && (
-                                        <div
-                                          onClick={async (event) => {
-                                            event.stopPropagation();
-                                            await operations.removeAll();
-                                          }}
-                                          className={cn(
-                                            buttonVariants({
-                                              variant: "ghost",
-                                              className: "h-8 w-8",
-                                            }),
-                                          )}
-                                        >
-                                          <Minus size={20} strokeWidth={1.25} />
-                                        </div>
-                                      )}
-                                      <Badge
-                                        variant={"secondary"}
-                                        className="tabular-nums font-mono"
-                                      >
-                                        {cell.data?.length}
-                                      </Badge>
-                                    </div>
-                                  </div>
-                                </AccordionTrigger>
-                                <AccordionContent className="text-muted-foreground pb-1">
-                                  {cell.data?.map((v) => (
-                                    <EachStatus
-                                      key={v.path}
-                                      file={v}
-                                      type={cell.name}
-                                      onAdd={
-                                        cell.name === "Changes"
-                                          ? operations.add
-                                          : undefined
-                                      }
-                                      onUnstage={
-                                        cell.name === "Staged Changes"
-                                          ? operations.unstage
-                                          : undefined
-                                      }
-                                    />
-                                  ))}
-                                </AccordionContent>
-                              </AccordionItem>
-                            );
-                          })}
-                        </Accordion>
+                      {isStatusLoading ? (
+                        <>
+                          <span>Loading...</span>
+                        </>
                       ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center">
-                          <div className="relative">
-                            <GitBranch className="opacity-50 size-12 mb-4 text-muted-foreground" />
-                          </div>
-                          <span className="flex justify-center text-sm text-muted-foreground">
-                            No changes, Look in!
-                          </span>
-                        </div>
+                        <>
+                          {status &&
+                          ((stagedChanges && stagedChanges?.length > 0) ||
+                            (unstagedChanges &&
+                              unstagedChanges?.length > 0)) ? (
+                            <Accordion
+                              defaultValue={["Staged Changes", "Changes"]}
+                              className="w-full divide-y"
+                              multiple={true}
+                            >
+                              {(
+                                [
+                                  {
+                                    name: "Staged Changes",
+                                    data: stagedChanges,
+                                  },
+                                  {
+                                    name: "Changes",
+                                    data: unstagedChanges,
+                                  },
+                                ] as const
+                              ).map((cell) => {
+                                if (!cell.data || cell.data.length === 0) {
+                                  return null;
+                                }
+                                return (
+                                  <AccordionItem
+                                    value={cell.name}
+                                    key={cell.name}
+                                    className="pt-2 pb-2"
+                                  >
+                                    <AccordionTrigger
+                                      className={cn(
+                                        "items-center rounded-none px-3 gap-2 py-0 hover:no-underline [&>svg]:mb-1 [&>svg]:-rotate-90 [&[data-panel-open]>svg]:rotate-0 [&>svg]:-order-1",
+                                      )}
+                                    >
+                                      <div className="flex items-center justify-between w-full">
+                                        <span className="text-sm font-medium">
+                                          {cell.name}
+                                        </span>
+                                        <div className="flex items-center gap-1 pointer-events-auto">
+                                          {cell.name === "Changes" && (
+                                            <>
+                                              <DiscardChangesDialog fileName="." />
+
+                                              <div
+                                                onClick={async (event) => {
+                                                  event.stopPropagation();
+                                                  await actions.addAll();
+                                                }}
+                                                className={cn(
+                                                  buttonVariants({
+                                                    variant: "ghost",
+                                                    className: "h-8 w-8",
+                                                  }),
+                                                )}
+                                              >
+                                                <Plus
+                                                  size={20}
+                                                  strokeWidth={1.25}
+                                                />
+                                              </div>
+                                            </>
+                                          )}
+                                          {cell.name === "Staged Changes" && (
+                                            <div
+                                              onClick={async (event) => {
+                                                event.stopPropagation();
+                                                await actions.removeAll();
+                                              }}
+                                              className={cn(
+                                                buttonVariants({
+                                                  variant: "ghost",
+                                                  className: "h-8 w-8",
+                                                }),
+                                              )}
+                                            >
+                                              <Minus
+                                                size={20}
+                                                strokeWidth={1.25}
+                                              />
+                                            </div>
+                                          )}
+                                          <Badge
+                                            variant={"secondary"}
+                                            className="tabular-nums font-mono"
+                                          >
+                                            {cell.data?.length}
+                                          </Badge>
+                                        </div>
+                                      </div>
+                                    </AccordionTrigger>
+                                    <AccordionContent className="text-muted-foreground pb-1">
+                                      {cell.data?.map((v) => (
+                                        <EachStatus
+                                          key={v.path}
+                                          file={v}
+                                          type={cell.name}
+                                          onAdd={
+                                            cell.name === "Changes"
+                                              ? actions.add
+                                              : undefined
+                                          }
+                                          onUnstage={
+                                            cell.name === "Staged Changes"
+                                              ? actions.unstage
+                                              : undefined
+                                          }
+                                        />
+                                      ))}
+                                    </AccordionContent>
+                                  </AccordionItem>
+                                );
+                              })}
+                            </Accordion>
+                          ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center">
+                              <div className="relative">
+                                <GitBranch className="opacity-50 size-12 mb-4 text-muted-foreground" />
+                              </div>
+                              <span className="flex justify-center text-sm text-muted-foreground">
+                                No changes, Look in!
+                              </span>
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                     <div className="shrink-0 border-l border-b rounded-bl-md flex flex-col gap-2 justify-between items-center border-t px-2 py-2 bg-accent dark:bg-accent/10">
@@ -789,12 +806,7 @@ const DiscardChangesDialog = ({ fileName }: { fileName: string }) => {
   const [open, setOpen] = useState(false);
   const [isDeleteLoading, setIsDeleteLoading] = useState(false);
 
-  const { selectedRepository } = useAppStore();
-
-  const { operations } = useGit(
-    selectedRepository?.path || null,
-    selectedRepository?.name,
-  );
+  const actions = useRepositoryActions();
 
   return (
     <Dialog
@@ -872,7 +884,7 @@ const DiscardChangesDialog = ({ fileName }: { fileName: string }) => {
               setIsDeleteLoading(true);
 
               try {
-                await operations.discard(fileName);
+                await actions.discard(fileName);
               } catch (error) {
                 toast.error("Unable to discard changes");
               } finally {
