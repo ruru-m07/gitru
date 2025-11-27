@@ -874,7 +874,7 @@ const DiscardChangesDialog = ({ fileName }: { fileName: string }) => {
               try {
                 await operations.discard(fileName);
               } catch (error) {
-                toast.error("Unabel to discard changes");
+                toast.error("Unable to discard changes");
               } finally {
                 setIsDeleteLoading(false);
                 setOpen(false);
