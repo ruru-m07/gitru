@@ -202,10 +202,10 @@ export function DiffViewer({
             return (
               <tr key={key} className={`${bgClass} diff-hover`}>
                 <td
-                  className={`border-r py-1 w-12 text-muted-foreground text-xs select-none diff-line-number-segment-td ${line.type === "removed" && "diff-line-number-bg-removed"} ${line.type === "added" && "diff-line-number-bg-added"} diff-line-number-bg`}
+                  className={`border-r py-1 w-12 text-muted-foreground text-xs select-none diff-line-number-segment-td ${line.type === "removed" && "diff-line-number-bg-removed"} ${line.type === "added" && "diff-line-number-bg-added"} diff-line-number-bg border-l-0`}
                 >
                   {/* // ! we can do text-right if we want a better number alignment */}
-                  <span className="px-3 block w-full text-center _text-right tabular-nums">
+                  <span className="font-mono px-3 block w-full text-center _text-right tabular-nums">
                     {line.lineNumberOld ?? ""}
                   </span>
                 </td>
@@ -213,7 +213,7 @@ export function DiffViewer({
                   className={`border-r py-1 w-12 text-muted-foreground text-xs select-none diff-line-number-segment-td ${line.type === "removed" && "diff-line-number-bg-removed"} ${line.type === "added" && "diff-line-number-bg-added"} diff-line-number-bg`}
                 >
                   {/* // ! we can do text-right if we want a better number alignment */}
-                  <span className="px-3 block w-full text-center _text-right tabular-nums">
+                  <span className="font-mono px-3 block w-full text-center _text-right tabular-nums">
                     {line.lineNumberNew ?? ""}
                   </span>
                 </td>
@@ -326,7 +326,7 @@ export function DiffViewer({
                 return (
                   <div key={key} className="grid grid-cols-[auto_1fr_auto_1fr]">
                     <div
-                      className={`py-1 w-12 text-muted-foreground diff-line-number-segment-td text-xs select-none ${leftBg ? "diff-line-number-bg-removed" : "diff-line-number-bg border-r"} ${leftBg}`}
+                      className={`py-1 w-12 text-muted-foreground diff-line-number-segment-td text-xs select-none ${leftBg ? "diff-line-number-bg-removed" : "diff-line-number-bg border-r"} ${leftBg} border-l-0`}
                     >
                       {/* // ! we can do text-right if we want a better number alignment */}
                       <span className="px-3 block w-full text-center _text-right tabular-nums">
@@ -408,7 +408,7 @@ export function DiffViewer({
   // }
 
   return (
-    <Card className="overflow-hidden rounded-none border-0 py-0">
+    <Card className="overflow-hidden rounded-none! before:rounded-none border-0 py-0">
       {/* // TODO(ruru-m07): will do something better here */}
       {/* {treatAsNewFile || treatAsDeletedFile ? (
 				<div
@@ -419,7 +419,7 @@ export function DiffViewer({
 						: "Deleted file – displaying last committed contents"}
 				</div>
 			) : null} */}
-      <CardContent className="p-0">
+      <CardContent className="p-0 rounded-none!">
         <div className="divide-y divide-border/50">
           {segments.map((segment) => {
             if (segment.type === "skip") {
@@ -448,11 +448,11 @@ export function DiffViewer({
                       <div className="flex items-center">
                         <div
                           onClick={() => toggleSkip(segment.id)}
-                          className="w-[calc(calc(var(--spacing)_*_12))] py-1.5 border-r text-muted-foreground hover:text-foreground cursor-pointer border-[var(--diff-segment-expend-button-border)] hover:bg-[var(--diff-segment-expend-button-bg-hover)] bg-[var(--diff-segment-expend-button-bg)] flex items-center justify-center"
+                          className="w-[calc(calc(var(--spacing)_*_12))] py-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[var(--diff-segment-expend-button-bg-hover)] bg-[var(--diff-segment-expend-button-bg)] flex items-center justify-center"
                         >
                           <FoldVertical size={16} />
                         </div>
-                        <span className="font-mono text-xs sm:text-sm text-muted-foreground pl-3 py-1">
+                        <span className="font-mono text-xs sm:text-sm text-muted-foreground! pl-3 py-1 border-l tabular-nums border-[var(--diff-segment-expend-button-border)] ">
                           {header}
                         </span>
                       </div>

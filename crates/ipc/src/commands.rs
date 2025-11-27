@@ -32,7 +32,7 @@ fn run_git_command(args: &[&str], repo_path: &Path) -> Option<String> {
         })
 }
 
-#[tauri::command(rename_all = "snake_case")]
+#[tauri::command]
 pub fn add_local_git_repo(repo_path: String) -> Result<GitRepoResponse, String> {
     let path = Path::new(&repo_path);
 
@@ -90,7 +90,7 @@ pub fn add_local_git_repo(repo_path: String) -> Result<GitRepoResponse, String> 
     })
 }
 
-#[tauri::command(rename_all = "snake_case")]
+#[tauri::command]
 pub fn export_type(_a: RepoSitoryStore) {
     todo!()
 }

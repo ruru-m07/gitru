@@ -5,9 +5,9 @@ use std::path::{Component, Path, PathBuf};
 use base64::{Engine as _, engine::general_purpose};
 use git2::{Repository, Tree};
 
-use crate::diff::types::{FileVersion, GetDiffResponse};
+use crate::types::{FileVersion, GetDiffResponse};
 
-#[tauri::command(rename_all = "snake_case")]
+#[tauri::command]
 pub fn get_diff(repo_path: &str, file_path: &str) -> Result<GetDiffResponse, String> {
     let repo_path = Path::new(repo_path);
     let requested_path = Path::new(file_path);

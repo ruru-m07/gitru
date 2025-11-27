@@ -1,7 +1,7 @@
 use git2::{BranchType, ObjectType, Repository};
 use serde::Serialize;
 
-use crate::commands::GitResult;
+use crate::types::GitResult;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct Branch {
@@ -14,7 +14,7 @@ fn open_repo(repo_path: &str) -> Result<Repository, String> {
     Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {e}"))
 }
 
-#[tauri::command(rename_all = "snake_case")]
+#[tauri::command]
 pub fn current_branch(repo_path: &str) -> Result<Branch, String> {
     let repo = open_repo(repo_path)?;
     let head = repo
@@ -35,7 +35,7 @@ pub fn current_branch(repo_path: &str) -> Result<Branch, String> {
     }
 }
 
-#[tauri::command(rename_all = "snake_case")]
+#[tauri::command]
 pub fn list_branch(repo_path: &str) -> Result<Vec<Branch>, String> {
     let repo = open_repo(repo_path)?;
 
@@ -120,11 +120,11 @@ pub fn list_branch(repo_path: &str) -> Result<Vec<Branch>, String> {
     }
 }
 
-#[tauri::command(rename_all = "snake_case")]
+#[tauri::command]
 pub fn switch_branch(repo_path: &str, branch_name: &str) -> GitResult {
     let repo = match open_repo(repo_path) {
         Ok(r) => r,
-        Err(e) => return crate::commands::GitResult::error(e),
+        Err(e) => return GitResult::error(e),
     };
 
     let local_branch = repo.find_branch(branch_name, BranchType::Local).ok();
@@ -141,7 +141,7 @@ pub fn switch_branch(repo_path: &str, branch_name: &str) -> GitResult {
         let remote_branch = match repo.find_branch(&remote_ref, BranchType::Remote) {
             Ok(b) => b,
             Err(e) => {
-                return crate::commands::GitResult::error(format!(
+                return GitResult::error(format!(
                     "Branch '{branch_name}' not found locally or on origin: {e}"
                 ));
             }
@@ -152,7 +152,7 @@ pub fn switch_branch(repo_path: &str, branch_name: &str) -> GitResult {
             None => match remote_branch.get().peel(ObjectType::Commit) {
                 Ok(obj) => obj.id(),
                 Err(e) => {
-                    return crate::commands::GitResult::error(format!(
+                    return GitResult::error(format!(
                         "Failed to resolve remote branch target: {e}"
                     ));
                 }
@@ -161,14 +161,12 @@ pub fn switch_branch(repo_path: &str, branch_name: &str) -> GitResult {
         let commit = match repo.find_commit(target_oid) {
             Ok(c) => c,
             Err(e) => {
-                return crate::commands::GitResult::error(format!(
-                    "Failed to find commit {target_oid}: {e}"
-                ));
+                return GitResult::error(format!("Failed to find commit {target_oid}: {e}"));
             }
         };
 
         if let Err(e) = repo.branch(branch_name, &commit, false) {
-            return crate::commands::GitResult::error(format!(
+            return GitResult::error(format!(
                 "Failed to create local branch '{branch_name}': {e}"
             ));
         }
@@ -181,16 +179,14 @@ pub fn switch_branch(repo_path: &str, branch_name: &str) -> GitResult {
     };
 
     if let Err(e) = repo.set_head(&refname) {
-        return crate::commands::GitResult::error(format!("Failed to set HEAD to {refname}: {e}"));
+        return GitResult::error(format!("Failed to set HEAD to {refname}: {e}"));
     }
 
     // Checkout files to match the new HEAD
     let obj = match repo.revparse_single(&refname) {
         Ok(o) => o,
         Err(e) => {
-            return crate::commands::GitResult::error(format!(
-                "Failed to resolve target {refname}: {e}"
-            ));
+            return GitResult::error(format!("Failed to resolve target {refname}: {e}"));
         }
     };
 
@@ -200,8 +196,8 @@ pub fn switch_branch(repo_path: &str, branch_name: &str) -> GitResult {
         .remove_untracked(true)
         .remove_ignored(true);
     if let Err(e) = repo.checkout_tree(&obj, Some(&mut opts)) {
-        return crate::commands::GitResult::error(format!("Failed to checkout working tree: {e}"));
+        return GitResult::error(format!("Failed to checkout working tree: {e}"));
     }
 
-    crate::commands::GitResult::success()
+    GitResult::success()
 }

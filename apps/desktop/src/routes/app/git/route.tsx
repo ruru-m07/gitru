@@ -4,6 +4,11 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@gitru/ui/components/accordion";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@gitru/ui/components/avatar";
 import { Badge } from "@gitru/ui/components/badge";
 import { Button, buttonVariants } from "@gitru/ui/components/button";
 import * as contextMenu from "@gitru/ui/components/context-menu";
@@ -39,6 +44,12 @@ import {
 import { ScrollArea } from "@gitru/ui/components/scroll-area";
 import { Separator } from "@gitru/ui/components/separator";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@gitru/ui/components/tabs";
+import {
+  Tooltip,
+  TooltipPopup,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@gitru/ui/components/tooltip";
 import { cn } from "@gitru/ui/lib/utils";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -56,6 +67,7 @@ import {
   CornerUpRight,
   Diff,
   EyeOff,
+  GitBranch,
   GitCommitHorizontal,
   Minus,
   Plus,
@@ -67,12 +79,22 @@ import {
   Undo2,
   UserPlus,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useDiffViewStore } from "@/components/diff/useDiffViewStore";
 import { useGit } from "@/lib/git";
+import {
+  formatUnixSecondsToDateTime,
+  timeAgoFromUnixSeconds,
+} from "@/lib/time";
 import { useAppStore } from "@/store/useAppStore";
-import { addLocalGitRepo, type FileStatus, type FileStatusKind } from "@/tauri";
+import {
+  addLocalGitRepo,
+  CommitInfo,
+  type FileStatus,
+  type FileStatusKind,
+  history,
+} from "@/tauri";
 
 export const Route = createFileRoute("/app/git")({
   component: GitPageLayout,
@@ -92,6 +114,22 @@ function GitPageLayout() {
     selectedRepository?.path || null,
     selectedRepository?.name,
   );
+
+  const [commitHistory, setCommitHistory] = useState<CommitInfo[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      if (selectedRepository) {
+        const data = await history({
+          repoPath: selectedRepository?.path,
+          limit: 100,
+          skip: 0,
+        });
+        console.log(data);
+        setCommitHistory(data);
+      }
+    })();
+  }, [selectedRepository]);
 
   return (
     <ResizablePanelGroup
@@ -175,7 +213,7 @@ function GitPageLayout() {
                             }
 
                             const data = await addLocalGitRepo({
-                              repo_path: folder,
+                              repoPath: folder,
                             });
 
                             if (data.error) {
@@ -237,7 +275,7 @@ function GitPageLayout() {
                   <TabsList
                     className={"rounded-none w-full border-l border-b shrink-0"}
                   >
-                    <TabsTab className={"rounded-none! ml-px"} value="tab-1">
+                    <TabsTab className={"rounded-none! ml-0"} value="tab-1">
                       Changes
                     </TabsTab>
                     <TabsTab className={"rounded-none!"} value="tab-2">
@@ -247,51 +285,76 @@ function GitPageLayout() {
                   <TabsPanel
                     value="tab-1"
                     className={"flex-1 flex flex-col min-h-0"}
+                    tabIndex={-1}
                   >
                     <div className="flex-1 overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                      <Accordion
-                        defaultValue={["Staged Changes", "Changes"]}
-                        className="w-full divide-y"
-                      >
-                        {(
-                          [
-                            {
-                              name: "Staged Changes",
-                              data: status.stagedChanges,
-                            },
-                            {
-                              name: "Changes",
-                              data: status.unstagedChanges,
-                            },
-                          ] as const
-                        ).map((cell) => {
-                          if (!cell.data || cell.data.length === 0) {
-                            return null;
-                          }
-                          return (
-                            <AccordionItem
-                              value={cell.name}
-                              key={cell.name}
-                              className="pt-2 pb-2"
-                            >
-                              <AccordionTrigger
-                                className={cn(
-                                  "items-center rounded-none px-3 gap-2 py-0 hover:no-underline [&>svg]:mb-1 [&>svg]:-order-1",
-                                )}
+                      {status &&
+                      (status.stagedChanges?.length > 0 ||
+                        status.unstagedChanges?.length > 0) ? (
+                        <Accordion
+                          defaultValue={["Staged Changes", "Changes"]}
+                          className="w-full divide-y"
+                          multiple={true}
+                        >
+                          {(
+                            [
+                              {
+                                name: "Staged Changes",
+                                data: status.stagedChanges,
+                              },
+                              {
+                                name: "Changes",
+                                data: status.unstagedChanges,
+                              },
+                            ] as const
+                          ).map((cell) => {
+                            if (!cell.data || cell.data.length === 0) {
+                              return null;
+                            }
+                            return (
+                              <AccordionItem
+                                value={cell.name}
+                                key={cell.name}
+                                className="pt-2 pb-2"
                               >
-                                <div className="flex items-center justify-between w-full">
-                                  <span className="text-sm font-medium">
-                                    {cell.name}
-                                  </span>
-                                  <div className="flex items-center gap-1 pointer-events-auto">
-                                    {cell.name === "Changes" && (
-                                      <>
-                                        <DiscardChangesDialog fileName="." />
+                                <AccordionTrigger
+                                  className={cn(
+                                    "items-center rounded-none px-3 gap-2 py-0 hover:no-underline [&>svg]:mb-1 [&>svg]:-rotate-90 [&[data-panel-open]>svg]:rotate-0 [&>svg]:-order-1",
+                                  )}
+                                >
+                                  <div className="flex items-center justify-between w-full">
+                                    <span className="text-sm font-medium">
+                                      {cell.name}
+                                    </span>
+                                    <div className="flex items-center gap-1 pointer-events-auto">
+                                      {cell.name === "Changes" && (
+                                        <>
+                                          <DiscardChangesDialog fileName="." />
 
+                                          <div
+                                            onClick={async (event) => {
+                                              event.stopPropagation();
+                                              await operations.addAll();
+                                            }}
+                                            className={cn(
+                                              buttonVariants({
+                                                variant: "ghost",
+                                                className: "h-8 w-8",
+                                              }),
+                                            )}
+                                          >
+                                            <Plus
+                                              size={20}
+                                              strokeWidth={1.25}
+                                            />
+                                          </div>
+                                        </>
+                                      )}
+                                      {cell.name === "Staged Changes" && (
                                         <div
                                           onClick={async (event) => {
                                             event.stopPropagation();
-                                            await operations.addAll();
+                                            await operations.removeAll();
                                           }}
                                           className={cn(
                                             buttonVariants({
@@ -300,63 +363,68 @@ function GitPageLayout() {
                                             }),
                                           )}
                                         >
-                                          <Plus size={20} strokeWidth={1.25} />
+                                          <Minus size={20} strokeWidth={1.25} />
                                         </div>
-                                      </>
-                                    )}
-                                    {cell.name === "Staged Changes" && (
-                                      <div
-                                        onClick={async (event) => {
-                                          event.stopPropagation();
-                                          await operations.removeAll();
-                                        }}
-                                        className={cn(
-                                          buttonVariants({
-                                            variant: "ghost",
-                                            className: "h-8 w-8",
-                                          }),
-                                        )}
+                                      )}
+                                      <Badge
+                                        variant={"secondary"}
+                                        className="tabular-nums font-mono"
                                       >
-                                        <Minus size={20} strokeWidth={1.25} />
-                                      </div>
-                                    )}
-                                    <Badge variant={"secondary"}>
-                                      {cell.data?.length}
-                                    </Badge>
+                                        {cell.data?.length}
+                                      </Badge>
+                                    </div>
                                   </div>
-                                </div>
-                              </AccordionTrigger>
-                              <AccordionContent className="text-muted-foreground pb-1">
-                                {cell.data?.map((v) => (
-                                  <EachStatus
-                                    key={v.path}
-                                    file={v}
-                                    type={cell.name}
-                                    onAdd={
-                                      cell.name === "Changes"
-                                        ? operations.add
-                                        : undefined
-                                    }
-                                    onUnstage={
-                                      cell.name === "Staged Changes"
-                                        ? operations.unstage
-                                        : undefined
-                                    }
-                                  />
-                                ))}
-                              </AccordionContent>
-                            </AccordionItem>
-                          );
-                        })}
-                      </Accordion>
+                                </AccordionTrigger>
+                                <AccordionContent className="text-muted-foreground pb-1">
+                                  {cell.data?.map((v) => (
+                                    <EachStatus
+                                      key={v.path}
+                                      file={v}
+                                      type={cell.name}
+                                      onAdd={
+                                        cell.name === "Changes"
+                                          ? operations.add
+                                          : undefined
+                                      }
+                                      onUnstage={
+                                        cell.name === "Staged Changes"
+                                          ? operations.unstage
+                                          : undefined
+                                      }
+                                    />
+                                  ))}
+                                </AccordionContent>
+                              </AccordionItem>
+                            );
+                          })}
+                        </Accordion>
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center">
+                          <div className="relative">
+                            <GitBranch className="opacity-50 size-12 mb-4 text-muted-foreground" />
+                            {/* <Badge
+                              variant={"secondary"}
+                              className="scale-105 border border-muted-foreground tabular-nums font-mono absolute top-5 left-5"
+                            >
+                              0
+                            </Badge> */}
+                          </div>
+                          <span className="flex justify-center text-sm text-muted-foreground">
+                            No changes, Look in!
+                          </span>
+                        </div>
+                      )}
                     </div>
-                    <div className="shrink-0 border-l border-b rounded-bl-md flex flex-col gap-2 justify-between items-center border-t px-2 py-2 bg-accent">
+                    <div className="shrink-0 border-l border-b rounded-bl-md flex flex-col gap-2 justify-between items-center border-t px-2 py-2 bg-accent dark:bg-accent/10">
                       <Input
                         placeholder="Summary (required)"
-                        className="h-8 _border-border"
+                        className="h-8 _border-border dark:bg-background!"
                       />
-                      <InputGroup>
-                        <InputGroupTextarea placeholder="Description" />
+                      <InputGroup className="dark:bg-background!">
+                        <InputGroupTextarea
+                          placeholder="Description"
+                          className="dark:bg-background!"
+                        />
                         <InputGroupAddon align="block-end">
                           <Button
                             variant="ghost"
@@ -383,10 +451,112 @@ function GitPageLayout() {
                       <Button className="w-full">Commit to main</Button>
                     </div>
                   </TabsPanel>
-                  <TabsPanel value="tab-2">
-                    <p className="p-4 text-center text-xs text-muted-foreground">
-                      Tab 2 content
-                    </p>
+                  <TabsPanel value="tab-2" className={"h-full"} tabIndex={-1}>
+                    <ScrollArea
+                      classNameRoot="flex-1 h-full"
+                      className="flex-1 h-full"
+                      hiddenScrollbar
+                      tabIndex={-1}
+                    >
+                      {commitHistory.map((commit) => (
+                        <div
+                          className="w-full p-2 border-b hover:bg-accent cursor-pointer hover:border-l-border border-l border-l-transparent"
+                          key={commit.id}
+                        >
+                          <p className="truncate text-sm">{commit.summary}</p>
+                          <div className="flex mt-1 items-center justify-between w-full">
+                            <TooltipProvider>
+                              <div className="flex items-center">
+                                <div className="flex -mt-0.5 group">
+                                  <Tooltip>
+                                    <TooltipTrigger
+                                      style={{
+                                        zIndex:
+                                          commit.authors.co_authors.length + 1,
+                                      }}
+                                    >
+                                      <Avatar className="ring-2 ring-background rounded-sm size-4">
+                                        <AvatarImage
+                                          alt={commit.authors.author.name}
+                                          src={`https://avatars.githubusercontent.com/u/e?email=${commit.authors.author.email}&s=64`}
+                                        />
+                                        <AvatarFallback>
+                                          {commit.authors.author.name
+                                            .split(" ")
+                                            .map((n) => n[0])
+                                            .join("")
+                                            .toUpperCase()}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                    </TooltipTrigger>
+                                    <TooltipPopup side="bottom">
+                                      {commit.authors.author.name}
+                                    </TooltipPopup>
+                                  </Tooltip>
+                                  {commit.authors.co_authors.map(
+                                    (coAuthor, idx) => (
+                                      <Tooltip>
+                                        <TooltipTrigger
+                                          style={{
+                                            zIndex:
+                                              commit.authors.co_authors.length -
+                                              idx,
+                                          }}
+                                        >
+                                          <Avatar
+                                            className="ring-2 ring-background rounded-sm size-4 -ml-[0.2rem] group-hover:ml-0.5 transition-all duration-100"
+                                            key={idx}
+                                          >
+                                            <AvatarImage
+                                              alt="U1"
+                                              src={`https://avatars.githubusercontent.com/u/e?email=${coAuthor.email}&s=64`}
+                                            />
+                                            <AvatarFallback>
+                                              {coAuthor.name
+                                                .split(" ")
+                                                .map((n) => n[0])
+                                                .join("")
+                                                .toUpperCase()}
+                                            </AvatarFallback>
+                                          </Avatar>
+                                        </TooltipTrigger>
+                                        <TooltipPopup side="bottom">
+                                          {coAuthor.name}
+                                        </TooltipPopup>
+                                      </Tooltip>
+                                    ),
+                                  )}
+                                </div>
+                                <Label className="ml-1 text-muted-foreground text-xs font-light">
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      {commit.authors.author.name}
+                                    </TooltipTrigger>
+                                    <TooltipPopup side="bottom">
+                                      {commit.authors.author.email}
+                                    </TooltipPopup>
+                                  </Tooltip>
+                                  <span className="-mx-1">{" • "}</span>
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      {timeAgoFromUnixSeconds(
+                                        commit.timestamp,
+                                      )}{" "}
+                                    </TooltipTrigger>
+                                    <TooltipPopup side="bottom">
+                                      {formatUnixSecondsToDateTime(
+                                        commit.timestamp,
+                                      )}
+                                    </TooltipPopup>
+                                  </Tooltip>
+                                </Label>
+                              </div>
+                            </TooltipProvider>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="h-20" />
+                    </ScrollArea>
                   </TabsPanel>
                 </Tabs>
               </>
@@ -394,7 +564,7 @@ function GitPageLayout() {
           </div>
         </ResizablePanel>
       }
-      <ResizableHandle className="cursor-grab!" withHandle />
+      <ResizableHandle className="cursor-col-resize!" withHandle />
       {
         <ResizablePanel
           className={cn(
@@ -443,19 +613,33 @@ export default function EachStatus({
         <div
           className={cn(
             "flex relative select-none cursor-pointer hover:bg-muted border border-transparent hover:border-1 hover:border-l-1 hover:border-l-border items-center px-2 py-1",
-            selectedFilePath === file.path &&
-              "bg-primary/5! hover:bg-primary/10! border-l-border border border-y-primary/30! border-dashed!",
+            selectedFilePath?.path === file.path &&
+              // "bg-primary/5! hover:bg-primary/10! border-l-border border border-y-primary/30! border-dashed!",
+              "bg-muted-foreground/10! hover:bg-muted-foreground/15!",
           )}
           onClick={() => {
-            setSelectedFilePath(file.path);
+            if (
+              file.status.includes("IndexRenamed") ||
+              file.status.includes("WorktreeRenamed")
+            ) {
+              console.log(file);
+              setSelectedFilePath({
+                path: file.path,
+                newPath: file.new_path,
+              });
+            } else {
+              setSelectedFilePath({
+                path: file.path,
+              });
+            }
             setSelectedFileStatus(file.status);
           }}
         >
-          {selectedFilePath === file.path ? (
+          {selectedFilePath?.path === file.path ? (
             <div className="absolute top-1/2 -translate-y-1/2 -left-1 rounded-md w-2 bg-primary h-6"></div>
           ) : null}
           <div className="flex items-center w-full min-w-0">
-            <div className="flex-shrink-0">{getStatusIcon(file.status)}</div>
+            <div className="shrink-0">{getStatusIcon(file.status)}</div>
             <div className="flex items-center ml-2 min-w-0 flex-1">
               <Label className="flex cursor-pointer items-center min-w-0 w-full gap-0">
                 {file?.path.split("/").slice(0, -1).join("/") && (
@@ -466,13 +650,13 @@ export default function EachStatus({
                     <span className="text-muted-foreground">/</span>
                   </>
                 )}
-                <span className="flex-shrink-0 font-medium text-foreground">
+                <span className="shrink-0 font-medium text-foreground!">
                   {file?.path.split("/").slice(-1)[0]}
                 </span>
               </Label>
             </div>
             {type === "Changes" && onAdd && (
-              <div className="flex ml-2 flex-shrink-0">
+              <div className="flex ml-2 shrink-0">
                 <DiscardChangesDialog fileName={file.path} />
                 <Button
                   onClick={async (e) => {
