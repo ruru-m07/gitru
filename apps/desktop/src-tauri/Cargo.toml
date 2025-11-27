@@ -22,7 +22,6 @@ tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 ipc = { path = "../../../crates/ipc" }
 git = { path = "../../../crates/git" }
-watcher = { path = "../../../crates/watcher" }
 tokio = { version = "1", features = ["full"] }
 tauri-plugin-opener = "2"
 tauri-plugin-typegen = "0.1.1"

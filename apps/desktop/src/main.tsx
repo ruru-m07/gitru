@@ -8,6 +8,8 @@ import { colorKeyList } from "./lib/colors.ts";
 import { routeTree } from "./routeTree.gen";
 import { useLastPageStore } from "./store/useLastPageStore.ts";
 import "./app.css";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { appState } from "./state";
 
 const router = createRouter({
   routeTree,
@@ -44,15 +46,17 @@ if (rootElement && !rootElement.innerHTML) {
   const root = ReactDOM.createRoot(rootElement);
   root.render(
     <StrictMode>
-      <NextThemesProvider
-        disableTransitionOnChange
-        defaultTheme="light"
-        enableColorScheme
-        themes={colorKeyList}
-      >
-        <RouterProvider router={router} />
-        <Toaster />
-      </NextThemesProvider>
+      <QueryClientProvider client={appState.queryClient}>
+        <NextThemesProvider
+          disableTransitionOnChange
+          defaultTheme="light"
+          enableColorScheme
+          themes={colorKeyList}
+        >
+          <RouterProvider router={router} />
+          <Toaster />
+        </NextThemesProvider>
+      </QueryClientProvider>
     </StrictMode>,
   );
 }
