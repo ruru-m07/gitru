@@ -62,6 +62,16 @@
   --shadow-xl: var(--shadow-xl);
   --shadow-2xl: var(--shadow-2xl);
 
+  --depth-1: var(--depth-1);
+  --depth-2: var(--depth-2);
+  --depth-3: var(--depth-3);
+  --depth-4: var(--depth-4);
+  --depth-5: var(--depth-5);
+  --depth-6: var(--depth-6);
+  --depth-7: var(--depth-7);
+  --depth-8: var(--depth-8);
+  --depth-9: var(--depth-9);
+
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
 
@@ -86,42 +96,7 @@
     --diff-segment-expend-button-bg-hover
   );
   --diff-segment-diff-bg: var(--diff-segment-diff-bg);
-
-  @keyframes accordion-down {
-    from {
-      height: 0;
-    }
-    to {
-      height: var(--radix-accordion-content-height);
-    }
-  }
-  @keyframes accordion-up {
-    from {
-      height: var(--radix-accordion-content-height);
-    }
-    to {
-      height: 0;
-    }
-  }
 }
-
-/*
-  The default border color has changed to `currentcolor` in Tailwind CSS v4,
-  so we've added these compatibility styles to make sure everything still
-  looks the same as it did with Tailwind CSS v3.
-
-  If we ever want to remove these styles, we need to add an explicit border
-  color utility to any element that depends on these defaults.
-*/
-/* @layer base {
-  *,
-  ::after,
-  ::before,
-  ::backdrop,
-  ::file-selector-button {
-    border-color: var(--color-gray-200, currentcolor);
-  }
-} */
 
 @layer base {
   :root,
@@ -165,6 +140,16 @@
 
     --font-sans: Geist;
     --font-mono: GeistMono;
+
+    --depth-1: oklch(0.99 0 0);
+    --depth-2: oklch(0.985 0 0);
+    --depth-3: oklch(0.98 0 0);
+    --depth-4: oklch(0.975 0 0);
+    --depth-5: oklch(0.97 0 0);
+    --depth-6: oklch(0.965 0 0);
+    --depth-7: oklch(0.96 0 0);
+    --depth-8: oklch(0.955 0 0);
+    --depth-9: oklch(0.95 0 0);
 
     /* 
 		* Diff colors
