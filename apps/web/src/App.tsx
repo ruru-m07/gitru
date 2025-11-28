@@ -1,5 +1,9 @@
 function App() {
-  return <div className="text-center"></div>;
+  return (
+    <div>
+      <h1>Hello world!!</h1>
+    </div>
+  );
 }
 
 export default App;
