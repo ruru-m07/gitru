@@ -10,6 +10,7 @@ import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 
 import "./styles.css";
+import "@fontsource/jetbrains-mono/500.css";
 
 import App from "./App.tsx";
 import reportWebVitals from "./reportWebVitals.ts";

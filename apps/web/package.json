@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@elysiajs/eden": "^1.4.5",
+    "@fontsource/jetbrains-mono": "^5.2.8",
     "@tailwindcss/vite": "^4.0.6",
     "@tanstack/react-devtools": "^0.7.0",
     "@tanstack/react-router": "^1.132.0",
