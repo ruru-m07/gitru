@@ -77,7 +77,7 @@ body {
   --color-primary-shade-12: oklch(0.907 0.051 42.3);
   --color-primary-shade-13: oklch(0.95 0.026 42.3);
 
-  --muted-foreground: oklch(0% 0 0 / 0.604);
+  --muted-foreground: oklch(0% 0 0 / 0.4);
 }
 
 .mono {
