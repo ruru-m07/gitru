@@ -7,10 +7,15 @@
   },
   "dependencies": {
     "@elysiajs/cors": "^1.4.0",
+    "@neondatabase/serverless": "^1.0.2",
+    "better-auth": "^1.4.3",
+    "dotenv": "^17.2.3",
+    "drizzle-orm": "^0.44.7",
     "elysia": "latest"
   },
   "devDependencies": {
-    "bun-types": "latest"
+    "bun-types": "latest",
+    "drizzle-kit": "^0.31.7"
   },
   "module": "src/index.js"
 }
