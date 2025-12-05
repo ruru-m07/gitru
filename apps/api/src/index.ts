@@ -1,21 +1,75 @@
+import "dotenv/config";
+
 import { cors } from "@elysiajs/cors";
+import { eq, sql } from "drizzle-orm";
 import { Elysia, t } from "elysia";
+import { auth } from "./auth";
+import { db } from "./db";
+import { waitlist } from "./db/waitlist-schema";
 
 const app = new Elysia()
-  .use(cors())
-  .get("/", () => "Hello Elysia")
+  .use(
+    cors({
+      origin: process.env.VITE_APP_URL,
+      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      credentials: true,
+      allowedHeaders: ["Content-Type", "Authorization"],
+    }),
+  )
+  .mount(auth.handler)
+  .get("/", () => `Hello Elysia`)
   .post(
-    "/user",
-    ({ body }) => {
-      return {
-        success: true,
-        message: `Hello ${body.name}!`,
-        user: {
-          id: crypto.randomUUID(),
-          name: body.name,
-          email: body.email,
-        },
-      };
+    "/waitlist",
+    async ({ body, set }) => {
+      try {
+        const existing = await db
+          .select()
+          .from(waitlist)
+          .where(eq(waitlist.email, body.email));
+
+        if (existing.length > 0) {
+          set.status = 200;
+          return {
+            success: true,
+            message: "You are already on the waitlist",
+            user: {
+              id: existing[0].id,
+              name: existing[0].name,
+              email: existing[0].email,
+            },
+          };
+        }
+
+        const [{ count }] = await db
+          .select({ count: sql<number>`COUNT(*)` })
+          .from(waitlist);
+
+        const [row] = await db
+          .insert(waitlist)
+          .values({
+            name: body.name,
+            email: body.email,
+          })
+          .returning();
+
+        return {
+          success: true,
+          message: "Successfully registered for the waitlist",
+          user: {
+            id: row.id,
+            name: row.name,
+            email: row.email,
+          },
+          joined: Number(count) + 1,
+        };
+      } catch (error) {
+        console.error("waitlist error:", error);
+        set.status = 500;
+        return {
+          success: false,
+          message: "Something went wrong",
+        };
+      }
     },
     {
       body: t.Object({
@@ -25,11 +79,14 @@ const app = new Elysia()
       response: t.Object({
         success: t.Boolean(),
         message: t.String(),
-        user: t.Object({
-          id: t.String(),
-          name: t.String(),
-          email: t.String(),
-        }),
+        user: t.Optional(
+          t.Object({
+            id: t.String(),
+            name: t.String(),
+            email: t.String(),
+          }),
+        ),
+        joined: t.Optional(t.Number()),
       }),
     },
   )
