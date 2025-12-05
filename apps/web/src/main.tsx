@@ -42,14 +42,42 @@ const waitlistRoute = createRoute({
   head: () => {
     return {
       meta: [
-        { property: "og:title", content: "Join the Waitlist" },
-        { property: "og:description", content: "Sign up to get early access." },
+        { charSet: "utf-8" },
+        { name: "viewport", content: "width=device-width, initial-scale=1" },
+        {
+          name: "description",
+          content: "Sign up to get early access to Gitru.",
+        },
+        { name: "author", content: "Gitru" },
+        { name: "robots", content: "index, follow" },
+        { name: "theme-color", content: "#ffffff" },
+        { property: "og:type", content: "website" },
+        { property: "og:site_name", content: "Gitru" },
+        { property: "og:title", content: "Join the Waitlist - Gitru" },
+        {
+          property: "og:description",
+          content: "Sign up to get early access to Gitru.",
+        },
         {
           property: "og:image",
           content: `${window.location.origin}/waitlist-og.png`,
         },
+        { property: "og:image:width", content: "1200" },
+        { property: "og:image:height", content: "675" },
+        { property: "og:image:alt", content: "Gitru Waitlist" },
         { property: "og:url", content: `${window.location.origin}/waitlist` },
+        { property: "og:locale", content: "en_US" },
         { name: "twitter:card", content: "summary_large_image" },
+        { name: "twitter:title", content: "Join the Waitlist - Gitru" },
+        {
+          name: "twitter:description",
+          content: "Sign up to get early access to Gitru.",
+        },
+        {
+          name: "twitter:image",
+          content: `${window.location.origin}/waitlist-og.png`,
+        },
+        { name: "twitter:image:alt", content: "Gitru Waitlist" },
       ],
       title: "Join the Waitlist - Gitru",
     };
