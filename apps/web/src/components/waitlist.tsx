@@ -3,12 +3,12 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import TypeWriter, { type TypeSegment, typeStyles } from "./type-writer";
 
-const circle = `
-      へ
-  ૮  >  <)   ~meowOS
-   /    |
-乀(ˍ, ل ل
-`;
+// export const cat = `
+//       へ
+//   ૮  >  <)   ~meowOS
+//    /    |
+// 乀(ˍ, ل ل
+// `;
 
 const allSegments: TypeSegment[] = [
   { text: "Register for waitlist \n\n", speed: 0, cursor: "primary" },
@@ -428,7 +428,16 @@ const Waitlist = () => {
         </span>
       ) : (
         <>
-          <pre>{circle}</pre>
+          <pre className="font-mono">
+            {"      へ\n"}
+            {"  ૮  "}
+            <span className="text-primary">{">"}</span>
+            {"  "}
+            <span className="text-primary">{"<"}</span>
+            {")    ~meowOS\n"}
+            {"   /    |\n"}
+            {"乀(ˍ, ل ل"}
+          </pre>
           <br />
           <span className="mono whitespace-pre-wrap">
             <TypeWriter

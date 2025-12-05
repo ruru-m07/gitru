@@ -22,24 +22,6 @@ const app = new Elysia()
     "/waitlist",
     async ({ body, set }) => {
       try {
-        const existing = await db
-          .select()
-          .from(waitlist)
-          .where(eq(waitlist.email, body.email));
-
-        if (existing.length > 0) {
-          set.status = 200;
-          return {
-            success: true,
-            message: "You are already on the waitlist",
-            user: {
-              id: existing[0].id,
-              name: existing[0].name,
-              email: existing[0].email,
-            },
-          };
-        }
-
         const [{ count }] = await db
           .select({ count: sql<number>`COUNT(*)` })
           .from(waitlist);
@@ -62,8 +44,28 @@ const app = new Elysia()
           },
           joined: Number(count) + 1,
         };
-      } catch (error) {
+      } catch (error: any) {
+        if (error.cause?.code === "23505") {
+          const existing = await db
+            .select()
+            .from(waitlist)
+            .where(eq(waitlist.email, body.email));
+
+          set.status = 200;
+
+          return {
+            success: true,
+            message: "You are already on the waitlist",
+            user: {
+              id: existing[0].id,
+              name: existing[0].name,
+              email: existing[0].email,
+            },
+          };
+        }
+
         console.error("waitlist error:", error);
+
         set.status = 500;
         return {
           success: false,
