@@ -2,8 +2,10 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  HeadContent,
   Outlet,
   RouterProvider,
+  redirect,
 } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { StrictMode } from "react";
@@ -18,6 +20,7 @@ import reportWebVitals from "./reportWebVitals.ts";
 const rootRoute = createRootRoute({
   component: () => (
     <>
+      <HeadContent />
       <Outlet />
       <TanStackRouterDevtools />
     </>
@@ -27,10 +30,33 @@ const rootRoute = createRootRoute({
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  component: App,
+  beforeLoad: () => {
+    throw redirect({ to: "/waitlist" });
+  },
 });
 
-const routeTree = rootRoute.addChildren([indexRoute]);
+const waitlistRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/waitlist",
+  component: App,
+  head: () => {
+    return {
+      meta: [
+        { property: "og:title", content: "Join the Waitlist" },
+        { property: "og:description", content: "Sign up to get early access." },
+        {
+          property: "og:image",
+          content: `${window.location.origin}/waitlist-og.png`,
+        },
+        { property: "og:url", content: `${window.location.origin}/waitlist` },
+        { name: "twitter:card", content: "summary_large_image" },
+      ],
+      title: "Join the Waitlist - Gitru",
+    };
+  },
+});
+
+const routeTree = rootRoute.addChildren([indexRoute, waitlistRoute]);
 
 const router = createRouter({
   routeTree,
