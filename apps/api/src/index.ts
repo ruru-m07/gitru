@@ -22,10 +22,6 @@ const app = new Elysia()
     "/waitlist",
     async ({ body, set }) => {
       try {
-        const [{ count }] = await db
-          .select({ count: sql<number>`COUNT(*)` })
-          .from(waitlist);
-
         const [row] = await db
           .insert(waitlist)
           .values({
@@ -42,7 +38,6 @@ const app = new Elysia()
             name: row.name,
             email: row.email,
           },
-          joined: Number(count) + 1,
         };
       } catch (error: any) {
         if (error.cause?.code === "23505") {
@@ -92,6 +87,15 @@ const app = new Elysia()
       }),
     },
   )
+  .get("/waitlist/count", async () => {
+    const [{ count }] = await db
+      .select({ count: sql<number>`COUNT(*)` })
+      .from(waitlist);
+
+    return {
+      count: Number(count),
+    };
+  })
   .listen(3001);
 
 console.log(

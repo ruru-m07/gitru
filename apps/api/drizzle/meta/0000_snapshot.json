@@ -1,5 +1,5 @@
 {
-  "id": "1e98be8c-6d47-4c25-95e1-aa37e963b737",
+  "id": "dfede7e4-295f-4289-886c-579b32a9bc5c",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -388,12 +388,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "position": {
-          "name": "position",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
         "beta_access": {
           "name": "beta_access",
           "type": "boolean",
@@ -422,21 +416,6 @@
           "columns": [
             {
               "expression": "email",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "waitlist_position_idx": {
-          "name": "waitlist_position_idx",
-          "columns": [
-            {
-              "expression": "position",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
