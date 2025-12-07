@@ -1,5 +1,5 @@
 import { cn } from "@gitru/ui/lib/utils";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import TypeWriter, { type TypeSegment, typeStyles } from "./type-writer";
 
@@ -11,7 +11,6 @@ import TypeWriter, { type TypeSegment, typeStyles } from "./type-writer";
 // `;
 
 const allSegments: TypeSegment[] = [
-  { text: "Register for waitlist \n\n", speed: 0, cursor: "primary" },
   { text: "$ ", speed: 0, cursor: "primary" },
   {
     text: "git config ",
@@ -281,11 +280,22 @@ const Waitlist = () => {
   const [isAlreadyExists, setIsAlreadyExists] = useState(false);
   const [isError, setIsError] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [totalJoined, setTotalJoined] = useState<number | null>(null);
   const [loaderFrame, setLoaderFrame] = useState(0);
 
-  // Terminal loader animation frames
+  const [totalJoined, setTotalJoined] = useState<number>(0);
+
   const loaderFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+  const fetched = useRef(false);
+
+  useEffect(() => {
+    if (fetched.current) return;
+    fetched.current = true;
+    (async () => {
+      const { data } = await api.waitlist.count.get();
+      setTotalJoined(data?.count ?? 0);
+    })();
+  }, []);
 
   const handleAllInputsSubmit = async (values: Record<string, string>) => {
     console.log("Form submitted:", values);
@@ -333,7 +343,6 @@ const Waitlist = () => {
 
       if (data?.success) {
         console.log(data);
-        setTotalJoined(data.joined ?? null);
 
         // Check if user already existed
         const alreadyExisted =
@@ -393,130 +402,161 @@ const Waitlist = () => {
     return () => clearInterval(interval);
   }, []);
 
+  const [carEyes, setCarEyes] = useState(true);
+
+  useEffect(() => {
+    if (!openNextStep) return;
+    const interval = setInterval(
+      () => {
+        setCarEyes((prev) => !prev);
+      },
+      carEyes ? 4000 : 3000,
+    );
+
+    return () => clearInterval(interval);
+  }, [carEyes, openNextStep]);
+
   return (
-    <div className="max-w-[600px] h-full w-full mx-1">
-      {!openNextStep ? (
-        <span className="mono whitespace-pre-wrap">
-          {bootingSegmentsText}
-          {/* <TypeWriter
+    <div className="relative h-screen w-full flex items-center justify-center pt-20">
+      <div className="max-w-[600px] h-full w-full mx-1">
+        {!openNextStep ? (
+          <span className="mono whitespace-pre-wrap">
+            {bootingSegmentsText}
+            {/* <TypeWriter
             segments={bootingSegments}
             defaultSpeed={50}
             onComplete={() => setOSbootDone(true)}
           /> */}
-          <span className="text-muted-foreground">
-            Press ENTER to continue...
-            <span
-              className={cn(
-                "h-full px-[5px] transition-opacity relative bg-primary",
-                showBlinkingCursor
-                  ? "opacity-100"
-                  : "bg-transparent _opacity-0",
+            <span className="text-muted-foreground">
+              Press ENTER to continue...
+              <span
+                className={cn(
+                  "h-full px-[5px] transition-opacity relative bg-primary",
+                  showBlinkingCursor
+                    ? "opacity-100"
+                    : "bg-transparent _opacity-0",
+                )}
+              >
+                {showBlinkingCursor ? (
+                  ""
+                ) : (
+                  <span
+                    className={cn(
+                      "absolute w-full left-0 right-0 bottom-0 h-1",
+                      "bg-primary",
+                    )}
+                  />
+                )}
+              </span>
+            </span>
+          </span>
+        ) : (
+          <>
+            {carEyes ? (
+              <pre className="font-mono">
+                {"      へ\n"}
+                {"  ૮  "}
+                <span className="text-primary">{">"}</span>
+                {"  "}
+                <span className="text-primary">{"<"}</span>
+                {")    ~Gitru UwU\n"}
+                {"   /    |\n"}
+                {"乀(ˍ, ل ل"}
+              </pre>
+            ) : (
+              <pre className="font-mono">
+                {"      へ\n"}
+                {"  ૮  "}
+                <span className="text-primary">{"o"}</span>
+                {"  "}
+                <span className="text-primary">{"o"}</span>
+                {")    ~Gitru UwU \n"}
+                {"   /    |\n"}
+                {"乀(ˍ, ل ل"}
+              </pre>
+            )}
+            <br />
+            <span className="mono whitespace-pre-wrap">
+              <TypeWriter
+                segments={allSegments}
+                defaultSpeed={50}
+                startDelay={500}
+                onAllInputsSubmit={handleAllInputsSubmit}
+                showCursor={
+                  !isLoading && !isSuccess && !isAlreadyExists && !isError
+                }
+              />
+              {isLoading && (
+                <>
+                  {"\n  "}
+                  <span className="text-muted-foreground">
+                    <span className="text-primary">
+                      {loaderFrames[loaderFrame]}
+                    </span>{" "}
+                    Connecting to origin...
+                  </span>
+                </>
               )}
-            >
-              {showBlinkingCursor ? (
-                ""
-              ) : (
-                <span
-                  className={cn(
-                    "absolute w-full left-0 right-0 bottom-0 h-1",
-                    "bg-primary",
-                  )}
+              {isError && (
+                <>
+                  {"\n  "}
+                  <span className="text-red-500">✗ error: {errorMessage}</span>
+                  {"\n  "}
+                  <span className="text-muted-foreground">
+                    hint: Please check your input and try again.
+                  </span>
+                </>
+              )}
+              {isAlreadyExists && (
+                <>
+                  {"\n  "}
+                  <span className="text-yellow-500">
+                    ! You are already on the waitlist
+                  </span>
+                  {"\n  "}
+                  <span className="text-muted-foreground">
+                    {`hint: You'll receive an email when you're in!`}
+                  </span>
+                </>
+              )}
+              {isSuccess && (
+                <>
+                  {"\n  "}
+                  <span className="text-green-600">
+                    ✓ Successfully joined the waitlist!
+                  </span>
+                  {"\n  "}
+                  <span className="text-muted-foreground">
+                    {`next: You'll receive an email when you're in!`}
+                  </span>
+                </>
+              )}
+              {(isSuccess || isAlreadyExists) && (
+                <TypeWriter
+                  segments={[
+                    {
+                      text: "\n$ ",
+                      delay: 0,
+                      speed: 0,
+                      cursor: "primary",
+                    },
+                  ]}
+                  defaultSpeed={50}
+                  startDelay={0}
+                  showCursor={true}
                 />
               )}
             </span>
+          </>
+        )}
+      </div>
+      <div className="absolute bottom-2 right-2">
+        <pre>
+          <span className="text-primary font-mono tabular-nums">
+            {totalJoined} people look in
           </span>
-        </span>
-      ) : (
-        <>
-          <pre className="font-mono">
-            {"      へ\n"}
-            {"  ૮  "}
-            <span className="text-primary">{">"}</span>
-            {"  "}
-            <span className="text-primary">{"<"}</span>
-            {")    ~meowOS\n"}
-            {"   /    |\n"}
-            {"乀(ˍ, ل ل"}
-          </pre>
-          <br />
-          <span className="mono whitespace-pre-wrap">
-            <TypeWriter
-              segments={allSegments}
-              defaultSpeed={50}
-              startDelay={500}
-              onAllInputsSubmit={handleAllInputsSubmit}
-              showCursor={
-                !isLoading && !isSuccess && !isAlreadyExists && !isError
-              }
-            />
-            {isLoading && (
-              <>
-                {"\n  "}
-                <span className="text-muted-foreground">
-                  <span className="text-primary">
-                    {loaderFrames[loaderFrame]}
-                  </span>{" "}
-                  Connecting to origin...
-                </span>
-              </>
-            )}
-            {isError && (
-              <>
-                {"\n  "}
-                <span className="text-red-500">✗ error: {errorMessage}</span>
-                {"\n  "}
-                <span className="text-muted-foreground">
-                  hint: Please check your input and try again.
-                </span>
-              </>
-            )}
-            {isAlreadyExists && (
-              <>
-                {"\n  "}
-                <span className="text-yellow-500">
-                  ! You are already on the waitlist
-                </span>
-                {"\n  "}
-                <span className="text-muted-foreground">
-                  {`hint: You'll receive an email when you're in!`}
-                </span>
-              </>
-            )}
-            {isSuccess && (
-              <>
-                {"\n  "}
-                <span className="text-green-500">
-                  ✓ Successfully joined the waitlist!
-                </span>
-                {"\n  "}
-                <span className="text-muted-foreground">
-                  status: <span className="text-primary">{totalJoined}</span>{" "}
-                  people joined
-                </span>
-                {"\n  "}
-                <span className="text-muted-foreground">
-                  {`next: You'll receive an email when you're in!`}
-                </span>
-              </>
-            )}
-            {(isSuccess || isAlreadyExists) && (
-              <TypeWriter
-                segments={[
-                  {
-                    text: "\n$ ",
-                    delay: 0,
-                    speed: 0,
-                    cursor: "primary",
-                  },
-                ]}
-                defaultSpeed={50}
-                startDelay={0}
-                showCursor={true}
-              />
-            )}
-          </span>
-        </>
-      )}
+        </pre>
+      </div>
     </div>
   );
 };

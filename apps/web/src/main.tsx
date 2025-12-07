@@ -5,9 +5,7 @@ import {
   HeadContent,
   Outlet,
   RouterProvider,
-  redirect,
 } from "@tanstack/react-router";
-import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 
@@ -15,6 +13,9 @@ import "./styles.css";
 import "@fontsource/jetbrains-mono/500.css";
 
 import App from "./App.tsx";
+import Progress from "./components/progress.tsx";
+import Roadmap from "./components/roadmap.tsx";
+import Waitlist from "./components/waitlist.tsx";
 import reportWebVitals from "./reportWebVitals.ts";
 
 const rootRoute = createRootRoute({
@@ -22,7 +23,7 @@ const rootRoute = createRootRoute({
     <>
       <HeadContent />
       <Outlet />
-      <TanStackRouterDevtools />
+      {/* <TanStackRouterDevtools /> */}
     </>
   ),
 });
@@ -30,27 +31,33 @@ const rootRoute = createRootRoute({
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  beforeLoad: () => {
-    throw redirect({ to: "/waitlist" });
-  },
+  component: App,
 });
 
 const waitlistRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/waitlist",
-  component: App,
-  loader: async () => {
-    return {
-      meta: {
-        ogImage: `${window.location.origin}/waitlist-og.png`,
-        ogTitle: "Join the Waitlist - Gitru",
-        ogDescription: "Sign up to get early access to Gitru.",
-      },
-    };
-  },
+  component: Waitlist,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, waitlistRoute]);
+const roadmapRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/roadmap",
+  component: Roadmap,
+});
+
+const progressRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/progress",
+  component: Progress,
+});
+
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  waitlistRoute,
+  roadmapRoute,
+  progressRoute,
+]);
 
 const router = createRouter({
   routeTree,
