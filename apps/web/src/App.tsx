@@ -6,45 +6,57 @@ function App() {
     <div className="relative h-screen w-full flex items-center justify-center">
       <BackgroundShader />
       <div className="absolute inset-0 pointer-events-none">
-        <div className="max-w-[600px] mx-auto py-1 mt-20 pointer-events-auto">
+        <div className="max-w-[600px] mx-auto py-1 mt-20">
           <img
             src="/logo192.png"
             alt="gitru logo"
             className="absolute size-7 -ml-8.5"
           />
           <div className="flex items-center">
-            <h1 className="text-2xl font-mono font-[550]">Gitru</h1>
+            <h1 className="text-2xl font-mono font-[550] pointer-events-auto">
+              Gitru
+            </h1>
           </div>
           <p className="font-mono mt-2 text-justify">
-            Gitru is a modern, lightweight, and powerful Git client designed to
-            simplify and abstract away the complexity of Git.
+            <span className="pointer-events-auto">
+              Gitru is a modern, lightweight, and powerful Git client designed
+              to simplify and abstract away the complexity of Git.
+            </span>
             <br />
             <br />
-            It simplifies complex Git workflows like rebasing and branch
-            management, offers a clear visual interface.
+            <span className="pointer-events-auto">
+              It simplifies complex Git workflows like rebasing and branch
+              management, offers a clear visual interface.
+            </span>
             <br />
             <br />
-            It's not for everyone — Gitru was designed for developers who are
-            comfortable with Git concepts but want a cleaner and faster way to
-            execute operations.
+            <span className="pointer-events-auto">
+              It's not for everyone — Gitru was designed for developers who are
+              comfortable with Git concepts but want a cleaner and faster way to
+              execute operations.
+            </span>
             <br />
             <br />
-            As well it brings GitHub features like managing notifications, PR
-            reviewing and issue tracking directly into the app.
+            <span className="pointer-events-auto">
+              As well it brings GitHub features like managing notifications, PR
+              reviewing and issue tracking directly into the app.
+            </span>
             <br />
             <br />
-            It started as a pet project, and now I'm trying to spend more time
-            on it. Gitru will be available free and open-source soon. Join the{" "}
-            <Link to="/waitlist" className="underline hover:text-primary">
-              waitlist
-            </Link>{" "}
-            for early access and updates!
+            <span className="pointer-events-auto">
+              It started as a pet project, and now I'm trying to spend more time
+              on it. Gitru will be available free and open-source soon. Join the{" "}
+              <Link to="/waitlist" className="underline hover:text-primary">
+                waitlist
+              </Link>{" "}
+              for early access and updates!
+            </span>
             <br />
             <br />
           </p>
 
           <div className="flex items-center gap-2 font-mono justify-between group">
-            <span className="flex items-center gap-2">
+            <span className="flex items-center gap-2 pointer-events-auto">
               <Link
                 to="/waitlist"
                 className="hover:underline cursor-pointer hover:text-primary text-muted-foreground group-hover:text-foreground transition-colors"
@@ -69,7 +81,7 @@ function App() {
             <a
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:underline cursor-pointer hover:text-foreground text-muted-foreground group-hover:text-foreground transition-colors size-4"
+              className="pointer-events-auto hover:underline cursor-pointer hover:text-foreground text-muted-foreground group-hover:text-foreground transition-colors size-4"
               href="https://x.com/ruru_x"
             >
               <svg fill="none" viewBox="0 0 1200 1227">
