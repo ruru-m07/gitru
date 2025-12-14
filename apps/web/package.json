@@ -5,40 +5,32 @@
   "scripts": {
     "dev": "vite --port 3000",
     "build": "vite build && tsc",
-    "serve": "vite preview",
-    "test": "vitest run"
+    "serve": "vite preview"
   },
   "dependencies": {
     "@elysiajs/eden": "^1.4.5",
     "@fontsource/jetbrains-mono": "^5.2.8",
-    "@react-three/drei": "^10.7.7",
-    "@react-three/fiber": "^9.4.2",
     "@tailwindcss/vite": "^4.0.6",
     "@tanstack/react-devtools": "^0.7.0",
     "@tanstack/react-router": "^1.132.0",
     "@tanstack/react-router-devtools": "^1.132.0",
     "better-auth": "^1.4.3",
-    "glsl-canvas-js": "^0.2.9",
-    "lucide-react": "^0.545.0",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "tailwindcss": "^4.0.6",
-    "three": "^0.181.2"
+    "lucide-react": "^0.561.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "tailwindcss": "^4.0.6"
   },
   "devDependencies": {
     "@tanstack/devtools-vite": "^0.3.11",
-    "@testing-library/dom": "^10.4.0",
-    "@testing-library/react": "^16.2.0",
-    "@types/node": "^22.10.2",
-    "@types/react": "^19.2.0",
+    "@types/node": "^25.0.1",
+    "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.0.4",
     "babel-plugin-react-compiler": "^1.0.0",
-    "elysia": "^1.4.16",
+    "elysia": "^1.4.18",
     "jsdom": "^27.0.0",
     "typescript": "^5.7.2",
-    "vite": "^7.1.7",
-    "vitest": "^3.0.5",
+    "vite": "^7.2.7",
     "web-vitals": "^5.1.0"
   }
 }

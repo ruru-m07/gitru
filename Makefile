@@ -63,7 +63,7 @@ lint: ## Run linter
 	@echo "$(YELLOW)Running linter...$(NC)"
 	bunx turbo run lint
 
-format: ## Format code with Prettier
+format: ## Format code
 	@echo "$(YELLOW)Formatting code...$(NC)"
 	bun run format
 

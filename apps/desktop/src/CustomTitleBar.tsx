@@ -1,7 +1,12 @@
 import { Button } from "@gitru/ui/components/button";
-import { CaretRightIcon } from "@radix-ui/react-icons";
 import { useCanGoBack, useRouterState } from "@tanstack/react-router";
-import { ArrowLeft, ArrowRight, GitPullRequestArrow, Plus } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ChevronRight,
+  GitPullRequestArrow,
+  Plus,
+} from "lucide-react";
 
 type CustomTitleBarProps = {
   restrictedPaths: string[];
@@ -75,11 +80,11 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
               />{" "}
               <div className="flex items-center gap-1 text-muted-foreground">
                 ruru-m07
-                <CaretRightIcon />
+                <ChevronRight />
                 gitru
-                <CaretRightIcon />
+                <ChevronRight />
                 pulls
-                <CaretRightIcon />
+                <ChevronRight />
                 <span className="text-foreground">#69</span>
               </div>
             </div>

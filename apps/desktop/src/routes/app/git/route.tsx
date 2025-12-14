@@ -195,7 +195,7 @@ function GitPageLayout() {
                         aria-hidden="true"
                       />
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent className="min-w-(--radix-dropdown-menu-trigger-width)">
+                    <DropdownMenuContent>
                       <DropdownMenuItem
                         onClick={async () => {
                           console.log(repositories);
