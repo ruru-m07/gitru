@@ -18,7 +18,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2.9.5", features = [] }
 serde = { version = "1", features = ["derive"] }
 ipc = { path = "../../../crates/ipc" }
 git = { path = "../../../crates/git" }

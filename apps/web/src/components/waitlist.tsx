@@ -1,4 +1,6 @@
 import { cn } from "@gitru/ui/lib/utils";
+import { Link } from "@tanstack/react-router";
+import { motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import TypeWriter, { type TypeSegment, typeStyles } from "./type-writer";
@@ -550,6 +552,14 @@ const Waitlist = () => {
           </>
         )}
       </div>
+      <Link to="/">
+        <motion.img
+          src="/logo192.png"
+          alt="gitru logo"
+          className="absolute size-7 left-4 top-4 mt-10"
+          layoutId="logo"
+        />
+      </Link>
       <div className="absolute bottom-2 right-2">
         <pre>
           <span className="text-primary font-mono tabular-nums">

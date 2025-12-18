@@ -16,6 +16,7 @@
     "@tanstack/react-router-devtools": "^1.132.0",
     "better-auth": "^1.4.3",
     "lucide-react": "^0.561.0",
+    "motion": "^12.23.26",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "tailwindcss": "^4.0.6"

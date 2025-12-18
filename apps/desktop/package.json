@@ -11,8 +11,6 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@rspc/client": "^0.3.1",
-    "@rspc/tauri": "^0.3.1",
     "@tabler/icons-react": "^3.35.0",
     "@tailwindcss/vite": "^4.1.13",
     "@tanstack/react-devtools": "^0.2.2",
@@ -22,7 +20,7 @@
     "@tanstack/react-router-devtools": "^1.131.42",
     "@tanstack/react-virtual": "^3.13.12",
     "@tanstack/router-plugin": "^1.131.43",
-    "@tauri-apps/api": "^2",
+    "@tauri-apps/api": "2.8.0",
     "@tauri-apps/plugin-dialog": "~2",
     "@tauri-apps/plugin-notification": "~2",
     "@tauri-apps/plugin-opener": "^2",
@@ -45,7 +43,7 @@
   },
   "devDependencies": {
     "@gitru/ui": "*",
-    "@tauri-apps/cli": "^2",
+    "@tauri-apps/cli": "2.8.0",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",

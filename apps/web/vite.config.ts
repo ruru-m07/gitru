@@ -16,6 +16,7 @@ export default defineConfig({
     tailwindcss(),
   ],
   resolve: {
+    dedupe: ["react", "react-dom", "motion"],
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },

@@ -1,16 +1,19 @@
 import { Link } from "@tanstack/react-router";
+import { motion } from "motion/react";
+import * as React from "react";
 import BackgroundShader from "./components/BackgroundShader";
 
-function App() {
+function App(): React.ReactNode {
   return (
     <div className="relative h-screen w-full flex items-center justify-center">
       <BackgroundShader />
       <div className="absolute inset-0 pointer-events-none">
         <div className="max-w-[600px] mx-auto py-1 mt-20">
-          <img
+          <motion.img
             src="/logo192.png"
             alt="gitru logo"
             className="absolute size-7 -ml-8.5"
+            layoutId="logo"
           />
           <div className="flex items-center">
             <h1 className="text-2xl font-mono font-[550] pointer-events-auto">
