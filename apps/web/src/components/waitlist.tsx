@@ -506,7 +506,7 @@ const Waitlist = () => {
               />
             </label>
 
-            <div className="min-h-[48px] text-sm font-mono whitespace-pre-wrap">
+            <div className="text-sm font-mono whitespace-pre-wrap">
               {isError && (
                 <p className="text-red-500">✗ error: {errorMessage}</p>
               )}
