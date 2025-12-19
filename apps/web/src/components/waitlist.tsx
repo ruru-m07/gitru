@@ -269,7 +269,7 @@ const bootingSegmentsText = `Welcome to waitlist terminal [Version 0.0.0]
 
 System Notice:
   - Gitru is a lightweight git client for humans.
-  - A Warapper around git, with just a better UX.
+  - A wrapper around git, with just a better UX.
   - Click. Commit. Continue.
 
 `;
@@ -539,7 +539,7 @@ const Waitlist = () => {
           </form>
 
           <div className="text-xs text-muted-foreground font-mono">
-            {totalJoined} people look in
+            {totalJoined} human look in
           </div>
         </div>
       </div>
@@ -691,7 +691,7 @@ const Waitlist = () => {
       <div className="absolute bottom-2 right-2">
         <pre>
           <span className="text-primary font-mono tabular-nums">
-            {totalJoined} people look in
+            {totalJoined} human look in
           </span>
         </pre>
       </div>
