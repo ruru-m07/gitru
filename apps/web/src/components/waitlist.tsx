@@ -1,7 +1,7 @@
 import { cn } from "@gitru/ui/lib/utils";
 import { Link } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import TypeWriter, { type TypeSegment, typeStyles } from "./type-writer";
 
@@ -275,6 +275,7 @@ System Notice:
 `;
 
 const Waitlist = () => {
+  const [isMobile, setIsMobile] = useState(false);
   const [openNextStep, setOpenNextStep] = useState(false);
   const [_formData, setFormData] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
@@ -283,6 +284,7 @@ const Waitlist = () => {
   const [isError, setIsError] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [loaderFrame, setLoaderFrame] = useState(0);
+  const [mobileForm, setMobileForm] = useState({ username: "", email: "" });
 
   const [totalJoined, setTotalJoined] = useState<number>(0);
 
@@ -297,6 +299,18 @@ const Waitlist = () => {
       const { data } = await api.waitlist.count.get();
       setTotalJoined(data?.count ?? 0);
     })();
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 640px)");
+    const handleChange = (event: MediaQueryListEvent) => {
+      setIsMobile(event.matches);
+    };
+
+    setIsMobile(mediaQuery.matches);
+    mediaQuery.addEventListener("change", handleChange);
+
+    return () => mediaQuery.removeEventListener("change", handleChange);
   }, []);
 
   const handleAllInputsSubmit = async (values: Record<string, string>) => {
@@ -382,7 +396,7 @@ const Waitlist = () => {
   }, [isLoading, loaderFrames.length]);
 
   useEffect(() => {
-    if (openNextStep) return;
+    if (openNextStep || isMobile) return;
 
     const handleKeyPress = (e: KeyboardEvent) => {
       if (e.key === "Enter") {
@@ -393,7 +407,7 @@ const Waitlist = () => {
     return () => {
       window.removeEventListener("keydown", handleKeyPress);
     };
-  }, [openNextStep]);
+  }, [openNextStep, isMobile]);
 
   let [showBlinkingCursor, setShowBlinkingCursor] = useState(true);
 
@@ -417,6 +431,120 @@ const Waitlist = () => {
 
     return () => clearInterval(interval);
   }, [carEyes, openNextStep]);
+
+  const handleMobileSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await handleAllInputsSubmit({
+      username: mobileForm.username,
+      email: mobileForm.email,
+    });
+  };
+
+  if (isMobile) {
+    return (
+      <div className="min-h-screen w-full flex flex-col px-4 py-6 gap-6">
+        <Link to="/">
+          <motion.img
+            src="/logo192.png"
+            alt="gitru logo"
+            className="size-9"
+            layoutId="logo"
+          />
+        </Link>
+
+        <div className="flex-1 flex flex-col items-center gap-6">
+          {/* <div className="text-center space-y-2">
+            <p className="font-mono text-xs text-muted-foreground uppercase tracking-wide">
+              Gitru waitlist
+            </p>
+            <h1 className="text-2xl font-semibold">Join the waitlist</h1>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">
+              Lightweight git client for humans. Drop your name and email and we
+              will ping you when you are in.
+            </p>
+          </div> */}
+
+          <form
+            onSubmit={handleMobileSubmit}
+            className="w-full max-w-md space-y-4 rounded-xl "
+          >
+            <label className="space-y-1 block">
+              <span className="text-sm font-medium">Name</span>
+              <input
+                type="text"
+                name="username"
+                className="w-full rounded-lg border border-black/20 bg-background px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="Ada Lovelace"
+                value={mobileForm.username}
+                onChange={(event) =>
+                  setMobileForm((prev) => ({
+                    ...prev,
+                    username: event.target.value,
+                  }))
+                }
+                disabled={isLoading}
+                autoComplete="name"
+              />
+            </label>
+
+            <label className="space-y-1 block">
+              <span className="text-sm font-medium">Email</span>
+              <input
+                type="email"
+                name="email"
+                className="w-full rounded-lg border border-black/20 bg-background px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="you@example.com"
+                value={mobileForm.email}
+                onChange={(event) =>
+                  setMobileForm((prev) => ({
+                    ...prev,
+                    email: event.target.value,
+                  }))
+                }
+                disabled={isLoading}
+                autoComplete="email"
+              />
+            </label>
+
+            <div className="min-h-[48px] text-sm font-mono whitespace-pre-wrap">
+              {isError && (
+                <p className="text-red-500">✗ error: {errorMessage}</p>
+              )}
+              {isAlreadyExists && (
+                <p className="text-yellow-500">
+                  ! You are already on the waitlist
+                </p>
+              )}
+              {isSuccess && (
+                <p className="text-green-600">
+                  ✓ Successfully joined the waitlist!
+                </p>
+              )}
+              {(isAlreadyExists || isSuccess) && (
+                <p className="text-muted-foreground">
+                  You will receive an email when you are in.
+                </p>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full rounded-lg bg-primary text-primary-foreground py-2 font-medium transition-opacity disabled:opacity-70"
+            >
+              {isLoading
+                ? `${loaderFrames[loaderFrame]} Joining...`
+                : "Join waitlist"}
+            </button>
+          </form>
+
+          <div className="text-xs text-muted-foreground font-mono">
+            {totalJoined} people look in
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative h-screen w-full flex items-center justify-center pt-20">

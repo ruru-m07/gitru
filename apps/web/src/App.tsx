@@ -20,7 +20,7 @@ function App(): React.ReactNode {
               Gitru
             </h1>
           </div>
-          <p className="font-mono mt-2 text-justify">
+          <p className="font-mono mt-2 md:text-justify">
             <span className="pointer-events-auto">
               Gitru is a modern, lightweight, and powerful Git client designed
               to simplify and abstract away the complexity of Git.
@@ -102,6 +102,7 @@ function App(): React.ReactNode {
             </a>
           </div>
         </div>
+        <div className="h-20" />
       </div>
     </div>
   );
