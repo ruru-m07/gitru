@@ -5,17 +5,17 @@ import BackgroundShader from "./components/BackgroundShader";
 
 function App(): React.ReactNode {
   return (
-    <div className="relative h-screen w-full flex items-center justify-center">
+    <div className="relative h-screen w-full flex md:items-center justify-center ">
       <BackgroundShader />
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="max-w-[600px] mx-auto py-1 mt-20">
+      <div className="absolute inset-0 pointer-events-none px-6 md:px-0">
+        <div className="max-w-[600px] mx-auto py-1 mt-6 md:mt-20">
           <motion.img
             src="/logo192.png"
             alt="gitru logo"
-            className="absolute size-7 -ml-8.5"
+            className="absolute size-7 md:-ml-8.5"
             layoutId="logo"
           />
-          <div className="flex items-center">
+          <div className="flex items-center ml-10 md:ml-0">
             <h1 className="text-2xl font-mono font-[550] pointer-events-auto">
               Gitru
             </h1>
