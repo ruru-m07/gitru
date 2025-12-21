@@ -79,9 +79,11 @@ import {
   Undo2,
   UserPlus,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useHotkeys } from "react-hotkeys-hook";
 import { toast } from "sonner";
 import { useDiffViewStore } from "@/components/diff/useDiffViewStore";
+import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
 import StatusBar from "@/components/typography/statusBar";
 import {
   formatUnixSecondsToDateTime,
@@ -116,12 +118,149 @@ function GitPageLayout() {
 
   const [commitHistory, setCommitHistory] = useState<CommitInfo[]>([]);
 
+  // Diff view store for showing selected file in diff view
+  const setSelectedFilePath = useDiffViewStore(
+    (state) => state.setSelectedFilePath,
+  );
+  const setSelectedFileStatus = useDiffViewStore(
+    (state) => state.setSelectedFileStatus,
+  );
+
+  // File selection store for multi-select and keyboard navigation
+  const selectedFiles = useFileSelectionStore((state) => state.selectedFiles);
+  const focusedIndex = useFileSelectionStore((state) => state.focusedIndex);
+  const setAllFiles = useFileSelectionStore((state) => state.setAllFiles);
+  const handleFileClick = useFileSelectionStore(
+    (state) => state.handleFileClick,
+  );
+  const moveUp = useFileSelectionStore((state) => state.moveUp);
+  const moveDown = useFileSelectionStore((state) => state.moveDown);
+  const clearSelection = useFileSelectionStore((state) => state.clearSelection);
+  const selectAllFiles = useFileSelectionStore((state) => state.selectAll);
+
   const stagedChanges = status?.files.filter((file) =>
     file.status.some((s) => s.startsWith("Index")),
   );
   const unstagedChanges = status?.files.filter((file) =>
     file.status.some((s) => s.startsWith("Worktree")),
   );
+
+  // Combined files array for keyboard navigation (staged first, then unstaged)
+  const allFiles = useMemo(() => {
+    return [...(stagedChanges || []), ...(unstagedChanges || [])];
+  }, [stagedChanges, unstagedChanges]);
+
+  // Update the store when files change
+  useEffect(() => {
+    setAllFiles(allFiles);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allFiles]);
+
+  // Ref for the file list items for scroll into view
+  const itemRefs = useRef<Map<number, HTMLDivElement | null>>(new Map());
+
+  // Scroll focused item into view
+  useEffect(() => {
+    if (focusedIndex >= 0 && itemRefs.current.has(focusedIndex)) {
+      const element = itemRefs.current.get(focusedIndex);
+      element?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [focusedIndex]);
+
+  // Helper to select a file for the diff view
+  const selectFileForDiff = useCallback(
+    (file: FileStatus) => {
+      if (
+        file.status.includes("IndexRenamed") ||
+        file.status.includes("WorktreeRenamed")
+      ) {
+        setSelectedFilePath({
+          path: file.path,
+          newPath: file.new_path,
+        });
+      } else {
+        setSelectedFilePath({
+          path: file.path,
+        });
+      }
+      setSelectedFileStatus(file.status);
+    },
+    [setSelectedFilePath, setSelectedFileStatus],
+  );
+
+  // Keyboard navigation handlers
+  useHotkeys(
+    "up",
+    (e) => {
+      e.preventDefault();
+      const store = useFileSelectionStore.getState();
+      const newIndex = Math.max(0, store.focusedIndex - 1);
+      if (newIndex !== store.focusedIndex && store.allFiles[newIndex]) {
+        moveUp();
+        selectFileForDiff(store.allFiles[newIndex]);
+      }
+    },
+    { enableOnFormTags: false },
+  );
+
+  useHotkeys(
+    "down",
+    (e) => {
+      e.preventDefault();
+      const store = useFileSelectionStore.getState();
+      const newIndex = Math.min(
+        store.allFiles.length - 1,
+        store.focusedIndex + 1,
+      );
+      if (newIndex !== store.focusedIndex && store.allFiles[newIndex]) {
+        moveDown();
+        selectFileForDiff(store.allFiles[newIndex]);
+      }
+    },
+    { enableOnFormTags: false },
+  );
+
+  useHotkeys(
+    "mod+a",
+    (e) => {
+      e.preventDefault();
+      selectAllFiles();
+    },
+    { enableOnFormTags: false },
+  );
+
+  useHotkeys(
+    "escape",
+    () => {
+      clearSelection();
+    },
+    { enableOnFormTags: false },
+  );
+
+  // Helper to get the global index of a file
+  const getGlobalIndex = useCallback(
+    (file: FileStatus, type: "Staged Changes" | "Changes") => {
+      if (type === "Staged Changes") {
+        return stagedChanges?.findIndex((f) => f.path === file.path) ?? -1;
+      }
+      // For unstaged changes, add the offset of staged changes
+      const stagedLength = stagedChanges?.length ?? 0;
+      const unstagedIndex =
+        unstagedChanges?.findIndex((f) => f.path === file.path) ?? -1;
+      return unstagedIndex >= 0 ? stagedLength + unstagedIndex : -1;
+    },
+    [stagedChanges, unstagedChanges],
+  );
+
+  // Create stable ref callback that reads index from data attribute
+  const setItemRef = useCallback((el: HTMLDivElement | null) => {
+    if (el) {
+      const index = Number(el.dataset.index);
+      if (!Number.isNaN(index)) {
+        itemRefs.current.set(index, el);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -140,7 +279,7 @@ function GitPageLayout() {
     <div
       // className=
       className={cn(
-        "ml-[var(--main-actual-content-padding)] bg-accent/35 ring-1 ring-inset ring-border h-full w-full rounded-md flex overflow-hidden",
+        "ml-(--main-actual-content-padding) bg-accent/35 ring-1 ring-inset ring-border h-full w-full rounded-md flex overflow-hidden",
         "flex flex-col",
       )}
     >
@@ -178,7 +317,7 @@ function GitPageLayout() {
               <ChevronDown size={18} />
             )}
           </button>
-          <div className="h-[calc(100vh_-_calc(var(--spacing)_*_14)_-_calc(var(--spacing)_*_9)_-_calc(var(--spacing)_*_7)_-_calc(var(--spacing)_*_3))]">
+          <div className="h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*7)-calc(var(--spacing)*3))]">
             {repoSelectIsOpen ? (
               <ScrollArea className="max-h-full _flex-1">
                 <div className="w-full p-2 border-b flex justify-between items-center gap-2">
@@ -395,23 +534,39 @@ function GitPageLayout() {
                                       </div>
                                     </AccordionTrigger>
                                     <AccordionContent className="text-muted-foreground pb-1">
-                                      {cell.data?.map((v) => (
-                                        <EachStatus
-                                          key={v.path}
-                                          file={v}
-                                          type={cell.name}
-                                          onAdd={
-                                            cell.name === "Changes"
-                                              ? actions.add
-                                              : undefined
-                                          }
-                                          onUnstage={
-                                            cell.name === "Staged Changes"
-                                              ? actions.unstage
-                                              : undefined
-                                          }
-                                        />
-                                      ))}
+                                      {cell.data?.map((v) => {
+                                        const globalIndex = getGlobalIndex(
+                                          v,
+                                          cell.name,
+                                        );
+                                        return (
+                                          <EachStatus
+                                            key={v.path}
+                                            file={v}
+                                            type={cell.name}
+                                            index={globalIndex}
+                                            isFocused={
+                                              focusedIndex === globalIndex
+                                            }
+                                            isMultiSelected={
+                                              selectedFiles.size > 1 &&
+                                              selectedFiles.has(v.path)
+                                            }
+                                            onFileClick={handleFileClick}
+                                            setRef={setItemRef}
+                                            onAdd={
+                                              cell.name === "Changes"
+                                                ? actions.add
+                                                : undefined
+                                            }
+                                            onUnstage={
+                                              cell.name === "Staged Changes"
+                                                ? actions.unstage
+                                                : undefined
+                                            }
+                                          />
+                                        );
+                                      })}
                                     </AccordionContent>
                                   </AccordionItem>
                                 );
@@ -602,15 +757,28 @@ function GitPageLayout() {
 interface EachStatusProps {
   file: FileStatus;
   type: "Staged Changes" | "Changes";
+  index: number;
+  isFocused: boolean;
+  isMultiSelected: boolean;
   onAdd?: (filePath: string) => Promise<boolean>;
   onUnstage?: (filePath: string) => Promise<boolean>;
+  onFileClick: (
+    file: FileStatus,
+    index: number,
+    event: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean },
+  ) => void;
+  setRef?: (el: HTMLDivElement | null) => void;
 }
 
-export default function EachStatus({
+const EachStatus = memo(function EachStatus({
   file,
   type,
+  index,
+  isMultiSelected,
   onAdd,
   onUnstage,
+  onFileClick,
+  setRef,
 }: EachStatusProps) {
   const { setSelectedFilePath, setSelectedFileStatus, selectedFilePath } =
     useDiffViewStore();
@@ -623,32 +791,59 @@ export default function EachStatus({
         )}
       >
         <div
+          ref={setRef}
+          data-index={index}
           className={cn(
-            "flex relative select-none cursor-pointer hover:bg-muted border border-transparent hover:border-1 hover:border-l-1 hover:border-l-border items-center px-2 py-1",
+            "[--pattern-fg:color-mix(in_srgb,var(--primary)_20%,transparent)] flex relative select-none cursor-pointer hover:bg-muted border border-transparent hover:border hover:border-l hover:border-l-border items-center px-2 py-1",
+            // Single selection style (when viewing diff)
             selectedFilePath?.path === file.path &&
-              // "bg-primary/5! hover:bg-primary/10! border-l-border border border-y-primary/30! border-dashed!",
+              !isMultiSelected &&
               "bg-muted-foreground/10! hover:bg-muted-foreground/15!",
+            // Multi-selection style
+            // isMultiSelected && "bg-primary/40 hover:bg-primary/70",
+            isMultiSelected &&
+              "w-full bg-[repeating-linear-gradient(315deg,var(--pattern-fg)_0,var(--pattern-fg)_1.5px,transparent_0,transparent_50%)] bg-size-[9px_9px] bg-fixed",
+            //  <span className="[--pattern-fg:var(--input)]/50 w-full h-full">
+
+            // Focused style (keyboard navigation)
+            // TODO:
+            // isFocused && "bg-primary/20 hover:bg-primary/70",
           )}
-          onClick={() => {
-            if (
-              file.status.includes("IndexRenamed") ||
-              file.status.includes("WorktreeRenamed")
-            ) {
-              setSelectedFilePath({
-                path: file.path,
-                newPath: file.new_path,
-              });
-            } else {
-              setSelectedFilePath({
-                path: file.path,
-              });
+          onClick={(e) => {
+            // Handle multi-select with modifiers
+            onFileClick(file, index, {
+              shiftKey: e.shiftKey,
+              metaKey: e.metaKey,
+              ctrlKey: e.ctrlKey,
+            });
+
+            // Only set diff view file if not multi-selecting
+            if (!e.shiftKey && !e.metaKey && !e.ctrlKey) {
+              if (
+                file.status.includes("IndexRenamed") ||
+                file.status.includes("WorktreeRenamed")
+              ) {
+                setSelectedFilePath({
+                  path: file.path,
+                  newPath: file.new_path,
+                });
+              } else {
+                setSelectedFilePath({
+                  path: file.path,
+                });
+              }
+              setSelectedFileStatus(file.status);
             }
-            setSelectedFileStatus(file.status);
           }}
         >
-          {selectedFilePath?.path === file.path ? (
+          {/* Show indicator for single selection (diff view) */}
+          {selectedFilePath?.path === file.path && !isMultiSelected ? (
             <div className="absolute top-1/2 -translate-y-1/2 -left-1 rounded-md w-2 bg-primary h-6"></div>
           ) : null}
+          {/* Show checkbox-like indicator for multi-selection */}
+          {isMultiSelected && (
+            <div className="absolute top-1/2 -translate-y-1/2 -left-0.5 rounded-sm w-1 bg-primary h-4"></div>
+          )}
           <div className="flex items-center w-full min-w-0">
             <div className="shrink-0">{getStatusIcon(file.status)}</div>
             <div className="flex items-center ml-2 min-w-0 flex-1">
@@ -687,7 +882,7 @@ export default function EachStatus({
               </div>
             )}
             {type === "Staged Changes" && onUnstage && (
-              <div className="flex ml-2 flex-shrink-0">
+              <div className="flex ml-2 shrink-0">
                 <Button
                   onClick={async (e) => {
                     e.stopPropagation();
@@ -758,7 +953,9 @@ export default function EachStatus({
       </contextMenu.ContextMenuContent>
     </contextMenu.ContextMenu>
   );
-}
+});
+
+export default EachStatus;
 
 export function getStatusIcon(type: FileStatusKind[]) {
   // Normalize into a Set for fast lookup
@@ -833,7 +1030,7 @@ const DiscardChangesDialog = ({ fileName }: { fileName: string }) => {
       >
         <Undo2 size={20} strokeWidth={1.25} />
       </DialogTrigger>
-      <DialogContent className="min-w-[600px]">
+      <DialogContent className="min-w-150">
         <div className="flex flex-col items-center gap-2">
           <div
             className="flex size-9 shrink-0 items-center justify-center rounded-full border"

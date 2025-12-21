@@ -5,5 +5,5 @@ export const Route = createFileRoute("/app/pulls/")({
 });
 
 function RouteComponent() {
-  return <div>Hello "/app/pulls/"!</div>;
+  return <div>adsl</div>;
 }

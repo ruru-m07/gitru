@@ -1,16 +1,12 @@
 import { Badge } from "@gitru/ui/components/badge";
-import { Button } from "@gitru/ui/components/button";
-import { Separator } from "@gitru/ui/components/separator";
 import {
   ArrowDown,
-  ArrowUp,
   GitBranch,
   GitCommitVertical,
-  Pickaxe,
   RefreshCw,
   Settings,
 } from "lucide-react";
-import { GithubDark } from "../ui/svgs/githubDark";
+// import { GithubDark } from "../ui/svgs/githubDark";
 import { GithubLight } from "../ui/svgs/githubLight";
 
 const StatusBar = () => {
@@ -75,7 +71,7 @@ const StatusBar = () => {
       </div>
       {/* right side */}
       <div className="h-full flex">
-            <Badge
+        <Badge
           variant={"outline"}
           className="h-full rounded-none border-0 border-l px-2 flex items-center"
         >

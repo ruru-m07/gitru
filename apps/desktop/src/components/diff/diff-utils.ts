@@ -1,11 +1,11 @@
 import { diffChars, diffWords, structuredPatch } from "diff";
 import { type BundledLanguage } from "shiki";
-import { DiffHunk, DiffRow, DiffSegment } from "./diff-types";
 import {
   DEFAULT_LANGUAGE,
   EXTENSION_LANGUAGE_MAP,
   SPECIAL_FILENAMES,
-} from "./highlighter";
+} from "../highlighter";
+import { DiffHunk, DiffRow, DiffSegment } from "./diff-types";
 
 const DEFAULT_CONTEXT_LINES = 3;
 

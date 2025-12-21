@@ -1,17 +1,12 @@
-import { BundledLanguage, createHighlighter, Highlighter } from "shiki";
-import { vesperLight } from "./custome-themes";
-
-export function HighlightedLine({
-  html,
-  className,
-}: {
-  html: string;
-  className?: string;
-}) {
-  return (
-    <span className={className} dangerouslySetInnerHTML={{ __html: html }} />
-  );
-}
+import {
+  BundledLanguage,
+  createHighlighterCore,
+  createOnigurumaEngine,
+  HighlighterCore,
+  loadWasm,
+} from "shiki";
+import { preloadedLangs } from "./preload/langs";
+import { preloadedThemes } from "./preload/themes";
 
 export const DEFAULT_LANGUAGE = "plaintext" as BundledLanguage;
 
@@ -57,48 +52,26 @@ export const SPECIAL_FILENAMES: Record<string, BundledLanguage | undefined> = {
   brewfile: "ruby",
 };
 
-const ALWAYS_AVAILABLE_LANGS = [
-  "typescript",
-  "javascript",
-  "tsx",
-  "jsx",
-  "json",
-  "css",
-  "html",
-  "bash",
-  "python",
-  "diff",
-  "plaintext" as BundledLanguage,
-  "rs",
-  "rust",
-  "makefile",
-  "make",
-  "docker",
-  "dockerfile",
-  "java",
-  "csv",
-  "yaml",
-  "markdown",
-  "md",
-  "mdx",
-  "groovy",
-  "ruby",
-  "toml",
-] as BundledLanguage[];
-
 let cancelled = false;
 
-export let highlighter: null | Highlighter = null;
+export let highlighter: null | HighlighterCore = null;
 
 (async () => {
   try {
-    const hl = await createHighlighter({
-      themes: ["vesper", vesperLight],
-      langs: ALWAYS_AVAILABLE_LANGS,
-    });
-    if (!cancelled) {
-      highlighter = hl;
-      cancelled = true;
+    if (cancelled) {
+      return;
+    }
+    if (!highlighter) {
+      await loadWasm(import("shiki/onig.wasm?init"));
+      const hl = await createHighlighterCore({
+        themes: preloadedThemes,
+        langs: preloadedLangs,
+        engine: createOnigurumaEngine(import("shiki/wasm")),
+      });
+      if (!cancelled) {
+        highlighter = hl;
+        cancelled = true;
+      }
     }
   } catch (error) {
     console.error("Failed to initialize Shiki highlighter:", error);
