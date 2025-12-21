@@ -82,6 +82,7 @@ import {
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useDiffViewStore } from "@/components/diff/useDiffViewStore";
+import StatusBar from "@/components/typography/statusBar";
 import {
   formatUnixSecondsToDateTime,
   timeAgoFromUnixSeconds,
@@ -136,16 +137,20 @@ function GitPageLayout() {
   }, [selectedRepository]);
 
   return (
-    <ResizablePanelGroup
+    <div
+      // className=
       className={cn(
         "ml-[var(--main-actual-content-padding)] bg-accent/35 ring-1 ring-inset ring-border h-full w-full rounded-md flex overflow-hidden",
+        "flex flex-col",
       )}
-      // @ts-ignore
-      direction="horizontal"
-      autoSaveId="git-page-layout"
     >
-      {
-        // @ts-ignore
+      <ResizablePanelGroup
+        // className={cn(
+        //   "ml-[var(--main-actual-content-padding)] bg-accent/35 ring-1 ring-inset ring-border h-full w-full rounded-md flex overflow-hidden",
+        // )}
+        direction="horizontal"
+        autoSaveId="git-page-layout"
+      >
         <ResizablePanel
           defaultSize={18}
           minSize={18}
@@ -173,7 +178,7 @@ function GitPageLayout() {
               <ChevronDown size={18} />
             )}
           </button>
-          <div className="h-[calc(100vh_-_calc(var(--spacing)_*_14)_-_calc(var(--spacing)_*_9)_-_calc(var(--spacing)_*_3))]">
+          <div className="h-[calc(100vh_-_calc(var(--spacing)_*_14)_-_calc(var(--spacing)_*_9)_-_calc(var(--spacing)_*_7)_-_calc(var(--spacing)_*_3))]">
             {repoSelectIsOpen ? (
               <ScrollArea className="max-h-full _flex-1">
                 <div className="w-full p-2 border-b flex justify-between items-center gap-2">
@@ -425,7 +430,7 @@ function GitPageLayout() {
                         </>
                       )}
                     </div>
-                    <div className="shrink-0 border-l border-b rounded-bl-md flex flex-col gap-2 justify-between items-center border-t px-2 py-2 bg-accent dark:bg-accent/10">
+                    <div className="shrink-0 border-l flex flex-col gap-2 justify-between items-center border-t px-2 py-2 bg-accent dark:bg-accent/10">
                       <Input
                         placeholder="Summary (required)"
                         className="h-8 _border-border dark:bg-background!"
@@ -571,9 +576,7 @@ function GitPageLayout() {
             )}
           </div>
         </ResizablePanel>
-      }
-      <ResizableHandle className="cursor-col-resize!" withHandle />
-      {
+        <ResizableHandle className="cursor-col-resize!" withHandle />
         <ResizablePanel
           className={cn(
             "w-full relative",
@@ -590,8 +593,9 @@ function GitPageLayout() {
           )}
           <Outlet />
         </ResizablePanel>
-      }
-    </ResizablePanelGroup>
+      </ResizablePanelGroup>
+      <StatusBar />
+    </div>
   );
 }
 

@@ -342,9 +342,8 @@ export function DiffViewer({
                           html={leftHtml}
                         />
                       ) : (
-                        <span className="[--pattern-fg:var(--input)]/95 bg-gray-950 w-full h-full">
-                          <div className="_border-x h-6 w-full border-x-(--pattern-fg) bg-[image:repeating-linear-gradient(315deg,_var(--pattern-fg)_0,_var(--pattern-fg)_1px,_transparent_0,_transparent_50%)] bg-[size:10px_10px] bg-fixed"></div>
-                          <div className="_border-x border-x-(--pattern-fg) bg-[image:repeating-linear-gradient(315deg,_var(--pattern-fg)_0,_var(--pattern-fg)_1px,_transparent_0,_transparent_50%)] bg-[size:10px_10px] bg-fixed"></div>
+                        <span className="[--pattern-fg:var(--input)]/50 w-full h-full">
+                          <div className="_border-x h-6 w-full border-x-(--pattern-fg) bg-[image:repeating-linear-gradient(315deg,_var(--pattern-fg)_0,_var(--pattern-fg)_1.5px,_transparent_0,_transparent_50%)] bg-[size:9px_9px] bg-fixed"></div>
                         </span>
                       )}
                     </div>
@@ -365,9 +364,8 @@ export function DiffViewer({
                           html={rightHtml}
                         />
                       ) : (
-                        <span className="[--pattern-fg:var(--input)]/95 bg-gray-950 w-full h-full">
-                          <div className="_border-x h-6 w-full border-x-(--pattern-fg) bg-[image:repeating-linear-gradient(315deg,_var(--pattern-fg)_0,_var(--pattern-fg)_1px,_transparent_0,_transparent_50%)] bg-[size:10px_10px] bg-fixed"></div>
-                          <div className="_border-x border-x-(--pattern-fg) bg-[image:repeating-linear-gradient(315deg,_var(--pattern-fg)_0,_var(--pattern-fg)_1px,_transparent_0,_transparent_50%)] bg-[size:10px_10px] bg-fixed"></div>
+                        <span className="[--pattern-fg:var(--input)]/50 w-full h-full">
+                          <div className="_border-x h-6 w-full border-x-(--pattern-fg) bg-[image:repeating-linear-gradient(315deg,_var(--pattern-fg)_0,_var(--pattern-fg)_1.5px,_transparent_0,_transparent_50%)] bg-[size:9px_9px] bg-fixed"></div>
                         </span>
                       )}
                     </div>

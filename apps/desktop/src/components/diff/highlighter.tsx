@@ -43,7 +43,7 @@ export const EXTENSION_LANGUAGE_MAP: Record<
   markdown: "markdown",
   md: "markdown",
   toml: "toml",
-  mdx: "mdx" as BundledLanguage,
+  mdx: "mdx",
 };
 
 export const SPECIAL_FILENAMES: Record<string, BundledLanguage | undefined> = {
@@ -51,10 +51,10 @@ export const SPECIAL_FILENAMES: Record<string, BundledLanguage | undefined> = {
   dockerfile: "dockerfile",
   gitignore: "bash",
   gitattributes: "bash",
-  jenkinsfile: "groovy" as BundledLanguage,
+  jenkinsfile: "groovy",
   procfile: "bash",
-  vagrantfile: "ruby" as BundledLanguage,
-  brewfile: "ruby" as BundledLanguage,
+  vagrantfile: "ruby",
+  brewfile: "ruby",
 };
 
 const ALWAYS_AVAILABLE_LANGS = [
