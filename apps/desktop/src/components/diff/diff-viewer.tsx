@@ -1,6 +1,12 @@
 import { Card, CardContent } from "@gitru/ui/components/card";
 import { FoldVertical } from "lucide-react";
-import React, { useCallback, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { FileStatusKind, GetDiffResponse } from "@/tauri";
 import { highlighter } from "../highlighter";
 import { DiffHunk, DiffRow, DiffSegment } from "./diff-types";
@@ -20,6 +26,9 @@ const highlightCache = new Map<string, string>();
 
 const HIGHLIGHT_CACHE = new Map<string, string>();
 const MAX_CACHE = 1000;
+
+// TODO(ruru-m07): enable inline diff later
+const INLINE_DIFF = false;
 
 // ? LRU trim
 function cacheSet(key: string, value: string) {
@@ -71,6 +80,38 @@ export function DiffViewer({
   const { viewMode } = useDiffViewStore();
   const language = useMemo(() => resolveLanguage(filePath), [filePath]);
   const [expandedSkips, setExpandedSkips] = useState<Set<string>>(new Set());
+
+  const masterScrollRef = useRef<HTMLDivElement>(null);
+  const [sharedScrollX, setSharedScrollX] = useState(0);
+  const [sharedMasterWidth, setSharedMasterWidth] = useState(0);
+  const segmentWidthsRef = useRef<Map<string, number>>(new Map());
+
+  const updateMasterWidth = useCallback((segmentId: string, width: number) => {
+    segmentWidthsRef.current.set(segmentId, width);
+    const maxWidth = Math.max(...segmentWidthsRef.current.values(), 0);
+    setSharedMasterWidth(maxWidth);
+  }, []);
+
+  const onSharedWheel = useCallback((e: React.WheelEvent) => {
+    if (!masterScrollRef.current) return;
+
+    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+      e.preventDefault();
+      masterScrollRef.current.scrollLeft += e.deltaX;
+    }
+  }, []);
+
+  useEffect(() => {
+    const el = masterScrollRef.current;
+    if (!el) return;
+
+    const onScroll = () => {
+      setSharedScrollX(el.scrollLeft);
+    };
+
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
 
   const statusSet = useMemo(() => new Set(status ?? []), [status]);
   const treatAsNewFile =
@@ -198,7 +239,6 @@ export function DiffViewer({
 
             let contentHtml: string;
 
-            const INLINE_DIFF = false; // TODO(ruru-m07): enable inline diff later
             if (
               INLINE_DIFF &&
               (line.type === "added" || line.type === "removed") &&
@@ -270,163 +310,6 @@ export function DiffViewer({
     </div>
   );
 
-  const renderSplitView = (lines: DiffRow[], keyPrefix: string) => {
-    const grouped: Array<{ left: DiffRow | null; right: DiffRow | null }> = [];
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-
-      if (line.type === "context") {
-        grouped.push({ left: line, right: line });
-        continue;
-      }
-
-      if (line.type === "removed") {
-        const nextLine = lines[i + 1];
-        if (nextLine && nextLine.type === "added") {
-          grouped.push({ left: line, right: nextLine });
-          i++;
-        } else {
-          grouped.push({ left: line, right: null });
-        }
-        continue;
-      }
-
-      if (line.type === "added") {
-        grouped.push({ left: null, right: line });
-      }
-    }
-
-    return (
-      <div>
-        <div className="flex">
-          <table className="table-fixed w-full border-collapse diff-content">
-            <tbody>
-              {grouped.map((pair, index) => {
-                const leftBg =
-                  pair.left?.type === "removed" ? "diff-removed" : "";
-                const rightBg =
-                  pair.right?.type === "added" ? "diff-added" : "";
-                const key = `${keyPrefix}-${pair.left?.lineNumberOld ?? "x"}-${pair.right?.lineNumberNew ?? "y"}-${index}`;
-
-                let leftHtml = "";
-                let rightHtml = "";
-
-                // Compute inline diff for paired removed/added lines
-                if (
-                  pair.left &&
-                  pair.right &&
-                  pair.left.type === "removed" &&
-                  pair.right.type === "added" &&
-                  !pair.left.metadata &&
-                  !pair.right.metadata
-                ) {
-                  const inlineDiff = computeInlineDiff(
-                    pair.left.content,
-                    pair.right.content,
-                  );
-
-                  // Build left side (removed) HTML
-                  const leftParts = inlineDiff
-                    .filter((part) => !part.added)
-                    .map((part) => {
-                      const highlighted =
-                        highlightedLines.get(part.value) ??
-                        escapeHtml(part.value);
-
-                      if (part.removed) {
-                        return `<span class="diff-word-removed">${highlighted}</span>`;
-                      }
-                      return highlighted;
-                    })
-                    .join("");
-                  leftHtml = leftParts;
-
-                  // Build right side (added) HTML
-                  const rightParts = inlineDiff
-                    .filter((part) => !part.removed)
-                    .map((part) => {
-                      const highlighted =
-                        highlightedLines.get(part.value) ??
-                        escapeHtml(part.value);
-
-                      if (part.added) {
-                        return `<span class="diff-word-added">${highlighted}</span>`;
-                      }
-                      return highlighted;
-                    })
-                    .join("");
-                  rightHtml = rightParts;
-                } else {
-                  // Regular highlighting without inline diff
-                  leftHtml = pair.left
-                    ? pair.left.metadata
-                      ? escapeHtml(pair.left.content)
-                      : highlight(pair.left.content)
-                    : "";
-                  rightHtml = pair.right
-                    ? pair.right.metadata
-                      ? escapeHtml(pair.right.content)
-                      : highlight(pair.right.content)
-                    : "";
-                }
-
-                return (
-                  <div key={key} className="grid grid-cols-[auto_1fr_auto_1fr]">
-                    <div
-                      className={`py-1 w-12 text-muted-foreground diff-line-number-segment-td text-xs select-none ${leftBg ? "diff-line-number-bg-removed" : "diff-line-number-bg border-r"} ${leftBg} border-l-0`}
-                    >
-                      {/* // ! we can do text-right if we want a better number alignment */}
-                      <span className="px-3 block w-full text-center _text-right tabular-nums">
-                        {pair.left?.lineNumberOld ?? ""}
-                      </span>
-                    </div>
-                    <div
-                      className={`truncate text-sm font-mono leading-6 whitespace-pre _max-w-[10vw] ${leftBg}`}
-                    >
-                      {pair.left ? (
-                        <HighlightedLine
-                          className={`_text-wrap _flex-wrap pl-3 pr-2 ${pair.left?.metadata ? "italic text-muted-foreground" : ""}`}
-                          html={leftHtml}
-                        />
-                      ) : (
-                        <span className="[--pattern-fg:var(--input)]/50 w-full h-full">
-                          <div className="_border-x h-6 w-full border-x-(--pattern-fg) bg-[repeating-linear-gradient(315deg,var(--pattern-fg)_0,var(--pattern-fg)_1.5px,transparent_0,transparent_50%)] bg-size-[9px_9px] bg-fixed"></div>
-                        </span>
-                      )}
-                    </div>
-                    <div
-                      className={`py-1 w-12 text-muted-foreground diff-line-number-segment-td text-xs select-none ${rightBg ? "diff-line-number-bg-added" : "diff-line-number-bg border-x"} ${rightBg}`}
-                    >
-                      {/* // ! we can do text-right if we want a better number alignment */}
-                      <span className="px-3 block w-full text-center _text-right tabular-nums">
-                        {pair.right?.lineNumberNew ?? ""}
-                      </span>
-                    </div>
-                    <div
-                      className={`truncate text-sm font-mono leading-6 whitespace-pre _max-w-[10vw] ${rightBg}`}
-                    >
-                      {pair.right ? (
-                        <HighlightedLine
-                          className={`_text-wrap _flex-wrap pl-3 pr-2 ${pair.right?.metadata ? "italic text-muted-foreground" : ""}`}
-                          html={rightHtml}
-                        />
-                      ) : (
-                        <span className="[--pattern-fg:var(--input)]/50 w-full h-full">
-                          <div className="_border-x h-6 w-full border-x-(--pattern-fg) bg-[repeating-linear-gradient(315deg,var(--pattern-fg)_0,var(--pattern-fg)_1.5px,transparent_0,transparent_50%)] bg-size-[9px_9px] bg-fixed"></div>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    );
-  };
-
   if (binaryVersion) {
     return (
       <Card className="overflow-hidden rounded-none border border-border/50">
@@ -466,6 +349,14 @@ export function DiffViewer({
 				</div>
 			) : null} */}
       <CardContent className="p-0 rounded-none!">
+        {viewMode === "split" && (
+          <div
+            ref={masterScrollRef}
+            className="overflow-x-auto overflow-y-hidden h-0"
+          >
+            <div style={{ width: sharedMasterWidth, height: 1 }} />
+          </div>
+        )}
         <div className="divide-y divide-border/50">
           {segments.map((segment) => {
             if (segment.type === "skip") {
@@ -485,16 +376,28 @@ export function DiffViewer({
                 <div key={segment.id} className="">
                   {isExpanded ? (
                     <div className="bg-(--diff-segment-diff-bg) [--diff-segment-bg-unified:var(--diff-segment-diff-bg)] diff-line-number-segment">
-                      {viewMode === "split"
-                        ? renderSplitView(segment.lines, segment.id)
-                        : renderUnifiedView(segment.lines, segment.id)}
+                      {viewMode === "split" ? (
+                        <RenderSplitView
+                          lines={segment.lines}
+                          keyPrefix={segment.id}
+                          highlight={highlight}
+                          highlightedLines={highlightedLines}
+                          scrollX={sharedScrollX}
+                          onWheel={onSharedWheel}
+                          onWidthChange={(w) =>
+                            updateMasterWidth(segment.id, w)
+                          }
+                        />
+                      ) : (
+                        renderUnifiedView(segment.lines, segment.id)
+                      )}
                     </div>
                   ) : (
                     <div className="flex items-center justify-between gap-4 bg-(--diff-segment-bg) _border-y-[0.5px] _border-primary/10">
                       <div className="flex items-center">
                         <div
                           onClick={() => toggleSkip(segment.id)}
-                          className="w-[calc(calc(var(--spacing)*12))] py-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-(--diff-segment-expend-button-bg-hover) bg-(--diff-segment-expend-button-bg) flex items-center justify-center"
+                          className="w-[calc(calc(var(--spacing)*12)-1px)] py-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-(--diff-segment-expend-button-bg-hover) bg-(--diff-segment-expend-button-bg) flex items-center justify-center"
                         >
                           <FoldVertical size={16} />
                         </div>
@@ -539,9 +442,19 @@ export function DiffViewer({
                 )} */}
 
                 <div className="_border-t _border-border/40">
-                  {viewMode === "split"
-                    ? renderSplitView(hunk.lines, hunk.id)
-                    : renderUnifiedView(hunk.lines, hunk.id)}
+                  {viewMode === "split" ? (
+                    <RenderSplitView
+                      lines={hunk.lines}
+                      keyPrefix={hunk.id}
+                      highlight={highlight}
+                      highlightedLines={highlightedLines}
+                      scrollX={sharedScrollX}
+                      onWheel={onSharedWheel}
+                      onWidthChange={(w) => updateMasterWidth(hunk.id, w)}
+                    />
+                  ) : (
+                    renderUnifiedView(hunk.lines, hunk.id)
+                  )}
                 </div>
               </div>
             );
@@ -603,3 +516,263 @@ const DiffRowView = React.memo(function DiffRowView({
     </tr>
   );
 });
+
+const RenderSplitView = ({
+  highlight,
+  highlightedLines,
+  keyPrefix,
+  lines,
+  scrollX,
+  onWheel,
+  onWidthChange,
+}: {
+  lines: DiffRow[];
+  keyPrefix: string;
+  highlight: (code: string) => string;
+  highlightedLines: Map<string, string>;
+  scrollX: number;
+  onWheel: (e: React.WheelEvent) => void;
+  onWidthChange: (width: number) => void;
+}) => {
+  const measureRefs = useRef<HTMLDivElement[]>([]);
+
+  useEffect(() => {
+    const measure = () => {
+      const widths = measureRefs.current
+        .filter(Boolean)
+        .map((el) => el.scrollWidth);
+
+      const maxWidth = Math.max(...widths, 0) + 1000;
+      onWidthChange(maxWidth);
+    };
+
+    measure();
+
+    const ro = new ResizeObserver(measure);
+    measureRefs.current.forEach((el) => el && ro.observe(el));
+
+    window.addEventListener("resize", measure);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [onWidthChange]);
+
+  const grouped: Array<{ left: DiffRow | null; right: DiffRow | null }> = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (line.type === "context") {
+      grouped.push({ left: line, right: line });
+      continue;
+    }
+
+    if (line.type === "removed") {
+      const nextLine = lines[i + 1];
+      if (nextLine && nextLine.type === "added") {
+        grouped.push({ left: line, right: nextLine });
+        i++;
+      } else {
+        grouped.push({ left: line, right: null });
+      }
+      continue;
+    }
+
+    if (line.type === "added") {
+      grouped.push({ left: null, right: line });
+    }
+  }
+
+  return (
+    <div>
+      {grouped.map((pair, index) => {
+        const leftBg = pair.left?.type === "removed" ? "diff-removed" : "";
+        const rightBg = pair.right?.type === "added" ? "diff-added" : "";
+        const key = `${keyPrefix}-${pair.left?.lineNumberOld ?? "x"}-${pair.right?.lineNumberNew ?? "y"}-${index}`;
+
+        let leftHtml = "";
+        let rightHtml = "";
+
+        if (
+          INLINE_DIFF &&
+          pair.left &&
+          pair.right &&
+          pair.left.type === "removed" &&
+          pair.right.type === "added" &&
+          !pair.left.metadata &&
+          !pair.right.metadata
+        ) {
+          // Compute inline diff for paired removed/added lines
+          const inlineDiff = computeInlineDiff(
+            pair.left.content,
+            pair.right.content,
+          );
+
+          // Build left side (removed) HTML
+          const leftParts = inlineDiff
+            .filter((part) => !part.added)
+            .map((part) => {
+              const highlighted =
+                highlightedLines.get(part.value) ?? escapeHtml(part.value);
+
+              if (part.removed) {
+                return `<span class="diff-word-removed">${highlighted}</span>`;
+              }
+              return highlighted;
+            })
+            .join("");
+          leftHtml = leftParts;
+
+          // Build right side (added) HTML
+          const rightParts = inlineDiff
+            .filter((part) => !part.removed)
+            .map((part) => {
+              const highlighted =
+                highlightedLines.get(part.value) ?? escapeHtml(part.value);
+
+              if (part.added) {
+                return `<span class="diff-word-added">${highlighted}</span>`;
+              }
+              return highlighted;
+            })
+            .join("");
+          rightHtml = rightParts;
+        } else {
+          // Regular highlighting without inline diff
+          leftHtml = pair.left
+            ? pair.left.metadata
+              ? escapeHtml(pair.left.content)
+              : highlight(pair.left.content)
+            : "";
+          rightHtml = pair.right
+            ? pair.right.metadata
+              ? escapeHtml(pair.right.content)
+              : highlight(pair.right.content)
+            : "";
+        }
+
+        return (
+          <div key={key} className="h-6 w-full flex relative">
+            <div
+              className={`py-1 h-6 w-12 fit text-muted-foreground diff-line-number-segment-td text-xs select-none ${leftBg ? "diff-line-number-bg-removed" : "diff-line-number-bg border-r"} ${leftBg} border-l-0`}
+            >
+              <span className="px-3 block w-full text-center _text-right tabular-nums">
+                {pair.left?.lineNumberOld ?? ""}
+              </span>
+            </div>
+
+            <div
+              className={`flex-1 h-6 overflow-hidden relative text-sm font-mono leading-6 whitespace-pre ${leftBg}`}
+              onWheel={onWheel}
+            >
+              {pair.right ? (
+                <div
+                  ref={(el) => {
+                    if (el) measureRefs.current[index * 2] = el;
+                  }}
+                  className="whitespace-pre text-sm invisible absolute pointer-events-none"
+                >
+                  <HighlightedLine
+                    className={`_text-wrap _flex-wrap pl-3 pr-2 ${pair.right?.metadata ? "italic text-muted-foreground" : ""}`}
+                    html={rightHtml}
+                  />
+                </div>
+              ) : (
+                <div
+                  ref={(el) => {
+                    if (el) measureRefs.current[index * 2] = el;
+                  }}
+                  className="whitespace-pre text-sm absolute pointer-events-none"
+                >
+                  <span className="[--pattern-fg:var(--input)]/50 w-full h-full">
+                    <div className="_border-x h-6 w-full border-x-(--pattern-fg) bg-[repeating-linear-gradient(315deg,var(--pattern-fg)_0,var(--pattern-fg)_1.5px,transparent_0,transparent_50%)] bg-size-[9px_9px] bg-fixed"></div>
+                  </span>
+                </div>
+              )}
+
+              <div
+                style={{
+                  transform: pair.left
+                    ? `translateX(-${scrollX}px)`
+                    : `translateX(0px)`,
+                }}
+                className="whitespace-pre text-sm will-change-transform"
+              >
+                {pair.left ? (
+                  <HighlightedLine
+                    className={`_text-wrap _flex-wrap pl-3 pr-2 ${pair.left?.metadata ? "italic text-muted-foreground" : ""}`}
+                    html={leftHtml}
+                  />
+                ) : (
+                  <span className="[--pattern-fg:var(--input)]/50 h-full w-full">
+                    <div className="_border-x h-6 w-full border-x-(--pattern-fg) bg-[repeating-linear-gradient(315deg,var(--pattern-fg)_0,var(--pattern-fg)_1.5px,transparent_0,transparent_50%)] bg-size-[9px_9px] bg-fixed"></div>
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div
+              className={`py-1 w-12 text-muted-foreground diff-line-number-segment-td text-xs select-none ${rightBg ? "diff-line-number-bg-added" : "diff-line-number-bg border-x"} ${rightBg}`}
+            >
+              <span className="px-3 block w-full text-center _text-right tabular-nums">
+                {pair.right?.lineNumberNew ?? ""}
+              </span>
+            </div>
+
+            <div
+              className={`flex-1 h-6 overflow-hidden relative text-sm font-mono leading-6 whitespace-pre ${rightBg}`}
+              onWheel={onWheel}
+            >
+              {pair.left ? (
+                <div
+                  ref={(el) => {
+                    if (el) measureRefs.current[index * 2 + 1] = el;
+                  }}
+                  className="whitespace-pre text-sm invisible absolute pointer-events-none"
+                >
+                  <HighlightedLine
+                    className={`_text-wrap _flex-wrap pl-3 pr-2 ${pair.left?.metadata ? "italic text-muted-foreground" : ""}`}
+                    html={leftHtml}
+                  />
+                </div>
+              ) : (
+                <div
+                  ref={(el) => {
+                    if (el) measureRefs.current[index * 2 + 1] = el;
+                  }}
+                  className="whitespace-pre text-sm h-10 absolute pointer-events-none"
+                >
+                  <span className="[--pattern-fg:var(--input)]/50 w-full h-full">
+                    <div className="_border-x h-6 w-full border-x-(--pattern-fg) bg-[repeating-linear-gradient(315deg,var(--pattern-fg)_0,var(--pattern-fg)_1.5px,transparent_0,transparent_50%)] bg-size-[9px_9px] bg-fixed"></div>
+                  </span>
+                </div>
+              )}
+
+              <div
+                style={{
+                  transform: pair.right
+                    ? `translateX(-${scrollX}px)`
+                    : `translateX(0px)`,
+                }}
+                className="whitespace-pre text-sm will-change-transform relative"
+              >
+                {pair.right ? (
+                  <HighlightedLine
+                    className={`_text-wrap _flex-wrap pl-3 pr-2 ${pair.right?.metadata ? "italic text-muted-foreground" : ""}`}
+                    html={rightHtml}
+                  />
+                ) : (
+                  <span className="[--pattern-fg:var(--input)]/50 w-full h-full">
+                    <div className="_border-x h-6 w-full border-x-(--pattern-fg) bg-[repeating-linear-gradient(315deg,var(--pattern-fg)_0,var(--pattern-fg)_1.5px,transparent_0,transparent_50%)] bg-size-[9px_9px] bg-fixed"></div>
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
