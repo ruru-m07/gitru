@@ -27,17 +27,15 @@ const SideBarItems: React.FC<{
           <Link
             to={item.href}
             className={cn(
-              buttonVariants({ variant: "ghost", size: "icon" }),
+              buttonVariants({
+                variant: location.pathname === item.href ? "default" : "ghost",
+                size: "icon",
+              }),
               "size-8",
-              location.pathname === item.href && "bg-accent",
+              // location.pathname === item.href && "bg-accent",
             )}
           >
-            <item.icon
-              className="opacity-60"
-              size={14}
-              strokeWidth={2}
-              aria-hidden="true"
-            />
+            <item.icon size={14} strokeWidth={2} aria-hidden="true" />
           </Link>
         </TooltipTrigger>
         <TooltipContent side="left" className="px-2 py-1 text-xs">

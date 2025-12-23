@@ -139,41 +139,56 @@ export function useDiff(
   });
 }
 
-// ============================================
-// Combined / Convenience Hooks
-// ============================================
+export function getLastCommit() {
+  const repo = appState.repository;
 
-/**
- * Hook that returns commonly used repository data together
- * Useful for components that need multiple pieces of repo info
- *
- * @example
- * const { status, currentBranch, branches, isLoading } = useRepositoryData();
- */
-export function useRepositoryData() {
-  const statusQuery = useStatus();
-  const currentBranchQuery = useCurrentBranch();
-  const branchesQuery = useBranches();
-
-  return {
-    status: statusQuery.data,
-    currentBranch: currentBranchQuery.data,
-    branches: branchesQuery.data,
-    isLoading:
-      statusQuery.isLoading ||
-      currentBranchQuery.isLoading ||
-      branchesQuery.isLoading,
-    isFetching:
-      statusQuery.isFetching ||
-      currentBranchQuery.isFetching ||
-      branchesQuery.isFetching,
-    // Individual query results if needed
-    queries: {
-      status: statusQuery,
-      currentBranch: currentBranchQuery,
-      branches: branchesQuery,
+  return useQuery({
+    queryKey: repo?.commit.getQueryKey("last") ?? [
+      "repository",
+      "none",
+      "commit",
+      "last",
+    ],
+    queryFn: async () => {
+      if (!repo) return null;
+      return await repo.commit.last();
     },
-  };
+    enabled: !!repo,
+  });
+}
+
+export function getCommitById(hash: string) {
+  const repo = appState.repository;
+
+  return useQuery({
+    queryKey: [
+      ...(repo?.commit.getQueryKey("getCommitById") ?? [
+        "repository",
+        "none",
+        "commit",
+        "getCommitById",
+      ]),
+      hash,
+    ],
+    queryFn: async () => {
+      if (!repo) return null;
+      return await repo.commit.getCommitById(hash);
+    },
+    enabled: !!repo,
+  });
+}
+
+export function getRepositoryOrigin() {
+  const repo = appState.repository;
+
+  return useQuery({
+    queryKey: repo?.getQueryKey("origin") ?? ["repository", "none", "origin"],
+    queryFn: async () => {
+      if (!repo) return null;
+      return await repo.getRepositoryOrigin();
+    },
+    enabled: !!repo,
+  });
 }
 
 // ============================================
@@ -191,7 +206,7 @@ export function useRepositoryData() {
  */
 export function useRepositoryActions() {
   const repo = appState.repository;
-  if (!repo) throw new Error("No repository selected");
+  if (!repo) return null;
 
   return useMemo(
     () => ({
@@ -229,16 +244,6 @@ export function useRepositoryActions() {
           await repo.status.invalidate();
         }
         return data;
-      },
-
-      pull: async () => {
-        return await repo.pull();
-      },
-      push: async () => {
-        return await repo.push();
-      },
-      fetch: async () => {
-        return await repo.fetch();
       },
 
       checkout: async (branchName: string) => {

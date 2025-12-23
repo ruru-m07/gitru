@@ -84,7 +84,7 @@ import { useHotkeys } from "react-hotkeys-hook";
 import { toast } from "sonner";
 import { useDiffViewStore } from "@/components/diff/useDiffViewStore";
 import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
-import StatusBar from "@/components/typography/statusBar";
+import StatusBar from "@/components/statusBar";
 import {
   formatUnixSecondsToDateTime,
   timeAgoFromUnixSeconds,
@@ -489,7 +489,7 @@ function GitPageLayout() {
                                               <div
                                                 onClick={async (event) => {
                                                   event.stopPropagation();
-                                                  await actions.addAll();
+                                                  await actions?.addAll();
                                                 }}
                                                 className={cn(
                                                   buttonVariants({
@@ -509,7 +509,7 @@ function GitPageLayout() {
                                             <div
                                               onClick={async (event) => {
                                                 event.stopPropagation();
-                                                await actions.removeAll();
+                                                await actions?.removeAll();
                                               }}
                                               className={cn(
                                                 buttonVariants({
@@ -556,12 +556,12 @@ function GitPageLayout() {
                                             setRef={setItemRef}
                                             onAdd={
                                               cell.name === "Changes"
-                                                ? actions.add
+                                                ? actions?.add
                                                 : undefined
                                             }
                                             onUnstage={
                                               cell.name === "Staged Changes"
-                                                ? actions.unstage
+                                                ? actions?.unstage
                                                 : undefined
                                             }
                                           />
@@ -1085,7 +1085,7 @@ const DiscardChangesDialog = ({ fileName }: { fileName: string }) => {
               setIsDeleteLoading(true);
 
               try {
-                await actions.discard(fileName);
+                await actions?.discard(fileName);
               } catch (error) {
                 toast.error("Unable to discard changes");
               } finally {

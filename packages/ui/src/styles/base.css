@@ -111,7 +111,9 @@
     /* --primary: oklch(0.21 0.006 285.885);  */
     /* --primary: #ff632a; */
     /* --primary: #ff8c00; */
-    --primary: #f3580b;
+    /* --primary: #2689FA; */
+    /* --primary: #008bff; */
+    --primary: #fa6226;
     --primary-foreground: oklch(0.985 0 0);
     --secondary: oklch(0.967 0.001 286.375);
     --secondary-foreground: oklch(0.21 0.006 285.885);

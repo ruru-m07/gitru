@@ -17,19 +17,13 @@ import {
 import { useEffect, useState } from "react";
 import { DiffViewer } from "@/components/diff/diff-viewer";
 import { useDiffViewStore } from "@/components/diff/useDiffViewStore";
-import { useDiff } from "@/state/hooks";
+import { useBranches, useCurrentBranch, useDiff } from "@/state/hooks";
 import { useAppStore } from "@/store/useAppStore";
-import {
-  currentBranch,
-  type GetDiffResponse,
-  getDiff,
-  listBranch,
-} from "@/tauri";
+import { type GetDiffResponse, getDiff } from "@/tauri";
 import { EmptyGitDiffSVG } from "../../../components/svgs/EmptyGitDiffSVG";
 import { SplitSVG } from "../../../components/svgs/splitSVG";
 import { UnifiedSVG } from "../../../components/svgs/unifiedSVG";
 import { getStatusIcon } from "./route";
-
 export const Route = createFileRoute("/app/git/")({
   component: App,
 });
@@ -38,6 +32,10 @@ function App() {
   const { selectedFilePath, selectedFileStatus, setViewMode } =
     useDiffViewStore();
   const { selectedRepository } = useAppStore();
+  const { data: branches } = useBranches();
+  const { data: currentBranch } = useCurrentBranch();
+
+  console.log(branches, currentBranch);
 
   const { data: diff } = useDiff(selectedFilePath?.path || null);
 
@@ -80,15 +78,6 @@ function App() {
         <Button
           className="flex border-r-border! justify-between items-center h-full rounded-none hover:border-t w-72"
           variant={"ghost"}
-          onClick={async () => {
-            const data = await currentBranch({
-              repoPath: selectedRepository?.path || "",
-            });
-            const data2 = await listBranch({
-              repoPath: selectedRepository?.path || "",
-            });
-            console.log({ data, data2 });
-          }}
         >
           <div className="flex items-center justify-center gap-4">
             <GitBranch className="size-6" />
@@ -96,7 +85,7 @@ function App() {
               <span className="text-xs text-muted-foreground font-normal">
                 Current Branch
               </span>
-              <span>{"ruru/perf/diff/render/i1"}</span>
+              <span>{currentBranch?.display_name}</span>
             </div>
           </div>
           <ChevronDown size={18} />
@@ -216,6 +205,20 @@ function App() {
               filePath={selectedFilePath.path}
               status={selectedFileStatus}
             />
+            {/* <MultiFileDiff
+              oldFile={{
+                name: selectedFilePath.path.split("/").pop() || "file",
+                contents: diffData?.workdir?.content! || "",
+              }}
+              newFile={{
+                name: selectedFilePath.newPath
+                  ? selectedFilePath.newPath.split("/").pop() || "file"
+                  : selectedFilePath.path.split("/").pop() || "file",
+                contents: diffData?.head?.content! || "",
+              }}
+              options={{ theme: "pierre-light" }}
+            /> */}
+            {/* {JSON.stringify(diffData)} */}
           </ScrollArea>
           <div className="absolute bottom-0 h-12 w-full bg-linear-to-t from-[#0000001a] via-[#00000000] to-[#00000000] pointer-events-none"></div>
         </>
