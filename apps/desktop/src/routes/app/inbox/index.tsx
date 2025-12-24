@@ -101,7 +101,7 @@ function RouteComponent() {
         <Button
           onClick={async () => {
             console.log("Invalidating status...");
-            await actions.invalidateStatus();
+            await actions?.invalidateStatus();
             console.log("Status invalidated! UI will refetch automatically.");
           }}
           disabled={!repo}
@@ -110,41 +110,17 @@ function RouteComponent() {
         </Button>
 
         {/* ✅ Fetch from remote */}
-        <Button
-          variant="outline"
-          onClick={async () => {
-            console.log("Fetching from remote...");
-            await actions.fetch();
-            console.log("Fetch complete!");
-          }}
-          disabled={!repo}
-        >
+        <Button variant="outline" disabled={!repo}>
           Git Fetch
         </Button>
 
         {/* ✅ Pull changes */}
-        <Button
-          variant="outline"
-          onClick={async () => {
-            console.log("Pulling changes...");
-            const result = await actions.pull();
-            console.log("Pull result:", result);
-          }}
-          disabled={!repo}
-        >
+        <Button variant="outline" disabled={!repo}>
           Git Pull
         </Button>
 
         {/* ✅ Push changes */}
-        <Button
-          variant="outline"
-          onClick={async () => {
-            console.log("Pushing changes...");
-            const result = await actions.push();
-            console.log("Push result:", result);
-          }}
-          disabled={!repo}
-        >
+        <Button variant="outline" disabled={!repo}>
           Git Push
         </Button>
 
@@ -153,7 +129,7 @@ function RouteComponent() {
           variant="destructive"
           onClick={async () => {
             console.log("Invalidating all repository state...");
-            await actions.invalidateAll();
+            await actions?.invalidateAll();
             console.log("All repository state invalidated!");
           }}
           disabled={!repo}
@@ -190,7 +166,7 @@ function RouteComponent() {
                 size="sm"
                 onClick={async () => {
                   console.log("Checking out branch:", branch.name);
-                  await actions.checkout(branch.name);
+                  await actions?.checkout(branch.name);
                 }}
               >
                 {branch.display_name}

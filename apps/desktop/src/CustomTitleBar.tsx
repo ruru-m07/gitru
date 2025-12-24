@@ -24,7 +24,7 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
 
   return (
     <div
-      className="h-[var(--main-custom-header-height)] bg-background flex items-center justify-between relative px-4 select-none _border-b"
+      className="h-(--main-custom-header-height) bg-background flex items-center justify-between relative px-4 select-none _border-b"
       data-tauri-drag-region
       style={{
         // @ts-expect-error - ¯\_(ツ)_/¯
@@ -65,7 +65,7 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
 
           <div
             // className="flex-1 max-w-[16rem] mx-4"
-            className="flex items-center max-w-[40rem] mx-4 gap-2"
+            className="flex items-center max-w-160 mx-4 gap-2"
             style={{
               // @ts-expect-error - ¯\_(ツ)_/¯
               WebkitAppRegion: "no-drag",
@@ -80,11 +80,11 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
               />{" "}
               <div className="flex items-center gap-1 text-muted-foreground">
                 ruru-m07
-                <ChevronRight />
+                <ChevronRight size={14} />
                 gitru
-                <ChevronRight />
+                <ChevronRight size={14} />
                 pulls
-                <ChevronRight />
+                <ChevronRight size={14} />
                 <span className="text-foreground">#69</span>
               </div>
             </div>

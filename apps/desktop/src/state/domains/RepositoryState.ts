@@ -1,13 +1,16 @@
 import { QueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import {
+  commitById,
   currentBranch,
   getDiff,
   getStatus,
   gitAdd,
   gitDiscard,
   gitRemove,
+  lastCommit,
   listBranch,
+  repositoryOrigin,
 } from "@/tauri";
 import { StateDomain } from "../core/StateManager";
 
@@ -197,11 +200,59 @@ class FilesActionsState extends StateDomain {
   }
 }
 
+class Commit extends StateDomain {
+  private readonly baseKey: readonly string[];
+
+  constructor(
+    protected queryClient: QueryClient,
+    private repositoryPath: string,
+  ) {
+    super(queryClient);
+    this.baseKey = ["repository", this.repositoryPath, "commit"] as const;
+  }
+  async last() {
+    await this.queryClient.cancelQueries({
+      queryKey: [...this.baseKey, "last"],
+    });
+
+    const data = await lastCommit({
+      repoPath: this.repositoryPath,
+    });
+
+    this.queryClient.setQueryData([...this.baseKey, "last"], data);
+
+    return data;
+  }
+
+  async getCommitById(hash: string) {
+    await this.queryClient.cancelQueries({
+      queryKey: [...this.baseKey, "getCommitById", hash],
+    });
+
+    const data = await commitById({
+      repoPath: this.repositoryPath,
+      hash,
+    });
+
+    this.queryClient.setQueryData(
+      [...this.baseKey, "getCommitById", hash],
+      data,
+    );
+
+    return data;
+  }
+
+  getQueryKey(key: "last" | "getCommitById") {
+    return [...this.baseKey, key];
+  }
+}
+
 class RepositoryState extends StateDomain {
   readonly diff: DiffState;
   readonly status: StatusState;
   readonly branches: BranchState;
   readonly file: FilesActionsState;
+  readonly commit: Commit;
   private readonly baseKey: readonly string[];
 
   constructor(
@@ -219,27 +270,26 @@ class RepositoryState extends StateDomain {
     this.status = new StatusState(this.queryClient, this.path);
     this.branches = new BranchState(this.queryClient, this.path, () => this);
     this.file = new FilesActionsState(this.queryClient, this.path);
+    this.commit = new Commit(this.queryClient, this.path);
   }
 
-  async pull() {
-    const result = await invoke<any>("git_pull", {
+  async getRepositoryOrigin() {
+    // repositoryOrigin()
+    await this.queryClient.cancelQueries({
+      queryKey: [...this.baseKey, "origin"],
+    });
+
+    const data = await repositoryOrigin({
       repoPath: this.path,
     });
-    await this.invalidateAll();
-    return result;
+
+    this.queryClient.setQueryData([...this.baseKey, "origin"], data);
+
+    return data;
   }
 
-  async push() {
-    const result = await invoke<any>("git_push", {
-      repoPath: this.path,
-    });
-    await this.status.invalidate();
-    return result;
-  }
-
-  async fetch() {
-    await invoke("git_fetch", { repoPath: this.path });
-    await this.branches.invalidateAll();
+  getQueryKey(key: "origin") {
+    return [...this.baseKey, key];
   }
 
   async invalidateAll() {

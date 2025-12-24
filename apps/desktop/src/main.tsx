@@ -2,6 +2,7 @@ import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { ThemeProvider as NextThemesProvider } from "next-themes";
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
+import { scan } from "react-scan";
 import { Toaster } from "sonner";
 
 import { colorKeyList } from "./lib/colors.ts";
@@ -59,4 +60,10 @@ if (rootElement && !rootElement.innerHTML) {
       </QueryClientProvider>
     </StrictMode>,
   );
+}
+
+if (import.meta.env.DEV) {
+  scan({
+    enabled: true,
+  });
 }

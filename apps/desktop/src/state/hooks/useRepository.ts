@@ -1,4 +1,5 @@
 import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import type { Branch, GetStatusResponse } from "@/tauri";
 import { appState } from "../index";
 
@@ -138,41 +139,56 @@ export function useDiff(
   });
 }
 
-// ============================================
-// Combined / Convenience Hooks
-// ============================================
+export function getLastCommit() {
+  const repo = appState.repository;
 
-/**
- * Hook that returns commonly used repository data together
- * Useful for components that need multiple pieces of repo info
- *
- * @example
- * const { status, currentBranch, branches, isLoading } = useRepositoryData();
- */
-export function useRepositoryData() {
-  const statusQuery = useStatus();
-  const currentBranchQuery = useCurrentBranch();
-  const branchesQuery = useBranches();
-
-  return {
-    status: statusQuery.data,
-    currentBranch: currentBranchQuery.data,
-    branches: branchesQuery.data,
-    isLoading:
-      statusQuery.isLoading ||
-      currentBranchQuery.isLoading ||
-      branchesQuery.isLoading,
-    isFetching:
-      statusQuery.isFetching ||
-      currentBranchQuery.isFetching ||
-      branchesQuery.isFetching,
-    // Individual query results if needed
-    queries: {
-      status: statusQuery,
-      currentBranch: currentBranchQuery,
-      branches: branchesQuery,
+  return useQuery({
+    queryKey: repo?.commit.getQueryKey("last") ?? [
+      "repository",
+      "none",
+      "commit",
+      "last",
+    ],
+    queryFn: async () => {
+      if (!repo) return null;
+      return await repo.commit.last();
     },
-  };
+    enabled: !!repo,
+  });
+}
+
+export function getCommitById(hash: string) {
+  const repo = appState.repository;
+
+  return useQuery({
+    queryKey: [
+      ...(repo?.commit.getQueryKey("getCommitById") ?? [
+        "repository",
+        "none",
+        "commit",
+        "getCommitById",
+      ]),
+      hash,
+    ],
+    queryFn: async () => {
+      if (!repo) return null;
+      return await repo.commit.getCommitById(hash);
+    },
+    enabled: !!repo,
+  });
+}
+
+export function getRepositoryOrigin() {
+  const repo = appState.repository;
+
+  return useQuery({
+    queryKey: repo?.getQueryKey("origin") ?? ["repository", "none", "origin"],
+    queryFn: async () => {
+      if (!repo) return null;
+      return await repo.getRepositoryOrigin();
+    },
+    enabled: !!repo,
+  });
 }
 
 // ============================================
@@ -190,74 +206,67 @@ export function useRepositoryData() {
  */
 export function useRepositoryActions() {
   const repo = appState.repository;
-  if (!repo) throw new Error("No repository selected");
+  if (!repo) return null;
 
-  return {
-    add: async (filePath: string) => {
-      const data = await repo?.file.add(filePath);
-      if (data.success) {
-        await repo.status.invalidate();
-      }
-      return data.success;
-    },
-    unstage: async (filePath: string) => {
-      const data = await repo?.file.unstage(filePath);
-      if (data.success) {
-        await repo.status.invalidate();
-      }
-      return data.success;
-    },
-    discard: async (filePath: string) => {
-      const data = await repo?.file.discard(filePath);
-      if (data.success) {
-        await repo.status.invalidate();
-      }
-      return data;
-    },
-    addAll: async () => {
-      const data = await repo?.file.addAll();
-      if (data.success) {
-        await repo.status.invalidate();
-      }
-      return data;
-    },
-    removeAll: async () => {
-      const data = await repo?.file.removeAll();
-      if (data.success) {
-        await repo.status.invalidate();
-      }
-      return data;
-    },
+  return useMemo(
+    () => ({
+      add: async (filePath: string) => {
+        const data = await repo?.file.add(filePath);
+        if (data.success) {
+          await repo.status.invalidate();
+        }
+        return data.success;
+      },
+      unstage: async (filePath: string) => {
+        const data = await repo?.file.unstage(filePath);
+        if (data.success) {
+          await repo.status.invalidate();
+        }
+        return data.success;
+      },
+      discard: async (filePath: string) => {
+        const data = await repo?.file.discard(filePath);
+        if (data.success) {
+          await repo.status.invalidate();
+        }
+        return data;
+      },
+      addAll: async () => {
+        const data = await repo?.file.addAll();
+        if (data.success) {
+          await repo.status.invalidate();
+        }
+        return data;
+      },
+      removeAll: async () => {
+        const data = await repo?.file.removeAll();
+        if (data.success) {
+          await repo.status.invalidate();
+        }
+        return data;
+      },
 
-    pull: async () => {
-      return await repo.pull();
-    },
-    push: async () => {
-      return await repo.push();
-    },
-    fetch: async () => {
-      return await repo.fetch();
-    },
+      checkout: async (branchName: string) => {
+        return await repo.branches.checkout(branchName);
+      },
 
-    checkout: async (branchName: string) => {
-      return await repo.branches.checkout(branchName);
-    },
+      invalidateStatus: async () => {
+        await repo.status.invalidate();
+      },
+      invalidateBranches: async () => {
+        await repo.branches.invalidateAll();
+      },
+      invalidateAll: async () => {
+        await repo.invalidateAll();
+      },
 
-    invalidateStatus: async () => {
-      await repo.status.invalidate();
-    },
-    invalidateBranches: async () => {
-      await repo.branches.invalidateAll();
-    },
-    invalidateAll: async () => {
-      await repo.invalidateAll();
-    },
-
-    getDiff: async (filePath: string) => {
-      return await repo.diff.get(filePath);
-    },
-    invalidateDiff: async (filePath?: string) => {
-      await repo.diff.invalidate(filePath);
-    },
-  };
+      getDiff: async (filePath: string) => {
+        return await repo.diff.get(filePath);
+      },
+      invalidateDiff: async (filePath?: string) => {
+        await repo.diff.invalidate(filePath);
+      },
+    }),
+    [repo],
+  );
 }

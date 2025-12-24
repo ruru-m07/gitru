@@ -1,27 +1,6 @@
 use git2::{Commit, Repository};
-use serde::Serialize;
 
-#[derive(Serialize, Clone, Debug)]
-pub struct Author {
-    pub name: String,
-    pub email: String,
-}
-
-#[derive(Serialize, Clone)]
-pub struct CommitAuthors {
-    pub author: Author,
-    pub committer: Author,
-    pub co_authors: Vec<Author>,
-}
-
-#[derive(Serialize, Clone)]
-pub struct CommitInfo {
-    pub id: String,
-    pub summary: String,
-    pub body: String,
-    pub timestamp: i64,
-    pub authors: CommitAuthors,
-}
+use crate::types::{Author, CommitAuthors, CommitInfo};
 
 #[tauri::command]
 pub fn history(repo_path: &str, skip: usize, limit: usize) -> Result<Vec<CommitInfo>, String> {
@@ -53,7 +32,7 @@ pub fn history(repo_path: &str, skip: usize, limit: usize) -> Result<Vec<CommitI
 /// Typically it's straightforward to get author and committer
 /// To get the co-authors we can look for pattern in commit.message() || commit.body()
 /// if line.starts_with("Co-authored-by:") then we can process to get {name} <{email}>
-fn extract_all_authors(commit: &Commit) -> CommitAuthors {
+pub fn extract_all_authors(commit: &Commit) -> CommitAuthors {
     let author = Author {
         name: commit.author().name().unwrap_or("").to_string(),
         email: commit.author().email().unwrap_or("").to_string(),

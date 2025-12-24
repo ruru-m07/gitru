@@ -24,6 +24,9 @@ pub fn run() {
             git::branch::current_branch,
             git::branch::switch_branch,
             git::history::history,
+            git::commit::last_commit,
+            git::commit::commit_by_id,
+            git::origin::repository_origin,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

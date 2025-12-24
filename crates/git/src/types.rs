@@ -65,6 +65,46 @@ pub struct GetStatusResponse {
     pub files: Vec<FileStatus>,
 }
 
+#[derive(Serialize, Clone, Debug)]
+pub struct Author {
+    pub name: String,
+    pub email: String,
+}
+
+#[derive(Serialize, Clone)]
+pub struct CommitAuthors {
+    pub author: Author,
+    pub committer: Author,
+    pub co_authors: Vec<Author>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct CommitInfo {
+    pub id: String,
+    pub summary: String,
+    pub body: String,
+    pub timestamp: i64,
+    pub authors: CommitAuthors,
+}
+
+// full commit
+#[derive(Serialize)]
+pub struct CommitStats {
+    pub insertions: usize,
+    pub deletions: usize,
+    pub files_changed: usize,
+}
+
+#[derive(Serialize)]
+pub struct FullCommitInfo {
+    pub id: String,
+    pub timestamp: i64,
+    pub summary: String,
+    pub body: String,
+    pub authors: CommitAuthors,
+    pub stats: CommitStats,
+}
+
 /// just generating return types
 #[tauri::command(rename_all = "snake_case")]
 fn _generate() -> FileStatus {
