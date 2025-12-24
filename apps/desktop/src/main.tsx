@@ -62,6 +62,8 @@ if (rootElement && !rootElement.innerHTML) {
   );
 }
 
-scan({
-  enabled: true,
-});
+if (import.meta.env.DEV) {
+  scan({
+    enabled: true,
+  });
+}

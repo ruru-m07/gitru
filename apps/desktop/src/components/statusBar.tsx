@@ -30,6 +30,7 @@ import {
   getLastCommit,
   getRepositoryOrigin,
   useCurrentBranch,
+  useStatus,
 } from "@/state/hooks";
 import { CommitInfo } from "@/tauri";
 // import { GithubDark } from "../ui/svgs/githubDark";
@@ -39,6 +40,7 @@ const StatusBar = () => {
   const { data: lastCommit } = getLastCommit();
   const { data: currentBranch } = useCurrentBranch();
   const { data: repositoryOrigin } = getRepositoryOrigin();
+  const { data: status } = useStatus();
 
   return (
     <div className="border-t overflow-hidden h-7 flex justify-between items-center ">
@@ -67,7 +69,8 @@ const StatusBar = () => {
         >
           <GitBranch />
           <span className="ml-1 text-foreground">
-            {currentBranch?.display_name}*
+            {currentBranch?.display_name}
+            {status?.files && status?.files.length > 0 ? "*" : ""}
           </span>
         </Badge>
         <Badge

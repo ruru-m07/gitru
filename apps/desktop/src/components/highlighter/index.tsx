@@ -52,13 +52,13 @@ export const SPECIAL_FILENAMES: Record<string, BundledLanguage | undefined> = {
   brewfile: "ruby",
 };
 
-let cancelled = false;
+let initialized = false;
 
 export let highlighter: null | HighlighterCore = null;
 
 (async () => {
   try {
-    if (cancelled) {
+    if (initialized) {
       return;
     }
     if (!highlighter) {
@@ -68,9 +68,9 @@ export let highlighter: null | HighlighterCore = null;
         langs: preloadedLangs,
         engine: createOnigurumaEngine(import("shiki/wasm")),
       });
-      if (!cancelled) {
+      if (!initialized) {
         highlighter = hl;
-        cancelled = true;
+        initialized = true;
       }
     }
   } catch (error) {
