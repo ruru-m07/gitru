@@ -165,6 +165,7 @@ function App() {
             className={cn(
               "h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*7))] w-full relative",
             )}
+            scrollFade
           >
             {diffData?.patch ? (
               <PatchDiff
@@ -177,6 +178,12 @@ function App() {
                   diffStyle: viewMode,
                   lineDiffType: "word-alt",
                   overflow: "scroll",
+                  unsafeCSS: `
+                  // [data-code] {
+                  //   padding-top: 0px !important;
+                  //   padding-bottom: 0px !important;
+                  // }
+                  `,
                 }}
               />
             ) : null}
@@ -207,7 +214,6 @@ function App() {
               />
             ) : null} */}
           </ScrollArea>
-          <div className="absolute bottom-0 h-12 w-full bg-linear-to-t from-[#0000001a] via-[#00000000] to-[#00000000] pointer-events-none"></div>
         </>
       ) : (
         <>

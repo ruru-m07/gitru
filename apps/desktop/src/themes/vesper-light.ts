@@ -1,11 +1,6 @@
-import { ThemeRegistrationResolved } from "shiki";
-
-export const vesperLight: ThemeRegistrationResolved = {
+export const vesperLight = {
   name: "vesper-light",
   type: "light",
-  bg: "#ffffff",
-  fg: "#000000",
-  settings: [],
   colors: {
     "activityBar.background": "#f5f5f5",
     "activityBar.foreground": "#505050",
@@ -620,4 +615,22 @@ export const vesperLight: ThemeRegistrationResolved = {
       },
     },
   ],
+  semanticTokenColors: {
+    comment: "#84848A",
+    string: "#199f43",
+    number: "#1ca1c7",
+    regexp: "#17a5af",
+    keyword: "#fc2b73",
+    variable: "#d47628",
+    parameter: "#79797F",
+    property: "#d47628",
+    function: "#7b43f8",
+    method: "#7b43f8",
+    type: "#c635e4",
+    class: "#c635e4",
+    namespace: "#d5a910",
+    enumMember: "#08c0ef",
+    "variable.constant": "#d5a910",
+    "variable.defaultLibrary": "#d5a910",
+  },
 };
