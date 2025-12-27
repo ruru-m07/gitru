@@ -5,7 +5,9 @@ import {
   PopoverTrigger,
 } from "@gitru/ui/components/popover";
 import { ScrollArea } from "@gitru/ui/components/scroll-area";
+import { Separator } from "@gitru/ui/components/separator";
 import { cn } from "@gitru/ui/lib/utils";
+import { PatchDiff } from "@pierre/diffs/react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   ChevronDown,
@@ -14,69 +16,31 @@ import {
   MoveHorizontal,
   Settings,
 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { DiffViewer } from "@/components/diff/diff-viewer";
+import { useTheme } from "next-themes";
 import { useDiffViewStore } from "@/components/diff/useDiffViewStore";
-import { useBranches, useCurrentBranch, useDiff } from "@/state/hooks";
-import { useAppStore } from "@/store/useAppStore";
-import { type GetDiffResponse, getDiff } from "@/tauri";
+import { useCurrentBranch, useDiff } from "@/state/hooks";
 import { EmptyGitDiffSVG } from "../../../components/svgs/EmptyGitDiffSVG";
 import { SplitSVG } from "../../../components/svgs/splitSVG";
 import { UnifiedSVG } from "../../../components/svgs/unifiedSVG";
 import { getStatusIcon } from "./route";
+
 export const Route = createFileRoute("/app/git/")({
   component: App,
 });
 
 function App() {
-  const { selectedFilePath, selectedFileStatus, setViewMode } =
+  const { theme } = useTheme();
+  const { selectedFilePath, selectedFileStatus, setViewMode, viewMode } =
     useDiffViewStore();
-  const { selectedRepository } = useAppStore();
-  const { data: branches } = useBranches();
+
   const { data: currentBranch } = useCurrentBranch();
-
-  console.log(branches, currentBranch);
-
-  const { data: diff } = useDiff(selectedFilePath?.path || null);
-
-  const [diffData, setDiffData] = useState<GetDiffResponse | null>(null);
-
-  useEffect(() => {
-    if (!selectedFilePath || !selectedRepository || !diff) {
-      setDiffData(null);
-      return;
-    }
-
-    let isCancelled = false;
-
-    (async () => {
-      try {
-        const data = await getDiff({
-          filePath: selectedFilePath.path,
-          repoPath: selectedRepository.path,
-        });
-
-        if (!isCancelled) {
-          setDiffData(data);
-        }
-      } catch (error) {
-        console.error("Failed to fetch diff structure", error);
-        if (!isCancelled) {
-          setDiffData(null);
-        }
-      }
-    })();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [selectedFilePath, selectedRepository, diff]);
+  const { data: diffData } = useDiff(selectedFilePath?.path || null);
 
   return (
     <>
       <div className="w-full min-h-14 max-h-14 h-14 border-b flex">
         <Button
-          className="flex border-r-border! justify-between items-center h-full rounded-none hover:border-t w-72"
+          className="flex border-0 border-t border-t-transparent hover:border-t-border justify-between items-center h-full rounded-none w-72"
           variant={"ghost"}
         >
           <div className="flex items-center justify-center gap-4">
@@ -90,8 +54,9 @@ function App() {
           </div>
           <ChevronDown size={18} />
         </Button>
+        <Separator orientation="vertical" className={"border-0"} />
         <Button
-          className="flex border-r-border! justify-between items-center h-full rounded-none hover:border-t w-72"
+          className="flex border-0 border-t border-t-transparent hover:border-t-border justify-between items-center h-full rounded-none w-72"
           variant={"ghost"}
         >
           <div className="flex items-center justify-center gap-4">
@@ -105,6 +70,7 @@ function App() {
           </div>
           <ChevronDown size={18} />
         </Button>
+        <Separator orientation="vertical" className={"border-0"} />
       </div>
       {selectedFilePath && selectedFileStatus ? (
         <>
@@ -200,25 +166,46 @@ function App() {
               "h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*7))] w-full relative",
             )}
           >
-            <DiffViewer
-              diff={diffData}
-              filePath={selectedFilePath.path}
-              status={selectedFileStatus}
-            />
-            {/* <MultiFileDiff
-              oldFile={{
-                name: selectedFilePath.path.split("/").pop() || "file",
-                contents: diffData?.workdir?.content! || "",
-              }}
-              newFile={{
-                name: selectedFilePath.newPath
-                  ? selectedFilePath.newPath.split("/").pop() || "file"
-                  : selectedFilePath.path.split("/").pop() || "file",
-                contents: diffData?.head?.content! || "",
-              }}
-              options={{ theme: "pierre-light" }}
-            /> */}
-            {/* {JSON.stringify(diffData)} */}
+            {diffData?.patch ? (
+              <PatchDiff
+                patch={diffData.patch
+                  .replace("H@@", "@@")
+                  .replace("Fdiff", "diff")}
+                options={{
+                  disableFileHeader: true,
+                  themeType: theme === "dark-classic" ? "dark" : "light",
+                  diffStyle: viewMode,
+                  lineDiffType: "word-alt",
+                  overflow: "scroll",
+                }}
+              />
+            ) : null}
+
+            {/* {diffData ? (
+              <MultiFileDiff
+                oldFile={{
+                  name: selectedFilePath.path.split("/").pop() || "file",
+                  contents: diffData?.head?.content! || "",
+                }}
+                newFile={{
+                  name: selectedFilePath.newPath
+                    ? selectedFilePath.newPath.split("/").pop() || "file"
+                    : selectedFilePath.path.split("/").pop() || "file",
+                  contents: diffData?.workdir?.content! || "",
+                }}
+                options={{
+                  theme: {
+                    dark: "github-dark-high-contrast",
+                    light: "github-light-high-contrast",
+                  },
+                  themeType: theme === "dark-classic" ? "dark" : "light",
+                  diffStyle: viewMode,
+                  lineDiffType: "word",
+                  disableFileHeader: true,
+                  overflow: "scroll",
+                }}
+              />
+            ) : null} */}
           </ScrollArea>
           <div className="absolute bottom-0 h-12 w-full bg-linear-to-t from-[#0000001a] via-[#00000000] to-[#00000000] pointer-events-none"></div>
         </>

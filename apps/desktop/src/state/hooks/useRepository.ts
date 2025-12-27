@@ -1,6 +1,6 @@
 import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import type { Branch, GetStatusResponse } from "@/tauri";
+import type { Branch, GetDiffResponse, GetStatusResponse } from "@/tauri";
 import { appState } from "../index";
 
 type QueryOptions<T> = Omit<
@@ -117,7 +117,7 @@ export function useBranches(options?: QueryOptions<Branch[]>) {
  */
 export function useDiff(
   filePath: string | null,
-  options?: QueryOptions<unknown>,
+  options?: QueryOptions<GetDiffResponse>,
 ) {
   const repo = appState.repository;
 

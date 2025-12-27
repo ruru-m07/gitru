@@ -35,6 +35,7 @@ pub struct GetDiffResponse {
     pub file_path: String,
     pub head: Option<FileVersion>,
     pub workdir: Option<FileVersion>,
+    pub patch: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

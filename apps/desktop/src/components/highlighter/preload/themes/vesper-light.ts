@@ -1,5 +1,11 @@
-export const vesperLight = {
+import { ThemeRegistrationResolved } from "shiki";
+
+export const vesperLight: ThemeRegistrationResolved = {
   name: "vesper-light",
+  type: "light",
+  bg: "#ffffff",
+  fg: "#000000",
+  settings: [],
   colors: {
     "activityBar.background": "#f5f5f5",
     "activityBar.foreground": "#505050",
@@ -582,6 +588,35 @@ export const vesperLight = {
       scope: "token.debug-token",
       settings: {
         foreground: "#800080",
+      },
+    },
+    {
+      scope: "markup.changed.diff",
+      settings: {
+        foreground: "#d5a910",
+      },
+    },
+    {
+      scope: [
+        "meta.diff.header.from-file",
+        "meta.diff.header.to-file",
+        "punctuation.definition.from-file.diff",
+        "punctuation.definition.to-file.diff",
+      ],
+      settings: {
+        foreground: "#7b43f8",
+      },
+    },
+    {
+      scope: "markup.inserted.diff",
+      settings: {
+        foreground: "#199f43",
+      },
+    },
+    {
+      scope: "markup.deleted.diff",
+      settings: {
+        foreground: "#d52c36",
       },
     },
   ],
