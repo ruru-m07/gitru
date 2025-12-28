@@ -18,3 +18,4 @@ jobs:
           token: ${{ secrets.RURU_PAT_GH }}
           config-file: .release-please-stable.json
           manifest-file: .release-please-manifest.json
+          target-branch: stable
