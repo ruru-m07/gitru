@@ -1,9 +1,9 @@
-name: release-please
+name: release-please-stable
 
 on:
   push:
     branches:
-      - main
+      - stable
 
 permissions:
   contents: write
@@ -16,5 +16,5 @@ jobs:
       - uses: googleapis/release-please-action@v4
         with:
           token: ${{ secrets.RURU_PAT_GH }}
-          config-file: .release-please-config.json
+          config-file: .release-please-stable.json
           manifest-file: .release-please-manifest.json

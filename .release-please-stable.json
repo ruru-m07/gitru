@@ -1,0 +1,9 @@
+{
+  "packages": {
+    "apps/desktop": {
+      "release-type": "node",
+      "include-component-in-tag": false,
+      "prerelease": false
+    }
+  }
+}
