@@ -61,7 +61,6 @@ export function useStatus(options?: QueryOptions<GetStatusResponse>) {
  */
 export function useCurrentBranch(options?: QueryOptions<Branch>) {
   const repo = appState.repository;
-
   return useQuery({
     queryKey: repo?.branches.currentQueryKey ?? [
       "repository",

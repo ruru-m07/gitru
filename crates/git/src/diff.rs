@@ -82,8 +82,13 @@ fn generate_patch(repo: &Repository, relative_path: &Path) -> Result<Option<Stri
     diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
         let origin = line.origin();
 
-        if origin != '\0' {
-            patch.push(origin);
+        match origin {
+            '+' | '-' | ' ' => {
+                patch.push(origin);
+            }
+            _ => {
+                // ? Do NOT push origin for headers (F, H, etc.)
+            }
         }
 
         if let Ok(text) = std::str::from_utf8(line.content()) {

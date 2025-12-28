@@ -12,9 +12,9 @@ import "./app.css";
 import { registerCustomTheme } from "@pierre/diffs";
 import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { workerFactory } from "./lib/workerFactory.ts";
 import { appState } from "./state";
 import { vesperLight } from "./themes/vesper-light.ts";
+import { workerFactory } from "./worker/workerFactory.ts";
 
 const router = createRouter({
   routeTree,

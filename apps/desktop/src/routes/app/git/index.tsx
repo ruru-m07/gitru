@@ -40,7 +40,7 @@ function App() {
     <>
       <div className="w-full min-h-14 max-h-14 h-14 border-b flex">
         <Button
-          className="flex border-0 border-t border-t-transparent hover:border-t-border justify-between items-center h-full rounded-none w-72"
+          className="flex border-0 border-t border-t-transparent hover:border-t-border justify-between items-center h-full rounded-none min-w-72"
           variant={"ghost"}
         >
           <div className="flex items-center justify-center gap-4">
@@ -169,9 +169,7 @@ function App() {
           >
             {diffData?.patch ? (
               <PatchDiff
-                patch={diffData.patch
-                  .replace("H@@", "@@")
-                  .replace("Fdiff", "diff")}
+                patch={diffData.patch}
                 options={{
                   disableFileHeader: true,
                   themeType: theme === "dark-classic" ? "dark" : "light",
