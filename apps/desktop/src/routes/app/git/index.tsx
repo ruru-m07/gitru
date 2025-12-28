@@ -106,96 +106,10 @@ const MainActionBar = () => {
 };
 
 const FileLevelStatusBar = () => {
-  const { selectedFilePath, selectedFileStatus } = useDiffViewStore();
-  const { setViewMode } = useDiffViewerSettings();
-
-  if (!selectedFilePath || !selectedFileStatus) {
-    return null;
-  }
-
   return (
     <div className="w-full h-9.25 border-b flex justify-between items-center">
-      <div className="items-center h-full px-2 flex gap-2">
-        {getStatusIcon(selectedFileStatus)}
-        <span className="flex items-center">
-          <span className="text-muted-foreground/75">
-            {selectedFilePath?.path?.slice(
-              0,
-              selectedFilePath?.path?.lastIndexOf("/"),
-            )}
-            /
-          </span>
-          <span>{selectedFilePath?.path?.split("/").pop()}</span>
-        </span>
-        {selectedFilePath?.newPath ? (
-          <div>
-            <MoveHorizontal
-              className="text-muted-foreground opacity-70"
-              size={16}
-            />
-          </div>
-        ) : null}
-        {selectedFilePath?.newPath ? (
-          <span className="flex items-center">
-            <span className="text-muted-foreground/75">
-              {selectedFilePath?.newPath?.slice(
-                0,
-                selectedFilePath?.newPath?.lastIndexOf("/"),
-              )}
-              /
-            </span>
-            <span>{selectedFilePath?.newPath?.split("/").pop()}</span>
-          </span>
-        ) : null}
-      </div>
-      <div>
-        <Popover>
-          <PopoverTrigger
-            render={
-              <Button
-                size="icon"
-                variant="ghost"
-                className="relative"
-                aria-label="Open notifications"
-              />
-            }
-          >
-            <Settings size={16} aria-hidden="true" />
-          </PopoverTrigger>
-          <PopoverContent className="w-80 mr-4 py-0 px-0 mt-0.5">
-            <div className="flex items-center justify-center">
-              <div className="flex flex-col items-center gap-2 w-full">
-                <Button
-                  className="rounded-none size-full h-32 shadow-none first:rounded-s-md last:rounded-e-md focus-visible:z-10"
-                  variant="outline"
-                  size="icon"
-                  aria-label="Flip Horizontal"
-                  onClick={() => {
-                    setViewMode("unified");
-                  }}
-                >
-                  <UnifiedSVG />
-                </Button>
-                <span className="text-sm text-muted-foreground">Unified</span>
-              </div>
-              <div className="flex flex-col items-center gap-2 w-full">
-                <Button
-                  className="rounded-none size-full h-32 shadow-none rounded-r-md border-l-0 focus-visible:z-10"
-                  variant="outline"
-                  size="icon"
-                  aria-label="Flip Vertical"
-                  onClick={() => {
-                    setViewMode("split");
-                  }}
-                >
-                  <SplitSVG />
-                </Button>
-                <span className="text-sm text-muted-foreground">Split</span>
-              </div>
-            </div>
-          </PopoverContent>
-        </Popover>
-      </div>
+      <FileLevelStatusBarLeft />
+      <SettingsPopover />
     </div>
   );
 };
@@ -226,5 +140,104 @@ const DiffArea = () => {
         />
       ) : null}
     </ScrollArea>
+  );
+};
+
+const FileLevelStatusBarLeft = () => {
+  const { selectedFilePath, selectedFileStatus } = useDiffViewStore();
+
+  if (!selectedFilePath || !selectedFileStatus) {
+    return null;
+  }
+
+  return (
+    <div className="items-center h-full px-2 flex gap-2">
+      {getStatusIcon(selectedFileStatus)}
+      <span className="flex items-center">
+        <span className="text-muted-foreground/75">
+          {selectedFilePath?.path?.slice(
+            0,
+            selectedFilePath?.path?.lastIndexOf("/"),
+          )}
+          /
+        </span>
+        <span>{selectedFilePath?.path?.split("/").pop()}</span>
+      </span>
+      {selectedFilePath?.newPath ? (
+        <div>
+          <MoveHorizontal
+            className="text-muted-foreground opacity-70"
+            size={16}
+          />
+        </div>
+      ) : null}
+      {selectedFilePath?.newPath ? (
+        <span className="flex items-center">
+          <span className="text-muted-foreground/75">
+            {selectedFilePath?.newPath?.slice(
+              0,
+              selectedFilePath?.newPath?.lastIndexOf("/"),
+            )}
+            /
+          </span>
+          <span>{selectedFilePath?.newPath?.split("/").pop()}</span>
+        </span>
+      ) : null}
+    </div>
+  );
+};
+
+const SettingsPopover = () => {
+  const { setViewMode } = useDiffViewerSettings();
+
+  return (
+    <div>
+      <Popover>
+        <PopoverTrigger
+          render={
+            <Button
+              size="icon"
+              variant="ghost"
+              className="relative"
+              aria-label="Open notifications"
+            />
+          }
+        >
+          <Settings size={16} aria-hidden="true" />
+        </PopoverTrigger>
+        <PopoverContent className="w-80 mr-4 py-0 px-0 mt-0.5">
+          <div className="flex items-center justify-center">
+            <div className="flex flex-col items-center gap-2 w-full">
+              <Button
+                className="rounded-none size-full h-32 shadow-none first:rounded-s-md last:rounded-e-md focus-visible:z-10"
+                variant="outline"
+                size="icon"
+                aria-label="Flip Horizontal"
+                onClick={() => {
+                  setViewMode("unified");
+                }}
+              >
+                <UnifiedSVG />
+              </Button>
+              <span className="text-sm text-muted-foreground">Unified</span>
+            </div>
+            <div className="flex flex-col items-center gap-2 w-full">
+              <Button
+                className="rounded-none size-full h-32 shadow-none rounded-r-md border-l-0 focus-visible:z-10"
+                variant="outline"
+                size="icon"
+                aria-label="Flip Vertical"
+                onClick={() => {
+                  setViewMode("split");
+                }}
+              >
+                <SplitSVG />
+              </Button>
+              <span className="text-sm text-muted-foreground">Split</span>
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
+    </div>
   );
 };
