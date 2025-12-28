@@ -17,195 +17,36 @@ import {
   Settings,
 } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
 import { useDiffViewStore } from "@/components/diff/useDiffViewStore";
+import { getStatusIcon } from "@/components/getStatusIcon";
 import { useCurrentBranch, useDiff } from "@/state/hooks";
 import { EmptyGitDiffSVG } from "../../../components/svgs/EmptyGitDiffSVG";
 import { SplitSVG } from "../../../components/svgs/splitSVG";
 import { UnifiedSVG } from "../../../components/svgs/unifiedSVG";
-import { getStatusIcon } from "./route";
 
 export const Route = createFileRoute("/app/git/")({
   component: App,
 });
 
 function App() {
-  const { theme } = useTheme();
-  const { selectedFilePath, selectedFileStatus, setViewMode, viewMode } =
-    useDiffViewStore();
+  return (
+    <>
+      <MainActionBar />
+      <DiffBoxBody />
+    </>
+  );
+}
 
-  const { data: currentBranch } = useCurrentBranch();
-  const { data: diffData } = useDiff(selectedFilePath?.path || null);
+const DiffBoxBody = () => {
+  const { selectedFilePath, selectedFileStatus } = useDiffViewStore();
 
   return (
     <>
-      <div className="w-full min-h-14 max-h-14 h-14 border-b flex">
-        <Button
-          className="flex border-0 border-t border-t-transparent hover:border-t-border justify-between items-center h-full rounded-none min-w-72"
-          variant={"ghost"}
-        >
-          <div className="flex items-center justify-center gap-4">
-            <GitBranch className="size-6" />
-            <div className="flex-col flex items-start">
-              <span className="text-xs text-muted-foreground font-normal">
-                Current Branch
-              </span>
-              <span>{currentBranch?.display_name}</span>
-            </div>
-          </div>
-          <ChevronDown size={18} />
-        </Button>
-        <Separator orientation="vertical" className={"border-0"} />
-        <Button
-          className="flex border-0 border-t border-t-transparent hover:border-t-border justify-between items-center h-full rounded-none w-72"
-          variant={"ghost"}
-        >
-          <div className="flex items-center justify-center gap-4">
-            <ChevronsUp className="size-8" />
-            <div className="flex-col flex items-start">
-              <span className="text-xs text-muted-foreground font-normal">
-                ruru/fix/whatever/sucks
-              </span>
-              <span>Push 3 Commits</span>
-            </div>
-          </div>
-          <ChevronDown size={18} />
-        </Button>
-        <Separator orientation="vertical" className={"border-0"} />
-      </div>
       {selectedFilePath && selectedFileStatus ? (
         <>
-          <div className="w-full h-9.25 border-b flex justify-between items-center">
-            <div className="items-center h-full px-2 flex gap-2">
-              {getStatusIcon(selectedFileStatus)}
-              <span className="flex items-center">
-                <span className="text-muted-foreground/75">
-                  {selectedFilePath?.path?.slice(
-                    0,
-                    selectedFilePath?.path?.lastIndexOf("/"),
-                  )}
-                  /
-                </span>
-                <span>{selectedFilePath?.path?.split("/").pop()}</span>
-              </span>
-              {selectedFilePath?.newPath ? (
-                <div>
-                  <MoveHorizontal
-                    className="text-muted-foreground opacity-70"
-                    size={16}
-                  />
-                </div>
-              ) : null}
-              {selectedFilePath?.newPath ? (
-                <span className="flex items-center">
-                  <span className="text-muted-foreground/75">
-                    {selectedFilePath?.newPath?.slice(
-                      0,
-                      selectedFilePath?.newPath?.lastIndexOf("/"),
-                    )}
-                    /
-                  </span>
-                  <span>{selectedFilePath?.newPath?.split("/").pop()}</span>
-                </span>
-              ) : null}
-            </div>
-            <div>
-              <Popover>
-                <PopoverTrigger
-                  render={
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="relative"
-                      aria-label="Open notifications"
-                    />
-                  }
-                >
-                  <Settings size={16} aria-hidden="true" />
-                </PopoverTrigger>
-                <PopoverContent className="w-80 mr-4 py-0 px-0 mt-0.5">
-                  <div className="flex items-center justify-center">
-                    <div className="flex flex-col items-center gap-2 w-full">
-                      <Button
-                        className="rounded-none size-full h-32 shadow-none first:rounded-s-md last:rounded-e-md focus-visible:z-10"
-                        variant="outline"
-                        size="icon"
-                        aria-label="Flip Horizontal"
-                        onClick={() => {
-                          setViewMode("unified");
-                        }}
-                      >
-                        <UnifiedSVG />
-                      </Button>
-                      <span className="text-sm text-muted-foreground">
-                        Unified
-                      </span>
-                    </div>
-                    <div className="flex flex-col items-center gap-2 w-full">
-                      <Button
-                        className="rounded-none size-full h-32 shadow-none rounded-r-md border-l-0 focus-visible:z-10"
-                        variant="outline"
-                        size="icon"
-                        aria-label="Flip Vertical"
-                        onClick={() => {
-                          setViewMode("split");
-                        }}
-                      >
-                        <SplitSVG />
-                      </Button>
-                      <span className="text-sm text-muted-foreground">
-                        Split
-                      </span>
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
-          </div>
-          <ScrollArea
-            className={cn(
-              "h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*7))] w-full relative",
-            )}
-            scrollFade
-          >
-            {diffData?.patch ? (
-              <PatchDiff
-                patch={diffData.patch}
-                options={{
-                  disableFileHeader: true,
-                  themeType: theme === "dark-classic" ? "dark" : "light",
-                  diffStyle: viewMode,
-                  lineDiffType: "word-alt",
-                  overflow: "scroll",
-                }}
-              />
-            ) : null}
-
-            {/* {diffData ? (
-              <MultiFileDiff
-                oldFile={{
-                  name: selectedFilePath.path.split("/").pop() || "file",
-                  contents: diffData?.head?.content! || "",
-                }}
-                newFile={{
-                  name: selectedFilePath.newPath
-                    ? selectedFilePath.newPath.split("/").pop() || "file"
-                    : selectedFilePath.path.split("/").pop() || "file",
-                  contents: diffData?.workdir?.content! || "",
-                }}
-                options={{
-                  theme: {
-                    dark: "github-dark-high-contrast",
-                    light: "github-light-high-contrast",
-                  },
-                  themeType: theme === "dark-classic" ? "dark" : "light",
-                  diffStyle: viewMode,
-                  lineDiffType: "word",
-                  disableFileHeader: true,
-                  overflow: "scroll",
-                }}
-              />
-            ) : null} */}
-          </ScrollArea>
+          <FileLevelStatusBar />
+          <DiffArea />
         </>
       ) : (
         <>
@@ -221,4 +62,169 @@ function App() {
       )}
     </>
   );
-}
+};
+
+const MainActionBar = () => {
+  const { data: currentBranch } = useCurrentBranch();
+
+  return (
+    <div className="w-full min-h-14 max-h-14 h-14 border-b flex">
+      <Button
+        className="flex border-0 border-t border-t-transparent hover:border-t-border justify-between items-center h-full rounded-none min-w-72"
+        variant={"ghost"}
+      >
+        <div className="flex items-center justify-center gap-4">
+          <GitBranch className="size-6" />
+          <div className="flex-col flex items-start">
+            <span className="text-xs text-muted-foreground font-normal">
+              Current Branch
+            </span>
+            <span>{currentBranch?.display_name}</span>
+          </div>
+        </div>
+        <ChevronDown size={18} />
+      </Button>
+      <Separator orientation="vertical" className={"border-0"} />
+      <Button
+        className="flex border-0 border-t border-t-transparent hover:border-t-border justify-between items-center h-full rounded-none w-72"
+        variant={"ghost"}
+      >
+        <div className="flex items-center justify-center gap-4">
+          <ChevronsUp className="size-8" />
+          <div className="flex-col flex items-start">
+            <span className="text-xs text-muted-foreground font-normal">
+              ruru/fix/whatever/sucks
+            </span>
+            <span>Push 3 Commits</span>
+          </div>
+        </div>
+        <ChevronDown size={18} />
+      </Button>
+      <Separator orientation="vertical" className={"border-0"} />
+    </div>
+  );
+};
+
+const FileLevelStatusBar = () => {
+  const { selectedFilePath, selectedFileStatus } = useDiffViewStore();
+  const { setViewMode } = useDiffViewerSettings();
+
+  if (!selectedFilePath || !selectedFileStatus) {
+    return null;
+  }
+
+  return (
+    <div className="w-full h-9.25 border-b flex justify-between items-center">
+      <div className="items-center h-full px-2 flex gap-2">
+        {getStatusIcon(selectedFileStatus)}
+        <span className="flex items-center">
+          <span className="text-muted-foreground/75">
+            {selectedFilePath?.path?.slice(
+              0,
+              selectedFilePath?.path?.lastIndexOf("/"),
+            )}
+            /
+          </span>
+          <span>{selectedFilePath?.path?.split("/").pop()}</span>
+        </span>
+        {selectedFilePath?.newPath ? (
+          <div>
+            <MoveHorizontal
+              className="text-muted-foreground opacity-70"
+              size={16}
+            />
+          </div>
+        ) : null}
+        {selectedFilePath?.newPath ? (
+          <span className="flex items-center">
+            <span className="text-muted-foreground/75">
+              {selectedFilePath?.newPath?.slice(
+                0,
+                selectedFilePath?.newPath?.lastIndexOf("/"),
+              )}
+              /
+            </span>
+            <span>{selectedFilePath?.newPath?.split("/").pop()}</span>
+          </span>
+        ) : null}
+      </div>
+      <div>
+        <Popover>
+          <PopoverTrigger
+            render={
+              <Button
+                size="icon"
+                variant="ghost"
+                className="relative"
+                aria-label="Open notifications"
+              />
+            }
+          >
+            <Settings size={16} aria-hidden="true" />
+          </PopoverTrigger>
+          <PopoverContent className="w-80 mr-4 py-0 px-0 mt-0.5">
+            <div className="flex items-center justify-center">
+              <div className="flex flex-col items-center gap-2 w-full">
+                <Button
+                  className="rounded-none size-full h-32 shadow-none first:rounded-s-md last:rounded-e-md focus-visible:z-10"
+                  variant="outline"
+                  size="icon"
+                  aria-label="Flip Horizontal"
+                  onClick={() => {
+                    setViewMode("unified");
+                  }}
+                >
+                  <UnifiedSVG />
+                </Button>
+                <span className="text-sm text-muted-foreground">Unified</span>
+              </div>
+              <div className="flex flex-col items-center gap-2 w-full">
+                <Button
+                  className="rounded-none size-full h-32 shadow-none rounded-r-md border-l-0 focus-visible:z-10"
+                  variant="outline"
+                  size="icon"
+                  aria-label="Flip Vertical"
+                  onClick={() => {
+                    setViewMode("split");
+                  }}
+                >
+                  <SplitSVG />
+                </Button>
+                <span className="text-sm text-muted-foreground">Split</span>
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+      </div>
+    </div>
+  );
+};
+
+const DiffArea = () => {
+  const { selectedFilePath } = useDiffViewStore();
+  const { viewMode } = useDiffViewerSettings();
+  const { data: diffData } = useDiff(selectedFilePath?.path || null);
+  const { theme } = useTheme();
+
+  return (
+    <ScrollArea
+      className={cn(
+        "h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*7))] w-full relative",
+      )}
+      scrollFade
+    >
+      {diffData?.patch ? (
+        <PatchDiff
+          patch={diffData.patch}
+          options={{
+            disableFileHeader: true,
+            themeType: theme === "dark-classic" ? "dark" : "light",
+            diffStyle: viewMode,
+            lineDiffType: "word-alt",
+            overflow: "scroll",
+          }}
+        />
+      ) : null}
+    </ScrollArea>
+  );
+};

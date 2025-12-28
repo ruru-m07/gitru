@@ -156,6 +156,24 @@ export function getLastCommit() {
   });
 }
 
+export function getCommitHistory() {
+  const repo = appState.repository;
+
+  return useQuery({
+    queryKey: repo?.commit.getQueryKey("history") ?? [
+      "repository",
+      "none",
+      "commit",
+      "history",
+    ],
+    queryFn: async () => {
+      if (!repo) return null;
+      return await repo.commit.history();
+    },
+    enabled: !!repo,
+  });
+}
+
 export function getCommitById(hash: string) {
   const repo = appState.repository;
 

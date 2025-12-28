@@ -8,6 +8,7 @@ import {
   gitAdd,
   gitDiscard,
   gitRemove,
+  history,
   lastCommit,
   listBranch,
   repositoryOrigin,
@@ -242,7 +243,23 @@ class Commit extends StateDomain {
     return data;
   }
 
-  getQueryKey(key: "last" | "getCommitById") {
+  async history() {
+    await this.queryClient.cancelQueries({
+      queryKey: [...this.baseKey, "history"],
+    });
+
+    const data = await history({
+      repoPath: this.repositoryPath,
+      limit: 100,
+      skip: 0,
+    });
+
+    this.queryClient.setQueryData([...this.baseKey, "history"], data);
+
+    return data;
+  }
+
+  getQueryKey(key: "last" | "getCommitById" | "history") {
     return [...this.baseKey, key];
   }
 
