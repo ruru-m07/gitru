@@ -1,5 +1,6 @@
 export const vesperLight = {
   name: "vesper-light",
+  type: "light",
   colors: {
     "activityBar.background": "#f5f5f5",
     "activityBar.foreground": "#505050",
@@ -584,5 +585,52 @@ export const vesperLight = {
         foreground: "#800080",
       },
     },
+    {
+      scope: "markup.changed.diff",
+      settings: {
+        foreground: "#d5a910",
+      },
+    },
+    {
+      scope: [
+        "meta.diff.header.from-file",
+        "meta.diff.header.to-file",
+        "punctuation.definition.from-file.diff",
+        "punctuation.definition.to-file.diff",
+      ],
+      settings: {
+        foreground: "#7b43f8",
+      },
+    },
+    {
+      scope: "markup.inserted.diff",
+      settings: {
+        foreground: "#199f43",
+      },
+    },
+    {
+      scope: "markup.deleted.diff",
+      settings: {
+        foreground: "#d52c36",
+      },
+    },
   ],
+  semanticTokenColors: {
+    comment: "#84848A",
+    string: "#199f43",
+    number: "#1ca1c7",
+    regexp: "#17a5af",
+    keyword: "#fc2b73",
+    variable: "#d47628",
+    parameter: "#79797F",
+    property: "#d47628",
+    function: "#7b43f8",
+    method: "#7b43f8",
+    type: "#c635e4",
+    class: "#c635e4",
+    namespace: "#d5a910",
+    enumMember: "#08c0ef",
+    "variable.constant": "#d5a910",
+    "variable.defaultLibrary": "#d5a910",
+  },
 };

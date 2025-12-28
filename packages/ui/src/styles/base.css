@@ -225,6 +225,9 @@
       border-radius: 2px;
       padding: 0 2px;
     }
+
+    --diffs-deletion-color-override: #d33527;
+    --diffs-addition-color-override: #53b403;
   }
 
   html[data-theme="dark"],

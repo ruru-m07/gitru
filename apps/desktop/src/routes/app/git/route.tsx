@@ -390,6 +390,9 @@ function GitPageLayout() {
                       onClick={() => {
                         setSelectedRepository(repo);
                         setRepoSelectIsOpen(false);
+                        setTimeout(() => {
+                          actions?.invalidateAll();
+                        }, 0);
                       }}
                     >
                       <span>{repo.name}</span>

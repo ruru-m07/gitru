@@ -42,17 +42,23 @@ dev-vite: ## Start Vite development server only (no Tauri)
 
 ##@ Build
 
-build-vite: ## Build Vite/frontend only
+build-vite:
 	@echo "$(GREEN)Building Vite application...$(NC)"
-	bun --cwd="./apps/desktop" run build
+	@. ./scripts/load-env.sh && \
+	  bun --cwd="./apps/desktop" run build
 	@echo "$(GREEN)Vite build complete!$(NC)"
 
-build-tauri: ## Build Tauri application (includes Vite build)
+build-tauri: ## Build Tauri application
 	@echo "$(GREEN)Building Tauri application...$(NC)"
-	bun --cwd="./apps/desktop" run tauri build
+	@. ./scripts/load-env.sh && \
+	  bun --cwd="./apps/desktop" run tauri build
 	@echo "$(GREEN)Tauri build complete!$(NC)"
 
-build-full: clean setup build-tauri ## Full clean build (clean -> setup -> build)
+
+build-full:
+	@echo "$(GREEN)Starting full build...$(NC)"
+	@. ./scripts/load-env.sh && \
+	  $(MAKE) clean setup build-tauri
 	@echo "$(GREEN)Full build complete!$(NC)"
 
 build: build-tauri

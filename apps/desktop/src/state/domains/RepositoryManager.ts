@@ -3,10 +3,6 @@ import type { RepoSitoryStore } from "@/tauri/types";
 import { queryClient } from "../core/StateManager";
 import { RepositoryState } from "./RepositoryState";
 
-/**
- * Manages repository state instances with caching
- * Syncs with AppStore for persistence
- */
 class RepositoryManager {
   private instances = new Map<string, RepositoryState>();
   private _current: RepositoryState | null = null;
@@ -16,9 +12,6 @@ class RepositoryManager {
     this.initializeSync();
   }
 
-  /**
-   * Subscribe to AppStore changes and sync current repository
-   */
   private initializeSync() {
     this._unsubscribe = useAppStore.subscribe(
       (state) => state.selectedRepository,
@@ -36,9 +29,6 @@ class RepositoryManager {
     }
   }
 
-  /**
-   * Sync internal state from AppStore
-   */
   private syncFromStore(repo: RepoSitoryStore | null) {
     if (repo?.path) {
       this._current = this.for(repo.path);
@@ -47,9 +37,6 @@ class RepositoryManager {
     }
   }
 
-  /**
-   * Get or create a repository state for a given path
-   */
   for(repoPath: string): RepositoryState {
     const normalizedPath = this.normalizePath(repoPath);
 
@@ -69,28 +56,6 @@ class RepositoryManager {
    */
   get current(): RepositoryState | null {
     return this._current;
-  }
-
-  /**
-   * Check if a current repository is set
-   * @returns boolean
-   */
-  get hasCurrent(): boolean {
-    return this._current !== null;
-  }
-
-  /**
-   * Get the full repository data from AppStore
-   */
-  get currentRepoData(): RepoSitoryStore | null {
-    return useAppStore.getState().selectedRepository;
-  }
-
-  /**
-   * Get all repositories from AppStore
-   */
-  get all(): RepoSitoryStore[] {
-    return useAppStore.getState().repositories;
   }
 
   /**
@@ -122,14 +87,6 @@ class RepositoryManager {
   }
 
   /**
-   * Clear selection (doesn't remove from list)
-   */
-  clearSelection() {
-    useAppStore.getState().setSelectedRepository(null);
-    this._current = null;
-  }
-
-  /**
    * Normalize repository path for consistent keys
    * @example
    * "C:\\Repos\\MyRepo\\" => "C:/Repos/MyRepo"
@@ -139,9 +96,6 @@ class RepositoryManager {
     return path.replace(/\\/g, "/").replace(/\/+$/, "");
   }
 
-  /**
-   * Cleanup subscriptions (call on app unmount if needed)
-   */
   destroy() {
     if (this._unsubscribe) {
       this._unsubscribe();

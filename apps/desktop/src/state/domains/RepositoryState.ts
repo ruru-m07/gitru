@@ -22,7 +22,7 @@ class DiffState extends StateDomain {
     private repositoryPath: string,
   ) {
     super(queryClient);
-    this.baseKey = ["repository", this.repositoryPath, "diff"] as const;
+    this.baseKey = ["repository", "diff"] as const;
   }
 
   async get(filePath: string) {
@@ -60,7 +60,7 @@ class StatusState extends StateDomain {
     private repositoryPath: string,
   ) {
     super(queryClient);
-    this.baseKey = ["repository", this.repositoryPath, "status"] as const;
+    this.baseKey = ["repository", "status"] as const;
   }
 
   async get() {
@@ -99,7 +99,7 @@ class BranchState extends StateDomain {
     private getParent: () => RepositoryState,
   ) {
     super(queryClient);
-    this.baseKey = ["repository", this.repositoryPath, "branches"] as const;
+    this.baseKey = ["repository", "branches"] as const;
   }
 
   async list() {
@@ -208,7 +208,7 @@ class Commit extends StateDomain {
     private repositoryPath: string,
   ) {
     super(queryClient);
-    this.baseKey = ["repository", this.repositoryPath, "commit"] as const;
+    this.baseKey = ["repository", "commit"] as const;
   }
   async last() {
     await this.queryClient.cancelQueries({
@@ -244,6 +244,10 @@ class Commit extends StateDomain {
 
   getQueryKey(key: "last" | "getCommitById") {
     return [...this.baseKey, key];
+  }
+
+  async invalidate() {
+    await this.queryClient.invalidateQueries({ queryKey: [...this.baseKey] });
   }
 }
 
@@ -293,7 +297,7 @@ class RepositoryState extends StateDomain {
   }
 
   async invalidateAll() {
-    await this.queryClient.invalidateQueries({ queryKey: [...this.baseKey] });
+    await this.queryClient.invalidateQueries();
   }
 }
 

@@ -12,8 +12,6 @@ pub fn last_commit(repo_path: &str) -> Result<CommitInfo, String> {
     let head = repo.head().map_err(|e| e.to_string())?;
     let commit = head.peel_to_commit().map_err(|e| e.to_string())?;
 
-    println!("{:?}", commit.summary().unwrap_or("").to_string());
-
     Ok(CommitInfo {
         id: commit.id().to_string(),
         timestamp: commit.time().seconds(),

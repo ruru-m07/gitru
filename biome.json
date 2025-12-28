@@ -12,6 +12,9 @@
       "!**/dist",
       "!**/target",
       "!**/.temp",
+      "!**/*.css",
+      "!**/drizzle",
+      "!**/tauri",
       "!**/crates",
       "!**/.tanstack",
       "!**/routeTree.gen.ts"
