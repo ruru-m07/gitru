@@ -176,12 +176,6 @@ function App() {
                   diffStyle: viewMode,
                   lineDiffType: "word-alt",
                   overflow: "scroll",
-                  unsafeCSS: `
-                  // [data-code] {
-                  //   padding-top: 0px !important;
-                  //   padding-bottom: 0px !important;
-                  // }
-                  `,
                 }}
               />
             ) : null}

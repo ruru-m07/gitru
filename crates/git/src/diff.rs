@@ -32,11 +32,9 @@ pub fn get_diff(repo_path: &str, file_path: &str) -> Result<GetDiffResponse, Str
             .to_str()
             .map(|s| s.to_string())
             .unwrap_or_else(|| file_path.to_string()),
-        // head: head_version,
-        // workdir: workdir_version,
         head: None,
         workdir: None,
-        patch: patch,
+        patch,
     })
 }
 
@@ -82,13 +80,15 @@ fn generate_patch(repo: &Repository, relative_path: &Path) -> Result<Option<Stri
     diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
         let origin = line.origin();
 
-        match origin {
-            '+' | '-' | ' ' => {
-                patch.push(origin);
-            }
-            _ => {
-                // ? Do NOT push origin for headers (F, H, etc.)
-            }
+        if matches!(origin, '+' | '-' | ' ') {
+            // For added/removed/context lines we explicitly prefix the content
+            // with the origin character (as in unified diff format).
+            // For other origins (e.g. file headers 'F', hunk headers 'H',
+            // binary markers 'B', etc.) the leading marker is *not* pushed.
+            // The full header text is already present in `line.content()`,
+            // and adding the origin character here would introduce extra
+            // non-standard prefix characters into the serialized patch.
+            patch.push(origin);
         }
 
         if let Ok(text) = std::str::from_utf8(line.content()) {
