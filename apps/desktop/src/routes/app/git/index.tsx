@@ -1,20 +1,26 @@
 import { Button } from "@gitru/ui/components/button";
+import { Group, GroupSeparator } from "@gitru/ui/components/group";
+import { Label } from "@gitru/ui/components/label";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@gitru/ui/components/popover";
+import { Radio, RadioGroup } from "@gitru/ui/components/radio-group";
 import { ScrollArea } from "@gitru/ui/components/scroll-area";
 import { Separator } from "@gitru/ui/components/separator";
+import { Switch } from "@gitru/ui/components/switch";
 import { cn } from "@gitru/ui/lib/utils";
-import { PatchDiff } from "@pierre/diffs/react";
+import { LineDiffTypes, PatchDiff } from "@pierre/diffs/react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   ChevronDown,
   ChevronsUp,
+  Diff,
   GitBranch,
   MoveHorizontal,
   Settings,
+  TextWrap,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
@@ -116,7 +122,7 @@ const FileLevelStatusBar = () => {
 
 const DiffArea = () => {
   const { selectedFilePath } = useDiffViewStore();
-  const { viewMode } = useDiffViewerSettings();
+  const { diffStyle, overflow, lineDiffType } = useDiffViewerSettings();
   const { data: diffData } = useDiff(selectedFilePath?.path || null);
   const { theme } = useTheme();
 
@@ -132,10 +138,11 @@ const DiffArea = () => {
           patch={diffData.patch}
           options={{
             disableFileHeader: true,
+            theme: { dark: "vesper", light: "vesper-light" },
             themeType: theme === "dark-classic" ? "dark" : "light",
-            diffStyle: viewMode,
-            lineDiffType: "word-alt",
-            overflow: "scroll",
+            diffStyle,
+            overflow,
+            lineDiffType,
           }}
         />
       ) : null}
@@ -188,8 +195,6 @@ const FileLevelStatusBarLeft = () => {
 };
 
 const SettingsPopover = () => {
-  const { setViewMode } = useDiffViewerSettings();
-
   return (
     <div>
       <Popover>
@@ -205,39 +210,108 @@ const SettingsPopover = () => {
         >
           <Settings size={16} aria-hidden="true" />
         </PopoverTrigger>
-        <PopoverContent className="w-80 mr-4 py-0 px-0 mt-0.5">
-          <div className="flex items-center justify-center">
-            <div className="flex flex-col items-center gap-2 w-full">
+        <SettingsPopoverContent />
+      </Popover>
+    </div>
+  );
+};
+
+const SettingsPopoverContent = () => {
+  const {
+    setDiffStyle,
+    diffStyle,
+    overflow,
+    setOverflow,
+    lineDiffType,
+    setLineDiffType,
+  } = useDiffViewerSettings();
+
+  return (
+    <PopoverContent className="fit mr-4 px-0 mt-0.5">
+      <Label className="text-muted-foreground">Settings</Label>
+      <Separator className={"mt-2 mb-3"} />
+      <div className="flex flex-col gap-4 mt-1">
+        <div>
+          <Label className="flex items-center gap-2 mb-3">
+            <Diff size={16} />
+            Diff Style
+          </Label>
+          <div className="flex items-center justify-center ">
+            <Group className="flex">
               <Button
-                className="rounded-none size-full h-32 shadow-none first:rounded-s-md last:rounded-e-md focus-visible:z-10"
+                className={cn(
+                  "rounded-none w-32 h-32 shadow-none first:rounded-s-md last:rounded-e-md focus-visible:z-10",
+                  diffStyle === "unified" &&
+                    "border-primary/40 bg-primary/10 hover:bg-primary/13!",
+                )}
                 variant="outline"
                 size="icon"
-                aria-label="Flip Horizontal"
                 onClick={() => {
-                  setViewMode("unified");
+                  setDiffStyle("unified");
                 }}
               >
                 <UnifiedSVG />
               </Button>
-              <span className="text-sm text-muted-foreground">Unified</span>
-            </div>
-            <div className="flex flex-col items-center gap-2 w-full">
+              <GroupSeparator className="bg-primary/40" />
               <Button
-                className="rounded-none size-full h-32 shadow-none rounded-r-md border-l-0 focus-visible:z-10"
+                className={cn(
+                  "rounded-none w-32 h-32 shadow-none rounded-r-md border-l-0 focus-visible:z-10",
+                  diffStyle === "split" &&
+                    "border-primary/40 bg-primary/10 hover:bg-primary/13!",
+                )}
                 variant="outline"
                 size="icon"
-                aria-label="Flip Vertical"
                 onClick={() => {
-                  setViewMode("split");
+                  setDiffStyle("split");
                 }}
               >
                 <SplitSVG />
               </Button>
-              <span className="text-sm text-muted-foreground">Split</span>
-            </div>
+            </Group>
           </div>
-        </PopoverContent>
-      </Popover>
-    </div>
+        </div>
+        <Separator />
+        <div className="flex justify-between">
+          <Label htmlFor="wrapping" className="flex items-center gap-2">
+            <TextWrap size={16} />
+            Wrapping
+          </Label>
+          <Switch
+            checked={overflow === "wrap"}
+            onCheckedChange={(checked) => {
+              setOverflow(checked ? "wrap" : "scroll");
+            }}
+            id="wrapping"
+          />
+        </div>
+        <div>
+          <Label>Line Diff Type</Label>
+          <RadioGroup
+            defaultValue={lineDiffType}
+            className="gap-2 mt-1 "
+            onValueChange={(v) => {
+              setLineDiffType(v as LineDiffTypes);
+            }}
+          >
+            <Label>
+              <Radio value="word-alt" />
+              Word-Alt
+            </Label>
+            <Label>
+              <Radio value="word" />
+              Word
+            </Label>
+            <Label>
+              <Radio value="char" />
+              Char
+            </Label>
+            <Label>
+              <Radio value="none" />
+              None
+            </Label>
+          </RadioGroup>
+        </div>
+      </div>
+    </PopoverContent>
   );
 };
