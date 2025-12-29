@@ -10,11 +10,9 @@ import { routeTree } from "./routeTree.gen";
 import { useLastPageStore } from "./store/useLastPageStore.ts";
 import "./app.css";
 import { registerCustomTheme } from "@pierre/diffs";
-import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { appState } from "./state";
 import { vesperLight } from "./themes/vesper-light.ts";
-import { workerFactory } from "./worker/workerFactory.ts";
 
 const router = createRouter({
   routeTree,
@@ -50,28 +48,21 @@ registerCustomTheme("vesper-light", async () => vesperLight as any);
 const rootElement = document.getElementById("root");
 if (rootElement && !rootElement.innerHTML) {
   const root = ReactDOM.createRoot(rootElement);
+
   root.render(
     <StrictMode>
       <QueryClientProvider client={appState.queryClient}>
-        <WorkerPoolContextProvider
-          poolOptions={{
-            workerFactory,
-          }}
-          highlighterOptions={{
-            // theme: { dark: "github-dark-high-contrast", light: "github-light" },
-            theme: { dark: "vesper", light: "vesper-light" },
-          }}
+        {/* <WorkerPoolProvider> */}
+        <NextThemesProvider
+          disableTransitionOnChange
+          defaultTheme="light"
+          enableColorScheme
+          themes={colorKeyList}
         >
-          <NextThemesProvider
-            disableTransitionOnChange
-            defaultTheme="light"
-            enableColorScheme
-            themes={colorKeyList}
-          >
-            <RouterProvider router={router} />
-            <Toaster />
-          </NextThemesProvider>
-        </WorkerPoolContextProvider>
+          <RouterProvider router={router} />
+          <Toaster />
+        </NextThemesProvider>
+        {/* </WorkerPoolProvider> */}
       </QueryClientProvider>
     </StrictMode>,
   );
