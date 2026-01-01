@@ -126,8 +126,6 @@ fn commit_internal(
     let sig = repo.signature().map_err(|e| e.to_string())?;
     let message = build_commit_message(commit_meta);
 
-    println!("{}", message);
-
     let commit_oid = match parent_commit {
         Some(ref parent) => repo
             .commit(Some("HEAD"), &sig, &sig, &message, &tree, &[parent])
