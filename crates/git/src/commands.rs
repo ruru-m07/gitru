@@ -1,4 +1,4 @@
-use git2::{Commit, Repository};
+use git2::Repository;
 use serde::Serialize;
 
 use crate::{
@@ -267,102 +267,5 @@ pub fn git_discard(repo_path: &str, file: &str) -> GitResult {
     GitResult {
         success: true,
         message: None,
-    }
-}
-
-// git commit <file>
-#[tauri::command]
-pub fn commit(
-    repo_path: &str,
-    message: &str,
-    description: Option<&str>,
-    co_authors: Option<Vec<&str>>,
-) -> CommitResult {
-    // open the repository
-    let repo = match Repository::open(repo_path) {
-        Ok(r) => r,
-        Err(e) => {
-            return CommitResult {
-                success: false,
-                message: Some(format!("Failed to open repo: {e}")),
-            };
-        }
-    };
-
-    // combine message + optional description + co-authors
-    let mut full_message = message.to_string();
-
-    if let Some(desc) = description {
-        full_message.push_str("\n\n");
-        full_message.push_str(desc);
-    }
-
-    if let Some(authors) = co_authors {
-        for a in authors {
-            full_message.push_str(&format!("\nCo-authored-by: {a}"));
-        }
-    }
-
-    // get default user identity
-    let sig = match repo.signature() {
-        Ok(s) => s,
-        Err(e) => {
-            return CommitResult {
-                success: false,
-                message: Some(format!("Failed to get signature: {e}")),
-            };
-        }
-    };
-
-    // load index (staged changes)
-    let mut index = match repo.index() {
-        Ok(i) => i,
-        Err(e) => {
-            return CommitResult {
-                success: false,
-                message: Some(format!("Failed to open index: {e}")),
-            };
-        }
-    };
-
-    // write the current index to a tree
-    let tree_oid = match index.write_tree() {
-        Ok(oid) => oid,
-        Err(e) => {
-            return CommitResult {
-                success: false,
-                message: Some(format!("Failed to write tree: {e}")),
-            };
-        }
-    };
-
-    let tree = match repo.find_tree(tree_oid) {
-        Ok(t) => t,
-        Err(e) => {
-            return CommitResult {
-                success: false,
-                message: Some(format!("Failed to find tree: {e}")),
-            };
-        }
-    };
-
-    // determine parents (previous commit)
-    let parent_commit: Option<Commit> = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
-
-    let parents: Vec<&Commit> = match parent_commit {
-        Some(ref c) => vec![c],
-        None => vec![],
-    };
-
-    // perform the commit
-    match repo.commit(Some("HEAD"), &sig, &sig, &full_message, &tree, &parents) {
-        Ok(_) => CommitResult {
-            success: true,
-            message: None,
-        },
-        Err(e) => CommitResult {
-            success: false,
-            message: Some(format!("Commit failed: {e}")),
-        },
     }
 }

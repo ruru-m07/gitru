@@ -80,6 +80,7 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useState } from "react";
 import { toast } from "sonner";
+import z from "zod";
 import { useDiffViewStore } from "@/components/diff/useDiffViewStore";
 import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
@@ -90,6 +91,7 @@ import {
 } from "@/lib/time";
 import {
   getCommitHistory,
+  useCreateCommit,
   useCurrentBranch,
   useRepositoryActions,
   useStatus,
@@ -891,19 +893,47 @@ const DiscardChangesDialog = memo(function DiscardChangesDialog({
   );
 });
 
+const CoAuthers = z.array(z.tuple([z.string(), z.string()]));
+type CoAuthers = z.infer<typeof CoAuthers>;
+
 const WriteCommitBox = memo(function WriteCommitBox() {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [co_authors, setCoAuthors] = useState<CoAuthers>([]);
+
   const { data: currentBranch } = useCurrentBranch();
+  const { mutateAsync: createCommit, isPending: isCreatingCommit } =
+    useCreateCommit();
+
+  const handelCommit = useCallback(async () => {
+    const data = await createCommit({
+      title,
+      description,
+      co_authors,
+    });
+    if (data) {
+      setTitle("");
+      setDescription("");
+      setCoAuthors([]);
+      toast.success("Commit created successfully");
+    }
+  }, [createCommit, title, description, co_authors]);
+
   return (
     <div>
       <div className="shrink-0 border-l flex flex-col gap-2 justify-between items-center border-t px-2 py-2 bg-accent dark:bg-accent/10">
         <Input
           placeholder="Summary (required)"
           className="h-8 _border-border dark:bg-background!"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
         />
         <InputGroup className="dark:bg-background!">
           <InputGroupTextarea
             placeholder="Description"
             className="dark:bg-background!"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
           />
           <InputGroupAddon align="block-end">
             <Button
@@ -926,7 +956,13 @@ const WriteCommitBox = memo(function WriteCommitBox() {
           </InputGroupAddon>
         </InputGroup>
         <Group aria-label="Subscription actions" className="w-full">
-          <Button className="flex-1">Commit to {currentBranch?.name}</Button>
+          <Button
+            onClick={handelCommit}
+            className="flex-1"
+            disabled={isCreatingCommit || title.trim() === ""}
+          >
+            Commit to {currentBranch?.name}
+          </Button>
           <GroupSeparator className="bg-primary/72" />
           <Menu>
             <MenuTrigger
