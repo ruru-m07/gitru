@@ -139,10 +139,15 @@ const DiffArea = () => {
           options={{
             disableFileHeader: true,
             theme: { dark: "vesper", light: "vesper-light" },
-            themeType: theme === "dark-classic" ? "dark" : "light",
+            themeType: theme?.startsWith("dark-") ? "dark" : "light",
             diffStyle,
             overflow,
             lineDiffType,
+            unsafeCSS: `
+              pre {
+                --diffs-light-bg: transparent !important;
+              }
+            `,
           }}
         />
       ) : null}

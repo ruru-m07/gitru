@@ -22,6 +22,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@gitru/ui/components/dialog";
+import { Group, GroupSeparator } from "@gitru/ui/components/group";
 import { Input } from "@gitru/ui/components/input";
 import {
   InputGroup,
@@ -35,6 +36,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuTrigger,
 } from "@gitru/ui/components/menu";
 import {
   ResizableHandle,
@@ -75,6 +80,7 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useState } from "react";
 import { toast } from "sonner";
+import z from "zod";
 import { useDiffViewStore } from "@/components/diff/useDiffViewStore";
 import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
@@ -85,6 +91,8 @@ import {
 } from "@/lib/time";
 import {
   getCommitHistory,
+  useCreateCommit,
+  useCurrentBranch,
   useRepositoryActions,
   useStatus,
 } from "@/state/hooks";
@@ -404,41 +412,7 @@ function GitPageLayout() {
                         </>
                       )}
                     </div>
-                    <div className="shrink-0 border-l flex flex-col gap-2 justify-between items-center border-t px-2 py-2 bg-accent dark:bg-accent/10">
-                      <Input
-                        placeholder="Summary (required)"
-                        className="h-8 _border-border dark:bg-background!"
-                      />
-                      <InputGroup className="dark:bg-background!">
-                        <InputGroupTextarea
-                          placeholder="Description"
-                          className="dark:bg-background!"
-                        />
-                        <InputGroupAddon align="block-end">
-                          <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            className="rounded-full opacity-50 hover:opacity-100"
-                            aria-label="Add Co Authors"
-                          >
-                            <UserPlus size={16} />
-                          </Button>
-                          <Separator
-                            orientation="vertical"
-                            className={"h-[80%] mx-0"}
-                          />
-                          <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            className="rounded-full opacity-50 hover:opacity-100"
-                            aria-label="Add files"
-                          >
-                            <Sparkles size={16} />
-                          </Button>
-                        </InputGroupAddon>
-                      </InputGroup>
-                      <Button className="w-full">Commit to main</Button>
-                    </div>
+                    <WriteCommitBox />
                   </TabsPanel>
                   <TabsPanel value="tab-2" className={"h-full"} tabIndex={-1}>
                     <ScrollArea
@@ -916,5 +890,100 @@ const DiscardChangesDialog = memo(function DiscardChangesDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+});
+
+const CoAuthers = z.array(z.tuple([z.string(), z.string()]));
+type CoAuthers = z.infer<typeof CoAuthers>;
+
+const WriteCommitBox = memo(function WriteCommitBox() {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [co_authors, setCoAuthors] = useState<CoAuthers>([]);
+
+  const { data: currentBranch } = useCurrentBranch();
+  const { mutateAsync: createCommit, isPending: isCreatingCommit } =
+    useCreateCommit();
+
+  const handelCommit = useCallback(async () => {
+    const data = await createCommit({
+      title,
+      description,
+      co_authors,
+    });
+    if (data) {
+      setTitle("");
+      setDescription("");
+      setCoAuthors([]);
+      toast.success("Commit created successfully");
+    }
+  }, [createCommit, title, description, co_authors]);
+
+  return (
+    <div>
+      <div className="shrink-0 border-l flex flex-col gap-2 justify-between items-center border-t px-2 py-2 bg-accent dark:bg-accent/10">
+        <Input
+          placeholder="Summary (required)"
+          className="h-8 _border-border dark:bg-background!"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+        <InputGroup className="dark:bg-background!">
+          <InputGroupTextarea
+            placeholder="Description"
+            className="dark:bg-background!"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+          <InputGroupAddon align="block-end">
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="rounded-full opacity-50 hover:opacity-100"
+              aria-label="Add Co Authors"
+            >
+              <UserPlus size={16} />
+            </Button>
+            <Separator orientation="vertical" className={"h-4 mx-0"} />
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="rounded-full opacity-50 hover:opacity-100"
+              aria-label="Add files"
+            >
+              <Sparkles size={16} />
+            </Button>
+          </InputGroupAddon>
+        </InputGroup>
+        <Group aria-label="Subscription actions" className="w-full">
+          <Button
+            onClick={handelCommit}
+            className="flex-1 truncate"
+            disabled={isCreatingCommit || title.trim() === ""}
+          >
+            Commit to
+            <span className="truncate -ml-1">{currentBranch?.name}</span>
+          </Button>
+          <GroupSeparator className="bg-primary/72" />
+          <Menu>
+            <MenuTrigger
+              render={
+                <Button
+                  aria-label="Copy options"
+                  size="icon"
+                  className="rounded-r-lg!"
+                />
+              }
+            >
+              <ChevronDownIcon className="size-4" />
+            </MenuTrigger>
+            <MenuPopup align="end" className={"w-full"}>
+              <MenuItem>Empty Commit</MenuItem>
+              <MenuItem>Amend Last Commit</MenuItem>
+            </MenuPopup>
+          </Menu>
+        </Group>
+      </div>
+    </div>
   );
 });

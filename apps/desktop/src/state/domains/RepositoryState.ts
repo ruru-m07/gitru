@@ -1,7 +1,9 @@
 import { QueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import {
+  CreateCommitParams,
   commitById,
+  createCommit,
   currentBranch,
   getDiff,
   getStatus,
@@ -239,6 +241,15 @@ class Commit extends StateDomain {
       [...this.baseKey, "getCommitById", hash],
       data,
     );
+
+    return data;
+  }
+
+  async createCommit(payload: CreateCommitParams["commitMeta"]) {
+    const data = await createCommit({
+      repoPath: this.repositoryPath,
+      commitMeta: payload,
+    });
 
     return data;
   }

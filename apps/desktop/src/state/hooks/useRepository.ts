@@ -1,6 +1,16 @@
-import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
+import {
+  type UseQueryOptions,
+  useMutation,
+  useQuery,
+} from "@tanstack/react-query";
 import { useMemo } from "react";
-import type { Branch, GetDiffResponse, GetStatusResponse } from "@/tauri";
+import { toast } from "sonner";
+import type {
+  Branch,
+  CreateCommitParams,
+  GetDiffResponse,
+  GetStatusResponse,
+} from "@/tauri";
 import { appState } from "../index";
 
 type QueryOptions<T> = Omit<
@@ -206,6 +216,26 @@ export function getRepositoryOrigin() {
     },
     enabled: !!repo,
   });
+}
+
+export function useCreateCommit() {
+  const repo = appState.repository;
+
+  const mutation = useMutation({
+    mutationFn: async (payload: CreateCommitParams["commitMeta"]) => {
+      if (!repo) throw new Error("No repository selected");
+      return await repo.commit.createCommit(payload);
+    },
+    onSuccess: async () => {
+      await repo?.status.invalidate();
+      await repo?.commit.invalidate();
+    },
+    onError: (error: string) => {
+      toast.error(error);
+    },
+  });
+
+  return mutation;
 }
 
 // ============================================

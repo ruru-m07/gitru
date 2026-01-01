@@ -18,7 +18,6 @@ pub fn run() {
             git::commands::get_status,
             git::commands::git_remove,
             git::commands::git_discard,
-            git::commands::commit,
             git::diff::get_diff,
             git::branch::list_branch,
             git::branch::current_branch,
@@ -26,6 +25,8 @@ pub fn run() {
             git::history::history,
             git::commit::last_commit,
             git::commit::commit_by_id,
+            git::commit::create_commit,
+            git::commit::create_empty_commit,
             git::origin::repository_origin,
         ])
         .run(tauri::generate_context!())
