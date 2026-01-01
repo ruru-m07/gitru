@@ -958,10 +958,11 @@ const WriteCommitBox = memo(function WriteCommitBox() {
         <Group aria-label="Subscription actions" className="w-full">
           <Button
             onClick={handelCommit}
-            className="flex-1"
+            className="flex-1 truncate"
             disabled={isCreatingCommit || title.trim() === ""}
           >
-            Commit to {currentBranch?.name}
+            Commit to
+            <span className="truncate -ml-1">{currentBranch?.name}</span>
           </Button>
           <GroupSeparator className="bg-primary/72" />
           <Menu>
