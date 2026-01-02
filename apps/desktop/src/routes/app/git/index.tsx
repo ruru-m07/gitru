@@ -11,7 +11,7 @@ import { ScrollArea } from "@gitru/ui/components/scroll-area";
 import { Separator } from "@gitru/ui/components/separator";
 import { Switch } from "@gitru/ui/components/switch";
 import { cn } from "@gitru/ui/lib/utils";
-import { LineDiffTypes, PatchDiff } from "@pierre/diffs/react";
+import { LineDiffTypes, MultiFileDiff } from "@pierre/diffs/react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   ChevronDown,
@@ -133,7 +133,7 @@ const DiffArea = () => {
       )}
       scrollFade
     >
-      {diffData?.patch ? (
+      {/* {diffData?.patch ? (
         <PatchDiff
           patch={diffData.patch}
           options={{
@@ -146,6 +146,31 @@ const DiffArea = () => {
             unsafeCSS: `
               pre {
                 --diffs-light-bg: transparent !important;
+              }
+            `,
+          }}
+        />
+      ) : null} */}
+      {diffData ? (
+        <MultiFileDiff
+          newFile={{
+            contents: diffData.workdir?.content || "",
+            name: diffData.file_path,
+          }}
+          oldFile={{
+            contents: diffData.head?.content || "",
+            name: diffData.file_path,
+          }}
+          options={{
+            disableFileHeader: true,
+            theme: { dark: "vesper", light: "vesper-light" },
+            themeType: theme?.startsWith("dark-") ? "dark" : "light",
+            diffStyle,
+            overflow,
+            lineDiffType,
+            unsafeCSS: `
+              pre {
+                // --diffs-light-bg: transparent !important;
               }
             `,
           }}

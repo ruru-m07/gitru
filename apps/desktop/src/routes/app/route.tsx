@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import CustomTitleBar from "@/CustomTitleBar";
+import CommandBox from "@/components/command";
 import Sidebar from "@/components/sidebar";
 
 export const Route = createFileRoute("/app")({
@@ -12,6 +13,7 @@ function RouteComponent() {
       <CustomTitleBar restrictedPaths={["/login", "/register", "/welcome"]} />
       <div className="flex h-[var(--main-window-height)] w-screen px-[var(--main-actual-content-padding)] pb-[var(--main-actual-content-padding)] gap-[var(--main-actual-content-padding)]">
         <Sidebar />
+        <CommandBox />
         <Outlet />
       </div>
     </div>
