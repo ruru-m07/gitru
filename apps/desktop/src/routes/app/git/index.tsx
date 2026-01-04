@@ -26,7 +26,7 @@ import { useTheme } from "next-themes";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
 import { useDiffViewStore } from "@/components/diff/useDiffViewStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
-import { useCurrentBranch, useDiff } from "@/state/hooks";
+import { useGetCurrentBranch, useGetDiff } from "@/hooks";
 import { EmptyGitDiffSVG } from "../../../components/svgs/EmptyGitDiffSVG";
 import { SplitSVG } from "../../../components/svgs/splitSVG";
 import { UnifiedSVG } from "../../../components/svgs/unifiedSVG";
@@ -71,7 +71,7 @@ const DiffBoxBody = () => {
 };
 
 const MainActionBar = () => {
-  const { data: currentBranch } = useCurrentBranch();
+  const { data: currentBranch } = useGetCurrentBranch();
 
   return (
     <div className="w-full min-h-14 max-h-14 h-14 border-b flex">
@@ -123,7 +123,7 @@ const FileLevelStatusBar = () => {
 const DiffArea = () => {
   const { selectedFilePath } = useDiffViewStore();
   const { diffStyle, overflow, lineDiffType } = useDiffViewerSettings();
-  const { data: diffData } = useDiff(selectedFilePath?.path || null);
+  const { data: diffData } = useGetDiff(selectedFilePath?.path || null);
   const { theme } = useTheme();
 
   return (

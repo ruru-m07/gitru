@@ -89,8 +89,3 @@ pub fn add_local_git_repo(repo_path: String) -> Result<GitRepoResponse, String> 
         }),
     })
 }
-
-#[tauri::command]
-pub fn export_type(_a: RepoSitoryStore) {
-    todo!()
-}

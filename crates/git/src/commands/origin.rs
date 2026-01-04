@@ -1,5 +1,6 @@
-use git2::Repository;
 use serde::Serialize;
+
+use crate::utils::open_repository;
 
 #[derive(Serialize)]
 pub struct RepositoryOrigin {
@@ -16,7 +17,7 @@ pub struct RepositoryOrigin {
 
 #[tauri::command]
 pub fn repository_origin(repo_path: &str) -> Result<RepositoryOrigin, String> {
-    let repo = Repository::open(repo_path).map_err(|e| e.to_string())?;
+    let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
 
     let remote = repo
         .find_remote("origin")

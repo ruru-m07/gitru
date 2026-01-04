@@ -1,4 +1,7 @@
-use crate::types::{FileVersion, GetDiffResponse};
+use crate::{
+    types::{FileVersion, GetDiffResponse},
+    utils::open_repository,
+};
 use base64::{Engine, engine::general_purpose};
 use git2::{Repository, Tree};
 use std::{
@@ -6,9 +9,9 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
+// TODO(ruru): havey optimization needed
 #[tauri::command]
 pub fn get_diff(repo_path: &str, file_path: &str) -> Result<GetDiffResponse, String> {
-    let repo_path = Path::new(repo_path);
     let requested_path = Path::new(file_path);
 
     if requested_path.is_absolute()
@@ -24,8 +27,9 @@ pub fn get_diff(repo_path: &str, file_path: &str) -> Result<GetDiffResponse, Str
 
     let relative_path = normalize_relative_path(requested_path);
 
-    let repository =
-        Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {e}"))?;
+    let repository = open_repository(repo_path).map_err(|e| format!("Failed to open repo: {e}"))?;
+
+    let repo_path = Path::new(repo_path);
 
     let head_version = read_head_version(&repository, &relative_path)?;
     let workdir_version = read_workdir_version(repo_path, &relative_path)?;

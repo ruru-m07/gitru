@@ -1,7 +1,7 @@
-use git2::{BranchType, ObjectType, Repository};
+use git2::BranchType;
 use serde::Serialize;
 
-use crate::types::GitResult;
+use crate::utils::open_repository;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct Branch {
@@ -10,13 +10,9 @@ pub struct Branch {
     pub is_remote: bool,
 }
 
-fn open_repo(repo_path: &str) -> Result<Repository, String> {
-    Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {e}"))
-}
-
 #[tauri::command]
 pub fn current_branch(repo_path: &str) -> Result<Branch, String> {
-    let repo = open_repo(repo_path)?;
+    let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
     let head = repo
         .head()
         .map_err(|e| format!("Failed to get HEAD: {e}"))?;
@@ -37,7 +33,7 @@ pub fn current_branch(repo_path: &str) -> Result<Branch, String> {
 
 #[tauri::command]
 pub fn list_branch(repo_path: &str) -> Result<Vec<Branch>, String> {
-    let repo = open_repo(repo_path)?;
+    let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
 
     let current_name = repo.head().ok().and_then(|h| {
         if h.is_branch() {
@@ -118,86 +114,4 @@ pub fn list_branch(repo_path: &str) -> Result<Vec<Branch>, String> {
     } else {
         Ok(result)
     }
-}
-
-#[tauri::command]
-pub fn switch_branch(repo_path: &str, branch_name: &str) -> GitResult {
-    let repo = match open_repo(repo_path) {
-        Ok(r) => r,
-        Err(e) => return GitResult::error(e),
-    };
-
-    let local_branch = repo.find_branch(branch_name, BranchType::Local).ok();
-
-    let refname = if let Some(branch) = local_branch {
-        // Use existing local branch
-        branch
-            .get()
-            .name()
-            .map(|name| name.to_string())
-            .unwrap_or_else(|| format!("refs/heads/{branch_name}"))
-    } else {
-        let remote_ref = format!("origin/{branch_name}");
-        let remote_branch = match repo.find_branch(&remote_ref, BranchType::Remote) {
-            Ok(b) => b,
-            Err(e) => {
-                return GitResult::error(format!(
-                    "Branch '{branch_name}' not found locally or on origin: {e}"
-                ));
-            }
-        };
-
-        let target_oid = match remote_branch.get().target() {
-            Some(oid) => oid,
-            None => match remote_branch.get().peel(ObjectType::Commit) {
-                Ok(obj) => obj.id(),
-                Err(e) => {
-                    return GitResult::error(format!(
-                        "Failed to resolve remote branch target: {e}"
-                    ));
-                }
-            },
-        };
-        let commit = match repo.find_commit(target_oid) {
-            Ok(c) => c,
-            Err(e) => {
-                return GitResult::error(format!("Failed to find commit {target_oid}: {e}"));
-            }
-        };
-
-        if let Err(e) = repo.branch(branch_name, &commit, false) {
-            return GitResult::error(format!(
-                "Failed to create local branch '{branch_name}': {e}"
-            ));
-        }
-
-        if let Ok(mut lb) = repo.find_branch(branch_name, BranchType::Local) {
-            let _ = lb.set_upstream(Some(&remote_ref));
-        }
-
-        format!("refs/heads/{branch_name}")
-    };
-
-    if let Err(e) = repo.set_head(&refname) {
-        return GitResult::error(format!("Failed to set HEAD to {refname}: {e}"));
-    }
-
-    // Checkout files to match the new HEAD
-    let obj = match repo.revparse_single(&refname) {
-        Ok(o) => o,
-        Err(e) => {
-            return GitResult::error(format!("Failed to resolve target {refname}: {e}"));
-        }
-    };
-
-    let mut opts = git2::build::CheckoutBuilder::new();
-    opts.safe()
-        .allow_conflicts(true)
-        .remove_untracked(true)
-        .remove_ignored(true);
-    if let Err(e) = repo.checkout_tree(&obj, Some(&mut opts)) {
-        return GitResult::error(format!("Failed to checkout working tree: {e}"));
-    }
-
-    GitResult::success()
 }

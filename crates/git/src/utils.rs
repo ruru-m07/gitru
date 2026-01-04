@@ -1,31 +1,18 @@
+use crate::{
+    error::GitError,
+    types::{Author, CommitAuthors},
+};
 use git2::{Commit, Repository};
 
-use crate::types::{Author, CommitAuthors, CommitInfo};
-
-#[tauri::command]
-pub fn history(repo_path: &str, skip: usize, limit: usize) -> Result<Vec<CommitInfo>, String> {
-    let repo = Repository::open(repo_path).map_err(|e| e.to_string())?;
-
-    let mut revwalk = repo.revwalk().map_err(|e| e.to_string())?;
-
-    revwalk.push_head().map_err(|e| e.to_string())?;
-
-    let mut commits = Vec::with_capacity(limit);
-
-    for oid in revwalk.skip(skip).take(limit) {
-        let oid = oid.map_err(|e| e.to_string())?;
-        let commit = repo.find_commit(oid).map_err(|e| e.to_string())?;
-
-        commits.push(CommitInfo {
-            id: oid.to_string(),
-            summary: commit.summary().unwrap_or("").to_string(),
-            body: commit.body().unwrap_or("").to_string(),
-            timestamp: commit.time().seconds(),
-            authors: extract_all_authors(&commit),
-        });
+pub fn open_repository(path: &str) -> Result<Repository, GitError> {
+    match Repository::open(path) {
+        Ok(repo) => Ok(repo),
+        Err(e) if e.code() == git2::ErrorCode::NotFound => Err(GitError::InvalidPath(format!(
+            "Location does not exist: {}",
+            path
+        ))),
+        Err(e) => Err(GitError::RepositoryOpen(e)),
     }
-
-    Ok(commits)
 }
 
 /// Extracting author, co-author and committer from the &Commit

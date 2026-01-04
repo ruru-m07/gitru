@@ -14,20 +14,19 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             ipc::commands::add_local_git_repo,
-            git::commands::git_add,
-            git::commands::get_status,
-            git::commands::git_remove,
-            git::commands::git_discard,
-            git::diff::get_diff,
-            git::branch::list_branch,
-            git::branch::current_branch,
-            git::branch::switch_branch,
-            git::history::history,
-            git::commit::last_commit,
-            git::commit::commit_by_id,
-            git::commit::create_commit,
-            git::commit::create_empty_commit,
-            git::origin::repository_origin,
+            git::commands::status::git_add,
+            git::commands::status::get_status,
+            git::commands::status::git_remove,
+            git::commands::status::git_discard,
+            git::commands::commit::last_commit,
+            git::commands::commit::commit_by_id,
+            git::commands::commit::create_commit,
+            git::commands::commit::create_empty_commit,
+            git::commands::branch::list_branch,
+            git::commands::branch::current_branch,
+            git::commands::diff::get_diff,
+            git::commands::history::history,
+            git::commands::origin::repository_origin,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

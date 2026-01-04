@@ -185,22 +185,6 @@ class FilesActionsState extends StateDomain {
     });
     return result;
   }
-
-  async addAll() {
-    const result = await gitAdd({
-      repoPath: this.repositoryPath,
-      file: ".",
-    });
-    return result;
-  }
-
-  async removeAll() {
-    const result = await gitRemove({
-      repoPath: this.repositoryPath,
-      file: ".",
-    });
-    return result;
-  }
 }
 
 class Commit extends StateDomain {
