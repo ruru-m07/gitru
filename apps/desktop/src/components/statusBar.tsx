@@ -34,7 +34,7 @@ import {
 import { timeAgoFromUnixSeconds } from "@/lib/time";
 import { CommitInfo } from "@/tauri";
 // import { GithubDark } from "../ui/svgs/githubDark";
-import { GithubLight } from "./ui/svgs/githubLight";
+import { GithubLight } from "./svgs/githubLight";
 
 const StatusBar = () => {
   const { data: lastCommit } = useGetLastCommit();
