@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import { appState } from "@/state";
 import type {
   Branch,
+  BranchInfo,
+  BranchKind,
   CommitInfo,
   CreateCommitParams,
   FullCommitInfo,
@@ -53,19 +55,25 @@ export function useGetCurrentBranch(options?: QueryOptions<Branch>) {
   });
 }
 
-export function useGetBranches(options?: QueryOptions<Branch[]>) {
+export function useGetBranches(
+  kind: BranchKind,
+  options?: QueryOptions<BranchInfo[]>,
+) {
   const repo = appState.repository;
 
   return useQuery({
-    queryKey: repo?.branches.listQueryKey ?? [
-      "repository",
-      "none",
-      "branches",
-      "list",
+    queryKey: [
+      ...(repo?.branches.listQueryKey ?? [
+        "repository",
+        "none",
+        "branches",
+        "list",
+      ]),
+      kind,
     ],
     queryFn: async () => {
       if (!repo) return null;
-      return await repo.branches.list();
+      return await repo.branches.list(kind);
     },
     enabled: !!repo,
     ...options,
@@ -223,6 +231,44 @@ export function useAddFile() {
     mutationFn: async (filePath: string) => {
       if (!repo) throw new Error("No repository selected");
       return await repo.file.add(filePath);
+    },
+    onSuccess: async () => {
+      await repo?.status.invalidate();
+    },
+    onError: (error: string) => {
+      toast.error(error);
+    },
+  });
+
+  return mutation;
+}
+
+export function useGitFetch() {
+  const repo = appState.repository;
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      if (!repo) throw new Error("No repository selected");
+      return await repo.file.fetch();
+    },
+    onSuccess: async () => {
+      await repo?.status.invalidate();
+    },
+    onError: (error: string) => {
+      toast.error(error);
+    },
+  });
+
+  return mutation;
+}
+
+export function useGitPush() {
+  const repo = appState.repository;
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      if (!repo) throw new Error("No repository selected");
+      return await repo.file.push();
     },
     onSuccess: async () => {
       await repo?.status.invalidate();

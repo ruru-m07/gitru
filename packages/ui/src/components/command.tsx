@@ -13,8 +13,9 @@ import {
   AutocompleteSeparator,
 } from "@gitru/ui/components/autocomplete";
 import { cn } from "@gitru/ui/lib/utils";
-import { SearchIcon } from "lucide-react";
+import { ArrowLeft, SearchIcon } from "lucide-react";
 import * as React from "react";
+import { Button } from "./button.js";
 
 const CommandInputContext = React.createContext<{
   inputRef: React.RefObject<HTMLInputElement | null> | null;
@@ -116,12 +117,15 @@ function Command({
 function CommandInput({
   className,
   placeholder = undefined,
+  startAddon,
   ...props
-}: React.ComponentProps<typeof AutocompleteInput>) {
+}: React.ComponentProps<typeof AutocompleteInput> & {
+  startAddon?: React.ReactNode;
+}) {
   const { inputRef } = React.useContext(CommandInputContext);
 
   return (
-    <div className="px-2.5 py-1.5">
+    <div className="px-2.5 py-1.5 [&_*[data-slot='autocomplete-start-addon']]:pointer-events-auto ">
       <AutocompleteInput
         className={cn(
           "border-transparent! bg-transparent! shadow-none before:hidden has-focus-visible:ring-0",
@@ -130,7 +134,7 @@ function CommandInput({
         placeholder={placeholder}
         ref={inputRef as any}
         size="lg"
-        startAddon={<SearchIcon className="-translate-x-1" />}
+        startAddon={startAddon}
         {...props}
       />
     </div>

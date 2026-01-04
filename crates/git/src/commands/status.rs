@@ -1,4 +1,6 @@
-use git2::{Status, StatusOptions};
+use git2::{
+    BranchType, Cred, FetchOptions, FetchPrune, PushOptions, RemoteCallbacks, Status, StatusOptions,
+};
 use serde::Serialize;
 
 use crate::{
@@ -19,7 +21,7 @@ pub fn get_status(repo_path: &str) -> Result<GetStatusResponse, String> {
     Ok(GetStatusResponse { files })
 }
 
-// git add <file>
+// ? git add <file>
 #[tauri::command]
 pub fn git_add(repo_path: &str, file: &str) -> GitResult {
     let repo = match open_repository(repo_path) {
@@ -84,7 +86,7 @@ pub fn git_add(repo_path: &str, file: &str) -> GitResult {
     }
 }
 
-// git restore --staged <file>
+// ? git restore --staged <file>
 #[tauri::command]
 pub fn git_remove(repo_path: &str, file: &str) -> GitResult {
     let repo = match open_repository(repo_path) {
@@ -190,7 +192,7 @@ pub fn git_remove(repo_path: &str, file: &str) -> GitResult {
     }
 }
 
-// git restore <file>
+// ? git restore <file>
 #[tauri::command]
 pub fn git_discard(repo_path: &str, file: &str) -> GitResult {
     let repo = match open_repository(repo_path) {
@@ -265,6 +267,200 @@ pub fn git_discard(repo_path: &str, file: &str) -> GitResult {
     GitResult {
         success: true,
         message: None,
+    }
+}
+
+// ? git fetch
+#[tauri::command]
+pub fn git_fetch(repo_path: &str) -> GitResult {
+    let repo = match open_repository(repo_path) {
+        Ok(r) => r,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to open repo: {e}")),
+            };
+        }
+    };
+
+    // ? resolve remote (origin or fallback)
+    let mut remote = match repo.find_remote("origin") {
+        Ok(r) => r,
+        Err(_) => {
+            let remotes = match repo.remotes() {
+                Ok(r) => r,
+                Err(e) => {
+                    return GitResult {
+                        success: false,
+                        message: Some(format!("Failed to list remotes: {e}")),
+                    };
+                }
+            };
+
+            let name = match remotes.get(0) {
+                Some(n) => n,
+                None => {
+                    return GitResult {
+                        success: false,
+                        message: Some("No remotes configured".into()),
+                    };
+                }
+            };
+
+            match repo.find_remote(name) {
+                Ok(r) => r,
+                Err(e) => {
+                    return GitResult {
+                        success: false,
+                        message: Some(format!("Failed to open remote `{name}`: {e}")),
+                    };
+                }
+            }
+        }
+    };
+
+    // ? auth callbacks
+    let mut callbacks = RemoteCallbacks::new();
+    callbacks.credentials(|_url, username_from_url, allowed| {
+        if allowed.is_ssh_key() {
+            let user = username_from_url.unwrap_or("git");
+            return Cred::ssh_key_from_agent(user);
+        }
+
+        Err(git2::Error::from_str("No supported authentication method"))
+    });
+
+    let mut fo = FetchOptions::new();
+    fo.remote_callbacks(callbacks);
+    fo.prune(FetchPrune::On); // ? equivalent to `git fetch --prune`
+
+    // ? fetch using configured refspecs
+    match remote.fetch(&[] as &[&str], Some(&mut fo), None) {
+        Ok(_) => GitResult {
+            success: true,
+            message: Some("Fetched successfully".into()),
+        },
+        Err(e) => GitResult {
+            success: false,
+            message: Some(format!("Failed to fetch: {e}")),
+        },
+    }
+}
+
+// ? git push ...
+#[tauri::command]
+pub fn git_push(repo_path: &str) -> GitResult {
+    let repo = match open_repository(repo_path) {
+        Ok(r) => r,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to open repository: {e}")),
+            };
+        }
+    };
+
+    // ? HEAD validation
+    let head = match repo.head() {
+        Ok(h) => h,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to read HEAD: {e}")),
+            };
+        }
+    };
+
+    if !head.is_branch() {
+        return GitResult {
+            success: false,
+            message: Some("HEAD is detached, cannot push".into()),
+        };
+    }
+
+    let branch_name = match head.shorthand() {
+        Some(b) => b.to_string(),
+        None => {
+            return GitResult {
+                success: false,
+                message: Some("Invalid branch name".into()),
+            };
+        }
+    };
+
+    // ? resolve local branch
+    // * usually the current checkout branch
+    // * if it;s detached
+    let mut branch = match repo.find_branch(&branch_name, BranchType::Local) {
+        Ok(b) => b,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to resolve local branch: {e}")),
+            };
+        }
+    };
+
+    // ? auth callbacks (SSH + HTTPS)
+    let mut callbacks = RemoteCallbacks::new();
+    callbacks.credentials(|url, username_from_url, allowed| {
+        // TODO(ruru): will support more auth option, rn it's via ssh only
+        println!("pushing to: {}", url);
+
+        // ! ssh
+        if allowed.is_ssh_key() {
+            let user = username_from_url.unwrap_or("git");
+            return Cred::ssh_key_from_agent(user);
+        }
+
+        Err(git2::Error::from_str("No supported authentication method"))
+    });
+
+    let mut push_opts = PushOptions::new();
+    push_opts.remote_callbacks(callbacks);
+
+    // ? resolve remote
+    let mut remote = match repo.find_remote("origin") {
+        Ok(r) => r,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to find remote 'origin': {e}")),
+            };
+        }
+    };
+
+    // ? check upstream
+    let has_upstream = branch.upstream().is_ok();
+
+    let refspec = if has_upstream {
+        format!("refs/heads/{0}:refs/heads/{0}", branch_name)
+    } else {
+        // * it's same as saying `git push -u origin {branch}`
+        format!("+refs/heads/{0}:refs/heads/{0}", branch_name)
+    };
+
+    // ? pushhhhh
+    if let Err(e) = remote.push(&[refspec.as_str()], Some(&mut push_opts)) {
+        return GitResult {
+            success: false,
+            message: Some(format!("Push failed: {e}")),
+        };
+    }
+
+    // ? set upstream if missing
+    if !has_upstream {
+        if let Err(e) = branch.set_upstream(Some(&branch_name)) {
+            return GitResult {
+                success: false,
+                message: Some(format!("Push succeeded but failed to set upstream: {e}")),
+            };
+        }
+    }
+
+    GitResult {
+        success: true,
+        message: Some(format!("Pushed `{branch_name}` to origin")),
     }
 }
 

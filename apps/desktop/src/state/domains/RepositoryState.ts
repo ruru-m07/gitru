@@ -1,6 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
-import { invoke } from "@tauri-apps/api/core";
 import {
+  BranchKind,
   CreateCommitParams,
   commitById,
   createCommit,
@@ -9,10 +9,12 @@ import {
   getStatus,
   gitAdd,
   gitDiscard,
+  gitFetch,
+  gitPush,
   gitRemove,
   history,
   lastCommit,
-  listBranch,
+  listBranches,
   repositoryOrigin,
 } from "@/tauri";
 import { StateDomain } from "../core/StateManager";
@@ -99,22 +101,22 @@ class BranchState extends StateDomain {
   constructor(
     protected queryClient: QueryClient,
     private repositoryPath: string,
-    private getParent: () => RepositoryState,
   ) {
     super(queryClient);
     this.baseKey = ["repository", "branches"] as const;
   }
 
-  async list() {
+  async list(kind: BranchKind) {
     await this.queryClient.cancelQueries({
-      queryKey: [...this.baseKey, "list"],
+      queryKey: [...this.baseKey, "list", kind],
     });
 
-    const data = await listBranch({
+    const data = await listBranches({
       repoPath: this.repositoryPath,
+      kind,
     });
 
-    this.queryClient.setQueryData([...this.baseKey, "list"], data);
+    this.queryClient.setQueryData([...this.baseKey, "list", kind], data);
     return data;
   }
 
@@ -138,15 +140,6 @@ class BranchState extends StateDomain {
 
   get currentQueryKey() {
     return [...this.baseKey, "current"];
-  }
-
-  async checkout(branchName: string) {
-    await invoke("checkout_branch", {
-      repoPath: this.repositoryPath,
-      branch: branchName,
-    });
-    await this.invalidateAll();
-    await this.getParent().status.invalidate();
   }
 
   async invalidateAll() {
@@ -182,6 +175,20 @@ class FilesActionsState extends StateDomain {
     const result = await gitDiscard({
       repoPath: this.repositoryPath,
       file: filePath,
+    });
+    return result;
+  }
+
+  async fetch() {
+    const result = await gitFetch({
+      repoPath: this.repositoryPath,
+    });
+    return result;
+  }
+
+  async push() {
+    const result = await gitPush({
+      repoPath: this.repositoryPath,
     });
     return result;
   }
@@ -284,7 +291,7 @@ class RepositoryState extends StateDomain {
     this.baseKey = ["repository", this.path] as const;
     this.diff = new DiffState(this.queryClient, this.path);
     this.status = new StatusState(this.queryClient, this.path);
-    this.branches = new BranchState(this.queryClient, this.path, () => this);
+    this.branches = new BranchState(this.queryClient, this.path);
     this.file = new FilesActionsState(this.queryClient, this.path);
     this.commit = new Commit(this.queryClient, this.path);
   }

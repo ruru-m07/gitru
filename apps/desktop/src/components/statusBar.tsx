@@ -46,7 +46,14 @@ const StatusBar = () => {
     <div className="border-t overflow-hidden h-7 flex justify-between items-center ">
       {/* left side */}
       <div className="h-full flex">
-        <a target="_blank" href="https://github.com/ruru-m07/gitru">
+        <a
+          target="_blank"
+          href={
+            repositoryOrigin?.provider === "github"
+              ? `https://github.com/${repositoryOrigin?.owner}/${repositoryOrigin?.repo}`
+              : "#"
+          }
+        >
           <Badge
             variant={"outline"}
             className="h-full rounded-none border-0 border-r px-2 flex items-center cursor-pointer hover:bg-muted border-b border-b-transparent hover:border-b-border"

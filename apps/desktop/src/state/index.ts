@@ -9,15 +9,6 @@ class AppState {
     return this.repositories.current;
   }
 
-  async invalidateAll() {
-    await queryClient.invalidateQueries();
-  }
-
-  async reset() {
-    await this.repositories.disposeAll();
-    queryClient.clear();
-  }
-
   get queryClient() {
     return queryClient;
   }

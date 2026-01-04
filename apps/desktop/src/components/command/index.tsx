@@ -1,6 +1,13 @@
 "use client";
 
 import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@gitru/ui/components/avatar";
+import { Badge } from "@gitru/ui/components/badge";
+import { Button } from "@gitru/ui/components/button";
+import {
   Command,
   CommandCollection,
   CommandDialog,
@@ -17,100 +24,57 @@ import {
   CommandShortcut,
 } from "@gitru/ui/components/command";
 import { Kbd, KbdGroup } from "@gitru/ui/components/kbd";
-import { FileRouteTypes, useNavigate } from "@tanstack/react-router";
+import {
+  Tooltip,
+  TooltipPopup,
+  TooltipTrigger,
+} from "@gitru/ui/components/tooltip";
+import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowDownIcon,
+  ArrowLeft,
   ArrowUpIcon,
+  Cloud,
   CornerDownLeftIcon,
-  FolderGit2,
-  GitPullRequestArrow,
-  Inbox,
-  LucideIcon,
-  Settings,
+  GitBranch,
+  SearchIcon,
 } from "lucide-react";
 import * as React from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-
-export interface Item {
-  value: string;
-  label: string;
-  shortcut?: string | string[];
-  icon?: LucideIcon;
-  redirect?: FileRouteTypes["to"];
-}
-
-export interface Group {
-  value: string;
-  items: Item[];
-}
-
-export const goto: Item[] = [
-  {
-    label: "Inbox",
-    shortcut: ["G", "N"],
-    value: "inbox",
-    icon: Inbox,
-    redirect: "/app/inbox",
-  },
-  {
-    label: "Pull request",
-    shortcut: ["G", "P"],
-    value: "pull-request",
-    icon: GitPullRequestArrow,
-    redirect: "/app/pulls",
-  },
-  {
-    label: "Issues",
-    shortcut: ["G", "I"],
-    value: "issues",
-    icon: Settings,
-    redirect: "/app/issues",
-  },
-  {
-    label: "Local git",
-    shortcut: ["G", "G"],
-    value: "git",
-    icon: FolderGit2,
-    redirect: "/app/git",
-  },
-];
-
-export const actions: Item[] = [
-  { label: "Next diff", shortcut: ["⌘", "↑"], value: "next-diff" },
-  { label: "Previous diff", shortcut: ["⌘", "↓"], value: "previous-diff" },
-  { label: "New Branch", shortcut: ["⌘", "⇧", "N"], value: "new-branch" },
-  {
-    label: "Checkout Branch",
-    shortcut: ["⌘", "⇧", "C"],
-    value: "checkout-branch",
-  },
-  {
-    label: "Switch Repository",
-    shortcut: ["⌘", "⇧", "R"],
-    value: "switch-repository",
-  },
-  { label: "Pull Changes", shortcut: ["⌘", "⇧", "P"], value: "pull-changes" },
-  { label: "Push Changes", shortcut: ["⌘", "⇧", "U"], value: "push-changes" },
-];
-
-export const commands: Item[] = [];
-
-export const groupedItems: Group[] = [
-  { items: goto, value: "Go to" },
-  { items: actions, value: "Actions" },
-  { items: commands, value: "Commands" },
-];
+import { useGetBranches } from "@/hooks";
+import { timeAgoFromUnixSeconds } from "@/lib/time";
+import { BranchInfo } from "@/tauri";
+import { actions, goto } from "./actions";
+import { CommandView, Group, Item } from "./type";
 
 export default function CommandBox() {
   const [open, setOpen] = React.useState(false);
+  const [waitingForSecondKey, setWaitingForSecondKey] = React.useState(false);
+  const [view, setView] = React.useState<CommandView>({ type: "root" });
+  const [inputValue, setInputValue] = React.useState("");
+
   const navigate = useNavigate();
 
+  const { data: branches } = useGetBranches("Local");
+  const { data: remoteBranches } = useGetBranches("Remote");
+
+  console.log({
+    branches,
+    remoteBranches,
+  });
+
   const handleItemClick = React.useCallback((item: Item) => {
-    setOpen(false);
+    if (item.value === "checkout-branch") {
+      setView({ type: "checkout-branch" });
+      setInputValue("");
+      return;
+    }
+
     if (item.redirect) {
       navigate({
         to: item.redirect,
       });
+      setOpen(false);
       return;
     }
   }, []);
@@ -126,8 +90,6 @@ export default function CommandBox() {
       enableOnContentEditable: true,
     },
   );
-
-  const [waitingForSecondKey, setWaitingForSecondKey] = React.useState(false);
 
   useHotkeys(
     "g",
@@ -163,11 +125,106 @@ export default function CommandBox() {
     { enabled: waitingForSecondKey },
   );
 
+  const groupedItems = React.useMemo<Group[]>(() => {
+    switch (view.type) {
+      case "root":
+        return [
+          { value: "Go to", items: goto },
+          { value: "Actions", items: actions },
+        ];
+
+      case "checkout-branch":
+        return [
+          {
+            value: "Branches",
+            items:
+              (branches
+                ?.filter((b) => !b.is_remote)
+                .map((b) => ({
+                  label: b.display_name,
+                  value: `checkout:${b.display_name}`,
+                  customCommandItem: (
+                    <>
+                      <CustomCommandItem
+                        branch={b}
+                        onClick={() => {
+                          console.log("branch", b);
+                          // call git checkout here
+                          setInputValue("");
+                          setOpen(false);
+                          setView({ type: "root" });
+                          return;
+                        }}
+                      />
+                    </>
+                  ),
+                  data: b,
+                })) as Item[]) ?? [],
+          },
+          {
+            value: "Remote Branches",
+            items:
+              (remoteBranches
+                ?.filter((b) => b.is_remote)
+                .map((b) => ({
+                  label: b.display_name,
+                  value: `checkout:${b.display_name}`,
+                  customCommandItem: (
+                    <>
+                      <CustomCommandItem
+                        branch={b}
+                        onClick={() => {
+                          console.log("branch", b);
+                          // call git checkout here
+                          setInputValue("");
+                          setOpen(false);
+                          setView({ type: "root" });
+                          return;
+                        }}
+                      />
+                    </>
+                  ),
+                  data: b,
+                })) as Item[]) ?? [],
+          },
+        ];
+    }
+  }, [view, branches, remoteBranches]);
+
   return (
-    <CommandDialog onOpenChange={setOpen} open={open}>
-      <CommandDialogPopup className={"max-h-200"}>
-        <Command items={groupedItems}>
-          <CommandInput placeholder="Search for apps and commands..." />
+    <CommandDialog
+      onOpenChange={() => {
+        setInputValue("");
+        setView({ type: "root" });
+        setOpen(false);
+      }}
+      open={open}
+    >
+      <CommandDialogPopup className={"max-h-200 max-w-175"}>
+        <Command key={view.type} items={groupedItems}>
+          <CommandInput
+            autoFocus
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            placeholder="Search for apps and commands..."
+            startAddon={
+              view.type !== "root" ? (
+                <Button
+                  size={"icon-sm"}
+                  variant={"ghost"}
+                  className="z-10 -translate-x-3"
+                  onClick={() => {
+                    setView({ type: "root" });
+                    setInputValue("");
+                  }}
+                >
+                  <ArrowLeft />
+                </Button>
+              ) : (
+                <SearchIcon className="-translate-x-1" />
+              )
+            }
+          />
           <CommandPanel>
             <CommandEmpty>No results found.</CommandEmpty>
             <CommandList>
@@ -177,27 +234,35 @@ export default function CommandBox() {
                     <CommandGroupLabel>{group.value}</CommandGroupLabel>
                     <CommandCollection>
                       {(item: Item) => (
-                        <CommandItem
-                          key={item.value}
-                          onClick={() => handleItemClick(item)}
-                          value={item.value}
-                        >
-                          {item.icon && <item.icon className="mr-2 h-4 w-4" />}
-                          <span className="flex-1">{item.label}</span>
-                          {item.shortcut && (
-                            <CommandShortcut>
-                              {Array.isArray(item.shortcut) ? (
-                                <KbdGroup>
-                                  {item.shortcut.map((sc, i) => (
-                                    <Kbd key={i}>{sc}</Kbd>
-                                  ))}
-                                </KbdGroup>
-                              ) : (
-                                item.shortcut
+                        <>
+                          {item.customCommandItem ? (
+                            item.customCommandItem
+                          ) : (
+                            <CommandItem
+                              key={item.value}
+                              onClick={() => handleItemClick(item)}
+                              value={item.value}
+                            >
+                              {item.icon && (
+                                <item.icon className="mr-2 h-4 w-4" />
                               )}
-                            </CommandShortcut>
+                              <span className="flex-1">{item.label}</span>
+                              {item.shortcut && (
+                                <CommandShortcut>
+                                  {Array.isArray(item.shortcut) ? (
+                                    <KbdGroup>
+                                      {item.shortcut.map((sc, i) => (
+                                        <Kbd key={i}>{sc}</Kbd>
+                                      ))}
+                                    </KbdGroup>
+                                  ) : (
+                                    item.shortcut
+                                  )}
+                                </CommandShortcut>
+                              )}
+                            </CommandItem>
                           )}
-                        </CommandItem>
+                        </>
                       )}
                     </CommandCollection>
                   </CommandGroup>
@@ -235,3 +300,105 @@ export default function CommandBox() {
     </CommandDialog>
   );
 }
+
+const CustomCommandItem = ({
+  branch,
+  onClick,
+}: {
+  branch: BranchInfo;
+  onClick: () => void;
+}) => {
+  return (
+    <CommandItem
+      key={`checkout:${branch.display_name}:${branch.is_head}:${branch.name}`}
+      onClick={onClick}
+      value={`checkout:${branch.display_name}:${branch.is_head}:${branch.name}`}
+      className={"flex-col items-start"}
+    >
+      <div className="flex items-center justify-between w-full">
+        <div className="flex items-center">
+          {branch.is_remote ? (
+            <Cloud className="mr-2 h-4 w-4" />
+          ) : (
+            <GitBranch className="mr-2 h-4 w-4" />
+          )}
+          <span className="flex-1">{branch.display_name}</span>
+        </div>
+        <div className="flex items-center gap-1">
+          {branch.ahead ? (
+            <Badge variant={"secondary"}>
+              <ArrowUpIcon className="inline-block size-3" />
+              {branch.ahead}
+            </Badge>
+          ) : null}
+          {branch.behind ? (
+            <Badge variant={"secondary"}>
+              <ArrowDownIcon className="inline-block size-3" />
+              {branch.behind}
+            </Badge>
+          ) : null}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="flex group">
+          <Tooltip>
+            <TooltipTrigger
+              style={{
+                zIndex: branch.commit.authors.co_authors.length + 1,
+              }}
+            >
+              <Avatar className="ring-2 ring-background rounded-sm size-4">
+                <AvatarImage
+                  alt={branch.commit.authors.author.name}
+                  src={`https://avatars.githubusercontent.com/u/e?email=${branch.commit.authors.author.email}&s=64`}
+                />
+                <AvatarFallback>
+                  {branch.commit.authors.author.name
+                    .split(" ")
+                    .map((n) => n[0])
+                    .join("")
+                    .toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+            </TooltipTrigger>
+            <TooltipPopup side="bottom">
+              {branch.commit.authors.author.name}
+            </TooltipPopup>
+          </Tooltip>
+          {branch.commit.authors.co_authors.map((coAuthor, idx) => (
+            <Tooltip key={`${idx}-tooltip-coauthor`}>
+              <TooltipTrigger
+                style={{
+                  zIndex: branch.commit.authors.co_authors.length - idx,
+                }}
+                key={`${idx}-tooltip-trigger-coauthor`}
+              >
+                <Avatar className="ring-2 ring-background rounded-sm size-4 -ml-[0.2rem] group-hover:ml-0.5 transition-all duration-100">
+                  <AvatarImage
+                    alt="U1"
+                    src={`https://avatars.githubusercontent.com/u/e?email=${coAuthor.email}&s=64`}
+                  />
+                  <AvatarFallback>
+                    {coAuthor.name
+                      .split(" ")
+                      .map((n) => n[0])
+                      .join("")
+                      .toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+              </TooltipTrigger>
+              <TooltipPopup side="bottom">{coAuthor.name}</TooltipPopup>
+            </Tooltip>
+          ))}
+        </div>
+        <span className="font-normal">{branch.commit.authors.author.name}</span>
+        <span className="text-muted-foreground font-light text-xs shrink-0">
+          ( {timeAgoFromUnixSeconds(branch.commit.timestamp)} )
+        </span>
+        <span className="text-muted-foreground font-light text-xs truncate max-w-96">
+          {"• \u00A0  "} {branch.commit.summary}
+        </span>
+      </div>
+    </CommandItem>
+  );
+};
