@@ -1,6 +1,7 @@
 import { Button, buttonVariants } from "@gitru/ui/components/button";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useGitFetch, useGitPush } from "@/hooks";
+import { toast } from "sonner";
+import { useGitFetch, useGitPull, useGitPush } from "@/hooks";
 
 export const Route = createFileRoute("/app/inbox/")({
   component: RouteComponent,
@@ -9,6 +10,7 @@ export const Route = createFileRoute("/app/inbox/")({
 function RouteComponent() {
   const { mutateAsync: fetch } = useGitFetch();
   const { mutateAsync: push } = useGitPush();
+  const { mutateAsync: pull } = useGitPull();
 
   return (
     <div className="p-4 space-y-4">
@@ -20,6 +22,7 @@ function RouteComponent() {
         onClick={async () => {
           const data = await fetch();
           console.log(data);
+          toast.success(data.message);
         }}
       >
         fetch
@@ -28,9 +31,19 @@ function RouteComponent() {
         onClick={async () => {
           const data = await push();
           console.log(data);
+          toast.success(data.message);
         }}
       >
         push
+      </Button>
+      <Button
+        onClick={async () => {
+          const data = await pull();
+          console.log(data);
+          toast.success(data.message);
+        }}
+      >
+        pull
       </Button>
     </div>
   );

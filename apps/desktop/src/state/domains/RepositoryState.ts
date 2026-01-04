@@ -10,6 +10,7 @@ import {
   gitAdd,
   gitDiscard,
   gitFetch,
+  gitPull,
   gitPush,
   gitRemove,
   history,
@@ -188,6 +189,13 @@ class FilesActionsState extends StateDomain {
 
   async push() {
     const result = await gitPush({
+      repoPath: this.repositoryPath,
+    });
+    return result;
+  }
+
+  async pull() {
+    const result = await gitPull({
       repoPath: this.repositoryPath,
     });
     return result;

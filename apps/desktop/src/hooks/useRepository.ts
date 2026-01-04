@@ -243,6 +243,25 @@ export function useGitAdd() {
   return mutation;
 }
 
+export function useGitUnstage() {
+  const repo = appState.repository;
+
+  const mutation = useMutation({
+    mutationFn: async (filePath: string) => {
+      if (!repo) throw new Error("No repository selected");
+      return await repo.file.unstage(filePath);
+    },
+    onSuccess: async () => {
+      await repo?.status.invalidate();
+    },
+    onError: (error: string) => {
+      toast.error(error);
+    },
+  });
+
+  return mutation;
+}
+
 export function useGitFetch() {
   const repo = appState.repository;
 
@@ -281,13 +300,13 @@ export function useGitPush() {
   return mutation;
 }
 
-export function useGitUnstage() {
+export function useGitPull() {
   const repo = appState.repository;
 
   const mutation = useMutation({
-    mutationFn: async (filePath: string) => {
+    mutationFn: async () => {
       if (!repo) throw new Error("No repository selected");
-      return await repo.file.unstage(filePath);
+      return await repo.file.pull();
     },
     onSuccess: async () => {
       await repo?.status.invalidate();

@@ -3,7 +3,8 @@ use crate::{
     utils::open_repository,
 };
 use git2::{
-    BranchType, Cred, FetchOptions, FetchPrune, PushOptions, RemoteCallbacks, Status, StatusOptions,
+    BranchType, Cred, FetchOptions, FetchPrune, MergeOptions, PushOptions, RemoteCallbacks, Status,
+    StatusOptions,
 };
 use serde::Serialize;
 
@@ -12,7 +13,8 @@ pub struct CommitResult {
     success: bool,
     message: Option<String>,
 }
-
+/* #region // ! command */
+// ? git status
 #[tauri::command]
 pub fn get_status(repo_path: &str) -> Result<GetStatusResponse, String> {
     let mut opts = default_status_options();
@@ -269,7 +271,7 @@ pub fn git_discard(repo_path: &str, file: &str) -> GitResult {
     }
 }
 
-// ? git fetch
+// ? git fetch ...
 #[tauri::command]
 pub fn git_fetch(repo_path: &str) -> GitResult {
     let repo = match open_repository(repo_path) {
@@ -400,7 +402,7 @@ pub fn git_push(repo_path: &str) -> GitResult {
         }
     };
 
-    // ? auth callbacks (SSH + HTTPS)
+    // ? auth callbacks
     let mut callbacks = RemoteCallbacks::new();
     callbacks.credentials(|url, username_from_url, allowed| {
         // TODO(ruru): will support more auth option, rn it's via ssh only
@@ -463,6 +465,223 @@ pub fn git_push(repo_path: &str) -> GitResult {
     }
 }
 
+// ? git pull ...
+#[tauri::command]
+pub fn git_pull(repo_path: &str) -> GitResult {
+    let repo = match open_repository(repo_path) {
+        Ok(r) => r,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to open repository: {e}")),
+            };
+        }
+    };
+
+    // ? HEAD validation
+    let head = match repo.head() {
+        Ok(h) => h,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to read HEAD: {e}")),
+            };
+        }
+    };
+
+    if !head.is_branch() {
+        return GitResult {
+            success: false,
+            message: Some("HEAD is detached, cannot pull".into()),
+        };
+    }
+
+    let branch_name = match head.shorthand() {
+        Some(b) => b.to_string(),
+        None => {
+            return GitResult {
+                success: false,
+                message: Some("Invalid branch name".into()),
+            };
+        }
+    };
+
+    let branch = match repo.find_branch(&branch_name, BranchType::Local) {
+        Ok(b) => b,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to resolve local branch: {e}")),
+            };
+        }
+    };
+
+    // ? resolve upstream (required for pull)
+    let upstream = match branch.upstream() {
+        Ok(u) => u,
+        Err(_) => {
+            return GitResult {
+                success: false,
+                message: Some("No upstream configured for this branch".into()),
+            };
+        }
+    };
+
+    // ? fetch (reuse same behavior as git_fetch)
+    let mut remote = match repo.find_remote("origin") {
+        Ok(r) => r,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to find remote 'origin': {e}")),
+            };
+        }
+    };
+
+    let mut callbacks = RemoteCallbacks::new();
+    callbacks.credentials(|_url, username_from_url, allowed| {
+        if allowed.is_ssh_key() {
+            let user = username_from_url.unwrap_or("git");
+            return Cred::ssh_key_from_agent(user);
+        }
+
+        Err(git2::Error::from_str("No supported authentication method"))
+    });
+
+    let mut fo = FetchOptions::new();
+    fo.remote_callbacks(callbacks);
+    fo.prune(FetchPrune::On);
+
+    if let Err(e) = remote.fetch(&[] as &[&str], Some(&mut fo), None) {
+        return GitResult {
+            success: false,
+            message: Some(format!("Fetch failed: {e}")),
+        };
+    }
+
+    // ? prepare merge
+    let upstream_ref = upstream.into_reference();
+
+    let upstream_commit = match repo.reference_to_annotated_commit(&upstream_ref) {
+        Ok(c) => c,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to resolve upstream commit: {e}")),
+            };
+        }
+    };
+
+    let mut merge_opts = MergeOptions::new();
+
+    match repo.merge(&[&upstream_commit], Some(&mut merge_opts), None) {
+        Ok(_) => (),
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to merge: {e}")),
+            };
+        }
+    };
+
+    let mut index = match repo.index() {
+        Ok(i) => i,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to read index: {e}")),
+            };
+        }
+    };
+
+    // ? conflict handling
+    if index.has_conflicts() {
+        return GitResult {
+            success: false,
+            message: Some("Merge conflicts detected".into()),
+        };
+    }
+
+    // ? fast-forward or normal merge
+    let tree_oid = match index.write_tree() {
+        Ok(oid) => oid,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to write tree: {e}")),
+            };
+        }
+    };
+
+    let tree = match repo.find_tree(tree_oid) {
+        Ok(t) => t,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to find tree: {e}")),
+            };
+        }
+    };
+
+    let head_commit = match repo.find_commit(
+        head.target()
+            .ok_or_else(|| git2::Error::from_str("Invalid HEAD target"))
+            .unwrap(),
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to read HEAD commit: {e}")),
+            };
+        }
+    };
+
+    let upstream_commit = match repo.find_commit(upstream_commit.id()) {
+        Ok(c) => c,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to read upstream commit: {e}")),
+            };
+        }
+    };
+
+    let sig = match repo.signature() {
+        Ok(s) => s,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to read signature: {e}")),
+            };
+        }
+    };
+
+    if let Err(e) = repo.commit(
+        Some("HEAD"),
+        &sig,
+        &sig,
+        "Merge remote changes",
+        &tree,
+        &[&head_commit, &upstream_commit],
+    ) {
+        return GitResult {
+            success: false,
+            message: Some(format!("Failed to create merge commit: {e}")),
+        };
+    }
+
+    repo.checkout_head(None).ok();
+
+    GitResult {
+        success: true,
+        message: Some(format!("Pulled changes into `{branch_name}`")),
+    }
+}
+
+/* #endregion // ! command */
+
+/* #region // ? helpers */
 fn collect_statuses(repo_path: &str, opts: &mut StatusOptions) -> Result<Vec<FileStatus>, String> {
     let repo = open_repository(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
 
@@ -567,3 +786,5 @@ fn default_status_options() -> StatusOptions {
         .recurse_untracked_dirs(true);
     opts
 }
+
+/* #endregion // ? helpers */

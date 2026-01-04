@@ -20,6 +20,7 @@ pub fn run() {
             git::commands::git::git_discard,
             git::commands::git::git_fetch,
             git::commands::git::git_push,
+            git::commands::git::git_pull,
             git::commands::commit::last_commit,
             git::commands::commit::commit_by_id,
             git::commands::commit::create_commit,
