@@ -3,8 +3,7 @@ use crate::{
     utils::open_repository,
 };
 use git2::{
-    BranchType, Cred, FetchOptions, FetchPrune, MergeOptions, PushOptions, RemoteCallbacks, Status,
-    StatusOptions,
+    BranchType, Cred, FetchOptions, FetchPrune, PushOptions, RemoteCallbacks, Status, StatusOptions,
 };
 use serde::Serialize;
 
@@ -478,23 +477,16 @@ pub fn git_pull(repo_path: &str) -> GitResult {
         }
     };
 
-    // ? HEAD validation
+    // ! HEAD must be a branch
     let head = match repo.head() {
-        Ok(h) => h,
-        Err(e) => {
+        Ok(h) if h.is_branch() => h,
+        _ => {
             return GitResult {
                 success: false,
-                message: Some(format!("Failed to read HEAD: {e}")),
+                message: Some("HEAD is detached, cannot pull".into()),
             };
         }
     };
-
-    if !head.is_branch() {
-        return GitResult {
-            success: false,
-            message: Some("HEAD is detached, cannot pull".into()),
-        };
-    }
 
     let branch_name = match head.shorthand() {
         Some(b) => b.to_string(),
@@ -527,7 +519,7 @@ pub fn git_pull(repo_path: &str) -> GitResult {
         }
     };
 
-    // ? fetch (reuse same behavior as git_fetch)
+    // ? fetch
     let mut remote = match repo.find_remote("origin") {
         Ok(r) => r,
         Err(e) => {
@@ -539,13 +531,12 @@ pub fn git_pull(repo_path: &str) -> GitResult {
     };
 
     let mut callbacks = RemoteCallbacks::new();
-    callbacks.credentials(|_url, username_from_url, allowed| {
+    callbacks.credentials(|_, username_from_url, allowed| {
         if allowed.is_ssh_key() {
-            let user = username_from_url.unwrap_or("git");
-            return Cred::ssh_key_from_agent(user);
+            Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"))
+        } else {
+            Err(git2::Error::from_str("Unsupported auth method"))
         }
-
-        Err(git2::Error::from_str("No supported authentication method"))
     });
 
     let mut fo = FetchOptions::new();
@@ -559,7 +550,7 @@ pub fn git_pull(repo_path: &str) -> GitResult {
         };
     }
 
-    // ? prepare merge
+    // ? merge analysis
     let upstream_ref = upstream.into_reference();
 
     let upstream_commit = match repo.reference_to_annotated_commit(&upstream_ref) {
@@ -572,110 +563,112 @@ pub fn git_pull(repo_path: &str) -> GitResult {
         }
     };
 
-    let mut merge_opts = MergeOptions::new();
-
-    match repo.merge(&[&upstream_commit], Some(&mut merge_opts), None) {
-        Ok(_) => (),
+    let (analysis, _) = match repo.merge_analysis(&[&upstream_commit]) {
+        Ok(a) => a,
         Err(e) => {
             return GitResult {
                 success: false,
-                message: Some(format!("Failed to merge: {e}")),
+                message: Some(format!("Merge analysis failed: {e}")),
             };
         }
     };
 
-    let mut index = match repo.index() {
-        Ok(i) => i,
-        Err(e) => {
-            return GitResult {
-                success: false,
-                message: Some(format!("Failed to read index: {e}")),
-            };
-        }
-    };
-
-    // ? conflict handling
-    if index.has_conflicts() {
+    // ? already up to date
+    if analysis.is_up_to_date() {
         return GitResult {
-            success: false,
-            message: Some("Merge conflicts detected".into()),
+            success: true,
+            message: Some("Already up to date".into()),
         };
     }
 
-    // ? fast-forward or normal merge
-    let tree_oid = match index.write_tree() {
-        Ok(oid) => oid,
-        Err(e) => {
+    // ? fast-forward
+    if analysis.is_fast_forward() {
+        let refname = match branch.get().name() {
+            Some(r) => r.to_string(),
+            None => {
+                return GitResult {
+                    success: false,
+                    message: Some("Invalid branch reference".into()),
+                };
+            }
+        };
+
+        let mut reference = match repo.find_reference(&refname) {
+            Ok(r) => r,
+            Err(e) => {
+                return GitResult {
+                    success: false,
+                    message: Some(format!("Failed to find branch ref: {e}")),
+                };
+            }
+        };
+
+        if let Err(e) = reference.set_target(upstream_commit.id(), "Fast-forward") {
             return GitResult {
                 success: false,
-                message: Some(format!("Failed to write tree: {e}")),
+                message: Some(format!("Fast-forward failed: {e}")),
             };
         }
-    };
 
-    let tree = match repo.find_tree(tree_oid) {
-        Ok(t) => t,
-        Err(e) => {
-            return GitResult {
-                success: false,
-                message: Some(format!("Failed to find tree: {e}")),
-            };
-        }
-    };
+        repo.set_head(&refname).ok();
+        repo.checkout_head(None).ok();
 
-    let head_commit = match repo.find_commit(
-        head.target()
-            .ok_or_else(|| git2::Error::from_str("Invalid HEAD target"))
-            .unwrap(),
-    ) {
-        Ok(c) => c,
-        Err(e) => {
-            return GitResult {
-                success: false,
-                message: Some(format!("Failed to read HEAD commit: {e}")),
-            };
-        }
-    };
-
-    let upstream_commit = match repo.find_commit(upstream_commit.id()) {
-        Ok(c) => c,
-        Err(e) => {
-            return GitResult {
-                success: false,
-                message: Some(format!("Failed to read upstream commit: {e}")),
-            };
-        }
-    };
-
-    let sig = match repo.signature() {
-        Ok(s) => s,
-        Err(e) => {
-            return GitResult {
-                success: false,
-                message: Some(format!("Failed to read signature: {e}")),
-            };
-        }
-    };
-
-    if let Err(e) = repo.commit(
-        Some("HEAD"),
-        &sig,
-        &sig,
-        "Merge remote changes",
-        &tree,
-        &[&head_commit, &upstream_commit],
-    ) {
         return GitResult {
-            success: false,
-            message: Some(format!("Failed to create merge commit: {e}")),
+            success: true,
+            message: Some(format!("Fast-forwarded `{branch_name}`")),
         };
     }
 
-    repo.checkout_head(None).ok();
+    // ? normal merge (non-ff)
+    if analysis.is_normal() {
+        repo.merge(&[&upstream_commit], None, None).ok();
+
+        let mut index = match repo.index() {
+            Ok(i) => i,
+            Err(e) => {
+                return GitResult {
+                    success: false,
+                    message: Some(format!("Failed to read index: {e}")),
+                };
+            }
+        };
+
+        if index.has_conflicts() {
+            return GitResult {
+                success: false,
+                message: Some("Merge conflicts detected".into()),
+            };
+        }
+
+        let tree_oid = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+
+        let head_commit = repo.find_commit(head.target().unwrap()).unwrap();
+        let upstream_commit = repo.find_commit(upstream_commit.id()).unwrap();
+
+        let sig = repo.signature().unwrap();
+
+        repo.commit(
+            Some("HEAD"),
+            &sig,
+            &sig,
+            "Merge remote changes",
+            &tree,
+            &[&head_commit, &upstream_commit],
+        )
+        .unwrap();
+
+        repo.checkout_head(None).ok();
+
+        return GitResult {
+            success: true,
+            message: Some(format!("Merged into `{branch_name}`")),
+        };
+    }
 
     GitResult {
-        success: true,
-        message: Some(format!("Pulled changes into `{branch_name}`")),
+        success: false,
+        message: Some("Unsupported merge state".into()),
     }
 }
 
