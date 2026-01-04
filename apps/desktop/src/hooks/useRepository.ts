@@ -205,7 +205,7 @@ export function useCreateCommit() {
   return mutation;
 }
 
-export function useDiscardChanges() {
+export function useGitDiscard() {
   const repo = appState.repository;
 
   const mutation = useMutation({
@@ -224,7 +224,7 @@ export function useDiscardChanges() {
   return mutation;
 }
 
-export function useAddFile() {
+export function useGitAdd() {
   const repo = appState.repository;
 
   const mutation = useMutation({
@@ -281,7 +281,7 @@ export function useGitPush() {
   return mutation;
 }
 
-export function useUnstageFile() {
+export function useGitUnstage() {
   const repo = appState.repository;
 
   const mutation = useMutation({

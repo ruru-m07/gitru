@@ -14,12 +14,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             ipc::commands::add_local_git_repo,
-            git::commands::status::git_add,
-            git::commands::status::get_status,
-            git::commands::status::git_remove,
-            git::commands::status::git_discard,
-            git::commands::status::git_fetch,
-            git::commands::status::git_push,
+            git::commands::git::git_add,
+            git::commands::git::get_status,
+            git::commands::git::git_remove,
+            git::commands::git::git_discard,
+            git::commands::git::git_fetch,
+            git::commands::git::git_push,
             git::commands::commit::last_commit,
             git::commands::commit::commit_by_id,
             git::commands::commit::create_commit,

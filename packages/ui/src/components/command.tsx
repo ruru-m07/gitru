@@ -13,9 +13,7 @@ import {
   AutocompleteSeparator,
 } from "@gitru/ui/components/autocomplete";
 import { cn } from "@gitru/ui/lib/utils";
-import { ArrowLeft, SearchIcon } from "lucide-react";
 import * as React from "react";
-import { Button } from "./button.js";
 
 const CommandInputContext = React.createContext<{
   inputRef: React.RefObject<HTMLInputElement | null> | null;

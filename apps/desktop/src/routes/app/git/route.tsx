@@ -87,14 +87,14 @@ import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
 import StatusBar from "@/components/statusBar";
 import {
-  useAddFile,
   useCreateCommit,
-  useDiscardChanges,
   useGetCommitHistory,
   useGetCurrentBranch,
   useGetStatus,
+  useGitAdd,
+  useGitDiscard,
+  useGitUnstage,
   useInvalidateAll,
-  useUnstageFile,
 } from "@/hooks";
 import {
   formatUnixSecondsToDateTime,
@@ -125,8 +125,8 @@ function GitPageLayout() {
   const { data: status, isLoading: isStatusLoading } = useGetStatus();
 
   const { mutateAsync: invalidateAll } = useInvalidateAll();
-  const { mutateAsync: addFile } = useAddFile();
-  const { mutateAsync: unstageFile } = useUnstageFile();
+  const { mutateAsync: addFile } = useGitAdd();
+  const { mutateAsync: unstageFile } = useGitUnstage();
 
   const { data: commitHistory } = useGetCommitHistory();
 
@@ -600,8 +600,8 @@ const StatusBox = memo(function StatusBox({
   data: GetStatusResponse["files"];
   name: "Staged Changes" | "Changes";
 }) {
-  const { mutateAsync: addFile } = useAddFile();
-  const { mutateAsync: unstageFile } = useUnstageFile();
+  const { mutateAsync: addFile } = useGitAdd();
+  const { mutateAsync: unstageFile } = useGitUnstage();
 
   const { handleFileClick } = useFileSelectionStore();
   const { setSelectedFilePath, setSelectedFileStatus, selectedFilePath } =
@@ -822,7 +822,7 @@ const DiscardChangesDialog = memo(function DiscardChangesDialog({
   const [open, setOpen] = useState(false);
   const [isDeleteLoading, setIsDeleteLoading] = useState(false);
 
-  const { mutateAsync: discardChanges } = useDiscardChanges();
+  const { mutateAsync: discardChanges } = useGitDiscard();
 
   const handleOpenChange = useCallback((newOpen: boolean) => {
     setOpen(newOpen);

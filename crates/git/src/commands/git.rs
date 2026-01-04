@@ -1,12 +1,11 @@
-use git2::{
-    BranchType, Cred, FetchOptions, FetchPrune, PushOptions, RemoteCallbacks, Status, StatusOptions,
-};
-use serde::Serialize;
-
 use crate::{
     types::{FileStatus, FileStatusKind, GetStatusResponse, GitResult},
     utils::open_repository,
 };
+use git2::{
+    BranchType, Cred, FetchOptions, FetchPrune, PushOptions, RemoteCallbacks, Status, StatusOptions,
+};
+use serde::Serialize;
 
 #[derive(Serialize)]
 pub struct CommitResult {
