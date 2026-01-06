@@ -8,6 +8,7 @@ export interface Item {
   icon?: LucideIcon;
   customCommandItem?: React.ReactNode;
   redirect?: FileRouteTypes["to"];
+  onClick?: () => void;
 }
 
 export interface Group {

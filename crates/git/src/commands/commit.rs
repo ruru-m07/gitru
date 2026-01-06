@@ -15,7 +15,7 @@ pub struct CommitMessage {
 
 /* #region // ! commands  */
 #[tauri::command]
-pub fn last_commit(repo_path: &str) -> Result<CommitInfo, String> {
+pub async fn last_commit(repo_path: &str) -> Result<CommitInfo, String> {
     let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
 
     let head = repo.head().map_err(|e| e.to_string())?;
@@ -31,7 +31,7 @@ pub fn last_commit(repo_path: &str) -> Result<CommitInfo, String> {
 }
 
 #[tauri::command]
-pub fn commit_by_id(repo_path: &str, hash: &str) -> Result<FullCommitInfo, String> {
+pub async fn commit_by_id(repo_path: &str, hash: &str) -> Result<FullCommitInfo, String> {
     let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
 
     let oid = Oid::from_str(hash).map_err(|e| e.to_string())?;
@@ -78,12 +78,15 @@ pub fn commit_by_id(repo_path: &str, hash: &str) -> Result<FullCommitInfo, Strin
 }
 
 #[tauri::command]
-pub fn create_commit(repo_path: &str, commit_meta: CommitMessage) -> Result<String, String> {
+pub async fn create_commit(repo_path: &str, commit_meta: CommitMessage) -> Result<String, String> {
     commit_internal(repo_path, &commit_meta, false)
 }
 
 #[tauri::command]
-pub fn create_empty_commit(repo_path: &str, commit_meta: CommitMessage) -> Result<String, String> {
+pub async fn create_empty_commit(
+    repo_path: &str,
+    commit_meta: CommitMessage,
+) -> Result<String, String> {
     commit_internal(repo_path, &commit_meta, true)
 }
 /* #endregion  // ! commands */

@@ -4,7 +4,11 @@ use crate::{
 };
 
 #[tauri::command]
-pub fn history(repo_path: &str, skip: usize, limit: usize) -> Result<Vec<CommitInfo>, String> {
+pub async fn history(
+    repo_path: &str,
+    skip: usize,
+    limit: usize,
+) -> Result<Vec<CommitInfo>, String> {
     let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
 
     let mut revwalk = repo.revwalk().map_err(|e| e.to_string())?;

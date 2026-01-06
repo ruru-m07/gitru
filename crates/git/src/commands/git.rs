@@ -15,7 +15,7 @@ pub struct CommitResult {
 /* #region // ! command */
 // ? git status
 #[tauri::command]
-pub fn get_status(repo_path: &str) -> Result<GetStatusResponse, String> {
+pub async fn get_status(repo_path: &str) -> Result<GetStatusResponse, String> {
     let mut opts = default_status_options();
     let files = collect_statuses(repo_path, &mut opts)?;
     Ok(GetStatusResponse { files })
@@ -23,33 +23,33 @@ pub fn get_status(repo_path: &str) -> Result<GetStatusResponse, String> {
 
 // ? git add <file>
 #[tauri::command]
-pub fn git_add(repo_path: &str, file: &str) -> GitResult {
+pub async fn git_add(repo_path: &str, file: &str) -> Result<GitResult, String> {
     let repo = match open_repository(repo_path) {
         Ok(r) => r,
         Err(e) => {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some(format!("Failed to open repo: {e}")),
-            };
+            });
         }
     };
 
     let mut index = match repo.index() {
         Ok(i) => i,
         Err(e) => {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some(format!("Failed to open index: {e}")),
-            };
+            });
         }
     };
 
     if file == "." {
         if let Err(e) = index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None) {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some(format!("Failed to add all: {e}")),
-            };
+            });
         }
     } else {
         let file_path = std::path::Path::new(file);
@@ -57,55 +57,55 @@ pub fn git_add(repo_path: &str, file: &str) -> GitResult {
 
         if full_path.exists() {
             if let Err(e) = index.add_path(file_path) {
-                return GitResult {
+                return Ok(GitResult {
                     success: false,
                     message: Some(format!("Failed to add {file}: {e}")),
-                };
+                });
             }
         } else {
             // ? File doesn't exist (deleted), remove it from the index
             if let Err(e) = index.remove_path(file_path) {
-                return GitResult {
+                return Ok(GitResult {
                     success: false,
                     message: Some(format!("Failed to stage deletion of {file}: {e}")),
-                };
+                });
             }
         }
     }
 
     if let Err(e) = index.write() {
-        return GitResult {
+        return Ok(GitResult {
             success: false,
             message: Some(format!("Failed to write index: {e}")),
-        };
+        });
     }
 
-    GitResult {
+    Ok(GitResult {
         success: true,
         message: None,
-    }
+    })
 }
 
 // ? git restore --staged <file>
 #[tauri::command]
-pub fn git_remove(repo_path: &str, file: &str) -> GitResult {
+pub async fn git_remove(repo_path: &str, file: &str) -> Result<GitResult, String> {
     let repo = match open_repository(repo_path) {
         Ok(r) => r,
         Err(e) => {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some(format!("Failed to open repo: {e}")),
-            };
+            });
         }
     };
 
     let mut index = match repo.index() {
         Ok(i) => i,
         Err(e) => {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some(format!("Failed to open index: {e}")),
-            };
+            });
         }
     };
 
@@ -113,30 +113,30 @@ pub fn git_remove(repo_path: &str, file: &str) -> GitResult {
     let head = match repo.head() {
         Ok(h) => h,
         Err(e) => {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some(format!("Failed to get HEAD: {e}")),
-            };
+            });
         }
     };
 
     let tree = match head.peel_to_tree() {
         Ok(t) => t,
         Err(e) => {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some(format!("Failed to get tree: {e}")),
-            };
+            });
         }
     };
 
     if file == "." {
         // Unstage all files by resetting index to HEAD
         if let Err(e) = index.read_tree(&tree) {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some(format!("Failed to reset index: {e}")),
-            };
+            });
         }
     } else {
         // For a specific file, we need to reset it to the HEAD version
@@ -161,47 +161,47 @@ pub fn git_remove(repo_path: &str, file: &str) -> GitResult {
                 };
 
                 if let Err(e) = index.add(&index_entry) {
-                    return GitResult {
+                    return Ok(GitResult {
                         success: false,
                         message: Some(format!("Failed to reset {file} to HEAD: {e}")),
-                    };
+                    });
                 }
             }
             Err(_) => {
                 // File doesn't exist in HEAD (it's a new file), so remove it from index
                 if let Err(e) = index.remove_path(std::path::Path::new(file)) {
-                    return GitResult {
+                    return Ok(GitResult {
                         success: false,
                         message: Some(format!("Failed to unstage {file}: {e}")),
-                    };
+                    });
                 }
             }
         }
     }
 
     if let Err(e) = index.write() {
-        return GitResult {
+        return Ok(GitResult {
             success: false,
             message: Some(format!("Failed to write index: {e}")),
-        };
+        });
     }
 
-    GitResult {
+    Ok(GitResult {
         success: true,
         message: None,
-    }
+    })
 }
 
 // ? git restore <file>
 #[tauri::command]
-pub fn git_discard(repo_path: &str, file: &str) -> GitResult {
+pub async fn git_discard(repo_path: &str, file: &str) -> Result<GitResult, String> {
     let repo = match open_repository(repo_path) {
         Ok(r) => r,
         Err(e) => {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some(format!("Failed to open repo: {e}")),
-            };
+            });
         }
     };
 
@@ -209,17 +209,17 @@ pub fn git_discard(repo_path: &str, file: &str) -> GitResult {
         Ok(head) => match head.peel(git2::ObjectType::Commit) {
             Ok(obj) => obj,
             Err(e) => {
-                return GitResult {
+                return Ok(GitResult {
                     success: false,
                     message: Some(format!("Failed to peel HEAD: {e}")),
-                };
+                });
             }
         },
         Err(_) => {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some("No HEAD to discard from".into()),
-            };
+            });
         }
     };
 
@@ -232,10 +232,10 @@ pub fn git_discard(repo_path: &str, file: &str) -> GitResult {
     };
 
     if let Err(e) = res {
-        return GitResult {
+        return Ok(GitResult {
             success: false,
             message: Some(format!("Failed to discard {file}: {e}")),
-        };
+        });
     }
 
     // Remove untracked files
@@ -264,22 +264,22 @@ pub fn git_discard(repo_path: &str, file: &str) -> GitResult {
         }
     }
 
-    GitResult {
+    Ok(GitResult {
         success: true,
         message: None,
-    }
+    })
 }
 
 // ? git fetch ...
 #[tauri::command]
-pub fn git_fetch(repo_path: &str) -> GitResult {
+pub async fn git_fetch(repo_path: &str) -> Result<GitResult, String> {
     let repo = match open_repository(repo_path) {
         Ok(r) => r,
         Err(e) => {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some(format!("Failed to open repo: {e}")),
-            };
+            });
         }
     };
 
@@ -290,30 +290,30 @@ pub fn git_fetch(repo_path: &str) -> GitResult {
             let remotes = match repo.remotes() {
                 Ok(r) => r,
                 Err(e) => {
-                    return GitResult {
+                    return Ok(GitResult {
                         success: false,
                         message: Some(format!("Failed to list remotes: {e}")),
-                    };
+                    });
                 }
             };
 
             let name = match remotes.get(0) {
                 Some(n) => n,
                 None => {
-                    return GitResult {
+                    return Ok(GitResult {
                         success: false,
                         message: Some("No remotes configured".into()),
-                    };
+                    });
                 }
             };
 
             match repo.find_remote(name) {
                 Ok(r) => r,
                 Err(e) => {
-                    return GitResult {
+                    return Ok(GitResult {
                         success: false,
                         message: Some(format!("Failed to open remote `{name}`: {e}")),
-                    };
+                    });
                 }
             }
         }
@@ -336,27 +336,31 @@ pub fn git_fetch(repo_path: &str) -> GitResult {
 
     // ? fetch using configured refspecs
     match remote.fetch(&[] as &[&str], Some(&mut fo), None) {
-        Ok(_) => GitResult {
-            success: true,
-            message: Some("Fetched successfully".into()),
-        },
-        Err(e) => GitResult {
-            success: false,
-            message: Some(format!("Failed to fetch: {e}")),
-        },
+        Ok(_) => {
+            return Ok(GitResult {
+                success: true,
+                message: Some("Fetched successfully".into()),
+            });
+        }
+        Err(e) => {
+            return Ok(GitResult {
+                success: false,
+                message: Some(format!("Failed to fetch: {e}")),
+            });
+        }
     }
 }
 
 // ? git push ...
 #[tauri::command]
-pub fn git_push(repo_path: &str) -> GitResult {
+pub async fn git_push(repo_path: &str) -> Result<GitResult, String> {
     let repo = match open_repository(repo_path) {
         Ok(r) => r,
         Err(e) => {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some(format!("Failed to open repository: {e}")),
-            };
+            });
         }
     };
 
@@ -364,27 +368,27 @@ pub fn git_push(repo_path: &str) -> GitResult {
     let head = match repo.head() {
         Ok(h) => h,
         Err(e) => {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some(format!("Failed to read HEAD: {e}")),
-            };
+            });
         }
     };
 
     if !head.is_branch() {
-        return GitResult {
+        return Ok(GitResult {
             success: false,
             message: Some("HEAD is detached, cannot push".into()),
-        };
+        });
     }
 
     let branch_name = match head.shorthand() {
         Some(b) => b.to_string(),
         None => {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some("Invalid branch name".into()),
-            };
+            });
         }
     };
 
@@ -394,10 +398,10 @@ pub fn git_push(repo_path: &str) -> GitResult {
     let mut branch = match repo.find_branch(&branch_name, BranchType::Local) {
         Ok(b) => b,
         Err(e) => {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some(format!("Failed to resolve local branch: {e}")),
-            };
+            });
         }
     };
 
@@ -423,10 +427,10 @@ pub fn git_push(repo_path: &str) -> GitResult {
     let mut remote = match repo.find_remote("origin") {
         Ok(r) => r,
         Err(e) => {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some(format!("Failed to find remote 'origin': {e}")),
-            };
+            });
         }
     };
 
@@ -442,38 +446,38 @@ pub fn git_push(repo_path: &str) -> GitResult {
 
     // ? pushhhhh
     if let Err(e) = remote.push(&[refspec.as_str()], Some(&mut push_opts)) {
-        return GitResult {
+        return Ok(GitResult {
             success: false,
             message: Some(format!("Push failed: {e}")),
-        };
+        });
     }
 
     // ? set upstream if missing
     if !has_upstream {
         if let Err(e) = branch.set_upstream(Some(&branch_name)) {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some(format!("Push succeeded but failed to set upstream: {e}")),
-            };
+            });
         }
     }
 
-    GitResult {
+    Ok(GitResult {
         success: true,
         message: Some(format!("Pushed `{branch_name}` to origin")),
-    }
+    })
 }
 
 // ? git pull ...
 #[tauri::command]
-pub fn git_pull(repo_path: &str) -> GitResult {
+pub async fn git_pull(repo_path: &str) -> Result<GitResult, String> {
     let repo = match open_repository(repo_path) {
         Ok(r) => r,
         Err(e) => {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some(format!("Failed to open repository: {e}")),
-            };
+            });
         }
     };
 
@@ -481,30 +485,30 @@ pub fn git_pull(repo_path: &str) -> GitResult {
     let head = match repo.head() {
         Ok(h) if h.is_branch() => h,
         _ => {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some("HEAD is detached, cannot pull".into()),
-            };
+            });
         }
     };
 
     let branch_name = match head.shorthand() {
         Some(b) => b.to_string(),
         None => {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some("Invalid branch name".into()),
-            };
+            });
         }
     };
 
     let branch = match repo.find_branch(&branch_name, BranchType::Local) {
         Ok(b) => b,
         Err(e) => {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some(format!("Failed to resolve local branch: {e}")),
-            };
+            });
         }
     };
 
@@ -512,10 +516,10 @@ pub fn git_pull(repo_path: &str) -> GitResult {
     let upstream = match branch.upstream() {
         Ok(u) => u,
         Err(_) => {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some("No upstream configured for this branch".into()),
-            };
+            });
         }
     };
 
@@ -523,10 +527,10 @@ pub fn git_pull(repo_path: &str) -> GitResult {
     let mut remote = match repo.find_remote("origin") {
         Ok(r) => r,
         Err(e) => {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some(format!("Failed to find remote 'origin': {e}")),
-            };
+            });
         }
     };
 
@@ -544,10 +548,10 @@ pub fn git_pull(repo_path: &str) -> GitResult {
     fo.prune(FetchPrune::On);
 
     if let Err(e) = remote.fetch(&[] as &[&str], Some(&mut fo), None) {
-        return GitResult {
+        return Ok(GitResult {
             success: false,
             message: Some(format!("Fetch failed: {e}")),
-        };
+        });
     }
 
     // ? merge analysis
@@ -556,29 +560,29 @@ pub fn git_pull(repo_path: &str) -> GitResult {
     let upstream_commit = match repo.reference_to_annotated_commit(&upstream_ref) {
         Ok(c) => c,
         Err(e) => {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some(format!("Failed to resolve upstream commit: {e}")),
-            };
+            });
         }
     };
 
     let (analysis, _) = match repo.merge_analysis(&[&upstream_commit]) {
         Ok(a) => a,
         Err(e) => {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some(format!("Merge analysis failed: {e}")),
-            };
+            });
         }
     };
 
     // ? already up to date
     if analysis.is_up_to_date() {
-        return GitResult {
+        return Ok(GitResult {
             success: true,
             message: Some("Already up to date".into()),
-        };
+        });
     }
 
     // ? fast-forward
@@ -586,37 +590,37 @@ pub fn git_pull(repo_path: &str) -> GitResult {
         let refname = match branch.get().name() {
             Some(r) => r.to_string(),
             None => {
-                return GitResult {
+                return Ok(GitResult {
                     success: false,
                     message: Some("Invalid branch reference".into()),
-                };
+                });
             }
         };
 
         let mut reference = match repo.find_reference(&refname) {
             Ok(r) => r,
             Err(e) => {
-                return GitResult {
+                return Ok(GitResult {
                     success: false,
                     message: Some(format!("Failed to find branch ref: {e}")),
-                };
+                });
             }
         };
 
         if let Err(e) = reference.set_target(upstream_commit.id(), "Fast-forward") {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some(format!("Fast-forward failed: {e}")),
-            };
+            });
         }
 
         repo.set_head(&refname).ok();
         repo.checkout_head(None).ok();
 
-        return GitResult {
+        return Ok(GitResult {
             success: true,
             message: Some(format!("Fast-forwarded `{branch_name}`")),
-        };
+        });
     }
 
     // ? normal merge (non-ff)
@@ -626,18 +630,18 @@ pub fn git_pull(repo_path: &str) -> GitResult {
         let mut index = match repo.index() {
             Ok(i) => i,
             Err(e) => {
-                return GitResult {
+                return Ok(GitResult {
                     success: false,
                     message: Some(format!("Failed to read index: {e}")),
-                };
+                });
             }
         };
 
         if index.has_conflicts() {
-            return GitResult {
+            return Ok(GitResult {
                 success: false,
                 message: Some("Merge conflicts detected".into()),
-            };
+            });
         }
 
         let tree_oid = index.write_tree().unwrap();
@@ -660,16 +664,16 @@ pub fn git_pull(repo_path: &str) -> GitResult {
 
         repo.checkout_head(None).ok();
 
-        return GitResult {
+        return Ok(GitResult {
             success: true,
             message: Some(format!("Merged into `{branch_name}`")),
-        };
+        });
     }
 
-    GitResult {
+    Ok(GitResult {
         success: false,
         message: Some("Unsupported merge state".into()),
-    }
+    })
 }
 
 /* #endregion // ! command */

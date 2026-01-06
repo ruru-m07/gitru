@@ -43,7 +43,7 @@ impl From<BranchKind> for git2::BranchType {
 }
 
 #[tauri::command]
-pub fn current_branch(repo_path: &str) -> Result<Branch, String> {
+pub async fn current_branch(repo_path: &str) -> Result<Branch, String> {
     let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
     let head = repo
         .head()
@@ -64,7 +64,7 @@ pub fn current_branch(repo_path: &str) -> Result<Branch, String> {
 }
 
 #[tauri::command]
-pub fn list_branches(repo_path: &str, kind: BranchKind) -> Result<Vec<BranchInfo>, String> {
+pub async fn list_branches(repo_path: &str, kind: BranchKind) -> Result<Vec<BranchInfo>, String> {
     let repo: git2::Repository = open_repository(repo_path).map_err(|e| e.to_string())?;
 
     let kind = match kind {

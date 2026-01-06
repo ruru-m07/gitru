@@ -19,10 +19,29 @@ function RouteComponent() {
       </Link>
       <br />
       <Button
-        onClick={async () => {
-          const data = await fetch();
-          console.log(data);
-          toast.success(data.message);
+        // onClick={() => {
+        //   toast.promise(
+        //     (async () => {
+        //       await new Promise(requestAnimationFrame);
+        //       return fetch();
+        //     })(),
+        //     {
+        //       loading: "Fetching changes...",
+        //       success: "Fetch completed",
+        //       error: "Fetch error",
+        //     },
+        //   );
+        // }}
+
+        onClick={() => {
+          toast.promise(fetch(), {
+            loading: "Fetching changes...",
+            success: (data) => {
+              console.log(data);
+              return data.message;
+            },
+            error: (err) => err ?? "Fetch error",
+          });
         }}
       >
         fetch

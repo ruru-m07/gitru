@@ -16,7 +16,7 @@ pub struct RepositoryOrigin {
 }
 
 #[tauri::command]
-pub fn repository_origin(repo_path: &str) -> Result<RepositoryOrigin, String> {
+pub async fn repository_origin(repo_path: &str) -> Result<RepositoryOrigin, String> {
     let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
 
     let remote = repo

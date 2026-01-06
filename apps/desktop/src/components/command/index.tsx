@@ -44,7 +44,8 @@ import { useHotkeys } from "react-hotkeys-hook";
 import { useGetBranches } from "@/hooks";
 import { timeAgoFromUnixSeconds } from "@/lib/time";
 import { BranchInfo } from "@/tauri";
-import { actions, goto } from "./actions";
+import { useActions } from "./actions";
+import { goto } from "./goto";
 import { CommandView, Group, Item } from "./type";
 
 export default function CommandBox() {
@@ -54,16 +55,16 @@ export default function CommandBox() {
   const [inputValue, setInputValue] = React.useState("");
 
   const navigate = useNavigate();
+  const actions = useActions();
 
   const { data: branches } = useGetBranches("Local");
   const { data: remoteBranches } = useGetBranches("Remote");
 
-  console.log({
-    branches,
-    remoteBranches,
-  });
-
   const handleItemClick = React.useCallback((item: Item) => {
+    if (item.onClick) {
+      item.onClick();
+    }
+
     if (item.value === "checkout-branch") {
       setView({ type: "checkout-branch" });
       setInputValue("");

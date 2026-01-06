@@ -11,7 +11,7 @@ use std::{
 
 // TODO(ruru): havey optimization needed
 #[tauri::command]
-pub fn get_diff(repo_path: &str, file_path: &str) -> Result<GetDiffResponse, String> {
+pub async fn get_diff(repo_path: &str, file_path: &str) -> Result<GetDiffResponse, String> {
     let requested_path = Path::new(file_path);
 
     if requested_path.is_absolute()
@@ -29,10 +29,10 @@ pub fn get_diff(repo_path: &str, file_path: &str) -> Result<GetDiffResponse, Str
 
     let repository = open_repository(repo_path).map_err(|e| format!("Failed to open repo: {e}"))?;
 
-    let repo_path = Path::new(repo_path);
+    // let repo_path = Path::new(repo_path);
 
-    let head_version = read_head_version(&repository, &relative_path)?;
-    let workdir_version = read_workdir_version(repo_path, &relative_path)?;
+    // let head_version = read_head_version(&repository, &relative_path)?;
+    // let workdir_version = read_workdir_version(repo_path, &relative_path)?;
     let patch = generate_patch(&repository, &relative_path)?;
 
     Ok(GetDiffResponse {
@@ -40,8 +40,10 @@ pub fn get_diff(repo_path: &str, file_path: &str) -> Result<GetDiffResponse, Str
             .to_str()
             .map(|s| s.to_string())
             .unwrap_or_else(|| file_path.to_string()),
-        head: head_version,
-        workdir: workdir_version,
+        // head: head_version,
+        // workdir: workdir_version,
+        head: None,
+        workdir: None,
         patch,
     })
 }
