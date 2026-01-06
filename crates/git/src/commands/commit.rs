@@ -1,9 +1,9 @@
-use git2::{DiffOptions, Oid, Repository};
+use git2::{DiffOptions, Oid};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    history::extract_all_authors,
     types::{CommitInfo, CommitStats, FullCommitInfo},
+    utils::{extract_all_authors, open_repository},
 };
 
 #[derive(Serialize, Deserialize)]
@@ -13,9 +13,10 @@ pub struct CommitMessage {
     co_authors: Vec<(String, String)>,
 }
 
+/* #region // ! commands  */
 #[tauri::command]
-pub fn last_commit(repo_path: &str) -> Result<CommitInfo, String> {
-    let repo = Repository::open(repo_path).map_err(|e| e.to_string())?;
+pub async fn last_commit(repo_path: &str) -> Result<CommitInfo, String> {
+    let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
 
     let head = repo.head().map_err(|e| e.to_string())?;
     let commit = head.peel_to_commit().map_err(|e| e.to_string())?;
@@ -30,8 +31,8 @@ pub fn last_commit(repo_path: &str) -> Result<CommitInfo, String> {
 }
 
 #[tauri::command]
-pub fn commit_by_id(repo_path: &str, hash: &str) -> Result<FullCommitInfo, String> {
-    let repo = Repository::open(repo_path).map_err(|e| e.to_string())?;
+pub async fn commit_by_id(repo_path: &str, hash: &str) -> Result<FullCommitInfo, String> {
+    let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
 
     let oid = Oid::from_str(hash).map_err(|e| e.to_string())?;
     let commit = repo.find_commit(oid).map_err(|e| e.to_string())?;
@@ -77,21 +78,26 @@ pub fn commit_by_id(repo_path: &str, hash: &str) -> Result<FullCommitInfo, Strin
 }
 
 #[tauri::command]
-pub fn create_commit(repo_path: &str, commit_meta: CommitMessage) -> Result<String, String> {
+pub async fn create_commit(repo_path: &str, commit_meta: CommitMessage) -> Result<String, String> {
     commit_internal(repo_path, &commit_meta, false)
 }
 
 #[tauri::command]
-pub fn create_empty_commit(repo_path: &str, commit_meta: CommitMessage) -> Result<String, String> {
+pub async fn create_empty_commit(
+    repo_path: &str,
+    commit_meta: CommitMessage,
+) -> Result<String, String> {
     commit_internal(repo_path, &commit_meta, true)
 }
+/* #endregion  // ! commands */
 
+/* #region // ? utils  */
 fn commit_internal(
     repo_path: &str,
     commit_meta: &CommitMessage,
     allow_empty: bool,
 ) -> Result<String, String> {
-    let repo = Repository::open(repo_path).map_err(|e| e.to_string())?;
+    let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
 
     if repo.is_bare() {
         return Err("Cannot commit in a bare repository".into());
@@ -159,3 +165,4 @@ fn build_commit_message(commit_meta: &CommitMessage) -> String {
 
     msg
 }
+/* #endregion  // ? utils */

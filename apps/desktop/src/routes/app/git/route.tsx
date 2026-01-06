@@ -56,6 +56,7 @@ import {
   TooltipTrigger,
 } from "@gitru/ui/components/tooltip";
 import { cn } from "@gitru/ui/lib/utils";
+import { UseMutateAsyncFunction } from "@tanstack/react-query";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
@@ -86,16 +87,19 @@ import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
 import StatusBar from "@/components/statusBar";
 import {
+  useCreateCommit,
+  useGetCommitHistory,
+  useGetCurrentBranch,
+  useGetStatus,
+  useGitAdd,
+  useGitDiscard,
+  useGitUnstage,
+  useInvalidateAll,
+} from "@/hooks";
+import {
   formatUnixSecondsToDateTime,
   timeAgoFromUnixSeconds,
 } from "@/lib/time";
-import {
-  getCommitHistory,
-  useCreateCommit,
-  useCurrentBranch,
-  useRepositoryActions,
-  useStatus,
-} from "@/state/hooks";
 import { useAppStore } from "@/store/useAppStore";
 import {
   addLocalGitRepo,
@@ -118,9 +122,13 @@ function GitPageLayout() {
     selectedRepository,
   } = useAppStore();
 
-  const { data: status, isLoading: isStatusLoading } = useStatus();
-  const actions = useRepositoryActions();
-  const { data: commitHistory } = getCommitHistory();
+  const { data: status, isLoading: isStatusLoading } = useGetStatus();
+
+  const { mutateAsync: invalidateAll } = useInvalidateAll();
+  const { mutateAsync: addFile } = useGitAdd();
+  const { mutateAsync: unstageFile } = useGitUnstage();
+
+  const { data: commitHistory } = useGetCommitHistory();
 
   const stagedChanges: GetStatusResponse["files"] = (
     status?.files ?? []
@@ -243,8 +251,8 @@ function GitPageLayout() {
                       onClick={() => {
                         setSelectedRepository(repo);
                         setRepoSelectIsOpen(false);
-                        setTimeout(() => {
-                          actions?.invalidateAll();
+                        setTimeout(async () => {
+                          await invalidateAll();
                         }, 0);
                       }}
                     >
@@ -345,7 +353,7 @@ function GitPageLayout() {
                                               <div
                                                 onClick={async (event) => {
                                                   event.stopPropagation();
-                                                  await actions?.addAll();
+                                                  await addFile(".");
                                                 }}
                                                 className={cn(
                                                   buttonVariants({
@@ -365,7 +373,7 @@ function GitPageLayout() {
                                             <div
                                               onClick={async (event) => {
                                                 event.stopPropagation();
-                                                await actions?.removeAll();
+                                                await unstageFile(".");
                                               }}
                                               className={cn(
                                                 buttonVariants({
@@ -551,8 +559,24 @@ interface EachStatusProps {
   file: FileStatus;
   type: "Staged Changes" | "Changes";
   index: number;
-  onAdd?: (filePath: string) => Promise<boolean>;
-  onUnstage?: (filePath: string) => Promise<boolean>;
+  onAdd?: UseMutateAsyncFunction<
+    {
+      success: boolean;
+      message?: string | undefined;
+    },
+    string,
+    string,
+    unknown
+  >;
+  onUnstage?: UseMutateAsyncFunction<
+    {
+      success: boolean;
+      message?: string | undefined;
+    },
+    string,
+    string,
+    unknown
+  >;
   onFileClick: (
     file: FileStatus,
     index: number,
@@ -576,7 +600,9 @@ const StatusBox = memo(function StatusBox({
   data: GetStatusResponse["files"];
   name: "Staged Changes" | "Changes";
 }) {
-  const actions = useRepositoryActions();
+  const { mutateAsync: addFile } = useGitAdd();
+  const { mutateAsync: unstageFile } = useGitUnstage();
+
   const { handleFileClick } = useFileSelectionStore();
   const { setSelectedFilePath, setSelectedFileStatus, selectedFilePath } =
     useDiffViewStore();
@@ -592,8 +618,8 @@ const StatusBox = memo(function StatusBox({
             type={name}
             index={idx}
             onFileClick={handleFileClick}
-            onAdd={name === "Changes" ? actions?.add : undefined}
-            onUnstage={name === "Staged Changes" ? actions?.unstage : undefined}
+            onAdd={name === "Changes" ? addFile : undefined}
+            onUnstage={name === "Staged Changes" ? unstageFile : undefined}
             setSelectedFilePath={setSelectedFilePath}
             setSelectedFileStatus={setSelectedFileStatus}
             selectedFilePath={isSelected ? selectedFilePath : undefined}
@@ -796,7 +822,7 @@ const DiscardChangesDialog = memo(function DiscardChangesDialog({
   const [open, setOpen] = useState(false);
   const [isDeleteLoading, setIsDeleteLoading] = useState(false);
 
-  const actions = useRepositoryActions();
+  const { mutateAsync: discardChanges } = useGitDiscard();
 
   const handleOpenChange = useCallback((newOpen: boolean) => {
     setOpen(newOpen);
@@ -873,7 +899,9 @@ const DiscardChangesDialog = memo(function DiscardChangesDialog({
               setIsDeleteLoading(true);
 
               try {
-                await actions?.discard(fileName);
+                await discardChanges({
+                  filePath: fileName,
+                });
               } catch (error) {
                 toast.error("Unable to discard changes");
               } finally {
@@ -901,7 +929,7 @@ const WriteCommitBox = memo(function WriteCommitBox() {
   const [description, setDescription] = useState("");
   const [co_authors, setCoAuthors] = useState<CoAuthers>([]);
 
-  const { data: currentBranch } = useCurrentBranch();
+  const { data: currentBranch } = useGetCurrentBranch();
   const { mutateAsync: createCommit, isPending: isCreatingCommit } =
     useCreateCommit();
 

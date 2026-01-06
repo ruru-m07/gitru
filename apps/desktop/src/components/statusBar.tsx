@@ -24,29 +24,36 @@ import {
   RefreshCw,
   Settings,
 } from "lucide-react";
-import { timeAgoFromUnixSeconds } from "@/lib/time";
 import {
-  getCommitById,
-  getLastCommit,
-  getRepositoryOrigin,
-  useCurrentBranch,
-  useStatus,
-} from "@/state/hooks";
+  useGetCommitById,
+  useGetCurrentBranch,
+  useGetLastCommit,
+  useGetRepositoryOrigin,
+  useGetStatus,
+} from "@/hooks";
+import { timeAgoFromUnixSeconds } from "@/lib/time";
 import { CommitInfo } from "@/tauri";
 // import { GithubDark } from "../ui/svgs/githubDark";
-import { GithubLight } from "./ui/svgs/githubLight";
+import { GithubLight } from "./svgs/githubLight";
 
 const StatusBar = () => {
-  const { data: lastCommit } = getLastCommit();
-  const { data: currentBranch } = useCurrentBranch();
-  const { data: repositoryOrigin } = getRepositoryOrigin();
-  const { data: status } = useStatus();
+  const { data: lastCommit } = useGetLastCommit();
+  const { data: currentBranch } = useGetCurrentBranch();
+  const { data: repositoryOrigin } = useGetRepositoryOrigin();
+  const { data: status } = useGetStatus();
 
   return (
     <div className="border-t overflow-hidden h-7 flex justify-between items-center ">
       {/* left side */}
       <div className="h-full flex">
-        <a target="_blank" href="https://github.com/ruru-m07/gitru">
+        <a
+          target="_blank"
+          href={
+            repositoryOrigin?.provider === "github"
+              ? `https://github.com/${repositoryOrigin?.owner}/${repositoryOrigin?.repo}`
+              : "#"
+          }
+        >
           <Badge
             variant={"outline"}
             className="h-full rounded-none border-0 border-r px-2 flex items-center cursor-pointer hover:bg-muted border-b border-b-transparent hover:border-b-border"
@@ -130,7 +137,7 @@ const StatusBar = () => {
 export default StatusBar;
 
 const LastCommitBox = ({ lastCommit }: { lastCommit: CommitInfo }) => {
-  const { data: fullCommit } = getCommitById(lastCommit.id);
+  const { data: fullCommit } = useGetCommitById(lastCommit.id);
   return (
     <Popover>
       <PopoverTrigger
