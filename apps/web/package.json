@@ -32,6 +32,7 @@
     "jsdom": "^27.0.0",
     "typescript": "catalog:",
     "vite": "^7.2.7",
-    "web-vitals": "^5.1.0"
+    "web-vitals": "^5.1.0",
+    "@gitru/ui": "*"
   }
 }
