@@ -38,7 +38,7 @@ function PopoverPopup({
       >
         <span
           className={cn(
-            "not-[class*='w-']:[min-w-80] relative flex origin-(--transform-origin) rounded-lg border bg-popover bg-clip-padding shadow-lg transition-[scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] has-data-starting-style:scale-98 has-data-starting-style:opacity-0 dark:bg-clip-border dark:before:shadow-[0_-1px_--theme(--color-white/8%)]",
+            "not-[class*='w-']:[min-w-80] relative flex origin-(--transform-origin) rounded-lg border bg-popover! bg-clip-padding shadow-lg transition-[scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] has-data-starting-style:scale-98 has-data-starting-style:opacity-0 dark:bg-clip-border dark:before:shadow-[0_-1px_--theme(--color-white/8%)]",
             tooltipStyle &&
               "w-fit rounded-md text-xs text-balance shadow-md shadow-black/5 before:rounded-[calc(var(--radius-md)-1px)]",
             className,

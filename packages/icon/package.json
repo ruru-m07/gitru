@@ -1,0 +1,22 @@
+{
+  "name": "@gitru/icon",
+  "version": "0.1.0",
+  "module": "index.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./index.ts"
+    }
+  },
+  "devDependencies": {
+    "@gitru/ui": "*",
+    "@types/bun": "latest",
+    "@types/react": "^19.0.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "react": "^19.0.0"
+  }
+}

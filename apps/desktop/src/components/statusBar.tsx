@@ -30,17 +30,18 @@ import {
   useGetLastCommit,
   useGetRepositoryOrigin,
   useGetStatus,
+  useGetStatusAheadBehind,
 } from "@/hooks";
 import { timeAgoFromUnixSeconds } from "@/lib/time";
 import { CommitInfo } from "@/tauri";
-// import { GithubDark } from "../ui/svgs/githubDark";
-import { GithubLight } from "./svgs/githubLight";
+import { GithubIcon } from "./svgs/githubIcon";
 
 const StatusBar = () => {
   const { data: lastCommit } = useGetLastCommit();
   const { data: currentBranch } = useGetCurrentBranch();
   const { data: repositoryOrigin } = useGetRepositoryOrigin();
   const { data: status } = useGetStatus();
+  const { data: statusAheadBehind } = useGetStatusAheadBehind();
 
   return (
     <div className="border-t overflow-hidden h-7 flex justify-between items-center ">
@@ -56,14 +57,14 @@ const StatusBar = () => {
         >
           <Badge
             variant={"outline"}
-            className="h-full rounded-none border-0 border-r px-2 flex items-center cursor-pointer hover:bg-muted border-b border-b-transparent hover:border-b-border"
+            className="h-full rounded-none border-0 border-r px-2 flex items-center cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
           >
             <span className="flex items-center gap-1">
-              <span className="text-muted-foreground font-normal">
+              <span className="text-muted-foreground! font-normal">
                 Origin:{" "}
               </span>
-              <GithubLight />
-              <span className="text-muted-foreground">
+              <GithubIcon />
+              <span className="text-muted-foreground!">
                 {repositoryOrigin?.owner} /{" "}
               </span>
               <span className="text-foreground">{repositoryOrigin?.repo}</span>
@@ -72,37 +73,45 @@ const StatusBar = () => {
         </a>
         <Badge
           variant={"outline"}
-          className="text-muted-foreground h-full rounded-none border-0 border-r px-2 flex items-center font-normal cursor-pointer hover:bg-muted border-b border-b-transparent hover:border-b-border"
+          className="text-muted-foreground! h-full rounded-none border-0 border-r px-2 flex items-center font-normal cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
         >
           <GitBranch />
-          <span className="ml-1 text-foreground">
+          <span className="ml-1 text-foreground!">
             {currentBranch?.display_name}
             {status?.files && status?.files.length > 0 ? "*" : ""}
           </span>
         </Badge>
         <Badge
           variant={"outline"}
-          className="text-muted-foreground h-full rounded-none border-0 border-r px-2 flex items-center cursor-pointer hover:bg-muted border-b border-b-transparent hover:border-b-border"
+          className="text-muted-foreground! h-full rounded-none border-0 border-r px-2 flex items-center cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
         >
           <RefreshCw />
         </Badge>
         {lastCommit ? <LastCommitBox lastCommit={lastCommit} /> : null}
-        {/* <Badge
-          variant={"outline"}
-          className="text-muted-foreground h-full rounded-none border-0 border-r flex items-center font-normal tabular-nums px-1.5"
-        >
-          <ArrowUp />
-          <span className="tabular-nums text-foreground">6 </span>
-          <span>ahead</span>
-        </Badge> */}
-        <Badge
-          variant={"outline"}
-          className="text-muted-foreground h-full rounded-none border-0 border-r flex items-center font-normal tabular-nums px-1.5 cursor-pointer hover:bg-muted border-b border-b-transparent hover:border-b-border"
-        >
-          <ArrowDown />
-          <span className="tabular-nums text-foreground">3 </span>
-          <span>behind</span>
-        </Badge>
+        {statusAheadBehind?.ahead && statusAheadBehind.ahead > 0 ? (
+          <Badge
+            variant={"outline"}
+            className="text-muted-foreground! h-full rounded-none border-0 border-r flex items-center font-normal tabular-nums px-1.5 cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
+          >
+            <ArrowDown />
+            <span className="tabular-nums text-foreground!">
+              {statusAheadBehind.ahead}{" "}
+            </span>
+            <span>behind</span>
+          </Badge>
+        ) : null}
+        {statusAheadBehind?.behind && statusAheadBehind.behind > 0 ? (
+          <Badge
+            variant={"outline"}
+            className="text-muted-foreground! h-full rounded-none border-0 border-r flex items-center font-normal tabular-nums px-1.5 cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
+          >
+            <ArrowDown />
+            <span className="tabular-nums text-foreground!">
+              {statusAheadBehind.behind}{" "}
+            </span>
+            <span>behind</span>
+          </Badge>
+        ) : null}
       </div>
       {/* right side */}
       <div className="h-full flex">
@@ -111,21 +120,23 @@ const StatusBar = () => {
           className="h-full rounded-none border-0 border-l px-2 flex items-center"
         >
           <span>
-            <span className="text-muted-foreground font-normal">Channel: </span>
-            <span className="text-foreground">development </span>
+            <span className="text-muted-foreground! font-normal">
+              Channel:{" "}
+            </span>
+            <span className="text-foreground!">development </span>
           </span>
         </Badge>
         <Badge
           variant={"outline"}
           className="h-full rounded-none border-0 border-l px-2 flex items-center"
         >
-          <span className="text-muted-foreground font-mono font-normal tabular-nums">
+          <span className="text-muted-foreground! font-mono font-normal tabular-nums">
             v0.0.1-beta.1
           </span>
         </Badge>
         <Badge
           variant={"outline"}
-          className="text-muted-foreground h-full rounded-none border-0 border-l px-2 flex items-center"
+          className="text-muted-foreground! h-full rounded-none border-0 border-l px-2 flex items-center"
         >
           <Settings />
         </Badge>
@@ -144,7 +155,7 @@ const LastCommitBox = ({ lastCommit }: { lastCommit: CommitInfo }) => {
         render={
           <Badge
             variant={"outline"}
-            className="h-full rounded-none border-0 border-r flex items-center cursor-pointer hover:bg-muted border-b border-b-transparent hover:border-b-border"
+            className="h-full rounded-none border-0 border-r flex items-center cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
           >
             <GitCommitVertical className="size-4" strokeWidth={1} />
             <div className="flex group">
@@ -201,8 +212,8 @@ const LastCommitBox = ({ lastCommit }: { lastCommit: CommitInfo }) => {
             <span className="font-normal">
               {lastCommit?.authors.author.name}
             </span>
-            <span className="text-muted-foreground font-light text-xs">
-              ( {timeAgoFromUnixSeconds(lastCommit?.timestamp)} )
+            <span className="text-muted-foreground! font-light text-xs pr-2">
+              ( {timeAgoFromUnixSeconds(lastCommit?.timestamp)} ) {}
             </span>
           </Badge>
         }
@@ -263,7 +274,7 @@ const LastCommitBox = ({ lastCommit }: { lastCommit: CommitInfo }) => {
           <PopoverTitle className="text-xs font-normal mt-2 p-0">
             <span>
               <span>{lastCommit.authors.author.name}</span>
-              <span className="ml-1 text-muted-foreground">
+              <span className="ml-1 text-muted-foreground!">
                 ( {lastCommit.authors.author.email} )
               </span>
             </span>
@@ -271,22 +282,22 @@ const LastCommitBox = ({ lastCommit }: { lastCommit: CommitInfo }) => {
           <Separator className={"my-1"} />
           <div className="text-sm">
             <div className="truncate">{lastCommit.summary}</div>
-            <span className="line-clamp-5 text-xs text-muted-foreground mt-1">
+            <span className="line-clamp-5 text-xs text-muted-foreground! mt-1">
               <pre>{lastCommit.body}</pre>
             </span>
           </div>
-          <div className="absolute top-0 right-0 px-2 py-1 flex items-center gap-2">
-            <span className="text-xs text-muted-foreground flex items-center gap-1">
+          <div className="absolute top-0.5 right-0 px-2 py-1 flex items-center gap-2">
+            <span className="text-xs flex items-center gap-1">
               <File size={12} />
               {fullCommit?.stats.files_changed}
             </span>
             <div className="flex h-3.5 items-center justify-center">
               <Separator orientation="vertical" />
             </div>
-            <span className="text-xs text-green-600">
+            <span className="text-xs text-green-600! dark:text-green-500!">
               +{fullCommit?.stats.insertions}
             </span>
-            <span className="text-xs text-red-600">
+            <span className="text-xs text-red-600! dark:text-red-500!">
               -{fullCommit?.stats.deletions}
             </span>
           </div>

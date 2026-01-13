@@ -27,6 +27,18 @@ pub struct BranchInfo {
     pub behind: Option<usize>,
 }
 
+#[derive(serde::Serialize)]
+pub struct AheadBehindStatus {
+    pub ahead: usize,
+    pub behind: usize,
+
+    pub local_branch: String,
+    pub local_branch_id: String,
+
+    pub upstream_branch: String,
+    pub upstream_branch_id: String,
+}
+
 #[derive(serde::Deserialize)]
 pub enum BranchKind {
     Local,
@@ -83,6 +95,55 @@ pub async fn list_branches(repo_path: &str, kind: BranchKind) -> Result<Vec<Bran
     });
 
     Ok(branches)
+}
+
+#[tauri::command]
+pub async fn status_ahead_behind(repo_path: &str) -> Result<AheadBehindStatus, String> {
+    let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
+
+    let head = repo
+        .head()
+        .map_err(|e| format!("Failed to get HEAD: {e}"))?;
+    let local_branch_name = head
+        .shorthand()
+        .ok_or_else(|| "HEAD does not point to a named branch".to_string())?;
+
+    let branch = repo
+        .find_branch(local_branch_name, git2::BranchType::Local)
+        .map_err(|_| format!("Failed to find local branch {local_branch_name}"))?;
+
+    let local_oid = branch
+        .get()
+        .target()
+        .ok_or_else(|| "Local branch has no target".to_string())?;
+
+    let upstream = branch
+        .upstream()
+        .map_err(|_| format!("No upstream configured for {local_branch_name}"))?;
+
+    let upstream_oid = upstream
+        .get()
+        .target()
+        .ok_or_else(|| "Upstream branch has no target".to_string())?;
+
+    let upstream_name = upstream
+        .get()
+        .shorthand()
+        .ok_or_else(|| "Failed to read upstream branch name".to_string())?
+        .to_string();
+
+    let (ahead, behind) = repo
+        .graph_ahead_behind(local_oid, upstream_oid)
+        .map_err(|e| e.to_string())?;
+
+    Ok(AheadBehindStatus {
+        ahead,
+        behind,
+        local_branch: local_branch_name.to_string(),
+        local_branch_id: local_oid.to_string(),
+        upstream_branch: upstream_name,
+        upstream_branch_id: upstream_oid.to_string(),
+    })
 }
 
 /* #region // ? Helpers */

@@ -7,11 +7,10 @@ import {
   PopoverTrigger,
 } from "@gitru/ui/components/popover";
 import { Radio, RadioGroup } from "@gitru/ui/components/radio-group";
-import { ScrollArea } from "@gitru/ui/components/scroll-area";
 import { Separator } from "@gitru/ui/components/separator";
 import { Switch } from "@gitru/ui/components/switch";
 import { cn } from "@gitru/ui/lib/utils";
-import { LineDiffTypes, PatchDiff } from "@pierre/diffs/react";
+import { LineDiffTypes, MultiFileDiff } from "@pierre/diffs/react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   ChevronDown,
@@ -127,13 +126,12 @@ const DiffArea = () => {
   const { theme } = useTheme();
 
   return (
-    <ScrollArea
+    <div
       className={cn(
-        "h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*7))] w-full relative",
+        "max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*7))] w-full relative overflow-y-auto ",
       )}
-      scrollFade
     >
-      {diffData?.patch ? (
+      {/* {diffData?.patch ? (
         <PatchDiff
           patch={diffData.patch}
           options={{
@@ -150,8 +148,8 @@ const DiffArea = () => {
             `,
           }}
         />
-      ) : null}
-      {/* {diffData ? (
+      ) : null} */}
+      {diffData ? (
         <MultiFileDiff
           newFile={{
             contents: diffData.workdir?.content || "",
@@ -175,8 +173,9 @@ const DiffArea = () => {
             `,
           }}
         />
-      ) : null} */}
-    </ScrollArea>
+      ) : null}
+    </div>
+    // {/* </ScrollArea> */}
   );
 };
 
@@ -191,14 +190,7 @@ const FileLevelStatusBarLeft = () => {
     <div className="items-center h-full px-2 flex gap-2">
       {getStatusIcon(selectedFileStatus)}
       <span className="flex items-center">
-        <span className="text-muted-foreground/75">
-          {selectedFilePath?.path?.slice(
-            0,
-            selectedFilePath?.path?.lastIndexOf("/"),
-          )}
-          /
-        </span>
-        <span>{selectedFilePath?.path?.split("/").pop()}</span>
+        {renderPath(selectedFilePath.path)}
       </span>
       {selectedFilePath?.newPath ? (
         <div>
@@ -209,18 +201,22 @@ const FileLevelStatusBarLeft = () => {
         </div>
       ) : null}
       {selectedFilePath?.newPath ? (
-        <span className="flex items-center">
-          <span className="text-muted-foreground/75">
-            {selectedFilePath?.newPath?.slice(
-              0,
-              selectedFilePath?.newPath?.lastIndexOf("/"),
-            )}
-            /
-          </span>
-          <span>{selectedFilePath?.newPath?.split("/").pop()}</span>
-        </span>
+        <span>{renderPath(selectedFilePath.newPath)}</span>
       ) : null}
     </div>
+  );
+};
+
+const renderPath = (path: string) => {
+  const parts = path.split("/");
+  const fileName = parts.pop();
+  const dir = parts.join("/");
+
+  return (
+    <span className="flex items-center">
+      {dir && <span className="text-muted-foreground/75">{dir}/</span>}
+      <span>{fileName}</span>
+    </span>
   );
 };
 
@@ -272,7 +268,7 @@ const SettingsPopoverContent = () => {
                 className={cn(
                   "rounded-none w-32 h-32 shadow-none first:rounded-s-md last:rounded-e-md focus-visible:z-10",
                   diffStyle === "unified" &&
-                    "border-primary/40 bg-primary/10 hover:bg-primary/13!",
+                    "border-primary/40 bg-primary/10! hover:bg-primary/13!",
                 )}
                 variant="outline"
                 size="icon"
@@ -287,7 +283,7 @@ const SettingsPopoverContent = () => {
                 className={cn(
                   "rounded-none w-32 h-32 shadow-none rounded-r-md border-l-0 focus-visible:z-10",
                   diffStyle === "split" &&
-                    "border-primary/40 bg-primary/10 hover:bg-primary/13!",
+                    "border-primary/40 bg-primary/10! hover:bg-primary/13!",
                 )}
                 variant="outline"
                 size="icon"

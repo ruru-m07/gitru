@@ -3,10 +3,9 @@
 @import "./font.css";
 @import "./base.css";
 
-@source "../../../apps/**/*.{ts,tsx}";
 @source "../../../../apps/**/*.{ts,tsx}";
 @source "../components/**/*.{ts,tsx}";
-@source "../**/*.{ts,tsx}";
+@source "../../../icon/**/*.{ts,tsx}";
 
 summary {
   @apply cursor-pointer;

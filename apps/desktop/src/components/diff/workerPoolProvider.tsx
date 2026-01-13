@@ -6,7 +6,6 @@ import { useDiffViewerSettings } from "./useDiffViewSettingStore";
 const WorkerPoolProvider = ({ children }: { children: React.ReactElement }) => {
   const { lineDiffType } = useDiffViewerSettings();
 
-  console.log({ lineDiffType });
   return (
     <WorkerPoolContextProvider
       poolOptions={{

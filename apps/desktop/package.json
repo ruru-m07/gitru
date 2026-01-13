@@ -11,7 +11,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@pierre/diffs": "^1.0.2",
+    "@pierre/diffs": "^1.0.4",
     "@tabler/icons-react": "^3.35.0",
     "@tailwindcss/vite": "^4.1.13",
     "@tanstack/react-devtools": "^0.2.2",
@@ -48,6 +48,7 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@gitru/icon": "*",
     "@gitru/ui": "*",
     "@tauri-apps/cli": "2.4.0",
     "@types/react": "^19.1.8",

@@ -10,7 +10,7 @@ import {
   AvatarImage,
 } from "@gitru/ui/components/avatar";
 import { Badge } from "@gitru/ui/components/badge";
-import { Button, buttonVariants } from "@gitru/ui/components/button";
+import { Button } from "@gitru/ui/components/button";
 import * as contextMenu from "@gitru/ui/components/context-menu";
 import {
   Dialog,
@@ -338,7 +338,7 @@ function GitPageLayout() {
                                   >
                                     <AccordionTrigger
                                       className={cn(
-                                        "items-center rounded-none px-3 gap-2 py-0 hover:no-underline [&>svg]:mb-1 [&>svg]:-rotate-90 [&[data-panel-open]>svg]:rotate-0 [&>svg]:-order-1",
+                                        "items-center rounded-none px-3 gap-2 py-0 hover:no-underline [&>svg]:-ml-0.5 [&>svg]:mb-1 [&>svg]:-rotate-90 [&[data-panel-open]>svg]:rotate-0 [&>svg]:-order-1",
                                       )}
                                     >
                                       <div className="flex items-center justify-between w-full">
@@ -347,46 +347,38 @@ function GitPageLayout() {
                                         </span>
                                         <div className="flex items-center gap-1 pointer-events-auto">
                                           {cell.name === "Changes" && (
-                                            <>
+                                            <div className="flex items-center">
                                               <DiscardChangesDialog fileName="." />
 
-                                              <div
+                                              <Button
                                                 onClick={async (event) => {
                                                   event.stopPropagation();
                                                   await addFile(".");
                                                 }}
-                                                className={cn(
-                                                  buttonVariants({
-                                                    variant: "ghost",
-                                                    className: "h-8 w-8",
-                                                  }),
-                                                )}
+                                                variant={"ghost"}
+                                                size={"icon-sm"}
                                               >
                                                 <Plus
                                                   size={20}
                                                   strokeWidth={1.25}
                                                 />
-                                              </div>
-                                            </>
+                                              </Button>
+                                            </div>
                                           )}
                                           {cell.name === "Staged Changes" && (
-                                            <div
+                                            <Button
+                                              variant={"ghost"}
+                                              size={"icon-sm"}
                                               onClick={async (event) => {
                                                 event.stopPropagation();
                                                 await unstageFile(".");
                                               }}
-                                              className={cn(
-                                                buttonVariants({
-                                                  variant: "ghost",
-                                                  className: "h-8 w-8",
-                                                }),
-                                              )}
                                             >
                                               <Minus
                                                 size={20}
                                                 strokeWidth={1.25}
                                               />
-                                            </div>
+                                            </Button>
                                           )}
                                           <Badge
                                             variant={"secondary"}
@@ -653,7 +645,7 @@ const EachStatus = function EachStatus({
           ref={setRef}
           data-index={index}
           className={cn(
-            "[--pattern-fg:color-mix(in_srgb,var(--primary)_20%,transparent)] flex relative select-none cursor-pointer hover:bg-muted border border-transparent hover:border hover:border-l hover:border-l-border items-center px-2 py-1",
+            "[--pattern-fg:color-mix(in_srgb,var(--primary)_20%,transparent)] flex relative select-none cursor-pointer hover:bg-muted border border-transparent hover:border hover:border-l hover:border-l-border items-center pl-2 pr-0.5 py-0.5",
             selectedFilePath?.path === file.path &&
               "bg-muted-foreground/10! hover:bg-muted-foreground/15!",
           )}
@@ -686,9 +678,9 @@ const EachStatus = function EachStatus({
             <div className="absolute top-1/2 -translate-y-1/2 -left-1 rounded-md w-2 bg-primary h-6"></div>
           ) : null}
           <div className="flex items-center w-full min-w-0">
-            <div className="shrink-0">{getStatusIcon(file.status)}</div>
-            <div className="flex items-center ml-2 min-w-0 flex-1">
-              <Label className="flex cursor-pointer items-center min-w-0 w-full gap-0">
+            <div className="shrink-0">{getStatusIcon(file.status, 18)}</div>
+            <div className="flex items-center ml-1.5 min-w-0 flex-1">
+              <Label className="flex cursor-pointer items-center min-w-0 text-sm w-full gap-0">
                 {file?.path.split("/").slice(0, -1).join("/") && (
                   <>
                     <span className="text-muted-foreground truncate">
@@ -697,14 +689,14 @@ const EachStatus = function EachStatus({
                     <span className="text-muted-foreground">/</span>
                   </>
                 )}
-                <span className="shrink-0 font-medium text-foreground!">
+                <span className="shrink-0 text-foreground!">
                   {file?.path.split("/").slice(-1)[0]}
                 </span>
               </Label>
             </div>
             {type === "Changes" && onAdd && (
               <div className="flex ml-2 shrink-0">
-                <DiscardChangesDialog fileName={file.path} />
+                {/* <DiscardChangesDialog fileName={file.path} /> */}
                 <Button
                   onClick={async (e) => {
                     e.stopPropagation();
@@ -715,7 +707,7 @@ const EachStatus = function EachStatus({
                       toast.error("Failed to stage file");
                     }
                   }}
-                  className="h-8 w-8"
+                  size={"icon-sm"}
                   variant={"ghost"}
                 >
                   <Plus size={20} strokeWidth={1.25} />
@@ -734,7 +726,7 @@ const EachStatus = function EachStatus({
                       toast.error("Failed to unstage file");
                     }
                   }}
-                  className="h-8 w-8"
+                  size={"icon-sm"}
                   variant={"ghost"}
                 >
                   <Minus size={20} strokeWidth={1.25} />
@@ -837,7 +829,7 @@ const DiscardChangesDialog = memo(function DiscardChangesDialog({
               e.stopPropagation();
               setOpen(true);
             }}
-            className="h-8 w-8"
+            size={"icon-sm"}
             variant={"ghost"}
           />
         }
