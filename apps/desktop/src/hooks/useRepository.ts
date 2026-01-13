@@ -40,7 +40,7 @@ export function useGetStatus(options?: QueryOptions<GetStatusResponse>) {
 export function useGetCurrentBranch(options?: QueryOptions<Branch>) {
   const repo = appState.repository;
   return useQuery({
-    queryKey: repo?.branches.currentQueryKey ?? [
+    queryKey: repo?.branches.getQueryKey("current") ?? [
       "repository",
       "none",
       "branches",
@@ -63,7 +63,7 @@ export function useGetBranches(
 
   return useQuery({
     queryKey: [
-      ...(repo?.branches.listQueryKey ?? [
+      ...(repo?.branches.getQueryKey("list") ?? [
         "repository",
         "none",
         "branches",
@@ -182,6 +182,27 @@ export function useGetRepositoryOrigin(
     ...options,
   });
 }
+
+export function useGetStatusAheadBehind(
+  options?: QueryOptions<{ ahead: number; behind: number }>,
+) {
+  const repo = appState.repository;
+
+  return useQuery({
+    queryKey: repo?.branches.getQueryKey("statusAheadBehind") ?? [
+      "repository",
+      "none",
+      "branches",
+      "statusAheadBehind",
+    ],
+    queryFn: async () => {
+      if (!repo) return null;
+      return await repo.branches.statusAheadBehind();
+    },
+    enabled: !!repo,
+    ...options,
+  });
+}
 /* #endregion // ? Query */
 
 /* #region // ! Mutations */
@@ -196,6 +217,7 @@ export function useCreateCommit() {
     onSuccess: async () => {
       await repo?.status.invalidate();
       await repo?.commit.invalidate();
+      await repo?.branches.invalidate("statusAheadBehind");
     },
     onError: (error: string) => {
       toast.error(error);

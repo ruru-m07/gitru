@@ -17,6 +17,7 @@ import {
   lastCommit,
   listBranches,
   repositoryOrigin,
+  statusAheadBehind,
 } from "@/tauri";
 import { StateDomain } from "../core/StateManager";
 
@@ -134,13 +135,26 @@ class BranchState extends StateDomain {
     return data;
   }
 
-  // For React hooks
-  get listQueryKey() {
-    return [...this.baseKey, "list"];
+  async statusAheadBehind() {
+    await this.queryClient.cancelQueries({
+      queryKey: [...this.baseKey, "statusAheadBehind"],
+    });
+
+    const data = await statusAheadBehind({
+      repoPath: this.repositoryPath,
+    });
+
+    this.queryClient.setQueryData([...this.baseKey, "statusAheadBehind"], data);
+    return data;
   }
 
-  get currentQueryKey() {
-    return [...this.baseKey, "current"];
+  getQueryKey(key: "list" | "current" | "statusAheadBehind") {
+    return [...this.baseKey, key];
+  }
+
+  async invalidate(key?: "list" | "current" | "statusAheadBehind") {
+    const queryKey = key ? [...this.baseKey, key] : [...this.baseKey];
+    await this.queryClient.invalidateQueries({ queryKey });
   }
 
   async invalidateAll() {

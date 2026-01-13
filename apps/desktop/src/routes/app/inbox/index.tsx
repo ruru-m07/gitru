@@ -1,7 +1,13 @@
 import { Button, buttonVariants } from "@gitru/ui/components/button";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { useGitFetch, useGitPull, useGitPush } from "@/hooks";
+import { getStatusIcon } from "@/components/getStatusIcon";
+import {
+  useGetStatusAheadBehind,
+  useGitFetch,
+  useGitPull,
+  useGitPush,
+} from "@/hooks";
 
 export const Route = createFileRoute("/app/inbox/")({
   component: RouteComponent,
@@ -11,6 +17,8 @@ function RouteComponent() {
   const { mutateAsync: fetch } = useGitFetch();
   const { mutateAsync: push } = useGitPush();
   const { mutateAsync: pull } = useGitPull();
+
+  const { data: statusAheadBehind } = useGetStatusAheadBehind();
 
   return (
     <div className="p-4 space-y-4">
@@ -64,6 +72,46 @@ function RouteComponent() {
       >
         pull
       </Button>
+      <br />
+      {statusAheadBehind ? (
+        <div>
+          {statusAheadBehind.ahead} ahead, {statusAheadBehind.behind} behind
+        </div>
+      ) : null}
+      <br />
+      <ul>
+        <li className="flex">
+          {getStatusIcon(["IndexModified", "WorktreeModified"])}
+          {" : "} modifed
+        </li>
+        <li className="flex">
+          {getStatusIcon(["IndexNew", "WorktreeNew"])}
+          {" : "} new
+        </li>
+        <li className="flex">
+          {getStatusIcon(["IndexDeleted", "WorktreeDeleted"])}
+          {" : "} deleted
+        </li>
+        <li className="flex">
+          {getStatusIcon([
+            "IndexRenamed",
+            "WorktreeRenamed",
+            "IndexTypechange",
+            "WorktreeTypechange",
+          ])}
+          {" : "} renamed
+        </li>
+        <li className="flex">
+          {getStatusIcon(["WorktreeUnreadable"])}
+          {" : "} unreadable
+        </li>
+        <li className="flex">
+          {getStatusIcon(["abc" as any])}
+          {" : "} unknown
+        </li>
+      </ul>
+
+      <div className="size-10 bg-primary dark:bg-popover"></div>
     </div>
   );
 }

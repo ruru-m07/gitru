@@ -1,3 +1,4 @@
+import { Git, Inbox, Issue, PullRequest } from "@gitru/icon";
 import {
   Avatar,
   AvatarFallback,
@@ -6,32 +7,15 @@ import {
 import { Button } from "@gitru/ui/components/button";
 import { ScrollArea } from "@gitru/ui/components/scroll-area";
 import { TooltipProvider } from "@gitru/ui/components/tooltip";
-import {
-  BookMarked,
-  CircleDot,
-  FolderGit2,
-  GitPullRequestArrow,
-  Inbox,
-  Plus,
-  Settings,
-  Star,
-} from "lucide-react";
-// import AvatarDropdown from "./avatarDropdown";
+import { BookMarked, Plus, Settings, Star } from "lucide-react";
 import SideBarItems from "./items";
 
 const Sidebar = () => {
   return (
     <div className="w-[--sidebar-width] flex flex-col justify-between items-center -mr-2 ml-0.5">
       <div className="w-full _m-2 _mt-4 flex flex-col items-center">
-        {/* <HoverCard>
-          <HoverCardTrigger>
-            <Logo />
-          </HoverCardTrigger>
-          <CardContent />
-        </HoverCard> */}
         <TooltipProvider>
           <div className="flex flex-col items-center gap-1">
-            {/* <div className="my-1 h-px w-full" /> */}
             <SideBarItems
               items={[
                 {
@@ -40,17 +24,17 @@ const Sidebar = () => {
                   href: "/app/inbox",
                 },
                 {
-                  icon: GitPullRequestArrow,
+                  icon: PullRequest,
                   name: "pull requests",
                   href: "/app/pulls",
                 },
                 {
-                  icon: CircleDot,
+                  icon: Issue,
                   name: "Issues",
                   href: "/app/issues",
                 },
                 {
-                  icon: FolderGit2,
+                  icon: Git,
                   name: "Local Git",
                   href: "/app/git",
                 },

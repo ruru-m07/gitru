@@ -1,0 +1,21 @@
+{
+  "name": "@gitru/icon",
+  "version": "0.1.0",
+  "module": "index.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./index.ts"
+    }
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@gitru/ui": "*",
+    "@types/react": "catalog:"
+  },
+  "dependencies": {
+    "react": "catalog:"
+  }
+}

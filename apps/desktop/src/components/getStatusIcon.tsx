@@ -1,22 +1,29 @@
-import {
-  AlertTriangle,
-  CornerUpRight,
-  EyeOff,
-  SquareDot,
-  SquarePlus,
-  SquareX,
-} from "lucide-react";
+import { Conflict, Deleted, Modifed, New, Renamed, Unknown } from "@gitru/icon";
 import { FileStatusKind } from "@/tauri";
 
-export function getStatusIcon(type: FileStatusKind[]) {
+export function getStatusIcon(type: FileStatusKind[], size: number = 20) {
   const kinds = new Set(type);
 
   if (kinds.has("WorktreeUnreadable")) {
-    return <AlertTriangle className="text-orange-500" size={20} />;
+    return (
+      <Conflict
+        style={{
+          height: `${size}px`,
+          width: `${size}px`,
+        }}
+      />
+    );
   }
 
   if (kinds.has("IndexDeleted") || kinds.has("WorktreeDeleted")) {
-    return <SquareX className="text-red-500" size={20} />;
+    return (
+      <Deleted
+        style={{
+          height: `${size}px`,
+          width: `${size}px`,
+        }}
+      />
+    );
   }
 
   if (
@@ -25,16 +32,44 @@ export function getStatusIcon(type: FileStatusKind[]) {
     kinds.has("IndexTypechange") ||
     kinds.has("WorktreeTypechange")
   ) {
-    return <CornerUpRight className="text-purple-500" size={20} />;
+    return (
+      <Renamed
+        style={{
+          height: `${size}px`,
+          width: `${size}px`,
+        }}
+      />
+    );
   }
 
   if (kinds.has("IndexModified") || kinds.has("WorktreeModified")) {
-    return <SquareDot className="text-yellow-500" size={20} />;
+    return (
+      <Modifed
+        style={{
+          height: `${size}px`,
+          width: `${size}px`,
+        }}
+      />
+    );
   }
 
   if (kinds.has("IndexNew") || kinds.has("WorktreeNew")) {
-    return <SquarePlus className="text-green-500" size={20} />;
+    return (
+      <New
+        style={{
+          height: `${size}px`,
+          width: `${size}px`,
+        }}
+      />
+    );
   }
 
-  return <EyeOff className="text-gray-400" size={20} />;
+  return (
+    <Unknown
+      style={{
+        height: `${size}px`,
+        width: `${size}px`,
+      }}
+    />
+  );
 }
