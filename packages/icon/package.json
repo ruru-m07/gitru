@@ -8,15 +8,14 @@
       "import": "./index.ts"
     }
   },
+  "scripts": {
+    "check-types": "tsc --noEmit"
+  },
   "devDependencies": {
     "@gitru/ui": "*",
-    "@types/bun": "latest",
-    "@types/react": "^19.0.0"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
+    "@types/react": "catalog:"
   },
   "dependencies": {
-    "react": "^19.0.0"
+    "react": "catalog:"
   }
 }

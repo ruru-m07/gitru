@@ -18,10 +18,9 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.11",
     "@types/node": "^22.10.1",
-    "@types/react": "18.3.1",
+    "@types/react": "catalog:",
     "@types/tailwindcss": "^3.1.0",
     "postcss": "^8",
-    "react": "^19.0.0",
     "tailwindcss": "^4.1.11"
   },
   "dependencies": {
@@ -32,7 +31,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "lucide-react": "0.456.0",
-    "react": "^19.0.0",
+    "react": "catalog:",
     "react-aria-components": "^1.6.0",
     "react-day-picker": "^9.5.1",
     "react-resizable-panels": "^3.0.6",

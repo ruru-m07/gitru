@@ -9,6 +9,7 @@ import { cn } from "@gitru/ui/lib/utils";
 import { Link, useLocation } from "@tanstack/react-router";
 import { LucideIcon } from "lucide-react";
 import type React from "react";
+import { JSX } from "react";
 
 type Item = {
   icon: JSX.Element | LucideIcon | any;

@@ -20,6 +20,7 @@ function Combobox<
   ItemValue,
   SelectedValue = ItemValue,
   Multiple extends boolean | undefined = false,
+  // @ts-ignore
 >(props: ComboboxPrimitive.Root.Props<ItemValue, SelectedValue, Multiple>) {
   const chipsRef = React.useRef<HTMLDivElement | null>(null);
   return (
