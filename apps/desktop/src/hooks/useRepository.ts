@@ -1,10 +1,3 @@
-import {
-  type UseQueryOptions,
-  useMutation,
-  useQuery,
-} from "@tanstack/react-query";
-import { toast } from "sonner";
-import { appState } from "@/state";
 import type {
   Branch,
   BranchInfo,
@@ -15,7 +8,14 @@ import type {
   GetDiffResponse,
   GetStatusResponse,
   RepositoryOrigin,
-} from "@/tauri";
+} from "@gitru/commands";
+import {
+  type UseQueryOptions,
+  useMutation,
+  useQuery,
+} from "@tanstack/react-query";
+import { toast } from "sonner";
+import { appState } from "@/state";
 
 type QueryOptions<T> = Omit<
   UseQueryOptions<T | null, Error>,

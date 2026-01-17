@@ -27,7 +27,9 @@
       "react-dom": "^19.0.0",
       "typescript": "^5",
       "@types/react": "^19.0.0",
-      "@types/react-dom": "^19.0.0"
+      "@types/react-dom": "^19.0.0",
+      "@tauri-apps/api": "^2.4.0",
+      "zod": "^4.3.5"
     }
   }
 }

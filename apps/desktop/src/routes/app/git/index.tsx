@@ -6,11 +6,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@gitru/ui/components/popover";
-import { Radio, RadioGroup } from "@gitru/ui/components/radio-group";
 import { Separator } from "@gitru/ui/components/separator";
 import { Switch } from "@gitru/ui/components/switch";
 import { cn } from "@gitru/ui/lib/utils";
-import { LineDiffTypes, MultiFileDiff } from "@pierre/diffs/react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   ChevronDown,
@@ -21,7 +19,7 @@ import {
   Settings,
   TextWrap,
 } from "lucide-react";
-import { useTheme } from "next-themes";
+import { DiffViewer } from "@/components/diff/diff-viewer";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
 import { useDiffViewStore } from "@/components/diff/useDiffViewStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
@@ -121,9 +119,7 @@ const FileLevelStatusBar = () => {
 
 const DiffArea = () => {
   const { selectedFilePath } = useDiffViewStore();
-  const { diffStyle, overflow, lineDiffType } = useDiffViewerSettings();
   const { data: diffData } = useGetDiff(selectedFilePath?.path || null);
-  const { theme } = useTheme();
 
   return (
     <div
@@ -149,7 +145,7 @@ const DiffArea = () => {
           }}
         />
       ) : null} */}
-      {diffData ? (
+      {/* {diffData ? (
         <MultiFileDiff
           newFile={{
             contents: diffData.workdir?.content || "",
@@ -173,6 +169,9 @@ const DiffArea = () => {
             `,
           }}
         />
+      ) : null} */}
+      {diffData ? (
+        <DiffViewer diff={diffData} filePath={selectedFilePath?.path || ""} />
       ) : null}
     </div>
     // {/* </ScrollArea> */}
@@ -243,14 +242,8 @@ const SettingsPopover = () => {
 };
 
 const SettingsPopoverContent = () => {
-  const {
-    setDiffStyle,
-    diffStyle,
-    overflow,
-    setOverflow,
-    lineDiffType,
-    setLineDiffType,
-  } = useDiffViewerSettings();
+  const { setDiffStyle, diffStyle, overflow, setOverflow } =
+    useDiffViewerSettings();
 
   return (
     <PopoverContent className="fit mr-4 px-0 mt-0.5">
@@ -309,33 +302,6 @@ const SettingsPopoverContent = () => {
             }}
             id="wrapping"
           />
-        </div>
-        <div>
-          <Label>Line Diff Type</Label>
-          <RadioGroup
-            defaultValue={lineDiffType}
-            className="gap-2 mt-1 "
-            onValueChange={(v) => {
-              setLineDiffType(v as LineDiffTypes);
-            }}
-          >
-            <Label>
-              <Radio value="word-alt" />
-              Word-Alt
-            </Label>
-            <Label>
-              <Radio value="word" />
-              Word
-            </Label>
-            <Label>
-              <Radio value="char" />
-              Char
-            </Label>
-            <Label>
-              <Radio value="none" />
-              None
-            </Label>
-          </RadioGroup>
         </div>
       </div>
     </PopoverContent>

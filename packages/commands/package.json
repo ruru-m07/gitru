@@ -1,0 +1,15 @@
+{
+  "name": "@gitru/commands",
+  "module": "index.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./index.ts"
+    }
+  },
+  "devDependencies": {
+    "@tauri-apps/api": "catalog:",
+    "zod": "catalog:",
+    "@types/bun": "^1.3.6"
+  }
+}

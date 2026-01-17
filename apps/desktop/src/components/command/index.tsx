@@ -1,5 +1,6 @@
 "use client";
 
+import { BranchInfo } from "@gitru/commands";
 import {
   Avatar,
   AvatarFallback,
@@ -43,7 +44,6 @@ import * as React from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useGetBranches } from "@/hooks";
 import { timeAgoFromUnixSeconds } from "@/lib/time";
-import { BranchInfo } from "@/tauri";
 import { useActions } from "./actions";
 import { goto } from "./goto";
 import { CommandView, Group, Item } from "./type";

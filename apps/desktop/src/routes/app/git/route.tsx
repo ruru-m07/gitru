@@ -1,4 +1,10 @@
 import {
+  addLocalGitRepo,
+  type FileStatus,
+  type FileStatusKind,
+  GetStatusResponse,
+} from "@gitru/commands";
+import {
   Accordion,
   AccordionContent,
   AccordionItem,
@@ -101,12 +107,6 @@ import {
   timeAgoFromUnixSeconds,
 } from "@/lib/time";
 import { useAppStore } from "@/store/useAppStore";
-import {
-  addLocalGitRepo,
-  type FileStatus,
-  type FileStatusKind,
-  GetStatusResponse,
-} from "@/tauri";
 
 export const Route = createFileRoute("/app/git")({
   component: GitPageLayout,

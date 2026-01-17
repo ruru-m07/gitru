@@ -1,4 +1,3 @@
-import { QueryClient } from "@tanstack/react-query";
 import {
   BranchKind,
   CreateCommitParams,
@@ -18,7 +17,8 @@ import {
   listBranches,
   repositoryOrigin,
   statusAheadBehind,
-} from "@/tauri";
+} from "@gitru/commands";
+import { QueryClient } from "@tanstack/react-query";
 import { StateDomain } from "../core/StateManager";
 
 class DiffState extends StateDomain {

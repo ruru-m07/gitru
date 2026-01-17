@@ -10,7 +10,7 @@
       "**",
       "!**/node_modules",
       "!**/dist",
-      "!**/target",
+      "!**/packages/commands",
       "!**/.temp",
       "!**/*.css",
       "!**/drizzle",

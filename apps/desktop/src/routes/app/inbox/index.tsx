@@ -1,5 +1,7 @@
+import { ShikiWorkerClient } from "@gitru/diff/worker";
 import { Button, buttonVariants } from "@gitru/ui/components/button";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import React from "react";
 import { toast } from "sonner";
 import { getStatusIcon } from "@/components/getStatusIcon";
 import {
@@ -19,6 +21,10 @@ function RouteComponent() {
   const { mutateAsync: pull } = useGitPull();
 
   const { data: statusAheadBehind } = useGetStatusAheadBehind();
+
+  const shiki = new ShikiWorkerClient();
+
+  const [html, setHtml] = React.useState<string | null>(null);
 
   return (
     <div className="p-4 space-y-4">
@@ -112,6 +118,21 @@ function RouteComponent() {
       </ul>
 
       <div className="size-10 bg-primary dark:bg-popover"></div>
+
+      <Button
+        onClick={async () => {
+          const html = await shiki.highlight(
+            "const x = 1",
+            "ts",
+            "github-dark",
+          );
+          console.log(html);
+          setHtml(html);
+        }}
+      >
+        highlight
+      </Button>
+      <div dangerouslySetInnerHTML={{ __html: html ?? "" }}></div>
     </div>
   );
 }
