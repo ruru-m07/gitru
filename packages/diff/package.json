@@ -14,6 +14,18 @@
     },
     "./worker": {
       "import": "./worker/index.ts"
+    },
+    "./utils": {
+      "import": "./utils/index.ts"
+    },
+    "./types": {
+      "import": "./types/index.ts"
+    },
+    "./components": {
+      "import": "./components/index.ts"
+    },
+    "./styles": {
+      "import": "./styles/diff-viewer.css"
     }
   },
   "dependencies": {

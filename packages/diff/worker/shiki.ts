@@ -10,10 +10,10 @@ import {
   type HighlighterCore,
 } from "shiki";
 import type {
+  HighlightErrorResponse,
   HighlightRequest,
   HighlightResponse,
-  RenderErrorResponse,
-} from "../type";
+} from "../types";
 
 export const AttachedLanguages: Set<string> = new Set();
 export const AttachedThemes: Set<string> = new Set();
@@ -46,7 +46,7 @@ class ShikiWorker {
   }
 
   async highlight(req: HighlightRequest): Promise<HighlightResponse> {
-    const key = `${this.hash(req.code)}:${req.lang}:${req.theme}`;
+    const key = `${this.hash(req.code)}:${req.language}:${req.theme}`;
 
     const cached = this.fileCache.get(key);
 
@@ -54,13 +54,13 @@ class ShikiWorker {
       return { id: req.id, html: cached };
     }
 
-    if (req.lang != null && req.theme != null) {
-      await this.attachLanguages(req.lang);
+    if (req.language != null && req.theme != null) {
+      await this.attachLanguages(req.language as BundledLanguage);
       await this.attachTheme(req.theme);
     }
 
     const html = this.highlighter.codeToHtml(req.code, {
-      lang: req.lang,
+      lang: req.language,
       theme: req.theme,
       //   themes: {
       //     light: "vesper-light",
@@ -120,8 +120,7 @@ self.onmessage = async (e: MessageEvent<HighlightRequest>) => {
   try {
     const startTime = performance.now();
     if (!worker["ready"]) {
-      const response: RenderErrorResponse = {
-        type: "error",
+      const response: HighlightErrorResponse = {
         id: req.id,
         error: "Worker not ready",
       };
@@ -138,15 +137,14 @@ self.onmessage = async (e: MessageEvent<HighlightRequest>) => {
     postMessage(response);
     const endTime = performance.now();
     console.log(
-      `[Shiki Worker] Highlighted (lang: ${req.lang}, theme: ${req.theme}) in ${
+      `[Shiki Worker] Highlighted (lang: ${req.language}, theme: ${req.theme}) in ${
         endTime - startTime
       } ms`,
     );
   } catch (error) {
     console.error("Worker error:", error);
 
-    const response: RenderErrorResponse = {
-      type: "error",
+    const response: HighlightErrorResponse = {
       id: req.id,
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
