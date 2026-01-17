@@ -24,11 +24,11 @@
     "./components": {
       "import": "./components/index.ts"
     },
-    "./styles": {
-      "import": "./styles/diff-viewer.css"
-    }
+    "./styles": "./styles/diff-viewer.css"
   },
   "dependencies": {
+    "hast": "^1.0.0",
+    "hast-util-to-html": "^9.0.5",
     "lru_map": "^0.4.1",
     "lucide-react": "^0.562.0",
     "react": "catalog:",

@@ -1,3 +1,5 @@
+import { DiffViewer, parsePatch } from "@gitru/diff";
+// import { DiffViewer } from "@/components/diff/diff-viewer";
 import { Button } from "@gitru/ui/components/button";
 import { Group, GroupSeparator } from "@gitru/ui/components/group";
 import { Label } from "@gitru/ui/components/label";
@@ -19,7 +21,7 @@ import {
   Settings,
   TextWrap,
 } from "lucide-react";
-import { DiffViewer } from "@/components/diff/diff-viewer";
+import React from "react";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
 import { useDiffViewStore } from "@/components/diff/useDiffViewStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
@@ -170,8 +172,24 @@ const DiffArea = () => {
           }}
         />
       ) : null} */}
-      {diffData ? (
+      {/* {diffData ? (
         <DiffViewer diff={diffData} filePath={selectedFilePath?.path || ""} />
+      ) : null} */}
+      {diffData && diffData.patch ? (
+        <DiffViewer
+          patch={diffData.patch}
+          options={{
+            style: "unified",
+            showLineNumbers: true,
+            highlightInlineDiff: true,
+            theme: "github-dark",
+            showDiffIndicators: true,
+            wrapLines: false,
+          }}
+          onLineClick={(line, side) => {
+            console.log("Clicked line:", line, "side:", side);
+          }}
+        />
       ) : null}
     </div>
     // {/* </ScrollArea> */}

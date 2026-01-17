@@ -1,4 +1,4 @@
-import { DiffViewer, type DiffViewStyle, parsePatch } from "@gitru/diff";
+import { DiffViewer, type DiffViewStyle } from "@gitru/diff";
 import React from "react";
 import "./diff-viewer.css";
 
@@ -16,30 +16,19 @@ const Progress = () => {
   const [autoSwitch, setAutoSwitch] = React.useState(false);
   const [patchIndex, setPatchIndex] = React.useState(0);
 
-  const [selectedPatch, setSelectedPatch] = React.useState<string>(patch1);
-
-  const parsed = React.useMemo(
-    () => parsePatch(selectedPatch),
-    [selectedPatch],
-  );
-
-  const fileDiff = parsed.files[0];
+  const selectedPatch = patches[patchIndex];
 
   React.useEffect(() => {
     if (!autoSwitch) return;
 
     const id = setInterval(() => {
       setPatchIndex((i) => (i + 1) % patches.length);
-    }, 1); // 30ms = aggressive stress test
+    }, 1); // 1ms = aggressive stress test
 
     return () => clearInterval(id);
   }, [autoSwitch]);
 
-  React.useEffect(() => {
-    setSelectedPatch(patches[patchIndex]);
-  }, [patchIndex]);
-
-  if (!fileDiff) {
+  if (!selectedPatch) {
     return <div>No diff to display</div>;
   }
 
@@ -61,27 +50,21 @@ const Progress = () => {
             <span className="text-sm">Auto switch patches (perf test)</span>
           </label>
 
-          <button
-            onClick={() => {
-              setSelectedPatch(patch1);
-            }}
-          >
-            Change patch 1
-          </button>
-          <button
-            onClick={() => {
-              setSelectedPatch(patch2);
-            }}
-          >
-            Change patch 2
-          </button>
-          <button
-            onClick={() => {
-              setSelectedPatch(patch3);
-            }}
-          >
-            Change patch 3
-          </button>
+          {patches.map((_, idx) => (
+            <button
+              key={idx}
+              onClick={() => {
+                setPatchIndex(idx);
+              }}
+              className={
+                idx === patchIndex
+                  ? "font-bold underline bg-red-200"
+                  : "font-normal underline"
+              }
+            >
+              Patch {idx + 1}
+            </button>
+          ))}
 
           <label className="flex items-center gap-2">
             <span className="text-sm">View Style:</span>
@@ -114,22 +97,10 @@ const Progress = () => {
           </label>
         </div>
 
-        {/* File Info */}
-        <div className="mb-4 p-3 bg-muted rounded-lg">
-          <div className="text-sm font-mono">
-            <span className="text-muted-foreground">File: </span>
-            <span>{fileDiff.newPath}</span>
-            <span className="ml-4 text-muted-foreground">Language: </span>
-            <span>{fileDiff.language}</span>
-            <span className="ml-4 text-muted-foreground">Change: </span>
-            <span className="capitalize">{fileDiff.changeType}</span>
-          </div>
-        </div>
-
-        {/* Diff Viewer */}
+        {/* Diff Viewer - uses patch prop, parses internally */}
         <div className="border rounded-lg overflow-hidden">
           <DiffViewer
-            diff={fileDiff}
+            patch={selectedPatch}
             options={{
               style: viewStyle,
               showLineNumbers,

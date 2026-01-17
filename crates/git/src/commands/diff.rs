@@ -33,7 +33,7 @@ pub async fn get_diff(repo_path: &str, file_path: &str) -> Result<GetDiffRespons
 
     let head_version = read_head_version(&repository, &relative_path)?;
     let workdir_version = read_workdir_version(repo_path, &relative_path)?;
-    // let patch = generate_patch(&repository, &relative_path)?;
+    let patch = generate_patch(&repository, &relative_path)?;
 
     Ok(GetDiffResponse {
         file_path: relative_path
@@ -42,7 +42,7 @@ pub async fn get_diff(repo_path: &str, file_path: &str) -> Result<GetDiffRespons
             .unwrap_or_else(|| file_path.to_string()),
         head: head_version,
         workdir: workdir_version,
-        patch: None,
+        patch,
     })
 }
 
@@ -58,57 +58,57 @@ fn normalize_relative_path(path: &Path) -> PathBuf {
     normalized
 }
 
-// fn generate_patch(repo: &Repository, relative_path: &Path) -> Result<Option<String>, String> {
-//     let head = match repo.head() {
-//         Ok(h) => h,
-//         Err(_) => return Ok(None),
-//     };
+fn generate_patch(repo: &Repository, relative_path: &Path) -> Result<Option<String>, String> {
+    let head = match repo.head() {
+        Ok(h) => h,
+        Err(_) => return Ok(None),
+    };
 
-//     let commit = match head.peel_to_commit() {
-//         Ok(c) => c,
-//         Err(_) => return Ok(None),
-//     };
+    let commit = match head.peel_to_commit() {
+        Ok(c) => c,
+        Err(_) => return Ok(None),
+    };
 
-//     let tree = commit
-//         .tree()
-//         .map_err(|e| format!("Failed to read HEAD tree: {e}"))?;
+    let tree = commit
+        .tree()
+        .map_err(|e| format!("Failed to read HEAD tree: {e}"))?;
 
-//     let mut opts = git2::DiffOptions::new();
-//     opts.pathspec(relative_path);
+    let mut opts = git2::DiffOptions::new();
+    opts.pathspec(relative_path);
 
-//     let diff = repo
-//         .diff_tree_to_workdir_with_index(Some(&tree), Some(&mut opts))
-//         .map_err(|e| format!("Failed to generate diff: {e}"))?;
+    let diff = repo
+        .diff_tree_to_workdir_with_index(Some(&tree), Some(&mut opts))
+        .map_err(|e| format!("Failed to generate diff: {e}"))?;
 
-//     if diff.deltas().len() == 0 {
-//         return Ok(None);
-//     }
+    if diff.deltas().len() == 0 {
+        return Ok(None);
+    }
 
-//     let mut patch = String::new();
-//     diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
-//         let origin = line.origin();
+    let mut patch = String::new();
+    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+        let origin = line.origin();
 
-//         if matches!(origin, '+' | '-' | ' ') {
-//             // For added/removed/context lines we explicitly prefix the content
-//             // with the origin character (as in unified diff format).
-//             // For other origins (e.g. file headers 'F', hunk headers 'H',
-//             // binary markers 'B', etc.) the leading marker is *not* pushed.
-//             // The full header text is already present in `line.content()`,
-//             // and adding the origin character here would introduce extra
-//             // non-standard prefix characters into the serialized patch.
-//             patch.push(origin);
-//         }
+        if matches!(origin, '+' | '-' | ' ') {
+            // For added/removed/context lines we explicitly prefix the content
+            // with the origin character (as in unified diff format).
+            // For other origins (e.g. file headers 'F', hunk headers 'H',
+            // binary markers 'B', etc.) the leading marker is *not* pushed.
+            // The full header text is already present in `line.content()`,
+            // and adding the origin character here would introduce extra
+            // non-standard prefix characters into the serialized patch.
+            patch.push(origin);
+        }
 
-//         if let Ok(text) = std::str::from_utf8(line.content()) {
-//             patch.push_str(text);
-//         }
+        if let Ok(text) = std::str::from_utf8(line.content()) {
+            patch.push_str(text);
+        }
 
-//         true
-//     })
-//     .map_err(|e| format!("Failed to print diff: {e}"))?;
+        true
+    })
+    .map_err(|e| format!("Failed to print diff: {e}"))?;
 
-//     Ok(Some(patch))
-// }
+    Ok(Some(patch))
+}
 
 fn read_head_version(repository: &Repository, path: &Path) -> Result<Option<FileVersion>, String> {
     let head = match repository.head() {
