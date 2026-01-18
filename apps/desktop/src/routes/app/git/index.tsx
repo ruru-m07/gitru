@@ -129,20 +129,21 @@ const DiffArea = () => {
         "max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*7))] w-full relative overflow-y-auto ",
       )}
     >
-      {/* {diffData ? (
-        <DiffViewer diff={diffData} filePath={selectedFilePath?.path || ""} />
-      ) : null} */}
       {diffData && diffData.patch ? (
         <DiffViewer
           patch={diffData.patch}
           options={{
             diffStyle,
             overflow,
+            disableFileHeader: true,
+            theme: {
+              dark: "vesper",
+              light: "vesper-light",
+            },
           }}
         />
       ) : null}
     </div>
-    // {/* </ScrollArea> */}
   );
 };
 
