@@ -1,4 +1,4 @@
-import { DiffViewer, parsePatch } from "@gitru/diff";
+import { DiffViewer } from "@gitru/diff";
 // import { DiffViewer } from "@/components/diff/diff-viewer";
 import { Button } from "@gitru/ui/components/button";
 import { Group, GroupSeparator } from "@gitru/ui/components/group";
@@ -182,12 +182,9 @@ const DiffArea = () => {
             style: "unified",
             showLineNumbers: true,
             highlightInlineDiff: true,
-            theme: "github-dark",
             showDiffIndicators: true,
             wrapLines: false,
-          }}
-          onLineClick={(line, side) => {
-            console.log("Clicked line:", line, "side:", side);
+            dualLineNumbers: true,
           }}
         />
       ) : null}

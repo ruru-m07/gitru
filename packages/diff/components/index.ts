@@ -1,1 +1,7 @@
-export { DiffViewer, type DiffViewerProps } from "./DiffViewer";
+export {
+  DiffViewer,
+  type DiffViewerOptions,
+  type DiffViewerProps,
+  type DiffViewStyle,
+  usePatchFiles,
+} from "./DiffViewer";

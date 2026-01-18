@@ -1,31 +1,35 @@
-// Components
-export { DiffViewer, type DiffViewerProps } from "./components";
-// Constants
-export { CSS_CLASSES, DEFAULT_THEME_CONFIG, PATTERNS } from "./constants";
-// Hooks
-export { useDiffWorker, useDiffWorkerStats } from "./hooks/useDiffWorker";
-// Types
-export type * from "./types";
-// Utils
+// Re-export @pierre/diffs core types and utilities
 export {
-  computeInlineDiff,
-  detectLanguage,
-  escapeHtml,
-  parseDiffFromContents,
-  parsePatch,
-  renderInlineDiffHtml,
-  splitLines,
-} from "./utils";
-// Worker (legacy single-worker client)
-// Worker Pool (new multi-worker architecture)
+  type AnnotationSide,
+  type DiffLineAnnotation,
+  diffAcceptRejectHunk,
+  // Types
+  type FileDiffMetadata,
+  type GetHoveredLineResult,
+  getSingularPatch,
+  type ParsedPatch,
+  // Parsing
+  parsePatchFiles,
+  type SelectedLineRange,
+} from "@pierre/diffs";
+
+// Re-export @pierre/diffs React components for advanced usage
 export {
-  DiffWorkerPool,
-  getDiffWorkerPool,
-  // getHighlightClient,
-  // HighlightClient,
-  // type HighlightClientOptions,
-  // highlight,
-  type PoolConfig,
-  type PoolStats,
-  terminateDiffWorkerPool,
-} from "./worker";
+  type DiffBasePropsReact,
+  FileDiff,
+  type FileDiffProps,
+  MultiFileDiff,
+  type MultiFileDiffProps,
+  PatchDiff,
+  type PatchDiffProps,
+  WorkerPoolContextProvider,
+} from "@pierre/diffs/react";
+
+// Gitru components (customized wrappers)
+export {
+  DiffViewer,
+  type DiffViewerOptions,
+  type DiffViewerProps,
+  type DiffViewStyle,
+  usePatchFiles,
+} from "./components";

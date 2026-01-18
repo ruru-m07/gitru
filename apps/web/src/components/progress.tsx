@@ -98,19 +98,16 @@ const Progress = () => {
         </div>
 
         {/* Diff Viewer - uses patch prop, parses internally */}
-        <div className="border rounded-lg overflow-hidden">
+        <div>
           <DiffViewer
             patch={selectedPatch}
             options={{
               style: viewStyle,
               showLineNumbers,
               highlightInlineDiff: highlightInline,
-              theme: "vesper",
               showDiffIndicators: true,
               wrapLines: false,
-            }}
-            onLineClick={(line, side) => {
-              console.log("Clicked line:", line, "side:", side);
+              dualLineNumbers: true,
             }}
           />
         </div>
