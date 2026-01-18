@@ -26,10 +26,4 @@ export {
 } from "@pierre/diffs/react";
 
 // Gitru components (customized wrappers)
-export {
-  DiffViewer,
-  type DiffViewerOptions,
-  type DiffViewerProps,
-  type DiffViewStyle,
-  usePatchFiles,
-} from "./components";
+export { DiffViewer } from "./components";

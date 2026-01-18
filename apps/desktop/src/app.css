@@ -2,7 +2,6 @@
 @import "tw-animate-css";
 
 @import "@gitru/ui/globals.css";
-@import "@gitru/diff/styles";
 
 :root {
   --font-sans: Geist;

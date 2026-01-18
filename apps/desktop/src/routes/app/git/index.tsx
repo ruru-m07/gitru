@@ -21,7 +21,6 @@ import {
   Settings,
   TextWrap,
 } from "lucide-react";
-import React from "react";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
 import { useDiffViewStore } from "@/components/diff/useDiffViewStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
@@ -122,6 +121,7 @@ const FileLevelStatusBar = () => {
 const DiffArea = () => {
   const { selectedFilePath } = useDiffViewStore();
   const { data: diffData } = useGetDiff(selectedFilePath?.path || null);
+  const { diffStyle, overflow } = useDiffViewerSettings();
 
   return (
     <div
@@ -129,49 +129,6 @@ const DiffArea = () => {
         "max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*7))] w-full relative overflow-y-auto ",
       )}
     >
-      {/* {diffData?.patch ? (
-        <PatchDiff
-          patch={diffData.patch}
-          options={{
-            disableFileHeader: true,
-            theme: { dark: "vesper", light: "vesper-light" },
-            themeType: theme?.startsWith("dark-") ? "dark" : "light",
-            diffStyle,
-            overflow,
-            lineDiffType,
-            unsafeCSS: `
-              pre {
-                --diffs-light-bg: transparent !important;
-              }
-            `,
-          }}
-        />
-      ) : null} */}
-      {/* {diffData ? (
-        <MultiFileDiff
-          newFile={{
-            contents: diffData.workdir?.content || "",
-            name: diffData.file_path,
-          }}
-          oldFile={{
-            contents: diffData.head?.content || "",
-            name: diffData.file_path,
-          }}
-          options={{
-            disableFileHeader: true,
-            theme: { dark: "vesper", light: "vesper-light" },
-            themeType: theme?.startsWith("dark-") ? "dark" : "light",
-            diffStyle,
-            overflow,
-            lineDiffType,
-            unsafeCSS: `
-              pre {
-                // --diffs-light-bg: transparent !important;
-              }
-            `,
-          }}
-        />
-      ) : null} */}
       {/* {diffData ? (
         <DiffViewer diff={diffData} filePath={selectedFilePath?.path || ""} />
       ) : null} */}
@@ -179,12 +136,8 @@ const DiffArea = () => {
         <DiffViewer
           patch={diffData.patch}
           options={{
-            style: "unified",
-            showLineNumbers: true,
-            highlightInlineDiff: true,
-            showDiffIndicators: true,
-            wrapLines: false,
-            dualLineNumbers: true,
+            diffStyle,
+            overflow,
           }}
         />
       ) : null}

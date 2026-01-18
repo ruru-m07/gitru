@@ -11,7 +11,9 @@
     ".": {
       "import": "./index.ts"
     },
-    "./styles": "./styles/diff-viewer.css"
+    "./loader": {
+      "import": "./loader.ts"
+    }
   },
   "dependencies": {
     "@pierre/diffs": "^1.0.6",
