@@ -9,10 +9,10 @@ import { colorKeyList } from "./lib/colors.ts";
 import { routeTree } from "./routeTree.gen";
 import { useLastPageStore } from "./store/useLastPageStore.ts";
 import "./app.css";
-import { registerCustomTheme } from "@pierre/diffs";
+
+import { themeLoader } from "@gitru/diff/loader";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { appState } from "./state";
-import { vesperLight } from "./themes/vesper-light.ts";
 
 const router = createRouter({
   routeTree,
@@ -43,7 +43,7 @@ async function redirectToLastPage() {
 }
 
 await redirectToLastPage();
-registerCustomTheme("vesper-light", async () => vesperLight as any);
+themeLoader();
 
 const rootElement = document.getElementById("root");
 if (rootElement && !rootElement.innerHTML) {
@@ -52,7 +52,6 @@ if (rootElement && !rootElement.innerHTML) {
   root.render(
     <StrictMode>
       <QueryClientProvider client={appState.queryClient}>
-        {/* <WorkerPoolProvider> */}
         <NextThemesProvider
           disableTransitionOnChange
           defaultTheme="light"
@@ -62,7 +61,6 @@ if (rootElement && !rootElement.innerHTML) {
           <RouterProvider router={router} />
           <Toaster />
         </NextThemesProvider>
-        {/* </WorkerPoolProvider> */}
       </QueryClientProvider>
     </StrictMode>,
   );

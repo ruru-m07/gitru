@@ -1,3 +1,4 @@
+import { CommitInfo } from "@gitru/commands";
 import {
   Avatar,
   AvatarFallback,
@@ -33,7 +34,6 @@ import {
   useGetStatusAheadBehind,
 } from "@/hooks";
 import { timeAgoFromUnixSeconds } from "@/lib/time";
-import { CommitInfo } from "@/tauri";
 import { GithubIcon } from "./svgs/githubIcon";
 
 const StatusBar = () => {

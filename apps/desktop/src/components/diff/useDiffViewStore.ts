@@ -1,6 +1,6 @@
+import type { FileStatusKind } from "@gitru/commands";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { FileStatusKind } from "@/tauri";
 
 interface DiffViewState {
   selectedFilePath?: {

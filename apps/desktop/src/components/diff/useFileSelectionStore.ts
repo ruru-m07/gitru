@@ -1,5 +1,5 @@
+import type { FileStatus } from "@gitru/commands";
 import { create } from "zustand";
-import type { FileStatus } from "@/tauri";
 
 interface FileSelectionState {
   // Multi-selected files (paths)

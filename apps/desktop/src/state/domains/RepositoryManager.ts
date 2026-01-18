@@ -1,5 +1,5 @@
+import type { RepoSitoryStore } from "@gitru/commands";
 import { useAppStore } from "@/store/useAppStore";
-import type { RepoSitoryStore } from "@/tauri/types";
 import { queryClient } from "../core/StateManager";
 import { RepositoryState } from "./RepositoryState";
 

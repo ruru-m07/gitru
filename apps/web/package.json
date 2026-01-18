@@ -33,6 +33,7 @@
     "typescript": "catalog:",
     "vite": "^7.2.7",
     "web-vitals": "^5.1.0",
-    "@gitru/ui": "*"
+    "@gitru/ui": "*",
+    "@gitru/diff": "*"
   }
 }

@@ -1,3 +1,5 @@
+import { DiffViewer } from "@gitru/diff";
+// import { DiffViewer } from "@/components/diff/diff-viewer";
 import { Button } from "@gitru/ui/components/button";
 import { Group, GroupSeparator } from "@gitru/ui/components/group";
 import { Label } from "@gitru/ui/components/label";
@@ -6,11 +8,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@gitru/ui/components/popover";
-import { Radio, RadioGroup } from "@gitru/ui/components/radio-group";
 import { Separator } from "@gitru/ui/components/separator";
 import { Switch } from "@gitru/ui/components/switch";
 import { cn } from "@gitru/ui/lib/utils";
-import { LineDiffTypes, MultiFileDiff } from "@pierre/diffs/react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   ChevronDown,
@@ -21,7 +21,6 @@ import {
   Settings,
   TextWrap,
 } from "lucide-react";
-import { useTheme } from "next-themes";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
 import { useDiffViewStore } from "@/components/diff/useDiffViewStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
@@ -121,9 +120,8 @@ const FileLevelStatusBar = () => {
 
 const DiffArea = () => {
   const { selectedFilePath } = useDiffViewStore();
-  const { diffStyle, overflow, lineDiffType } = useDiffViewerSettings();
   const { data: diffData } = useGetDiff(selectedFilePath?.path || null);
-  const { theme } = useTheme();
+  const { diffStyle, overflow } = useDiffViewerSettings();
 
   return (
     <div
@@ -131,46 +129,15 @@ const DiffArea = () => {
         "max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*7))] w-full relative overflow-y-auto ",
       )}
     >
-      {/* {diffData?.patch ? (
-        <PatchDiff
+      {/* {diffData ? (
+        <DiffViewer diff={diffData} filePath={selectedFilePath?.path || ""} />
+      ) : null} */}
+      {diffData && diffData.patch ? (
+        <DiffViewer
           patch={diffData.patch}
           options={{
-            disableFileHeader: true,
-            theme: { dark: "vesper", light: "vesper-light" },
-            themeType: theme?.startsWith("dark-") ? "dark" : "light",
             diffStyle,
             overflow,
-            lineDiffType,
-            unsafeCSS: `
-              pre {
-                --diffs-light-bg: transparent !important;
-              }
-            `,
-          }}
-        />
-      ) : null} */}
-      {diffData ? (
-        <MultiFileDiff
-          newFile={{
-            contents: diffData.workdir?.content || "",
-            name: diffData.file_path,
-          }}
-          oldFile={{
-            contents: diffData.head?.content || "",
-            name: diffData.file_path,
-          }}
-          options={{
-            disableFileHeader: true,
-            theme: { dark: "vesper", light: "vesper-light" },
-            themeType: theme?.startsWith("dark-") ? "dark" : "light",
-            diffStyle,
-            overflow,
-            lineDiffType,
-            unsafeCSS: `
-              pre {
-                // --diffs-light-bg: transparent !important;
-              }
-            `,
           }}
         />
       ) : null}
@@ -243,14 +210,8 @@ const SettingsPopover = () => {
 };
 
 const SettingsPopoverContent = () => {
-  const {
-    setDiffStyle,
-    diffStyle,
-    overflow,
-    setOverflow,
-    lineDiffType,
-    setLineDiffType,
-  } = useDiffViewerSettings();
+  const { setDiffStyle, diffStyle, overflow, setOverflow } =
+    useDiffViewerSettings();
 
   return (
     <PopoverContent className="fit mr-4 px-0 mt-0.5">
@@ -309,33 +270,6 @@ const SettingsPopoverContent = () => {
             }}
             id="wrapping"
           />
-        </div>
-        <div>
-          <Label>Line Diff Type</Label>
-          <RadioGroup
-            defaultValue={lineDiffType}
-            className="gap-2 mt-1 "
-            onValueChange={(v) => {
-              setLineDiffType(v as LineDiffTypes);
-            }}
-          >
-            <Label>
-              <Radio value="word-alt" />
-              Word-Alt
-            </Label>
-            <Label>
-              <Radio value="word" />
-              Word
-            </Label>
-            <Label>
-              <Radio value="char" />
-              Char
-            </Label>
-            <Label>
-              <Radio value="none" />
-              None
-            </Label>
-          </RadioGroup>
         </div>
       </div>
     </PopoverContent>

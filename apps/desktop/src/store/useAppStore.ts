@@ -1,10 +1,10 @@
+import type { RepoSitoryStore } from "@gitru/commands";
 import { create } from "zustand";
 import {
   createJSONStorage,
   persist,
   subscribeWithSelector,
 } from "zustand/middleware";
-import type { RepoSitoryStore } from "@/tauri/types";
 import { createTauriStorage } from "./tauriStoreAdapter";
 
 type AppState = {

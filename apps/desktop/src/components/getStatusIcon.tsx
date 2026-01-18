@@ -1,5 +1,5 @@
+import { FileStatusKind } from "@gitru/commands";
 import { Conflict, Deleted, Modifed, New, Renamed, Unknown } from "@gitru/icon";
-import { FileStatusKind } from "@/tauri";
 
 export function getStatusIcon(type: FileStatusKind[], size: number = 20) {
   const kinds = new Set(type);
