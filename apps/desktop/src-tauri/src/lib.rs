@@ -1,7 +1,6 @@
 use git;
 use ipc;
-use tauri_plugin_updater;
-use tauri_plugin_window_state;
+use log::LevelFilter;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -12,6 +11,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level_for("tao", LevelFilter::Off)
+                .build(),
+        )
         .invoke_handler(tauri::generate_handler![
             ipc::commands::add_local_git_repo,
             git::commands::git::git_add,

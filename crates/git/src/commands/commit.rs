@@ -15,6 +15,7 @@ pub struct CommitMessage {
 
 /* #region // ! commands  */
 #[tauri::command]
+#[logger::logger]
 pub async fn last_commit(repo_path: &str) -> Result<CommitInfo, String> {
     let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
 
@@ -31,6 +32,7 @@ pub async fn last_commit(repo_path: &str) -> Result<CommitInfo, String> {
 }
 
 #[tauri::command]
+#[logger::logger]
 pub async fn commit_by_id(repo_path: &str, hash: &str) -> Result<FullCommitInfo, String> {
     let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
 
@@ -78,11 +80,13 @@ pub async fn commit_by_id(repo_path: &str, hash: &str) -> Result<FullCommitInfo,
 }
 
 #[tauri::command]
+#[logger::logger]
 pub async fn create_commit(repo_path: &str, commit_meta: CommitMessage) -> Result<String, String> {
     commit_internal(repo_path, &commit_meta, false)
 }
 
 #[tauri::command]
+#[logger::logger]
 pub async fn create_empty_commit(
     repo_path: &str,
     commit_meta: CommitMessage,

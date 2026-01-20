@@ -1,4 +1,4 @@
-use std::{process::Command, time};
+use std::process::Command;
 
 use crate::{
     types::{FileStatus, FileStatusKind, GetStatusResponse, GitResult},
@@ -15,15 +15,15 @@ pub struct CommitResult {
 /* #region // ! command */
 // ? git status
 #[tauri::command]
+#[logger::logger]
 pub async fn get_status(repo_path: &str) -> Result<GetStatusResponse, String> {
-    let start = time::Instant::now();
     let files = collect_status(repo_path)?;
-    println!("get_status {:?}", start.elapsed());
     Ok(GetStatusResponse { files })
 }
 
 // ? git add <file>
 #[tauri::command]
+#[logger::logger]
 pub async fn git_add(repo_path: &str, file: &str) -> Result<GitResult, String> {
     let repo = match open_repository(repo_path) {
         Ok(r) => r,
@@ -89,6 +89,7 @@ pub async fn git_add(repo_path: &str, file: &str) -> Result<GitResult, String> {
 
 // ? git restore --staged <file>
 #[tauri::command]
+#[logger::logger]
 pub async fn git_remove(repo_path: &str, file: &str) -> Result<GitResult, String> {
     let repo = match open_repository(repo_path) {
         Ok(r) => r,
@@ -195,6 +196,7 @@ pub async fn git_remove(repo_path: &str, file: &str) -> Result<GitResult, String
 
 // ? git restore <file>
 #[tauri::command]
+#[logger::logger]
 pub async fn git_discard(repo_path: &str, file: &str) -> Result<GitResult, String> {
     let repo = match open_repository(repo_path) {
         Ok(r) => r,
@@ -273,6 +275,7 @@ pub async fn git_discard(repo_path: &str, file: &str) -> Result<GitResult, Strin
 
 // ? git fetch ...
 #[tauri::command]
+#[logger::logger]
 pub async fn git_fetch(repo_path: &str) -> Result<GitResult, String> {
     let repo = match open_repository(repo_path) {
         Ok(r) => r,
@@ -354,6 +357,7 @@ pub async fn git_fetch(repo_path: &str) -> Result<GitResult, String> {
 
 // ? git push ...
 #[tauri::command]
+#[logger::logger]
 pub async fn git_push(repo_path: &str) -> Result<GitResult, String> {
     let repo = match open_repository(repo_path) {
         Ok(r) => r,
@@ -408,9 +412,9 @@ pub async fn git_push(repo_path: &str) -> Result<GitResult, String> {
 
     // ? auth callbacks
     let mut callbacks = RemoteCallbacks::new();
-    callbacks.credentials(|url, username_from_url, allowed| {
+    callbacks.credentials(|_url, username_from_url, allowed| {
         // TODO(ruru): will support more auth option, rn it's via ssh only
-        println!("pushing to: {}", url);
+        // println!("pushing to: {}", url);
 
         // ! ssh
         if allowed.is_ssh_key() {
@@ -471,6 +475,7 @@ pub async fn git_push(repo_path: &str) -> Result<GitResult, String> {
 
 // ? git pull ...
 #[tauri::command]
+#[logger::logger]
 pub async fn git_pull(repo_path: &str) -> Result<GitResult, String> {
     let repo = match open_repository(repo_path) {
         Ok(r) => r,

@@ -1,5 +1,5 @@
 use serde::Serialize;
-use std::{process::Command, time};
+use std::process::Command;
 
 #[derive(Serialize)]
 pub struct FileDiff {
@@ -17,10 +17,9 @@ pub struct FileDiff {
 // ? performace blockers. let's have this row implementation
 // ? for now. BRB
 #[tauri::command]
+#[logger::logger]
 pub async fn get_patch_by_file_path(repo_path: &str, file_path: &str) -> Result<FileDiff, String> {
-    let start = time::Instant::now();
     let patch = git_diff_any(repo_path, file_path).map_err(|e| e.to_string())?;
-    println!("{:?}", start.elapsed());
 
     return Ok(FileDiff { patch });
 }

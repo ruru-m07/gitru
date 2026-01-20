@@ -7,3 +7,5 @@ edition = "2024"
 serde = "1.0.225"
 tauri = { version = "2.4.0", features = [] }
 uuid = { version = "1", features = ["v4"] }
+logger = { path = "../logger" }
+log = "0.4"
