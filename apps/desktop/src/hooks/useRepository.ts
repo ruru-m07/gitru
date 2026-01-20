@@ -4,8 +4,8 @@ import type {
   BranchKind,
   CommitInfo,
   CreateCommitParams,
+  FileDiff,
   FullCommitInfo,
-  GetDiffResponse,
   GetStatusResponse,
   RepositoryOrigin,
 } from "@gitru/commands";
@@ -82,7 +82,7 @@ export function useGetBranches(
 
 export function useGetDiff(
   filePath: string | null,
-  options?: QueryOptions<GetDiffResponse>,
+  options?: QueryOptions<FileDiff>,
 ) {
   const repo = appState.repository;
 
@@ -95,11 +95,27 @@ export function useGetDiff(
           filePath,
         ])
       : ["repository", "none", "diff"],
+    // queryFn: async () => {
+    //   if (!repo || !filePath) return null;
+    //   return await repo.diff.get(filePath);
+    // },
     queryFn: async () => {
       if (!repo || !filePath) return null;
-      return await repo.diff.get(filePath);
+
+      const start = performance.now();
+      const result = await repo.diff.get(filePath);
+      const end = performance.now();
+
+      console.log(
+        `[useGetDiff] repo.diff.get took ${(end - start).toFixed(2)} ms`,
+      );
+
+      return result;
     },
+
+    staleTime: 3000,
     enabled: !!repo && !!filePath,
+    placeholderData: (prev) => prev,
     ...options,
   });
 }

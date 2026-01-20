@@ -1,10 +1,10 @@
+use std::{process::Command, time};
+
 use crate::{
     types::{FileStatus, FileStatusKind, GetStatusResponse, GitResult},
     utils::open_repository,
 };
-use git2::{
-    BranchType, Cred, FetchOptions, FetchPrune, PushOptions, RemoteCallbacks, Status, StatusOptions,
-};
+use git2::{BranchType, Cred, FetchOptions, FetchPrune, PushOptions, RemoteCallbacks};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -16,8 +16,9 @@ pub struct CommitResult {
 // ? git status
 #[tauri::command]
 pub async fn get_status(repo_path: &str) -> Result<GetStatusResponse, String> {
-    let mut opts = default_status_options();
-    let files = collect_statuses(repo_path, &mut opts)?;
+    let start = time::Instant::now();
+    let files = collect_status(repo_path)?;
+    println!("get_status {:?}", start.elapsed());
     Ok(GetStatusResponse { files })
 }
 
@@ -679,109 +680,122 @@ pub async fn git_pull(repo_path: &str) -> Result<GitResult, String> {
 /* #endregion // ! command */
 
 /* #region // ? helpers */
-fn collect_statuses(repo_path: &str, opts: &mut StatusOptions) -> Result<Vec<FileStatus>, String> {
-    let repo = open_repository(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
+fn collect_status(repo_path: &str) -> Result<Vec<FileStatus>, String> {
+    let out = Command::new("git")
+        .current_dir(repo_path)
+        .args(["status", "--porcelain=v2", "--untracked-files=all", "-z"])
+        .output()
+        .map_err(|e| e.to_string())?;
 
-    let statuses = repo
-        .statuses(Some(opts))
-        .map_err(|e| format!("Failed to get statuses: {}", e))?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).to_string());
+    }
 
-    let result = statuses
-        .iter()
-        .filter_map(|entry| {
-            let s = entry.status();
-            let status = human_readable_status(s);
+    parse_porcelain_v2(&out.stdout)
+}
 
-            if status.len() == 0 {
-                return None;
+fn parse_porcelain_v2(buf: &[u8]) -> Result<Vec<FileStatus>, String> {
+    let mut result = Vec::new();
+
+    for entry in buf.split(|b| *b == 0) {
+        if entry.is_empty() {
+            continue;
+        }
+
+        let line = std::str::from_utf8(entry).map_err(|e| e.to_string())?;
+        let mut chars = line.chars();
+
+        match chars.next() {
+            Some('1') => {
+                // 1 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <path>
+                let mut parts = line.split_whitespace();
+                parts.next(); // "1"
+
+                let xy = parts.next().ok_or("missing XY")?;
+                let path = parts.last().ok_or("missing path")?.to_string();
+
+                let mut status = Vec::new();
+                let x = xy.as_bytes()[0];
+                let y = xy.as_bytes()[1];
+
+                push_xy_status(&mut status, x, y);
+
+                result.push(FileStatus {
+                    path,
+                    new_path: None,
+                    status,
+                });
             }
 
-            // For renamed files, get both old and new paths
-            let (path, new_path) = if s.is_index_renamed() {
-                // Index rename: HEAD -> Index
-                if let Some(diff) = entry.head_to_index() {
-                    let old_path = diff.old_file().path().map(|p| p.to_string_lossy().into());
-                    let new_path = diff.new_file().path().map(|p| p.to_string_lossy().into());
-                    (old_path?, new_path)
-                } else {
-                    (entry.path()?.into(), None)
-                }
-            } else if s.is_wt_renamed() {
-                // Working tree rename: Index -> Workdir
-                if let Some(diff) = entry.index_to_workdir() {
-                    let old_path = diff.old_file().path().map(|p| p.to_string_lossy().into());
-                    let new_path = diff.new_file().path().map(|p| p.to_string_lossy().into());
-                    (old_path?, new_path)
-                } else {
-                    (entry.path()?.into(), None)
-                }
-            } else {
-                (entry.path()?.into(), None)
-            };
+            Some('2') => {
+                // 2 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <score> <old> <new>
+                let mut parts = line.split_whitespace();
+                parts.next(); // "2"
 
-            Some(FileStatus {
-                path,
-                new_path,
-                status,
-            })
-        })
-        .collect();
+                let xy = parts.next().ok_or("missing XY")?;
+                let x = xy.as_bytes()[0];
+                let y = xy.as_bytes()[1];
+
+                // skip to <old>
+                let old_path = parts.nth(7).ok_or("missing old path")?.to_string();
+                let new_path = parts.next().ok_or("missing new path")?.to_string();
+
+                let mut status = Vec::new();
+                push_xy_status(&mut status, x, y);
+
+                result.push(FileStatus {
+                    path: old_path,
+                    new_path: Some(new_path),
+                    status,
+                });
+            }
+
+            Some('?') => {
+                // ? <path>  (untracked)
+                let path = line[2..].to_string();
+                result.push(FileStatus {
+                    path,
+                    new_path: None,
+                    status: vec![FileStatusKind::WorktreeNew],
+                });
+            }
+
+            Some('!') => {
+                // ! <path> (ignored) — usually safe to skip, but included if needed
+                let path = line[2..].to_string();
+                result.push(FileStatus {
+                    path,
+                    new_path: None,
+                    status: Vec::new(),
+                });
+            }
+
+            _ => {}
+        }
+    }
 
     Ok(result)
 }
 
-fn human_readable_status(status: Status) -> Vec<FileStatusKind> {
-    let mut parts = Vec::new();
-    if status.contains(Status::INDEX_NEW) {
-        parts.push(FileStatusKind::IndexNew);
+fn push_xy_status(status: &mut Vec<FileStatusKind>, x: u8, y: u8) {
+    match x {
+        b'A' => status.push(FileStatusKind::IndexNew),
+        b'M' => status.push(FileStatusKind::IndexModified),
+        b'D' => status.push(FileStatusKind::IndexDeleted),
+        b'R' => status.push(FileStatusKind::IndexRenamed),
+        b'T' => status.push(FileStatusKind::IndexTypechange),
+        _ => {}
     }
-    if status.contains(Status::INDEX_MODIFIED) {
-        parts.push(FileStatusKind::IndexModified);
-    }
-    if status.contains(Status::INDEX_DELETED) {
-        parts.push(FileStatusKind::IndexDeleted);
-    }
-    if status.contains(Status::INDEX_RENAMED) {
-        parts.push(FileStatusKind::IndexRenamed);
-    }
-    if status.contains(Status::INDEX_TYPECHANGE) {
-        parts.push(FileStatusKind::IndexTypechange);
-    }
-    if status.contains(Status::WT_NEW) {
-        parts.push(FileStatusKind::WorktreeNew);
-    }
-    if status.contains(Status::WT_MODIFIED) {
-        parts.push(FileStatusKind::WorktreeModified);
-    }
-    if status.contains(Status::WT_DELETED) {
-        parts.push(FileStatusKind::WorktreeDeleted);
-    }
-    if status.contains(Status::WT_RENAMED) {
-        parts.push(FileStatusKind::WorktreeRenamed);
-    }
-    if status.contains(Status::WT_TYPECHANGE) {
-        parts.push(FileStatusKind::WorktreeTypechange);
-    }
-    if status.contains(Status::WT_UNREADABLE) {
-        parts.push(FileStatusKind::WorktreeUnreadable);
-    }
-    if parts.is_empty() {
-        // ! nothing
-    }
-    parts
-}
 
-fn default_status_options() -> StatusOptions {
-    let mut opts = StatusOptions::new();
-    opts.include_ignored(true)
-        .include_unmodified(true)
-        .include_unreadable(true)
-        .include_unreadable_as_untracked(true)
-        .include_untracked(true)
-        .renames_index_to_workdir(true)
-        .renames_head_to_index(true)
-        .recurse_untracked_dirs(true);
-    opts
+    match y {
+        b'A' => status.push(FileStatusKind::WorktreeNew),
+        b'M' => status.push(FileStatusKind::WorktreeModified),
+        b'D' => status.push(FileStatusKind::WorktreeDeleted),
+        b'R' => status.push(FileStatusKind::WorktreeRenamed),
+        b'T' => status.push(FileStatusKind::WorktreeTypechange),
+        b'X' => status.push(FileStatusKind::WorktreeUnreadable),
+        _ => {}
+    }
 }
 
 /* #endregion // ? helpers */

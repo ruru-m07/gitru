@@ -129,9 +129,9 @@ const DiffArea = () => {
         "max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*7))] w-full relative overflow-y-auto ",
       )}
     >
-      {diffData && diffData.patch ? (
+      {diffData?.patch && (
         <DiffViewer
-          patch={diffData.patch}
+          patch={diffData?.patch}
           options={{
             diffStyle,
             overflow,
@@ -142,7 +142,7 @@ const DiffArea = () => {
             },
           }}
         />
-      ) : null}
+      )}
     </div>
   );
 };
