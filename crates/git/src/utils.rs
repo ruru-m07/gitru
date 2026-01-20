@@ -4,14 +4,29 @@ use crate::{
 };
 use git2::{Commit, Repository};
 
+use std::{collections::HashMap, path::PathBuf};
+
+pub struct RepoManager {
+    repos: HashMap<PathBuf, Repository>,
+}
+
 pub fn open_repository(path: &str) -> Result<Repository, GitError> {
     match Repository::open(path) {
-        Ok(repo) => Ok(repo),
-        Err(e) if e.code() == git2::ErrorCode::NotFound => Err(GitError::InvalidPath(format!(
-            "Location does not exist: {}",
-            path
-        ))),
-        Err(e) => Err(GitError::RepositoryOpen(e)),
+        Ok(repo) => {
+            log::info!("Opening Repository {}", path);
+            Ok(repo)
+        }
+        Err(e) if e.code() == git2::ErrorCode::NotFound => {
+            log::error!("Repository Not Found! {} - {}", path, e);
+            Err(GitError::InvalidPath(format!(
+                "Location does not exist: {}",
+                path
+            )))
+        }
+        Err(e) => {
+            log::error!("Failed to Open Repository: {} - {}", path, e);
+            Err(GitError::RepositoryOpen(e))
+        }
     }
 }
 
