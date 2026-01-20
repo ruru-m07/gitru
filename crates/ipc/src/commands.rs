@@ -33,6 +33,7 @@ fn run_git_command(args: &[&str], repo_path: &Path) -> Option<String> {
 }
 
 #[tauri::command]
+#[logger::logger]
 pub fn add_local_git_repo(repo_path: String) -> Result<GitRepoResponse, String> {
     let path = Path::new(&repo_path);
 

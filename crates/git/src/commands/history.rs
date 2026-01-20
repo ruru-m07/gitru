@@ -4,6 +4,7 @@ use crate::{
 };
 
 #[tauri::command]
+#[logger::logger]
 pub async fn history(
     repo_path: &str,
     skip: usize,

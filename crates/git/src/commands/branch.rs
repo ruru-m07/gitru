@@ -55,6 +55,7 @@ impl From<BranchKind> for git2::BranchType {
 }
 
 #[tauri::command]
+#[logger::logger]
 pub async fn current_branch(repo_path: &str) -> Result<Branch, String> {
     let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
     let head = repo
@@ -76,6 +77,7 @@ pub async fn current_branch(repo_path: &str) -> Result<Branch, String> {
 }
 
 #[tauri::command]
+#[logger::logger]
 pub async fn list_branches(repo_path: &str, kind: BranchKind) -> Result<Vec<BranchInfo>, String> {
     let repo: git2::Repository = open_repository(repo_path).map_err(|e| e.to_string())?;
 
@@ -98,6 +100,7 @@ pub async fn list_branches(repo_path: &str, kind: BranchKind) -> Result<Vec<Bran
 }
 
 #[tauri::command]
+#[logger::logger]
 pub async fn status_ahead_behind(repo_path: &str) -> Result<AheadBehindStatus, String> {
     let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
 
