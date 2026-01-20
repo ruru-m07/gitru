@@ -4,12 +4,6 @@ use crate::{
 };
 use git2::{Commit, Repository};
 
-use std::{collections::HashMap, path::PathBuf};
-
-pub struct RepoManager {
-    repos: HashMap<PathBuf, Repository>,
-}
-
 pub fn open_repository(path: &str) -> Result<Repository, GitError> {
     match Repository::open(path) {
         Ok(repo) => {

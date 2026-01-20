@@ -105,9 +105,3 @@ pub struct FullCommitInfo {
     pub authors: CommitAuthors,
     pub stats: CommitStats,
 }
-
-/// just generating return types
-#[tauri::command(rename_all = "snake_case")]
-fn _generate() -> FileStatus {
-    todo!()
-}
