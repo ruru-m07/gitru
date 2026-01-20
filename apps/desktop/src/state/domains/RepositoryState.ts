@@ -4,7 +4,7 @@ import {
   commitById,
   createCommit,
   currentBranch,
-  getDiff,
+  getPatchByFilePath,
   getStatus,
   gitAdd,
   gitDiscard,
@@ -35,7 +35,7 @@ class DiffState extends StateDomain {
   async get(filePath: string) {
     const queryKey = [...this.baseKey, filePath];
 
-    const data = await getDiff({
+    const data = await getPatchByFilePath({
       repoPath: this.repositoryPath,
       filePath: filePath,
     });

@@ -28,7 +28,7 @@ pub fn run() {
             git::commands::branch::list_branches,
             git::commands::branch::current_branch,
             git::commands::branch::status_ahead_behind,
-            git::commands::diff::get_diff,
+            git::commands::diff::get_patch_by_file_path,
             git::commands::history::history,
             git::commands::origin::repository_origin,
         ])
