@@ -221,18 +221,25 @@ function GitPageLayout() {
                               return;
                             }
 
-                            const data = await addLocalGitRepo({
-                              repoPath: folder,
-                            });
-
-                            if (data.error) {
-                              toast.error(data.error);
-                              return;
-                            }
-                            if (data.success) {
-                              setRepositories([...repositories, data.success]);
-                              setSelectedRepository(data.success);
-                              toast.success("Repository added successfully!");
+                            try {
+                              const data = await addLocalGitRepo({
+                                repoPath: folder,
+                              });
+                              if (data) {
+                                setRepositories([...repositories, data]);
+                                setSelectedRepository(data);
+                                setRepoSelectIsOpen(false);
+                                setTimeout(async () => {
+                                  await invalidateAll();
+                                }, 0);
+                                toast.success("Repository added successfully!");
+                              }
+                            } catch (error) {
+                              toast.error(
+                                error instanceof Error
+                                  ? error.message
+                                  : String(error),
+                              );
                             }
                           }
                         }}

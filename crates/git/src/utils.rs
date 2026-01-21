@@ -3,11 +3,14 @@ use crate::{
     types::{Author, CommitAuthors},
 };
 use git2::{Commit, Repository};
+use std::time;
 
 pub fn open_repository(path: &str) -> Result<Repository, GitError> {
+    let start = time::Instant::now();
+
     match Repository::open(path) {
         Ok(repo) => {
-            log::info!("Opening Repository {}", path);
+            log::info!("Opening Repository {} in {:?}", path, start.elapsed());
             Ok(repo)
         }
         Err(e) if e.code() == git2::ErrorCode::NotFound => {
