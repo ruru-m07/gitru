@@ -47,6 +47,7 @@ export function useGetFileStatus(
   return useQuery({
     queryKey: [
       ...(repo?.status.queryKey || ["repository", "none", "status", filePath]),
+      "file",
       filePath,
     ],
     queryFn: async () => {

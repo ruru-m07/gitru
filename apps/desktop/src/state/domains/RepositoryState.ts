@@ -84,14 +84,16 @@ class StatusState extends StateDomain {
   }
 
   async getFileStatus(filePath: string) {
-    await this.queryClient.cancelQueries({ queryKey: [...this.baseKey] });
+    await this.queryClient.cancelQueries({
+      queryKey: [...this.baseKey, "file", filePath],
+    });
 
     const data = await getFileStatus({
       repoPath: this.repositoryPath,
       filePath,
     });
 
-    this.queryClient.setQueryData([...this.baseKey], data);
+    this.queryClient.setQueryData([...this.baseKey, "file", filePath], data);
 
     return data;
   }
