@@ -21,10 +21,9 @@ import {
   Settings,
   TextWrap,
 } from "lucide-react";
-import { useEffect } from "react";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
-import { useGetCurrentBranch, useGetDiff, useGetFileStatus } from "@/hooks";
+import { useGetCurrentBranch, useGetDiff } from "@/hooks";
 import { SelectedFile, useAppStore } from "@/store/useAppStore";
 import { EmptyGitDiffSVG } from "../../../components/svgs/EmptyGitDiffSVG";
 import { SplitSVG } from "../../../components/svgs/splitSVG";
@@ -45,25 +44,7 @@ function App() {
 
 const DiffBoxBody = () => {
   const { selectedFileByRepo, selectedRepository } = useAppStore();
-  const { data: fileStatus } = useGetFileStatus(
-    selectedFileByRepo[selectedRepository?.path || ""]?.filePath || "",
-  );
-
-  const stateFile = selectedFileByRepo[selectedRepository?.path || ""];
-
-  let selectedFile: SelectedFile | undefined = stateFile
-    ? { ...stateFile }
-    : undefined;
-
-  useEffect(() => {
-    // ? this is a check where we verify that give changed file is still valid
-    // ? e.g. it wasn't deleted or renamed to something else
-    selectedFile = {
-      filePath: fileStatus ? fileStatus?.path || "" : "",
-      fileNewPath: fileStatus ? fileStatus?.new_path || "" : undefined,
-      status: fileStatus ? fileStatus.status : [],
-    };
-  }, []);
+  const selectedFile = selectedFileByRepo[selectedRepository?.path || ""];
 
   return (
     <>
@@ -74,8 +55,6 @@ const DiffBoxBody = () => {
         </>
       ) : (
         <>
-          {selectedFileByRepo[selectedRepository?.path || ""]?.filePath || ""}
-          {JSON.stringify(selectedFile?.status)}
           <div className="w-full flex items-center justify-center h-full bg-background">
             <div className="w-full h-[85%] flex flex-col items-center justify-center">
               <EmptyGitDiffSVG />
