@@ -4,6 +4,7 @@ import {
   commitById,
   createCommit,
   currentBranch,
+  getFileStatus,
   getPatchByFilePath,
   getStatus,
   gitAdd,
@@ -75,6 +76,19 @@ class StatusState extends StateDomain {
 
     const data = await getStatus({
       repoPath: this.repositoryPath,
+    });
+
+    this.queryClient.setQueryData([...this.baseKey], data);
+
+    return data;
+  }
+
+  async getFileStatus(filePath: string) {
+    await this.queryClient.cancelQueries({ queryKey: [...this.baseKey] });
+
+    const data = await getFileStatus({
+      repoPath: this.repositoryPath,
+      filePath,
     });
 
     this.queryClient.setQueryData([...this.baseKey], data);

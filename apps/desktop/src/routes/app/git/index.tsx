@@ -22,9 +22,9 @@ import {
   TextWrap,
 } from "lucide-react";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
-import { useDiffViewStore } from "@/components/diff/useDiffViewStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
-import { useGetCurrentBranch, useGetDiff } from "@/hooks";
+import { useGetCurrentBranch, useGetDiff, useGetFileStatus } from "@/hooks";
+import { SelectedFile, useAppStore } from "@/store/useAppStore";
 import { EmptyGitDiffSVG } from "../../../components/svgs/EmptyGitDiffSVG";
 import { SplitSVG } from "../../../components/svgs/splitSVG";
 import { UnifiedSVG } from "../../../components/svgs/unifiedSVG";
@@ -43,14 +43,27 @@ function App() {
 }
 
 const DiffBoxBody = () => {
-  const { selectedFilePath, selectedFileStatus } = useDiffViewStore();
+  const { selectedFileByRepo, selectedRepository } = useAppStore();
+  const { data: fileStatus } = useGetFileStatus(
+    selectedFileByRepo[selectedRepository?.path || ""]?.filePath || "",
+  );
+
+  const stateFile = selectedRepository
+    ? selectedFileByRepo[selectedRepository.path]
+    : null;
+
+  const selectedFile: SelectedFile = {
+    filePath: stateFile?.filePath || "",
+    fileNewPath: stateFile?.fileNewPath,
+    status: fileStatus ? fileStatus.status : [],
+  };
 
   return (
     <>
-      {selectedFilePath && selectedFileStatus ? (
+      {selectedFile?.filePath ? (
         <>
-          <FileLevelStatusBar />
-          <DiffArea />
+          <FileLevelStatusBar selectedFile={selectedFile} />
+          <DiffArea selectedFile={selectedFile} />
         </>
       ) : (
         <>
@@ -109,18 +122,21 @@ const MainActionBar = () => {
   );
 };
 
-const FileLevelStatusBar = () => {
+const FileLevelStatusBar = ({
+  selectedFile,
+}: {
+  selectedFile: SelectedFile;
+}) => {
   return (
     <div className="w-full h-9.25 border-b flex justify-between items-center">
-      <FileLevelStatusBarLeft />
+      <FileLevelStatusBarLeft selectedFile={selectedFile} />
       <SettingsPopover />
     </div>
   );
 };
 
-const DiffArea = () => {
-  const { selectedFilePath } = useDiffViewStore();
-  const { data: diffData } = useGetDiff(selectedFilePath?.path || null);
+const DiffArea = ({ selectedFile }: { selectedFile: SelectedFile }) => {
+  const { data: diffData } = useGetDiff(selectedFile?.filePath || null);
   const { diffStyle, overflow } = useDiffViewerSettings();
 
   return (
@@ -147,20 +163,22 @@ const DiffArea = () => {
   );
 };
 
-const FileLevelStatusBarLeft = () => {
-  const { selectedFilePath, selectedFileStatus } = useDiffViewStore();
-
-  if (!selectedFilePath || !selectedFileStatus) {
+const FileLevelStatusBarLeft = ({
+  selectedFile,
+}: {
+  selectedFile: SelectedFile;
+}) => {
+  if (!selectedFile) {
     return null;
   }
 
   return (
     <div className="items-center h-full px-2 flex gap-2">
-      {getStatusIcon(selectedFileStatus)}
+      {getStatusIcon(selectedFile.status)}
       <span className="flex items-center">
-        {renderPath(selectedFilePath.path)}
+        {renderPath(selectedFile?.filePath)}
       </span>
-      {selectedFilePath?.newPath ? (
+      {selectedFile?.fileNewPath ? (
         <div>
           <MoveHorizontal
             className="text-muted-foreground opacity-70"
@@ -168,8 +186,8 @@ const FileLevelStatusBarLeft = () => {
           />
         </div>
       ) : null}
-      {selectedFilePath?.newPath ? (
-        <span>{renderPath(selectedFilePath.newPath)}</span>
+      {selectedFile?.fileNewPath ? (
+        <span>{renderPath(selectedFile.fileNewPath)}</span>
       ) : null}
     </div>
   );
