@@ -1,7 +1,6 @@
 import {
   addLocalGitRepo,
   type FileStatus,
-  type FileStatusKind,
   GetStatusResponse,
 } from "@gitru/commands";
 import {
@@ -88,7 +87,6 @@ import {
 import { memo, useCallback, useState } from "react";
 import { toast } from "sonner";
 import z from "zod";
-import { useDiffViewStore } from "@/components/diff/useDiffViewStore";
 import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
 import StatusBar from "@/components/statusBar";
@@ -106,7 +104,7 @@ import {
   formatUnixSecondsToDateTime,
   timeAgoFromUnixSeconds,
 } from "@/lib/time";
-import { useAppStore } from "@/store/useAppStore";
+import { SelectedFile, useAppStore } from "@/store/useAppStore";
 
 export const Route = createFileRoute("/app/git")({
   component: GitPageLayout,
@@ -221,18 +219,25 @@ function GitPageLayout() {
                               return;
                             }
 
-                            const data = await addLocalGitRepo({
-                              repoPath: folder,
-                            });
-
-                            if (data.error) {
-                              toast.error(data.error);
-                              return;
-                            }
-                            if (data.success) {
-                              setRepositories([...repositories, data.success]);
-                              setSelectedRepository(data.success);
-                              toast.success("Repository added successfully!");
+                            try {
+                              const data = await addLocalGitRepo({
+                                repoPath: folder,
+                              });
+                              if (data) {
+                                setRepositories([...repositories, data]);
+                                setSelectedRepository(data);
+                                setRepoSelectIsOpen(false);
+                                setTimeout(async () => {
+                                  await invalidateAll();
+                                }, 0);
+                                toast.success("Repository added successfully!");
+                              }
+                            } catch (error) {
+                              toast.error(
+                                error instanceof Error
+                                  ? error.message
+                                  : String(error),
+                              );
                             }
                           }
                         }}
@@ -575,8 +580,7 @@ interface EachStatusProps {
     event: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean },
   ) => void;
   setRef?: (el: HTMLDivElement | null) => void;
-  setSelectedFilePath: (filePath: { path: string; newPath?: string }) => void;
-  setSelectedFileStatus: (status: FileStatusKind[]) => void;
+  setSelectedFilePath: (file: SelectedFile | null) => void;
   selectedFilePath:
     | {
         path: string;
@@ -596,13 +600,16 @@ const StatusBox = memo(function StatusBox({
   const { mutateAsync: unstageFile } = useGitUnstage();
 
   const { handleFileClick } = useFileSelectionStore();
-  const { setSelectedFilePath, setSelectedFileStatus, selectedFilePath } =
-    useDiffViewStore();
+
+  const { setSelectedFileForRepo, selectedFileByRepo, selectedRepository } =
+    useAppStore();
 
   return (
     <>
       {data?.map((v, idx) => {
-        const isSelected = selectedFilePath?.path === v.path;
+        const selectedFile = selectedFileByRepo[selectedRepository?.path || ""];
+
+        const isSelected = selectedFile?.filePath === v.path;
         return (
           <MemoizedEachStatus
             key={v.path}
@@ -612,9 +619,15 @@ const StatusBox = memo(function StatusBox({
             onFileClick={handleFileClick}
             onAdd={name === "Changes" ? addFile : undefined}
             onUnstage={name === "Staged Changes" ? unstageFile : undefined}
-            setSelectedFilePath={setSelectedFilePath}
-            setSelectedFileStatus={setSelectedFileStatus}
-            selectedFilePath={isSelected ? selectedFilePath : undefined}
+            setSelectedFilePath={setSelectedFileForRepo}
+            selectedFilePath={
+              isSelected
+                ? {
+                    path: selectedFile?.filePath,
+                    newPath: selectedFile?.fileNewPath,
+                  }
+                : undefined
+            }
           />
         );
       })}
@@ -631,7 +644,6 @@ const EachStatus = function EachStatus({
   onFileClick,
   setRef,
   setSelectedFilePath,
-  setSelectedFileStatus,
   selectedFilePath,
 }: EachStatusProps) {
   return (
@@ -657,20 +669,11 @@ const EachStatus = function EachStatus({
             });
 
             if (!e.shiftKey && !e.metaKey && !e.ctrlKey) {
-              if (
-                file.status.includes("IndexRenamed") ||
-                file.status.includes("WorktreeRenamed")
-              ) {
-                setSelectedFilePath({
-                  path: file.path,
-                  newPath: file.new_path,
-                });
-              } else {
-                setSelectedFilePath({
-                  path: file.path,
-                });
-              }
-              setSelectedFileStatus(file.status);
+              setSelectedFilePath({
+                filePath: file.path,
+                fileNewPath: file.new_path,
+                status: file.status,
+              });
             }
           }}
         >
@@ -798,7 +801,6 @@ const MemoizedEachStatus = memo(EachStatus, (prevProps, nextProps) => {
     prevProps.onFileClick === nextProps.onFileClick &&
     prevProps.setRef === nextProps.setRef &&
     prevProps.setSelectedFilePath === nextProps.setSelectedFilePath &&
-    prevProps.setSelectedFileStatus === nextProps.setSelectedFileStatus &&
     prevProps.selectedFilePath?.path === nextProps.selectedFilePath?.path &&
     prevProps.selectedFilePath?.newPath === nextProps.selectedFilePath?.newPath
   );

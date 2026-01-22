@@ -21,6 +21,15 @@ pub async fn get_status(repo_path: &str) -> Result<GetStatusResponse, String> {
     Ok(GetStatusResponse { files })
 }
 
+#[tauri::command]
+#[logger::logger]
+pub async fn get_file_status(
+    repo_path: &str,
+    file_path: &str,
+) -> Result<Option<FileStatus>, String> {
+    collect_single_file_status(repo_path, file_path)
+}
+
 // ? git add <file>
 #[tauri::command]
 #[logger::logger]
@@ -697,6 +706,36 @@ fn collect_status(repo_path: &str) -> Result<Vec<FileStatus>, String> {
     }
 
     parse_porcelain_v2(&out.stdout)
+}
+
+fn collect_single_file_status(
+    repo_path: &str,
+    file_path: &str,
+) -> Result<Option<FileStatus>, String> {
+    let out = Command::new("git")
+        .current_dir(repo_path)
+        .args([
+            "status",
+            "--porcelain=v2",
+            "--untracked-files=all",
+            "-z",
+            "--",
+            file_path,
+        ])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).to_string());
+    }
+
+    if out.stdout.is_empty() {
+        return Ok(None);
+    }
+
+    let mut parsed = parse_porcelain_v2(&out.stdout)?;
+
+    Ok(parsed.pop())
 }
 
 fn parse_porcelain_v2(buf: &[u8]) -> Result<Vec<FileStatus>, String> {

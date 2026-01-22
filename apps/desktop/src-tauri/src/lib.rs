@@ -20,6 +20,7 @@ pub fn run() {
             ipc::commands::add_local_git_repo,
             git::commands::git::git_add,
             git::commands::git::get_status,
+            git::commands::git::get_file_status,
             git::commands::git::git_remove,
             git::commands::git::git_discard,
             git::commands::git::git_fetch,

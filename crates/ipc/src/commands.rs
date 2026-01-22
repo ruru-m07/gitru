@@ -11,12 +11,6 @@ pub struct RepoSitoryStore {
     pub branch: Option<String>,
 }
 
-#[derive(Serialize)]
-pub struct GitRepoResponse {
-    pub error: Option<String>,
-    pub success: Option<RepoSitoryStore>,
-}
-
 fn run_git_command(args: &[&str], repo_path: &Path) -> Option<String> {
     Command::new("git")
         .args(args)
@@ -34,37 +28,28 @@ fn run_git_command(args: &[&str], repo_path: &Path) -> Option<String> {
 
 #[tauri::command]
 #[logger::logger]
-pub fn add_local_git_repo(repo_path: String) -> Result<GitRepoResponse, String> {
+pub fn add_local_git_repo(repo_path: String) -> Result<Option<RepoSitoryStore>, String> {
     let path = Path::new(&repo_path);
 
     if !path.exists() {
-        return Ok(GitRepoResponse {
-            error: Some(format!("Path does not exist: {}", repo_path)),
-            success: None,
-        });
+        return Err(format!("Path does not exist: {}", repo_path));
     }
 
     if !path.is_dir() {
-        return Ok(GitRepoResponse {
-            error: Some(format!("Path is not a directory: {}", repo_path)),
-            success: None,
-        });
+        return Err(format!("Path is not a directory: {}", repo_path));
     }
 
     let git_dir = path.join(".git");
 
     if !git_dir.exists() || !git_dir.is_dir() {
-        return Ok(GitRepoResponse {
-            error: Some(format!(
-                "Not a valid Git repository 🖕 (no .git folder): {}",
-                repo_path
-            )),
-            success: None,
-        });
+        return Err(format!(
+            "Not a valid Git repository (no .git folder): {}",
+            repo_path
+        ));
     }
 
-    let origin = run_git_command(&["remote", "get-url", "origin"], path);
-    let branch = run_git_command(&["rev-parse", "--abbrev-ref", "HEAD"], path);
+    let origin = run_git_command(&["remote", "get-url", "origin", "--"], path);
+    let branch = run_git_command(&["rev-parse", "--abbrev-ref", "HEAD", "--"], path);
 
     let name = if let Some(ref o) = origin {
         Path::new(o)
@@ -79,14 +64,11 @@ pub fn add_local_git_repo(repo_path: String) -> Result<GitRepoResponse, String> 
             .to_string()
     };
 
-    Ok(GitRepoResponse {
-        error: None,
-        success: Some(RepoSitoryStore {
-            id: Uuid::new_v4().to_string(),
-            name,
-            path: repo_path,
-            origin,
-            branch,
-        }),
-    })
+    Ok(Some(RepoSitoryStore {
+        id: Uuid::new_v4().to_string(),
+        name,
+        path: repo_path,
+        origin,
+        branch,
+    }))
 }

@@ -12,6 +12,7 @@ import "./app.css";
 
 import { themeLoader } from "@gitru/diff/loader";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { appState } from "./state";
 
 const router = createRouter({
@@ -60,6 +61,7 @@ if (rootElement && !rootElement.innerHTML) {
         >
           <RouterProvider router={router} />
           <Toaster />
+          <ReactQueryDevtools initialIsOpen={false} />
         </NextThemesProvider>
       </QueryClientProvider>
     </StrictMode>,
