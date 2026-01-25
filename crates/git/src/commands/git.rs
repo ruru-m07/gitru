@@ -4,8 +4,11 @@ use crate::{
     types::{FileStatus, FileStatusKind, GetStatusResponse, GitResult},
     utils::open_repository,
 };
-use git2::{BranchType, Cred, FetchOptions, FetchPrune, PushOptions, RemoteCallbacks};
+use git2::{
+    BranchType, Cred, FetchOptions, FetchPrune, PushOptions, RemoteCallbacks, Status, StatusOptions,
+};
 use serde::Serialize;
+use std::sync::{Arc, Mutex};
 
 #[derive(Serialize)]
 pub struct CommitResult {
@@ -367,119 +370,191 @@ pub async fn git_fetch(repo_path: &str) -> Result<GitResult, String> {
 // ? git push ...
 #[tauri::command]
 #[logger::logger]
-pub async fn git_push(repo_path: &str) -> Result<GitResult, String> {
+pub async fn git_push(repo_path: &str) -> Result<String, String> {
     let repo = match open_repository(repo_path) {
         Ok(r) => r,
         Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to open repository: {e}")),
-            });
+            return Err(format!("Failed to open repository: {e}"));
         }
     };
 
-    // ? HEAD validation
     let head = match repo.head() {
         Ok(h) => h,
         Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to read HEAD: {e}")),
-            });
+            return Err(format!("Failed to read HEAD: {e}"));
         }
     };
 
     if !head.is_branch() {
-        return Ok(GitResult {
-            success: false,
-            message: Some("HEAD is detached, cannot push".into()),
-        });
+        return Err("HEAD is detached, cannot push".into());
     }
 
     let branch_name = match head.shorthand() {
         Some(b) => b.to_string(),
         None => {
-            return Ok(GitResult {
-                success: false,
-                message: Some("Invalid branch name".into()),
-            });
+            return Err("Invalid branch name".into());
         }
     };
 
-    // ? resolve local branch
-    // * usually the current checkout branch
-    // * if it;s detached
     let mut branch = match repo.find_branch(&branch_name, BranchType::Local) {
         Ok(b) => b,
         Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to resolve local branch: {e}")),
-            });
+            return Err(format!("Failed to resolve local branch: {e}"));
         }
     };
 
-    // ? auth callbacks
-    let mut callbacks = RemoteCallbacks::new();
-    callbacks.credentials(|_url, username_from_url, allowed| {
-        // TODO(ruru): will support more auth option, rn it's via ssh only
-        // println!("pushing to: {}", url);
+    let attempt_count = Arc::new(Mutex::new(0));
+    let attempt_count_clone = Arc::clone(&attempt_count);
 
-        // ! ssh
+    let mut callbacks = RemoteCallbacks::new();
+
+    callbacks.credentials(move |url, username_from_url, allowed| {
+        let mut count = attempt_count_clone.lock().unwrap();
+        *count += 1;
+
+        println!("Credentials attempt #{} for URL: {}", *count, url);
+        println!("Allowed types: {:?}", allowed);
+
+        // Prevent infinite retry loop
+        if *count > 3 {
+            println!("Too many authentication attempts, giving up");
+            return Err(git2::Error::from_str(
+                "Authentication failed after 3 attempts. Please check:\n\
+                1. SSH agent is running (eval `ssh-agent`)\n\
+                2. Key is added (ssh-add ~/.ssh/id_rsa)\n\
+                3. Key has correct permissions (chmod 600 ~/.ssh/id_rsa)",
+            ));
+        }
+
         if allowed.is_ssh_key() {
             let user = username_from_url.unwrap_or("git");
-            return Cred::ssh_key_from_agent(user);
+            println!("Attempting SSH key auth for user: {}", user);
+
+            // Try SSH agent first
+            match Cred::ssh_key_from_agent(user) {
+                Ok(cred) => {
+                    println!("SSH agent authentication successful");
+                    return Ok(cred);
+                }
+                Err(e) => {
+                    println!("SSH agent failed: {:?}", e);
+
+                    // Fallback: try default SSH key locations
+                    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+                    let possible_keys = vec![
+                        format!("{}/.ssh/id_rsa", home),
+                        format!("{}/.ssh/id_ed25519", home),
+                        format!("{}/.ssh/id_ecdsa", home),
+                    ];
+
+                    for key_path in possible_keys {
+                        println!("Trying key: {}", key_path);
+                        if std::path::Path::new(&key_path).exists() {
+                            match Cred::ssh_key(
+                                user,
+                                None, // public key (optional)
+                                std::path::Path::new(&key_path),
+                                None, // passphrase
+                            ) {
+                                Ok(cred) => {
+                                    println!("SSH key authentication successful with {}", key_path);
+                                    return Ok(cred);
+                                }
+                                Err(key_err) => {
+                                    println!("Failed to use {}: {:?}", key_path, key_err);
+                                }
+                            }
+                        }
+                    }
+
+                    return Err(git2::Error::from_str(&format!(
+                        "SSH authentication failed: {}\n\
+                        Make sure:\n\
+                        1. SSH agent is running: eval `ssh-agent`\n\
+                        2. Add your key: ssh-add ~/.ssh/id_rsa\n\
+                        3. Or ensure key exists at ~/.ssh/id_rsa",
+                        e
+                    )));
+                }
+            }
         }
 
         Err(git2::Error::from_str("No supported authentication method"))
     });
 
+    callbacks.transfer_progress(|progress| {
+        println!(
+            "Transfer progress: {}/{} objects, {} bytes",
+            progress.received_objects(),
+            progress.total_objects(),
+            progress.received_bytes()
+        );
+        true
+    });
+
+    callbacks.push_transfer_progress(|current, total, bytes| {
+        println!("Push progress: {}/{} ({} bytes)", current, total, bytes);
+    });
+
+    callbacks.push_update_reference(|refname, status| {
+        println!("Push update for {}: {:?}", refname, status);
+        if let Some(s) = status {
+            println!("Push rejected: {}", s);
+            return Err(git2::Error::from_str(s));
+        }
+        Ok(())
+    });
+
     let mut push_opts = PushOptions::new();
     push_opts.remote_callbacks(callbacks);
 
-    // ? resolve remote
     let mut remote = match repo.find_remote("origin") {
         Ok(r) => r,
         Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to find remote 'origin': {e}")),
-            });
+            return Err(format!("Failed to find remote 'origin': {e}"));
         }
     };
 
-    // ? check upstream
+    println!("Remote URL: {:?}", remote.url());
+
     let has_upstream = branch.upstream().is_ok();
+    println!("has_upstream: {}", has_upstream);
 
-    let refspec = if has_upstream {
-        format!("refs/heads/{0}:refs/heads/{0}", branch_name)
-    } else {
-        // * it's same as saying `git push -u origin {branch}`
-        format!("+refs/heads/{0}:refs/heads/{0}", branch_name)
-    };
+    let remote_branch_exists = repo
+        .find_branch(&format!("origin/{}", branch_name), BranchType::Remote)
+        .is_ok();
+    println!("remote_branch_exists: {}", remote_branch_exists);
 
-    // ? pushhhhh
+    let refspec = format!("refs/heads/{}:refs/heads/{}", branch_name, branch_name);
+
+    println!("refspec: {}", refspec);
+    println!("Starting push...");
+
     if let Err(e) = remote.push(&[refspec.as_str()], Some(&mut push_opts)) {
-        return Ok(GitResult {
-            success: false,
-            message: Some(format!("Push failed: {e}")),
-        });
+        println!("Push error: {:?}", e);
+        return Err(format!("Push failed: {}", e));
     }
 
-    // ? set upstream if missing
+    println!("Push completed successfully");
+
     if !has_upstream {
-        if let Err(e) = branch.set_upstream(Some(&branch_name)) {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Push succeeded but failed to set upstream: {e}")),
-            });
+        println!("Setting upstream to origin/{}", branch_name);
+        if let Err(e) = branch.set_upstream(Some(&format!("origin/{}", branch_name))) {
+            println!("Warning: Failed to set upstream: {}", e);
+            return Err(format!(
+                "Pushed `{}` to origin (warning: upstream not set)",
+                branch_name
+            ));
         }
     }
 
-    Ok(GitResult {
-        success: true,
-        message: Some(format!("Pushed `{branch_name}` to origin")),
-    })
+    let action = if remote_branch_exists {
+        "Pushed"
+    } else {
+        "Published"
+    };
+
+    Ok(format!("{} `{}` to origin", action, branch_name))
 }
 
 // ? git pull ...
@@ -694,19 +769,19 @@ pub async fn git_pull(repo_path: &str) -> Result<GitResult, String> {
 /* #endregion // ! command */
 
 /* #region // ? helpers */
-fn collect_status(repo_path: &str) -> Result<Vec<FileStatus>, String> {
-    let out = Command::new("git")
-        .current_dir(repo_path)
-        .args(["status", "--porcelain=v2", "--untracked-files=all", "-z"])
-        .output()
-        .map_err(|e| e.to_string())?;
+// fn collect_status(repo_path: &str) -> Result<Vec<FileStatus>, String> {
+//     let out = Command::new("git")
+//         .current_dir(repo_path)
+//         .args(["status", "--porcelain=v2", "--untracked-files=all", "-z"])
+//         .output()
+//         .map_err(|e| e.to_string())?;
 
-    if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).to_string());
-    }
+//     if !out.status.success() {
+//         return Err(String::from_utf8_lossy(&out.stderr).to_string());
+//     }
 
-    parse_porcelain_v2(&out.stdout)
-}
+//     parse_porcelain_v2(&out.stdout)
+// }
 
 fn collect_single_file_status(
     repo_path: &str,
@@ -740,8 +815,9 @@ fn collect_single_file_status(
 
 fn parse_porcelain_v2(buf: &[u8]) -> Result<Vec<FileStatus>, String> {
     let mut result = Vec::new();
+    let mut iter = buf.split(|b| *b == 0).peekable();
 
-    for entry in buf.split(|b| *b == 0) {
+    while let Some(entry) = iter.next() {
         if entry.is_empty() {
             continue;
         }
@@ -752,16 +828,18 @@ fn parse_porcelain_v2(buf: &[u8]) -> Result<Vec<FileStatus>, String> {
         match chars.next() {
             Some('1') => {
                 // 1 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <path>
-                let mut parts = line.split_whitespace();
-                parts.next(); // "1"
+                let parts: Vec<&str> = line.splitn(9, ' ').collect();
 
-                let xy = parts.next().ok_or("missing XY")?;
-                let path = parts.last().ok_or("missing path")?.to_string();
+                if parts.len() < 9 {
+                    return Err("invalid type 1 entry".to_string());
+                }
 
-                let mut status = Vec::new();
+                let xy = parts[1];
                 let x = xy.as_bytes()[0];
                 let y = xy.as_bytes()[1];
+                let path = parts[8].to_string();
 
+                let mut status = Vec::new();
                 push_xy_status(&mut status, x, y);
 
                 result.push(FileStatus {
@@ -772,7 +850,7 @@ fn parse_porcelain_v2(buf: &[u8]) -> Result<Vec<FileStatus>, String> {
             }
 
             Some('2') => {
-                // 2 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <score> <old> <new>
+                // 2 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <X><score> <path>\0<origPath>\0
                 let mut parts = line.split_whitespace();
                 parts.next(); // "2"
 
@@ -780,9 +858,16 @@ fn parse_porcelain_v2(buf: &[u8]) -> Result<Vec<FileStatus>, String> {
                 let x = xy.as_bytes()[0];
                 let y = xy.as_bytes()[1];
 
-                // skip to <old>
-                let old_path = parts.nth(7).ok_or("missing old path")?.to_string();
-                let new_path = parts.next().ok_or("missing new path")?.to_string();
+                // Paths come from iterator for type 2
+                let new_path = iter.next().ok_or("missing new path")?;
+                let old_path = iter.next().ok_or("missing old path")?;
+
+                let new_path = std::str::from_utf8(new_path)
+                    .map_err(|e| e.to_string())?
+                    .to_string();
+                let old_path = std::str::from_utf8(old_path)
+                    .map_err(|e| e.to_string())?
+                    .to_string();
 
                 let mut status = Vec::new();
                 push_xy_status(&mut status, x, y);
@@ -840,6 +925,90 @@ fn push_xy_status(status: &mut Vec<FileStatusKind>, x: u8, y: u8) {
         b'X' => status.push(FileStatusKind::WorktreeUnreadable),
         _ => {}
     }
+}
+
+fn collect_status(repo_path: &str) -> Result<Vec<FileStatus>, String> {
+    let repo =
+        open_repository(repo_path).map_err(|e| format!("Failed to open repository: {}", e))?;
+
+    let mut opts = StatusOptions::new();
+    opts.include_untracked(true)
+        .recurse_untracked_dirs(true)
+        .include_ignored(false)
+        .exclude_submodules(true)
+        .renames_head_to_index(true)
+        .renames_index_to_workdir(true);
+
+    let statuses = repo
+        .statuses(Some(&mut opts))
+        .map_err(|e| format!("Failed to get status: {}", e))?;
+
+    let mut files = Vec::with_capacity(statuses.len());
+
+    for entry in statuses.iter() {
+        let status = entry.status();
+        let path = entry
+            .path()
+            .ok_or_else(|| "Invalid UTF-8 in path".to_string())?
+            .to_string();
+
+        let mut status_kinds = Vec::with_capacity(2);
+
+        if status.contains(Status::INDEX_NEW) {
+            status_kinds.push(FileStatusKind::IndexNew);
+        }
+        if status.contains(Status::INDEX_MODIFIED) {
+            status_kinds.push(FileStatusKind::IndexModified);
+        }
+        if status.contains(Status::INDEX_DELETED) {
+            status_kinds.push(FileStatusKind::IndexDeleted);
+        }
+        if status.contains(Status::INDEX_RENAMED) {
+            status_kinds.push(FileStatusKind::IndexRenamed);
+        }
+        if status.contains(Status::INDEX_TYPECHANGE) {
+            status_kinds.push(FileStatusKind::IndexTypechange);
+        }
+
+        if status.contains(Status::WT_NEW) {
+            status_kinds.push(FileStatusKind::WorktreeNew);
+        }
+        if status.contains(Status::WT_MODIFIED) {
+            status_kinds.push(FileStatusKind::WorktreeModified);
+        }
+        if status.contains(Status::WT_DELETED) {
+            status_kinds.push(FileStatusKind::WorktreeDeleted);
+        }
+        if status.contains(Status::WT_RENAMED) {
+            status_kinds.push(FileStatusKind::WorktreeRenamed);
+        }
+        if status.contains(Status::WT_TYPECHANGE) {
+            status_kinds.push(FileStatusKind::WorktreeTypechange);
+        }
+
+        let new_path =
+            if status.contains(Status::INDEX_RENAMED) || status.contains(Status::WT_RENAMED) {
+                entry
+                    .head_to_index()
+                    .and_then(|diff| diff.new_file().path())
+                    .or_else(|| {
+                        entry
+                            .index_to_workdir()
+                            .and_then(|diff| diff.new_file().path())
+                    })
+                    .map(|p| p.to_string_lossy().to_string())
+            } else {
+                None
+            };
+
+        files.push(FileStatus {
+            path,
+            new_path,
+            status: status_kinds,
+        });
+    }
+
+    Ok(files)
 }
 
 /* #endregion // ? helpers */

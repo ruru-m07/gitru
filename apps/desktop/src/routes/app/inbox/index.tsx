@@ -58,7 +58,7 @@ function RouteComponent() {
         onClick={async () => {
           const data = await push();
           console.log(data);
-          toast.success(data.message);
+          toast.success(data);
         }}
       >
         push
