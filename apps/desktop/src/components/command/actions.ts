@@ -66,8 +66,7 @@ export function useActions(): Item[] {
       onClick() {
         toast.promise(push(), {
           loading: "Pushing changes...",
-          success: (data) =>
-            data.success ? "Push completed" : (data.message ?? "Push failed"),
+          success: (data) => data,
           error: (err) => err ?? "Push error",
         });
       },

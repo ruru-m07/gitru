@@ -8,6 +8,7 @@ use git2::{
     BranchType, Cred, FetchOptions, FetchPrune, PushOptions, RemoteCallbacks, Status, StatusOptions,
 };
 use serde::Serialize;
+use std::sync::{Arc, Mutex};
 
 #[derive(Serialize)]
 pub struct CommitResult {
@@ -369,119 +370,191 @@ pub async fn git_fetch(repo_path: &str) -> Result<GitResult, String> {
 // ? git push ...
 #[tauri::command]
 #[logger::logger]
-pub async fn git_push(repo_path: &str) -> Result<GitResult, String> {
+pub async fn git_push(repo_path: &str) -> Result<String, String> {
     let repo = match open_repository(repo_path) {
         Ok(r) => r,
         Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to open repository: {e}")),
-            });
+            return Err(format!("Failed to open repository: {e}"));
         }
     };
 
-    // ? HEAD validation
     let head = match repo.head() {
         Ok(h) => h,
         Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to read HEAD: {e}")),
-            });
+            return Err(format!("Failed to read HEAD: {e}"));
         }
     };
 
     if !head.is_branch() {
-        return Ok(GitResult {
-            success: false,
-            message: Some("HEAD is detached, cannot push".into()),
-        });
+        return Err("HEAD is detached, cannot push".into());
     }
 
     let branch_name = match head.shorthand() {
         Some(b) => b.to_string(),
         None => {
-            return Ok(GitResult {
-                success: false,
-                message: Some("Invalid branch name".into()),
-            });
+            return Err("Invalid branch name".into());
         }
     };
 
-    // ? resolve local branch
-    // * usually the current checkout branch
-    // * if it;s detached
     let mut branch = match repo.find_branch(&branch_name, BranchType::Local) {
         Ok(b) => b,
         Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to resolve local branch: {e}")),
-            });
+            return Err(format!("Failed to resolve local branch: {e}"));
         }
     };
 
-    // ? auth callbacks
-    let mut callbacks = RemoteCallbacks::new();
-    callbacks.credentials(|_url, username_from_url, allowed| {
-        // TODO(ruru): will support more auth option, rn it's via ssh only
-        // println!("pushing to: {}", url);
+    let attempt_count = Arc::new(Mutex::new(0));
+    let attempt_count_clone = Arc::clone(&attempt_count);
 
-        // ! ssh
+    let mut callbacks = RemoteCallbacks::new();
+
+    callbacks.credentials(move |url, username_from_url, allowed| {
+        let mut count = attempt_count_clone.lock().unwrap();
+        *count += 1;
+
+        println!("Credentials attempt #{} for URL: {}", *count, url);
+        println!("Allowed types: {:?}", allowed);
+
+        // Prevent infinite retry loop
+        if *count > 3 {
+            println!("Too many authentication attempts, giving up");
+            return Err(git2::Error::from_str(
+                "Authentication failed after 3 attempts. Please check:\n\
+                1. SSH agent is running (eval `ssh-agent`)\n\
+                2. Key is added (ssh-add ~/.ssh/id_rsa)\n\
+                3. Key has correct permissions (chmod 600 ~/.ssh/id_rsa)",
+            ));
+        }
+
         if allowed.is_ssh_key() {
             let user = username_from_url.unwrap_or("git");
-            return Cred::ssh_key_from_agent(user);
+            println!("Attempting SSH key auth for user: {}", user);
+
+            // Try SSH agent first
+            match Cred::ssh_key_from_agent(user) {
+                Ok(cred) => {
+                    println!("SSH agent authentication successful");
+                    return Ok(cred);
+                }
+                Err(e) => {
+                    println!("SSH agent failed: {:?}", e);
+
+                    // Fallback: try default SSH key locations
+                    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+                    let possible_keys = vec![
+                        format!("{}/.ssh/id_rsa", home),
+                        format!("{}/.ssh/id_ed25519", home),
+                        format!("{}/.ssh/id_ecdsa", home),
+                    ];
+
+                    for key_path in possible_keys {
+                        println!("Trying key: {}", key_path);
+                        if std::path::Path::new(&key_path).exists() {
+                            match Cred::ssh_key(
+                                user,
+                                None, // public key (optional)
+                                std::path::Path::new(&key_path),
+                                None, // passphrase
+                            ) {
+                                Ok(cred) => {
+                                    println!("SSH key authentication successful with {}", key_path);
+                                    return Ok(cred);
+                                }
+                                Err(key_err) => {
+                                    println!("Failed to use {}: {:?}", key_path, key_err);
+                                }
+                            }
+                        }
+                    }
+
+                    return Err(git2::Error::from_str(&format!(
+                        "SSH authentication failed: {}\n\
+                        Make sure:\n\
+                        1. SSH agent is running: eval `ssh-agent`\n\
+                        2. Add your key: ssh-add ~/.ssh/id_rsa\n\
+                        3. Or ensure key exists at ~/.ssh/id_rsa",
+                        e
+                    )));
+                }
+            }
         }
 
         Err(git2::Error::from_str("No supported authentication method"))
     });
 
+    callbacks.transfer_progress(|progress| {
+        println!(
+            "Transfer progress: {}/{} objects, {} bytes",
+            progress.received_objects(),
+            progress.total_objects(),
+            progress.received_bytes()
+        );
+        true
+    });
+
+    callbacks.push_transfer_progress(|current, total, bytes| {
+        println!("Push progress: {}/{} ({} bytes)", current, total, bytes);
+    });
+
+    callbacks.push_update_reference(|refname, status| {
+        println!("Push update for {}: {:?}", refname, status);
+        if let Some(s) = status {
+            println!("Push rejected: {}", s);
+            return Err(git2::Error::from_str(s));
+        }
+        Ok(())
+    });
+
     let mut push_opts = PushOptions::new();
     push_opts.remote_callbacks(callbacks);
 
-    // ? resolve remote
     let mut remote = match repo.find_remote("origin") {
         Ok(r) => r,
         Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to find remote 'origin': {e}")),
-            });
+            return Err(format!("Failed to find remote 'origin': {e}"));
         }
     };
 
-    // ? check upstream
+    println!("Remote URL: {:?}", remote.url());
+
     let has_upstream = branch.upstream().is_ok();
+    println!("has_upstream: {}", has_upstream);
 
-    let refspec = if has_upstream {
-        format!("refs/heads/{0}:refs/heads/{0}", branch_name)
-    } else {
-        // * it's same as saying `git push -u origin {branch}`
-        format!("+refs/heads/{0}:refs/heads/{0}", branch_name)
-    };
+    let remote_branch_exists = repo
+        .find_branch(&format!("origin/{}", branch_name), BranchType::Remote)
+        .is_ok();
+    println!("remote_branch_exists: {}", remote_branch_exists);
 
-    // ? pushhhhh
+    let refspec = format!("refs/heads/{}:refs/heads/{}", branch_name, branch_name);
+
+    println!("refspec: {}", refspec);
+    println!("Starting push...");
+
     if let Err(e) = remote.push(&[refspec.as_str()], Some(&mut push_opts)) {
-        return Ok(GitResult {
-            success: false,
-            message: Some(format!("Push failed: {e}")),
-        });
+        println!("Push error: {:?}", e);
+        return Err(format!("Push failed: {}", e));
     }
 
-    // ? set upstream if missing
+    println!("Push completed successfully");
+
     if !has_upstream {
-        if let Err(e) = branch.set_upstream(Some(&branch_name)) {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Push succeeded but failed to set upstream: {e}")),
-            });
+        println!("Setting upstream to origin/{}", branch_name);
+        if let Err(e) = branch.set_upstream(Some(&format!("origin/{}", branch_name))) {
+            println!("Warning: Failed to set upstream: {}", e);
+            return Err(format!(
+                "Pushed `{}` to origin (warning: upstream not set)",
+                branch_name
+            ));
         }
     }
 
-    Ok(GitResult {
-        success: true,
-        message: Some(format!("Pushed `{branch_name}` to origin")),
-    })
+    let action = if remote_branch_exists {
+        "Pushed"
+    } else {
+        "Published"
+    };
+
+    Ok(format!("{} `{}` to origin", action, branch_name))
 }
 
 // ? git pull ...
