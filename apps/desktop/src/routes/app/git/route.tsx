@@ -1,22 +1,10 @@
-import {
-  addLocalGitRepo,
-  type FileStatus,
-  GetStatusResponse,
-} from "@gitru/commands";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@gitru/ui/components/accordion";
+import { addLocalGitRepo, GetStatusResponse } from "@gitru/commands";
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@gitru/ui/components/avatar";
-import { Badge } from "@gitru/ui/components/badge";
 import { Button } from "@gitru/ui/components/button";
-import * as contextMenu from "@gitru/ui/components/context-menu";
 import {
   Dialog,
   DialogClose,
@@ -61,26 +49,17 @@ import {
   TooltipTrigger,
 } from "@gitru/ui/components/tooltip";
 import { cn } from "@gitru/ui/lib/utils";
-import { UseMutateAsyncFunction } from "@tanstack/react-query";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
-  BetweenHorizontalEnd,
-  BetweenHorizontalStart,
-  BetweenVerticalEnd,
   ChevronDown,
   ChevronDownIcon,
   ChevronUp,
   CircleAlertIcon,
-  ClipboardCopy,
-  CopyPlus,
-  Diff,
   GitBranch,
-  GitCommitHorizontal,
   ListFilterPlus,
   Loader2,
   Minus,
-  Plus,
   SearchIcon,
   ShareIcon,
   Sparkles,
@@ -90,9 +69,10 @@ import {
 import { memo, useCallback, useState } from "react";
 import { toast } from "sonner";
 import z from "zod";
+
 import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
-import { getStatusIcon } from "@/components/getStatusIcon";
 import StatusBar from "@/components/statusBar";
+import { VirtualizedFileList } from "@/components/VirtualizedFileList";
 import {
   useCreateCommit,
   useGetCommitHistory,
@@ -107,44 +87,7 @@ import {
   formatUnixSecondsToDateTime,
   timeAgoFromUnixSeconds,
 } from "@/lib/time";
-import { SelectedFile, useAppStore } from "@/store/useAppStore";
-
-interface EachStatusProps {
-  file: FileStatus;
-  type: "Staged Changes" | "Changes";
-  index: number;
-  onAdd?: UseMutateAsyncFunction<
-    {
-      success: boolean;
-      message?: string | undefined;
-    },
-    string,
-    string,
-    unknown
-  >;
-  onUnstage?: UseMutateAsyncFunction<
-    {
-      success: boolean;
-      message?: string | undefined;
-    },
-    string,
-    string,
-    unknown
-  >;
-  onFileClick: (
-    file: FileStatus,
-    index: number,
-    event: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean },
-  ) => void;
-  setRef?: (el: HTMLDivElement | null) => void;
-  setSelectedFilePath: (file: SelectedFile | null) => void;
-  selectedFilePath:
-    | {
-        path: string;
-        newPath?: string | undefined;
-      }
-    | undefined;
-}
+import { useAppStore } from "@/store/useAppStore";
 
 const CoAuthers = z.array(z.tuple([z.string(), z.string()]));
 type CoAuthers = z.infer<typeof CoAuthers>;
@@ -163,6 +106,8 @@ function GitPageLayout() {
     repositories,
     setSelectedRepository,
     selectedRepository,
+    setSelectedFileForRepo,
+    selectedFileByRepo,
   } = useAppStore();
 
   const { data: status, isLoading: isStatusLoading } = useGetStatus();
@@ -170,6 +115,8 @@ function GitPageLayout() {
   const { mutateAsync: invalidateAll } = useInvalidateAll();
   const { mutateAsync: addFile } = useGitAdd();
   const { mutateAsync: unstageFile } = useGitUnstage();
+
+  const { handleFileClick } = useFileSelectionStore();
 
   const { data: commitHistory } = useGetCommitHistory();
 
@@ -404,98 +351,58 @@ function GitPageLayout() {
                           ((stagedChanges && stagedChanges?.length > 0) ||
                             (unstagedChanges &&
                               unstagedChanges?.length > 0)) ? (
-                            <Accordion
-                              defaultValue={["Staged Changes", "Changes"]}
-                              className="w-full divide-y"
-                              multiple={true}
-                            >
-                              {(
-                                [
-                                  {
-                                    name: "Staged Changes",
-                                    data: stagedChanges,
+                            <VirtualizedFileList
+                              sections={[
+                                {
+                                  id: "staged",
+                                  name: "Staged Changes",
+                                  files: stagedChanges || [],
+                                  actions: {
+                                    onUnstageAll: async () => {
+                                      await unstageFile(".");
+                                    },
                                   },
-                                  {
-                                    name: "Changes",
-                                    data: unstagedChanges,
+                                },
+                                {
+                                  id: "unstaged",
+                                  name: "Changes",
+                                  files: unstagedChanges || [],
+                                  actions: {
+                                    onAddAll: async () => {
+                                      await addFile(".");
+                                    },
+                                    renderDiscardAll: () => (
+                                      <DiscardChangesDialog fileName="." />
+                                    ),
                                   },
-                                ] as const
-                              ).map((cell) => {
-                                if (!cell.data || cell.data.length === 0) {
-                                  return null;
-                                }
-                                return (
-                                  <AccordionItem
-                                    value={cell.name}
-                                    key={cell.name}
-                                    className="relative"
-                                  >
-                                    <div className="sticky border-l pt-2 _pb-2 top-0 z-20 bg-background">
-                                      <AccordionTrigger
-                                        className={cn(
-                                          "items-center rounded-none px-3 gap-2 py-0 hover:no-underline [&>svg]:-ml-0.5 [&>svg]:mb-1 [&>svg]:-rotate-90 [&[data-panel-open]>svg]:rotate-0 [&>svg]:-order-1",
-                                        )}
-                                      >
-                                        <div className="flex items-center justify-between w-full">
-                                          <span className="text-sm font-medium">
-                                            {cell.name}
-                                          </span>
-                                          <div className="flex items-center gap-1 pointer-events-auto">
-                                            {cell.name === "Changes" && (
-                                              <div className="flex items-center">
-                                                <DiscardChangesDialog fileName="." />
-
-                                                <Button
-                                                  onClick={async (event) => {
-                                                    event.stopPropagation();
-                                                    await addFile(".");
-                                                  }}
-                                                  variant={"ghost"}
-                                                  size={"icon-sm"}
-                                                >
-                                                  <Plus
-                                                    size={20}
-                                                    strokeWidth={1.25}
-                                                  />
-                                                </Button>
-                                              </div>
-                                            )}
-                                            {cell.name === "Staged Changes" && (
-                                              <Button
-                                                variant={"ghost"}
-                                                size={"icon-sm"}
-                                                onClick={async (event) => {
-                                                  event.stopPropagation();
-                                                  await unstageFile(".");
-                                                }}
-                                              >
-                                                <Minus
-                                                  size={20}
-                                                  strokeWidth={1.25}
-                                                />
-                                              </Button>
-                                            )}
-                                            <Badge
-                                              variant={"secondary"}
-                                              className="tabular-nums font-mono"
-                                            >
-                                              {cell.data?.length}
-                                            </Badge>
-                                          </div>
-                                        </div>
-                                      </AccordionTrigger>
-                                      <div className="h-10 pointer-events-none w-full bg-linear-to-b to-40% from-background to-transparent absolute"></div>
-                                    </div>
-                                    <AccordionContent className="text-muted-foreground pb-1">
-                                      <StatusBox
-                                        name={cell.name}
-                                        data={cell.data}
-                                      />
-                                    </AccordionContent>
-                                  </AccordionItem>
-                                );
-                              })}
-                            </Accordion>
+                                },
+                              ]}
+                              onFileClick={handleFileClick}
+                              onAdd={addFile}
+                              onUnstage={unstageFile}
+                              renderDiscard={(filePath) => (
+                                <DiscardChangesDialog fileName={filePath} />
+                              )}
+                              setSelectedFilePath={setSelectedFileForRepo}
+                              selectedFilePath={
+                                selectedFileByRepo[
+                                  selectedRepository?.path || ""
+                                ]
+                                  ? {
+                                      path:
+                                        selectedFileByRepo[
+                                          selectedRepository?.path || ""
+                                        ]?.filePath || "",
+                                      newPath:
+                                        selectedFileByRepo[
+                                          selectedRepository?.path || ""
+                                        ]?.fileNewPath,
+                                    }
+                                  : undefined
+                              }
+                              defaultExpandedSections={["staged", "unstaged"]}
+                              className="h-full"
+                            />
                           ) : (
                             <div className="w-full h-full flex flex-col items-center justify-center">
                               <div className="relative">
@@ -643,225 +550,6 @@ function GitPageLayout() {
     </div>
   );
 }
-
-const StatusBox = memo(function StatusBox({
-  data,
-  name,
-}: {
-  data: GetStatusResponse["files"];
-  name: "Staged Changes" | "Changes";
-}) {
-  const { mutateAsync: addFile } = useGitAdd();
-  const { mutateAsync: unstageFile } = useGitUnstage();
-
-  const { handleFileClick } = useFileSelectionStore();
-
-  const { setSelectedFileForRepo, selectedFileByRepo, selectedRepository } =
-    useAppStore();
-
-  return (
-    <>
-      {data?.map((v, idx) => {
-        const selectedFile = selectedFileByRepo[selectedRepository?.path || ""];
-
-        const isSelected = selectedFile?.filePath === v.path;
-        return (
-          <MemoizedEachStatus
-            key={v.path}
-            file={v}
-            type={name}
-            index={idx}
-            onFileClick={handleFileClick}
-            onAdd={name === "Changes" ? addFile : undefined}
-            onUnstage={name === "Staged Changes" ? unstageFile : undefined}
-            setSelectedFilePath={setSelectedFileForRepo}
-            selectedFilePath={
-              isSelected
-                ? {
-                    path: selectedFile?.filePath,
-                    newPath: selectedFile?.fileNewPath,
-                  }
-                : undefined
-            }
-          />
-        );
-      })}
-    </>
-  );
-});
-
-const MemoizedEachStatus = memo(
-  function EachStatus({
-    file,
-    type,
-    index,
-    onAdd,
-    onUnstage,
-    onFileClick,
-    setRef,
-    setSelectedFilePath,
-    selectedFilePath,
-  }: EachStatusProps) {
-    return (
-      <contextMenu.ContextMenu>
-        <contextMenu.ContextMenuTrigger
-          className={cn(
-            `dark:[&[data-state=open]>div]:bg-blue-900/50! [&[data-state=open]>div]:bg-blue-50! [&[data-state=open]>div]:border [&[data-state=open]>div]:border-y-blue-400! [&[data-state=open]>div]:border-dashed! [&[data-state=open]>div]:border-l-border!`,
-          )}
-        >
-          <div
-            ref={setRef}
-            data-index={index}
-            className={cn(
-              "[--pattern-fg:color-mix(in_srgb,var(--primary)_20%,transparent)] flex relative select-none cursor-pointer hover:bg-muted border border-transparent hover:border hover:border-l hover:border-l-border items-center pl-2 pr-0.5 py-0.5",
-              selectedFilePath?.path === file.path &&
-                "bg-muted-foreground/10! hover:bg-muted-foreground/15!",
-            )}
-            onClick={(e) => {
-              onFileClick(file, index, {
-                shiftKey: e.shiftKey,
-                metaKey: e.metaKey,
-                ctrlKey: e.ctrlKey,
-              });
-
-              if (!e.shiftKey && !e.metaKey && !e.ctrlKey) {
-                setSelectedFilePath({
-                  filePath: file.path,
-                  fileNewPath: file.new_path,
-                  status: file.status,
-                });
-              }
-            }}
-          >
-            {selectedFilePath?.path === file.path ? (
-              <div className="absolute top-1/2 -translate-y-1/2 -left-1 rounded-md w-2 bg-primary h-6"></div>
-            ) : null}
-            <div className="flex items-center w-full min-w-0">
-              <div className="shrink-0">{getStatusIcon(file.status, 18)}</div>
-              <div className="flex items-center ml-1.5 min-w-0 flex-1">
-                <Label className="flex cursor-pointer items-center min-w-0 text-sm w-full gap-0">
-                  {file?.path.split("/").slice(0, -1).join("/") && (
-                    <>
-                      <span className="text-muted-foreground truncate">
-                        {file.path.split("/").slice(0, -1).join("/")}
-                      </span>
-                      <span className="text-muted-foreground">/</span>
-                    </>
-                  )}
-                  <span className="shrink-0 text-foreground!">
-                    {file?.path.split("/").slice(-1)[0]}
-                  </span>
-                </Label>
-              </div>
-              {type === "Changes" && onAdd && (
-                <div className="flex ml-2 shrink-0">
-                  {/* <DiscardChangesDialog fileName={file.path} /> */}
-                  <Button
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      const success = await onAdd(file.path);
-                      if (success) {
-                        toast.success("File staged");
-                      } else {
-                        toast.error("Failed to stage file");
-                      }
-                    }}
-                    size={"icon-sm"}
-                    variant={"ghost"}
-                  >
-                    <Plus size={20} strokeWidth={1.25} />
-                  </Button>
-                </div>
-              )}
-              {type === "Staged Changes" && onUnstage && (
-                <div className="flex ml-2 shrink-0">
-                  <Button
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      const success = await onUnstage(file.path);
-                      if (success) {
-                        toast.success("File unstaged");
-                      } else {
-                        toast.error("Failed to unstage file");
-                      }
-                    }}
-                    size={"icon-sm"}
-                    variant={"ghost"}
-                  >
-                    <Minus size={20} strokeWidth={1.25} />
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
-        </contextMenu.ContextMenuTrigger>
-        <contextMenu.ContextMenuContent className="w-52">
-          <contextMenu.ContextMenuLabel>
-            <div className="flex items-center gap-2">
-              {getStatusIcon(file.status)}
-              {file.path.split("/").slice(-1)[0]}
-            </div>
-          </contextMenu.ContextMenuLabel>
-          <contextMenu.ContextMenuSeparator />
-          <contextMenu.ContextMenuItem>
-            <Plus size={16} className="mr-2" />
-            Stage Changes
-          </contextMenu.ContextMenuItem>
-          <contextMenu.ContextMenuItem>
-            <Diff size={16} className="mr-2" />
-            Open Diff
-          </contextMenu.ContextMenuItem>
-          <contextMenu.ContextMenuSeparator />
-          <contextMenu.ContextMenuItem>
-            <ClipboardCopy size={16} className="mr-2" />
-            Copy Relative Path
-          </contextMenu.ContextMenuItem>
-          <contextMenu.ContextMenuItem>
-            <BetweenVerticalEnd size={16} className="mr-2" />
-            Copy Diff Hunk
-          </contextMenu.ContextMenuItem>
-          <contextMenu.ContextMenuItem>
-            <BetweenHorizontalEnd size={16} className="mr-2" />
-            Copy Old File Contents
-          </contextMenu.ContextMenuItem>
-          <contextMenu.ContextMenuItem>
-            <BetweenHorizontalStart size={16} className="mr-2" />
-            Copy New File Contents
-          </contextMenu.ContextMenuItem>
-          <contextMenu.ContextMenuSeparator />
-          <contextMenu.ContextMenuItem>
-            <GitCommitHorizontal size={16} className="mr-2" />
-            Quick Commit
-          </contextMenu.ContextMenuItem>
-          <contextMenu.ContextMenuItem>
-            <CopyPlus size={16} className="mr-2" />
-            Amend Commit
-          </contextMenu.ContextMenuItem>
-          <contextMenu.ContextMenuSeparator />
-          <contextMenu.ContextMenuItem className="hover:text-destructive! hover:bg-destructive/10!">
-            <Undo2 size={16} className="mr-2" />
-            Discard Changes
-          </contextMenu.ContextMenuItem>
-        </contextMenu.ContextMenuContent>
-      </contextMenu.ContextMenu>
-    );
-  },
-  (prevProps, nextProps) => {
-    return (
-      prevProps.file === nextProps.file &&
-      prevProps.type === nextProps.type &&
-      prevProps.index === nextProps.index &&
-      prevProps.onAdd === nextProps.onAdd &&
-      prevProps.onUnstage === nextProps.onUnstage &&
-      prevProps.onFileClick === nextProps.onFileClick &&
-      prevProps.setRef === nextProps.setRef &&
-      prevProps.setSelectedFilePath === nextProps.setSelectedFilePath &&
-      prevProps.selectedFilePath?.path === nextProps.selectedFilePath?.path &&
-      prevProps.selectedFilePath?.newPath ===
-        nextProps.selectedFilePath?.newPath
-    );
-  },
-);
 
 const DiscardChangesDialog = memo(function DiscardChangesDialog({
   fileName,
