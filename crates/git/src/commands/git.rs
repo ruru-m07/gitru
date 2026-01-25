@@ -4,7 +4,9 @@ use crate::{
     types::{FileStatus, FileStatusKind, GetStatusResponse, GitResult},
     utils::open_repository,
 };
-use git2::{BranchType, Cred, FetchOptions, FetchPrune, PushOptions, RemoteCallbacks};
+use git2::{
+    BranchType, Cred, FetchOptions, FetchPrune, PushOptions, RemoteCallbacks, Status, StatusOptions,
+};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -694,19 +696,19 @@ pub async fn git_pull(repo_path: &str) -> Result<GitResult, String> {
 /* #endregion // ! command */
 
 /* #region // ? helpers */
-fn collect_status(repo_path: &str) -> Result<Vec<FileStatus>, String> {
-    let out = Command::new("git")
-        .current_dir(repo_path)
-        .args(["status", "--porcelain=v2", "--untracked-files=all", "-z"])
-        .output()
-        .map_err(|e| e.to_string())?;
+// fn collect_status(repo_path: &str) -> Result<Vec<FileStatus>, String> {
+//     let out = Command::new("git")
+//         .current_dir(repo_path)
+//         .args(["status", "--porcelain=v2", "--untracked-files=all", "-z"])
+//         .output()
+//         .map_err(|e| e.to_string())?;
 
-    if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).to_string());
-    }
+//     if !out.status.success() {
+//         return Err(String::from_utf8_lossy(&out.stderr).to_string());
+//     }
 
-    parse_porcelain_v2(&out.stdout)
-}
+//     parse_porcelain_v2(&out.stdout)
+// }
 
 fn collect_single_file_status(
     repo_path: &str,
@@ -740,8 +742,9 @@ fn collect_single_file_status(
 
 fn parse_porcelain_v2(buf: &[u8]) -> Result<Vec<FileStatus>, String> {
     let mut result = Vec::new();
+    let mut iter = buf.split(|b| *b == 0).peekable();
 
-    for entry in buf.split(|b| *b == 0) {
+    while let Some(entry) = iter.next() {
         if entry.is_empty() {
             continue;
         }
@@ -752,16 +755,18 @@ fn parse_porcelain_v2(buf: &[u8]) -> Result<Vec<FileStatus>, String> {
         match chars.next() {
             Some('1') => {
                 // 1 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <path>
-                let mut parts = line.split_whitespace();
-                parts.next(); // "1"
+                let parts: Vec<&str> = line.splitn(9, ' ').collect();
 
-                let xy = parts.next().ok_or("missing XY")?;
-                let path = parts.last().ok_or("missing path")?.to_string();
+                if parts.len() < 9 {
+                    return Err("invalid type 1 entry".to_string());
+                }
 
-                let mut status = Vec::new();
+                let xy = parts[1];
                 let x = xy.as_bytes()[0];
                 let y = xy.as_bytes()[1];
+                let path = parts[8].to_string();
 
+                let mut status = Vec::new();
                 push_xy_status(&mut status, x, y);
 
                 result.push(FileStatus {
@@ -772,7 +777,7 @@ fn parse_porcelain_v2(buf: &[u8]) -> Result<Vec<FileStatus>, String> {
             }
 
             Some('2') => {
-                // 2 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <score> <old> <new>
+                // 2 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <X><score> <path>\0<origPath>\0
                 let mut parts = line.split_whitespace();
                 parts.next(); // "2"
 
@@ -780,9 +785,16 @@ fn parse_porcelain_v2(buf: &[u8]) -> Result<Vec<FileStatus>, String> {
                 let x = xy.as_bytes()[0];
                 let y = xy.as_bytes()[1];
 
-                // skip to <old>
-                let old_path = parts.nth(7).ok_or("missing old path")?.to_string();
-                let new_path = parts.next().ok_or("missing new path")?.to_string();
+                // Paths come from iterator for type 2
+                let new_path = iter.next().ok_or("missing new path")?;
+                let old_path = iter.next().ok_or("missing old path")?;
+
+                let new_path = std::str::from_utf8(new_path)
+                    .map_err(|e| e.to_string())?
+                    .to_string();
+                let old_path = std::str::from_utf8(old_path)
+                    .map_err(|e| e.to_string())?
+                    .to_string();
 
                 let mut status = Vec::new();
                 push_xy_status(&mut status, x, y);
@@ -840,6 +852,90 @@ fn push_xy_status(status: &mut Vec<FileStatusKind>, x: u8, y: u8) {
         b'X' => status.push(FileStatusKind::WorktreeUnreadable),
         _ => {}
     }
+}
+
+fn collect_status(repo_path: &str) -> Result<Vec<FileStatus>, String> {
+    let repo =
+        open_repository(repo_path).map_err(|e| format!("Failed to open repository: {}", e))?;
+
+    let mut opts = StatusOptions::new();
+    opts.include_untracked(true)
+        .recurse_untracked_dirs(true)
+        .include_ignored(false)
+        .exclude_submodules(true)
+        .renames_head_to_index(true)
+        .renames_index_to_workdir(true);
+
+    let statuses = repo
+        .statuses(Some(&mut opts))
+        .map_err(|e| format!("Failed to get status: {}", e))?;
+
+    let mut files = Vec::with_capacity(statuses.len());
+
+    for entry in statuses.iter() {
+        let status = entry.status();
+        let path = entry
+            .path()
+            .ok_or_else(|| "Invalid UTF-8 in path".to_string())?
+            .to_string();
+
+        let mut status_kinds = Vec::with_capacity(2);
+
+        if status.contains(Status::INDEX_NEW) {
+            status_kinds.push(FileStatusKind::IndexNew);
+        }
+        if status.contains(Status::INDEX_MODIFIED) {
+            status_kinds.push(FileStatusKind::IndexModified);
+        }
+        if status.contains(Status::INDEX_DELETED) {
+            status_kinds.push(FileStatusKind::IndexDeleted);
+        }
+        if status.contains(Status::INDEX_RENAMED) {
+            status_kinds.push(FileStatusKind::IndexRenamed);
+        }
+        if status.contains(Status::INDEX_TYPECHANGE) {
+            status_kinds.push(FileStatusKind::IndexTypechange);
+        }
+
+        if status.contains(Status::WT_NEW) {
+            status_kinds.push(FileStatusKind::WorktreeNew);
+        }
+        if status.contains(Status::WT_MODIFIED) {
+            status_kinds.push(FileStatusKind::WorktreeModified);
+        }
+        if status.contains(Status::WT_DELETED) {
+            status_kinds.push(FileStatusKind::WorktreeDeleted);
+        }
+        if status.contains(Status::WT_RENAMED) {
+            status_kinds.push(FileStatusKind::WorktreeRenamed);
+        }
+        if status.contains(Status::WT_TYPECHANGE) {
+            status_kinds.push(FileStatusKind::WorktreeTypechange);
+        }
+
+        let new_path =
+            if status.contains(Status::INDEX_RENAMED) || status.contains(Status::WT_RENAMED) {
+                entry
+                    .head_to_index()
+                    .and_then(|diff| diff.new_file().path())
+                    .or_else(|| {
+                        entry
+                            .index_to_workdir()
+                            .and_then(|diff| diff.new_file().path())
+                    })
+                    .map(|p| p.to_string_lossy().to_string())
+            } else {
+                None
+            };
+
+        files.push(FileStatus {
+            path,
+            new_path,
+            status: status_kinds,
+        });
+    }
+
+    Ok(files)
 }
 
 /* #endregion // ? helpers */
