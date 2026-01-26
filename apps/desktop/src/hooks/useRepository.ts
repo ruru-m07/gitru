@@ -352,6 +352,8 @@ export function useGitPush() {
     },
     onSuccess: async () => {
       await repo?.status.invalidate();
+      await repo?.branches.invalidate("current");
+      await repo?.branches.invalidate("statusAheadBehind");
     },
     onError: (error: string) => {
       toast.error(error);
