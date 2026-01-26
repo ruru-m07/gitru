@@ -48,11 +48,11 @@
     "active": true,
     "targets": ["dmg", "appimage", "nsis", "rpm", "deb", "app"],
     "icon": [
-      "icons/prod/32x32.png",
-      "icons/prod/128x128.png",
-      "icons/prod/128x128@2x.png",
-      "icons/prod/icon.icns",
-      "icons/prod/icon.ico"
+      "icons/dev/32x32.png",
+      "icons/dev/128x128.png",
+      "icons/dev/128x128@2x.png",
+      "icons/dev/icon.icns",
+      "icons/dev/icon.ico"
     ]
   },
   "plugins": {

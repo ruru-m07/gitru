@@ -2,12 +2,7 @@ import { Button, buttonVariants } from "@gitru/ui/components/button";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { getStatusIcon } from "@/components/getStatusIcon";
-import {
-  useGetStatusAheadBehind,
-  useGitFetch,
-  useGitPull,
-  useGitPush,
-} from "@/hooks";
+import { useGitFetch, useGitPull, useGitPush } from "@/hooks";
 
 export const Route = createFileRoute("/app/inbox/")({
   component: RouteComponent,
@@ -17,8 +12,6 @@ function RouteComponent() {
   const { mutateAsync: fetch } = useGitFetch();
   const { mutateAsync: push } = useGitPush();
   const { mutateAsync: pull } = useGitPull();
-
-  const { data: statusAheadBehind } = useGetStatusAheadBehind();
 
   return (
     <div className="p-4 space-y-4">
@@ -72,12 +65,6 @@ function RouteComponent() {
       >
         pull
       </Button>
-      <br />
-      {statusAheadBehind ? (
-        <div>
-          {statusAheadBehind.ahead} ahead, {statusAheadBehind.behind} behind
-        </div>
-      ) : null}
       <br />
       <ul>
         <li className="flex">
