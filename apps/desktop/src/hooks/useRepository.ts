@@ -1,4 +1,5 @@
 import type {
+  AheadBehindStatus,
   Branch,
   BranchInfo,
   BranchKind,
@@ -222,7 +223,7 @@ export function useGetRepositoryOrigin(
 }
 
 export function useGetStatusAheadBehind(
-  options?: QueryOptions<{ ahead: number; behind: number }>,
+  options?: QueryOptions<AheadBehindStatus>,
 ) {
   const repo = appState.repository;
 

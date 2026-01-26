@@ -19,12 +19,15 @@ import {
 } from "@gitru/ui/components/tooltip";
 import {
   ArrowDown,
+  ArrowUp,
+  CloudUpload,
   File,
   GitBranch,
   GitCommitVertical,
   RefreshCw,
   Settings,
 } from "lucide-react";
+import React from "react";
 import {
   useGetCommitById,
   useGetCurrentBranch,
@@ -47,30 +50,32 @@ const StatusBar = () => {
     <div className="border-t overflow-hidden h-7 flex justify-between items-center ">
       {/* left side */}
       <div className="h-full flex">
-        <a
-          target="_blank"
-          href={
-            repositoryOrigin?.provider === "github"
-              ? `https://github.com/${repositoryOrigin?.owner}/${repositoryOrigin?.repo}`
-              : "#"
-          }
-        >
-          <Badge
-            variant={"outline"}
-            className="h-full rounded-none border-0 border-r px-2 flex items-center cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
+        {repositoryOrigin ? (
+          <a
+            target="_blank"
+            href={
+              repositoryOrigin.provider === "github"
+                ? `https://github.com/${repositoryOrigin.owner}/${repositoryOrigin.repo}`
+                : "#"
+            }
           >
-            <span className="flex items-center gap-1">
-              <span className="text-muted-foreground! font-normal">
-                Origin:{" "}
+            <Badge
+              variant={"outline"}
+              className="h-full rounded-none border-0 border-r px-2 flex items-center cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
+            >
+              <span className="flex items-center gap-1">
+                <span className="text-muted-foreground! font-normal">
+                  Origin:{" "}
+                </span>
+                <GithubIcon />
+                <span className="text-muted-foreground!">
+                  {repositoryOrigin.owner} /{" "}
+                </span>
+                <span className="text-foreground">{repositoryOrigin.repo}</span>
               </span>
-              <GithubIcon />
-              <span className="text-muted-foreground!">
-                {repositoryOrigin?.owner} /{" "}
-              </span>
-              <span className="text-foreground">{repositoryOrigin?.repo}</span>
-            </span>
-          </Badge>
-        </a>
+            </Badge>
+          </a>
+        ) : null}
         <Badge
           variant={"outline"}
           className="text-muted-foreground! h-full rounded-none border-0 border-r px-2 flex items-center font-normal cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
@@ -81,37 +86,51 @@ const StatusBar = () => {
             {status?.files && status?.files.length > 0 ? "*" : ""}
           </span>
         </Badge>
-        <Badge
-          variant={"outline"}
-          className="text-muted-foreground! h-full rounded-none border-0 border-r px-2 flex items-center cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
-        >
-          <RefreshCw />
-        </Badge>
+        <React.Fragment>
+          <Badge
+            variant={"outline"}
+            className="text-muted-foreground! h-full rounded-none border-0 border-r px-2 flex items-center cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
+          >
+            <RefreshCw />
+          </Badge>
+          {statusAheadBehind?.ahead && statusAheadBehind.ahead > 0 ? (
+            <>
+              {!statusAheadBehind.is_published ? (
+                <Badge
+                  variant={"outline"}
+                  className="h-full rounded-none border-0 border-r flex items-center font-normal tabular-nums px-1.5 cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
+                >
+                  <CloudUpload />
+                  <span>Publish Branch</span>
+                </Badge>
+              ) : (
+                <Badge
+                  variant={"outline"}
+                  className="text-muted-foreground! h-full rounded-none border-0 border-r flex items-center font-normal tabular-nums px-1.5 cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
+                >
+                  <ArrowUp />
+                  <span className="tabular-nums text-foreground!">
+                    {statusAheadBehind.ahead}{" "}
+                  </span>
+                  <span>ahead</span>
+                </Badge>
+              )}
+            </>
+          ) : null}
+          {statusAheadBehind?.behind && statusAheadBehind.behind > 0 ? (
+            <Badge
+              variant={"outline"}
+              className="text-muted-foreground! h-full rounded-none border-0 border-r flex items-center font-normal tabular-nums px-1.5 cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
+            >
+              <ArrowDown />
+              <span className="tabular-nums text-foreground!">
+                {statusAheadBehind.behind}{" "}
+              </span>
+              <span>behind</span>
+            </Badge>
+          ) : null}
+        </React.Fragment>
         {lastCommit ? <LastCommitBox lastCommit={lastCommit} /> : null}
-        {statusAheadBehind?.ahead && statusAheadBehind.ahead > 0 ? (
-          <Badge
-            variant={"outline"}
-            className="text-muted-foreground! h-full rounded-none border-0 border-r flex items-center font-normal tabular-nums px-1.5 cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
-          >
-            <ArrowDown />
-            <span className="tabular-nums text-foreground!">
-              {statusAheadBehind.ahead}{" "}
-            </span>
-            <span>behind</span>
-          </Badge>
-        ) : null}
-        {statusAheadBehind?.behind && statusAheadBehind.behind > 0 ? (
-          <Badge
-            variant={"outline"}
-            className="text-muted-foreground! h-full rounded-none border-0 border-r flex items-center font-normal tabular-nums px-1.5 cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
-          >
-            <ArrowDown />
-            <span className="tabular-nums text-foreground!">
-              {statusAheadBehind.behind}{" "}
-            </span>
-            <span>behind</span>
-          </Badge>
-        ) : null}
       </div>
       {/* right side */}
       <div className="h-full flex">

@@ -35,8 +35,10 @@ pub struct AheadBehindStatus {
     pub local_branch: String,
     pub local_branch_id: String,
 
-    pub upstream_branch: String,
-    pub upstream_branch_id: String,
+    pub upstream_branch: Option<String>,
+    pub upstream_branch_id: Option<String>,
+
+    pub is_published: bool,
 }
 
 #[derive(serde::Deserialize)]
@@ -120,33 +122,52 @@ pub async fn status_ahead_behind(repo_path: &str) -> Result<AheadBehindStatus, S
         .target()
         .ok_or_else(|| "Local branch has no target".to_string())?;
 
-    let upstream = branch
-        .upstream()
-        .map_err(|_| format!("No upstream configured for {local_branch_name}"))?;
+    let upstream = match branch.upstream() {
+        Ok(upstream) => Some(upstream),
+        Err(_) => None,
+    };
 
-    let upstream_oid = upstream
-        .get()
-        .target()
-        .ok_or_else(|| "Upstream branch has no target".to_string())?;
+    if let Some(upstream) = upstream {
+        let upstream_oid = upstream
+            .get()
+            .target()
+            .ok_or_else(|| "Upstream branch has no target".to_string())?;
 
-    let upstream_name = upstream
-        .get()
-        .shorthand()
-        .ok_or_else(|| "Failed to read upstream branch name".to_string())?
-        .to_string();
+        let upstream_name = upstream
+            .get()
+            .shorthand()
+            .ok_or_else(|| "Failed to read upstream branch name".to_string())?
+            .to_string();
 
-    let (ahead, behind) = repo
-        .graph_ahead_behind(local_oid, upstream_oid)
-        .map_err(|e| e.to_string())?;
+        let (ahead, behind) = repo
+            .graph_ahead_behind(local_oid, upstream_oid)
+            .map_err(|e| e.to_string())?;
 
-    Ok(AheadBehindStatus {
-        ahead,
-        behind,
-        local_branch: local_branch_name.to_string(),
-        local_branch_id: local_oid.to_string(),
-        upstream_branch: upstream_name,
-        upstream_branch_id: upstream_oid.to_string(),
-    })
+        Ok(AheadBehindStatus {
+            ahead,
+            behind,
+            local_branch: local_branch_name.to_string(),
+            local_branch_id: local_oid.to_string(),
+            upstream_branch: Some(upstream_name),
+            upstream_branch_id: Some(upstream_oid.to_string()),
+            is_published: true,
+        })
+    } else {
+        let mut revwalk = repo.revwalk().map_err(|e| e.to_string())?;
+        revwalk.push(local_oid).map_err(|e| e.to_string())?;
+
+        let ahead = revwalk.count();
+
+        Ok(AheadBehindStatus {
+            ahead,
+            behind: 0,
+            local_branch: local_branch_name.to_string(),
+            local_branch_id: local_oid.to_string(),
+            upstream_branch: None,
+            upstream_branch_id: None,
+            is_published: false,
+        })
+    }
 }
 
 /* #region // ? Helpers */
