@@ -10,6 +10,8 @@ import type {
   FullCommitInfo,
   GetStatusResponse,
   RepositoryOrigin,
+  SwitchBranchResult,
+  UncommittedChangesStrategy,
 } from "@gitru/commands";
 import {
   type UseQueryOptions,
@@ -389,6 +391,81 @@ export function useInvalidateAll() {
     mutationFn: async () => {
       if (!repo) throw new Error("No repository selected");
       return await repo.invalidateAll();
+    },
+    onError: (error: string) => {
+      toast.error(error);
+    },
+  });
+
+  return mutation;
+}
+
+export function useHasUncommittedChanges(options?: QueryOptions<boolean>) {
+  const repo = appState.repository;
+
+  return useQuery({
+    queryKey: repo?.branches.getQueryKey("hasUncommittedChanges") ?? [
+      "repository",
+      "none",
+      "branches",
+      "hasUncommittedChanges",
+    ],
+    queryFn: async () => {
+      if (!repo) return null;
+      return await repo.branches.hasUncommittedChanges();
+    },
+    enabled: !!repo,
+    ...options,
+  });
+}
+
+export function useGitSwitchBranch() {
+  const repo = appState.repository;
+
+  const mutation = useMutation({
+    mutationFn: async ({
+      branchName,
+      strategy,
+    }: {
+      branchName: string;
+      strategy: UncommittedChangesStrategy;
+    }): Promise<SwitchBranchResult> => {
+      if (!repo) throw new Error("No repository selected");
+      return await repo.branches.switchBranch(branchName, strategy);
+    },
+    onSuccess: async () => {
+      await repo?.branches.invalidate("current");
+      await repo?.branches.invalidate("list");
+      await repo?.branches.invalidate("statusAheadBehind");
+      await repo?.status.invalidate();
+    },
+    onError: (error: string) => {
+      toast.error(error);
+    },
+  });
+
+  return mutation;
+}
+
+export function useGitCreateBranch() {
+  const repo = appState.repository;
+
+  const mutation = useMutation({
+    mutationFn: async ({
+      branchName,
+      strategy,
+    }: {
+      branchName: string;
+      strategy: UncommittedChangesStrategy;
+    }): Promise<SwitchBranchResult> => {
+      if (!repo) throw new Error("No repository selected");
+      return await repo.branches.createBranch(branchName, strategy);
+    },
+    onSuccess: async () => {
+      await repo?.branches.invalidate("current");
+      await repo?.branches.invalidate("list");
+      await repo?.branches.invalidate("statusAheadBehind");
+      await repo?.status.invalidate();
     },
     onError: (error: string) => {
       toast.error(error);

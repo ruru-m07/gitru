@@ -1,11 +1,15 @@
 use std::process::Command;
 
 use crate::{
-    types::{FileStatus, FileStatusKind, GetStatusResponse, GitResult},
+    types::{
+        FileStatus, FileStatusKind, GetStatusResponse, GitResult, SwitchBranchResult,
+        UncommittedChangesStrategy,
+    },
     utils::open_repository,
 };
 use git2::{
-    BranchType, Cred, FetchOptions, FetchPrune, PushOptions, RemoteCallbacks, Status, StatusOptions,
+    BranchType, Cred, FetchOptions, FetchPrune, PushOptions, RemoteCallbacks, Signature,
+    StashFlags, Status, StatusOptions,
 };
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
@@ -766,9 +770,500 @@ pub async fn git_pull(repo_path: &str) -> Result<GitResult, String> {
     })
 }
 
+#[tauri::command]
+#[logger::logger]
+pub async fn git_switch_branch(
+    repo_path: &str,
+    branch_name: &str,
+    strategy: UncommittedChangesStrategy,
+) -> Result<SwitchBranchResult, String> {
+    let repo = match open_repository(repo_path) {
+        Ok(r) => r,
+        Err(e) => {
+            return Ok(SwitchBranchResult {
+                success: false,
+                message: Some(format!("Failed to open repo: {e}")),
+                stash_name: None,
+                from_branch: None,
+                to_branch: None,
+            });
+        }
+    };
+
+    // Get current branch name
+    let current_branch = match repo.head() {
+        Ok(h) => h.shorthand().map(|s| s.to_string()),
+        Err(_) => None,
+    };
+
+    // Check if we're already on the target branch
+    if let Some(ref current) = current_branch {
+        if current == branch_name {
+            return Ok(SwitchBranchResult {
+                success: true,
+                message: Some(format!("Already on branch `{}`", branch_name)),
+                stash_name: None,
+                from_branch: current_branch.clone(),
+                to_branch: Some(branch_name.to_string()),
+            });
+        }
+    }
+
+    // Check for uncommitted changes
+    let has_changes = has_uncommitted_changes_internal(&repo)?;
+    let mut stash_name: Option<String> = None;
+
+    // Handle uncommitted changes based on strategy
+    if has_changes {
+        match strategy {
+            UncommittedChangesStrategy::StashOnCurrentBranch => {
+                // Create stash with descriptive message
+                let stash_message = format!(
+                    "Auto-stash on `{}` before switching to `{}`",
+                    current_branch.as_deref().unwrap_or("detached"),
+                    branch_name
+                );
+
+                let sig = match repo.signature() {
+                    Ok(s) => s,
+                    Err(_) => Signature::now("gitru", "gitru@local").unwrap(),
+                };
+
+                let mut repo_mut = repo;
+                match repo_mut.stash_save(&sig, &stash_message, Some(StashFlags::INCLUDE_UNTRACKED))
+                {
+                    Ok(_oid) => {
+                        stash_name = Some(stash_message.clone());
+                    }
+                    Err(e) => {
+                        return Ok(SwitchBranchResult {
+                            success: false,
+                            message: Some(format!("Failed to stash changes: {e}")),
+                            stash_name: None,
+                            from_branch: current_branch,
+                            to_branch: None,
+                        });
+                    }
+                }
+
+                // Now perform the checkout
+                let result = perform_checkout(&mut repo_mut, branch_name);
+
+                if !result.success {
+                    // Checkout failed, try to recover the stash
+                    if let Err(pop_err) = repo_mut.stash_pop(0, None) {
+                        return Ok(SwitchBranchResult {
+                            success: false,
+                            message: Some(format!(
+                                "Checkout failed: {}. Also failed to recover stash: {}",
+                                result.message.unwrap_or_default(),
+                                pop_err
+                            )),
+                            stash_name: None,
+                            from_branch: current_branch,
+                            to_branch: None,
+                        });
+                    }
+                    return Ok(SwitchBranchResult {
+                        success: false,
+                        message: result.message,
+                        stash_name: None,
+                        from_branch: current_branch,
+                        to_branch: None,
+                    });
+                }
+
+                return Ok(SwitchBranchResult {
+                    success: true,
+                    message: Some(format!(
+                        "Switched to `{}`. Changes stashed on `{}`",
+                        branch_name,
+                        current_branch.as_deref().unwrap_or("previous branch")
+                    )),
+                    stash_name,
+                    from_branch: current_branch,
+                    to_branch: Some(branch_name.to_string()),
+                });
+            }
+            UncommittedChangesStrategy::BringChanges => {
+                // Try checkout directly - git will bring changes if possible
+                let result = perform_checkout(&repo, branch_name);
+                return Ok(SwitchBranchResult {
+                    success: result.success,
+                    message: if result.success {
+                        Some(format!(
+                            "Switched to `{}` with uncommitted changes",
+                            branch_name
+                        ))
+                    } else {
+                        result.message
+                    },
+                    stash_name: None,
+                    from_branch: current_branch,
+                    to_branch: if result.success {
+                        Some(branch_name.to_string())
+                    } else {
+                        None
+                    },
+                });
+            }
+        }
+    }
+
+    // No uncommitted changes, just checkout
+    let result = perform_checkout(&repo, branch_name);
+    Ok(SwitchBranchResult {
+        success: result.success,
+        message: if result.success {
+            Some(format!("Switched to `{}`", branch_name))
+        } else {
+            result.message
+        },
+        stash_name: None,
+        from_branch: current_branch,
+        to_branch: if result.success {
+            Some(branch_name.to_string())
+        } else {
+            None
+        },
+    })
+}
+
+// ? git checkout -b <branch_name>
+#[tauri::command]
+#[logger::logger]
+pub async fn git_create_branch(
+    repo_path: &str,
+    branch_name: &str,
+    strategy: UncommittedChangesStrategy,
+) -> Result<SwitchBranchResult, String> {
+    let mut repo = match open_repository(repo_path) {
+        Ok(r) => r,
+        Err(e) => {
+            return Ok(SwitchBranchResult {
+                success: false,
+                message: Some(format!("Failed to open repo: {e}")),
+                stash_name: None,
+                from_branch: None,
+                to_branch: None,
+            });
+        }
+    };
+
+    // Get current branch name
+    let current_branch = match repo.head() {
+        Ok(h) => h.shorthand().map(|s| s.to_string()),
+        Err(_) => None,
+    };
+
+    // Check if branch already exists
+    if repo.find_branch(branch_name, BranchType::Local).is_ok() {
+        return Ok(SwitchBranchResult {
+            success: false,
+            message: Some(format!("Branch `{}` already exists", branch_name)),
+            stash_name: None,
+            from_branch: current_branch,
+            to_branch: None,
+        });
+    }
+
+    // Check for uncommitted changes
+    let has_changes = has_uncommitted_changes_internal(&repo)?;
+    let mut stash_name: Option<String> = None;
+
+    // Handle uncommitted changes based on strategy
+    if has_changes {
+        match strategy {
+            UncommittedChangesStrategy::StashOnCurrentBranch => {
+                let stash_message = format!(
+                    "Auto-stash on `{}` before creating `{}`",
+                    current_branch.as_deref().unwrap_or("detached"),
+                    branch_name
+                );
+
+                let sig = match repo.signature() {
+                    Ok(s) => s,
+                    Err(_) => Signature::now("gitru", "gitru@local").unwrap(),
+                };
+
+                match repo.stash_save(&sig, &stash_message, Some(StashFlags::INCLUDE_UNTRACKED)) {
+                    Ok(_oid) => {
+                        stash_name = Some(stash_message.clone());
+                    }
+                    Err(e) => {
+                        return Ok(SwitchBranchResult {
+                            success: false,
+                            message: Some(format!("Failed to stash changes: {e}")),
+                            stash_name: None,
+                            from_branch: current_branch,
+                            to_branch: None,
+                        });
+                    }
+                }
+
+                // Get HEAD OID and create branch
+                let create_result = create_branch_from_head(&repo, branch_name);
+
+                match create_result {
+                    Ok(()) => {}
+                    Err(e) => {
+                        // Failed to create branch, recover stash
+                        if let Err(pop_err) = repo.stash_pop(0, None) {
+                            return Ok(SwitchBranchResult {
+                                success: false,
+                                message: Some(format!(
+                                    "Failed to create branch: {}. Also failed to recover stash: {}",
+                                    e, pop_err
+                                )),
+                                stash_name: None,
+                                from_branch: current_branch,
+                                to_branch: None,
+                            });
+                        }
+                        return Ok(SwitchBranchResult {
+                            success: false,
+                            message: Some(e),
+                            stash_name: None,
+                            from_branch: current_branch,
+                            to_branch: None,
+                        });
+                    }
+                }
+
+                // Checkout the new branch
+                let result = perform_checkout(&repo, branch_name);
+
+                if !result.success {
+                    // Checkout failed, recover stash
+                    if let Err(pop_err) = repo.stash_pop(0, None) {
+                        return Ok(SwitchBranchResult {
+                            success: false,
+                            message: Some(format!(
+                                "Checkout failed: {}. Also failed to recover stash: {}",
+                                result.message.unwrap_or_default(),
+                                pop_err
+                            )),
+                            stash_name: None,
+                            from_branch: current_branch,
+                            to_branch: None,
+                        });
+                    }
+                    return Ok(SwitchBranchResult {
+                        success: false,
+                        message: result.message,
+                        stash_name: None,
+                        from_branch: current_branch,
+                        to_branch: None,
+                    });
+                }
+
+                return Ok(SwitchBranchResult {
+                    success: true,
+                    message: Some(format!(
+                        "Created and switched to `{}`. Changes stashed on `{}`",
+                        branch_name,
+                        current_branch.as_deref().unwrap_or("previous branch")
+                    )),
+                    stash_name,
+                    from_branch: current_branch,
+                    to_branch: Some(branch_name.to_string()),
+                });
+            }
+            UncommittedChangesStrategy::BringChanges => {
+                // Create the new branch
+                if let Err(e) = create_branch_from_head(&repo, branch_name) {
+                    return Ok(SwitchBranchResult {
+                        success: false,
+                        message: Some(e),
+                        stash_name: None,
+                        from_branch: current_branch,
+                        to_branch: None,
+                    });
+                }
+
+                // Checkout - changes will come along
+                let result = perform_checkout(&repo, branch_name);
+                return Ok(SwitchBranchResult {
+                    success: result.success,
+                    message: if result.success {
+                        Some(format!(
+                            "Created and switched to `{}` with uncommitted changes",
+                            branch_name
+                        ))
+                    } else {
+                        result.message
+                    },
+                    stash_name: None,
+                    from_branch: current_branch,
+                    to_branch: if result.success {
+                        Some(branch_name.to_string())
+                    } else {
+                        None
+                    },
+                });
+            }
+        }
+    }
+
+    // No uncommitted changes, just create and checkout
+    if let Err(e) = create_branch_from_head(&repo, branch_name) {
+        return Ok(SwitchBranchResult {
+            success: false,
+            message: Some(e),
+            stash_name: None,
+            from_branch: current_branch,
+            to_branch: None,
+        });
+    }
+
+    let result = perform_checkout(&repo, branch_name);
+    Ok(SwitchBranchResult {
+        success: result.success,
+        message: if result.success {
+            Some(format!("Created and switched to `{}`", branch_name))
+        } else {
+            result.message
+        },
+        stash_name: None,
+        from_branch: current_branch,
+        to_branch: if result.success {
+            Some(branch_name.to_string())
+        } else {
+            None
+        },
+    })
+}
+
+/// Helper to create a branch from HEAD
+fn create_branch_from_head(repo: &git2::Repository, branch_name: &str) -> Result<(), String> {
+    let head = repo
+        .head()
+        .map_err(|e| format!("Failed to get HEAD: {e}"))?;
+    let commit = head
+        .peel_to_commit()
+        .map_err(|e| format!("Failed to get HEAD commit: {e}"))?;
+    repo.branch(branch_name, &commit, false)
+        .map_err(|e| format!("Failed to create branch: {e}"))?;
+    Ok(())
+}
+
+// ? Check if there are uncommitted changes
+#[tauri::command]
+#[logger::logger]
+pub async fn has_uncommitted_changes(repo_path: &str) -> Result<bool, String> {
+    let repo = open_repository(repo_path).map_err(|e| format!("Failed to open repo: {e}"))?;
+    has_uncommitted_changes_internal(&repo)
+}
+
 /* #endregion // ! command */
 
 /* #region // ? helpers */
+
+/// Internal helper to check for uncommitted changes
+fn has_uncommitted_changes_internal(repo: &git2::Repository) -> Result<bool, String> {
+    let mut opts = StatusOptions::new();
+    opts.include_untracked(true)
+        .include_ignored(false)
+        .exclude_submodules(true);
+
+    let statuses = repo
+        .statuses(Some(&mut opts))
+        .map_err(|e| format!("Failed to get status: {e}"))?;
+
+    Ok(!statuses.is_empty())
+}
+
+/// Helper to perform the actual checkout operation
+fn perform_checkout(repo: &git2::Repository, branch_name: &str) -> GitResult {
+    // First, try to find local branch
+    let branch = match repo.find_branch(branch_name, BranchType::Local) {
+        Ok(b) => b,
+        Err(_) => {
+            // Try to find remote branch and create local tracking branch
+            let remote_branch_name = format!("origin/{}", branch_name);
+            match repo.find_branch(&remote_branch_name, BranchType::Remote) {
+                Ok(remote_branch) => {
+                    // Create local branch tracking the remote
+                    let commit = match remote_branch.get().peel_to_commit() {
+                        Ok(c) => c,
+                        Err(e) => {
+                            return GitResult {
+                                success: false,
+                                message: Some(format!("Failed to get remote branch commit: {e}")),
+                            };
+                        }
+                    };
+
+                    match repo.branch(branch_name, &commit, false) {
+                        Ok(mut local_branch) => {
+                            // Set upstream
+                            let _ = local_branch.set_upstream(Some(&remote_branch_name));
+                            local_branch
+                        }
+                        Err(e) => {
+                            return GitResult {
+                                success: false,
+                                message: Some(format!("Failed to create local branch: {e}")),
+                            };
+                        }
+                    }
+                }
+                Err(_) => {
+                    return GitResult {
+                        success: false,
+                        message: Some(format!("Branch `{}` not found", branch_name)),
+                    };
+                }
+            }
+        }
+    };
+
+    // Get the commit to checkout
+    let commit = match branch.get().peel_to_commit() {
+        Ok(c) => c,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to get branch commit: {e}")),
+            };
+        }
+    };
+
+    // Set HEAD to the branch
+    let refname = format!("refs/heads/{}", branch_name);
+    if let Err(e) = repo.set_head(&refname) {
+        return GitResult {
+            success: false,
+            message: Some(format!("Failed to set HEAD: {e}")),
+        };
+    }
+
+    // Checkout the tree
+    let tree = match commit.tree() {
+        Ok(t) => t,
+        Err(e) => {
+            return GitResult {
+                success: false,
+                message: Some(format!("Failed to get tree: {e}")),
+            };
+        }
+    };
+
+    let mut checkout_builder = git2::build::CheckoutBuilder::new();
+    checkout_builder.safe();
+
+    if let Err(e) = repo.checkout_tree(tree.as_object(), Some(&mut checkout_builder)) {
+        return GitResult {
+            success: false,
+            message: Some(format!("Failed to checkout tree: {e}")),
+        };
+    }
+
+    GitResult {
+        success: true,
+        message: None,
+    }
+}
 // fn collect_status(repo_path: &str) -> Result<Vec<FileStatus>, String> {
 //     let out = Command::new("git")
 //         .current_dir(repo_path)

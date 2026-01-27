@@ -8,16 +8,20 @@ import {
   getPatchByFilePath,
   getStatus,
   gitAdd,
+  gitCreateBranch,
   gitDiscard,
   gitFetch,
   gitPull,
   gitPush,
   gitRemove,
+  gitSwitchBranch,
+  hasUncommittedChanges,
   history,
   lastCommit,
   listBranches,
   repositoryOrigin,
   statusAheadBehind,
+  UncommittedChangesStrategy,
 } from "@gitru/commands";
 import { QueryClient } from "@tanstack/react-query";
 import { StateDomain } from "../core/StateManager";
@@ -164,7 +168,9 @@ class BranchState extends StateDomain {
     return data;
   }
 
-  getQueryKey(key: "list" | "current" | "statusAheadBehind") {
+  getQueryKey(
+    key: "list" | "current" | "statusAheadBehind" | "hasUncommittedChanges",
+  ) {
     return [...this.baseKey, key];
   }
 
@@ -175,6 +181,31 @@ class BranchState extends StateDomain {
 
   async invalidateAll() {
     await this.queryClient.invalidateQueries({ queryKey: [...this.baseKey] });
+  }
+
+  async hasUncommittedChanges() {
+    const data = await hasUncommittedChanges({
+      repoPath: this.repositoryPath,
+    });
+    return data;
+  }
+
+  async switchBranch(branchName: string, strategy: UncommittedChangesStrategy) {
+    const result = await gitSwitchBranch({
+      repoPath: this.repositoryPath,
+      branchName,
+      strategy,
+    });
+    return result;
+  }
+
+  async createBranch(branchName: string, strategy: UncommittedChangesStrategy) {
+    const result = await gitCreateBranch({
+      repoPath: this.repositoryPath,
+      branchName,
+      strategy,
+    });
+    return result;
   }
 }
 

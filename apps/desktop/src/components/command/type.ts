@@ -1,3 +1,4 @@
+import type { BranchInfo } from "@gitru/commands";
 import { FileRouteTypes } from "@tanstack/react-router";
 import { LucideIcon } from "lucide-react";
 
@@ -16,4 +17,16 @@ export interface Group {
   items: Item[];
 }
 
-export type CommandView = { type: "root" } | { type: "checkout-branch" };
+export type CommandView =
+  | { type: "root" }
+  | { type: "checkout-branch" }
+  | {
+      type: "switch-branch-confirm";
+      targetBranch: BranchInfo;
+      currentBranch: string;
+      hasChanges: boolean;
+    }
+  | {
+      type: "create-branch";
+      hasChanges: boolean;
+    };
