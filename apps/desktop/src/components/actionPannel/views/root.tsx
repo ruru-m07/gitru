@@ -34,6 +34,7 @@ export interface ActionItem {
   icon?: React.ReactNode;
   iconKey?: string;
   redirect?: string;
+  onCallBack?: () => Promise<void> | void;
 }
 
 const iconMap: Record<string, React.ReactNode> = {
@@ -131,7 +132,6 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             id: "new-branch",
             label: "New Branch",
             shortcut: ["⌘", "⇧", "N"],
-            value: "new-branch",
             keywords: ["create", "new", "branch"],
             iconKey: "gitbranchPlus",
           },
@@ -140,16 +140,14 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             label: "Checkout Branch",
             shortcut: ["⌘", "⇧", "C"],
             keywords: ["switch", "checkout"],
-            value: "checkout-branch",
             iconKey: "gitBranch",
           },
           {
             id: "fetch-changes",
             label: "Fetch Changes",
             shortcut: ["⌘", "⇧", "F"],
-            value: "fetch-changes",
             iconKey: "refreshCcw",
-            onClick() {
+            async onCallBack() {
               toast.promise(fetch(), {
                 loading: "Fetching changes...",
                 success: (data) =>
@@ -164,9 +162,8 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             id: "pull-changes",
             label: "Pull Changes",
             shortcut: ["⌘", "⇧", "P"],
-            value: "pull-changes",
             iconKey: "arrowDownToLine",
-            onClick() {
+            async onCallBack() {
               toast.promise(pull(), {
                 loading: "Pulling changes...",
                 success: (data) =>
@@ -181,9 +178,8 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             id: "push-changes",
             label: "Push Changes",
             shortcut: ["⌘", "⇧", "U"],
-            value: "push-changes",
             iconKey: "arrowUpFromLine",
-            onClick() {
+            async onCallBack() {
               toast.promise(push(), {
                 loading: "Pushing changes...",
                 success: (data) => data,
@@ -196,8 +192,12 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             label: "Switch Repository",
             shortcut: ["⌘", "⇧", "R"],
             iconKey: "repositories",
+            async onCallBack() {
+              await new Promise((resolve) => setTimeout(resolve, 2000));
+              toast.success("TODO:");
+            },
           },
-        ];
+        ] satisfies ActionItem[];
       },
       getItemValue: (item) => {
         const a = item;
@@ -236,11 +236,15 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
               )}
             </div>
           )}
-          onSelect={(item: ActionItem) => {
+          onSelect={async (item: ActionItem) => {
             if (item.redirect) {
               tanstackNavigate({
                 to: item.redirect,
               });
+              context.close();
+            } else if (item.onCallBack) {
+              await item.onCallBack();
+              context.close();
             } else if (item.id === "new-branch") {
               navigate.push("create-branch");
             } else if (item.id === "checkout-branch") {
