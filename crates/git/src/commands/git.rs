@@ -213,80 +213,14 @@ pub async fn git_remove(repo_path: &str, file: &str) -> Result<GitResult, String
 // ? git restore <file>
 #[tauri::command]
 #[logger::logger]
-pub async fn git_discard(repo_path: &str, file: &str) -> Result<GitResult, String> {
-    let repo = match open_repository(repo_path) {
-        Ok(r) => r,
-        Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to open repo: {e}")),
-            });
-        }
-    };
-
-    let obj = match repo.head() {
-        Ok(head) => match head.peel(git2::ObjectType::Commit) {
-            Ok(obj) => obj,
-            Err(e) => {
-                return Ok(GitResult {
-                    success: false,
-                    message: Some(format!("Failed to peel HEAD: {e}")),
-                });
-            }
-        },
-        Err(_) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some("No HEAD to discard from".into()),
-            });
-        }
-    };
-
-    let res = if file == "." {
-        repo.checkout_tree(&obj, None)
-    } else {
-        let mut opts = git2::build::CheckoutBuilder::new();
-        opts.path(std::path::Path::new(file)).force();
-        repo.checkout_tree(&obj, Some(&mut opts))
-    };
-
-    if let Err(e) = res {
-        return Ok(GitResult {
-            success: false,
-            message: Some(format!("Failed to discard {file}: {e}")),
-        });
+pub async fn git_discard(repo_path: &str, file: &str, all: Option<bool>) -> Result<String, String> {
+    if all.unwrap_or(false) {
+        git_restore_all(repo_path)?;
+        return Ok("All changes discarded".into());
     }
 
-    // Remove untracked files
-    if file == "." {
-        // Get all untracked files
-        let mut opts = git2::StatusOptions::new();
-        opts.include_untracked(true);
-
-        if let Ok(statuses) = repo.statuses(Some(&mut opts)) {
-            for entry in statuses.iter() {
-                if entry.status().is_wt_new() {
-                    if let Some(path) = entry.path() {
-                        let full_path = std::path::Path::new(repo_path).join(path);
-                        let _ = std::fs::remove_file(full_path);
-                    }
-                }
-            }
-        }
-    } else {
-        // Check if specific file is untracked
-        let file_path = std::path::Path::new(repo_path).join(file);
-        if let Ok(status) = repo.status_file(std::path::Path::new(file)) {
-            if status.is_wt_new() {
-                let _ = std::fs::remove_file(file_path);
-            }
-        }
-    }
-
-    Ok(GitResult {
-        success: true,
-        message: None,
-    })
+    git_restore_file(repo_path, file)?;
+    Ok("Changes discarded".into())
 }
 
 // ? git fetch ...
@@ -1504,6 +1438,56 @@ fn collect_status(repo_path: &str) -> Result<Vec<FileStatus>, String> {
     }
 
     Ok(files)
+}
+
+fn git_restore_all(repo_path: &str) -> Result<(), String> {
+    let restore = Command::new("git")
+        .current_dir(repo_path)
+        .args(["restore", "--source=HEAD", "--staged", "--worktree", "."])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !restore.status.success() {
+        return Err(String::from_utf8_lossy(&restore.stderr).to_string());
+    }
+
+    let clean = Command::new("git")
+        .current_dir(repo_path)
+        .args(["clean", "-fd"])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !clean.status.success() {
+        return Err(String::from_utf8_lossy(&clean.stderr).to_string());
+    }
+
+    Ok(())
+}
+
+fn git_restore_file(repo_path: &str, file: &str) -> Result<(), String> {
+    let out = Command::new("git")
+        .current_dir(repo_path)
+        .args([
+            "restore",
+            "--source=HEAD",
+            "--staged",
+            "--worktree",
+            "--",
+            file,
+        ])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).to_string());
+    }
+
+    let _ = Command::new("git")
+        .current_dir(repo_path)
+        .args(["clean", "-f", "--", file])
+        .output();
+
+    Ok(())
 }
 
 /* #endregion // ? helpers */

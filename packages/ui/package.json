@@ -10,6 +10,7 @@
     "./postcss.config": "./postcss.config.mjs",
     "./lib/*": "./src/lib/*.ts",
     "./components/*": "./src/components/*.tsx",
+    "./components/command": "./src/components/command/index.ts",
     "./hooks/*": "./src/hooks/*.ts"
   },
   "scripts": {
@@ -25,7 +26,7 @@
   },
   "dependencies": {
     "@base-ui-components/react": "^1.0.0-beta.4",
-    "@base-ui/react": "^1.0.0",
+    "@base-ui/react": "^1.1.0",
     "@internationalized/date": "^3.7.0",
     "@radix-ui/react-context-menu": "^2.2.16",
     "class-variance-authority": "^0.7.0",

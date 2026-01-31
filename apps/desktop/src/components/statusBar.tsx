@@ -17,6 +17,7 @@ import {
   TooltipPopup,
   TooltipTrigger,
 } from "@gitru/ui/components/tooltip";
+import { getVersion } from "@tauri-apps/api/app";
 import {
   ArrowDown,
   ArrowUp,
@@ -134,25 +135,8 @@ const StatusBar = () => {
       </div>
       {/* right side */}
       <div className="h-full flex">
-        <Badge
-          variant={"outline"}
-          className="h-full rounded-none border-0 border-l px-2 flex items-center"
-        >
-          <span>
-            <span className="text-muted-foreground! font-normal">
-              Channel:{" "}
-            </span>
-            <span className="text-foreground!">development </span>
-          </span>
-        </Badge>
-        <Badge
-          variant={"outline"}
-          className="h-full rounded-none border-0 border-l px-2 flex items-center"
-        >
-          <span className="text-muted-foreground! font-mono font-normal tabular-nums">
-            v0.0.1-beta.1
-          </span>
-        </Badge>
+        <EnvironmentBadge />
+        <VersionBadge />
         <Badge
           variant={"outline"}
           className="text-muted-foreground! h-full rounded-none border-0 border-l px-2 flex items-center"
@@ -323,5 +307,44 @@ const LastCommitBox = ({ lastCommit }: { lastCommit: CommitInfo }) => {
         </div>
       </PopoverPopup>
     </Popover>
+  );
+};
+
+const EnvironmentBadge = () => {
+  if (import.meta.env.MODE) {
+    return (
+      <Badge
+        variant={"outline"}
+        className="h-full rounded-none border-0 border-l px-2 flex items-center"
+      >
+        <span>
+          <span className="text-muted-foreground! font-normal">Channel: </span>
+          <span className="text-foreground!">{import.meta.env.MODE} </span>
+        </span>
+      </Badge>
+    );
+  }
+};
+
+const VersionBadge = () => {
+  const [version, setVersion] = React.useState<string>("");
+
+  React.useEffect(() => {
+    getVersion().then((v) => setVersion(v));
+  }, []);
+
+  if (!version) {
+    return null;
+  }
+
+  return (
+    <Badge
+      variant={"outline"}
+      className="h-full rounded-none border-0 border-l px-2 flex items-center"
+    >
+      <span className="text-muted-foreground! font-mono font-normal tabular-nums">
+        v{version}
+      </span>
+    </Badge>
   );
 };

@@ -419,12 +419,7 @@ function GitPageLayout() {
                     <WriteCommitBox />
                   </TabsPanel>
                   <TabsPanel value="tab-2" className={"h-full"} tabIndex={-1}>
-                    <ScrollArea
-                      classNameRoot="flex-1 h-full"
-                      className="flex-1 h-full"
-                      hiddenScrollbar
-                      tabIndex={-1}
-                    >
+                    <ScrollArea className="flex-1 h-full" tabIndex={-1}>
                       {commitHistory?.map((commit) => (
                         <div
                           className="w-full p-2 border-b hover:bg-accent cursor-pointer hover:border-l-border border-l border-l-transparent"
