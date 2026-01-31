@@ -94,7 +94,7 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
       );
     },
     command: {
-      items: () => {
+      items: (ctx) => {
         return [
           {
             id: "inbox",
@@ -150,10 +150,12 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             async onCallBack() {
               toast.promise(fetch(), {
                 loading: "Fetching changes...",
-                success: (data) =>
-                  data.success
+                success: (data) => {
+                  ctx.close();
+                  return data.success
                     ? "Fetch completed"
-                    : (data.message ?? "Fetch failed"),
+                    : (data.message ?? "Fetch failed");
+                },
                 error: (err) => err ?? "Fetch error",
               });
             },
@@ -166,10 +168,13 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             async onCallBack() {
               toast.promise(pull(), {
                 loading: "Pulling changes...",
-                success: (data) =>
-                  data.success
+                success: (data) => {
+                  ctx.close();
+
+                  return data.success
                     ? "Pull completed"
-                    : (data.message ?? "Pull failed"),
+                    : (data.message ?? "Pull failed");
+                },
                 error: (err) => err ?? "Pull error",
               });
             },
@@ -182,7 +187,11 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             async onCallBack() {
               toast.promise(push(), {
                 loading: "Pushing changes...",
-                success: (data) => data,
+                success: (data) => {
+                  ctx.close();
+
+                  return data;
+                },
                 error: (err) => err ?? "Push error",
               });
             },
@@ -195,6 +204,7 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             async onCallBack() {
               await new Promise((resolve) => setTimeout(resolve, 2000));
               toast.success("TODO:");
+              ctx.close();
             },
           },
         ] satisfies ActionItem[];
@@ -244,7 +254,6 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
               context.close();
             } else if (item.onCallBack) {
               await item.onCallBack();
-              context.close();
             } else if (item.id === "new-branch") {
               navigate.push("create-branch");
             } else if (item.id === "checkout-branch") {
