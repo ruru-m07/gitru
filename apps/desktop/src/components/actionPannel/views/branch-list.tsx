@@ -25,9 +25,11 @@ import {
 } from "lucide-react";
 import { useGetBranches, useGetCurrentBranch } from "@/hooks";
 import { timeAgoFromUnixSeconds } from "@/lib/time";
+import { simplifyBranchName } from "./create-branch";
 
 export interface BranchItem extends Partial<BranchInfo> {
   name: BranchInfo["name"];
+  label?: string;
   isActive?: boolean;
 }
 
@@ -45,6 +47,7 @@ export function useBranchListView(): CommandViewConfig<
         b.name.toLowerCase().includes(query.toLowerCase()),
       )
         ? ({
+            label: `Create Branch ${simplifyBranchName(query)}`,
             name: `Create Branch ${query}`,
             isActive: true,
           } satisfies BranchItem)
@@ -109,7 +112,7 @@ export function useBranchListView(): CommandViewConfig<
               {item.isActive ? (
                 <div className="flex items-center gap-2 flex-1">
                   <GitBranchPlus className="size-4" />
-                  <span>{item.name}</span>
+                  <span>{item.label}</span>
                 </div>
               ) : (
                 <div className={"flex-col items-start w-full"}>
@@ -213,7 +216,10 @@ export function useBranchListView(): CommandViewConfig<
           )}
           onSelect={(item) => {
             if (item.isActive) {
-              navigate.push("create-branch", { initialName: query });
+              navigate.push("create-branch", {
+                quickAction: true,
+                branchName: simplifyBranchName(query),
+              });
             } else {
               navigate.push("confirm-checkout", { branch: item.name });
             }

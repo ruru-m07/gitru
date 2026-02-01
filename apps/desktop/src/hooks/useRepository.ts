@@ -332,9 +332,7 @@ export function useGitFetch() {
       return await repo.file.fetch();
     },
     onSuccess: async () => {
-      await repo?.branches.invalidate("current");
-      await repo?.branches.invalidate("list");
-      await repo?.branches.invalidate("statusAheadBehind");
+      await repo?.branches.invalidateAll();
       await repo?.commit.invalidate();
       await repo?.status.invalidate();
     },
@@ -352,9 +350,7 @@ export function useGitPublishBranch() {
       return await repo.file.publishBranch();
     },
     onSuccess: async () => {
-      await repo?.branches.invalidate("current");
-      await repo?.branches.invalidate("list");
-      await repo?.branches.invalidate("statusAheadBehind");
+      await repo?.branches.invalidateAll();
       await repo?.commit.invalidate();
       await repo?.status.invalidate();
     },
@@ -372,9 +368,7 @@ export function useGitPush() {
       return await repo.file.push();
     },
     onSuccess: async () => {
-      await repo?.branches.invalidate("current");
-      await repo?.branches.invalidate("list");
-      await repo?.branches.invalidate("statusAheadBehind");
+      await repo?.branches.invalidateAll();
       await repo?.commit.invalidate();
       await repo?.status.invalidate();
     },
@@ -392,9 +386,7 @@ export function useGitPull() {
       return await repo.file.pull();
     },
     onSuccess: async () => {
-      await repo?.branches.invalidate("current");
-      await repo?.branches.invalidate("list");
-      await repo?.branches.invalidate("statusAheadBehind");
+      await repo?.branches.invalidateAll();
       await repo?.commit.invalidate();
       await repo?.status.invalidate();
     },
@@ -447,15 +439,13 @@ export function useGitSwitchBranch() {
       strategy,
     }: {
       branchName: string;
-      strategy: UncommittedChangesStrategy;
+      strategy?: UncommittedChangesStrategy;
     }): Promise<string> => {
       if (!repo) throw new Error("No repository selected");
       return await repo.branches.switchBranch(branchName, strategy);
     },
     onSuccess: async () => {
-      await repo?.branches.invalidate("current");
-      await repo?.branches.invalidate("list");
-      await repo?.branches.invalidate("statusAheadBehind");
+      await repo?.branches.invalidateAll();
       await repo?.commit.invalidate();
       await repo?.status.invalidate();
     },
@@ -476,15 +466,14 @@ export function useGitCreateBranch() {
       strategy,
     }: {
       branchName: string;
-      strategy: UncommittedChangesStrategy;
+      strategy?: UncommittedChangesStrategy;
     }): Promise<string> => {
       if (!repo) throw new Error("No repository selected");
       return await repo.branches.createBranch(branchName, strategy);
     },
     onSuccess: async () => {
-      await repo?.branches.invalidate("current");
-      await repo?.branches.invalidate("list");
-      await repo?.branches.invalidate("statusAheadBehind");
+      await repo?.branches.invalidateAll();
+      await repo?.commit.invalidate();
       await repo?.status.invalidate();
     },
     onError: (error: string) => {

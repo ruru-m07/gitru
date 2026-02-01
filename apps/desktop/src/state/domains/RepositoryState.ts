@@ -191,7 +191,10 @@ class BranchState extends StateDomain {
     return data;
   }
 
-  async switchBranch(branchName: string, strategy: UncommittedChangesStrategy) {
+  async switchBranch(
+    branchName: string,
+    strategy?: UncommittedChangesStrategy,
+  ) {
     const result = await gitSwitchBranch({
       repoPath: this.repositoryPath,
       branch: branchName,
@@ -200,7 +203,10 @@ class BranchState extends StateDomain {
     return result;
   }
 
-  async createBranch(branchName: string, strategy: UncommittedChangesStrategy) {
+  async createBranch(
+    branchName: string,
+    strategy?: UncommittedChangesStrategy,
+  ) {
     const result = await gitCreateBranch({
       repoPath: this.repositoryPath,
       branch: branchName,

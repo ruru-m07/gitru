@@ -132,6 +132,17 @@ function GitPageLayout() {
       file.status.some((s) => s.startsWith("Worktree")) &&
       file.path.toLowerCase().includes(query.toLowerCase()),
   );
+  const conflictedChanges: GetStatusResponse["files"] = (
+    status?.files ?? []
+  ).filter(
+    (file) =>
+      file.status.some((s) => s.includes("Conflicted")) &&
+      file.path.toLowerCase().includes(query.toLowerCase()),
+  );
+
+  console.log({
+    conflictedChanges,
+  });
 
   return (
     <div
@@ -341,10 +352,25 @@ function GitPageLayout() {
                         <>
                           {status &&
                           ((stagedChanges && stagedChanges?.length > 0) ||
+                            (conflictedChanges &&
+                              conflictedChanges?.length > 0) ||
                             (unstagedChanges &&
                               unstagedChanges?.length > 0)) ? (
                             <VirtualizedFileList
                               sections={[
+                                {
+                                  id: "conflicted",
+                                  name: "Conflicted",
+                                  files: conflictedChanges || [],
+                                  actions: {
+                                    onAddAll: async () => {
+                                      await addFile(".");
+                                    },
+                                    renderDiscardAll: () => (
+                                      <DiscardChangesDialog fileName="." />
+                                    ),
+                                  },
+                                },
                                 {
                                   id: "staged",
                                   name: "Staged Changes",

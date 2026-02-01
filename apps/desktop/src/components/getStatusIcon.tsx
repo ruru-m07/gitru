@@ -4,7 +4,7 @@ import { Conflict, Deleted, Modifed, New, Renamed, Unknown } from "@gitru/icon";
 export function getStatusIcon(type: FileStatusKind[], size: number = 20) {
   const kinds = new Set(type);
 
-  if (kinds.has("WorktreeUnreadable")) {
+  if (kinds.has("Conflicted") || kinds.has("WorktreeUnreadable")) {
     return (
       <Conflict
         style={{

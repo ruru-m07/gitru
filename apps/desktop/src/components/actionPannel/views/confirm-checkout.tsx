@@ -19,9 +19,6 @@ export function useConfirmCheckoutView(): CommandViewConfig<
       async () => {
         await switchBranch({
           branchName: branch,
-          strategy: hasUncommittedChanges
-            ? "StashOnCurrentBranch"
-            : "BringChanges",
         });
       },
       {

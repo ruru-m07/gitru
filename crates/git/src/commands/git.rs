@@ -205,34 +205,59 @@ pub async fn git_pull(repo_path: &str) -> Result<String, String> {
 pub async fn git_switch_branch(
     repo_path: &str,
     branch: &str,
-    strategy: UncommittedChangesStrategy,
+    strategy: Option<UncommittedChangesStrategy>,
 ) -> Result<String, String> {
-    if git(repo_path, &["switch", branch]).is_ok() {
-        return Ok(format!("Switched to `{}`", branch));
+    let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
+    let head = repo
+        .head()
+        .map_err(|e| format!("Failed to get HEAD: {e}"))?;
+
+    if !head.is_branch() {
+        return Err(format!("You aren't on valid HEAD"));
     }
 
-    // 2. If bringing changes, fail immediately
-    if matches!(strategy, UncommittedChangesStrategy::BringChanges) {
-        return Err(format!(
-            "Uncommitted changes prevent switching to `{}`",
-            branch
-        ));
-    }
+    let current_branch = head
+        .shorthand()
+        .ok_or_else(|| "Failed to read branch name".to_string())?;
 
-    // 3. Stash changes
-    let stash_msg = format!("Gitru: Auto stash before switching to {}", branch);
-    git(
-        repo_path,
-        &["stash", "push", "-u", "-m", stash_msg.as_str()],
-    )?;
+    match strategy {
+        // ? If strategy is StashOnCurrentBranch, stash FIRST before attempting switch
+        Some(UncommittedChangesStrategy::StashOnCurrentBranch) => {
+            let stash_msg = format!("!!Gitru<{}> -> <{}>", current_branch, branch);
+            git(repo_path, &["stash", "push", "-u", "-m", &stash_msg])
+                .map_err(|e| format!("Failed to stash changes: {}", e))?;
 
-    // 4. Retry switch
-    match git(repo_path, &["switch", branch]) {
-        Ok(_) => Ok(format!("Switched to `{}` (changes stashed)", branch)),
-        Err(err) => {
-            // 5. Recover stash if switch still fails
-            let _ = git(repo_path, &["stash", "pop"]);
-            Err(err)
+            match git(repo_path, &["switch", branch]) {
+                Ok(_) => Ok(format!(
+                    "Switched to {} (changes stashed in {})",
+                    branch, current_branch
+                )),
+                Err(err) => {
+                    let _ = git(repo_path, &["stash", "pop"]);
+                    Err(format!(
+                        "Failed to switch to {} even after stashing: {}",
+                        branch, err
+                    ))
+                }
+            }
+        }
+
+        // ? If strategy is BringChanges or None, try to switch directly
+        _ => {
+            match git(repo_path, &["switch", branch]) {
+                Ok(_) => Ok(format!("Switched to {}", branch)),
+                Err(err) => {
+                    // Switch failed
+                    match strategy {
+                        Some(UncommittedChangesStrategy::BringChanges) => Err(format!(
+                            "Cannot bring uncommitted changes to {}: conflicts detected",
+                            branch
+                        )),
+                        None => Err(format!("Cannot switch to {}: {}", branch, err)),
+                        _ => unreachable!(),
+                    }
+                }
+            }
         }
     }
 }
@@ -242,37 +267,55 @@ pub async fn git_switch_branch(
 pub async fn git_create_branch(
     repo_path: &str,
     branch: &str,
-    strategy: UncommittedChangesStrategy,
+    strategy: Option<UncommittedChangesStrategy>,
 ) -> Result<String, String> {
-    // 1. Try direct create + switch
-    if git(repo_path, &["switch", "-c", branch]).is_ok() {
-        return Ok(format!("Created and switched to `{}`", branch));
+    let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
+    let head = repo
+        .head()
+        .map_err(|e| format!("Failed to get HEAD: {e}"))?;
+
+    if !head.is_branch() {
+        return Err(format!("You aren't on valid HEAD"));
     }
 
-    // 2. If bringing changes, fail immediately
-    if matches!(strategy, UncommittedChangesStrategy::BringChanges) {
-        return Err(format!("Uncommitted changes prevent creating `{}`", branch));
-    }
+    let current_branch = head
+        .shorthand()
+        .ok_or_else(|| "Failed to read branch name".to_string())?;
 
-    // 3. Stash changes
-    let stash_msg = format!("Gitru: Auto stash before creating {}", branch);
+    match strategy {
+        // ? If strategy is StashOnCurrentBranch, stash FIRST before creating and switching
+        Some(UncommittedChangesStrategy::StashOnCurrentBranch) => {
+            let stash_msg = format!("!!Gitru<{}> -> <{}> (new)", current_branch, branch);
+            git(repo_path, &["stash", "push", "-u", "-m", &stash_msg])
+                .map_err(|e| format!("Failed to stash changes: {}", e))?;
 
-    git(
-        repo_path,
-        &["stash", "push", "-u", "-m", stash_msg.as_str()],
-    )?;
-
-    // 4. Retry create + switch
-    match git(repo_path, &["switch", "-c", branch]) {
-        Ok(_) => Ok(format!(
-            "Created and switched to `{}` (changes stashed)",
-            branch
-        )),
-        Err(err) => {
-            // 5. Recover stash
-            let _ = git(repo_path, &["stash", "pop"]);
-            Err(err)
+            match git(repo_path, &["switch", "-c", branch]) {
+                Ok(_) => Ok(format!(
+                    "Created and switched to {} (changes stashed in {})",
+                    branch, current_branch
+                )),
+                Err(err) => {
+                    let _ = git(repo_path, &["stash", "pop"]);
+                    Err(format!(
+                        "Failed to create branch {} even after stashing: {}",
+                        branch, err
+                    ))
+                }
+            }
         }
+
+        // ? If strategy is BringChanges or None, try to create and switch directly
+        _ => match git(repo_path, &["switch", "-c", branch]) {
+            Ok(_) => Ok(format!("Created and switched to {}", branch)),
+            Err(err) => match strategy {
+                Some(UncommittedChangesStrategy::BringChanges) => Err(format!(
+                    "Cannot bring uncommitted changes to new branch {}: {}",
+                    branch, err
+                )),
+                None => Err(format!("Cannot create branch {}: {}", branch, err)),
+                _ => unreachable!(),
+            },
+        },
     }
 }
 
@@ -499,6 +542,10 @@ fn collect_status(repo_path: &str) -> Result<Vec<FileStatus>, String> {
             .to_string();
 
         let mut status_kinds = Vec::with_capacity(2);
+
+        if status.contains(Status::CONFLICTED) {
+            status_kinds.push(FileStatusKind::Conflicted);
+        }
 
         if status.contains(Status::INDEX_NEW) {
             status_kinds.push(FileStatusKind::IndexNew);
