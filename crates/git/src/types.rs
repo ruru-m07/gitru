@@ -1,47 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize)]
-pub struct GitResult {
-    pub success: bool,
-    pub message: Option<String>,
-}
-
-/// Strategy for handling uncommitted changes when switching branches
 #[derive(Debug, Clone, Deserialize)]
 pub enum UncommittedChangesStrategy {
     /// Stash changes on the current branch before switching (can be recovered later)
     StashOnCurrentBranch,
     /// Bring uncommitted changes to the new branch
     BringChanges,
-}
-
-/// Result of a branch switch operation
-#[derive(Serialize)]
-pub struct SwitchBranchResult {
-    pub success: bool,
-    pub message: Option<String>,
-    /// Name of the stash created (if strategy was StashOnCurrentBranch)
-    pub stash_name: Option<String>,
-    /// The branch we switched from
-    pub from_branch: Option<String>,
-    /// The branch we switched to
-    pub to_branch: Option<String>,
-}
-
-impl GitResult {
-    pub fn success() -> Self {
-        Self {
-            success: true,
-            message: None,
-        }
-    }
-
-    pub fn error(msg: impl Into<String>) -> Self {
-        Self {
-            success: false,
-            message: Some(msg.into()),
-        }
-    }
 }
 
 #[derive(Debug, Serialize)]

@@ -45,18 +45,8 @@ export interface VirtualizedFileListProps {
     index: number,
     event: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean },
   ) => void;
-  onAdd?: UseMutateAsyncFunction<
-    { success: boolean; message?: string },
-    string,
-    string,
-    unknown
-  >;
-  onUnstage?: UseMutateAsyncFunction<
-    { success: boolean; message?: string },
-    string,
-    string,
-    unknown
-  >;
+  onAdd?: UseMutateAsyncFunction<string, string, string, unknown>;
+  onUnstage?: UseMutateAsyncFunction<string, string, string, unknown>;
   onDiscard?: (filePath: string) => void;
   renderDiscard?: (filePath: string) => React.ReactNode;
   setSelectedFilePath: (file: SelectedFile | null) => void;
@@ -337,18 +327,8 @@ interface FileRowProps {
     index: number,
     event: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean },
   ) => void;
-  onAdd?: UseMutateAsyncFunction<
-    { success: boolean; message?: string },
-    string,
-    string,
-    unknown
-  >;
-  onUnstage?: UseMutateAsyncFunction<
-    { success: boolean; message?: string },
-    string,
-    string,
-    unknown
-  >;
+  onAdd?: UseMutateAsyncFunction<string, string, string, unknown>;
+  onUnstage?: UseMutateAsyncFunction<string, string, string, unknown>;
   onDiscard?: (filePath: string) => void;
   renderDiscard?: (filePath: string) => React.ReactNode;
   setSelectedFilePath: (file: SelectedFile | null) => void;

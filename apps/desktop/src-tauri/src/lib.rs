@@ -28,6 +28,8 @@ pub fn run() {
             git::commands::git::git_pull,
             git::commands::git::git_switch_branch,
             git::commands::git::git_create_branch,
+            git::commands::git::git_publish_branch,
+            git::commands::git::git_version,
             git::commands::git::has_uncommitted_changes,
             git::commands::commit::last_commit,
             git::commands::commit::commit_by_id,

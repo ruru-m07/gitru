@@ -81,7 +81,6 @@ import {
   useGitAdd,
   useGitDiscard,
   useGitUnstage,
-  useInvalidateAll,
 } from "@/hooks";
 import {
   formatUnixSecondsToDateTime,
@@ -112,7 +111,6 @@ function GitPageLayout() {
 
   const { data: status, isLoading: isStatusLoading } = useGetStatus();
 
-  const { mutateAsync: invalidateAll } = useInvalidateAll();
   const { mutateAsync: addFile } = useGitAdd();
   const { mutateAsync: unstageFile } = useGitUnstage();
 
@@ -227,9 +225,6 @@ function GitPageLayout() {
                                 setRepositories([...repositories, data]);
                                 setSelectedRepository(data);
                                 setRepoSelectIsOpen(false);
-                                setTimeout(async () => {
-                                  await invalidateAll();
-                                }, 0);
                                 toast.success("Repository added successfully!");
                               }
                             } catch (error) {
@@ -256,9 +251,6 @@ function GitPageLayout() {
                       onClick={() => {
                         setSelectedRepository(repo);
                         setRepoSelectIsOpen(false);
-                        setTimeout(async () => {
-                          await invalidateAll();
-                        }, 0);
                       }}
                     >
                       <span>{repo.name}</span>

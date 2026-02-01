@@ -6,6 +6,7 @@ import {
   persist,
   subscribeWithSelector,
 } from "zustand/middleware";
+import { appState } from "@/state";
 import { createTauriStorage } from "./tauriStoreAdapter";
 
 export type SelectedFile = {
@@ -38,7 +39,16 @@ export const useAppStore = create<AppState>()(
     persist(
       (set, get) => ({
         selectedRepository: null,
-        setSelectedRepository: (repo) => set({ selectedRepository: repo }),
+        setSelectedRepository: async (repo) => {
+          set({ selectedRepository: repo });
+
+          const r = appState.repository;
+          await r?.invalidateAll();
+
+          setTimeout(async () => {
+            await r?.invalidateAll();
+          }, 100);
+        },
 
         repositories: [],
         setRepositories: (repos) => set({ repositories: repos }),

@@ -11,6 +11,7 @@ import {
   gitCreateBranch,
   gitDiscard,
   gitFetch,
+  gitPublishBranch,
   gitPull,
   gitPush,
   gitRemove,
@@ -193,7 +194,7 @@ class BranchState extends StateDomain {
   async switchBranch(branchName: string, strategy: UncommittedChangesStrategy) {
     const result = await gitSwitchBranch({
       repoPath: this.repositoryPath,
-      branchName,
+      branch: branchName,
       strategy,
     });
     return result;
@@ -202,7 +203,7 @@ class BranchState extends StateDomain {
   async createBranch(branchName: string, strategy: UncommittedChangesStrategy) {
     const result = await gitCreateBranch({
       repoPath: this.repositoryPath,
-      branchName,
+      branch: branchName,
       strategy,
     });
     return result;
@@ -243,6 +244,13 @@ class FilesActionsState extends StateDomain {
 
   async fetch() {
     const result = await gitFetch({
+      repoPath: this.repositoryPath,
+    });
+    return result;
+  }
+
+  async publishBranch() {
+    const result = await gitPublishBranch({
       repoPath: this.repositoryPath,
     });
     return result;

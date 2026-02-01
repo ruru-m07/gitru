@@ -1,4 +1,5 @@
-import { CommitInfo } from "@gitru/commands";
+import { CommitInfo, gitVersion } from "@gitru/commands";
+import { Git } from "@gitru/icon";
 import {
   Avatar,
   AvatarFallback,
@@ -26,7 +27,6 @@ import {
   GitBranch,
   GitCommitVertical,
   RefreshCw,
-  Settings,
 } from "lucide-react";
 import React from "react";
 import {
@@ -137,12 +137,13 @@ const StatusBar = () => {
       <div className="h-full flex">
         <EnvironmentBadge />
         <VersionBadge />
-        <Badge
+        <GitVersion />
+        {/* <Badge
           variant={"outline"}
           className="text-muted-foreground! h-full rounded-none border-0 border-l px-2 flex items-center"
         >
           <Settings />
-        </Badge>
+        </Badge> */}
       </div>
     </div>
   );
@@ -324,6 +325,39 @@ const EnvironmentBadge = () => {
       </Badge>
     );
   }
+};
+
+const GitVersion = () => {
+  const [version, setVersion] = React.useState<string>("");
+
+  React.useEffect(() => {
+    gitVersion().then((v) => setVersion(v));
+  }, []);
+
+  if (!version) {
+    return null;
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger>
+        <Badge
+          variant={"outline"}
+          className="h-full rounded-none border-0 border-l px-2 flex items-center"
+        >
+          <Git className="size-3.5" />
+        </Badge>
+      </TooltipTrigger>
+      <TooltipPopup side="top" align="end">
+        <span className="text-muted-foreground! font-mono font-normal tabular-nums">
+          git version{" "}
+          <span className="text-foreground font-semibold">
+            v{version.split("git version ")[1]}
+          </span>
+        </span>
+      </TooltipPopup>
+    </Tooltip>
+  );
 };
 
 const VersionBadge = () => {

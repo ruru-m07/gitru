@@ -59,8 +59,7 @@ export function useBranchListView(): CommandViewConfig<
       placeholder: "Search branches...",
       autoFocus: true,
     },
-    footer(context) {
-      console.log(context);
+    footer() {
       return (
         <>
           <div className="flex items-center gap-2">

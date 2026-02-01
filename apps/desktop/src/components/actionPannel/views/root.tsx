@@ -24,7 +24,13 @@ import {
   Settings,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useGitFetch, useGitPull, useGitPush } from "@/hooks";
+import {
+  useGetStatusAheadBehind,
+  useGitFetch,
+  useGitPublishBranch,
+  useGitPull,
+  useGitPush,
+} from "@/hooks";
 
 export interface ActionItem {
   id: string;
@@ -55,6 +61,9 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
   const { mutateAsync: fetch } = useGitFetch();
   const { mutateAsync: pull } = useGitPull();
   const { mutateAsync: push } = useGitPush();
+  const { mutateAsync: publishBranch } = useGitPublishBranch();
+
+  const { data: aheadBehind } = useGetStatusAheadBehind();
 
   const tanstackNavigate = useNavigate();
 
@@ -152,9 +161,7 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
                 loading: "Fetching changes...",
                 success: (data) => {
                   ctx.close();
-                  return data.success
-                    ? "Fetch completed"
-                    : (data.message ?? "Fetch failed");
+                  return data;
                 },
                 error: (err) => err ?? "Fetch error",
               });
@@ -171,9 +178,7 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
                 success: (data) => {
                   ctx.close();
 
-                  return data.success
-                    ? "Pull completed"
-                    : (data.message ?? "Pull failed");
+                  return data;
                 },
                 error: (err) => err ?? "Pull error",
               });
@@ -181,19 +186,33 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
           },
           {
             id: "push-changes",
-            label: "Push Changes",
+            label: `Push Changes ${aheadBehind?.is_published ? (aheadBehind?.ahead ? `(${aheadBehind.ahead})` : "") : "(published branch)"}`,
             shortcut: ["⌘", "⇧", "U"],
             iconKey: "arrowUpFromLine",
             async onCallBack() {
-              toast.promise(push(), {
-                loading: "Pushing changes...",
-                success: (data) => {
-                  ctx.close();
+              if (aheadBehind && !aheadBehind.is_published) {
+                toast.promise(publishBranch(), {
+                  loading: "Publishing branch...",
+                  success: (data) => {
+                    ctx.close();
 
-                  return data;
-                },
-                error: (err) => err ?? "Push error",
-              });
+                    return data;
+                  },
+                  error: (err) => err ?? "Publish error",
+                });
+              } else if (aheadBehind && aheadBehind.ahead > 0) {
+                toast.promise(push(), {
+                  loading: "Pushing changes...",
+                  success: (data) => {
+                    ctx.close();
+
+                    return data;
+                  },
+                  error: (err) => err ?? "Push error",
+                });
+              } else {
+                toast.info("No changes to push");
+              }
             },
           },
           {
