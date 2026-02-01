@@ -81,7 +81,6 @@ import {
   useGitAdd,
   useGitDiscard,
   useGitUnstage,
-  useInvalidateAll,
 } from "@/hooks";
 import {
   formatUnixSecondsToDateTime,
@@ -112,7 +111,6 @@ function GitPageLayout() {
 
   const { data: status, isLoading: isStatusLoading } = useGetStatus();
 
-  const { mutateAsync: invalidateAll } = useInvalidateAll();
   const { mutateAsync: addFile } = useGitAdd();
   const { mutateAsync: unstageFile } = useGitUnstage();
 
@@ -134,6 +132,17 @@ function GitPageLayout() {
       file.status.some((s) => s.startsWith("Worktree")) &&
       file.path.toLowerCase().includes(query.toLowerCase()),
   );
+  const conflictedChanges: GetStatusResponse["files"] = (
+    status?.files ?? []
+  ).filter(
+    (file) =>
+      file.status.some((s) => s.includes("Conflicted")) &&
+      file.path.toLowerCase().includes(query.toLowerCase()),
+  );
+
+  console.log({
+    conflictedChanges,
+  });
 
   return (
     <div
@@ -227,9 +236,6 @@ function GitPageLayout() {
                                 setRepositories([...repositories, data]);
                                 setSelectedRepository(data);
                                 setRepoSelectIsOpen(false);
-                                setTimeout(async () => {
-                                  await invalidateAll();
-                                }, 0);
                                 toast.success("Repository added successfully!");
                               }
                             } catch (error) {
@@ -256,9 +262,6 @@ function GitPageLayout() {
                       onClick={() => {
                         setSelectedRepository(repo);
                         setRepoSelectIsOpen(false);
-                        setTimeout(async () => {
-                          await invalidateAll();
-                        }, 0);
                       }}
                     >
                       <span>{repo.name}</span>
@@ -349,10 +352,25 @@ function GitPageLayout() {
                         <>
                           {status &&
                           ((stagedChanges && stagedChanges?.length > 0) ||
+                            (conflictedChanges &&
+                              conflictedChanges?.length > 0) ||
                             (unstagedChanges &&
                               unstagedChanges?.length > 0)) ? (
                             <VirtualizedFileList
                               sections={[
+                                {
+                                  id: "conflicted",
+                                  name: "Conflicted",
+                                  files: conflictedChanges || [],
+                                  actions: {
+                                    onAddAll: async () => {
+                                      await addFile(".");
+                                    },
+                                    renderDiscardAll: () => (
+                                      <DiscardChangesDialog fileName="." />
+                                    ),
+                                  },
+                                },
                                 {
                                   id: "staged",
                                   name: "Staged Changes",
@@ -419,12 +437,7 @@ function GitPageLayout() {
                     <WriteCommitBox />
                   </TabsPanel>
                   <TabsPanel value="tab-2" className={"h-full"} tabIndex={-1}>
-                    <ScrollArea
-                      classNameRoot="flex-1 h-full"
-                      className="flex-1 h-full"
-                      hiddenScrollbar
-                      tabIndex={-1}
-                    >
+                    <ScrollArea className="flex-1 h-full" tabIndex={-1}>
                       {commitHistory?.map((commit) => (
                         <div
                           className="w-full p-2 border-b hover:bg-accent cursor-pointer hover:border-l-border border-l border-l-transparent"

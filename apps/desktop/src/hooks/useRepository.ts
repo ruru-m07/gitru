@@ -10,6 +10,7 @@ import type {
   FullCommitInfo,
   GetStatusResponse,
   RepositoryOrigin,
+  UncommittedChangesStrategy,
 } from "@gitru/commands";
 import {
   type UseQueryOptions,
@@ -88,7 +89,6 @@ export function useGetBranches(
     queryKey: [
       ...(repo?.branches.getQueryKey("list") ?? [
         "repository",
-        "none",
         "branches",
         "list",
       ]),
@@ -332,10 +332,27 @@ export function useGitFetch() {
       return await repo.file.fetch();
     },
     onSuccess: async () => {
+      await repo?.branches.invalidateAll();
+      await repo?.commit.invalidate();
       await repo?.status.invalidate();
     },
-    onError: (error: string) => {
-      toast.error(error);
+  });
+
+  return mutation;
+}
+
+export function useGitPublishBranch() {
+  const repo = appState.repository;
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      if (!repo) throw new Error("No repository selected");
+      return await repo.file.publishBranch();
+    },
+    onSuccess: async () => {
+      await repo?.branches.invalidateAll();
+      await repo?.commit.invalidate();
+      await repo?.status.invalidate();
     },
   });
 
@@ -351,12 +368,9 @@ export function useGitPush() {
       return await repo.file.push();
     },
     onSuccess: async () => {
+      await repo?.branches.invalidateAll();
+      await repo?.commit.invalidate();
       await repo?.status.invalidate();
-      await repo?.branches.invalidate("current");
-      await repo?.branches.invalidate("statusAheadBehind");
-    },
-    onError: (error: string) => {
-      toast.error(error);
     },
   });
 
@@ -372,10 +386,9 @@ export function useGitPull() {
       return await repo.file.pull();
     },
     onSuccess: async () => {
+      await repo?.branches.invalidateAll();
+      await repo?.commit.invalidate();
       await repo?.status.invalidate();
-    },
-    onError: (error: string) => {
-      toast.error(error);
     },
   });
 
@@ -389,6 +402,79 @@ export function useInvalidateAll() {
     mutationFn: async () => {
       if (!repo) throw new Error("No repository selected");
       return await repo.invalidateAll();
+    },
+    onError: (error: string) => {
+      toast.error(error);
+    },
+  });
+
+  return mutation;
+}
+
+export function useHasUncommittedChanges(options?: QueryOptions<boolean>) {
+  const repo = appState.repository;
+
+  return useQuery({
+    queryKey: repo?.branches.getQueryKey("hasUncommittedChanges") ?? [
+      "repository",
+      "none",
+      "branches",
+      "hasUncommittedChanges",
+    ],
+    queryFn: async () => {
+      if (!repo) return null;
+      return await repo.branches.hasUncommittedChanges();
+    },
+    enabled: !!repo,
+    ...options,
+  });
+}
+
+export function useGitSwitchBranch() {
+  const repo = appState.repository;
+
+  const mutation = useMutation({
+    mutationFn: async ({
+      branchName,
+      strategy,
+    }: {
+      branchName: string;
+      strategy?: UncommittedChangesStrategy;
+    }): Promise<string> => {
+      if (!repo) throw new Error("No repository selected");
+      return await repo.branches.switchBranch(branchName, strategy);
+    },
+    onSuccess: async () => {
+      await repo?.branches.invalidateAll();
+      await repo?.commit.invalidate();
+      await repo?.status.invalidate();
+    },
+    onError: (error: string) => {
+      toast.error(error);
+    },
+  });
+
+  return mutation;
+}
+
+export function useGitCreateBranch() {
+  const repo = appState.repository;
+
+  const mutation = useMutation({
+    mutationFn: async ({
+      branchName,
+      strategy,
+    }: {
+      branchName: string;
+      strategy?: UncommittedChangesStrategy;
+    }): Promise<string> => {
+      if (!repo) throw new Error("No repository selected");
+      return await repo.branches.createBranch(branchName, strategy);
+    },
+    onSuccess: async () => {
+      await repo?.branches.invalidateAll();
+      await repo?.commit.invalidate();
+      await repo?.status.invalidate();
     },
     onError: (error: string) => {
       toast.error(error);

@@ -45,18 +45,8 @@ export interface VirtualizedFileListProps {
     index: number,
     event: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean },
   ) => void;
-  onAdd?: UseMutateAsyncFunction<
-    { success: boolean; message?: string },
-    string,
-    string,
-    unknown
-  >;
-  onUnstage?: UseMutateAsyncFunction<
-    { success: boolean; message?: string },
-    string,
-    string,
-    unknown
-  >;
+  onAdd?: UseMutateAsyncFunction<string, string, string, unknown>;
+  onUnstage?: UseMutateAsyncFunction<string, string, string, unknown>;
   onDiscard?: (filePath: string) => void;
   renderDiscard?: (filePath: string) => React.ReactNode;
   setSelectedFilePath: (file: SelectedFile | null) => void;
@@ -205,6 +195,7 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
           const isStagedSection =
             item.sectionName === "Staged Changes" ||
             item.sectionName === "Staged";
+          const isConflictSection = item.sectionName === "Conflicted";
 
           return (
             <div
@@ -223,10 +214,18 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
                 file={item.file}
                 index={virtualRow.index}
                 onFileClick={onFileClick}
-                onAdd={isChangesSection ? onAdd : undefined}
+                onAdd={
+                  isChangesSection || isConflictSection ? onAdd : undefined
+                }
                 onUnstage={isStagedSection ? onUnstage : undefined}
-                onDiscard={isChangesSection ? onDiscard : undefined}
-                renderDiscard={isChangesSection ? renderDiscard : undefined}
+                onDiscard={
+                  isChangesSection || isConflictSection ? onDiscard : undefined
+                }
+                renderDiscard={
+                  isChangesSection || isConflictSection
+                    ? renderDiscard
+                    : undefined
+                }
                 setSelectedFilePath={setSelectedFilePath}
                 isSelected={isSelected}
                 selectedFilePath={selectedFilePath}
@@ -260,6 +259,7 @@ const SectionHeader = memo(function SectionHeader({
     sectionName === "Changes" || sectionName === "Unstaged Changes";
   const isStagedSection =
     sectionName === "Staged Changes" || sectionName === "Staged";
+  const isConflictSection = sectionName === "Conflicted";
 
   return (
     <div className="sticky top-0 z-20">
@@ -277,37 +277,38 @@ const SectionHeader = memo(function SectionHeader({
           <span className="text-sm font-medium">{sectionName}</span>
         </button>
         <div className="flex items-center gap-1">
-          {isChangesSection && (
-            <div className="flex items-center">
-              {/* Use custom render function if provided, otherwise use default button */}
-              {actions?.renderDiscardAll
-                ? actions.renderDiscardAll()
-                : actions?.onDiscardAll && (
-                    <Button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        actions.onDiscardAll?.();
-                      }}
-                      variant="ghost"
-                      size="icon-sm"
-                    >
-                      <Undo2 size={18} strokeWidth={1.25} />
-                    </Button>
-                  )}
-              {actions?.onAddAll && (
-                <Button
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    await actions.onAddAll?.();
-                  }}
-                  variant="ghost"
-                  size="icon-sm"
-                >
-                  <Plus size={18} strokeWidth={1.25} />
-                </Button>
-              )}
-            </div>
-          )}
+          {isChangesSection ||
+            (isConflictSection && (
+              <div className="flex items-center">
+                {/* Use custom render function if provided, otherwise use default button */}
+                {actions?.renderDiscardAll
+                  ? actions.renderDiscardAll()
+                  : actions?.onDiscardAll && (
+                      <Button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          actions.onDiscardAll?.();
+                        }}
+                        variant="ghost"
+                        size="icon-sm"
+                      >
+                        <Undo2 size={18} strokeWidth={1.25} />
+                      </Button>
+                    )}
+                {actions?.onAddAll && (
+                  <Button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      await actions.onAddAll?.();
+                    }}
+                    variant="ghost"
+                    size="icon-sm"
+                  >
+                    <Plus size={18} strokeWidth={1.25} />
+                  </Button>
+                )}
+              </div>
+            ))}
           {isStagedSection && actions?.onUnstageAll && (
             <Button
               variant="ghost"
@@ -337,18 +338,8 @@ interface FileRowProps {
     index: number,
     event: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean },
   ) => void;
-  onAdd?: UseMutateAsyncFunction<
-    { success: boolean; message?: string },
-    string,
-    string,
-    unknown
-  >;
-  onUnstage?: UseMutateAsyncFunction<
-    { success: boolean; message?: string },
-    string,
-    string,
-    unknown
-  >;
+  onAdd?: UseMutateAsyncFunction<string, string, string, unknown>;
+  onUnstage?: UseMutateAsyncFunction<string, string, string, unknown>;
   onDiscard?: (filePath: string) => void;
   renderDiscard?: (filePath: string) => React.ReactNode;
   setSelectedFilePath: (file: SelectedFile | null) => void;

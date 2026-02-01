@@ -1,25 +1,11 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Serialize)]
-pub struct GitResult {
-    pub success: bool,
-    pub message: Option<String>,
-}
-
-impl GitResult {
-    pub fn success() -> Self {
-        Self {
-            success: true,
-            message: None,
-        }
-    }
-
-    pub fn error(msg: impl Into<String>) -> Self {
-        Self {
-            success: false,
-            message: Some(msg.into()),
-        }
-    }
+#[derive(Debug, Clone, Deserialize)]
+pub enum UncommittedChangesStrategy {
+    /// Stash changes on the current branch before switching (can be recovered later)
+    StashOnCurrentBranch,
+    /// Bring uncommitted changes to the new branch
+    BringChanges,
 }
 
 #[derive(Debug, Serialize)]
@@ -51,6 +37,7 @@ pub enum FileStatusKind {
     WorktreeRenamed,
     WorktreeTypechange,
     WorktreeUnreadable,
+    Conflicted,
 }
 
 #[derive(Debug, Serialize)]

@@ -13,6 +13,7 @@ import { Switch } from "@gitru/ui/components/switch";
 import { cn } from "@gitru/ui/lib/utils";
 import { createFileRoute } from "@tanstack/react-router";
 import {
+  ArrowUpFromLine,
   ChevronDown,
   ChevronsUp,
   Diff,
@@ -23,7 +24,12 @@ import {
 } from "lucide-react";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
-import { useGetCurrentBranch, useGetDiff } from "@/hooks";
+import {
+  useGetCurrentBranch,
+  useGetDiff,
+  useGetStatusAheadBehind,
+  useInvalidateAll,
+} from "@/hooks";
 import { SelectedFile, useAppStore } from "@/store/useAppStore";
 import { EmptyGitDiffSVG } from "../../../components/svgs/EmptyGitDiffSVG";
 import { SplitSVG } from "../../../components/svgs/splitSVG";
@@ -71,41 +77,94 @@ const DiffBoxBody = () => {
 
 const MainActionBar = () => {
   const { data: currentBranch } = useGetCurrentBranch();
+  const { data: statusAheadBehind } = useGetStatusAheadBehind();
+
+  const { mutateAsync: invalidateAll } = useInvalidateAll();
 
   return (
-    <div className="w-full min-h-14 max-h-14 h-14 border-b flex">
-      <Button
-        className="flex border-0 border-t border-t-transparent hover:border-t-border justify-between items-center h-full rounded-none min-w-72"
-        variant={"ghost"}
-      >
-        <div className="flex items-center justify-center gap-4">
-          <GitBranch className="size-6" />
-          <div className="flex-col flex items-start">
-            <span className="text-xs text-muted-foreground font-normal">
-              Current Branch
-            </span>
-            <span>{currentBranch?.display_name}</span>
+    <div className="w-full justify-between min-h-14 max-h-14 h-14 border-b flex">
+      <div className="min-h-14 max-h-14 h-14 flex">
+        <Button
+          className="flex border-0 border-t border-t-transparent hover:border-t-border justify-between items-center h-full rounded-none min-w-72"
+          variant={"ghost"}
+        >
+          <div className="flex items-center justify-center gap-4">
+            <GitBranch className="size-6" />
+            <div className="flex-col flex items-start">
+              <span className="text-xs text-muted-foreground font-normal">
+                Current Branch
+              </span>
+              <span>{currentBranch?.display_name}</span>
+            </div>
           </div>
-        </div>
-        <ChevronDown size={18} />
-      </Button>
-      <Separator orientation="vertical" className={"border-0"} />
-      <Button
-        className="flex border-0 border-t border-t-transparent hover:border-t-border justify-between items-center h-full rounded-none w-72"
-        variant={"ghost"}
-      >
-        <div className="flex items-center justify-center gap-4">
-          <ChevronsUp className="size-8" />
-          <div className="flex-col flex items-start">
-            <span className="text-xs text-muted-foreground font-normal">
-              ruru/fix/whatever/sucks
-            </span>
-            <span>Push 3 Commits</span>
-          </div>
-        </div>
-        <ChevronDown size={18} />
-      </Button>
-      <Separator orientation="vertical" className={"border-0"} />
+          <ChevronDown size={18} />
+        </Button>
+        <Separator orientation="vertical" className={"border-0"} />
+        {statusAheadBehind && statusAheadBehind.is_published ? (
+          (statusAheadBehind && statusAheadBehind.ahead > 0) ||
+          (statusAheadBehind && statusAheadBehind.behind > 0) ? (
+            <>
+              <Button
+                className="flex border-0 border-t border-t-transparent hover:border-t-border justify-between items-center h-full rounded-none w-72"
+                variant={"ghost"}
+                onClick={async () => {
+                  await invalidateAll();
+                }}
+              >
+                <div className="flex items-center justify-center gap-4">
+                  <ChevronsUp className="size-8" />
+                  <div className="flex-col flex items-start">
+                    <span className="text-xs text-muted-foreground font-normal">
+                      {statusAheadBehind.ahead > 0
+                        ? "Push to Remote"
+                        : "Pull from Remote"}
+                    </span>
+                    <span>
+                      {statusAheadBehind
+                        ? `${statusAheadBehind.ahead} / ${statusAheadBehind.behind}`
+                        : "0 / 0"}
+                    </span>
+                  </div>
+                </div>
+                <ChevronDown size={18} />
+              </Button>
+              <Separator orientation="vertical" className={"border-0"} />
+            </>
+          ) : null
+        ) : (
+          <>
+            <Button
+              className="flex border-0 border-t border-t-transparent hover:border-t-border justify-between items-center h-full rounded-none min-w-60"
+              variant={"ghost"}
+              onClick={async () => {
+                await invalidateAll();
+              }}
+            >
+              <div className="flex items-center justify-center gap-4">
+                <ArrowUpFromLine className="size-7" />
+                <div className="flex-col flex items-start">
+                  <span className="text-xs text-muted-foreground font-normal">
+                    Published Branch
+                  </span>
+                  <span>Published as {currentBranch?.name}</span>
+                </div>
+              </div>
+            </Button>
+            <Separator orientation="vertical" className={"border-0"} />
+            <Button
+              className="flex border-0 border-t border-t-transparent hover:border-t-border justify-between items-center h-full rounded-none"
+              variant={"ghost"}
+              onClick={async () => {
+                await invalidateAll();
+              }}
+            >
+              <ChevronDown size={18} />
+            </Button>
+            <Separator orientation="vertical" className={"border-0"} />
+          </>
+        )}
+      </div>
+      <div></div>
     </div>
   );
 };

@@ -1,22 +1,19 @@
 use std::process::Command;
 
 use crate::{
-    types::{FileStatus, FileStatusKind, GetStatusResponse, GitResult},
+    types::{FileStatus, FileStatusKind, GetStatusResponse, UncommittedChangesStrategy},
     utils::open_repository,
 };
-use git2::{
-    BranchType, Cred, FetchOptions, FetchPrune, PushOptions, RemoteCallbacks, Status, StatusOptions,
-};
+use git2::{Status, StatusOptions};
 use serde::Serialize;
-use std::sync::{Arc, Mutex};
 
 #[derive(Serialize)]
 pub struct CommitResult {
     success: bool,
     message: Option<String>,
 }
+
 /* #region // ! command */
-// ? git status
 #[tauri::command]
 #[logger::logger]
 pub async fn get_status(repo_path: &str) -> Result<GetStatusResponse, String> {
@@ -33,36 +30,26 @@ pub async fn get_file_status(
     collect_single_file_status(repo_path, file_path)
 }
 
-// ? git add <file>
 #[tauri::command]
 #[logger::logger]
-pub async fn git_add(repo_path: &str, file: &str) -> Result<GitResult, String> {
+pub async fn git_add(repo_path: &str, file: &str) -> Result<String, String> {
     let repo = match open_repository(repo_path) {
         Ok(r) => r,
         Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to open repo: {e}")),
-            });
+            return Err(format!("Failed to open repo: {e}"));
         }
     };
 
     let mut index = match repo.index() {
         Ok(i) => i,
         Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to open index: {e}")),
-            });
+            return Err(format!("Failed to open index: {e}"));
         }
     };
 
     if file == "." {
         if let Err(e) = index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None) {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to add all: {e}")),
-            });
+            return Err(format!("Failed to add all: {e}"));
         }
     } else {
         let file_path = std::path::Path::new(file);
@@ -70,56 +57,37 @@ pub async fn git_add(repo_path: &str, file: &str) -> Result<GitResult, String> {
 
         if full_path.exists() {
             if let Err(e) = index.add_path(file_path) {
-                return Ok(GitResult {
-                    success: false,
-                    message: Some(format!("Failed to add {file}: {e}")),
-                });
+                return Err(format!("Failed to add {file}: {e}"));
             }
         } else {
             // ? File doesn't exist (deleted), remove it from the index
             if let Err(e) = index.remove_path(file_path) {
-                return Ok(GitResult {
-                    success: false,
-                    message: Some(format!("Failed to stage deletion of {file}: {e}")),
-                });
+                return Err(format!("Failed to stage deletion of {file}: {e}"));
             }
         }
     }
 
     if let Err(e) = index.write() {
-        return Ok(GitResult {
-            success: false,
-            message: Some(format!("Failed to write index: {e}")),
-        });
+        return Err(format!("Failed to write index: {e}"));
     }
 
-    Ok(GitResult {
-        success: true,
-        message: None,
-    })
+    Ok(format!("Added"))
 }
 
-// ? git restore --staged <file>
 #[tauri::command]
 #[logger::logger]
-pub async fn git_remove(repo_path: &str, file: &str) -> Result<GitResult, String> {
+pub async fn git_remove(repo_path: &str, file: &str) -> Result<String, String> {
     let repo = match open_repository(repo_path) {
         Ok(r) => r,
         Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to open repo: {e}")),
-            });
+            return Err(format!("Failed to open repo: {e}"));
         }
     };
 
     let mut index = match repo.index() {
         Ok(i) => i,
         Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to open index: {e}")),
-            });
+            return Err(format!("Failed to open index: {e}"));
         }
     };
 
@@ -127,30 +95,21 @@ pub async fn git_remove(repo_path: &str, file: &str) -> Result<GitResult, String
     let head = match repo.head() {
         Ok(h) => h,
         Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to get HEAD: {e}")),
-            });
+            return Err(format!("Failed to get HEAD: {e}"));
         }
     };
 
     let tree = match head.peel_to_tree() {
         Ok(t) => t,
         Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to get tree: {e}")),
-            });
+            return Err(format!("Failed to get tree: {e}"));
         }
     };
 
     if file == "." {
         // Unstage all files by resetting index to HEAD
         if let Err(e) = index.read_tree(&tree) {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to reset index: {e}")),
-            });
+            return Err(format!("Failed to reset index: {e}"));
         }
     } else {
         // For a specific file, we need to reset it to the HEAD version
@@ -175,613 +134,243 @@ pub async fn git_remove(repo_path: &str, file: &str) -> Result<GitResult, String
                 };
 
                 if let Err(e) = index.add(&index_entry) {
-                    return Ok(GitResult {
-                        success: false,
-                        message: Some(format!("Failed to reset {file} to HEAD: {e}")),
-                    });
+                    return Err(format!("Failed to reset {file} to HEAD: {e}"));
                 }
             }
             Err(_) => {
                 // File doesn't exist in HEAD (it's a new file), so remove it from index
                 if let Err(e) = index.remove_path(std::path::Path::new(file)) {
-                    return Ok(GitResult {
-                        success: false,
-                        message: Some(format!("Failed to unstage {file}: {e}")),
-                    });
+                    return Err(format!("Failed to unstage {file}: {e}"));
                 }
             }
         }
     }
 
     if let Err(e) = index.write() {
-        return Ok(GitResult {
-            success: false,
-            message: Some(format!("Failed to write index: {e}")),
-        });
+        return Err(format!("Failed to write index: {e}"));
     }
 
-    Ok(GitResult {
-        success: true,
-        message: None,
-    })
+    Ok(format!("Removed"))
 }
 
-// ? git restore <file>
 #[tauri::command]
 #[logger::logger]
-pub async fn git_discard(repo_path: &str, file: &str) -> Result<GitResult, String> {
-    let repo = match open_repository(repo_path) {
-        Ok(r) => r,
-        Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to open repo: {e}")),
-            });
-        }
-    };
-
-    let obj = match repo.head() {
-        Ok(head) => match head.peel(git2::ObjectType::Commit) {
-            Ok(obj) => obj,
-            Err(e) => {
-                return Ok(GitResult {
-                    success: false,
-                    message: Some(format!("Failed to peel HEAD: {e}")),
-                });
-            }
-        },
-        Err(_) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some("No HEAD to discard from".into()),
-            });
-        }
-    };
-
-    let res = if file == "." {
-        repo.checkout_tree(&obj, None)
-    } else {
-        let mut opts = git2::build::CheckoutBuilder::new();
-        opts.path(std::path::Path::new(file)).force();
-        repo.checkout_tree(&obj, Some(&mut opts))
-    };
-
-    if let Err(e) = res {
-        return Ok(GitResult {
-            success: false,
-            message: Some(format!("Failed to discard {file}: {e}")),
-        });
+pub async fn git_discard(repo_path: &str, file: &str, all: Option<bool>) -> Result<String, String> {
+    if all.unwrap_or(false) {
+        git_restore_all(repo_path)?;
+        return Ok(format!("All changes discarded"));
     }
 
-    // Remove untracked files
-    if file == "." {
-        // Get all untracked files
-        let mut opts = git2::StatusOptions::new();
-        opts.include_untracked(true);
-
-        if let Ok(statuses) = repo.statuses(Some(&mut opts)) {
-            for entry in statuses.iter() {
-                if entry.status().is_wt_new() {
-                    if let Some(path) = entry.path() {
-                        let full_path = std::path::Path::new(repo_path).join(path);
-                        let _ = std::fs::remove_file(full_path);
-                    }
-                }
-            }
-        }
-    } else {
-        // Check if specific file is untracked
-        let file_path = std::path::Path::new(repo_path).join(file);
-        if let Ok(status) = repo.status_file(std::path::Path::new(file)) {
-            if status.is_wt_new() {
-                let _ = std::fs::remove_file(file_path);
-            }
-        }
-    }
-
-    Ok(GitResult {
-        success: true,
-        message: None,
-    })
+    git_restore_file(repo_path, file)?;
+    Ok(format!("Changes discarded"))
 }
 
-// ? git fetch ...
 #[tauri::command]
 #[logger::logger]
-pub async fn git_fetch(repo_path: &str) -> Result<GitResult, String> {
-    let repo = match open_repository(repo_path) {
-        Ok(r) => r,
-        Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to open repo: {e}")),
-            });
-        }
-    };
-
-    // ? resolve remote (origin or fallback)
-    let mut remote = match repo.find_remote("origin") {
-        Ok(r) => r,
-        Err(_) => {
-            let remotes = match repo.remotes() {
-                Ok(r) => r,
-                Err(e) => {
-                    return Ok(GitResult {
-                        success: false,
-                        message: Some(format!("Failed to list remotes: {e}")),
-                    });
-                }
-            };
-
-            let name = match remotes.get(0) {
-                Some(n) => n,
-                None => {
-                    return Ok(GitResult {
-                        success: false,
-                        message: Some("No remotes configured".into()),
-                    });
-                }
-            };
-
-            match repo.find_remote(name) {
-                Ok(r) => r,
-                Err(e) => {
-                    return Ok(GitResult {
-                        success: false,
-                        message: Some(format!("Failed to open remote `{name}`: {e}")),
-                    });
-                }
-            }
-        }
-    };
-
-    // ? auth callbacks
-    let mut callbacks = RemoteCallbacks::new();
-    callbacks.credentials(|_url, username_from_url, allowed| {
-        if allowed.is_ssh_key() {
-            let user = username_from_url.unwrap_or("git");
-            return Cred::ssh_key_from_agent(user);
-        }
-
-        Err(git2::Error::from_str("No supported authentication method"))
-    });
-
-    let mut fo = FetchOptions::new();
-    fo.remote_callbacks(callbacks);
-    fo.prune(FetchPrune::On); // ? equivalent to `git fetch --prune`
-
-    // ? fetch using configured refspecs
-    match remote.fetch(&[] as &[&str], Some(&mut fo), None) {
-        Ok(_) => {
-            return Ok(GitResult {
-                success: true,
-                message: Some("Fetched successfully".into()),
-            });
-        }
-        Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to fetch: {e}")),
-            });
-        }
+pub async fn git_fetch(repo_path: &str) -> Result<String, String> {
+    match git(repo_path, &["fetch", "--prune"]) {
+        Ok(_) => Ok(format!("Fetched successfully")),
+        Err(e) => Err(e),
     }
 }
 
-// ? git push ...
 #[tauri::command]
 #[logger::logger]
 pub async fn git_push(repo_path: &str) -> Result<String, String> {
-    let repo = match open_repository(repo_path) {
-        Ok(r) => r,
-        Err(e) => {
-            return Err(format!("Failed to open repository: {e}"));
-        }
-    };
-
-    let head = match repo.head() {
-        Ok(h) => h,
-        Err(e) => {
-            return Err(format!("Failed to read HEAD: {e}"));
-        }
-    };
-
-    if !head.is_branch() {
-        return Err("HEAD is detached, cannot push".into());
-    }
-
-    let branch_name = match head.shorthand() {
-        Some(b) => b.to_string(),
-        None => {
-            return Err("Invalid branch name".into());
-        }
-    };
-
-    let mut branch = match repo.find_branch(&branch_name, BranchType::Local) {
-        Ok(b) => b,
-        Err(e) => {
-            return Err(format!("Failed to resolve local branch: {e}"));
-        }
-    };
-
-    let attempt_count = Arc::new(Mutex::new(0));
-    let attempt_count_clone = Arc::clone(&attempt_count);
-
-    let mut callbacks = RemoteCallbacks::new();
-
-    callbacks.credentials(move |url, username_from_url, allowed| {
-        let mut count = attempt_count_clone.lock().unwrap();
-        *count += 1;
-
-        println!("Credentials attempt #{} for URL: {}", *count, url);
-        println!("Allowed types: {:?}", allowed);
-
-        // Prevent infinite retry loop
-        if *count > 3 {
-            println!("Too many authentication attempts, giving up");
-            return Err(git2::Error::from_str(
-                "Authentication failed after 3 attempts. Please check:\n\
-                1. SSH agent is running (eval `ssh-agent`)\n\
-                2. Key is added (ssh-add ~/.ssh/id_rsa)\n\
-                3. Key has correct permissions (chmod 600 ~/.ssh/id_rsa)",
-            ));
-        }
-
-        if allowed.is_ssh_key() {
-            let user = username_from_url.unwrap_or("git");
-            println!("Attempting SSH key auth for user: {}", user);
-
-            // Try SSH agent first
-            match Cred::ssh_key_from_agent(user) {
-                Ok(cred) => {
-                    println!("SSH agent authentication successful");
-                    return Ok(cred);
-                }
-                Err(e) => {
-                    println!("SSH agent failed: {:?}", e);
-
-                    // Fallback: try default SSH key locations
-                    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
-                    let possible_keys = vec![
-                        format!("{}/.ssh/id_rsa", home),
-                        format!("{}/.ssh/id_ed25519", home),
-                        format!("{}/.ssh/id_ecdsa", home),
-                    ];
-
-                    for key_path in possible_keys {
-                        println!("Trying key: {}", key_path);
-                        if std::path::Path::new(&key_path).exists() {
-                            match Cred::ssh_key(
-                                user,
-                                None, // public key (optional)
-                                std::path::Path::new(&key_path),
-                                None, // passphrase
-                            ) {
-                                Ok(cred) => {
-                                    println!("SSH key authentication successful with {}", key_path);
-                                    return Ok(cred);
-                                }
-                                Err(key_err) => {
-                                    println!("Failed to use {}: {:?}", key_path, key_err);
-                                }
-                            }
-                        }
-                    }
-
-                    return Err(git2::Error::from_str(&format!(
-                        "SSH authentication failed: {}\n\
-                        Make sure:\n\
-                        1. SSH agent is running: eval `ssh-agent`\n\
-                        2. Add your key: ssh-add ~/.ssh/id_rsa\n\
-                        3. Or ensure key exists at ~/.ssh/id_rsa",
-                        e
-                    )));
-                }
-            }
-        }
-
-        Err(git2::Error::from_str("No supported authentication method"))
-    });
-
-    callbacks.transfer_progress(|progress| {
-        println!(
-            "Transfer progress: {}/{} objects, {} bytes",
-            progress.received_objects(),
-            progress.total_objects(),
-            progress.received_bytes()
-        );
-        true
-    });
-
-    callbacks.push_transfer_progress(|current, total, bytes| {
-        println!("Push progress: {}/{} ({} bytes)", current, total, bytes);
-    });
-
-    callbacks.push_update_reference(|refname, status| {
-        println!("Push update for {}: {:?}", refname, status);
-        if let Some(s) = status {
-            println!("Push rejected: {}", s);
-            return Err(git2::Error::from_str(s));
-        }
-        Ok(())
-    });
-
-    let mut push_opts = PushOptions::new();
-    push_opts.remote_callbacks(callbacks);
-
-    let mut remote = match repo.find_remote("origin") {
-        Ok(r) => r,
-        Err(e) => {
-            return Err(format!("Failed to find remote 'origin': {e}"));
-        }
-    };
-
-    println!("Remote URL: {:?}", remote.url());
-
-    let has_upstream = branch.upstream().is_ok();
-    println!("has_upstream: {}", has_upstream);
-
-    let remote_branch_exists = repo
-        .find_branch(&format!("origin/{}", branch_name), BranchType::Remote)
-        .is_ok();
-    println!("remote_branch_exists: {}", remote_branch_exists);
-
-    let refspec = format!("refs/heads/{}:refs/heads/{}", branch_name, branch_name);
-
-    println!("refspec: {}", refspec);
-    println!("Starting push...");
-
-    if let Err(e) = remote.push(&[refspec.as_str()], Some(&mut push_opts)) {
-        println!("Push error: {:?}", e);
-        return Err(format!("Push failed: {}", e));
-    }
-
-    println!("Push completed successfully");
-
-    if !has_upstream {
-        println!("Setting upstream to origin/{}", branch_name);
-        if let Err(e) = branch.set_upstream(Some(&format!("origin/{}", branch_name))) {
-            println!("Warning: Failed to set upstream: {}", e);
-            return Err(format!(
-                "Pushed `{}` to origin (warning: upstream not set)",
-                branch_name
-            ));
-        }
-    }
-
-    let action = if remote_branch_exists {
-        "Pushed"
-    } else {
-        "Published"
-    };
-
-    Ok(format!("{} `{}` to origin", action, branch_name))
+    git(repo_path, &["push"])?;
+    Ok(format!("Pushed successfully"))
 }
 
-// ? git pull ...
 #[tauri::command]
 #[logger::logger]
-pub async fn git_pull(repo_path: &str) -> Result<GitResult, String> {
-    let repo = match open_repository(repo_path) {
-        Ok(r) => r,
-        Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to open repository: {e}")),
-            });
-        }
-    };
+pub async fn git_publish_branch(repo_path: &str) -> Result<String, String> {
+    let branch = git(repo_path, &["branch", "--show-current"])?;
 
-    // ! HEAD must be a branch
-    let head = match repo.head() {
-        Ok(h) if h.is_branch() => h,
+    git(repo_path, &["push", "-u", "origin", branch.as_str()])?;
+
+    Ok(format!("Published `{}` to origin", branch))
+}
+
+#[tauri::command]
+#[logger::logger]
+pub async fn git_pull(repo_path: &str) -> Result<String, String> {
+    match git(repo_path, &["pull"]) {
+        Ok(_) => Ok(format!("Pulled successfully")),
+        Err(e) => Err(e),
+    }
+}
+
+#[tauri::command]
+#[logger::logger]
+pub async fn git_switch_branch(
+    repo_path: &str,
+    branch: &str,
+    strategy: Option<UncommittedChangesStrategy>,
+) -> Result<String, String> {
+    let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
+    let head = repo
+        .head()
+        .map_err(|e| format!("Failed to get HEAD: {e}"))?;
+
+    if !head.is_branch() {
+        return Err(format!("You aren't on valid HEAD"));
+    }
+
+    let current_branch = head
+        .shorthand()
+        .ok_or_else(|| "Failed to read branch name".to_string())?;
+
+    match strategy {
+        // ? If strategy is StashOnCurrentBranch, stash FIRST before attempting switch
+        Some(UncommittedChangesStrategy::StashOnCurrentBranch) => {
+            let stash_msg = format!("!!Gitru<{}> -> <{}>", current_branch, branch);
+            git(repo_path, &["stash", "push", "-u", "-m", &stash_msg])
+                .map_err(|e| format!("Failed to stash changes: {}", e))?;
+
+            match git(repo_path, &["switch", branch]) {
+                Ok(_) => Ok(format!(
+                    "Switched to {} (changes stashed in {})",
+                    branch, current_branch
+                )),
+                Err(err) => {
+                    let _ = git(repo_path, &["stash", "pop"]);
+                    Err(format!(
+                        "Failed to switch to {} even after stashing: {}",
+                        branch, err
+                    ))
+                }
+            }
+        }
+
+        // ? If strategy is BringChanges or None, try to switch directly
         _ => {
-            return Ok(GitResult {
-                success: false,
-                message: Some("HEAD is detached, cannot pull".into()),
-            });
-        }
-    };
-
-    let branch_name = match head.shorthand() {
-        Some(b) => b.to_string(),
-        None => {
-            return Ok(GitResult {
-                success: false,
-                message: Some("Invalid branch name".into()),
-            });
-        }
-    };
-
-    let branch = match repo.find_branch(&branch_name, BranchType::Local) {
-        Ok(b) => b,
-        Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to resolve local branch: {e}")),
-            });
-        }
-    };
-
-    // ? resolve upstream (required for pull)
-    let upstream = match branch.upstream() {
-        Ok(u) => u,
-        Err(_) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some("No upstream configured for this branch".into()),
-            });
-        }
-    };
-
-    // ? fetch
-    let mut remote = match repo.find_remote("origin") {
-        Ok(r) => r,
-        Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to find remote 'origin': {e}")),
-            });
-        }
-    };
-
-    let mut callbacks = RemoteCallbacks::new();
-    callbacks.credentials(|_, username_from_url, allowed| {
-        if allowed.is_ssh_key() {
-            Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"))
-        } else {
-            Err(git2::Error::from_str("Unsupported auth method"))
-        }
-    });
-
-    let mut fo = FetchOptions::new();
-    fo.remote_callbacks(callbacks);
-    fo.prune(FetchPrune::On);
-
-    if let Err(e) = remote.fetch(&[] as &[&str], Some(&mut fo), None) {
-        return Ok(GitResult {
-            success: false,
-            message: Some(format!("Fetch failed: {e}")),
-        });
-    }
-
-    // ? merge analysis
-    let upstream_ref = upstream.into_reference();
-
-    let upstream_commit = match repo.reference_to_annotated_commit(&upstream_ref) {
-        Ok(c) => c,
-        Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Failed to resolve upstream commit: {e}")),
-            });
-        }
-    };
-
-    let (analysis, _) = match repo.merge_analysis(&[&upstream_commit]) {
-        Ok(a) => a,
-        Err(e) => {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Merge analysis failed: {e}")),
-            });
-        }
-    };
-
-    // ? already up to date
-    if analysis.is_up_to_date() {
-        return Ok(GitResult {
-            success: true,
-            message: Some("Already up to date".into()),
-        });
-    }
-
-    // ? fast-forward
-    if analysis.is_fast_forward() {
-        let refname = match branch.get().name() {
-            Some(r) => r.to_string(),
-            None => {
-                return Ok(GitResult {
-                    success: false,
-                    message: Some("Invalid branch reference".into()),
-                });
+            match git(repo_path, &["switch", branch]) {
+                Ok(_) => Ok(format!("Switched to {}", branch)),
+                Err(err) => {
+                    // Switch failed
+                    match strategy {
+                        Some(UncommittedChangesStrategy::BringChanges) => Err(format!(
+                            "Cannot bring uncommitted changes to {}: conflicts detected",
+                            branch
+                        )),
+                        None => Err(format!("Cannot switch to {}: {}", branch, err)),
+                        _ => unreachable!(),
+                    }
+                }
             }
-        };
-
-        let mut reference = match repo.find_reference(&refname) {
-            Ok(r) => r,
-            Err(e) => {
-                return Ok(GitResult {
-                    success: false,
-                    message: Some(format!("Failed to find branch ref: {e}")),
-                });
-            }
-        };
-
-        if let Err(e) = reference.set_target(upstream_commit.id(), "Fast-forward") {
-            return Ok(GitResult {
-                success: false,
-                message: Some(format!("Fast-forward failed: {e}")),
-            });
         }
+    }
+}
 
-        repo.set_head(&refname).ok();
-        repo.checkout_head(None).ok();
+#[tauri::command]
+#[logger::logger]
+pub async fn git_create_branch(
+    repo_path: &str,
+    branch: &str,
+    strategy: Option<UncommittedChangesStrategy>,
+) -> Result<String, String> {
+    let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
+    let head = repo
+        .head()
+        .map_err(|e| format!("Failed to get HEAD: {e}"))?;
 
-        return Ok(GitResult {
-            success: true,
-            message: Some(format!("Fast-forwarded `{branch_name}`")),
-        });
+    if !head.is_branch() {
+        return Err(format!("You aren't on valid HEAD"));
     }
 
-    // ? normal merge (non-ff)
-    if analysis.is_normal() {
-        repo.merge(&[&upstream_commit], None, None).ok();
+    let current_branch = head
+        .shorthand()
+        .ok_or_else(|| "Failed to read branch name".to_string())?;
 
-        let mut index = match repo.index() {
-            Ok(i) => i,
-            Err(e) => {
-                return Ok(GitResult {
-                    success: false,
-                    message: Some(format!("Failed to read index: {e}")),
-                });
+    match strategy {
+        // ? If strategy is StashOnCurrentBranch, stash FIRST before creating and switching
+        Some(UncommittedChangesStrategy::StashOnCurrentBranch) => {
+            let stash_msg = format!("!!Gitru<{}> -> <{}> (new)", current_branch, branch);
+            git(repo_path, &["stash", "push", "-u", "-m", &stash_msg])
+                .map_err(|e| format!("Failed to stash changes: {}", e))?;
+
+            match git(repo_path, &["switch", "-c", branch]) {
+                Ok(_) => Ok(format!(
+                    "Created and switched to {} (changes stashed in {})",
+                    branch, current_branch
+                )),
+                Err(err) => {
+                    let _ = git(repo_path, &["stash", "pop"]);
+                    Err(format!(
+                        "Failed to create branch {} even after stashing: {}",
+                        branch, err
+                    ))
+                }
             }
-        };
-
-        if index.has_conflicts() {
-            return Ok(GitResult {
-                success: false,
-                message: Some("Merge conflicts detected".into()),
-            });
         }
 
-        let tree_oid = index.write_tree().unwrap();
-        let tree = repo.find_tree(tree_oid).unwrap();
-
-        let head_commit = repo.find_commit(head.target().unwrap()).unwrap();
-        let upstream_commit = repo.find_commit(upstream_commit.id()).unwrap();
-
-        let sig = repo.signature().unwrap();
-
-        repo.commit(
-            Some("HEAD"),
-            &sig,
-            &sig,
-            "Merge remote changes",
-            &tree,
-            &[&head_commit, &upstream_commit],
-        )
-        .unwrap();
-
-        repo.checkout_head(None).ok();
-
-        return Ok(GitResult {
-            success: true,
-            message: Some(format!("Merged into `{branch_name}`")),
-        });
+        // ? If strategy is BringChanges or None, try to create and switch directly
+        _ => match git(repo_path, &["switch", "-c", branch]) {
+            Ok(_) => Ok(format!("Created and switched to {}", branch)),
+            Err(err) => match strategy {
+                Some(UncommittedChangesStrategy::BringChanges) => Err(format!(
+                    "Cannot bring uncommitted changes to new branch {}: {}",
+                    branch, err
+                )),
+                None => Err(format!("Cannot create branch {}: {}", branch, err)),
+                _ => unreachable!(),
+            },
+        },
     }
+}
 
-    Ok(GitResult {
-        success: false,
-        message: Some("Unsupported merge state".into()),
-    })
+#[tauri::command]
+#[logger::logger]
+pub async fn has_uncommitted_changes(repo_path: &str) -> Result<bool, String> {
+    let repo = open_repository(repo_path).map_err(|e| format!("Failed to open repo: {e}"))?;
+    has_uncommitted_changes_internal(&repo)
+}
+
+#[tauri::command]
+#[logger::logger]
+pub async fn git_version() -> Result<String, String> {
+    let output = Command::new("git")
+        .args(["--version"])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
 }
 
 /* #endregion // ! command */
 
 /* #region // ? helpers */
-// fn collect_status(repo_path: &str) -> Result<Vec<FileStatus>, String> {
-//     let out = Command::new("git")
-//         .current_dir(repo_path)
-//         .args(["status", "--porcelain=v2", "--untracked-files=all", "-z"])
-//         .output()
-//         .map_err(|e| e.to_string())?;
 
-//     if !out.status.success() {
-//         return Err(String::from_utf8_lossy(&out.stderr).to_string());
-//     }
+fn git(repo_path: &str, args: &[&str]) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
 
-//     parse_porcelain_v2(&out.stdout)
-// }
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
+}
+
+fn has_uncommitted_changes_internal(repo: &git2::Repository) -> Result<bool, String> {
+    let mut opts = StatusOptions::new();
+    opts.include_untracked(true)
+        .include_ignored(false)
+        .exclude_submodules(true);
+
+    let statuses = repo
+        .statuses(Some(&mut opts))
+        .map_err(|e| format!("Failed to get status: {e}"))?;
+
+    Ok(!statuses.is_empty())
+}
 
 fn collect_single_file_status(
     repo_path: &str,
@@ -954,6 +543,10 @@ fn collect_status(repo_path: &str) -> Result<Vec<FileStatus>, String> {
 
         let mut status_kinds = Vec::with_capacity(2);
 
+        if status.contains(Status::CONFLICTED) {
+            status_kinds.push(FileStatusKind::Conflicted);
+        }
+
         if status.contains(Status::INDEX_NEW) {
             status_kinds.push(FileStatusKind::IndexNew);
         }
@@ -1009,6 +602,56 @@ fn collect_status(repo_path: &str) -> Result<Vec<FileStatus>, String> {
     }
 
     Ok(files)
+}
+
+fn git_restore_all(repo_path: &str) -> Result<(), String> {
+    let restore = Command::new("git")
+        .current_dir(repo_path)
+        .args(["restore", "--source=HEAD", "--staged", "--worktree", "."])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !restore.status.success() {
+        return Err(String::from_utf8_lossy(&restore.stderr).to_string());
+    }
+
+    let clean = Command::new("git")
+        .current_dir(repo_path)
+        .args(["clean", "-fd"])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !clean.status.success() {
+        return Err(String::from_utf8_lossy(&clean.stderr).to_string());
+    }
+
+    Ok(())
+}
+
+fn git_restore_file(repo_path: &str, file: &str) -> Result<(), String> {
+    let out = Command::new("git")
+        .current_dir(repo_path)
+        .args([
+            "restore",
+            "--source=HEAD",
+            "--staged",
+            "--worktree",
+            "--",
+            file,
+        ])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).to_string());
+    }
+
+    let _ = Command::new("git")
+        .current_dir(repo_path)
+        .args(["clean", "-f", "--", file])
+        .output();
+
+    Ok(())
 }
 
 /* #endregion // ? helpers */
