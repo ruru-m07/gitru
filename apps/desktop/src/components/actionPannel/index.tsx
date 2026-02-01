@@ -6,12 +6,12 @@ import {
 import { useState } from "react";
 import { BranchItem, useBranchListView } from "./views/branch-list";
 import { useConfirmCheckoutView } from "./views/confirm-checkout";
-import { useCreateBranchView } from "./views/create-branch";
+import { CreateBranchProps, useCreateBranchView } from "./views/create-branch";
 import { ActionItem, useRootView } from "./views/root";
 
 type RootAction = CommandViewConfig<"root", ActionItem>;
 type BranchListAction = CommandViewConfig<"branch-list", BranchItem>;
-type CreateBranchAction = CommandViewConfig<"create-branch", undefined>;
+type CreateBranchAction = CommandViewConfig<"create-branch", CreateBranchProps>;
 type ConfirmCheckoutAction = CommandViewConfig<"confirm-checkout", undefined>;
 
 type Action =

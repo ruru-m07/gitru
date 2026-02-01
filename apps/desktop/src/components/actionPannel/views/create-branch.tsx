@@ -11,7 +11,7 @@ import {
   useHasUncommittedChanges,
 } from "@/hooks";
 
-interface CreateBranchProps {
+export interface CreateBranchProps {
   branchName?: string;
   quickAction?: boolean;
 }
