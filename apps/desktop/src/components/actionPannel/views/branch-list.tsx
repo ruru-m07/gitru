@@ -37,8 +37,11 @@ export function useBranchListView(): CommandViewConfig<
   "branch-list",
   BranchItem
 > {
-  const { data: branches } = useGetBranches("Local");
+  const { data: localBranches } = useGetBranches("Local");
+  const { data: remoteBranches } = useGetBranches("Remote");
   const { data: currentBranch } = useGetCurrentBranch();
+
+  const branches = [...(localBranches || []), ...(remoteBranches || [])];
 
   function createNewBranchAction(query: string) {
     const action =
