@@ -127,12 +127,17 @@ function CommandInput({
 
 function CommandList({
   className,
+  virtualized,
   ...props
 }: React.ComponentProps<typeof AutocompleteList>) {
   return (
     <AutocompleteList
-      className={cn("not-empty:scroll-py-2 not-empty:p-2", className)}
+      className={cn(
+        !virtualized && "not-empty:scroll-py-2 not-empty:p-2",
+        className,
+      )}
       data-slot="command-list"
+      virtualized={virtualized}
       {...props}
     />
   );

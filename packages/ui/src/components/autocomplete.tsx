@@ -204,8 +204,21 @@ function AutocompleteValue({ ...props }: AutocompletePrimitive.Value.Props) {
 
 function AutocompleteList({
   className,
+  virtualized,
   ...props
-}: AutocompletePrimitive.List.Props) {
+}: AutocompletePrimitive.List.Props & { virtualized?: boolean }) {
+  if (virtualized) {
+    return (
+      <AutocompletePrimitive.List
+        className={cn(
+          "not-empty:scroll-py-2 not-empty:p-2 min-h-0 flex-1 overflow-y-auto",
+          className,
+        )}
+        data-slot="autocomplete-list"
+        {...props}
+      />
+    );
+  }
   return (
     <ScrollArea scrollbarGutter scrollFade>
       <AutocompletePrimitive.List

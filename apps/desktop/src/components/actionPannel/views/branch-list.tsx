@@ -37,8 +37,11 @@ export function useBranchListView(): CommandViewConfig<
   "branch-list",
   BranchItem
 > {
-  const { data: branches } = useGetBranches("Local");
+  const { data: localBranches } = useGetBranches("Local");
+  const { data: remoteBranches } = useGetBranches("Remote");
   const { data: currentBranch } = useGetCurrentBranch();
+
+  const branches = [...(localBranches || []), ...(remoteBranches || [])];
 
   function createNewBranchAction(query: string) {
     const action =
@@ -107,6 +110,7 @@ export function useBranchListView(): CommandViewConfig<
           getItemKey={(item) => item.name}
           getItemValue={(item) => item.name}
           showSeparators={false}
+          estimateItemSize={52}
           renderItemContent={(item) => (
             <>
               {item.isActive ? (
@@ -123,7 +127,9 @@ export function useBranchListView(): CommandViewConfig<
                       ) : (
                         <GitBranch className="mr-2 h-4 w-4" />
                       )}
-                      <span className="flex-1">{item.display_name}</span>
+                      <span className="flex-1 line-clamp-1">
+                        {item.display_name}
+                      </span>
                     </div>
                     <div className="flex items-center gap-1">
                       {item.name === currentBranch?.name && (

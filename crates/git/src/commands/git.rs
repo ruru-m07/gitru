@@ -213,23 +213,34 @@ pub async fn git_switch_branch(
         .map_err(|e| format!("Failed to get HEAD: {e}"))?;
 
     if !head.is_branch() {
-        return Err(format!("You aren't on valid HEAD"));
+        return Err("You aren't on a valid HEAD".to_string());
     }
 
     let current_branch = head
         .shorthand()
         .ok_or_else(|| "Failed to read branch name".to_string())?;
 
+    // Decide how to switch:
+    // - local branch  -> git switch <branch>
+    // - remote branch -> git switch --track <branch>
+    let switch_args: Vec<&str> = if branch.starts_with("origin/") {
+        vec!["switch", "--track", branch]
+    } else {
+        vec!["switch", branch]
+    };
+
+    let do_switch = || git(repo_path, &switch_args);
+
     match strategy {
-        // ? If strategy is StashOnCurrentBranch, stash FIRST before attempting switch
         Some(UncommittedChangesStrategy::StashOnCurrentBranch) => {
             let stash_msg = format!("!!Gitru<{}> -> <{}>", current_branch, branch);
-            git(repo_path, &["stash", "push", "-u", "-m", &stash_msg])
-                .map_err(|e| format!("Failed to stash changes: {}", e))?;
 
-            match git(repo_path, &["switch", branch]) {
+            git(repo_path, &["stash", "push", "-u", "-m", &stash_msg])
+                .map_err(|e| format!("Failed to stash changes: {e}"))?;
+
+            match do_switch() {
                 Ok(_) => Ok(format!(
-                    "Switched to {} (changes stashed in {})",
+                    "Switched to {} (changes stashed from {})",
                     branch, current_branch
                 )),
                 Err(err) => {
@@ -242,23 +253,17 @@ pub async fn git_switch_branch(
             }
         }
 
-        // ? If strategy is BringChanges or None, try to switch directly
-        _ => {
-            match git(repo_path, &["switch", branch]) {
-                Ok(_) => Ok(format!("Switched to {}", branch)),
-                Err(err) => {
-                    // Switch failed
-                    match strategy {
-                        Some(UncommittedChangesStrategy::BringChanges) => Err(format!(
-                            "Cannot bring uncommitted changes to {}: conflicts detected",
-                            branch
-                        )),
-                        None => Err(format!("Cannot switch to {}: {}", branch, err)),
-                        _ => unreachable!(),
-                    }
-                }
-            }
-        }
+        _ => match do_switch() {
+            Ok(_) => Ok(format!("Switched to {}", branch)),
+            Err(err) => match strategy {
+                Some(UncommittedChangesStrategy::BringChanges) => Err(format!(
+                    "Cannot bring uncommitted changes to {}: conflicts detected",
+                    branch
+                )),
+                None => Err(format!("Cannot switch to {}: {}", branch, err)),
+                _ => unreachable!(),
+            },
+        },
     }
 }
 
