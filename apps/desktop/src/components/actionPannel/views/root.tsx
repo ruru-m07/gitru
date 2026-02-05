@@ -134,7 +134,7 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             label: "Local git",
             shortcut: ["G", "G"],
             iconKey: "localGit",
-            keywords: ["git", "repository", "version control"],
+            keywords: ["git", "version control"],
             redirect: "/app/git",
           },
           {
@@ -220,11 +220,6 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             label: "Switch Repository",
             shortcut: ["⌘", "⇧", "R"],
             iconKey: "repositories",
-            async onCallBack() {
-              await new Promise((resolve) => setTimeout(resolve, 2000));
-              toast.success("TODO:");
-              ctx.close();
-            },
           },
         ] satisfies ActionItem[];
       },
@@ -275,6 +270,8 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
               await item.onCallBack();
             } else if (item.id === "new-branch") {
               navigate.push("create-branch");
+            } else if (item.id === "switch-repository") {
+              navigate.push("switch-repository");
             } else if (item.id === "checkout-branch") {
               navigate.push("branch-list");
             }

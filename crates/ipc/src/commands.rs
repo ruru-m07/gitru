@@ -1,5 +1,9 @@
 use serde::Serialize;
-use std::{path::Path, process::Command};
+use std::{
+    path::Path,
+    process::Command,
+    time::{SystemTime, UNIX_EPOCH},
+};
 use uuid::Uuid;
 
 #[derive(Serialize)]
@@ -8,7 +12,10 @@ pub struct RepoSitoryStore {
     pub name: String,
     pub path: String,
     pub origin: Option<String>,
-    pub branch: Option<String>,
+    pub current_branch: Option<String>,
+    pub ahead_behind: Option<(u32, u32)>,
+    pub has_uncommitted_changes: bool,
+    pub last_updated: u64,
 }
 
 fn run_git_command(args: &[&str], repo_path: &Path) -> Option<String> {
@@ -28,7 +35,7 @@ fn run_git_command(args: &[&str], repo_path: &Path) -> Option<String> {
 
 #[tauri::command]
 #[logger::logger]
-pub fn add_local_git_repo(repo_path: String) -> Result<Option<RepoSitoryStore>, String> {
+pub async fn add_local_git_repo(repo_path: String) -> Result<Option<RepoSitoryStore>, String> {
     let path = Path::new(&repo_path);
 
     if !path.exists() {
@@ -49,7 +56,6 @@ pub fn add_local_git_repo(repo_path: String) -> Result<Option<RepoSitoryStore>, 
     }
 
     let origin = run_git_command(&["remote", "get-url", "origin", "--"], path);
-    let branch = run_git_command(&["rev-parse", "--abbrev-ref", "HEAD", "--"], path);
 
     let name = if let Some(ref o) = origin {
         Path::new(o)
@@ -64,11 +70,35 @@ pub fn add_local_git_repo(repo_path: String) -> Result<Option<RepoSitoryStore>, 
             .to_string()
     };
 
+    let current_branch = git::commands::branch::current_branch(&repo_path)
+        .await
+        .ok()
+        .map(|b| b.name);
+
+    let ahead_behind = git::commands::branch::status_ahead_behind(&repo_path)
+        .await
+        .ok()
+        .and_then(|status| Some((status.ahead as u32, status.behind as u32)));
+
+    let has_uncommitted_changes = Command::new("git")
+        .args(&["status", "--porcelain"])
+        .current_dir(path)
+        .output()
+        .ok()
+        .map(|output| !output.stdout.is_empty())
+        .unwrap_or(false);
+
     Ok(Some(RepoSitoryStore {
         id: Uuid::new_v4().to_string(),
         name,
         path: repo_path,
         origin,
-        branch,
+        current_branch,
+        ahead_behind,
+        has_uncommitted_changes,
+        last_updated: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
     }))
 }

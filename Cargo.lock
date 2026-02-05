@@ -2079,10 +2079,13 @@ dependencies = [
 name = "ipc"
 version = "0.1.0"
 dependencies = [
+ "git",
  "log",
  "logger",
  "serde",
+ "serde_json",
  "tauri",
+ "tauri-plugin-store",
  "uuid",
 ]
 

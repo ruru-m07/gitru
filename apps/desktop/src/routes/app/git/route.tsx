@@ -1,4 +1,4 @@
-import { addLocalGitRepo, GetStatusResponse } from "@gitru/commands";
+import { GetStatusResponse } from "@gitru/commands";
 import {
   Avatar,
   AvatarFallback,
@@ -52,6 +52,7 @@ import { cn } from "@gitru/ui/lib/utils";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
+  BadgeQuestionMark,
   ChevronDown,
   ChevronDownIcon,
   ChevronUp,
@@ -59,7 +60,6 @@ import {
   GitBranch,
   ListFilterPlus,
   Loader2,
-  Minus,
   SearchIcon,
   ShareIcon,
   Sparkles,
@@ -69,8 +69,8 @@ import {
 import { memo, useCallback, useState } from "react";
 import { toast } from "sonner";
 import z from "zod";
-
 import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
+import { RepositoryListItem } from "@/components/RepositoryListItem";
 import StatusBar from "@/components/statusBar";
 import { VirtualizedFileList } from "@/components/VirtualizedFileList";
 import {
@@ -82,11 +82,15 @@ import {
   useGitDiscard,
   useGitUnstage,
 } from "@/hooks";
+import { useRepositories } from "@/hooks/useRepositories";
+import { getAvatarByProvider } from "@/lib/getAvatarByGitProvider";
+import { parseOrigin } from "@/lib/parseOrigin";
 import {
   formatUnixSecondsToDateTime,
   timeAgoFromUnixSeconds,
 } from "@/lib/time";
 import { useAppStore } from "@/store/useAppStore";
+import { GIT_PROVIDERS } from "@/type";
 
 const CoAuthers = z.array(z.tuple([z.string(), z.string()]));
 type CoAuthers = z.infer<typeof CoAuthers>;
@@ -101,13 +105,13 @@ function GitPageLayout() {
   const {
     repoSelectIsOpen,
     setRepoSelectIsOpen,
-    setRepositories,
-    repositories,
     setSelectedRepository,
     selectedRepository,
     setSelectedFileForRepo,
     selectedFileByRepo,
   } = useAppStore();
+
+  const { repositories, addRepo, removeRepo } = useRepositories();
 
   const { data: status, isLoading: isStatusLoading } = useGetStatus();
 
@@ -140,9 +144,38 @@ function GitPageLayout() {
       file.path.toLowerCase().includes(query.toLowerCase()),
   );
 
-  console.log({
-    conflictedChanges,
-  });
+  /* we are grouping repositories by owners */
+  // const origin = parseOrigin(item.origin || "");
+  // const icon = getAvatarByProvider(origin?.provider);
+
+  const groupedByOwner = repositories.reduce(
+    (acc, repo) => {
+      const origin = parseOrigin(repo.origin || "");
+      const owner = origin?.owner || "unknown";
+      const provider = origin?.provider || "unknown";
+      const key = `${provider}/${owner}`;
+
+      if (!acc[key]) {
+        acc[key] = {
+          owner,
+          provider,
+          avatarUrl: origin?.avatarUrl,
+          repos: [],
+        };
+      }
+      acc[key].repos.push(repo);
+      return acc;
+    },
+    {} as Record<
+      string,
+      {
+        owner: string;
+        provider: GIT_PROVIDERS;
+        avatarUrl?: string;
+        repos: typeof repositories;
+      }
+    >,
+  );
 
   return (
     <div
@@ -187,17 +220,19 @@ function GitPageLayout() {
           </button>
           <div className="h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*7)-calc(var(--spacing)*3))]">
             {repoSelectIsOpen ? (
-              <ScrollArea className="max-h-full _flex-1">
+              <div>
                 <div className="w-full p-2 border-b flex justify-between items-center gap-2">
-                  <div className="relative">
-                    <Input
-                      className="peer ps-9 pe-9 h-8 border-border"
-                      placeholder="Filter..."
+                  <InputGroup>
+                    <InputGroupInput
+                      aria-label="Search"
+                      placeholder="Search"
+                      type="search"
                     />
-                    <div className="text-muted-foreground/80 pointer-events-none absolute inset-y-0 start-0 flex items-center justify-center ps-3 peer-disabled:opacity-50">
-                      <SearchIcon size={16} />
-                    </div>
-                  </div>
+                    <InputGroupAddon>
+                      <SearchIcon aria-hidden="true" />
+                    </InputGroupAddon>
+                  </InputGroup>
+
                   <DropdownMenu>
                     <DropdownMenuTrigger render={<Button size={"sm"} />}>
                       Add
@@ -229,21 +264,14 @@ function GitPageLayout() {
                             }
 
                             try {
-                              const data = await addLocalGitRepo({
-                                repoPath: folder,
-                              });
-                              if (data) {
-                                setRepositories([...repositories, data]);
-                                setSelectedRepository(data);
+                              const repo = await addRepo(folder);
+                              if (repo) {
+                                setSelectedRepository(repo);
                                 setRepoSelectIsOpen(false);
                                 toast.success("Repository added successfully!");
                               }
                             } catch (error) {
-                              toast.error(
-                                error instanceof Error
-                                  ? error.message
-                                  : String(error),
-                              );
+                              // Error already handled by the hook
                             }
                           }
                         }}
@@ -253,39 +281,67 @@ function GitPageLayout() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-                <div className="">
-                  {repositories.map((repo) => (
-                    <button
-                      className="py-2 px-2 flex w-full justify-between items-center hover:bg-accent/55 cursor-pointer"
-                      key={repo.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedRepository(repo);
-                        setRepoSelectIsOpen(false);
-                      }}
-                    >
-                      <span>{repo.name}</span>
-                      <Button
-                        variant={"ghost"}
-                        size={"icon"}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setRepositories(
-                            repositories.filter((r) => r.id !== repo.id),
-                          );
-                          toast.success("Repository removed");
+                <ScrollArea className="max-h-full _flex-1">
+                  <div className="">
+                    {groupedByOwner &&
+                      Object.entries(groupedByOwner).map(([owner, repos]) => {
+                        const icon = getAvatarByProvider(
+                          repos?.provider || undefined,
+                        );
 
-                          if (selectedRepository?.id === repo.id) {
-                            setSelectedRepository(null);
-                          }
-                        }}
-                      >
-                        <Minus size={16} />
-                      </Button>
-                    </button>
-                  ))}
-                </div>
-              </ScrollArea>
+                        return (
+                          <div key={owner} className="border-b">
+                            <div className="text-muted-foreground flex items-center px-2 py-1">
+                              <div className="size-3.5 text-lg text-foreground mr-1">
+                                {icon || (
+                                  <BadgeQuestionMark className="size-3.5" />
+                                )}
+                              </div>
+                              {origin ? (
+                                <div>
+                                  <span>/</span>
+                                  <Avatar className="rounded-sm size-4 -translate-y-px mx-1">
+                                    <AvatarImage
+                                      alt="User"
+                                      src={repos.avatarUrl}
+                                    />
+                                    <AvatarFallback>
+                                      {owner.charAt(0).toUpperCase()}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <span>{repos.owner}</span>
+                                </div>
+                              ) : (
+                                <div>
+                                  <span className="text-foreground">
+                                    {owner}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            {repos.repos.map((repo) => (
+                              <RepositoryListItem
+                                key={repo.id}
+                                repo={repo}
+                                isSelected={selectedRepository?.id === repo.id}
+                                onSelect={() => {
+                                  setSelectedRepository(repo);
+                                  setRepoSelectIsOpen(false);
+                                }}
+                                onRemove={() => {
+                                  removeRepo(repo.id);
+                                  if (selectedRepository?.id === repo.id) {
+                                    setSelectedRepository(null);
+                                  }
+                                }}
+                              />
+                            ))}
+                          </div>
+                        );
+                      })}
+                  </div>
+                </ScrollArea>
+              </div>
             ) : (
               <>
                 <Tabs

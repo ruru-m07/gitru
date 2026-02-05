@@ -1,4 +1,4 @@
-import type { FileStatusKind, RepoSitoryStore } from "@gitru/commands";
+import type { FileStatusKind, RepositoryInfo } from "@gitru/commands";
 import { toast } from "sonner";
 import { create } from "zustand";
 import {
@@ -18,11 +18,11 @@ export type SelectedFile = {
 type RepoKey = string;
 
 type AppState = {
-  selectedRepository: RepoSitoryStore | null;
-  setSelectedRepository: (repo: RepoSitoryStore | null) => void;
+  selectedRepository: RepositoryInfo | null;
+  setSelectedRepository: (repo: RepositoryInfo | null) => void;
 
-  repositories: RepoSitoryStore[];
-  setRepositories: (repos: RepoSitoryStore[]) => void;
+  repositories: RepositoryInfo[];
+  setRepositories: (repos: RepositoryInfo[]) => void;
 
   repoSelectIsOpen: boolean;
   setRepoSelectIsOpen: (isOpen: boolean) => void;
