@@ -1,6 +1,8 @@
 use git;
 use ipc;
 use log::LevelFilter;
+use std::sync::{Arc, Mutex};
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -16,8 +18,17 @@ pub fn run() {
                 .level_for("tao", LevelFilter::Off)
                 .build(),
         )
+        .setup(|app| {
+            let repo_manager = ipc::repo_manager::RepoManager::new(app.handle().clone());
+            app.manage(Arc::new(Mutex::new(repo_manager)));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             ipc::commands::add_local_git_repo,
+            ipc::repo_manager::list_repositories,
+            ipc::repo_manager::add_repository,
+            ipc::repo_manager::remove_repository,
+            ipc::repo_manager::refresh_repository_info,
             git::commands::git::git_add,
             git::commands::git::get_status,
             git::commands::git::get_file_status,

@@ -96,6 +96,7 @@ function Command({
     <Autocomplete
       autoHighlight={autoHighlight}
       inline
+      loopFocus={false}
       keepHighlight={keepHighlight}
       open
       {...props}

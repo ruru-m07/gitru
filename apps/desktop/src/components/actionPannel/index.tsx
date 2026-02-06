@@ -1,3 +1,4 @@
+import { RepositoryInfo } from "@gitru/commands";
 import {
   CommandPanelRoot,
   CommandViewConfig,
@@ -8,17 +9,23 @@ import { BranchItem, useBranchListView } from "./views/branch-list";
 import { useConfirmCheckoutView } from "./views/confirm-checkout";
 import { CreateBranchProps, useCreateBranchView } from "./views/create-branch";
 import { ActionItem, useRootView } from "./views/root";
+import { useSwitchRepositoryView } from "./views/switch-repository";
 
 type RootAction = CommandViewConfig<"root", ActionItem>;
 type BranchListAction = CommandViewConfig<"branch-list", BranchItem>;
 type CreateBranchAction = CommandViewConfig<"create-branch", CreateBranchProps>;
 type ConfirmCheckoutAction = CommandViewConfig<"confirm-checkout", undefined>;
+type SwitchRepositoryAction = CommandViewConfig<
+  "switch-repository",
+  RepositoryInfo
+>;
 
 type Action =
   | RootAction
   | BranchListAction
   | CreateBranchAction
-  | ConfirmCheckoutAction;
+  | ConfirmCheckoutAction
+  | SwitchRepositoryAction;
 
 export const ActionPannel = () => {
   const [open, setOpen] = useState(false);
@@ -28,6 +35,7 @@ export const ActionPannel = () => {
     useBranchListView(),
     useCreateBranchView(),
     useConfirmCheckoutView(),
+    useSwitchRepositoryView(),
   ] as const satisfies Action[];
 
   const viewRegistry = createCommandViewRegistry(views);

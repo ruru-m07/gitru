@@ -1,3 +1,4 @@
+use git2::{BranchType, ErrorCode};
 use serde::Serialize;
 
 use crate::{
@@ -60,21 +61,43 @@ impl From<BranchKind> for git2::BranchType {
 #[logger::logger]
 pub async fn current_branch(repo_path: &str) -> Result<Branch, String> {
     let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
-    let head = repo
-        .head()
-        .map_err(|e| format!("Failed to get HEAD: {e}"))?;
 
-    if head.is_branch() {
-        let short = head
-            .shorthand()
-            .ok_or_else(|| "Failed to read branch name".to_string())?;
-        Ok(Branch {
-            name: short.to_string(),
-            display_name: short.to_string(),
-            is_remote: false,
-        })
-    } else {
-        Err("Repository is in detached HEAD state or has no current branch".into())
+    match repo.head() {
+        // ? normal case: repo has commits
+        Ok(head) if head.is_branch() => {
+            let short = head
+                .shorthand()
+                .ok_or_else(|| "Failed to read branch name".to_string())?;
+
+            Ok(Branch {
+                name: short.to_string(),
+                display_name: short.to_string(),
+                is_remote: false,
+            })
+        }
+
+        // ! empty repo: HEAD exists but branch is unborn
+        Err(e) if e.code() == ErrorCode::UnbornBranch => {
+            let head = repo.find_reference("HEAD").map_err(|e| e.to_string())?;
+
+            let target = head
+                .symbolic_target()
+                .ok_or_else(|| "HEAD is not symbolic".to_string())?;
+
+            let branch = target
+                .strip_prefix("refs/heads/")
+                .ok_or_else(|| "Invalid HEAD reference".to_string())?;
+
+            Ok(Branch {
+                name: branch.to_string(),
+                display_name: branch.to_string(),
+                is_remote: false,
+            })
+        }
+
+        // ! Detached HEAD or other error
+        Ok(_) => Err("Repository is in detached HEAD state".into()),
+        Err(e) => Err(format!("Failed to get HEAD: {e}")),
     }
 }
 
@@ -106,32 +129,74 @@ pub async fn list_branches(repo_path: &str, kind: BranchKind) -> Result<Vec<Bran
 pub async fn status_ahead_behind(repo_path: &str) -> Result<AheadBehindStatus, String> {
     let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
 
-    let head = repo
-        .head()
-        .map_err(|e| format!("Failed to get HEAD: {e}"))?;
+    let head = match repo.head() {
+        Ok(h) => h,
+        Err(e) if e.code() == ErrorCode::UnbornBranch => {
+            // Empty repo → no commits → nothing is ahead/behind
+            let head = repo.find_reference("HEAD").map_err(|e| e.to_string())?;
+
+            let target = head
+                .symbolic_target()
+                .ok_or_else(|| "HEAD is not symbolic".to_string())?;
+
+            let branch = target
+                .strip_prefix("refs/heads/")
+                .ok_or_else(|| "Invalid HEAD reference".to_string())?;
+
+            return Ok(AheadBehindStatus {
+                ahead: 0,
+                behind: 0,
+                local_branch: branch.to_string(),
+                local_branch_id: String::new(),
+                upstream_branch: None,
+                upstream_branch_id: None,
+                is_published: false,
+            });
+        }
+        Err(e) => return Err(format!("Failed to get HEAD: {e}")),
+    };
+
     let local_branch_name = head
         .shorthand()
         .ok_or_else(|| "HEAD does not point to a named branch".to_string())?;
 
     let branch = repo
-        .find_branch(local_branch_name, git2::BranchType::Local)
+        .find_branch(local_branch_name, BranchType::Local)
         .map_err(|_| format!("Failed to find local branch {local_branch_name}"))?;
 
-    let local_oid = branch
-        .get()
-        .target()
-        .ok_or_else(|| "Local branch has no target".to_string())?;
-
-    let upstream = match branch.upstream() {
-        Ok(upstream) => Some(upstream),
-        Err(_) => None,
+    // If branch has no target → unborn branch (extra safety)
+    let local_oid = match branch.get().target() {
+        Some(oid) => oid,
+        None => {
+            return Ok(AheadBehindStatus {
+                ahead: 0,
+                behind: 0,
+                local_branch: local_branch_name.to_string(),
+                local_branch_id: String::new(),
+                upstream_branch: None,
+                upstream_branch_id: None,
+                is_published: false,
+            });
+        }
     };
 
+    let upstream = branch.upstream().ok();
+
     if let Some(upstream) = upstream {
-        let upstream_oid = upstream
-            .get()
-            .target()
-            .ok_or_else(|| "Upstream branch has no target".to_string())?;
+        let upstream_oid = match upstream.get().target() {
+            Some(oid) => oid,
+            None => {
+                return Ok(AheadBehindStatus {
+                    ahead: 0,
+                    behind: 0,
+                    local_branch: local_branch_name.to_string(),
+                    local_branch_id: local_oid.to_string(),
+                    upstream_branch: None,
+                    upstream_branch_id: None,
+                    is_published: false,
+                });
+            }
+        };
 
         let upstream_name = upstream
             .get()
@@ -153,13 +218,8 @@ pub async fn status_ahead_behind(repo_path: &str) -> Result<AheadBehindStatus, S
             is_published: true,
         })
     } else {
-        let mut revwalk = repo.revwalk().map_err(|e| e.to_string())?;
-        revwalk.push(local_oid).map_err(|e| e.to_string())?;
-
-        let ahead = revwalk.count();
-
         Ok(AheadBehindStatus {
-            ahead,
+            ahead: 0,
             behind: 0,
             local_branch: local_branch_name.to_string(),
             local_branch_id: local_oid.to_string(),

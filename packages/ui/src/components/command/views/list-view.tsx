@@ -234,7 +234,7 @@ function CommandListView<TItem>({
   );
 
   return (
-    <CommandPanel className={className}>
+    <CommandPanel className={cn(className)}>
       <CommandEmpty className={cn("not-empty:py-10", emptyClassName)}>
         {shouldShowEmpty ? emptyContent : null}
       </CommandEmpty>
