@@ -100,82 +100,7 @@ export const Route = createFileRoute("/app/git")({
 });
 
 function GitPageLayout() {
-  const [query, setQuery] = useState("");
-
-  const {
-    repoSelectIsOpen,
-    setRepoSelectIsOpen,
-    setSelectedRepository,
-    selectedRepository,
-    setSelectedFileForRepo,
-    selectedFileByRepo,
-  } = useAppStore();
-
-  const { repositories, addRepo, removeRepo } = useRepositories();
-
-  const { data: status, isLoading: isStatusLoading } = useGetStatus();
-
-  const { mutateAsync: addFile } = useGitAdd();
-  const { mutateAsync: unstageFile } = useGitUnstage();
-
-  const { handleFileClick } = useFileSelectionStore();
-
-  const { data: commitHistory } = useGetCommitHistory();
-
-  const stagedChanges: GetStatusResponse["files"] = (
-    status?.files ?? []
-  ).filter(
-    (file) =>
-      file.status.some((s) => s.startsWith("Index")) &&
-      file.path.toLowerCase().includes(query.toLowerCase()),
-  );
-  const unstagedChanges: GetStatusResponse["files"] = (
-    status?.files ?? []
-  ).filter(
-    (file) =>
-      file.status.some((s) => s.startsWith("Worktree")) &&
-      file.path.toLowerCase().includes(query.toLowerCase()),
-  );
-  const conflictedChanges: GetStatusResponse["files"] = (
-    status?.files ?? []
-  ).filter(
-    (file) =>
-      file.status.some((s) => s.includes("Conflicted")) &&
-      file.path.toLowerCase().includes(query.toLowerCase()),
-  );
-
-  /* we are grouping repositories by owners */
-  // const origin = parseOrigin(item.origin || "");
-  // const icon = getAvatarByProvider(origin?.provider);
-
-  const groupedByOwner = repositories.reduce(
-    (acc, repo) => {
-      const origin = parseOrigin(repo.origin || "");
-      const owner = origin?.owner || "unknown";
-      const provider = origin?.provider || "unknown";
-      const key = `${provider}/${owner}`;
-
-      if (!acc[key]) {
-        acc[key] = {
-          owner,
-          provider,
-          avatarUrl: origin?.avatarUrl,
-          repos: [],
-        };
-      }
-      acc[key].repos.push(repo);
-      return acc;
-    },
-    {} as Record<
-      string,
-      {
-        owner: string;
-        provider: GIT_PROVIDERS;
-        avatarUrl?: string;
-        repos: typeof repositories;
-      }
-    >,
-  );
+  const { repoSelectIsOpen, setRepoSelectIsOpen } = useAppStore();
 
   return (
     <div
@@ -184,433 +109,28 @@ function GitPageLayout() {
         "flex flex-col",
       )}
     >
-      <ResizablePanelGroup
-        // className={cn(
-        //   "ml-[var(--main-actual-content-padding)] bg-accent/35 ring-1 ring-inset ring-border h-full w-full rounded-md flex overflow-hidden",
-        // )}
-        direction="horizontal"
-        autoSaveId="git-page-layout"
-      >
+      <ResizablePanelGroup direction="horizontal" autoSaveId="git-page-layout">
         <ResizablePanel
           defaultSize={18}
           minSize={18}
           maxSize={44}
           className="flex flex-col h-full"
         >
-          <button
-            onClick={() => {
-              setRepoSelectIsOpen(!repoSelectIsOpen);
-            }}
-            className="flex justify-between items-center border-b px-2 pt-2 pb-1 hover:bg-accent/40 cursor-pointer min-h-14 max-h-14"
-            type="button"
-          >
-            <div className="flex-col flex items-start">
-              <span className="text-xs text-muted-foreground">
-                Current Repository
-              </span>
-              <span>
-                {selectedRepository?.name || "No repository selected"}
-              </span>
-            </div>
-            {repoSelectIsOpen ? (
-              <ChevronUp size={18} />
-            ) : (
-              <ChevronDown size={18} />
-            )}
-          </button>
+          <ToggelPanelButton />
           <div className="h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*7)-calc(var(--spacing)*3))]">
-            {repoSelectIsOpen ? (
-              <div>
-                <div className="w-full p-2 border-b flex justify-between items-center gap-2">
-                  <InputGroup>
-                    <InputGroupInput
-                      aria-label="Search"
-                      placeholder="Search"
-                      type="search"
-                    />
-                    <InputGroupAddon>
-                      <SearchIcon aria-hidden="true" />
-                    </InputGroupAddon>
-                  </InputGroup>
-
-                  <DropdownMenu>
-                    <DropdownMenuTrigger render={<Button size={"sm"} />}>
-                      Add
-                      <ChevronDownIcon
-                        className="-me-1 opacity-60"
-                        size={16}
-                        aria-hidden="true"
-                      />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuItem
-                        onClick={async () => {
-                          console.log(repositories);
-                        }}
-                      >
-                        Clone repository...
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={async () => {
-                          const folder = await open({
-                            directory: true,
-                            multiple: false,
-                          });
-
-                          if (folder) {
-                            if (repositories.find((r) => r.path === folder)) {
-                              toast.error("Repository already added");
-                              return;
-                            }
-
-                            try {
-                              const repo = await addRepo(folder);
-                              if (repo) {
-                                setSelectedRepository(repo);
-                                setRepoSelectIsOpen(false);
-                                toast.success("Repository added successfully!");
-                              }
-                            } catch (error) {
-                              // Error already handled by the hook
-                            }
-                          }
-                        }}
-                      >
-                        Add local repository
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-                <ScrollArea className="max-h-full _flex-1">
-                  <div className="">
-                    {groupedByOwner &&
-                      Object.entries(groupedByOwner).map(([owner, repos]) => {
-                        const icon = getAvatarByProvider(
-                          repos?.provider || undefined,
-                        );
-
-                        return (
-                          <div key={owner} className="border-b">
-                            <div className="text-muted-foreground flex items-center px-2 py-1">
-                              <div className="size-3.5 text-lg text-foreground mr-1">
-                                {icon || (
-                                  <BadgeQuestionMark className="size-3.5" />
-                                )}
-                              </div>
-                              {origin ? (
-                                <div>
-                                  <span>/</span>
-                                  <Avatar className="rounded-sm size-4 -translate-y-px mx-1">
-                                    <AvatarImage
-                                      alt="User"
-                                      src={repos.avatarUrl}
-                                    />
-                                    <AvatarFallback>
-                                      {owner.charAt(0).toUpperCase()}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                  <span>{repos.owner}</span>
-                                </div>
-                              ) : (
-                                <div>
-                                  <span className="text-foreground">
-                                    {owner}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                            {repos.repos.map((repo) => (
-                              <RepositoryListItem
-                                key={repo.id}
-                                repo={repo}
-                                isSelected={selectedRepository?.id === repo.id}
-                                onSelect={() => {
-                                  setSelectedRepository(repo);
-                                  setRepoSelectIsOpen(false);
-                                }}
-                                onRemove={() => {
-                                  removeRepo(repo.id);
-                                  if (selectedRepository?.id === repo.id) {
-                                    setSelectedRepository(null);
-                                  }
-                                }}
-                              />
-                            ))}
-                          </div>
-                        );
-                      })}
-                  </div>
-                </ScrollArea>
-              </div>
-            ) : (
-              <>
-                <Tabs
-                  defaultValue="tab-1"
-                  className={"gap-0 h-full flex flex-col"}
-                >
-                  <TabsList
-                    className={"rounded-none w-full border-l border-b shrink-0"}
-                  >
-                    <TabsTab className={"rounded-none! ml-0"} value="tab-1">
-                      Changes
-                    </TabsTab>
-                    <TabsTab className={"rounded-none!"} value="tab-2">
-                      History
-                    </TabsTab>
-                  </TabsList>
-                  <div className="p-1.5 border-b">
-                    <Group aria-label="Subscription actions" className="w-full">
-                      <Input
-                        aria-label="Filter files"
-                        placeholder="Filter files..."
-                        className={"rounded-l-md! border-border! w-full"}
-                        size={"sm"}
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                      />
-                      <GroupSeparator />
-                      <Menu>
-                        <MenuTrigger
-                          render={
-                            <Button
-                              aria-label="Copy options"
-                              size="icon-sm"
-                              variant={"secondary"}
-                              className="rounded-r-md! border-border"
-                            />
-                          }
-                        >
-                          <ListFilterPlus
-                            aria-hidden="true"
-                            className="size-4"
-                          />
-                        </MenuTrigger>
-                        <MenuPopup align="end">
-                          <MenuItem>
-                            <ShareIcon aria-hidden="true" />
-                            Share link
-                          </MenuItem>
-                        </MenuPopup>
-                      </Menu>
-                    </Group>
-                  </div>
-                  <TabsPanel
-                    value="tab-1"
-                    className={"flex-1 flex flex-col min-h-0"}
-                    tabIndex={-1}
-                  >
-                    <div className="flex-1 overflow-auto ">
-                      {isStatusLoading ? (
-                        <>
-                          <span>Loading...</span>
-                        </>
-                      ) : (
-                        <>
-                          {status &&
-                          ((stagedChanges && stagedChanges?.length > 0) ||
-                            (conflictedChanges &&
-                              conflictedChanges?.length > 0) ||
-                            (unstagedChanges &&
-                              unstagedChanges?.length > 0)) ? (
-                            <VirtualizedFileList
-                              sections={[
-                                {
-                                  id: "conflicted",
-                                  name: "Conflicted",
-                                  files: conflictedChanges || [],
-                                  actions: {
-                                    onAddAll: async () => {
-                                      await addFile(".");
-                                    },
-                                    renderDiscardAll: () => (
-                                      <DiscardChangesDialog fileName="." />
-                                    ),
-                                  },
-                                },
-                                {
-                                  id: "staged",
-                                  name: "Staged Changes",
-                                  files: stagedChanges || [],
-                                  actions: {
-                                    onUnstageAll: async () => {
-                                      await unstageFile(".");
-                                    },
-                                  },
-                                },
-                                {
-                                  id: "unstaged",
-                                  name: "Changes",
-                                  files: unstagedChanges || [],
-                                  actions: {
-                                    onAddAll: async () => {
-                                      await addFile(".");
-                                    },
-                                    renderDiscardAll: () => (
-                                      <DiscardChangesDialog fileName="." />
-                                    ),
-                                  },
-                                },
-                              ]}
-                              onFileClick={handleFileClick}
-                              onAdd={addFile}
-                              onUnstage={unstageFile}
-                              renderDiscard={(filePath) => (
-                                <DiscardChangesDialog fileName={filePath} />
-                              )}
-                              setSelectedFilePath={setSelectedFileForRepo}
-                              selectedFilePath={
-                                selectedFileByRepo[
-                                  selectedRepository?.path || ""
-                                ]
-                                  ? {
-                                      path:
-                                        selectedFileByRepo[
-                                          selectedRepository?.path || ""
-                                        ]?.filePath || "",
-                                      newPath:
-                                        selectedFileByRepo[
-                                          selectedRepository?.path || ""
-                                        ]?.fileNewPath,
-                                    }
-                                  : undefined
-                              }
-                              defaultExpandedSections={["staged", "unstaged"]}
-                              className="h-full"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center">
-                              <div className="relative">
-                                <GitBranch className="opacity-50 size-12 mb-4 text-muted-foreground" />
-                              </div>
-                              <span className="flex justify-center text-sm text-muted-foreground">
-                                No changes, Look in!
-                              </span>
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                    <WriteCommitBox />
-                  </TabsPanel>
-                  <TabsPanel value="tab-2" className={"h-full"} tabIndex={-1}>
-                    <ScrollArea className="flex-1 h-full" tabIndex={-1}>
-                      {commitHistory?.map((commit) => (
-                        <div
-                          className="w-full p-2 border-b hover:bg-accent cursor-pointer hover:border-l-border border-l border-l-transparent"
-                          key={commit.id}
-                        >
-                          <p className="truncate text-sm">{commit.summary}</p>
-                          <div className="flex mt-1 items-center justify-between w-full">
-                            <TooltipProvider>
-                              <div className="flex items-center">
-                                <div className="flex -mt-0.5 group">
-                                  <Tooltip>
-                                    <TooltipTrigger
-                                      style={{
-                                        zIndex:
-                                          commit.authors.co_authors.length + 1,
-                                      }}
-                                    >
-                                      <Avatar className="ring-2 ring-background rounded-sm size-4">
-                                        <AvatarImage
-                                          alt={commit.authors.author.name}
-                                          src={`https://avatars.githubusercontent.com/u/e?email=${commit.authors.author.email}&s=64`}
-                                        />
-                                        <AvatarFallback>
-                                          {commit.authors.author.name
-                                            .split(" ")
-                                            .map((n) => n[0])
-                                            .join("")
-                                            .toUpperCase()}
-                                        </AvatarFallback>
-                                      </Avatar>
-                                    </TooltipTrigger>
-                                    <TooltipPopup side="bottom">
-                                      {commit.authors.author.name}
-                                    </TooltipPopup>
-                                  </Tooltip>
-                                  {commit.authors.co_authors.map(
-                                    (coAuthor, idx) => (
-                                      <Tooltip key={`${idx}-tooltip-coauthor`}>
-                                        <TooltipTrigger
-                                          style={{
-                                            zIndex:
-                                              commit.authors.co_authors.length -
-                                              idx,
-                                          }}
-                                          key={`${idx}-tooltip-trigger-coauthor`}
-                                        >
-                                          <Avatar className="ring-2 ring-background rounded-sm size-4 -ml-[0.2rem] group-hover:ml-0.5 transition-all duration-100">
-                                            <AvatarImage
-                                              alt="U1"
-                                              src={`https://avatars.githubusercontent.com/u/e?email=${coAuthor.email}&s=64`}
-                                            />
-                                            <AvatarFallback>
-                                              {coAuthor.name
-                                                .split(" ")
-                                                .map((n) => n[0])
-                                                .join("")
-                                                .toUpperCase()}
-                                            </AvatarFallback>
-                                          </Avatar>
-                                        </TooltipTrigger>
-                                        <TooltipPopup side="bottom">
-                                          {coAuthor.name}
-                                        </TooltipPopup>
-                                      </Tooltip>
-                                    ),
-                                  )}
-                                </div>
-                                <Label className="ml-1 text-muted-foreground text-xs font-light">
-                                  <Tooltip>
-                                    <TooltipTrigger>
-                                      {commit.authors.author.name}
-                                    </TooltipTrigger>
-                                    <TooltipPopup side="bottom">
-                                      {commit.authors.author.email}
-                                    </TooltipPopup>
-                                  </Tooltip>
-                                  <span className="-mx-1">{" • "}</span>
-                                  <Tooltip>
-                                    <TooltipTrigger>
-                                      {timeAgoFromUnixSeconds(
-                                        commit.timestamp,
-                                      )}{" "}
-                                    </TooltipTrigger>
-                                    <TooltipPopup side="bottom">
-                                      {formatUnixSecondsToDateTime(
-                                        commit.timestamp,
-                                      )}
-                                    </TooltipPopup>
-                                  </Tooltip>
-                                </Label>
-                              </div>
-                            </TooltipProvider>
-                          </div>
-                        </div>
-                      ))}
-                      <div className="h-20" />
-                    </ScrollArea>
-                  </TabsPanel>
-                </Tabs>
-              </>
-            )}
+            {repoSelectIsOpen ? <ListRepositories /> : <ListFileChanges />}
           </div>
         </ResizablePanel>
         <ResizableHandle className="cursor-col-resize!" withHandle />
         <ResizablePanel
           className={cn(
             "w-full relative",
-            repoSelectIsOpen && "_blur-sm cursor-pointer",
+            repoSelectIsOpen && "cursor-pointer",
           )}
-          onClick={() => {
-            if (repoSelectIsOpen) {
-              setRepoSelectIsOpen(false);
-            }
-          }}
+          onClick={() => setRepoSelectIsOpen(false)}
         >
           {repoSelectIsOpen && (
-            <div className="absolute inset-0 bg-black/40 z-10 w-full h-full backdrop-blur-sm border border-l-0"></div>
+            <div className="absolute inset-0 bg-white/50 dark:bg-black/40 z-10 w-full h-full backdrop-blur-[2px] border border-l-0"></div>
           )}
           <Outlet />
         </ResizablePanel>
@@ -841,3 +361,461 @@ const WriteCommitBox = memo(function WriteCommitBox() {
     </div>
   );
 });
+
+const ToggelPanelButton = () => {
+  const { repoSelectIsOpen, setRepoSelectIsOpen, selectedRepository } =
+    useAppStore();
+
+  return (
+    <button
+      onClick={() => {
+        setRepoSelectIsOpen(!repoSelectIsOpen);
+      }}
+      className="flex justify-between items-center border-b px-2 pt-2 pb-1 hover:bg-accent/40 cursor-pointer min-h-14 max-h-14"
+      type="button"
+    >
+      <div className="flex-col flex items-start">
+        <span className="text-xs text-muted-foreground">
+          Current Repository
+        </span>
+        <span>{selectedRepository?.name || "No repository selected"}</span>
+      </div>
+      {repoSelectIsOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+    </button>
+  );
+};
+
+const ListFileChanges = () => {
+  const [query, setQuery] = useState("");
+
+  const { selectedRepository, setSelectedFileForRepo, selectedFileByRepo } =
+    useAppStore();
+
+  const { data: status, isLoading: isStatusLoading } = useGetStatus();
+
+  const { mutateAsync: addFile } = useGitAdd();
+  const { mutateAsync: unstageFile } = useGitUnstage();
+
+  const { handleFileClick } = useFileSelectionStore();
+
+  const { data: commitHistory } = useGetCommitHistory();
+
+  const stagedChanges: GetStatusResponse["files"] = (
+    status?.files ?? []
+  ).filter(
+    (file) =>
+      file.status.some((s) => s.startsWith("Index")) &&
+      file.path.toLowerCase().includes(query.toLowerCase()),
+  );
+  const unstagedChanges: GetStatusResponse["files"] = (
+    status?.files ?? []
+  ).filter(
+    (file) =>
+      file.status.some((s) => s.startsWith("Worktree")) &&
+      file.path.toLowerCase().includes(query.toLowerCase()),
+  );
+  const conflictedChanges: GetStatusResponse["files"] = (
+    status?.files ?? []
+  ).filter(
+    (file) =>
+      file.status.some((s) => s.includes("Conflicted")) &&
+      file.path.toLowerCase().includes(query.toLowerCase()),
+  );
+
+  return (
+    <Tabs defaultValue="tab-1" className={"gap-0 h-full flex flex-col"}>
+      <TabsList className={"rounded-none w-full border-l border-b shrink-0"}>
+        <TabsTab className={"rounded-none! ml-0"} value="tab-1">
+          Changes
+        </TabsTab>
+        <TabsTab className={"rounded-none!"} value="tab-2">
+          History
+        </TabsTab>
+      </TabsList>
+      <div className="p-1.5 border-b">
+        <Group aria-label="Subscription actions" className="w-full">
+          <Input
+            aria-label="Filter files"
+            placeholder="Filter files..."
+            className={"rounded-l-md! border-border! w-full"}
+            size={"sm"}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <GroupSeparator />
+          <Menu>
+            <MenuTrigger
+              render={
+                <Button
+                  aria-label="Copy options"
+                  size="icon-sm"
+                  variant={"secondary"}
+                  className="rounded-r-md! border-border"
+                />
+              }
+            >
+              <ListFilterPlus aria-hidden="true" className="size-4" />
+            </MenuTrigger>
+            <MenuPopup align="end">
+              <MenuItem>
+                <ShareIcon aria-hidden="true" />
+                Share link
+              </MenuItem>
+            </MenuPopup>
+          </Menu>
+        </Group>
+      </div>
+      <TabsPanel
+        value="tab-1"
+        className={"flex-1 flex flex-col min-h-0"}
+        tabIndex={-1}
+      >
+        <div className="flex-1 overflow-auto ">
+          {isStatusLoading ? (
+            <>
+              <span>Loading...</span>
+            </>
+          ) : (
+            <>
+              {status &&
+              ((stagedChanges && stagedChanges?.length > 0) ||
+                (conflictedChanges && conflictedChanges?.length > 0) ||
+                (unstagedChanges && unstagedChanges?.length > 0)) ? (
+                <VirtualizedFileList
+                  sections={[
+                    {
+                      id: "conflicted",
+                      name: "Conflicted",
+                      files: conflictedChanges || [],
+                      actions: {
+                        onAddAll: async () => {
+                          await addFile(".");
+                        },
+                        renderDiscardAll: () => (
+                          <DiscardChangesDialog fileName="." />
+                        ),
+                      },
+                    },
+                    {
+                      id: "staged",
+                      name: "Staged Changes",
+                      files: stagedChanges || [],
+                      actions: {
+                        onUnstageAll: async () => {
+                          await unstageFile(".");
+                        },
+                      },
+                    },
+                    {
+                      id: "unstaged",
+                      name: "Changes",
+                      files: unstagedChanges || [],
+                      actions: {
+                        onAddAll: async () => {
+                          await addFile(".");
+                        },
+                        renderDiscardAll: () => (
+                          <DiscardChangesDialog fileName="." />
+                        ),
+                      },
+                    },
+                  ]}
+                  onFileClick={handleFileClick}
+                  onAdd={addFile}
+                  onUnstage={unstageFile}
+                  renderDiscard={(filePath) => (
+                    <DiscardChangesDialog fileName={filePath} />
+                  )}
+                  setSelectedFilePath={setSelectedFileForRepo}
+                  selectedFilePath={
+                    selectedFileByRepo[selectedRepository?.path || ""]
+                      ? {
+                          path:
+                            selectedFileByRepo[selectedRepository?.path || ""]
+                              ?.filePath || "",
+                          newPath:
+                            selectedFileByRepo[selectedRepository?.path || ""]
+                              ?.fileNewPath,
+                        }
+                      : undefined
+                  }
+                  defaultExpandedSections={["staged", "unstaged"]}
+                  className="h-full"
+                />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center">
+                  <div className="relative">
+                    <GitBranch className="opacity-50 size-12 mb-4 text-muted-foreground" />
+                  </div>
+                  <span className="flex justify-center text-sm text-muted-foreground">
+                    No changes, Look in!
+                  </span>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        <WriteCommitBox />
+      </TabsPanel>
+      <TabsPanel value="tab-2" className={"h-full"} tabIndex={-1}>
+        <ScrollArea className="flex-1 h-full" tabIndex={-1}>
+          {commitHistory?.map((commit) => (
+            <div
+              className="w-full p-2 border-b hover:bg-accent cursor-pointer hover:border-l-border border-l border-l-transparent"
+              key={commit.id}
+            >
+              <p className="truncate text-sm">{commit.summary}</p>
+              <div className="flex mt-1 items-center justify-between w-full">
+                <TooltipProvider>
+                  <div className="flex items-center">
+                    <div className="flex -mt-0.5 group">
+                      <Tooltip>
+                        <TooltipTrigger
+                          style={{
+                            zIndex: commit.authors.co_authors.length + 1,
+                          }}
+                        >
+                          <Avatar className="ring-2 ring-background rounded-sm size-4">
+                            <AvatarImage
+                              alt={commit.authors.author.name}
+                              src={`https://avatars.githubusercontent.com/u/e?email=${commit.authors.author.email}&s=64`}
+                            />
+                            <AvatarFallback>
+                              {commit.authors.author.name
+                                .split(" ")
+                                .map((n) => n[0])
+                                .join("")
+                                .toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                        </TooltipTrigger>
+                        <TooltipPopup side="bottom">
+                          {commit.authors.author.name}
+                        </TooltipPopup>
+                      </Tooltip>
+                      {commit.authors.co_authors.map((coAuthor, idx) => (
+                        <Tooltip key={`${idx}-tooltip-coauthor`}>
+                          <TooltipTrigger
+                            style={{
+                              zIndex: commit.authors.co_authors.length - idx,
+                            }}
+                            key={`${idx}-tooltip-trigger-coauthor`}
+                          >
+                            <Avatar className="ring-2 ring-background rounded-sm size-4 -ml-[0.2rem] group-hover:ml-0.5 transition-all duration-100">
+                              <AvatarImage
+                                alt="U1"
+                                src={`https://avatars.githubusercontent.com/u/e?email=${coAuthor.email}&s=64`}
+                              />
+                              <AvatarFallback>
+                                {coAuthor.name
+                                  .split(" ")
+                                  .map((n) => n[0])
+                                  .join("")
+                                  .toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                          </TooltipTrigger>
+                          <TooltipPopup side="bottom">
+                            {coAuthor.name}
+                          </TooltipPopup>
+                        </Tooltip>
+                      ))}
+                    </div>
+                    <Label className="ml-1 text-muted-foreground text-xs font-light">
+                      <Tooltip>
+                        <TooltipTrigger>
+                          {commit.authors.author.name}
+                        </TooltipTrigger>
+                        <TooltipPopup side="bottom">
+                          {commit.authors.author.email}
+                        </TooltipPopup>
+                      </Tooltip>
+                      <span className="-mx-1">{" • "}</span>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          {timeAgoFromUnixSeconds(commit.timestamp)}{" "}
+                        </TooltipTrigger>
+                        <TooltipPopup side="bottom">
+                          {formatUnixSecondsToDateTime(commit.timestamp)}
+                        </TooltipPopup>
+                      </Tooltip>
+                    </Label>
+                  </div>
+                </TooltipProvider>
+              </div>
+            </div>
+          ))}
+          <div className="h-20" />
+        </ScrollArea>
+      </TabsPanel>
+    </Tabs>
+  );
+};
+
+const ListRepositories = () => {
+  const { setRepoSelectIsOpen, setSelectedRepository, selectedRepository } =
+    useAppStore();
+  const { repositories, addRepo, removeRepo } = useRepositories();
+  const [query, setQuery] = useState("");
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredRepositories = normalizedQuery
+    ? repositories.filter((repo) => {
+        const name = repo.name?.toLowerCase() ?? "";
+        const path = repo.path?.toLowerCase() ?? "";
+        return name.includes(normalizedQuery) || path.includes(normalizedQuery);
+      })
+    : repositories;
+
+  /* we are grouping repositories by owners */
+  // const origin = parseOrigin(item.origin || "");
+  // const icon = getAvatarByProvider(origin?.provider);
+  const groupedByOwner = filteredRepositories.reduce(
+    (acc, repo) => {
+      const origin = parseOrigin(repo.origin || "");
+      const owner = origin?.owner || "unknown";
+      const provider = origin?.provider || "unknown";
+      const key = `${provider}/${owner}`;
+
+      if (!acc[key]) {
+        acc[key] = {
+          owner,
+          provider,
+          avatarUrl: origin?.avatarUrl,
+          repos: [],
+        };
+      }
+      acc[key].repos.push(repo);
+      return acc;
+    },
+    {} as Record<
+      string,
+      {
+        owner: string;
+        provider: GIT_PROVIDERS;
+        avatarUrl?: string;
+        repos: typeof repositories;
+      }
+    >,
+  );
+
+  return (
+    <div>
+      <div className="w-full p-2 border-b flex justify-between items-center gap-2">
+        <InputGroup>
+          <InputGroupInput
+            aria-label="Search"
+            placeholder="Search"
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <InputGroupAddon>
+            <SearchIcon aria-hidden="true" />
+          </InputGroupAddon>
+        </InputGroup>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button size={"sm"} />}>
+            Add
+            <ChevronDownIcon
+              className="-me-1 opacity-60"
+              size={16}
+              aria-hidden="true"
+            />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem
+              onClick={async () => {
+                console.log(repositories);
+              }}
+            >
+              Clone repository...
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={async () => {
+                const folder = await open({
+                  directory: true,
+                  multiple: false,
+                });
+
+                if (folder) {
+                  if (repositories.find((r) => r.path === folder)) {
+                    toast.error("Repository already added");
+                    return;
+                  }
+
+                  try {
+                    const repo = await addRepo(folder);
+                    if (repo) {
+                      setSelectedRepository(repo);
+                      setRepoSelectIsOpen(false);
+                      toast.success("Repository added successfully!");
+                    }
+                  } catch (error) {
+                    // Error already handled by the hook
+                  }
+                }
+              }}
+            >
+              Add local repository
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <ScrollArea className="max-h-full _flex-1">
+        <div className="">
+          {groupedByOwner &&
+            Object.entries(groupedByOwner)
+              .filter(([, repos]) => repos.repos.length > 0)
+              .map(([owner, repos]) => {
+              const icon = getAvatarByProvider(repos?.provider || undefined);
+
+              return (
+                <div key={owner} className="border-b">
+                  <div className="text-muted-foreground flex items-center px-2 py-1">
+                    <div className="size-3.5 text-lg text-foreground mr-1">
+                      {icon || <BadgeQuestionMark className="size-3.5" />}
+                    </div>
+                    {origin ? (
+                      <div>
+                        <span>/</span>
+                        <Avatar className="rounded-sm size-4 -translate-y-px mx-1">
+                          <AvatarImage alt="User" src={repos.avatarUrl} />
+                          <AvatarFallback>
+                            {owner.charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span>{repos.owner}</span>
+                      </div>
+                    ) : (
+                      <div>
+                        <span className="text-foreground">{owner}</span>
+                      </div>
+                    )}
+                  </div>
+                  {repos.repos.map((repo) => (
+                    <RepositoryListItem
+                      key={repo.id}
+                      repo={repo}
+                      isSelected={selectedRepository?.id === repo.id}
+                      onSelect={() => {
+                        setSelectedRepository(repo);
+                        setRepoSelectIsOpen(false);
+                      }}
+                      onRemove={() => {
+                        removeRepo(repo.id);
+                        if (selectedRepository?.id === repo.id) {
+                          setSelectedRepository(null);
+                        }
+                      }}
+                    />
+                  ))}
+                </div>
+              );
+            })}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+};

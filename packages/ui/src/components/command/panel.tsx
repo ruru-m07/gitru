@@ -31,7 +31,9 @@ function resolveViewConfig<T extends readonly CommandViewConfig<string, any>[]>(
   return registry.get(viewId as never) ?? registry.views[0];
 }
 
-interface CommandPanelRootProps<T extends readonly CommandViewConfig<string, any>[]> {
+interface CommandPanelRootProps<
+  T extends readonly CommandViewConfig<string, any>[],
+> {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   views: CommandViewRegistry<T>;
@@ -81,7 +83,9 @@ function CommandPanelRoot<T extends readonly CommandViewConfig<string, any>[]>({
   );
 }
 
-function CommandPanelInner<T extends readonly CommandViewConfig<string, any>[]>({
+function CommandPanelInner<
+  T extends readonly CommandViewConfig<string, any>[],
+>({
   open,
   onOpenChange,
   views,

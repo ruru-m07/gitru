@@ -19,7 +19,6 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
-            // Initialize repository manager with store collection
             let repo_manager = ipc::repo_manager::RepoManager::new(app.handle().clone());
             app.manage(Arc::new(Mutex::new(repo_manager)));
             Ok(())
