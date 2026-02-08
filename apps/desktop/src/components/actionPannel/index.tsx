@@ -4,7 +4,6 @@ import {
   CommandViewConfig,
   createCommandViewRegistry,
 } from "@gitru/ui/components/command";
-import { useState } from "react";
 import { BranchItem, useBranchListView } from "./views/branch-list";
 import { useConfirmCheckoutView } from "./views/confirm-checkout";
 import { CreateBranchProps, useCreateBranchView } from "./views/create-branch";
@@ -27,9 +26,7 @@ type Action =
   | ConfirmCheckoutAction
   | SwitchRepositoryAction;
 
-export const ActionPannel = () => {
-  const [open, setOpen] = useState(false);
-
+export const ActionPannel = ({ children }: { children: React.ReactNode }) => {
   const views = [
     useRootView(),
     useBranchListView(),
@@ -42,12 +39,12 @@ export const ActionPannel = () => {
 
   return (
     <CommandPanelRoot
-      open={open}
-      onOpenChange={setOpen}
       views={viewRegistry}
       initialViewId="root"
       resetOnOpen={true}
       className="max-w-2xl"
-    />
+    >
+      {children}
+    </CommandPanelRoot>
   );
 };

@@ -7,6 +7,7 @@ interface ParseOriginResult {
   protocol: string;
   provider: "github" | "gitlab" | "bitbucket" | "unknown";
   avatarUrl?: string;
+  href?: string;
 }
 
 /**
@@ -28,6 +29,7 @@ export function parseOrigin(
   let protocol = "";
   let provider: GIT_PROVIDERS = "unknown";
   let avatarUrl: string | undefined = undefined;
+  let href: string | undefined = undefined;
 
   if (origin.startsWith("git@")) {
     // ? SSH format
@@ -43,10 +45,14 @@ export function parseOrigin(
     const url = new URL(origin);
     host = url.hostname;
     protocol = url.protocol.replace(":", "");
-    const pathParts = url.pathname.replace(/^\/|\.git$/g, "").split("/");
+    const pathParts = url.pathname
+      .replace(/^\//, "")
+      .replace(/\.git$/, "")
+      .split("/");
     if (pathParts.length >= 2) {
       owner = pathParts[0];
-      repo = pathParts[1];
+      // join remaining parts as repo to support subgroups (gitlab etc)
+      repo = pathParts.slice(1).join("/");
     }
   }
 
@@ -65,5 +71,10 @@ export function parseOrigin(
       : undefined;
   }
 
-  return { host, owner, repo, protocol, provider, avatarUrl };
+  if (host && owner && repo) {
+    const hrefProtocol = protocol && protocol !== "ssh" ? protocol : "https";
+    href = `${hrefProtocol}://${host}/${owner}/${repo}`;
+  }
+
+  return { host, owner, repo, protocol, provider, avatarUrl, href };
 }

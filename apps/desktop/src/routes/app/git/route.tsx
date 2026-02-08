@@ -67,6 +67,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { memo, useCallback, useState } from "react";
+import { useDefaultLayout } from "react-resizable-panels";
 import { toast } from "sonner";
 import z from "zod";
 import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
@@ -102,6 +103,12 @@ export const Route = createFileRoute("/app/git")({
 function GitPageLayout() {
   const { repoSelectIsOpen, setRepoSelectIsOpen } = useAppStore();
 
+  const { defaultLayout, onLayoutChanged } = useDefaultLayout({
+    id: "git-page-layout",
+    panelIds: ["left", "right"],
+    storage: localStorage,
+  });
+
   return (
     <div
       className={cn(
@@ -109,32 +116,38 @@ function GitPageLayout() {
         "flex flex-col",
       )}
     >
-      <ResizablePanelGroup direction="horizontal" autoSaveId="git-page-layout">
-        <ResizablePanel
-          defaultSize={18}
-          minSize={18}
-          maxSize={44}
-          className="flex flex-col h-full"
+      <div className="flex">
+        <ResizablePanelGroup
+          defaultLayout={defaultLayout}
+          onLayoutChanged={onLayoutChanged}
+          orientation="horizontal"
+          id="git-page-layout"
         >
-          <ToggelPanelButton />
-          <div className="h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*7)-calc(var(--spacing)*3))]">
-            {repoSelectIsOpen ? <ListRepositories /> : <ListFileChanges />}
-          </div>
-        </ResizablePanel>
-        <ResizableHandle className="cursor-col-resize!" withHandle />
-        <ResizablePanel
-          className={cn(
-            "w-full relative",
-            repoSelectIsOpen && "cursor-pointer",
-          )}
-          onClick={() => setRepoSelectIsOpen(false)}
-        >
-          {repoSelectIsOpen && (
-            <div className="absolute inset-0 bg-white/50 dark:bg-black/40 z-10 w-full h-full backdrop-blur-[2px] border border-l-0"></div>
-          )}
-          <Outlet />
-        </ResizablePanel>
-      </ResizablePanelGroup>
+          <ResizablePanel
+            defaultSize={320}
+            minSize={270}
+            maxSize={800}
+            id="left"
+            className="flex flex-col h-full"
+          >
+            <ToggelPanelButton />
+            <div className="h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*7)-calc(var(--spacing)*3))]">
+              {repoSelectIsOpen ? <ListRepositories /> : <ListFileChanges />}
+            </div>
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel
+            className={cn("relative", repoSelectIsOpen && "cursor-pointer")}
+            onClick={() => setRepoSelectIsOpen(false)}
+            id="right"
+          >
+            {repoSelectIsOpen && (
+              <div className="absolute inset-0 bg-white/50 dark:bg-black/40 z-10 w-full h-full backdrop-blur-[2px] border border-l-0"></div>
+            )}
+            <Outlet />
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      </div>
       <StatusBar />
     </div>
   );
@@ -425,51 +438,57 @@ const ListFileChanges = () => {
   return (
     <Tabs defaultValue="tab-1" className={"gap-0 h-full flex flex-col"}>
       <TabsList className={"rounded-none w-full border-l border-b shrink-0"}>
-        <TabsTab className={"rounded-none! ml-0"} value="tab-1">
+        <TabsTab
+          className={"rounded-none! ml-0 aria-selected:text-muted-foreground"}
+          value="tab-1"
+        >
           Changes
         </TabsTab>
-        <TabsTab className={"rounded-none!"} value="tab-2">
+        <TabsTab
+          className={"rounded-none! aria-selected:text-muted-foreground"}
+          value="tab-2"
+        >
           History
         </TabsTab>
       </TabsList>
-      <div className="p-1.5 border-b">
-        <Group aria-label="Subscription actions" className="w-full">
-          <Input
-            aria-label="Filter files"
-            placeholder="Filter files..."
-            className={"rounded-l-md! border-border! w-full"}
-            size={"sm"}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <GroupSeparator />
-          <Menu>
-            <MenuTrigger
-              render={
-                <Button
-                  aria-label="Copy options"
-                  size="icon-sm"
-                  variant={"secondary"}
-                  className="rounded-r-md! border-border"
-                />
-              }
-            >
-              <ListFilterPlus aria-hidden="true" className="size-4" />
-            </MenuTrigger>
-            <MenuPopup align="end">
-              <MenuItem>
-                <ShareIcon aria-hidden="true" />
-                Share link
-              </MenuItem>
-            </MenuPopup>
-          </Menu>
-        </Group>
-      </div>
       <TabsPanel
         value="tab-1"
         className={"flex-1 flex flex-col min-h-0"}
         tabIndex={-1}
       >
+        <div className="p-1.5 border-b">
+          <Group aria-label="Subscription actions" className="w-full">
+            <Input
+              aria-label="Filter files"
+              placeholder="Filter files..."
+              className={"rounded-l-md! border-border! w-full"}
+              size={"sm"}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <GroupSeparator />
+            <Menu>
+              <MenuTrigger
+                render={
+                  <Button
+                    aria-label="Copy options"
+                    size="icon-sm"
+                    variant={"secondary"}
+                    className="rounded-r-md! border-border"
+                  />
+                }
+              >
+                <ListFilterPlus aria-hidden="true" className="size-4" />
+              </MenuTrigger>
+              <MenuPopup align="end">
+                <MenuItem>
+                  <ShareIcon aria-hidden="true" />
+                  Share link
+                </MenuItem>
+              </MenuPopup>
+            </Menu>
+          </Group>
+        </div>
         <div className="flex-1 overflow-auto ">
           {isStatusLoading ? (
             <>
@@ -769,51 +788,51 @@ const ListRepositories = () => {
             Object.entries(groupedByOwner)
               .filter(([, repos]) => repos.repos.length > 0)
               .map(([owner, repos]) => {
-              const icon = getAvatarByProvider(repos?.provider || undefined);
+                const icon = getAvatarByProvider(repos?.provider || undefined);
 
-              return (
-                <div key={owner} className="border-b">
-                  <div className="text-muted-foreground flex items-center px-2 py-1">
-                    <div className="size-3.5 text-lg text-foreground mr-1">
-                      {icon || <BadgeQuestionMark className="size-3.5" />}
+                return (
+                  <div key={owner} className="border-b">
+                    <div className="text-muted-foreground flex items-center px-2 py-1">
+                      <div className="size-3.5 text-lg text-foreground mr-1">
+                        {icon || <BadgeQuestionMark className="size-3.5" />}
+                      </div>
+                      {origin ? (
+                        <div>
+                          <span>/</span>
+                          <Avatar className="rounded-sm size-4 -translate-y-px mx-1">
+                            <AvatarImage alt="User" src={repos.avatarUrl} />
+                            <AvatarFallback>
+                              {owner.charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span>{repos.owner}</span>
+                        </div>
+                      ) : (
+                        <div>
+                          <span className="text-foreground">{owner}</span>
+                        </div>
+                      )}
                     </div>
-                    {origin ? (
-                      <div>
-                        <span>/</span>
-                        <Avatar className="rounded-sm size-4 -translate-y-px mx-1">
-                          <AvatarImage alt="User" src={repos.avatarUrl} />
-                          <AvatarFallback>
-                            {owner.charAt(0).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span>{repos.owner}</span>
-                      </div>
-                    ) : (
-                      <div>
-                        <span className="text-foreground">{owner}</span>
-                      </div>
-                    )}
+                    {repos.repos.map((repo) => (
+                      <RepositoryListItem
+                        key={repo.id}
+                        repo={repo}
+                        isSelected={selectedRepository?.id === repo.id}
+                        onSelect={() => {
+                          setSelectedRepository(repo);
+                          setRepoSelectIsOpen(false);
+                        }}
+                        onRemove={() => {
+                          removeRepo(repo.id);
+                          if (selectedRepository?.id === repo.id) {
+                            setSelectedRepository(null);
+                          }
+                        }}
+                      />
+                    ))}
                   </div>
-                  {repos.repos.map((repo) => (
-                    <RepositoryListItem
-                      key={repo.id}
-                      repo={repo}
-                      isSelected={selectedRepository?.id === repo.id}
-                      onSelect={() => {
-                        setSelectedRepository(repo);
-                        setRepoSelectIsOpen(false);
-                      }}
-                      onRemove={() => {
-                        removeRepo(repo.id);
-                        if (selectedRepository?.id === repo.id) {
-                          setSelectedRepository(null);
-                        }
-                      }}
-                    />
-                  ))}
-                </div>
-              );
-            })}
+                );
+              })}
         </div>
       </ScrollArea>
     </div>

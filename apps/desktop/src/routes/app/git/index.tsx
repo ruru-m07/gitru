@@ -22,6 +22,7 @@ import {
   Settings,
   TextWrap,
 } from "lucide-react";
+// import MonacoTestDiff from "@/components/diff/test-monaco";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
 import {
@@ -189,9 +190,10 @@ const DiffArea = ({ selectedFile }: { selectedFile: SelectedFile }) => {
   return (
     <div
       className={cn(
-        "max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*7))] w-full relative overflow-y-auto ",
+        "max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*7))] w-full relative overflow-y-auto pl-px",
       )}
     >
+      {/* <MonacoTestDiff /> */}
       {diffData?.patch && (
         <DiffViewer
           patch={diffData?.patch}

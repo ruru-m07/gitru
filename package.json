@@ -29,6 +29,7 @@
       "@types/react": "^19.0.0",
       "@types/react-dom": "^19.0.0",
       "@tauri-apps/api": "^2.4.0",
+      "react-resizable-panels": "4",
       "zod": "^4.3.5"
     }
   }

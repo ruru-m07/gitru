@@ -9,13 +9,14 @@ export const Route = createFileRoute("/app")({
 
 function RouteComponent() {
   return (
-    <div className="h-screen w-full">
-      <CustomTitleBar restrictedPaths={["/login", "/register", "/welcome"]} />
-      <div className="flex h-(--main-window-height) w-screen px-(--main-actual-content-padding) pb-(--main-actual-content-padding) gap-(--main-actual-content-padding)">
-        <Sidebar />
-        <ActionPannel />
-        <Outlet />
+    <ActionPannel>
+      <div className="h-screen w-full">
+        <CustomTitleBar restrictedPaths={["/login", "/register", "/welcome"]} />
+        <div className="flex h-(--main-window-height) w-screen px-(--main-actual-content-padding) pb-(--main-actual-content-padding) gap-(--main-actual-content-padding)">
+          <Sidebar />
+          <Outlet />
+        </div>
       </div>
-    </div>
+    </ActionPannel>
   );
 }

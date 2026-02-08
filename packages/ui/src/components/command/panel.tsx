@@ -34,8 +34,6 @@ function resolveViewConfig<T extends readonly CommandViewConfig<string, any>[]>(
 interface CommandPanelRootProps<
   T extends readonly CommandViewConfig<string, any>[],
 > {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   views: CommandViewRegistry<T>;
   initialViewId: T[number]["id"];
   initialViewProps?: unknown;
@@ -46,11 +44,10 @@ interface CommandPanelRootProps<
   panelClassName?: string;
   footerClassName?: string;
   inputClassName?: string;
+  children?: React.ReactNode;
 }
 
 function CommandPanelRoot<T extends readonly CommandViewConfig<string, any>[]>({
-  open,
-  onOpenChange,
   views,
   initialViewId,
   initialViewProps,
@@ -61,6 +58,7 @@ function CommandPanelRoot<T extends readonly CommandViewConfig<string, any>[]>({
   panelClassName,
   footerClassName,
   inputClassName,
+  children,
 }: CommandPanelRootProps<T>) {
   return (
     <CommandManagerProvider
@@ -73,12 +71,11 @@ function CommandPanelRoot<T extends readonly CommandViewConfig<string, any>[]>({
         handle={handle}
         headerClassName={headerClassName}
         inputClassName={inputClassName}
-        onOpenChange={onOpenChange}
-        open={open}
         panelClassName={panelClassName}
         resetOnOpen={resetOnOpen}
         views={views}
       />
+      {children}
     </CommandManagerProvider>
   );
 }
@@ -86,8 +83,6 @@ function CommandPanelRoot<T extends readonly CommandViewConfig<string, any>[]>({
 function CommandPanelInner<
   T extends readonly CommandViewConfig<string, any>[],
 >({
-  open,
-  onOpenChange,
   views,
   handle,
   resetOnOpen,
@@ -102,7 +97,10 @@ function CommandPanelInner<
   const { query, setQuery } = useCommandSearch();
   const view = resolveViewConfig(views, current.id);
 
-  const close = React.useCallback(() => onOpenChange(false), [onOpenChange]);
+  const close = React.useCallback(
+    () => navigation.setOpen(false),
+    [navigation],
+  );
 
   // Base context without filteredCommandItems so commandConfig can be built without a cycle
   const baseContext = React.useMemo<CommandViewContext>(
@@ -182,22 +180,33 @@ function CommandPanelInner<
 
   const handleOpenChange = React.useCallback(
     (nextOpen: boolean) => {
-      onOpenChange(nextOpen);
+      navigation.setOpen(nextOpen);
     },
-    [onOpenChange],
+    [navigation],
   );
 
-  const prevOpenRef = React.useRef(open);
+  const prevOpenRef = React.useRef(navigation.open);
   React.useEffect(() => {
-    if (resetOnOpen && open && !prevOpenRef.current) {
+    if (
+      resetOnOpen &&
+      navigation.open &&
+      !prevOpenRef.current &&
+      !navigation.canGoBack
+    ) {
       navigation.reset();
       setQuery("");
     }
-    prevOpenRef.current = open;
-  }, [open, resetOnOpen, navigation, setQuery]);
+    prevOpenRef.current = navigation.open;
+  }, [
+    navigation.open,
+    navigation.canGoBack,
+    resetOnOpen,
+    navigation,
+    setQuery,
+  ]);
 
   React.useEffect(() => {
-    if (!open) return;
+    if (!navigation.open) return;
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -210,23 +219,27 @@ function CommandPanelInner<
 
     document.addEventListener("keydown", handleEscape, true);
     return () => document.removeEventListener("keydown", handleEscape, true);
-  }, [open, navigation]);
+  }, [navigation.open, navigation]);
 
   // cmd + k to open
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
-        onOpenChange(true);
+        navigation.setOpen(true);
       }
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onOpenChange]);
+  }, [navigation]);
 
   return (
-    <CommandDialog handle={handle} onOpenChange={handleOpenChange} open={open}>
+    <CommandDialog
+      handle={handle}
+      onOpenChange={handleOpenChange}
+      open={navigation.open}
+    >
       <CommandDialogPopup className={cn(className, panelClassName)}>
         <Command
           autoHighlight={(commandConfig?.autoHighlight as any) ?? "always"}

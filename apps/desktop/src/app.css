@@ -36,3 +36,17 @@ html[data-theme="dark-claude"] {
 .hidden-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+.spin-end {
+  animation: spin 0.3s linear 1;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

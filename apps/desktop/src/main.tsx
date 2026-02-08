@@ -61,7 +61,10 @@ if (rootElement && !rootElement.innerHTML) {
         >
           <RouterProvider router={router} />
           <Toaster />
-          <ReactQueryDevtools initialIsOpen={false} />
+          <ReactQueryDevtools
+            buttonPosition="top-right"
+            initialIsOpen={false}
+          />
         </NextThemesProvider>
       </QueryClientProvider>
     </StrictMode>,
