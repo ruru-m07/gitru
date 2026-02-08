@@ -34,7 +34,7 @@ i: install ## Short alias for install
 
 dev: ## Start development server with Tauri
 	@echo "$(GREEN)Starting Tauri development server...$(NC)"
-	bun --cwd="./apps/desktop" run tauri dev -c ./src-tauri/tauri.dev.conf.json
+	bun --cwd="./apps/desktop" run tauri dev
 
 dev-vite: ## Start Vite development server only (no Tauri)
 	@echo "$(GREEN)Starting Vite development server...$(NC)"
