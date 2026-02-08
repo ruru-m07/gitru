@@ -277,38 +277,37 @@ const SectionHeader = memo(function SectionHeader({
           <span className="text-sm font-medium">{sectionName}</span>
         </button>
         <div className="flex items-center gap-1">
-          {isChangesSection ||
-            (isConflictSection && (
-              <div className="flex items-center">
-                {/* Use custom render function if provided, otherwise use default button */}
-                {actions?.renderDiscardAll
-                  ? actions.renderDiscardAll()
-                  : actions?.onDiscardAll && (
-                      <Button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          actions.onDiscardAll?.();
-                        }}
-                        variant="ghost"
-                        size="icon-sm"
-                      >
-                        <Undo2 size={18} strokeWidth={1.25} />
-                      </Button>
-                    )}
-                {actions?.onAddAll && (
-                  <Button
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      await actions.onAddAll?.();
-                    }}
-                    variant="ghost"
-                    size="icon-sm"
-                  >
-                    <Plus size={18} strokeWidth={1.25} />
-                  </Button>
-                )}
-              </div>
-            ))}
+          {(isChangesSection || isConflictSection) && (
+            <div className="flex items-center">
+              {/* Use custom render function if provided, otherwise use default button */}
+              {actions?.renderDiscardAll
+                ? actions.renderDiscardAll()
+                : actions?.onDiscardAll && (
+                    <Button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        actions.onDiscardAll?.();
+                      }}
+                      variant="ghost"
+                      size="icon-sm"
+                    >
+                      <Undo2 size={18} strokeWidth={1.25} />
+                    </Button>
+                  )}
+              {actions?.onAddAll && (
+                <Button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    await actions.onAddAll?.();
+                  }}
+                  variant="ghost"
+                  size="icon-sm"
+                >
+                  <Plus size={18} strokeWidth={1.25} />
+                </Button>
+              )}
+            </div>
+          )}
           {isStagedSection && actions?.onUnstageAll && (
             <Button
               variant="ghost"
