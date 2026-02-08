@@ -457,17 +457,13 @@ const OriginBadge = () => {
   const origin = parseOrigin(selectedRepository?.origin);
   const icon = getAvatarByProvider(origin?.provider);
 
-  console.log({
-    origin,
-  });
-
   return (
     <>
       {origin ? (
         <a target="_blank" href={origin.href} rel="noreferrer">
           <Badge
             variant={"outline"}
-            className="h-full rounded-none border-0 border-r px-2 flex items-center cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
+            className="h-full rounded-none border-0 border-r hover:border-l-border border-l border-l-transparent px-2 flex items-center cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
           >
             <span className="flex items-center gap-1">
               <span className="text-muted-foreground! font-normal">

@@ -121,13 +121,12 @@ function GitPageLayout() {
           defaultLayout={defaultLayout}
           onLayoutChanged={onLayoutChanged}
           orientation="horizontal"
-          className="min-w-94"
           id="git-page-layout"
         >
           <ResizablePanel
             defaultSize={320}
             minSize={270}
-            maxSize={700}
+            maxSize={800}
             id="left"
             className="flex flex-col h-full"
           >
@@ -439,51 +438,57 @@ const ListFileChanges = () => {
   return (
     <Tabs defaultValue="tab-1" className={"gap-0 h-full flex flex-col"}>
       <TabsList className={"rounded-none w-full border-l border-b shrink-0"}>
-        <TabsTab className={"rounded-none! ml-0"} value="tab-1">
+        <TabsTab
+          className={"rounded-none! ml-0 aria-selected:text-muted-foreground"}
+          value="tab-1"
+        >
           Changes
         </TabsTab>
-        <TabsTab className={"rounded-none!"} value="tab-2">
+        <TabsTab
+          className={"rounded-none! aria-selected:text-muted-foreground"}
+          value="tab-2"
+        >
           History
         </TabsTab>
       </TabsList>
-      <div className="p-1.5 border-b">
-        <Group aria-label="Subscription actions" className="w-full">
-          <Input
-            aria-label="Filter files"
-            placeholder="Filter files..."
-            className={"rounded-l-md! border-border! w-full"}
-            size={"sm"}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <GroupSeparator />
-          <Menu>
-            <MenuTrigger
-              render={
-                <Button
-                  aria-label="Copy options"
-                  size="icon-sm"
-                  variant={"secondary"}
-                  className="rounded-r-md! border-border"
-                />
-              }
-            >
-              <ListFilterPlus aria-hidden="true" className="size-4" />
-            </MenuTrigger>
-            <MenuPopup align="end">
-              <MenuItem>
-                <ShareIcon aria-hidden="true" />
-                Share link
-              </MenuItem>
-            </MenuPopup>
-          </Menu>
-        </Group>
-      </div>
       <TabsPanel
         value="tab-1"
         className={"flex-1 flex flex-col min-h-0"}
         tabIndex={-1}
       >
+        <div className="p-1.5 border-b">
+          <Group aria-label="Subscription actions" className="w-full">
+            <Input
+              aria-label="Filter files"
+              placeholder="Filter files..."
+              className={"rounded-l-md! border-border! w-full"}
+              size={"sm"}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <GroupSeparator />
+            <Menu>
+              <MenuTrigger
+                render={
+                  <Button
+                    aria-label="Copy options"
+                    size="icon-sm"
+                    variant={"secondary"}
+                    className="rounded-r-md! border-border"
+                  />
+                }
+              >
+                <ListFilterPlus aria-hidden="true" className="size-4" />
+              </MenuTrigger>
+              <MenuPopup align="end">
+                <MenuItem>
+                  <ShareIcon aria-hidden="true" />
+                  Share link
+                </MenuItem>
+              </MenuPopup>
+            </Menu>
+          </Group>
+        </div>
         <div className="flex-1 overflow-auto ">
           {isStatusLoading ? (
             <>
