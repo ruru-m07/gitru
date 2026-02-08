@@ -101,8 +101,6 @@ export const Route = createFileRoute("/app/git")({
 });
 
 function GitPageLayout() {
-  const [leftWidth, setLeftWidth] = useState(320);
-
   const { repoSelectIsOpen, setRepoSelectIsOpen } = useAppStore();
 
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({

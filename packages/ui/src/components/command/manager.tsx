@@ -12,6 +12,8 @@ import type {
 interface CommandManagerState<TId extends CommandViewId = CommandViewId> {
   stack: CommandViewStackItem<TId, unknown>[];
   current: CommandViewStackItem<TId, unknown>;
+  open: boolean;
+  setOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setQuery: (query: string) => void;
   push: CommandNavigation<TId>["push"];
   replace: CommandNavigation<TId>["replace"];
@@ -63,6 +65,7 @@ function CommandManagerProvider<TId extends CommandViewId>({
   const [stack, setStack] = React.useState<
     CommandViewStackItem<TId, unknown>[]
   >([initialItem]);
+  const [open, setOpen] = React.useState(false);
 
   const current = stack[stack.length - 1] ?? initialItem;
 
@@ -115,6 +118,8 @@ function CommandManagerProvider<TId extends CommandViewId>({
     () => ({
       stack,
       current,
+      open,
+      setOpen,
       setQuery,
       push,
       replace,
@@ -122,7 +127,7 @@ function CommandManagerProvider<TId extends CommandViewId>({
       reset,
       canGoBack: stack.length > 1,
     }),
-    [stack, current, setQuery, push, replace, back, reset],
+    [stack, current, open, setOpen, setQuery, push, replace, back, reset],
   );
 
   return (
@@ -145,7 +150,8 @@ function useCommandManager(): CommandManagerState {
 }
 
 function useCommandNavigation() {
-  const { push, replace, back, reset, canGoBack } = useCommandManager();
+  const { push, replace, back, reset, canGoBack, open, setOpen } =
+    useCommandManager();
 
   return React.useMemo(
     () => ({
@@ -154,8 +160,10 @@ function useCommandNavigation() {
       back,
       reset,
       canGoBack,
+      open,
+      setOpen,
     }),
-    [push, replace, back, reset, canGoBack],
+    [push, replace, back, reset, canGoBack, open, setOpen],
   );
 }
 
