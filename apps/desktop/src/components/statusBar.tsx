@@ -385,7 +385,7 @@ const AheadBadge = ({
 
   return (
     <>
-      {statusAheadBehind?.ahead && statusAheadBehind.ahead > 0 ? (
+      {statusAheadBehind ? (
         <>
           {!statusAheadBehind.is_published ? (
             <Badge
@@ -398,7 +398,7 @@ const AheadBadge = ({
               <CloudUpload />
               <span>Publish Branch</span>
             </Badge>
-          ) : (
+          ) : statusAheadBehind?.ahead && statusAheadBehind.ahead > 0 ? (
             <Badge
               variant={"outline"}
               className="text-muted-foreground! h-full rounded-none border-0 border-r flex items-center font-normal tabular-nums px-1.5 cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
@@ -412,7 +412,7 @@ const AheadBadge = ({
               </span>
               <span>ahead</span>
             </Badge>
-          )}
+          ) : null}
         </>
       ) : null}
     </>
