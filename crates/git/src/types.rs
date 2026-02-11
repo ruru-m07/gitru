@@ -53,20 +53,20 @@ pub struct GetStatusResponse {
     pub files: Vec<FileStatus>,
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Author {
     pub name: String,
     pub email: String,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct CommitAuthors {
     pub author: Author,
     pub committer: Author,
     pub co_authors: Vec<Author>,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct CommitInfo {
     pub id: String,
     pub summary: String,

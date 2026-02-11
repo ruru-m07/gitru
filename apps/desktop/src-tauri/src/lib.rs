@@ -51,6 +51,7 @@ pub fn run() {
             git::commands::branch::status_ahead_behind,
             git::commands::diff::get_patch_by_file_path,
             git::commands::history::history,
+            git::commands::history::history_graph,
             git::commands::origin::repository_origin,
         ])
         .run(tauri::generate_context!())
