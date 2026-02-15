@@ -7,7 +7,7 @@ import {
 import { Button } from "@gitru/ui/components/button";
 import { ScrollArea } from "@gitru/ui/components/scroll-area";
 import { TooltipProvider } from "@gitru/ui/components/tooltip";
-import { BookMarked, Plus, Settings, Star } from "lucide-react";
+import { Plus } from "lucide-react";
 import SideBarItems from "./items";
 
 const Sidebar = () => {
@@ -45,15 +45,14 @@ const Sidebar = () => {
             <ScrollArea className="w-full max-h-[calc(100vh-3rem-4rem)]">
               <div className="flex flex-col items-center gap-1">
                 {[
-                  "ruru-m07",
-                  "supabase",
-                  "oraczen",
-                  "aceternity",
-                  "manuarora700",
-                  "LetrazApp",
+                  "legions-developer",
                   "shadcn",
-                  "shadcn-ui",
+                  "manuarora700",
                   "vercel",
+                  "supabase",
+                  "aceternity",
+                  "shadcn-ui",
+                  "oraczen",
                 ].map((v) => (
                   <Button
                     className="size-8 p-0"
@@ -70,7 +69,11 @@ const Sidebar = () => {
                     </Avatar>
                   </Button>
                 ))}
-                <Button variant="ghost" size={"icon"} className="size-8 p-0">
+                <Button
+                  variant="secondary"
+                  size={"icon"}
+                  className="size-8 p-0"
+                >
                   <Plus
                     className="opacity-60"
                     size={14}
@@ -81,8 +84,8 @@ const Sidebar = () => {
               </div>
             </ScrollArea>
 
-            <div className="my-1 h-px w-full bg-border" />
-            <SideBarItems
+            {/* <div className="my-1 h-px w-full bg-border" /> */}
+            {/* <SideBarItems
               items={[
                 {
                   icon: Star,
@@ -100,15 +103,17 @@ const Sidebar = () => {
                   name: "Settings",
                 },
               ]}
-            />
+            /> */}
           </div>
         </TooltipProvider>
       </div>
 
-      <div className="m-2">
-        <div className="space-y-2">
-          {/* <AvatarDropdown rateLimit={rateLimit} user={session?.user} /> */}
-        </div>
+      <div>
+        <Avatar className="rounded-md size-7">
+          <AvatarImage alt="User" src="https://github.com/ruru-m07.png" />
+          <AvatarFallback>AV</AvatarFallback>
+        </Avatar>
+        {/* <AvatarDropdown rateLimit={rateLimit} user={session?.user} /> */}
       </div>
     </div>
   );

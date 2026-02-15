@@ -1,17 +1,17 @@
-import { GraphRow, historyGraph } from "@gitru/commands";
 import { Button, buttonVariants } from "@gitru/ui/components/button";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
 import { getStatusIcon } from "@/components/getStatusIcon";
+import { useGitHistoryGraph } from "@/hooks";
 
 export const Route = createFileRoute("/app/inbox/")({
   component: RouteComponent,
 });
 
 function RouteComponent() {
-  const [data, setData] = useState<GraphRow[] | null>(null);
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useGitHistoryGraph({ limit: 10 });
 
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const rows = data?.pages.flatMap((page) => page.rows) ?? [];
 
   return (
     <div className="p-4 space-y-4">
@@ -51,50 +51,58 @@ function RouteComponent() {
         </li>
       </ul>
 
-      <Button
-        onClick={async () => {
-          const data = await historyGraph({
-            repoPath: "/Users/ruru/Projects/gitru",
-            // repoPath: "/Users/ruru/Projects/next.js",
-            query: {
-              limit: 10,
-              cursor: nextCursor || undefined,
-            },
-          });
 
-          console.log("historyGraph", data);
-          setData((pre) => [...(pre || []), ...data.rows]);
-          setNextCursor(data.cursor || null);
+      <Button
+        onClick={() => fetchNextPage()}
+        disabled={!hasNextPage || isFetchingNextPage}
+      >
+        {isFetchingNextPage
+          ? "Loading..."
+          : hasNextPage
+            ? "Load More"
+            : "No More"}
+      </Button>
+
+      <Button
+        onClick={() => {
+          navigator.clipboard.writeText(JSON.stringify(rows, null, 2));
         }}
       >
-        {nextCursor ? "Load More" : "Load History"}
+        copy
       </Button>
 
       <div className="space-y-2">
-        {data?.map((row) => (
-          <div key={row.oid} className="border p-3 rounded">
-            <div className="flex items-center gap-2 mb-1">
-              <code className="text-xs text-muted-foreground">
-                {row.short_oid}
-              </code>
-              <span className="font-medium">{row.message}</span>
-            </div>
-            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <span>{row.branches.join("---")}</span>
-              <span>{row.author}</span>
-              <span>Lane {row.lane}</span>
-              <span className="text-green-600">+{row.insertions}</span>
-              <span className="text-red-600">-{row.deletions}</span>
-            </div>
-          </div>
-        ))}
-      </div>
+        {rows.map((row) => {
+          const primaryRef =
+            row.heads[0] ||
+            row.tags[0] ||
+            row.remotes[0] ||
+            row.stashes[0] ||
+            row.refs[0];
 
-      {data && data.length > 0 && nextCursor && (
-        <div className="text-center text-sm text-muted-foreground">
-          Next cursor: {nextCursor.slice(0, 7)}
-        </div>
-      )}
+          return (
+            <div key={row.oid} className="border p-3 rounded">
+              <div className="flex items-center gap-2 mb-1">
+                <code className="text-xs text-muted-foreground">
+                  {row.commit.id.slice(0, 7)}
+                </code>
+                <span className="font-medium">{row.commit.summary}</span>
+              </div>
+              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                {primaryRef ? <span>{primaryRef.name}</span> : null}
+                <span>{row.commit.authors.author.name}</span>
+                <span>Lane {row.lane}</span>
+                <span className="text-green-600">
+                  +{row.commit.stats.insertions}
+                </span>
+                <span className="text-red-600">
+                  -{row.commit.stats.deletions}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

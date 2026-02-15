@@ -2,7 +2,7 @@ use git2::{DiffOptions, Oid};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    types::{CommitInfo, CommitStats, FullCommitInfo},
+    types_legacy::{CommitInfo, CommitStats, FullCommitInfo},
     utils::{extract_all_authors, open_repository},
 };
 

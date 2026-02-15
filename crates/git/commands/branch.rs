@@ -1,32 +1,9 @@
 use git2::{BranchType, ErrorCode};
-use serde::Serialize;
 
 use crate::{
-    types::CommitInfo,
+    types_legacy::{Branch, BranchInfo, CommitInfo},
     utils::{extract_all_authors, open_repository},
 };
-
-#[derive(Debug, Serialize, Clone)]
-pub struct Branch {
-    pub name: String,
-    pub display_name: String,
-    pub is_remote: bool,
-}
-
-#[derive(Serialize, Clone)]
-pub struct BranchInfo {
-    pub name: String,
-    pub display_name: String,
-
-    pub is_remote: bool,
-    pub is_head: bool,
-
-    pub commit: CommitInfo,
-
-    pub upstream: Option<String>,
-    pub ahead: Option<usize>,
-    pub behind: Option<usize>,
-}
 
 #[derive(serde::Serialize)]
 pub struct AheadBehindStatus {

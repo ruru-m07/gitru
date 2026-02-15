@@ -1,6 +1,6 @@
 use crate::{
     error::GitError,
-    types::{Author, CommitAuthors},
+    types_legacy::{Author, CommitAuthors},
 };
 use git2::{Commit, Repository};
 use std::time;

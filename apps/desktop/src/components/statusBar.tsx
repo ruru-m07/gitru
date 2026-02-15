@@ -84,7 +84,7 @@ const LastCommitBox = () => {
         render={
           <Badge
             variant={"outline"}
-            className="h-full rounded-none border-0 border-r flex items-center cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
+            className="h-full rounded-none border-t-transparent border-l-transparent flex items-center cursor-pointer hover:bg-muted!"
           >
             <GitCommitVertical className="size-4" strokeWidth={1} />
             <div className="flex group">
@@ -463,7 +463,7 @@ const OriginBadge = () => {
         <a target="_blank" href={origin.href} rel="noreferrer">
           <Badge
             variant={"outline"}
-            className="h-full rounded-none border-0 border-r hover:border-l-border border-l border-l-transparent px-2 flex items-center cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
+            className="h-full rounded-none px-2 flex items-center cursor-pointer hover:bg-muted! border-t-0"
           >
             <span className="flex items-center gap-1">
               <span className="text-muted-foreground! font-normal">
@@ -490,7 +490,7 @@ const CurrentBranchBadge = () => {
       {currentBranch?.display_name ? (
         <Badge
           variant={"outline"}
-          className="text-muted-foreground! h-full rounded-none border-0 border-r px-2 flex items-center font-normal cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
+          className="text-muted-foreground! h-full rounded-none hover:bg-muted! px-2 flex items-center font-normal cursor-pointer border-t-0 border-l-0 "
           onClick={() => {
             navigation.setOpen(true);
             navigation.push("branch-list");

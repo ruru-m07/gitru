@@ -10,9 +10,9 @@ import { appState } from "@/state";
 import { createTauriStorage } from "./tauriStoreAdapter";
 
 export type SelectedFile = {
-  filePath: string;
+  filePath?: string;
   fileNewPath?: string;
-  status: FileStatusKind[];
+  status?: FileStatusKind[];
 };
 
 type RepoKey = string;
@@ -32,6 +32,9 @@ type AppState = {
   setSelectedFileForRepo: (file: SelectedFile | null) => void;
 
   clearSelectedFileForRepo: (repoKey: RepoKey) => void;
+
+  mainWindowView: "FileDiff" | "HistoryGraph" | null;
+  setMainWindowView: (view: "FileDiff" | "HistoryGraph" | null) => void;
 };
 
 export const useAppStore = create<AppState>()(
@@ -72,6 +75,10 @@ export const useAppStore = create<AppState>()(
               [repoPath]: file,
             },
           }));
+
+          if (file) {
+            get().setMainWindowView("FileDiff");
+          }
         },
 
         clearSelectedFileForRepo: (repoKey) =>
@@ -80,6 +87,9 @@ export const useAppStore = create<AppState>()(
             delete next[repoKey];
             return { selectedFileByRepo: next };
           }),
+
+        mainWindowView: null,
+        setMainWindowView: (view) => set({ mainWindowView: view }),
       }),
       {
         name: "app-data",

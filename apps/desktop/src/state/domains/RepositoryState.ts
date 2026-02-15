@@ -16,8 +16,10 @@ import {
   gitPush,
   gitRemove,
   gitSwitchBranch,
+  HistoryGraphParams,
   hasUncommittedChanges,
   history,
+  historyGraph,
   lastCommit,
   listBranches,
   repositoryOrigin,
@@ -344,7 +346,16 @@ class Commit extends StateDomain {
     return data;
   }
 
-  getQueryKey(key: "last" | "getCommitById" | "history") {
+  async historyGraph(params: HistoryGraphParams["query"]) {
+    const data = await historyGraph({
+      repoPath: this.repositoryPath,
+      query: params,
+    });
+
+    return data;
+  }
+
+  getQueryKey(key: "last" | "getCommitById" | "history" | "historyGraph") {
     return [...this.baseKey, key];
   }
 

@@ -58,6 +58,7 @@ import {
   ChevronUp,
   CircleAlertIcon,
   GitBranch,
+  History,
   ListFilterPlus,
   Loader2,
   SearchIcon,
@@ -401,8 +402,12 @@ const ToggelPanelButton = () => {
 const ListFileChanges = () => {
   const [query, setQuery] = useState("");
 
-  const { selectedRepository, setSelectedFileForRepo, selectedFileByRepo } =
-    useAppStore();
+  const {
+    selectedRepository,
+    setSelectedFileForRepo,
+    selectedFileByRepo,
+    setMainWindowView,
+  } = useAppStore();
 
   const { data: status, isLoading: isStatusLoading } = useGetStatus();
 
@@ -456,7 +461,7 @@ const ListFileChanges = () => {
         className={"flex-1 flex flex-col min-h-0"}
         tabIndex={-1}
       >
-        <div className="p-1.5 border-b">
+        <div className="p-1.5 max-h-10 min-h-10 border-b">
           <Group aria-label="Subscription actions" className="w-full">
             <Input
               aria-label="Filter files"
@@ -577,6 +582,31 @@ const ListFileChanges = () => {
         <WriteCommitBox />
       </TabsPanel>
       <TabsPanel value="tab-2" className={"h-full"} tabIndex={-1}>
+        <div className="border-b max-h-10 min-h-10 p-1.5">
+          <Group aria-label="Subscription actions" className="w-full">
+            <Input
+              aria-label="Filter Commit"
+              placeholder="Filter commits..."
+              className={"rounded-l-md! border-border! w-full"}
+              size={"sm"}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <GroupSeparator />
+            <Button
+              aria-label="Copy options"
+              size="icon-sm"
+              variant={"secondary"}
+              className="rounded-r-md! border-border"
+              onClick={() => {
+                setMainWindowView("HistoryGraph");
+                setSelectedFileForRepo(null);
+              }}
+            >
+              <History />
+            </Button>
+          </Group>
+        </div>
         <ScrollArea className="flex-1 h-full" tabIndex={-1}>
           {commitHistory?.map((commit) => (
             <div

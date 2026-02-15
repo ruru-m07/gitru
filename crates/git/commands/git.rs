@@ -1,7 +1,7 @@
 use std::process::Command;
 
 use crate::{
-    types::{FileStatus, FileStatusKind, GetStatusResponse, UncommittedChangesStrategy},
+    types_legacy::{FileStatus, FileStatusKind, GetStatusResponse, UncommittedChangesStrategy},
     utils::open_repository,
 };
 use git2::{Status, StatusOptions};

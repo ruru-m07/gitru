@@ -9,11 +9,15 @@ import type {
   FileStatus,
   FullCommitInfo,
   GetStatusResponse,
+  HistoryGraphParams,
+  HistoryGraphResponse,
   RepositoryOrigin,
   UncommittedChangesStrategy,
 } from "@gitru/commands";
 import {
+  InfiniteData,
   type UseQueryOptions,
+  useInfiniteQuery,
   useMutation,
   useQuery,
 } from "@tanstack/react-query";
@@ -178,6 +182,68 @@ export function useGetCommitHistory(options?: QueryOptions<CommitInfo[]>) {
     },
     enabled: !!repo,
     ...options,
+  });
+}
+
+export function useGitHistoryGraph(
+  params: Partial<HistoryGraphParams["query"]> = {},
+) {
+  const repo = appState.repository;
+  const baseParams: HistoryGraphParams["query"] = {
+    limit: params.limit ?? 50,
+    cursor: params.cursor,
+    search: params.search,
+    branch: params.branch,
+    graph_state: params.graph_state,
+    include_local: params.include_local ?? true,
+    include_remotes: params.include_remotes ?? false,
+    include_tags: params.include_tags ?? false,
+    include_stash: params.include_stash ?? false,
+  };
+
+  return useInfiniteQuery<
+    HistoryGraphResponse,
+    Error,
+    InfiniteData<HistoryGraphResponse>,
+    (string | HistoryGraphParams["query"])[],
+    HistoryGraphParams["query"]
+  >({
+    enabled: !!repo,
+    placeholderData: {
+      pages: [],
+      pageParams: [],
+    },
+    getNextPageParam: (lastPage) => {
+      if (!lastPage.has_more || !lastPage.cursor) {
+        return undefined;
+      }
+      return {
+        ...baseParams,
+        cursor: lastPage.cursor,
+        // graph_state removed - using server-side cache now
+      };
+    },
+    initialPageParam: baseParams,
+    queryFn: async ({ pageParam }) => {
+      if (!repo) throw new Error("No repository selected");
+      console.log("calling...");
+      const fn = await repo.commit.historyGraph(pageParam);
+
+      console.log({
+        fn,
+      });
+
+      return fn;
+    },
+    queryKey: [
+      ...(repo?.commit.getQueryKey("historyGraph") ?? [
+        "repository",
+        "none",
+        "commit",
+        "historyGraph",
+      ]),
+      baseParams,
+    ],
   });
 }
 
