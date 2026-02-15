@@ -1,11 +1,8 @@
-use crate::{
-    error::GitError,
-    types_legacy::{Author, CommitAuthors},
-};
+use crate::types_legacy::{Author, CommitAuthors};
 use git2::{Commit, Repository};
 use std::time;
 
-pub fn open_repository(path: &str) -> Result<Repository, GitError> {
+pub fn open_repository(path: &str) -> Result<Repository, String> {
     let start = time::Instant::now();
 
     match Repository::open(path) {
@@ -15,14 +12,11 @@ pub fn open_repository(path: &str) -> Result<Repository, GitError> {
         }
         Err(e) if e.code() == git2::ErrorCode::NotFound => {
             log::error!("Repository Not Found! {} - {}", path, e);
-            Err(GitError::InvalidPath(format!(
-                "Location does not exist: {}",
-                path
-            )))
+            Err(format!("Location does not exist: {}", path))
         }
         Err(e) => {
             log::error!("Failed to Open Repository: {} - {}", path, e);
-            Err(GitError::RepositoryOpen(e))
+            Err(format!("{}", e))
         }
     }
 }

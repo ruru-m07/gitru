@@ -1,5 +1,4 @@
-mod error;
-pub mod models;
+mod models;
 mod parsers;
 mod service;
 mod types;
