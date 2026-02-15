@@ -448,7 +448,7 @@ const BehindBadge = ({
 };
 
 const OriginBadge = () => {
-  const { selectedRepository } = useAppStore();
+  const selectedRepository = useAppStore((state) => state.selectedRepository);
 
   if (!selectedRepository?.origin) {
     return null;

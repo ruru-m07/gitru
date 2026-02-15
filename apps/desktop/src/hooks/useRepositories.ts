@@ -11,7 +11,8 @@ import { toast } from "sonner";
 import { useAppStore } from "@/store/useAppStore";
 
 export function useRepositories() {
-  const { repositories, setRepositories } = useAppStore();
+  const repositories = useAppStore((state) => state.repositories);
+  const setRepositories = useAppStore((state) => state.setRepositories);
 
   useEffect(() => {
     loadRepositories();

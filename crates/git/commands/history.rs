@@ -1,4 +1,4 @@
-use crate::models::graph::{HistoryQuery, SearchResult};
+use crate::models::graph::HistoryQuery;
 use crate::service::graph as graph_service;
 use crate::types_legacy::{CommitInfo, HistoryGraphResponse};
 use crate::utils::{extract_all_authors, open_repository};
@@ -41,18 +41,4 @@ pub async fn history_graph(
     query: HistoryQuery,
 ) -> Result<HistoryGraphResponse, String> {
     graph_service::history_graph(repo_path, &query)
-}
-
-// ============================================================================
-// SEARCH FUNCTION (Optimized for large repos)
-// ============================================================================
-
-#[tauri::command]
-#[logger::logger]
-pub async fn search_commits(
-    repo_path: &str,
-    search_term: &str,
-    limit: usize,
-) -> Result<Vec<SearchResult>, String> {
-    graph_service::search_commits(repo_path, search_term, limit)
 }

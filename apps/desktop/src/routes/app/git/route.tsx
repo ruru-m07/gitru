@@ -102,7 +102,22 @@ export const Route = createFileRoute("/app/git")({
 });
 
 function GitPageLayout() {
-  const { repoSelectIsOpen, setRepoSelectIsOpen } = useAppStore();
+  return (
+    <div
+      className={cn(
+        "ml-(--main-actual-content-padding) bg-accent/35 ring-1 ring-inset ring-border h-full w-full rounded-md flex overflow-hidden",
+        "flex flex-col",
+      )}
+    >
+      <ResizableArea />
+      <StatusBar />
+    </div>
+  );
+}
+
+const ResizableArea = () => {
+  const repoSelectIsOpen = useAppStore((state) => state.repoSelectIsOpen);
+  const setRepoSelectIsOpen = useAppStore((state) => state.setRepoSelectIsOpen);
 
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: "git-page-layout",
@@ -111,48 +126,40 @@ function GitPageLayout() {
   });
 
   return (
-    <div
-      className={cn(
-        "ml-(--main-actual-content-padding) bg-accent/35 ring-1 ring-inset ring-border h-full w-full rounded-md flex overflow-hidden",
-        "flex flex-col",
-      )}
-    >
-      <div className="flex">
-        <ResizablePanelGroup
-          defaultLayout={defaultLayout}
-          onLayoutChanged={onLayoutChanged}
-          orientation="horizontal"
-          id="git-page-layout"
+    <div className="flex">
+      <ResizablePanelGroup
+        defaultLayout={defaultLayout}
+        onLayoutChanged={onLayoutChanged}
+        orientation="horizontal"
+        id="git-page-layout"
+      >
+        <ResizablePanel
+          defaultSize={320}
+          minSize={270}
+          maxSize={800}
+          id="left"
+          className="flex flex-col h-full"
         >
-          <ResizablePanel
-            defaultSize={320}
-            minSize={270}
-            maxSize={800}
-            id="left"
-            className="flex flex-col h-full"
-          >
-            <ToggelPanelButton />
-            <div className="h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*7)-calc(var(--spacing)*3))]">
-              {repoSelectIsOpen ? <ListRepositories /> : <ListFileChanges />}
-            </div>
-          </ResizablePanel>
-          <ResizableHandle withHandle />
-          <ResizablePanel
-            className={cn("relative", repoSelectIsOpen && "cursor-pointer")}
-            onClick={() => setRepoSelectIsOpen(false)}
-            id="right"
-          >
-            {repoSelectIsOpen && (
-              <div className="absolute inset-0 bg-white/50 dark:bg-black/40 z-10 w-full h-full backdrop-blur-[2px] border border-l-0"></div>
-            )}
-            <Outlet />
-          </ResizablePanel>
-        </ResizablePanelGroup>
-      </div>
-      <StatusBar />
+          <ToggelPanelButton />
+          <div className="h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*7)-calc(var(--spacing)*3))]">
+            {repoSelectIsOpen ? <ListRepositories /> : <ListFileChanges />}
+          </div>
+        </ResizablePanel>
+        <ResizableHandle withHandle />
+        <ResizablePanel
+          className={cn("relative", repoSelectIsOpen && "cursor-pointer")}
+          onClick={() => setRepoSelectIsOpen(false)}
+          id="right"
+        >
+          {repoSelectIsOpen && (
+            <div className="absolute inset-0 bg-white/50 dark:bg-black/40 z-10 w-full h-full backdrop-blur-[2px] border border-l-0"></div>
+          )}
+          <Outlet />
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   );
-}
+};
 
 const DiscardChangesDialog = memo(function DiscardChangesDialog({
   fileName,
@@ -377,8 +384,9 @@ const WriteCommitBox = memo(function WriteCommitBox() {
 });
 
 const ToggelPanelButton = () => {
-  const { repoSelectIsOpen, setRepoSelectIsOpen, selectedRepository } =
-    useAppStore();
+  const repoSelectIsOpen = useAppStore((state) => state.repoSelectIsOpen);
+  const setRepoSelectIsOpen = useAppStore((state) => state.setRepoSelectIsOpen);
+  const selectedRepository = useAppStore((state) => state.selectedRepository);
 
   return (
     <button
@@ -402,12 +410,12 @@ const ToggelPanelButton = () => {
 const ListFileChanges = () => {
   const [query, setQuery] = useState("");
 
-  const {
-    selectedRepository,
-    setSelectedFileForRepo,
-    selectedFileByRepo,
-    setMainWindowView,
-  } = useAppStore();
+  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const setSelectedFileForRepo = useAppStore(
+    (state) => state.setSelectedFileForRepo,
+  );
+  const selectedFileByRepo = useAppStore((state) => state.selectedFileByRepo);
+  const setMainWindowView = useAppStore((state) => state.setMainWindowView);
 
   const { data: status, isLoading: isStatusLoading } = useGetStatus();
 
@@ -701,9 +709,13 @@ const ListFileChanges = () => {
   );
 };
 
-const ListRepositories = () => {
-  const { setRepoSelectIsOpen, setSelectedRepository, selectedRepository } =
-    useAppStore();
+const ListRepositories = memo(() => {
+  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const setSelectedRepository = useAppStore(
+    (state) => state.setSelectedRepository,
+  );
+  const setRepoSelectIsOpen = useAppStore((state) => state.setRepoSelectIsOpen);
+
   const { repositories, addRepo, removeRepo } = useRepositories();
   const [query, setQuery] = useState("");
 
@@ -812,7 +824,7 @@ const ListRepositories = () => {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <ScrollArea className="max-h-full _flex-1">
+      <div className="max-h-full _flex-1">
         <div className="">
           {groupedByOwner &&
             Object.entries(groupedByOwner)
@@ -864,7 +876,7 @@ const ListRepositories = () => {
                 );
               })}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
-};
+});

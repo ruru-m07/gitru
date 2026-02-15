@@ -5,7 +5,8 @@ use crate::models::graph::{
 pub const RECORD_SEPARATOR: char = '\u{001e}';
 pub const FIELD_SEPARATOR: char = '\u{001f}';
 
-pub const LOG_FORMAT: &str = "%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%cn%x1f%ce%x1f%ct%x1f%D%x1f%s%x1f%b%x1e";
+pub const LOG_FORMAT: &str =
+    "%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%cn%x1f%ce%x1f%ct%x1f%D%x1f%s%x1f%b%x1e";
 
 pub fn parse_log_entries(output: &str) -> Vec<GraphLogEntry> {
     let mut entries = Vec::new();

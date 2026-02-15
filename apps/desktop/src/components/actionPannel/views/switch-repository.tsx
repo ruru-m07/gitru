@@ -39,7 +39,11 @@ export function useSwitchRepositoryView(): CommandViewConfig<
   RepositoryInfo
 > {
   const { repositories } = useRepositories();
-  const { setSelectedRepository, selectedRepository } = useAppStore();
+
+  const setSelectedRepository = useAppStore(
+    (state) => state.setSelectedRepository,
+  );
+  const selectedRepository = useAppStore((state) => state.selectedRepository);
 
   return {
     id: "switch-repository",

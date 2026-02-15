@@ -21,6 +21,7 @@ import {
   GitBranch,
   Minus,
 } from "lucide-react";
+import { memo } from "react";
 
 interface RepositoryListItemProps {
   repo: RepositoryInfo;
@@ -29,7 +30,7 @@ interface RepositoryListItemProps {
   onRemove: () => void;
 }
 
-export function RepositoryListItem({
+export const RepositoryListItem = memo(function RepositoryListItem({
   repo,
   isSelected,
   onSelect,
@@ -39,7 +40,7 @@ export function RepositoryListItem({
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <button
-          className={`py-1 px-2 flex border-l w-full hover:border-border hover:bg-accent cursor-pointer ${
+          className={`py-1 px-2 flex border-l w-full hover:border-border h-10 hover:bg-accent cursor-pointer ${
             isSelected ? "bg-accent border-border" : ""
           }`}
           type="button"
@@ -116,4 +117,4 @@ export function RepositoryListItem({
       </ContextMenuContent>
     </ContextMenu>
   );
-}
+});

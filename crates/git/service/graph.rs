@@ -3,7 +3,7 @@ use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
 use crate::models::graph::{
-    GraphLogEntry, GraphRefKind, GraphSearchKey, GraphSearchQuery, HistoryQuery, SearchResult,
+    GraphLogEntry, GraphRefKind, GraphSearchKey, GraphSearchQuery, HistoryQuery,
 };
 use crate::parsers::graph::{LOG_FORMAT, parse_log_entries, parse_search_query};
 use crate::types_legacy::{
@@ -395,69 +395,6 @@ pub fn history_graph(
             has_more,
         },
     })
-}
-
-pub fn search_commits(
-    repo_path: &str,
-    search_term: &str,
-    limit: usize,
-) -> Result<Vec<SearchResult>, String> {
-    if search_term.trim().is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let search_query = parse_search_query(search_term);
-    let search_context = resolve_search_context(repo_path);
-    let remote_names = list_remote_names(repo_path)?;
-
-    let mut results = Vec::with_capacity(limit);
-    let mut cursor = 0usize;
-
-    while results.len() < limit {
-        let entries = fetch_log_entries(
-            repo_path,
-            &HistoryQuery {
-                cursor: None,
-                limit,
-                search: None,
-                branch: None,
-                graph_state: None,
-                include_local: true,
-                include_remotes: true,
-                include_tags: true,
-                include_stash: false,
-            },
-            cursor,
-            DEFAULT_CHUNK_SIZE,
-            &remote_names,
-        )?;
-
-        if entries.is_empty() {
-            break;
-        }
-
-        cursor += entries.len();
-
-        for entry in entries {
-            if !matches_search(&entry, &search_query, search_context.as_ref()) {
-                continue;
-            }
-
-            results.push(SearchResult {
-                oid: entry.id.clone(),
-                short_oid: entry.id.chars().take(7).collect(),
-                message: entry.summary.clone(),
-                author: entry.author_name.clone(),
-                timestamp: entry.committer_time,
-            });
-
-            if results.len() >= limit {
-                break;
-            }
-        }
-    }
-
-    Ok(results)
 }
 
 fn fetch_log_entries(

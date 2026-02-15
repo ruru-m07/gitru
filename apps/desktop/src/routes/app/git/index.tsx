@@ -43,7 +43,7 @@ export const Route = createFileRoute("/app/git/")({
 });
 
 function App() {
-  const { mainWindowView } = useAppStore();
+  const mainWindowView = useAppStore((state) => state.mainWindowView);
 
   return (
     <>
@@ -56,7 +56,9 @@ function App() {
 }
 
 const DiffBoxBody = () => {
-  const { selectedFileByRepo, selectedRepository } = useAppStore();
+  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const selectedFileByRepo = useAppStore((state) => state.selectedFileByRepo);
+
   const selectedFile = selectedFileByRepo[selectedRepository?.path || ""];
 
   return (
@@ -266,7 +268,10 @@ const renderPath = (path: string) => {
 };
 
 const SettingsPopover = () => {
-  const { setSelectedFileForRepo, setMainWindowView } = useAppStore();
+  const setSelectedFileForRepo = useAppStore(
+    (state) => state.setSelectedFileForRepo,
+  );
+  const setMainWindowView = useAppStore((state) => state.setMainWindowView);
 
   return (
     <div>
