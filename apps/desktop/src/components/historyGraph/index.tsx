@@ -1,4 +1,5 @@
 import type { GraphRef, GraphRow } from "@gitru/commands";
+import { Badge } from "@gitru/ui/components/badge";
 import { Input } from "@gitru/ui/components/input";
 import {
   ToggleGroup,
@@ -8,10 +9,7 @@ import { useMemo, useRef, useState } from "react";
 import { useOnInView } from "react-intersection-observer";
 import LoaderIndicator from "@/components/loaderIndicator";
 import { useGitHistoryGraph } from "@/hooks";
-import { GraphLane } from "./lane";
-import { Badge } from "@gitru/ui/components/badge";
-
-// ─── Filters ─────────────────────────────────────────────────────────────────
+import GraphLane from "./lane";
 
 type FilterKey = "local" | "remotes" | "tags" | "stashes";
 type Filters = Record<FilterKey, boolean>;
@@ -22,8 +20,6 @@ const defaultFilters: Filters = {
   tags: true,
   stashes: true,
 };
-
-// ─── Root ────────────────────────────────────────────────────────────────────
 
 const HistoryGraph = () => {
   const [filters, setFilters] = useState<Filters>(defaultFilters);
@@ -72,8 +68,6 @@ const HistoryGraph = () => {
 };
 
 export default HistoryGraph;
-
-// ─── Header ──────────────────────────────────────────────────────────────────
 
 type GraphHeaderProps = {
   filters: Filters;
@@ -126,8 +120,6 @@ const GraphHeader = ({
     </div>
   );
 };
-
-// ─── Body ────────────────────────────────────────────────────────────────────
 
 type GraphBodyProps = {
   rows: GraphRow[];
@@ -234,9 +226,6 @@ type GraphLayout = {
   maxLane: number;
 };
 
-/**
- * Pre-processes all rows to determine the maximum lane count for SVG width.
- */
 function computeGraphLayout(rows: GraphRow[]): GraphLayout {
   let maxLane = 0;
 
@@ -249,8 +238,6 @@ function computeGraphLayout(rows: GraphRow[]): GraphLayout {
 
   return { maxLane };
 }
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function buildRefList(row: GraphRow): GraphRef[] {
   const prioritized = [

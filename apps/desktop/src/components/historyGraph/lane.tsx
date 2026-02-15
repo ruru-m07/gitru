@@ -17,66 +17,27 @@ type GraphLaneProps = {
   maxLane: number;
 };
 
-// ═══════════════════════════════════════════════════════════════════
-// LAYOUT CONSTANTS
-// ═══════════════════════════════════════════════════════════════════
-
-/** Horizontal spacing between lane centers */
+/**
+ * LANE_W - Horizontal spacing between lane centers
+ * ROW_H - Vertical height of each commit row
+ * DOT_R - Radius of the commit dot
+ * LINE_W - Stroke width for lane lines
+ * SHIFT_CURVE_R - Radius for single-lane shift curves
+ * CURVE_START_Y - Y position where curves start (distance from top)
+ * BEZIER_CTRL_FACTOR - Control point factor for single-lane curves (0.25 = 25% of horizontal distance)
+ * BEZIER_MID_FACTOR - Midpoint factor for single-lane curves (0.5 = midpoint at 50% of horizontal distance)
+ * PALETTE - Array of colors for lanes, indexed by lane color value modulo palette length
+ */
 const LANE_W = 20 * 1.5;
-/** Row height – each commit occupies this many px vertically */
 const ROW_H = 36 * 1.5;
-/** Commit dot radius */
 const DOT_R = 4.5 * 3;
-/** Line stroke width */
 const LINE_W = 4;
-
-// ═══════════════════════════════════════════════════════════════════
-// CURVE SETTINGS - Tweak these to adjust path smoothness
-// ═══════════════════════════════════════════════════════════════════
-
-/** Radius for single-lane shift S-curves */
 const SHIFT_CURVE_R = 2;
-/** Start Y position for curves (distance from top) */
 const CURVE_START_Y = 6;
-/**
- * Bezier control point factor for single-lane smooth curves.
- * 0.25 = control point at 25% of horizontal distance
- * Higher values = sharper curves, Lower values = gentler curves
- */
 const BEZIER_CTRL_FACTOR = 0.25;
-/**
- * Bezier midpoint factor for single-lane smooth curves.
- * 0.5 = curve reaches midpoint at 50% of horizontal distance
- */
 const BEZIER_MID_FACTOR = 0.5;
 
-// ═══════════════════════════════════════════════════════════════════
-// COLOR PALETTE
-// ═══════════════════════════════════════════════════════════════════
-
-// const PALETTE = [
-//   "oklch(0.73 0.20 0)",
-//   "oklch(0.73 0.20 36)",
-//   "oklch(0.73 0.20 72)",
-//   "oklch(0.73 0.20 108)",
-//   "oklch(0.73 0.20 144)",
-//   "oklch(0.73 0.20 180)",
-//   "oklch(0.73 0.20 216)",
-//   "oklch(0.73 0.20 252)",
-//   "oklch(0.73 0.20 288)",
-//   "oklch(0.73 0.20 324)",
-// ] as const;
-
 const PALETTE = [
-  // "#A8ACFF",
-  // "#5DBFFF",
-  // "#00D7FF",
-  // "#00E4C3",
-  // "#72DA5A",
-  // "#DBBE00",
-  // "#FF9A00",
-  // "#FF8289",
-  // "#FF81B9",
   "oklch(0.773 0.118 281.135)",
   "oklch(0.772 0.130 240.067)",
   "oklch(0.811 0.146 217.709)",
@@ -88,16 +49,12 @@ const PALETTE = [
   "oklch(0.761 0.164 353.728)",
 ] as const;
 
-// ═══════════════════════════════════════════════════════════════════
-// HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════
-
-/** Convert lane index to X coordinate */
+// ? Convert lane index to X coordinate
 const laneToX = (laneIndex: number): number => LANE_W * (laneIndex + 1);
 
 /**
- * Build a smooth single-lane curve path (used for 1-lane shifts and convergences)
- * Creates an S-curve from inX to outX at midY height
+ * ? Build a smooth single-lane curve path (used for 1-lane shifts and convergences)
+ * ? Creates an S-curve from inX to outX at midY height
  */
 const buildSingleLaneCurve = (
   inX: number,
@@ -110,7 +67,7 @@ const buildSingleLaneCurve = (
   const curve = Math.min(Math.abs(dx) * 0.5, SHIFT_CURVE_R);
 
   if (endY === undefined) {
-    // Convergence: ends at midY horizontally
+    // ? convergence - ends at midY horizontally
     return [
       `M ${inX} 0`,
       `V ${startY}`,
@@ -120,19 +77,14 @@ const buildSingleLaneCurve = (
       `H ${outX}`,
     ].join(" ");
   } else {
-    // Smooth S-curve with symmetrical control points
+    // ? smooth `S` curve with symmetrical control points
     const dy = endY - startY;
-    const midPointY = startY + dy * 0.5;
 
-    // Control point distance from start/end (30-40% of total vertical distance works well)
     const ctrlDistance = Math.abs(dy) * 0.35;
 
     return [
       `M ${inX} 0`,
       `V ${startY}`,
-      // Single smooth S-curve using cubic Bezier
-      // First control point: extends vertically from start
-      // Second control point: extends vertically into end
       `C ${inX} ${startY + ctrlDistance},`,
       `${outX} ${endY - ctrlDistance},`,
       `${outX} ${endY}`,
@@ -141,8 +93,8 @@ const buildSingleLaneCurve = (
 };
 
 /**
- * Build a multi-lane curve path (for shifts/convergences spanning 2+ lanes)
- * Uses 1-lane curve + straight section + optional exit curve
+ * ? Build a multi-lane curve path (for shifts/convergences spanning 2+ lanes)
+ * ? Uses 1-lane curve + straight section + optional exit curve
  */
 const buildMultiLaneCurve = (
   inX: number,
@@ -187,10 +139,6 @@ const buildMultiLaneCurve = (
   }
 };
 
-/**
- * Build path for a lane converging to the commit dot.
- * Handles both single-lane and multi-lane convergence.
- */
 const buildConvergencePath = (
   inLane: number,
   outLane: number,
@@ -209,10 +157,6 @@ const buildConvergencePath = (
   }
 };
 
-/**
- * Build path for a lane shifting columns (pass-through with column change).
- * Handles both single-lane and multi-lane shifts.
- */
 const buildShiftPath = (
   inLane: number,
   outLane: number,
@@ -231,22 +175,7 @@ const buildShiftPath = (
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════
-// MAIN COMPONENT
-// ═══════════════════════════════════════════════════════════════════
-
-/**
- * Renders a Git graph lane for a single commit row.
- * Follows VS Code's SCM history graph rendering algorithm.
- *
- * Draws:
- * - Vertical pass-through lanes
- * - Converging lanes (merging into commit)
- * - Shifting lanes (column changes)
- * - Parent branches (secondary parents)
- * - Commit dot (single or double circle for merges)
- */
-export const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
+const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
   const width = Math.max((maxLane + 2) * LANE_W + 8, LANE_W * 3);
   const isStash = row.type === "Stash";
 
@@ -257,7 +186,16 @@ export const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
   const inputIdx = input.findIndex((n) => n.id === row.oid);
   const circleIdx = inputIdx !== -1 ? inputIdx : input.length;
 
-  // Commit dot coordinates
+  /**
+   * ? Commit dot coordinates
+   * ? X is based on lane index (or next available lane if new commit)
+   * ? Y is centered in the row
+   * ? This is the anchor point for drawing all paths and the commit circle
+   * ? Paths will connect to this point for convergences, shifts, and parent branches
+   * ? The commit dot is drawn last to ensure it appears on top of all paths
+   * ? For merges, the dot is a double circle to visually indicate multiple parents
+   * ? The dot color is determined by the commit's lane color (or next lane if new)
+   */
   const cx = laneToX(circleIdx);
   const cy = ROW_H / 2;
 
@@ -269,23 +207,44 @@ export const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
         ? PALETTE[input[circleIdx].color % PALETTE.length]
         : PALETTE[0];
 
-  // ───────────────────────────────────────────────────────────────
-  // Build SVG paths for all lanes
-  // ───────────────────────────────────────────────────────────────
-
+  /**
+   * ? paths will be a array of path/line elements
+   * ? Draw lane paths in 3 passes to ensure correct layering:
+   * * 1) Pass-through and converging lanes (behind commit dot)
+   * * 2) Parent branches (behind commit dot but above pass-throughs)
+   * * 3) Vertical lines to/from commit dot (on top)
+   *
+   */
   const paths: React.ReactNode[] = [];
   let outputSwimlaneIndex = 0;
 
+  // ! draw pass-through lanes and converging lanes
   for (let index = 0; index < input.length; index++) {
     const color = PALETTE[input[index].color % PALETTE.length];
     const isDashed = input[index].is_stash;
 
+    /**
+     * ? If lane targets this commit (matches row OID), it's a convergence lane that merges into the commit dot.
+     * * If it's not the primary lane (not at circleIdx), draw a curve converging into the commit dot.
+     * * The curve type (single-lane or multi-lane) is determined by how many lanes it spans.
+     * * Converging lanes visually indicate branches merging into this commit.
+     * * They are drawn behind the commit dot to show they feed into it.
+     * * The lane color is used for the stroke to maintain visual consistency.
+     * ? If lane does not target this commit, it's a pass-through lane that either continues straight or shifts columns.
+     * * If the lane exists in the output swimlanes at the current output index, it means it continues through this commit.
+     * * If it's in the same column (index matches output index), draw a straight vertical line.
+     * * If it shifts columns (index does not match output index), draw a curve that shifts to the new column.
+     * * The curve type is determined by how many lanes it shifts across.
+     * * Pass-through lanes visually indicate branches that continue through this commit without merging.
+     * * They are drawn behind the commit dot to show they pass under it.
+     * * The lane color is used for the stroke to maintain visual consistency.
+     * * The output swimlane index is incremented when a lane is processed to keep track of which output lane we're at.
+     */
     if (input[index].id === row.oid) {
-      // Lane targets this commit
       if (index !== circleIdx) {
-        // Converging lane (not primary) - draw arc to commit
         const d = buildConvergencePath(index, circleIdx, cy);
 
+        // ! this path responsible for drawing converging lanes that merge into the commit dot
         paths.push(
           <path
             key={`conv-${index}`}
@@ -298,11 +257,9 @@ export const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
           />,
         );
       } else {
-        // Primary lane - increment output index (vertical lines drawn separately)
         outputSwimlaneIndex++;
       }
     } else {
-      // Lane does not target this commit - pass through or shift
       if (
         outputSwimlaneIndex < output.length &&
         input[index].id === output[outputSwimlaneIndex].id
@@ -311,9 +268,10 @@ export const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
           PALETTE[output[outputSwimlaneIndex].color % PALETTE.length];
         const outDashed = output[outputSwimlaneIndex].is_stash;
 
+        // ? reast of lanes that pass through without merging
+        // ! the else block is responsible for drawing column shifts for pass-through lanes
         if (index === outputSwimlaneIndex) {
           const x = Math.round(laneToX(index));
-          // Same column - straight vertical line
           paths.push(
             <line
               key={`pass-${index}`}
@@ -328,7 +286,6 @@ export const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
             />,
           );
         } else {
-          // Column shift - draw S-curve
           const d = buildShiftPath(index, outputSwimlaneIndex, cy);
 
           paths.push(
@@ -349,14 +306,13 @@ export const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
     }
   }
 
-  // ───────────────────────────────────────────────────────────────
-  // Secondary parent branches
-  // ───────────────────────────────────────────────────────────────
-
+  // ! Secondary parent branches
+  // ? more like those merge lanes but for non-primary parents
+  // ? drawn behind commit dot but above pass-throughs
   for (let i = 1; i < row.parents.length; i++) {
     const parentOid = row.parents[i].oid;
 
-    // Find parent in output swimlanes
+    // * Find parent in output swimlanes
     let parentOutIdx = -1;
     for (let j = output.length - 1; j >= 0; j--) {
       if (output[j].id === parentOid) {
@@ -369,9 +325,10 @@ export const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
     const parentX = laneToX(parentOutIdx);
     const parentColor = PALETTE[output[parentOutIdx].color % PALETTE.length];
 
-    if (parentX === cx) continue; // Same column, already drawn
+    // * Same column, already drawn
+    if (parentX === cx) continue;
 
-    // Arc from midY horizontal down to parent's output lane
+    // *Arc from midY horizontal down to parent's output lane
     const arcStartX =
       parentOutIdx > circleIdx ? parentX - LANE_W : parentX + LANE_W;
     const sweepFlag = parentOutIdx > circleIdx ? 1 : 0;
@@ -396,11 +353,8 @@ export const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
     );
   }
 
-  // ───────────────────────────────────────────────────────────────
-  // Vertical lines to/from commit dot
-  // ───────────────────────────────────────────────────────────────
-
-  // Line from top to commit dot (if commit existed in input)
+  // ! Vertical lines to/from commit dot
+  // ? ↑ Line from top to commit dot (if commit existed in input)
   if (inputIdx !== -1) {
     const topColor = PALETTE[input[inputIdx].color % PALETTE.length];
     paths.push(
@@ -420,7 +374,7 @@ export const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
     );
   }
 
-  // Line from commit dot to bottom (if has parents)
+  // ? ↓ Line from commit dot to bottom (if has parents)
   if (row.parents.length > 0) {
     paths.push(
       <line
@@ -437,10 +391,6 @@ export const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
     );
   }
 
-  // ───────────────────────────────────────────────────────────────
-  // Render SVG
-  // ───────────────────────────────────────────────────────────────
-
   return (
     <svg
       width={width}
@@ -448,14 +398,13 @@ export const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
       className="shrink-0 overflow-visible"
       aria-hidden="true"
       style={{
-        // render in GPU layer for smoother animations
         transform: "translateZ(0)",
         willChange: "transform",
       }}
     >
       {paths}
 
-      {/* Commit dot - double circle for merges, solid for regular commits */}
+      {/* // ! Commit dot - double circle for merges, solid for regular commits */}
       {row.parents.length > 1 ? (
         <g>
           <circle
@@ -476,25 +425,6 @@ export const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
           />
         </g>
       ) : (
-        // <g>
-        //   <circle
-        //     cx={cx}
-        //     cy={cy}
-        //     r={DOT_R + 2}
-        //     fill="none"
-        //     stroke={circleColor}
-        //     strokeWidth={4}
-        //   />
-        //   <circle
-        //     cx={cx}
-        //     cy={cy}
-        //     r={DOT_R + 1}
-        //     // fill={circleColor}
-        //     fill={"var(--color-background, #1e1e1e)"}
-        //     stroke="var(--color-background, #1e1e1e)"
-        //     strokeWidth={3}
-        //   />
-        // </g>
         <g>
           <circle
             cx={cx}
@@ -515,9 +445,9 @@ export const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
               className={"rounded-full"}
               src={`https://avatars.githubusercontent.com/u/e?email=${row.commit.authors.author.email}&s=24`}
             />
-            <AvatarFallback>AV</AvatarFallback>
+            <AvatarFallback></AvatarFallback>
           </Avatar>
-          {/* Render Tags */}
+          {/* // ! Render Tags */}
           {row.tags.length > 0 && (
             <Tooltip>
               <TooltipTrigger>
@@ -543,8 +473,7 @@ export const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
             </Tooltip>
           )}
 
-          {/* Render Stash */}
-
+          {/* // ! Render Stash */}
           {isStash && (
             <Tooltip>
               <TooltipTrigger>
@@ -556,7 +485,7 @@ export const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
                   size="sm"
                   variant={"outline"}
                 >
-                  S
+                  ◌
                 </Badge>
               </TooltipTrigger>
               <TooltipPopup>
@@ -572,3 +501,5 @@ export const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
     </svg>
   );
 };
+
+export default GraphLane;
