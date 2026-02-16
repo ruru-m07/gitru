@@ -2,28 +2,27 @@ import {
   BranchKind,
   CreateCommitParams,
   commitById,
+  createBranch,
   createCommit,
   currentBranch,
-  getFileStatus,
   getPatchByFilePath,
   getStatus,
   gitAdd,
-  gitCreateBranch,
   gitDiscard,
   gitFetch,
-  gitPublishBranch,
-  gitPull,
-  gitPush,
   gitRemove,
-  gitSwitchBranch,
   HistoryGraphParams,
   hasUncommittedChanges,
   history,
   historyGraph,
   lastCommit,
   listBranches,
+  publishBranch,
+  pull,
+  push,
   repositoryOrigin,
   statusAheadBehind,
+  switchBranch,
   UncommittedChangesStrategy,
 } from "@gitru/commands";
 import { QueryClient } from "@tanstack/react-query";
@@ -32,10 +31,7 @@ import { StateDomain } from "../core/StateManager";
 class DiffState extends StateDomain {
   private readonly baseKey: readonly string[];
 
-  constructor(
-    protected queryClient: QueryClient,
-    private repositoryPath: string,
-  ) {
+  constructor(protected queryClient: QueryClient) {
     super(queryClient);
     this.baseKey = ["repository", "diff"] as const;
   }
@@ -44,7 +40,6 @@ class DiffState extends StateDomain {
     const queryKey = [...this.baseKey, filePath];
 
     const data = await getPatchByFilePath({
-      repoPath: this.repositoryPath,
       filePath: filePath,
     });
 
@@ -70,10 +65,7 @@ class DiffState extends StateDomain {
 class StatusState extends StateDomain {
   private readonly baseKey: readonly string[];
 
-  constructor(
-    protected queryClient: QueryClient,
-    private repositoryPath: string,
-  ) {
+  constructor(protected queryClient: QueryClient) {
     super(queryClient);
     this.baseKey = ["repository", "status"] as const;
   }
@@ -81,26 +73,9 @@ class StatusState extends StateDomain {
   async get() {
     await this.queryClient.cancelQueries({ queryKey: [...this.baseKey] });
 
-    const data = await getStatus({
-      repoPath: this.repositoryPath,
-    });
+    const data = await getStatus();
 
     this.queryClient.setQueryData([...this.baseKey], data);
-
-    return data;
-  }
-
-  async getFileStatus(filePath: string) {
-    await this.queryClient.cancelQueries({
-      queryKey: [...this.baseKey, "file", filePath],
-    });
-
-    const data = await getFileStatus({
-      repoPath: this.repositoryPath,
-      filePath,
-    });
-
-    this.queryClient.setQueryData([...this.baseKey, "file", filePath], data);
 
     return data;
   }
@@ -123,10 +98,7 @@ class StatusState extends StateDomain {
 class BranchState extends StateDomain {
   private readonly baseKey: readonly string[];
 
-  constructor(
-    protected queryClient: QueryClient,
-    private repositoryPath: string,
-  ) {
+  constructor(protected queryClient: QueryClient) {
     super(queryClient);
     this.baseKey = ["repository", "branches"] as const;
   }
@@ -137,7 +109,6 @@ class BranchState extends StateDomain {
     });
 
     const data = await listBranches({
-      repoPath: this.repositoryPath,
       kind,
     });
 
@@ -150,9 +121,7 @@ class BranchState extends StateDomain {
       queryKey: [...this.baseKey, "current"],
     });
 
-    const data = await currentBranch({
-      repoPath: this.repositoryPath,
-    });
+    const data = await currentBranch();
 
     this.queryClient.setQueryData([...this.baseKey, "current"], data);
     return data;
@@ -163,9 +132,7 @@ class BranchState extends StateDomain {
       queryKey: [...this.baseKey, "statusAheadBehind"],
     });
 
-    const data = await statusAheadBehind({
-      repoPath: this.repositoryPath,
-    });
+    const data = await statusAheadBehind();
 
     this.queryClient.setQueryData([...this.baseKey, "statusAheadBehind"], data);
     return data;
@@ -187,9 +154,7 @@ class BranchState extends StateDomain {
   }
 
   async hasUncommittedChanges() {
-    const data = await hasUncommittedChanges({
-      repoPath: this.repositoryPath,
-    });
+    const data = await hasUncommittedChanges();
     return data;
   }
 
@@ -197,8 +162,7 @@ class BranchState extends StateDomain {
     branchName: string,
     strategy?: UncommittedChangesStrategy,
   ) {
-    const result = await gitSwitchBranch({
-      repoPath: this.repositoryPath,
+    const result = await switchBranch({
       branch: branchName,
       strategy,
     });
@@ -209,8 +173,7 @@ class BranchState extends StateDomain {
     branchName: string,
     strategy?: UncommittedChangesStrategy,
   ) {
-    const result = await gitCreateBranch({
-      repoPath: this.repositoryPath,
+    const result = await createBranch({
       branch: branchName,
       strategy,
     });
@@ -219,16 +182,12 @@ class BranchState extends StateDomain {
 }
 
 class FilesActionsState extends StateDomain {
-  constructor(
-    protected queryClient: QueryClient,
-    private repositoryPath: string,
-  ) {
+  constructor(protected queryClient: QueryClient) {
     super(queryClient);
   }
 
   async add(filePath: string) {
     const result = await gitAdd({
-      repoPath: this.repositoryPath,
       file: filePath,
     });
     return result;
@@ -236,7 +195,6 @@ class FilesActionsState extends StateDomain {
 
   async unstage(filePath: string) {
     const result = await gitRemove({
-      repoPath: this.repositoryPath,
       file: filePath,
     });
     return result;
@@ -244,37 +202,28 @@ class FilesActionsState extends StateDomain {
 
   async discard(filePath: string) {
     const result = await gitDiscard({
-      repoPath: this.repositoryPath,
       file: filePath,
     });
     return result;
   }
 
   async fetch() {
-    const result = await gitFetch({
-      repoPath: this.repositoryPath,
-    });
+    const result = await gitFetch();
     return result;
   }
 
   async publishBranch() {
-    const result = await gitPublishBranch({
-      repoPath: this.repositoryPath,
-    });
+    const result = await publishBranch();
     return result;
   }
 
   async push() {
-    const result = await gitPush({
-      repoPath: this.repositoryPath,
-    });
+    const result = await push();
     return result;
   }
 
   async pull() {
-    const result = await gitPull({
-      repoPath: this.repositoryPath,
-    });
+    const result = await pull();
     return result;
   }
 }
@@ -282,10 +231,7 @@ class FilesActionsState extends StateDomain {
 class Commit extends StateDomain {
   private readonly baseKey: readonly string[];
 
-  constructor(
-    protected queryClient: QueryClient,
-    private repositoryPath: string,
-  ) {
+  constructor(protected queryClient: QueryClient) {
     super(queryClient);
     this.baseKey = ["repository", "commit"] as const;
   }
@@ -294,9 +240,7 @@ class Commit extends StateDomain {
       queryKey: [...this.baseKey, "last"],
     });
 
-    const data = await lastCommit({
-      repoPath: this.repositoryPath,
-    });
+    const data = await lastCommit();
 
     this.queryClient.setQueryData([...this.baseKey, "last"], data);
 
@@ -309,7 +253,6 @@ class Commit extends StateDomain {
     });
 
     const data = await commitById({
-      repoPath: this.repositoryPath,
       hash,
     });
 
@@ -321,10 +264,9 @@ class Commit extends StateDomain {
     return data;
   }
 
-  async createCommit(payload: CreateCommitParams["commitMeta"]) {
+  async createCommit(payload: CreateCommitParams) {
     const data = await createCommit({
-      repoPath: this.repositoryPath,
-      commitMeta: payload,
+      ...payload,
     });
 
     return data;
@@ -336,7 +278,6 @@ class Commit extends StateDomain {
     });
 
     const data = await history({
-      repoPath: this.repositoryPath,
       limit: 100,
       skip: 0,
     });
@@ -348,7 +289,6 @@ class Commit extends StateDomain {
 
   async historyGraph(params: HistoryGraphParams["query"]) {
     const data = await historyGraph({
-      repoPath: this.repositoryPath,
       query: params,
     });
 
@@ -383,11 +323,11 @@ class RepositoryState extends StateDomain {
     }
 
     this.baseKey = ["repository", this.path] as const;
-    this.diff = new DiffState(this.queryClient, this.path);
-    this.status = new StatusState(this.queryClient, this.path);
-    this.branches = new BranchState(this.queryClient, this.path);
-    this.file = new FilesActionsState(this.queryClient, this.path);
-    this.commit = new Commit(this.queryClient, this.path);
+    this.diff = new DiffState(this.queryClient);
+    this.status = new StatusState(this.queryClient);
+    this.branches = new BranchState(this.queryClient);
+    this.file = new FilesActionsState(this.queryClient);
+    this.commit = new Commit(this.queryClient);
   }
 
   async getRepositoryOrigin() {
@@ -396,9 +336,7 @@ class RepositoryState extends StateDomain {
       queryKey: [...this.baseKey, "origin"],
     });
 
-    const data = await repositoryOrigin({
-      repoPath: this.path,
-    });
+    const data = await repositoryOrigin();
 
     this.queryClient.setQueryData([...this.baseKey, "origin"], data);
 

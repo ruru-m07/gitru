@@ -1,4 +1,8 @@
-import type { FileStatusKind, RepositoryInfo } from "@gitru/commands";
+import {
+  type FileStatusKind,
+  type RepositoryInfo,
+  selectRepository,
+} from "@gitru/commands";
 import { toast } from "sonner";
 import { create } from "zustand";
 import {
@@ -43,14 +47,23 @@ export const useAppStore = create<AppState>()(
       (set, get) => ({
         selectedRepository: null,
         setSelectedRepository: async (repo) => {
-          set({ selectedRepository: repo });
+          if (!repo) {
+            set({ selectedRepository: null });
+            return;
+          }
 
-          const r = appState.repository;
-          await r?.invalidateAll();
+          let result = await selectRepository({
+            repoId: repo.id,
+          });
 
-          setTimeout(async () => {
-            await r?.invalidateAll();
-          }, 100);
+          if (result) {
+            set({ selectedRepository: repo });
+            const r = appState.repository;
+            // await r?.invalidateAll();
+            setTimeout(async () => {
+              await r?.invalidateAll();
+            }, 100);
+          }
         },
 
         repositories: [],

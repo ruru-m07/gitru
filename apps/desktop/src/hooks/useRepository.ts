@@ -6,7 +6,6 @@ import type {
   CommitInfo,
   CreateCommitParams,
   FileDiff,
-  FileStatus,
   FullCommitInfo,
   GetStatusResponse,
   HistoryGraphParams,
@@ -40,27 +39,6 @@ export function useGetStatus(options?: QueryOptions<GetStatusResponse>) {
       return await repo.status.get();
     },
     enabled: !!repo,
-    ...options,
-  });
-}
-
-export function useGetFileStatus(
-  filePath: string,
-  options?: QueryOptions<FileStatus>,
-) {
-  const repo = appState.repository;
-
-  return useQuery({
-    queryKey: [
-      ...(repo?.status.queryKey || ["repository", "none", "status", filePath]),
-      "file",
-      filePath,
-    ],
-    queryFn: async () => {
-      if (!repo) return null;
-      return await repo.status.getFileStatus(filePath);
-    },
-    enabled: !!repo && !!filePath,
     ...options,
   });
 }
@@ -315,7 +293,7 @@ export function useCreateCommit() {
   const repo = appState.repository;
 
   const mutation = useMutation({
-    mutationFn: async (payload: CreateCommitParams["commitMeta"]) => {
+    mutationFn: async (payload: CreateCommitParams) => {
       if (!repo) throw new Error("No repository selected");
       return await repo.commit.createCommit(payload);
     },

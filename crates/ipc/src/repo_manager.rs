@@ -1,4 +1,5 @@
 use crate::commands::RepoSitoryStore;
+use git::service::core::RepoServices;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -6,8 +7,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, State};
 use tauri_plugin_store::StoreExt;
 
-const REPO_STORE_KEY: &str = "repositories";
-const STORE_FILE: &str = "repositories.json";
+pub const REPO_STORE_KEY: &str = "repositories";
+pub const STORE_FILE: &str = "repositories.json";
+pub const SELECTED_REPO_KEY: &str = "selected_repo_id";
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct RepositoryInfo {
@@ -37,7 +39,7 @@ impl From<RepoSitoryStore> for RepositoryInfo {
 }
 
 pub struct RepoManager {
-    app: AppHandle,
+    pub app: AppHandle,
 }
 
 impl RepoManager {
@@ -45,7 +47,7 @@ impl RepoManager {
         Self { app }
     }
 
-    fn get_store(&self) -> Result<Arc<tauri_plugin_store::Store<tauri::Wry>>, String> {
+    pub fn get_store(&self) -> Result<Arc<tauri_plugin_store::Store<tauri::Wry>>, String> {
         self.app
             .store(STORE_FILE)
             .map_err(|e| format!("Failed to get store: {}", e))
@@ -155,15 +157,24 @@ impl RepoManager {
             return Err(format!("Repository path does not exist: {}", repo.path));
         }
 
-        let current_branch = git::commands::branch::current_branch(&repo.path)
-            .await
-            .ok()
-            .map(|b| b.name);
-
-        let ahead_behind = git::commands::branch::status_ahead_behind(&repo.path)
-            .await
-            .ok()
-            .and_then(|status| Some((status.ahead as u32, status.behind as u32)));
+        let (current_branch, ahead_behind) = match RepoServices::new(&repo.path) {
+            Ok(services) => {
+                let current_branch = services
+                    .branch()
+                    .get_current_branch()
+                    .await
+                    .ok()
+                    .map(|b| b.name);
+                let ahead_behind = services
+                    .branch()
+                    .status_ahead_behind()
+                    .await
+                    .ok()
+                    .map(|status| (status.ahead as u32, status.behind as u32));
+                (current_branch, ahead_behind)
+            }
+            Err(_) => (None, None),
+        };
 
         let has_uncommitted_changes = {
             use std::process::Command;

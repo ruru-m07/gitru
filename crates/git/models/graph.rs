@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GraphRefKind {
     Local,
     Remote,
@@ -22,6 +22,7 @@ pub struct GraphLogEntry {
     pub parents: Vec<String>,
     pub author_name: String,
     pub author_email: String,
+    #[allow(dead_code)]
     pub author_time: i64,
     pub committer_name: String,
     pub committer_email: String,

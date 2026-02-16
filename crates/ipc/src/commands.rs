@@ -1,10 +1,16 @@
+use git::AppState;
+use git::service::core::RepoServices;
 use serde::Serialize;
+use std::sync::Mutex;
 use std::{
     path::Path,
     process::Command,
+    sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
 use uuid::Uuid;
+
+use crate::repo_manager::{RepoManager, SELECTED_REPO_KEY};
 
 #[derive(Serialize)]
 pub struct RepoSitoryStore {
@@ -70,15 +76,24 @@ pub async fn add_local_git_repo(repo_path: String) -> Result<Option<RepoSitorySt
             .to_string()
     };
 
-    let current_branch = git::commands::branch::current_branch(&repo_path)
-        .await
-        .ok()
-        .map(|b| b.name);
-
-    let ahead_behind = git::commands::branch::status_ahead_behind(&repo_path)
-        .await
-        .ok()
-        .and_then(|status| Some((status.ahead as u32, status.behind as u32)));
+    let (current_branch, ahead_behind) = match RepoServices::new(&repo_path) {
+        Ok(services) => {
+            let current_branch = services
+                .branch()
+                .get_current_branch()
+                .await
+                .ok()
+                .map(|b| b.name);
+            let ahead_behind = services
+                .branch()
+                .status_ahead_behind()
+                .await
+                .ok()
+                .map(|status| (status.ahead as u32, status.behind as u32));
+            (current_branch, ahead_behind)
+        }
+        Err(_) => (None, None),
+    };
 
     let has_uncommitted_changes = Command::new("git")
         .args(&["status", "--porcelain"])
@@ -101,4 +116,42 @@ pub async fn add_local_git_repo(repo_path: String) -> Result<Option<RepoSitorySt
             .unwrap_or_default()
             .as_secs(),
     }))
+}
+
+#[tauri::command]
+pub async fn select_repository(
+    repo_id: String,
+    state: tauri::State<'_, AppState>,
+    manager: tauri::State<'_, Arc<Mutex<RepoManager>>>,
+) -> Result<bool, String> {
+    let repos = {
+        let app = {
+            let manager_guard = manager.lock().map_err(|e| e.to_string())?;
+            manager_guard.app.clone()
+        };
+        let temp = RepoManager::new(app);
+        temp.list_repositories(false).await?
+    };
+
+    let repo = repos
+        .into_iter()
+        .find(|r| r.id == repo_id)
+        .ok_or("Repository not found")?;
+
+    let services = Arc::new(RepoServices::new(&repo.path)?);
+
+    {
+        let mut lock = state.services.write().await;
+        *lock = Some(services);
+    }
+
+    let manager_guard = manager.lock().map_err(|e| e.to_string())?;
+    let store = manager_guard
+        .get_store()
+        .map_err(|e| format!("Failed to get store: {}", e))?;
+
+    store.set(SELECTED_REPO_KEY, repo_id);
+    store.save().map_err(|e| e.to_string())?;
+
+    Ok(true)
 }

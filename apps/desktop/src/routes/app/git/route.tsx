@@ -290,9 +290,12 @@ const WriteCommitBox = memo(function WriteCommitBox() {
     }
 
     const data = await createCommit({
-      title,
-      description,
-      co_authors,
+      commitMeta: {
+        title,
+        description,
+        co_authors,
+      },
+      allowEmpty: false,
     });
     if (data) {
       setTitle("");

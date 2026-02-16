@@ -2,15 +2,16 @@ use std::collections::HashMap;
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
+use crate::models::commit::{Author, CommitAuthors, CommitStats, FullCommitInfo};
+use crate::models::graph::GraphRefKind as GraphRefType;
 use crate::models::graph::{
     GraphLogEntry, GraphRefKind, GraphSearchKey, GraphSearchQuery, HistoryQuery,
 };
-use crate::parsers::graph::{LOG_FORMAT, parse_log_entries, parse_search_query};
-use crate::types_legacy::{
-    Author, CommitAuthors, CommitStats, FullCommitInfo, GraphPaging, GraphRef as GraphRefDto,
-    GraphRefType, GraphRow, GraphRowType, HistoryGraphResponse, ParentEdge,
+use crate::models::history::{
+    GraphPaging, GraphRef as GraphRefDto, GraphRow, GraphRowType, HistoryGraphResponse, ParentEdge,
     Swimlane as SwimlaneDto,
 };
+use crate::parsers::graph::{LOG_FORMAT, parse_log_entries, parse_search_query};
 
 const DEFAULT_CHUNK_SIZE: usize = 200;
 

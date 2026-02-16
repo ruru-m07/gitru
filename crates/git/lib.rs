@@ -1,8 +1,12 @@
-mod models;
-mod parsers;
-mod service;
-mod types;
-mod types_legacy;
-mod utils;
+use crate::service::core::RepoServices;
+use std::sync::Arc;
 
-pub mod commands;
+use tokio::sync::RwLock;
+
+pub mod models;
+pub mod parsers;
+pub mod service;
+
+pub struct AppState {
+    pub services: RwLock<Option<Arc<RepoServices>>>,
+}

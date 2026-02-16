@@ -1,44 +1,4 @@
-use serde::Serialize;
-
-use crate::utils::open_repository;
-
-#[derive(Serialize)]
-pub struct RepositoryOrigin {
-    pub remote_name: String,
-    pub remote_url: String,
-
-    pub host: Option<String>,     // github.com
-    pub provider: Option<String>, // github | gitlab | bitbucket | unknown
-    pub owner: Option<String>,    // user or org
-    pub repo: Option<String>,     // repo name
-
-    pub protocol: String,
-}
-
-#[tauri::command]
-#[logger::logger]
-pub async fn repository_origin(repo_path: &str) -> Result<RepositoryOrigin, String> {
-    let repo = open_repository(repo_path).map_err(|e| e.to_string())?;
-
-    let remote = repo
-        .find_remote("origin")
-        .map_err(|_| "No origin remote found".to_string())?;
-
-    let url = remote.url().ok_or("Origin remote has no URL")?.to_string();
-    let (protocol, host, owner, repo_name, provider) = parse_remote_url(&url);
-
-    Ok(RepositoryOrigin {
-        remote_name: "origin".into(),
-        remote_url: url,
-        host,
-        provider,
-        owner,
-        repo: repo_name,
-        protocol,
-    })
-}
-
-fn parse_remote_url(
+pub fn parse_remote_url(
     url: &str,
 ) -> (
     String,
@@ -95,7 +55,7 @@ fn parse_remote_url(
     ("unknown".into(), None, None, None, None)
 }
 
-fn detect_provider(host: &String) -> Option<String> {
+pub fn detect_provider(host: &String) -> Option<String> {
     if host.contains("github") {
         Some("github".into())
     } else if host.contains("gitlab") {
