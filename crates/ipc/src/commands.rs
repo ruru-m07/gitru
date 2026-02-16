@@ -1,5 +1,5 @@
 use git::AppState;
-use git::service::core::RepoServices;
+use git::core::RepoServices;
 use serde::Serialize;
 use std::sync::Mutex;
 use std::{

@@ -1,7 +1,7 @@
+use git::core::get_services;
 use git::models::branch::{
     AheadBehindStatus, Branch, BranchInfo, BranchKind, UncommittedChangesStrategy,
 };
-use git::service::core::get_services;
 use git::AppState;
 
 #[tauri::command]

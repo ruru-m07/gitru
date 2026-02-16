@@ -1,4 +1,4 @@
-use crate::service::runner::GitCommandRunner;
+use crate::runner::GitCommandRunner;
 
 pub struct RepoContext {
     pub repo_path: String,

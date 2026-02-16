@@ -1,7 +1,6 @@
 use crate::{
-    models::origin::RepositoryOrigin,
-    parsers::origin::parse_remote_url,
-    service::{context::RepoContext, runner::GitRunOptions},
+    context::RepoContext, models::origin::RepositoryOrigin, parsers::origin::parse_remote_url,
+    runner::GitRunOptions,
 };
 use std::sync::Arc;
 

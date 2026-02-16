@@ -1,5 +1,5 @@
+use git::core::get_services;
 use git::models::origin::RepositoryOrigin;
-use git::service::core::get_services;
 use git::AppState;
 
 #[tauri::command]

@@ -1,6 +1,6 @@
 use std::{path::Path, sync::Arc};
 
-use crate::service::{context::RepoContext, runner::GitRunOptions};
+use crate::{context::RepoContext, runner::GitRunOptions};
 
 pub struct DiffService {
     ctx: Arc<RepoContext>,

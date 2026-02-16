@@ -1,5 +1,5 @@
 use crate::commands::RepoSitoryStore;
-use git::service::core::RepoServices;
+use git::core::RepoServices;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::{Arc, Mutex};

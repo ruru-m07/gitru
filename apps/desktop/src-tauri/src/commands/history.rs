@@ -1,7 +1,7 @@
+use git::core::get_services;
 use git::models::commit::CommitInfo;
 use git::models::graph::HistoryQuery;
 use git::models::history::HistoryGraphResponse;
-use git::service::core::get_services;
 use git::AppState;
 
 #[tauri::command]

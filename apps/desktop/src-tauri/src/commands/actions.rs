@@ -1,4 +1,4 @@
-use git::{models::status::GetStatusResponse, service::core::get_services, AppState};
+use git::{core::get_services, models::status::GetStatusResponse, AppState};
 
 #[tauri::command]
 pub async fn git_version(state: tauri::State<'_, AppState>) -> Result<String, String> {
@@ -8,7 +8,7 @@ pub async fn git_version(state: tauri::State<'_, AppState>) -> Result<String, St
 
 #[tauri::command]
 pub async fn get_status(state: tauri::State<'_, AppState>) -> Result<GetStatusResponse, String> {
-    let services: std::sync::Arc<git::service::core::RepoServices> = get_services(state).await?;
+    let services = get_services(state).await?;
     services.action().get_status().await
 }
 

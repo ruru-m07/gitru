@@ -2,9 +2,10 @@ use std::sync::Arc;
 
 use crate::{
     AppState,
+    context::RepoContext,
     service::{
-        actions::ActionService, branch::BranchService, commit::CommitService, context::RepoContext,
-        diff::DiffService, history::HistoryService, origin::OriginService,
+        actions::ActionService, branch::BranchService, commit::CommitService, diff::DiffService,
+        history::HistoryService, origin::OriginService,
     },
 };
 

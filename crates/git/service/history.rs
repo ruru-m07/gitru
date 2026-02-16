@@ -1,11 +1,11 @@
+use crate::context::RepoContext;
 use crate::models::commit::CommitInfo;
 use crate::models::graph::HistoryQuery;
 use crate::models::history::HistoryGraphResponse;
 use crate::parsers::commit::COMMIT_STANDARD_FORMAT;
 use crate::parsers::history::parse_history_records;
-use crate::service::context::RepoContext;
+use crate::runner::GitRunOptions;
 use crate::service::graph as graph_service;
-use crate::service::runner::GitRunOptions;
 use std::sync::Arc;
 use std::time::Duration;
 

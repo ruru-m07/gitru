@@ -1,7 +1,7 @@
+use crate::context::RepoContext;
 use crate::models::commit::{CommitInfo, CommitMessage, FullCommitInfo};
 use crate::parsers::commit::{parse_commit_record, parse_shortstat};
-use crate::service::context::RepoContext;
-use crate::service::runner::GitRunOptions;
+use crate::runner::GitRunOptions;
 use std::sync::Arc;
 
 pub struct CommitService {

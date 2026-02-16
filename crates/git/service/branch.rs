@@ -1,9 +1,9 @@
+use crate::context::RepoContext;
 use crate::models::branch::{
     AheadBehindStatus, Branch, BranchInfo, BranchKind, UncommittedChangesStrategy,
 };
 use crate::parsers::branch::{BRANCH_STANDARD_FORMAT, parse_branch_records};
-use crate::service::context::RepoContext;
-use crate::service::runner::{GitRunOptions, throttle_command};
+use crate::runner::{GitRunOptions, throttle_command};
 use std::sync::Arc;
 use std::time::Duration;
 

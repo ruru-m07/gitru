@@ -1,10 +1,8 @@
 use crate::{
+    context::RepoContext,
     models::status::GetStatusResponse,
     parsers::status::parse_porcelain_v2,
-    service::{
-        context::RepoContext,
-        runner::{GitRunOptions, validate_relative_path},
-    },
+    runner::{GitRunOptions, validate_relative_path},
 };
 use std::sync::Arc;
 

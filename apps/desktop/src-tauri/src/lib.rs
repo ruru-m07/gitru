@@ -1,4 +1,4 @@
-use git::{service::core::RepoServices, AppState};
+use git::{core::RepoServices, AppState};
 use ipc::{
     self,
     repo_manager::{RepoManager, SELECTED_REPO_KEY, STORE_FILE},

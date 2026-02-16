@@ -1,6 +1,6 @@
 use git::{
+    core::get_services,
     models::commit::{CommitInfo, CommitMessage, FullCommitInfo},
-    service::core::get_services,
     AppState,
 };
 

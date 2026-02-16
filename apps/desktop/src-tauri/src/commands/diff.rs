@@ -1,6 +1,6 @@
+use git::core::get_services;
 use git::models::diff::FileDiff;
-use git::service::core::get_services;
-use git::service::runner::validate_relative_path;
+use git::runner::validate_relative_path;
 use git::AppState;
 
 #[tauri::command]
