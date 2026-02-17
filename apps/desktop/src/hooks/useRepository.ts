@@ -3,6 +3,7 @@ import type {
   Branch,
   BranchInfo,
   BranchKind,
+  BranchStash,
   CommitInfo,
   CreateCommitParams,
   FileDiff,
@@ -474,6 +475,27 @@ export function useHasUncommittedChanges(options?: QueryOptions<boolean>) {
   });
 }
 
+export function useGetCurrentBranchStash(
+  options?: QueryOptions<BranchStash | null>,
+) {
+  const repo = appState.repository;
+
+  return useQuery({
+    queryKey: repo?.branches.getQueryKey("currentBranchStash") ?? [
+      "repository",
+      "none",
+      "branches",
+      "currentBranchStash",
+    ],
+    queryFn: async () => {
+      if (!repo) return null;
+      return await repo.branches.currentBranchStash();
+    },
+    enabled: !!repo,
+    ...options,
+  });
+}
+
 export function useGitSwitchBranch() {
   const repo = appState.repository;
 
@@ -514,6 +536,27 @@ export function useGitCreateBranch() {
     }): Promise<string> => {
       if (!repo) throw new Error("No repository selected");
       return await repo.branches.createBranch(branchName, strategy);
+    },
+    onSuccess: async () => {
+      await repo?.branches.invalidateAll();
+      await repo?.commit.invalidate();
+      await repo?.status.invalidate();
+    },
+    onError: (error: string) => {
+      toast.error(error);
+    },
+  });
+
+  return mutation;
+}
+
+export function usePopCurrentBranchStash() {
+  const repo = appState.repository;
+
+  const mutation = useMutation({
+    mutationFn: async (): Promise<string> => {
+      if (!repo) throw new Error("No repository selected");
+      return await repo.branches.popCurrentBranchStash();
     },
     onSuccess: async () => {
       await repo?.branches.invalidateAll();

@@ -1,6 +1,6 @@
 use crate::context::RepoContext;
 use crate::models::branch::{
-    AheadBehindStatus, Branch, BranchInfo, BranchKind, UncommittedChangesStrategy,
+    AheadBehindStatus, Branch, BranchInfo, BranchKind, BranchStash, UncommittedChangesStrategy,
 };
 use crate::parsers::branch::{BRANCH_STANDARD_FORMAT, parse_branch_records};
 use crate::runner::{GitRunOptions, throttle_command};
@@ -18,10 +18,10 @@ impl BranchService {
 
     #[logger::logger]
     pub async fn get_current_branch(&self) -> Result<Branch, String> {
-        throttle_command(
-            &format!("{}:current_branch", self.ctx.repo_path),
-            std::time::Duration::from_millis(500),
-        )?;
+        // throttle_command(
+        //     &format!("{}:current_branch", self.ctx.repo_path),
+        //     std::time::Duration::from_millis(500),
+        // )?;
 
         let branch = self
             .ctx
@@ -184,7 +184,7 @@ impl BranchService {
 
         match strategy {
             Some(UncommittedChangesStrategy::StashOnCurrentBranch) => {
-                let stash_msg = format!("!!Gitru<{}> -> <{}>", current_branch.name, branch);
+                let stash_msg = format!("!!gitru<{}> -> <{}>", current_branch.name, branch);
 
                 self.ctx
                     .runner
@@ -238,7 +238,7 @@ impl BranchService {
         match strategy {
             // ? If strategy is StashOnCurrentBranch, stash FIRST before creating and switching
             Some(UncommittedChangesStrategy::StashOnCurrentBranch) => {
-                let stash_msg = format!("!!Gitru<{}> -> <{}> (new)", current_branch.name, branch);
+                let stash_msg = format!("!!gitru<{}> -> <{}> (new)", current_branch.name, branch);
                 self.ctx
                     .runner
                     .run_with_options(
@@ -337,6 +337,39 @@ impl BranchService {
         Ok(!output.is_empty())
     }
 
+    #[logger::logger]
+    pub async fn current_branch_stash(&self) -> Result<Option<BranchStash>, String> {
+        let current_branch = self.get_current_branch().await?;
+        self.find_stash_for_branch(&current_branch.name).await
+    }
+
+    #[logger::logger]
+    pub async fn pop_current_branch_stash(&self) -> Result<String, String> {
+        let current_branch = self.get_current_branch().await?;
+        let stash = self
+            .find_stash_for_branch(&current_branch.name)
+            .await?
+            .ok_or_else(|| {
+                format!(
+                    "No !!gitru stash found for branch '{}'",
+                    current_branch.name
+                )
+            })?;
+
+        self.ctx
+            .runner
+            .run_with_options(
+                &["stash", "pop", &stash.reference],
+                GitRunOptions::default_read(),
+            )
+            .await?;
+
+        Ok(format!(
+            "Popped {} onto branch '{}'",
+            stash.reference, current_branch.name
+        ))
+    }
+
     async fn _ahead_behind_for(
         &self,
         local: &str,
@@ -365,5 +398,75 @@ impl BranchService {
         let behind = parts[1].parse::<usize>().unwrap_or(0);
 
         Ok(Some((ahead, behind)))
+    }
+
+    async fn find_stash_for_branch(&self, branch: &str) -> Result<Option<BranchStash>, String> {
+        let output = self
+            .ctx
+            .runner
+            .run_with_options(
+                &["stash", "list", "--format=%gd%x1f%gs"],
+                GitRunOptions::default_read(),
+            )
+            .await?;
+
+        if output.is_empty() {
+            return Ok(None);
+        }
+
+        for line in output.lines() {
+            let mut parts = line.splitn(2, '\x1f');
+            let Some(reference) = parts.next() else {
+                continue;
+            };
+            let Some(message) = parts.next() else {
+                continue;
+            };
+
+            let Some((from_branch, to_branch)) = Self::parse_gitru_stash_message(message) else {
+                continue;
+            };
+
+            if Self::branch_name_matches(&from_branch, branch) {
+                return Ok(Some(BranchStash {
+                    reference: reference.to_string(),
+                    message: message.to_string(),
+                    from_branch,
+                    to_branch,
+                }));
+            }
+        }
+
+        Ok(None)
+    }
+
+    fn parse_gitru_stash_message(message: &str) -> Option<(String, String)> {
+        let marker = "!!gitru<";
+        let lower = message.to_ascii_lowercase();
+        let marker_start = lower.find(marker)?;
+        let after_prefix = &message[marker_start + marker.len()..];
+        let from_end = after_prefix.find('>')?;
+        let from_branch = after_prefix[..from_end].trim();
+
+        let after_from = &after_prefix[from_end + 1..];
+        let after_arrow = after_from.strip_prefix(" -> <")?;
+        let to_end = after_arrow.find('>')?;
+        let to_branch = after_arrow[..to_end].trim();
+
+        if from_branch.is_empty() || to_branch.is_empty() {
+            return None;
+        }
+
+        Some((from_branch.to_string(), to_branch.to_string()))
+    }
+
+    fn branch_name_matches(stash_target: &str, branch: &str) -> bool {
+        stash_target == branch
+            || stash_target
+                .strip_prefix("origin/")
+                .is_some_and(|s| s == branch)
+            || branch
+                .strip_prefix("origin/")
+                .is_some_and(|s| s == stash_target)
     }
 }

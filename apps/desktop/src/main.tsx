@@ -14,6 +14,7 @@ import { themeLoader } from "@gitru/diff/loader";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { appState } from "./state";
+import { initializeQueryFocusBridge } from "./state/core/StateManager";
 
 const router = createRouter({
   routeTree,
@@ -45,6 +46,7 @@ async function redirectToLastPage() {
 
 await redirectToLastPage();
 themeLoader();
+initializeQueryFocusBridge();
 
 const rootElement = document.getElementById("root");
 if (rootElement && !rootElement.innerHTML) {

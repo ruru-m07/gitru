@@ -31,6 +31,14 @@ pub struct AheadBehindStatus {
     pub is_published: bool,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BranchStash {
+    pub reference: String,
+    pub message: String,
+    pub from_branch: String,
+    pub to_branch: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub enum BranchKind {
     Local,

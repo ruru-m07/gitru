@@ -1,6 +1,6 @@
 use git::core::get_services;
 use git::models::branch::{
-    AheadBehindStatus, Branch, BranchInfo, BranchKind, UncommittedChangesStrategy,
+    AheadBehindStatus, Branch, BranchInfo, BranchKind, BranchStash, UncommittedChangesStrategy,
 };
 use git::AppState;
 
@@ -78,4 +78,20 @@ pub async fn pull(state: tauri::State<'_, AppState>) -> Result<String, String> {
 pub async fn has_uncommitted_changes(state: tauri::State<'_, AppState>) -> Result<bool, String> {
     let services = get_services(state).await?;
     services.branch().has_uncommitted_changes().await
+}
+
+#[tauri::command]
+pub async fn current_branch_stash(
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<BranchStash>, String> {
+    let services = get_services(state).await?;
+    services.branch().current_branch_stash().await
+}
+
+#[tauri::command]
+pub async fn pop_current_branch_stash(
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let services = get_services(state).await?;
+    services.branch().pop_current_branch_stash().await
 }

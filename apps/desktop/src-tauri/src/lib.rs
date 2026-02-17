@@ -56,6 +56,8 @@ pub fn run() {
             commands::branch::switch_branch,
             commands::branch::create_branch,
             commands::branch::has_uncommitted_changes,
+            commands::branch::current_branch_stash,
+            commands::branch::pop_current_branch_stash,
             commands::actions::git_version,
             commands::actions::get_status,
             commands::actions::git_fetch,

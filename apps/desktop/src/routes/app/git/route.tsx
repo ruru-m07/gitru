@@ -52,6 +52,7 @@ import { cn } from "@gitru/ui/lib/utils";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
+  ArchiveRestore,
   BadgeQuestionMark,
   ChevronDown,
   ChevronDownIcon,
@@ -79,10 +80,12 @@ import {
   useCreateCommit,
   useGetCommitHistory,
   useGetCurrentBranch,
+  useGetCurrentBranchStash,
   useGetStatus,
   useGitAdd,
   useGitDiscard,
   useGitUnstage,
+  usePopCurrentBranchStash,
 } from "@/hooks";
 import { useRepositories } from "@/hooks/useRepositories";
 import { getAvatarByProvider } from "@/lib/getAvatarByGitProvider";
@@ -278,6 +281,9 @@ const WriteCommitBox = memo(function WriteCommitBox() {
   const { mutateAsync: gitAdd, isPending: isAdding } = useGitAdd();
   const { mutateAsync: createCommit, isPending: isCreatingCommit } =
     useCreateCommit();
+  const { data: currentBranchStash } = useGetCurrentBranchStash();
+  const { mutateAsync: popCurrentBranchStash, isPending: isPoppingStash } =
+    usePopCurrentBranchStash();
 
   const nothingToCommit =
     status?.files.filter((file) =>
@@ -344,43 +350,70 @@ const WriteCommitBox = memo(function WriteCommitBox() {
             </Button>
           </InputGroupAddon>
         </InputGroup>
-        <Group aria-label="Subscription actions" className="w-full">
-          <Button
-            onClick={handelCommit}
-            className="flex-1 truncate"
-            disabled={isAdding || isCreatingCommit || title.trim() === ""}
-          >
-            {isAdding || isCreatingCommit ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                Committing...
-              </>
-            ) : (
-              <>
-                {nothingToCommit ? "Add all & Commit to" : "Commit to"}{" "}
-                <span className="truncate -ml-1">{currentBranch?.name}</span>
-              </>
-            )}
-          </Button>
-          <GroupSeparator className="bg-primary/72" />
-          <Menu>
-            <MenuTrigger
-              render={
-                <Button
-                  aria-label="Copy options"
-                  size="icon"
-                  className="rounded-r-lg!"
-                />
-              }
+        <div className="w-full flex items-center gap-2">
+          {currentBranchStash ? (
+            <Button
+              variant="secondary"
+              title={currentBranchStash.message}
+              onClick={async () => {
+                const result = await popCurrentBranchStash();
+                if (result) {
+                  toast.success(result);
+                }
+              }}
+              disabled={isPoppingStash}
             >
-              <ChevronDownIcon className="size-4" />
-            </MenuTrigger>
-            <MenuPopup align="end" className={"w-full"}>
-              <MenuItem>Empty Commit</MenuItem>
-              <MenuItem>Amend Last Commit</MenuItem>
-            </MenuPopup>
-          </Menu>
-        </Group>
+              {isPoppingStash ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Popping...
+                </>
+              ) : (
+                <>
+                  <ArchiveRestore className="size-4" />
+                  Pop Stash
+                </>
+              )}
+            </Button>
+          ) : null}
+          <Group aria-label="Subscription actions" className="w-full">
+            <Button
+              onClick={handelCommit}
+              className="flex-1 truncate"
+              disabled={isAdding || isCreatingCommit || title.trim() === ""}
+            >
+              {isAdding || isCreatingCommit ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Committing...
+                </>
+              ) : (
+                <>
+                  {nothingToCommit ? "Add all & Commit to" : "Commit to"}{" "}
+                  <span className="truncate -ml-1">{currentBranch?.name}</span>
+                </>
+              )}
+            </Button>
+            <GroupSeparator className="bg-primary/72" />
+            <Menu>
+              <MenuTrigger
+                render={
+                  <Button
+                    aria-label="Copy options"
+                    size="icon"
+                    className="rounded-r-lg!"
+                  />
+                }
+              >
+                <ChevronDownIcon className="size-4" />
+              </MenuTrigger>
+              <MenuPopup align="end" className={"w-full"}>
+                <MenuItem>Empty Commit</MenuItem>
+                <MenuItem>Amend Last Commit</MenuItem>
+              </MenuPopup>
+            </Menu>
+          </Group>
+        </div>
       </div>
     </div>
   );

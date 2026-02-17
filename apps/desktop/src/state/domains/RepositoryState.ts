@@ -1,10 +1,12 @@
 import {
   BranchKind,
+  BranchStash,
   CreateCommitParams,
   commitById,
   createBranch,
   createCommit,
   currentBranch,
+  currentBranchStash,
   getPatchByFilePath,
   getStatus,
   gitAdd,
@@ -17,6 +19,7 @@ import {
   historyGraph,
   lastCommit,
   listBranches,
+  popCurrentBranchStash,
   publishBranch,
   pull,
   push,
@@ -139,12 +142,19 @@ class BranchState extends StateDomain {
   }
 
   getQueryKey(
-    key: "list" | "current" | "statusAheadBehind" | "hasUncommittedChanges",
+    key:
+      | "list"
+      | "current"
+      | "statusAheadBehind"
+      | "hasUncommittedChanges"
+      | "currentBranchStash",
   ) {
     return [...this.baseKey, key];
   }
 
-  async invalidate(key?: "list" | "current" | "statusAheadBehind") {
+  async invalidate(
+    key?: "list" | "current" | "statusAheadBehind" | "currentBranchStash",
+  ) {
     const queryKey = key ? [...this.baseKey, key] : [...this.baseKey];
     await this.queryClient.invalidateQueries({ queryKey });
   }
@@ -156,6 +166,15 @@ class BranchState extends StateDomain {
   async hasUncommittedChanges() {
     const data = await hasUncommittedChanges();
     return data;
+  }
+
+  async currentBranchStash(): Promise<BranchStash | null> {
+    const data = await currentBranchStash();
+    return data;
+  }
+
+  async popCurrentBranchStash(): Promise<string> {
+    return await popCurrentBranchStash();
   }
 
   async switchBranch(

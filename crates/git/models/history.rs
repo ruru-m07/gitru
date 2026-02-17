@@ -1,5 +1,5 @@
+use crate::models::{commit::FullCommitInfo, graph::GraphRefKind};
 use serde::{Deserialize, Serialize};
-use crate::models::commit::FullCommitInfo;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum GraphRowType {
@@ -10,7 +10,7 @@ pub enum GraphRowType {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GraphRef {
     pub name: String,
-    pub kind: crate::models::graph::GraphRefKind,
+    pub kind: GraphRefKind,
     pub is_head: bool,
 }
 
