@@ -106,7 +106,7 @@ const MainActionBar = () => {
           (statusAheadBehind && statusAheadBehind.behind > 0) ? (
             <>
               <Button
-                className="flex justify-between items-center h-full rounded-none border-x-0 w-72"
+                className="flex justify-between items-center min-h-full rounded-none border-x-0 w-72"
                 variant={"ghost"}
                 onClick={async () => {
                   await invalidateAll();

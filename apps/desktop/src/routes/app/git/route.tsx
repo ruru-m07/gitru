@@ -485,17 +485,9 @@ const ListFileChanges = () => {
 
   return (
     <Tabs defaultValue="tab-1" className={"gap-0 h-full flex flex-col"}>
-      {/* <TabsList className={"rounded-none w-full shrink-0 border-y"}>
-        <TabsTab className={"rounded-none!"} value="tab-1">
-          Changes
-        </TabsTab>
-        <TabsTab className={"rounded-none!"} value="tab-2">
-          History
-        </TabsTab>
-      </TabsList> */}
       <TabsList
         className={
-          "rounded-none bg-background w-full shrink-0 border-y *:data-[slot=tab-indicator]:bg-secondary"
+          "rounded-none bg-background w-full shrink-0 border-y *:data-[slot=tab-indicator]:bg-secondary *:data-[slot=tab-indicator]:transition-none"
         }
       >
         <TabsTab className={"rounded-none!"} value="tab-1">
