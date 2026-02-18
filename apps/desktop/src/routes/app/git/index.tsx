@@ -1,7 +1,7 @@
 import { DiffViewer } from "@gitru/diff";
-// import { DiffViewer } from "@/components/diff/diff-viewer";
 import { Button } from "@gitru/ui/components/button";
 import { Group, GroupSeparator } from "@gitru/ui/components/group";
+import { Kbd, KbdGroup } from "@gitru/ui/components/kbd";
 import { Label } from "@gitru/ui/components/label";
 import {
   Popover,
@@ -21,10 +21,14 @@ import {
   MoveHorizontal,
   Settings,
   TextWrap,
+  X,
 } from "lucide-react";
-// import MonacoTestDiff from "@/components/diff/test-monaco";
+import { useTheme } from "next-themes";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
+import HistoryGraph from "@/components/historyGraph";
+import LoaderIndicator from "@/components/loaderIndicator";
+import { GitruBorderedSVG } from "@/components/svgs/gitru-borderd";
 import {
   useGetCurrentBranch,
   useGetDiff,
@@ -32,7 +36,6 @@ import {
   useInvalidateAll,
 } from "@/hooks";
 import { SelectedFile, useAppStore } from "@/store/useAppStore";
-import { EmptyGitDiffSVG } from "../../../components/svgs/EmptyGitDiffSVG";
 import { SplitSVG } from "../../../components/svgs/splitSVG";
 import { UnifiedSVG } from "../../../components/svgs/unifiedSVG";
 
@@ -41,16 +44,22 @@ export const Route = createFileRoute("/app/git/")({
 });
 
 function App() {
+  const mainWindowView = useAppStore((state) => state.mainWindowView);
+
   return (
     <>
       <MainActionBar />
-      <DiffBoxBody />
+      {mainWindowView === null && <EmptyStateScreen />}
+      {mainWindowView === "FileDiff" && <DiffBoxBody />}
+      {mainWindowView === "HistoryGraph" && <HistoryGraph />}
     </>
   );
 }
 
 const DiffBoxBody = () => {
-  const { selectedFileByRepo, selectedRepository } = useAppStore();
+  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const selectedFileByRepo = useAppStore((state) => state.selectedFileByRepo);
+
   const selectedFile = selectedFileByRepo[selectedRepository?.path || ""];
 
   return (
@@ -61,16 +70,7 @@ const DiffBoxBody = () => {
           <DiffArea selectedFile={selectedFile} />
         </>
       ) : (
-        <>
-          <div className="w-full flex items-center justify-center h-full bg-background">
-            <div className="w-full h-[85%] flex flex-col items-center justify-center">
-              <EmptyGitDiffSVG />
-              <span className="text-muted-foreground text-base">
-                Select a file to see the changes
-              </span>
-            </div>
-          </div>
-        </>
+        <EmptyStateScreen />
       )}
     </>
   );
@@ -86,7 +86,7 @@ const MainActionBar = () => {
     <div className="w-full justify-between min-h-14 max-h-14 h-14 border-b flex">
       <div className="min-h-14 max-h-14 h-14 flex">
         <Button
-          className="flex border-0 border-t border-t-transparent hover:border-t-border justify-between items-center h-full rounded-none min-w-72"
+          className="flex justify-between items-center min-h-full rounded-none border-x-0 min-w-72"
           variant={"ghost"}
         >
           <div className="flex items-center justify-center gap-4">
@@ -106,7 +106,7 @@ const MainActionBar = () => {
           (statusAheadBehind && statusAheadBehind.behind > 0) ? (
             <>
               <Button
-                className="flex border-0 border-t border-t-transparent hover:border-t-border justify-between items-center h-full rounded-none w-72"
+                className="flex justify-between items-center min-h-full rounded-none border-x-0 w-72"
                 variant={"ghost"}
                 onClick={async () => {
                   await invalidateAll();
@@ -135,7 +135,7 @@ const MainActionBar = () => {
         ) : (
           <>
             <Button
-              className="flex border-0 border-t border-t-transparent hover:border-t-border justify-between items-center h-full rounded-none min-w-60"
+              className="flex border-x-0 justify-between items-center h-full rounded-none min-w-60"
               variant={"ghost"}
               onClick={async () => {
                 await invalidateAll();
@@ -153,7 +153,7 @@ const MainActionBar = () => {
             </Button>
             <Separator orientation="vertical" className={"border-0"} />
             <Button
-              className="flex border-0 border-t border-t-transparent hover:border-t-border justify-between items-center h-full rounded-none"
+              className="flex border-x-0 justify-between items-center h-full rounded-none"
               variant={"ghost"}
               onClick={async () => {
                 await invalidateAll();
@@ -184,29 +184,50 @@ const FileLevelStatusBar = ({
 };
 
 const DiffArea = ({ selectedFile }: { selectedFile: SelectedFile }) => {
-  const { data: diffData } = useGetDiff(selectedFile?.filePath || null);
+  const { data: diffData, isLoading } = useGetDiff(
+    selectedFile?.filePath || null,
+  );
   const { diffStyle, overflow } = useDiffViewerSettings();
+  const { theme } = useTheme();
 
   return (
     <div
       className={cn(
-        "max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*7))] w-full relative overflow-y-auto pl-px",
+        "max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*7))] h-full w-full relative overflow-y-auto _bg-secondary/70",
       )}
     >
-      {/* <MonacoTestDiff /> */}
-      {diffData?.patch && (
-        <DiffViewer
-          patch={diffData?.patch}
-          options={{
-            diffStyle,
-            overflow,
-            disableFileHeader: true,
-            theme: {
-              dark: "vesper",
-              light: "vesper-light",
-            },
-          }}
-        />
+      {isLoading ? (
+        <div className="p-2.5">
+          <LoaderIndicator />
+        </div>
+      ) : (
+        <>
+          {diffData?.patch && (
+            <DiffViewer
+              patch={diffData?.patch}
+              options={{
+                diffStyle,
+                overflow,
+                disableFileHeader: true,
+                themeType: theme?.startsWith("dark-") ? "dark" : "light",
+                theme: {
+                  dark: "vesper",
+                  light: "vesper-light",
+                  // dark: "github-dark-default",
+                  // light: "github-light-default",
+                },
+                unsafeCSS: `
+                  [data-background] {
+                    --diffs-light-bg: transparent !important;
+                    --diffs-dark-bg: transparent !important;
+                    // --diffs-light-bg: color-mix(in oklab, var(--color-secondary) 70%, #ffffff) !important;
+                    // --diffs-dark-bg: color-mix(in oklab, var(--color-secondary) 70%, #ffffff) !important;
+                  }
+                `,
+              }}
+            />
+          )}
+        </>
       )}
     </div>
   );
@@ -223,10 +244,14 @@ const FileLevelStatusBarLeft = ({
 
   return (
     <div className="items-center h-full px-2 flex gap-2">
-      {getStatusIcon(selectedFile.status)}
-      <span className="flex items-center">
-        {renderPath(selectedFile?.filePath)}
-      </span>
+      {selectedFile?.status && selectedFile?.filePath ? (
+        <>
+          {getStatusIcon(selectedFile?.status)}
+          <span className="flex items-center">
+            {renderPath(selectedFile?.filePath)}
+          </span>
+        </>
+      ) : null}
       {selectedFile?.fileNewPath ? (
         <div>
           <MoveHorizontal
@@ -256,8 +281,29 @@ const renderPath = (path: string) => {
 };
 
 const SettingsPopover = () => {
+  const setSelectedFileForRepo = useAppStore(
+    (state) => state.setSelectedFileForRepo,
+  );
+  const setMainWindowView = useAppStore((state) => state.setMainWindowView);
+
   return (
     <div>
+      <Button
+        size="icon"
+        variant="ghost"
+        className="relative"
+        aria-label="Open notifications"
+        onClick={() => {
+          setMainWindowView(null);
+          setSelectedFileForRepo({
+            filePath: undefined,
+            status: undefined,
+            fileNewPath: undefined,
+          });
+        }}
+      >
+        <X />
+      </Button>
       <Popover>
         <PopoverTrigger
           render={
@@ -341,5 +387,52 @@ const SettingsPopoverContent = () => {
         </div>
       </div>
     </PopoverContent>
+  );
+};
+
+const EmptyStateScreen = () => {
+  return (
+    <div className="w-full flex justify-center h-full bg-background border-r">
+      <div className="w-full h-full flex flex-col items-center justify-center -mt-20">
+        <GitruBorderedSVG />
+        <div className="flex flex-col gap-0.5 w-60">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground text-sm font-light">
+              Command Pannel
+            </span>
+            <span>
+              <KbdGroup>
+                <Kbd>⌘</Kbd>
+                <Kbd>K</Kbd>
+              </KbdGroup>
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground text-sm font-light">
+              New Branch
+            </span>
+            <span>
+              <KbdGroup>
+                <Kbd>⌘</Kbd>
+                <Kbd>⇧</Kbd>
+                <Kbd>N</Kbd>
+              </KbdGroup>
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground text-sm font-light">
+              Pull Changes
+            </span>
+            <span>
+              <KbdGroup>
+                <Kbd>⌘</Kbd>
+                <Kbd>⇧</Kbd>
+                <Kbd>P</Kbd>
+              </KbdGroup>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };

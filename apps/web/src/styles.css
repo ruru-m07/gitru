@@ -94,8 +94,6 @@ body {
   background-color: var(--color-primary-shade-12);
 }
 
-/* @import "@gitru/diff/styles/diff-viewer.css"; */
-
 @layer base {
   body {
     @apply bg-background text-foreground;

@@ -24,7 +24,7 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
 
   return (
     <div
-      className="h-(--main-custom-header-height) bg-background flex items-center justify-between relative px-4 select-none _border-b"
+      className="h-(--main-custom-header-height) flex items-center justify-between relative px-4 select-none _border-b"
       data-tauri-drag-region
       style={{
         // @ts-expect-error - ¯\_(ツ)_/¯

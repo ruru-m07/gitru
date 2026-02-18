@@ -1,6 +1,3 @@
-@import "tailwindcss";
-@import "tw-animate-css";
-
 @import "@gitru/ui/globals.css";
 
 :root {
@@ -21,32 +18,8 @@
   app-region: drag;
 }
 
-/* html[data-theme="dark-classic"],
-html[data-theme="dark-caffeine"],
-html[data-theme="dark-claude"] {
-  span {
-    background-color: var(--shiki-dark-classic-bg) !important;
-    color: var(--shiki-dark-classic) !important;
-  }
-} */
-
-.hidden-scrollbar {
-  scrollbar-width: none;
-}
-.hidden-scrollbar::-webkit-scrollbar {
-  display: none;
+.custom-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-muted) transparent;
 }
 
-.spin {
-  animation: spin 1s linear infinite;
-}
-
-.spin-end {
-  animation: spin 0.3s linear 1;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}

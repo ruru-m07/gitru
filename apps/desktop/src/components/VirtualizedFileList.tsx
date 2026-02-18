@@ -366,16 +366,15 @@ const FileRow = memo(
       <contextMenu.ContextMenu>
         <contextMenu.ContextMenuTrigger
           className={cn(
-            `dark:[&[data-state=open]>div]:bg-blue-900/50! [&[data-state=open]>div]:bg-blue-50! [&[data-state=open]>div]:border [&[data-state=open]>div]:border-y-blue-400! [&[data-state=open]>div]:border-dashed! [&[data-state=open]>div]:border-l-border!`,
+            `dark:[&[data-state=open]>div]:bg-blue-900/50! [&[data-state=open]>div]:bg-blue-50! border-y-transparent [&[data-state=open]>div]:border-y [&[data-state=open]>div]:border-y-blue-400! [&[data-state=open]>div]:border-dashed!`,
           )}
           asChild
         >
           <div
             data-index={index}
             className={cn(
-              "[--pattern-fg:color-mix(in_srgb,var(--primary)_20%,transparent)] flex relative select-none cursor-pointer hover:bg-muted border border-transparent hover:border hover:border-l hover:border-l-border items-center pl-2 pr-0.5 py-0.5 h-full",
-              isSelected &&
-                "bg-muted-foreground/10! hover:bg-muted-foreground/15!",
+              "[--pattern-fg:color-mix(in_srgb,var(--primary)_20%,transparent)] flex relative select-none cursor-pointer hover:bg-muted items-center h-full",
+              isSelected && "bg-secondary hover:bg-muted-foreground/15!",
             )}
             onClick={(e) => {
               onFileClick(file, index, {
@@ -394,9 +393,9 @@ const FileRow = memo(
             }}
           >
             {isSelected && (
-              <div className="absolute top-1/2 -translate-y-1/2 -left-1 rounded-md w-2 bg-primary h-6" />
+              <div className="absolute top-1/2 -translate-y-1/2 -left-1 rounded-md w-1.75 bg-primary h-4" />
             )}
-            <div className="flex items-center w-full min-w-0">
+            <div className="flex items-center w-full min-w-0 pl-2 pr-0.5 py-0.5">
               <div className="shrink-0">{getStatusIcon(file.status, 18)}</div>
               <div className="flex items-center ml-1.5 min-w-0 flex-1">
                 <Label className="flex cursor-pointer items-center min-w-0 text-sm w-full gap-0">

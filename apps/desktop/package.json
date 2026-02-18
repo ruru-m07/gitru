@@ -44,6 +44,7 @@
     "react": "^19.1.0",
     "react-dom": "catalog:",
     "react-hotkeys-hook": "^5.2.1",
+    "react-intersection-observer": "^10.0.2",
     "react-resizable-panels": "catalog:",
     "react-scan": "^0.4.3",
     "shiki": "^3.13.0",

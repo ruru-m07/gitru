@@ -52,12 +52,14 @@ import { cn } from "@gitru/ui/lib/utils";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
+  ArchiveRestore,
   BadgeQuestionMark,
   ChevronDown,
   ChevronDownIcon,
   ChevronUp,
   CircleAlertIcon,
   GitBranch,
+  History,
   ListFilterPlus,
   Loader2,
   SearchIcon,
@@ -71,6 +73,7 @@ import { useDefaultLayout } from "react-resizable-panels";
 import { toast } from "sonner";
 import z from "zod";
 import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
+import PageLayout from "@/components/pageLayout";
 import { RepositoryListItem } from "@/components/RepositoryListItem";
 import StatusBar from "@/components/statusBar";
 import { VirtualizedFileList } from "@/components/VirtualizedFileList";
@@ -78,10 +81,12 @@ import {
   useCreateCommit,
   useGetCommitHistory,
   useGetCurrentBranch,
+  useGetCurrentBranchStash,
   useGetStatus,
   useGitAdd,
   useGitDiscard,
   useGitUnstage,
+  usePopCurrentBranchStash,
 } from "@/hooks";
 import { useRepositories } from "@/hooks/useRepositories";
 import { getAvatarByProvider } from "@/lib/getAvatarByGitProvider";
@@ -101,7 +106,17 @@ export const Route = createFileRoute("/app/git")({
 });
 
 function GitPageLayout() {
-  const { repoSelectIsOpen, setRepoSelectIsOpen } = useAppStore();
+  return (
+    <PageLayout>
+      <ResizableArea />
+      <StatusBar />
+    </PageLayout>
+  );
+}
+
+const ResizableArea = () => {
+  const repoSelectIsOpen = useAppStore((state) => state.repoSelectIsOpen);
+  const setRepoSelectIsOpen = useAppStore((state) => state.setRepoSelectIsOpen);
 
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: "git-page-layout",
@@ -110,48 +125,40 @@ function GitPageLayout() {
   });
 
   return (
-    <div
-      className={cn(
-        "ml-(--main-actual-content-padding) bg-accent/35 ring-1 ring-inset ring-border h-full w-full rounded-md flex overflow-hidden",
-        "flex flex-col",
-      )}
-    >
-      <div className="flex">
-        <ResizablePanelGroup
-          defaultLayout={defaultLayout}
-          onLayoutChanged={onLayoutChanged}
-          orientation="horizontal"
-          id="git-page-layout"
+    <div className="flex">
+      <ResizablePanelGroup
+        defaultLayout={defaultLayout}
+        onLayoutChanged={onLayoutChanged}
+        orientation="horizontal"
+        id="git-page-layout"
+      >
+        <ResizablePanel
+          defaultSize={320}
+          minSize={270}
+          maxSize={800}
+          id="left"
+          className="flex flex-col h-full"
         >
-          <ResizablePanel
-            defaultSize={320}
-            minSize={270}
-            maxSize={800}
-            id="left"
-            className="flex flex-col h-full"
-          >
-            <ToggelPanelButton />
-            <div className="h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*7)-calc(var(--spacing)*3))]">
-              {repoSelectIsOpen ? <ListRepositories /> : <ListFileChanges />}
-            </div>
-          </ResizablePanel>
-          <ResizableHandle withHandle />
-          <ResizablePanel
-            className={cn("relative", repoSelectIsOpen && "cursor-pointer")}
-            onClick={() => setRepoSelectIsOpen(false)}
-            id="right"
-          >
-            {repoSelectIsOpen && (
-              <div className="absolute inset-0 bg-white/50 dark:bg-black/40 z-10 w-full h-full backdrop-blur-[2px] border border-l-0"></div>
-            )}
-            <Outlet />
-          </ResizablePanel>
-        </ResizablePanelGroup>
-      </div>
-      <StatusBar />
+          <ToggelPanelButton />
+          <div className="h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*7)-calc(var(--spacing)*3))]">
+            {repoSelectIsOpen ? <ListRepositories /> : <ListFileChanges />}
+          </div>
+        </ResizablePanel>
+        <ResizableHandle withHandle />
+        <ResizablePanel
+          className={cn("relative", repoSelectIsOpen && "cursor-pointer")}
+          onClick={() => setRepoSelectIsOpen(false)}
+          id="right"
+        >
+          {repoSelectIsOpen && (
+            <div className="absolute inset-0 bg-background/40 z-10 w-full h-full backdrop-blur-[2px]"></div>
+          )}
+          <Outlet />
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   );
-}
+};
 
 const DiscardChangesDialog = memo(function DiscardChangesDialog({
   fileName,
@@ -270,6 +277,9 @@ const WriteCommitBox = memo(function WriteCommitBox() {
   const { mutateAsync: gitAdd, isPending: isAdding } = useGitAdd();
   const { mutateAsync: createCommit, isPending: isCreatingCommit } =
     useCreateCommit();
+  const { data: currentBranchStash } = useGetCurrentBranchStash();
+  const { mutateAsync: popCurrentBranchStash, isPending: isPoppingStash } =
+    usePopCurrentBranchStash();
 
   const nothingToCommit =
     status?.files.filter((file) =>
@@ -282,9 +292,12 @@ const WriteCommitBox = memo(function WriteCommitBox() {
     }
 
     const data = await createCommit({
-      title,
-      description,
-      co_authors,
+      commitMeta: {
+        title,
+        description,
+        co_authors,
+      },
+      allowEmpty: false,
     });
     if (data) {
       setTitle("");
@@ -296,11 +309,11 @@ const WriteCommitBox = memo(function WriteCommitBox() {
 
   return (
     <div>
-      <div className="shrink-0 border-l flex flex-col gap-2 justify-between items-center border-t px-2 py-2 bg-accent dark:bg-accent/10">
+      <div className="shrink-0 flex flex-col gap-2 justify-between items-center border-t px-2 py-2 ">
         <InputGroup>
           <InputGroupInput
             placeholder="Summary (required)"
-            className="h-8 _border-border dark:bg-background!"
+            className="h-8 dark:bg-background"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
@@ -333,59 +346,95 @@ const WriteCommitBox = memo(function WriteCommitBox() {
             </Button>
           </InputGroupAddon>
         </InputGroup>
-        <Group aria-label="Subscription actions" className="w-full">
-          <Button
-            onClick={handelCommit}
-            className="flex-1 truncate"
-            disabled={isAdding || isCreatingCommit || title.trim() === ""}
-          >
-            {isAdding || isCreatingCommit ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                Committing...
-              </>
-            ) : (
-              <>
-                {nothingToCommit ? "Add all & Commit to" : "Commit to"}{" "}
-                <span className="truncate -ml-1">{currentBranch?.name}</span>
-              </>
-            )}
-          </Button>
-          <GroupSeparator className="bg-primary/72" />
-          <Menu>
-            <MenuTrigger
-              render={
-                <Button
-                  aria-label="Copy options"
-                  size="icon"
-                  className="rounded-r-lg!"
-                />
-              }
+        <div className="w-full flex items-center gap-2">
+          {currentBranchStash ? (
+            <Button
+              variant="secondary"
+              title={currentBranchStash.message}
+              onClick={async () => {
+                const result = await popCurrentBranchStash();
+                if (result) {
+                  toast.success(result);
+                }
+              }}
+              disabled={isPoppingStash}
             >
-              <ChevronDownIcon className="size-4" />
-            </MenuTrigger>
-            <MenuPopup align="end" className={"w-full"}>
-              <MenuItem>Empty Commit</MenuItem>
-              <MenuItem>Amend Last Commit</MenuItem>
-            </MenuPopup>
-          </Menu>
-        </Group>
+              {isPoppingStash ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Popping...
+                </>
+              ) : (
+                <>
+                  <ArchiveRestore className="size-4" />
+                  Pop Stash
+                </>
+              )}
+            </Button>
+          ) : null}
+          <Group aria-label="Subscription actions" className="w-full">
+            <Button
+              onClick={handelCommit}
+              className="flex-1 truncate"
+              disabled={isAdding || isCreatingCommit || title.trim() === ""}
+            >
+              {isAdding || isCreatingCommit ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Committing...
+                </>
+              ) : (
+                <>
+                  {nothingToCommit ? (
+                    <span>Add all & Commit</span>
+                  ) : (
+                    <span className="truncate">
+                      Commit to <span>{currentBranch?.name}</span>
+                    </span>
+                  )}
+                </>
+              )}
+            </Button>
+            <GroupSeparator className="bg-primary/72" />
+            <Menu>
+              <MenuTrigger
+                render={
+                  <Button
+                    aria-label="Copy options"
+                    size="icon"
+                    className="rounded-r-lg!"
+                  />
+                }
+              >
+                <ChevronDownIcon className="size-4" />
+              </MenuTrigger>
+              <MenuPopup align="end" className={"w-full"}>
+                <MenuItem>Empty Commit</MenuItem>
+                <MenuItem>Amend Last Commit</MenuItem>
+              </MenuPopup>
+            </Menu>
+          </Group>
+        </div>
       </div>
     </div>
   );
 });
 
 const ToggelPanelButton = () => {
-  const { repoSelectIsOpen, setRepoSelectIsOpen, selectedRepository } =
-    useAppStore();
+  const repoSelectIsOpen = useAppStore((state) => state.repoSelectIsOpen);
+  const setRepoSelectIsOpen = useAppStore((state) => state.setRepoSelectIsOpen);
+  const selectedRepository = useAppStore((state) => state.selectedRepository);
 
   return (
-    <button
+    <Button
       onClick={() => {
         setRepoSelectIsOpen(!repoSelectIsOpen);
       }}
-      className="flex justify-between items-center border-b px-2 pt-2 pb-1 hover:bg-accent/40 cursor-pointer min-h-14 max-h-14"
-      type="button"
+      className={cn(
+        "rounded-none justify-between min-h-[55px] max-h-[55px]",
+        repoSelectIsOpen && "bg-accent",
+      )}
+      variant={"ghost"}
     >
       <div className="flex-col flex items-start">
         <span className="text-xs text-muted-foreground">
@@ -394,15 +443,19 @@ const ToggelPanelButton = () => {
         <span>{selectedRepository?.name || "No repository selected"}</span>
       </div>
       {repoSelectIsOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-    </button>
+    </Button>
   );
 };
 
 const ListFileChanges = () => {
   const [query, setQuery] = useState("");
 
-  const { selectedRepository, setSelectedFileForRepo, selectedFileByRepo } =
-    useAppStore();
+  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const setSelectedFileForRepo = useAppStore(
+    (state) => state.setSelectedFileForRepo,
+  );
+  const selectedFileByRepo = useAppStore((state) => state.selectedFileByRepo);
+  const setMainWindowView = useAppStore((state) => state.setMainWindowView);
 
   const { data: status, isLoading: isStatusLoading } = useGetStatus();
 
@@ -437,17 +490,15 @@ const ListFileChanges = () => {
 
   return (
     <Tabs defaultValue="tab-1" className={"gap-0 h-full flex flex-col"}>
-      <TabsList className={"rounded-none w-full border-l border-b shrink-0"}>
-        <TabsTab
-          className={"rounded-none! ml-0 aria-selected:text-muted-foreground"}
-          value="tab-1"
-        >
+      <TabsList
+        className={
+          "rounded-none bg-background w-full shrink-0 border-y *:data-[slot=tab-indicator]:bg-secondary *:data-[slot=tab-indicator]:transition-none"
+        }
+      >
+        <TabsTab className={"rounded-none!"} value="tab-1">
           Changes
         </TabsTab>
-        <TabsTab
-          className={"rounded-none! aria-selected:text-muted-foreground"}
-          value="tab-2"
-        >
+        <TabsTab className={"rounded-none!"} value="tab-2">
           History
         </TabsTab>
       </TabsList>
@@ -456,7 +507,7 @@ const ListFileChanges = () => {
         className={"flex-1 flex flex-col min-h-0"}
         tabIndex={-1}
       >
-        <div className="p-1.5 border-b">
+        <div className="p-1.5 max-h-10 min-h-10 border-b">
           <Group aria-label="Subscription actions" className="w-full">
             <Input
               aria-label="Filter files"
@@ -474,7 +525,6 @@ const ListFileChanges = () => {
                     aria-label="Copy options"
                     size="icon-sm"
                     variant={"secondary"}
-                    className="rounded-r-md! border-border"
                   />
                 }
               >
@@ -489,7 +539,7 @@ const ListFileChanges = () => {
             </Menu>
           </Group>
         </div>
-        <div className="flex-1 overflow-auto ">
+        <div className="flex-1 overflow-y-auto custom-scroll">
           {isStatusLoading ? (
             <>
               <span>Loading...</span>
@@ -577,10 +627,35 @@ const ListFileChanges = () => {
         <WriteCommitBox />
       </TabsPanel>
       <TabsPanel value="tab-2" className={"h-full"} tabIndex={-1}>
+        <div className="border-b max-h-10 min-h-10 p-1.5">
+          <Group aria-label="Subscription actions" className="w-full">
+            <Input
+              aria-label="Filter Commit"
+              placeholder="Filter commits..."
+              className={"rounded-l-md! border-border! w-full"}
+              size={"sm"}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <GroupSeparator />
+            <Button
+              aria-label="Copy options"
+              size="icon-sm"
+              variant={"secondary"}
+              className="rounded-r-md! border-border"
+              onClick={() => {
+                setMainWindowView("HistoryGraph");
+                setSelectedFileForRepo(null);
+              }}
+            >
+              <History />
+            </Button>
+          </Group>
+        </div>
         <ScrollArea className="flex-1 h-full" tabIndex={-1}>
           {commitHistory?.map((commit) => (
             <div
-              className="w-full p-2 border-b hover:bg-accent cursor-pointer hover:border-l-border border-l border-l-transparent"
+              className="w-full p-2 border-b hover:bg-accent cursor-pointer"
               key={commit.id}
             >
               <p className="truncate text-sm">{commit.summary}</p>
@@ -671,9 +746,13 @@ const ListFileChanges = () => {
   );
 };
 
-const ListRepositories = () => {
-  const { setRepoSelectIsOpen, setSelectedRepository, selectedRepository } =
-    useAppStore();
+const ListRepositories = memo(() => {
+  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const setSelectedRepository = useAppStore(
+    (state) => state.setSelectedRepository,
+  );
+  const setRepoSelectIsOpen = useAppStore((state) => state.setRepoSelectIsOpen);
+
   const { repositories, addRepo, removeRepo } = useRepositories();
   const [query, setQuery] = useState("");
 
@@ -743,7 +822,7 @@ const ListRepositories = () => {
               aria-hidden="true"
             />
           </DropdownMenuTrigger>
-          <DropdownMenuContent>
+          <DropdownMenuContent align="end">
             <DropdownMenuItem
               onClick={async () => {
                 console.log(repositories);
@@ -782,7 +861,7 @@ const ListRepositories = () => {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <ScrollArea className="max-h-full _flex-1">
+      <div className="max-h-full _flex-1">
         <div className="">
           {groupedByOwner &&
             Object.entries(groupedByOwner)
@@ -834,7 +913,7 @@ const ListRepositories = () => {
                 );
               })}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
-};
+});
