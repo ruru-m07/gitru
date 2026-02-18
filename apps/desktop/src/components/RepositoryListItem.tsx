@@ -40,8 +40,8 @@ export const RepositoryListItem = memo(function RepositoryListItem({
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <button
-          className={`py-1 px-2 flex border-l w-full hover:border-border h-10 hover:bg-accent cursor-pointer ${
-            isSelected ? "bg-accent border-border" : ""
+          className={`py-1 px-2 flex w-full h-10 hover:bg-secondary cursor-pointer ${
+            isSelected ? "bg-secondary hover:bg-accent" : ""
           }`}
           type="button"
           onClick={onSelect}

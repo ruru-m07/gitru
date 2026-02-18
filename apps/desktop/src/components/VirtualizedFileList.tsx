@@ -366,7 +366,7 @@ const FileRow = memo(
       <contextMenu.ContextMenu>
         <contextMenu.ContextMenuTrigger
           className={cn(
-            `dark:[&[data-state=open]>div]:bg-blue-900/50! [&[data-state=open]>div]:bg-blue-50! border-y-transparent [&[data-state=open]>div]:border-y [&[data-state=open]>div]:border-y-blue-400! [&[data-state=open]>div]:border-dashed! [&[data-state=open]>div]:border-l-border!`,
+            `dark:[&[data-state=open]>div]:bg-blue-900/50! [&[data-state=open]>div]:bg-blue-50! border-y-transparent [&[data-state=open]>div]:border-y [&[data-state=open]>div]:border-y-blue-400! [&[data-state=open]>div]:border-dashed!`,
           )}
           asChild
         >

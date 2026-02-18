@@ -151,7 +151,7 @@ const ResizableArea = () => {
           id="right"
         >
           {repoSelectIsOpen && (
-            <div className="absolute inset-0 bg-white/50 dark:bg-black/40 z-10 w-full h-full backdrop-blur-[2px] border border-l-0"></div>
+            <div className="absolute inset-0 bg-background/40 z-10 w-full h-full backdrop-blur-[2px]"></div>
           )}
           <Outlet />
         </ResizablePanel>
@@ -313,7 +313,7 @@ const WriteCommitBox = memo(function WriteCommitBox() {
         <InputGroup>
           <InputGroupInput
             placeholder="Summary (required)"
-            className="h-8 _border-border dark:bg-background!"
+            className="h-8 dark:bg-background"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
@@ -385,8 +385,13 @@ const WriteCommitBox = memo(function WriteCommitBox() {
                 </>
               ) : (
                 <>
-                  {nothingToCommit ? "Add all & Commit to" : "Commit to"}{" "}
-                  <span className="truncate -ml-1">{currentBranch?.name}</span>
+                  {nothingToCommit ? (
+                    <span>Add all & Commit</span>
+                  ) : (
+                    <span className="truncate">
+                      Commit to <span>{currentBranch?.name}</span>
+                    </span>
+                  )}
                 </>
               )}
             </Button>
@@ -650,7 +655,7 @@ const ListFileChanges = () => {
         <ScrollArea className="flex-1 h-full" tabIndex={-1}>
           {commitHistory?.map((commit) => (
             <div
-              className="w-full p-2 border-b hover:bg-accent cursor-pointer hover:border-l-border border-l border-l-transparent"
+              className="w-full p-2 border-b hover:bg-accent cursor-pointer"
               key={commit.id}
             >
               <p className="truncate text-sm">{commit.summary}</p>

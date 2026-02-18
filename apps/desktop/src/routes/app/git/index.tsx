@@ -193,7 +193,7 @@ const DiffArea = ({ selectedFile }: { selectedFile: SelectedFile }) => {
   return (
     <div
       className={cn(
-        "max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*7))] h-full w-full relative overflow-y-auto bg-secondary/70",
+        "max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*7))] h-full w-full relative overflow-y-auto _bg-secondary/70",
       )}
     >
       {isLoading ? (
@@ -211,17 +211,17 @@ const DiffArea = ({ selectedFile }: { selectedFile: SelectedFile }) => {
                 disableFileHeader: true,
                 themeType: theme?.startsWith("dark-") ? "dark" : "light",
                 theme: {
-                  // dark: "vesper",
-                  // light: "vesper-light",
-                  dark: "github-dark-default",
-                  light: "github-light-default",
+                  dark: "vesper",
+                  light: "vesper-light",
+                  // dark: "github-dark-default",
+                  // light: "github-light-default",
                 },
                 unsafeCSS: `
                   [data-background] {
-                    // --diffs-light-bg: var(--color-secondary) !important;
-                    // --diffs-dark-bg: var(--color-secondary) !important;
-                    --diffs-light-bg: color-mix(in oklab, var(--color-secondary) 70%, #ffffff) !important;
-                    --diffs-dark-bg: color-mix(in oklab, var(--color-secondary) 70%, #ffffff) !important;
+                    --diffs-light-bg: transparent !important;
+                    --diffs-dark-bg: transparent !important;
+                    // --diffs-light-bg: color-mix(in oklab, var(--color-secondary) 70%, #ffffff) !important;
+                    // --diffs-dark-bg: color-mix(in oklab, var(--color-secondary) 70%, #ffffff) !important;
                   }
                 `,
               }}
