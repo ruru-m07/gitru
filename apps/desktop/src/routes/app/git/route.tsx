@@ -73,6 +73,7 @@ import { useDefaultLayout } from "react-resizable-panels";
 import { toast } from "sonner";
 import z from "zod";
 import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
+import PageLayout from "@/components/pageLayout";
 import { RepositoryListItem } from "@/components/RepositoryListItem";
 import StatusBar from "@/components/statusBar";
 import { VirtualizedFileList } from "@/components/VirtualizedFileList";
@@ -106,15 +107,10 @@ export const Route = createFileRoute("/app/git")({
 
 function GitPageLayout() {
   return (
-    <div
-      className={cn(
-        "ml-(--main-actual-content-padding) bg-accent/35 ring-1 ring-inset ring-border h-full w-full rounded-md flex overflow-hidden",
-        "flex flex-col",
-      )}
-    >
+    <PageLayout>
       <ResizableArea />
       <StatusBar />
-    </div>
+    </PageLayout>
   );
 }
 
@@ -313,7 +309,7 @@ const WriteCommitBox = memo(function WriteCommitBox() {
 
   return (
     <div>
-      <div className="shrink-0 border-l flex flex-col gap-2 justify-between items-center border-t px-2 py-2 bg-accent dark:bg-accent/10">
+      <div className="shrink-0 flex flex-col gap-2 justify-between items-center border-t px-2 py-2 ">
         <InputGroup>
           <InputGroupInput
             placeholder="Summary (required)"
@@ -425,12 +421,15 @@ const ToggelPanelButton = () => {
   const selectedRepository = useAppStore((state) => state.selectedRepository);
 
   return (
-    <button
+    <Button
       onClick={() => {
         setRepoSelectIsOpen(!repoSelectIsOpen);
       }}
-      className="flex justify-between items-center border-b px-2 pt-2 pb-1 hover:bg-accent/40 cursor-pointer min-h-14 max-h-14"
-      type="button"
+      className={cn(
+        "rounded-none justify-between min-h-[55px] max-h-[55px]",
+        repoSelectIsOpen && "bg-accent",
+      )}
+      variant={"ghost"}
     >
       <div className="flex-col flex items-start">
         <span className="text-xs text-muted-foreground">
@@ -439,7 +438,7 @@ const ToggelPanelButton = () => {
         <span>{selectedRepository?.name || "No repository selected"}</span>
       </div>
       {repoSelectIsOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-    </button>
+    </Button>
   );
 };
 
@@ -486,17 +485,23 @@ const ListFileChanges = () => {
 
   return (
     <Tabs defaultValue="tab-1" className={"gap-0 h-full flex flex-col"}>
-      <TabsList className={"rounded-none w-full border-l border-b shrink-0"}>
-        <TabsTab
-          className={"rounded-none! ml-0 aria-selected:text-muted-foreground"}
-          value="tab-1"
-        >
+      {/* <TabsList className={"rounded-none w-full shrink-0 border-y"}>
+        <TabsTab className={"rounded-none!"} value="tab-1">
           Changes
         </TabsTab>
-        <TabsTab
-          className={"rounded-none! aria-selected:text-muted-foreground"}
-          value="tab-2"
-        >
+        <TabsTab className={"rounded-none!"} value="tab-2">
+          History
+        </TabsTab>
+      </TabsList> */}
+      <TabsList
+        className={
+          "rounded-none bg-background w-full shrink-0 border-y *:data-[slot=tab-indicator]:bg-secondary"
+        }
+      >
+        <TabsTab className={"rounded-none!"} value="tab-1">
+          Changes
+        </TabsTab>
+        <TabsTab className={"rounded-none!"} value="tab-2">
           History
         </TabsTab>
       </TabsList>
@@ -523,7 +528,6 @@ const ListFileChanges = () => {
                     aria-label="Copy options"
                     size="icon-sm"
                     variant={"secondary"}
-                    className="rounded-r-md! border-border"
                   />
                 }
               >
@@ -538,7 +542,7 @@ const ListFileChanges = () => {
             </Menu>
           </Group>
         </div>
-        <div className="flex-1 overflow-auto ">
+        <div className="flex-1 overflow-y-auto custom-scroll">
           {isStatusLoading ? (
             <>
               <span>Loading...</span>
@@ -821,7 +825,7 @@ const ListRepositories = memo(() => {
               aria-hidden="true"
             />
           </DropdownMenuTrigger>
-          <DropdownMenuContent>
+          <DropdownMenuContent align="end">
             <DropdownMenuItem
               onClick={async () => {
                 console.log(repositories);

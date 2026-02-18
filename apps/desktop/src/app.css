@@ -17,3 +17,9 @@
 *[data-tauri-drag-region] {
   app-region: drag;
 }
+
+.custom-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-muted) transparent;
+}
+

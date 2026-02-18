@@ -23,6 +23,7 @@ import {
   TextWrap,
   X,
 } from "lucide-react";
+import { useTheme } from "next-themes";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
 import HistoryGraph from "@/components/historyGraph";
@@ -85,7 +86,7 @@ const MainActionBar = () => {
     <div className="w-full justify-between min-h-14 max-h-14 h-14 border-b flex">
       <div className="min-h-14 max-h-14 h-14 flex">
         <Button
-          className="flex justify-between items-center h-full rounded-none border-x-0 min-w-72"
+          className="flex justify-between items-center min-h-full rounded-none border-x-0 min-w-72"
           variant={"ghost"}
         >
           <div className="flex items-center justify-center gap-4">
@@ -187,11 +188,12 @@ const DiffArea = ({ selectedFile }: { selectedFile: SelectedFile }) => {
     selectedFile?.filePath || null,
   );
   const { diffStyle, overflow } = useDiffViewerSettings();
+  const { theme } = useTheme();
 
   return (
     <div
       className={cn(
-        "max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*7))] w-full relative overflow-y-auto pl-px",
+        "max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*7))] h-full w-full relative overflow-y-auto bg-secondary/70",
       )}
     >
       {isLoading ? (
@@ -207,10 +209,21 @@ const DiffArea = ({ selectedFile }: { selectedFile: SelectedFile }) => {
                 diffStyle,
                 overflow,
                 disableFileHeader: true,
+                themeType: theme?.startsWith("dark-") ? "dark" : "light",
                 theme: {
-                  dark: "vesper",
-                  light: "vesper-light",
+                  // dark: "vesper",
+                  // light: "vesper-light",
+                  dark: "github-dark-default",
+                  light: "github-light-default",
                 },
+                unsafeCSS: `
+                  [data-background] {
+                    // --diffs-light-bg: var(--color-secondary) !important;
+                    // --diffs-dark-bg: var(--color-secondary) !important;
+                    --diffs-light-bg: color-mix(in oklab, var(--color-secondary) 70%, #ffffff) !important;
+                    --diffs-dark-bg: color-mix(in oklab, var(--color-secondary) 70%, #ffffff) !important;
+                  }
+                `,
               }}
             />
           )}

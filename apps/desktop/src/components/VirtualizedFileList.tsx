@@ -373,9 +373,8 @@ const FileRow = memo(
           <div
             data-index={index}
             className={cn(
-              "[--pattern-fg:color-mix(in_srgb,var(--primary)_20%,transparent)] flex relative select-none cursor-pointer hover:bg-muted border border-transparent hover:border hover:border-l hover:border-l-border items-center h-full",
-              isSelected &&
-                "bg-muted-foreground/10! hover:bg-muted-foreground/15!",
+              "[--pattern-fg:color-mix(in_srgb,var(--primary)_20%,transparent)] flex relative select-none cursor-pointer hover:bg-muted items-center h-full",
+              isSelected && "bg-secondary hover:bg-muted-foreground/15!",
             )}
             onClick={(e) => {
               onFileClick(file, index, {

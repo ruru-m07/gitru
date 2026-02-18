@@ -135,7 +135,8 @@ impl ActionService {
 
     async fn git_restore_file(&self, file: &str) -> Result<(), String> {
         validate_relative_path(file)?;
-        self.ctx
+        let restore_result = self
+            .ctx
             .runner
             .run_with_options(
                 &[
@@ -148,13 +149,23 @@ impl ActionService {
                 ],
                 GitRunOptions::default_read().with_timeout(std::time::Duration::from_secs(30)),
             )
-            .await?;
+            .await;
 
-        let _ = self.ctx.runner.run_with_options(
-            &["clean", "-f", "--", file],
-            GitRunOptions::default_read().with_timeout(std::time::Duration::from_secs(30)),
-        );
+        let clean_result = self
+            .ctx
+            .runner
+            .run_with_options(
+                &["clean", "-fd", "--", file],
+                GitRunOptions::default_read().with_timeout(std::time::Duration::from_secs(30)),
+            )
+            .await;
 
-        Ok(())
+        match (restore_result, clean_result) {
+            (Ok(_), _) | (Err(_), Ok(_)) => Ok(()),
+            (Err(restore_err), Err(clean_err)) => Err(format!(
+                "Failed to discard changes for '{}': restore failed ({}) and clean failed ({})",
+                file, restore_err, clean_err
+            )),
+        }
     }
 }

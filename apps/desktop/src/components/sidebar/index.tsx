@@ -22,6 +22,7 @@ const Sidebar = () => {
                   icon: Inbox,
                   name: "Inbox",
                   href: "/app/inbox",
+                  badge: "5",
                 },
                 {
                   icon: PullRequest,
@@ -40,7 +41,9 @@ const Sidebar = () => {
                 },
               ]}
             />
-            <div className="my-1 h-px w-full bg-border" />
+            <div className="w-full flex justify-center items-center">
+              <div className="my-1 h-px w-7 bg-muted-foreground/20" />
+            </div>
             {/* // TODO: we will forward to do some kindof sortcuts */}
             <ScrollArea className="w-full max-h-[calc(100vh-3rem-4rem)]">
               <div className="flex flex-col items-center gap-1">
@@ -69,11 +72,7 @@ const Sidebar = () => {
                     </Avatar>
                   </Button>
                 ))}
-                <Button
-                  variant="secondary"
-                  size={"icon"}
-                  className="size-8 p-0"
-                >
+                <Button variant="outline" size={"icon"} className="size-8 p-0">
                   <Plus
                     className="opacity-60"
                     size={14}

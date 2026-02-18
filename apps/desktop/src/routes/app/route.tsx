@@ -10,7 +10,7 @@ export const Route = createFileRoute("/app")({
 function RouteComponent() {
   return (
     <ActionPannel>
-      <div className="h-screen w-full">
+      <div className="h-screen w-full bg-secondary">
         <CustomTitleBar restrictedPaths={["/login", "/register", "/welcome"]} />
         <div className="flex h-(--main-window-height) w-screen px-(--main-actual-content-padding) pb-(--main-actual-content-padding) gap-(--main-actual-content-padding)">
           <Sidebar />
