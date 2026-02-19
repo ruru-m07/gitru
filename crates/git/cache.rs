@@ -17,7 +17,7 @@ pub const TTL_BRANCH_INFO: Duration = Duration::from_millis(300);
 pub const TTL_REPOSITORY_ORIGIN: Duration = Duration::from_millis(3000);
 pub const TTL_LAST_COMMIT: Duration = Duration::from_millis(300);
 pub const TTL_COMMIT_BY_ID: Duration = Duration::from_millis(300);
-pub const TTL_PATCH_BY_FILE_PATH: Duration = Duration::from_millis(200);
+pub const TTL_PATCH_BY_FILE_PATH: Duration = Duration::from_millis(600);
 pub const TTL_HISTORY: Duration = Duration::from_millis(100);
 
 #[derive(Clone, Copy)]

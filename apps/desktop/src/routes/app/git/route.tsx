@@ -431,7 +431,7 @@ const ToggelPanelButton = () => {
         setRepoSelectIsOpen(!repoSelectIsOpen);
       }}
       className={cn(
-        "rounded-none justify-between min-h-[55px] max-h-[55px]",
+        "rounded-none justify-between min-h-13.75 max-h-13.75",
         repoSelectIsOpen && "bg-accent",
       )}
       variant={"ghost"}
@@ -524,7 +524,7 @@ const ListFileChanges = () => {
                   <Button
                     aria-label="Copy options"
                     size="icon-sm"
-                    variant={"secondary"}
+                    variant={"outline"}
                   />
                 }
               >
