@@ -40,6 +40,7 @@ export interface FileListSection {
 
 export interface VirtualizedFileListProps {
   sections: FileListSection[];
+  searchQuery?: string;
   onFileClick: (
     file: FileStatus,
     index: number,
@@ -75,9 +76,144 @@ type VirtualItem =
 
 const ITEM_HEIGHT = 32;
 const SECTION_HEADER_HEIGHT = 36;
+type MatchRange = { start: number; end: number };
+
+const hasRegexFlags = (flags: string) => /^[dgimsuvy]*$/.test(flags);
+
+const ensureGlobalFlag = (flags: string) =>
+  flags.includes("g") ? flags : `${flags}g`;
+
+const escapeForRegex = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const findLiteralRanges = (value: string, query: string) => {
+  const ranges: MatchRange[] = [];
+  const lowerValue = value.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  let searchIndex = 0;
+
+  while (searchIndex < value.length) {
+    const index = lowerValue.indexOf(lowerQuery, searchIndex);
+    if (index === -1) break;
+    ranges.push({ start: index, end: index + query.length });
+    searchIndex = index + query.length;
+  }
+
+  return ranges;
+};
+
+const buildPatternRegex = (query: string) => {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery || normalizedQuery === "*") return null;
+
+  if (normalizedQuery.startsWith("/") && normalizedQuery.length > 1) {
+    const lastSlashIndex = normalizedQuery.lastIndexOf("/");
+    if (lastSlashIndex > 0) {
+      const pattern = normalizedQuery.slice(1, lastSlashIndex);
+      const flags = normalizedQuery.slice(lastSlashIndex + 1) || "i";
+      if (hasRegexFlags(flags)) {
+        return new RegExp(pattern, ensureGlobalFlag(flags));
+      }
+    }
+  }
+
+  try {
+    return new RegExp(normalizedQuery, "gi");
+  } catch {
+    try {
+      const escapedGlob = normalizedQuery
+        .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+        .replace(/\*/g, ".*")
+        .replace(/\?/g, ".");
+      return new RegExp(escapedGlob, "gi");
+    } catch {
+      return new RegExp(escapeForRegex(normalizedQuery), "gi");
+    }
+  }
+};
+
+const findPatternRanges = (value: string, regex: RegExp) => {
+  const ranges: MatchRange[] = [];
+  regex.lastIndex = 0;
+  let match = regex.exec(value);
+
+  while (match) {
+    const matchedText = match[0];
+    if (!matchedText) {
+      regex.lastIndex += 1;
+      match = regex.exec(value);
+      continue;
+    }
+
+    ranges.push({
+      start: match.index,
+      end: match.index + matchedText.length,
+    });
+    match = regex.exec(value);
+  }
+
+  return ranges;
+};
+
+const getMatchRanges = (value: string, query: string) => {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery || normalizedQuery === "*") return [];
+
+  const literalRanges = findLiteralRanges(value, normalizedQuery);
+  if (literalRanges.length > 0) {
+    return literalRanges;
+  }
+
+  const patternRegex = buildPatternRegex(normalizedQuery);
+  if (!patternRegex) return [];
+  return findPatternRanges(value, patternRegex);
+};
+
+const renderHighlightedSlice = (
+  value: string,
+  ranges: MatchRange[],
+  offset: number,
+) => {
+  if (!value.length || ranges.length === 0) return value;
+  const nodes: React.ReactNode[] = [];
+  let cursor = offset;
+  const segmentEnd = offset + value.length;
+
+  for (const range of ranges) {
+    const start = Math.max(range.start, offset);
+    const end = Math.min(range.end, segmentEnd);
+    if (start >= end) continue;
+
+    if (cursor < start) {
+      nodes.push(
+        <span key={`text-${cursor}`}>
+          {value.slice(cursor - offset, start - offset)}
+        </span>,
+      );
+    }
+    nodes.push(
+      <mark
+        key={`match-${start}`}
+        className="bg-black/15 dark:bg-yellow-400/30 text-foreground rounded-[2px]"
+      >
+        {value.slice(start - offset, end - offset)}
+      </mark>,
+    );
+    cursor = end;
+  }
+
+  if (cursor < segmentEnd) {
+    nodes.push(
+      <span key={`text-${cursor}`}>{value.slice(cursor - offset)}</span>,
+    );
+  }
+
+  return nodes;
+};
 
 export const VirtualizedFileList = memo(function VirtualizedFileList({
   sections,
+  searchQuery = "",
   onFileClick,
   onAdd,
   onUnstage,
@@ -226,6 +362,7 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
                     ? renderDiscard
                     : undefined
                 }
+                searchQuery={searchQuery}
                 setSelectedFilePath={setSelectedFilePath}
                 isSelected={isSelected}
                 selectedFilePath={selectedFilePath}
@@ -331,6 +468,7 @@ const SectionHeader = memo(function SectionHeader({
 
 interface FileRowProps {
   file: FileStatus;
+  searchQuery: string;
   index: number;
   onFileClick: (
     file: FileStatus,
@@ -352,6 +490,7 @@ interface FileRowProps {
 const FileRow = memo(
   function FileRow({
     file,
+    searchQuery,
     index,
     onFileClick,
     onAdd,
@@ -362,6 +501,13 @@ const FileRow = memo(
     isSelected,
     selectedFilePath: _selectedFilePath,
   }: FileRowProps) {
+    const path = file.path;
+    const lastSlashIndex = path.lastIndexOf("/");
+    const hasDirectory = lastSlashIndex !== -1;
+    const directoryPath = hasDirectory ? path.slice(0, lastSlashIndex) : "";
+    const fileName = hasDirectory ? path.slice(lastSlashIndex + 1) : path;
+    const matchRanges = getMatchRanges(path, searchQuery);
+
     return (
       <contextMenu.ContextMenu>
         <contextMenu.ContextMenuTrigger
@@ -391,6 +537,7 @@ const FileRow = memo(
                 });
               }
             }}
+            onDoubleClick={() => {}}
           >
             {isSelected && (
               <div className="absolute top-1/2 -translate-y-1/2 -left-1 rounded-md w-1.75 bg-primary h-4" />
@@ -399,16 +546,28 @@ const FileRow = memo(
               <div className="shrink-0">{getStatusIcon(file.status, 18)}</div>
               <div className="flex items-center ml-1.5 min-w-0 flex-1">
                 <Label className="flex cursor-pointer items-center min-w-0 text-sm w-full gap-0">
-                  {file?.path.split("/").slice(0, -1).join("/") && (
-                    <>
-                      <span className="text-muted-foreground truncate">
-                        {file.path.split("/").slice(0, -1).join("/")}
-                      </span>
-                      <span className="text-muted-foreground">/</span>
-                    </>
-                  )}
-                  <span className="shrink-0 text-foreground!">
-                    {file?.path.split("/").slice(-1)[0]}
+                  <span className="inline-flex w-fit max-w-full min-w-0 items-center gap-0">
+                    {hasDirectory && (
+                      <>
+                        <span className="text-muted-foreground min-w-0 flex-1 truncate">
+                          {renderHighlightedSlice(
+                            directoryPath,
+                            matchRanges,
+                            0,
+                          )}
+                        </span>
+                        <span className="text-muted-foreground shrink-0">
+                          /
+                        </span>
+                      </>
+                    )}
+                    <span className="text-foreground! min-w-0 shrink truncate">
+                      {renderHighlightedSlice(
+                        fileName,
+                        matchRanges,
+                        hasDirectory ? lastSlashIndex + 1 : 0,
+                      )}
+                    </span>
                   </span>
                 </Label>
               </div>
@@ -523,6 +682,7 @@ const FileRow = memo(
   (prevProps, nextProps) => {
     return (
       prevProps.file === nextProps.file &&
+      prevProps.searchQuery === nextProps.searchQuery &&
       prevProps.index === nextProps.index &&
       prevProps.onAdd === nextProps.onAdd &&
       prevProps.onUnstage === nextProps.onUnstage &&

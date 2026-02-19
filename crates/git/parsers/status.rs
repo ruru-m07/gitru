@@ -38,20 +38,18 @@ pub fn parse_porcelain_v2(buf: &[u8]) -> Result<Vec<FileStatus>, String> {
 
             Some('2') => {
                 // 2 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <X><score> <path>\0<origPath>\0
-                let mut parts = line.split_whitespace();
-                parts.next(); // "2"
+                let parts: Vec<&str> = line.splitn(10, ' ').collect();
+                if parts.len() < 10 {
+                    return Err("invalid type 2 entry".to_string());
+                }
 
-                let xy = parts.next().ok_or("missing XY")?;
+                let xy = parts[1];
                 let x = xy.as_bytes()[0];
                 let y = xy.as_bytes()[1];
+                let new_path = parts[9].to_string();
 
-                // Paths come from iterator for type 2
-                let new_path = iter.next().ok_or("missing new path")?;
+                // For type 2, the original path comes as the next NUL-separated entry.
                 let old_path = iter.next().ok_or("missing old path")?;
-
-                let new_path = std::str::from_utf8(new_path)
-                    .map_err(|e| e.to_string())?
-                    .to_string();
                 let old_path = std::str::from_utf8(old_path)
                     .map_err(|e| e.to_string())?
                     .to_string();

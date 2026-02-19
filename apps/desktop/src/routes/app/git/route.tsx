@@ -31,6 +31,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   Menu,
+  MenuCheckboxItem,
+  MenuGroup,
+  MenuGroupLabel,
   MenuItem,
   MenuPopup,
   MenuTrigger,
@@ -63,7 +66,6 @@ import {
   ListFilterPlus,
   Loader2,
   SearchIcon,
-  ShareIcon,
   Sparkles,
   Undo2,
   UserPlus,
@@ -73,6 +75,7 @@ import { useDefaultLayout } from "react-resizable-panels";
 import { toast } from "sonner";
 import z from "zod";
 import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
+import { getStatusIcon } from "@/components/getStatusIcon";
 import PageLayout from "@/components/pageLayout";
 import { RepositoryListItem } from "@/components/RepositoryListItem";
 import StatusBar from "@/components/statusBar";
@@ -100,6 +103,40 @@ import { GIT_PROVIDERS } from "@/type";
 
 const CoAuthers = z.array(z.tuple([z.string(), z.string()]));
 type CoAuthers = z.infer<typeof CoAuthers>;
+type FileStatusFilter = "modified" | "renamed" | "conflicted" | "deleted";
+
+const matchesSearchQuery = (value: string, query: string) => {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) return true;
+  if (normalizedQuery === "*") return true;
+
+  if (value.toLowerCase().includes(normalizedQuery.toLowerCase())) {
+    return true;
+  }
+
+  try {
+    if (normalizedQuery.startsWith("/") && normalizedQuery.length > 1) {
+      const lastSlashIndex = normalizedQuery.lastIndexOf("/");
+      if (lastSlashIndex > 0) {
+        const pattern = normalizedQuery.slice(1, lastSlashIndex);
+        const flags = normalizedQuery.slice(lastSlashIndex + 1) || "i";
+        return new RegExp(pattern, flags).test(value);
+      }
+    }
+
+    return new RegExp(normalizedQuery, "i").test(value);
+  } catch {
+    try {
+      const escapedGlob = normalizedQuery
+        .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+        .replace(/\*/g, ".*")
+        .replace(/\?/g, ".");
+      return new RegExp(escapedGlob, "i").test(value);
+    } catch {
+      return false;
+    }
+  }
+};
 
 export const Route = createFileRoute("/app/git")({
   component: GitPageLayout,
@@ -449,6 +486,14 @@ const ToggelPanelButton = () => {
 
 const ListFileChanges = () => {
   const [query, setQuery] = useState("");
+  const [statusFilters, setStatusFilters] = useState<
+    Record<FileStatusFilter, boolean>
+  >({
+    modified: true,
+    renamed: true,
+    deleted: true,
+    conflicted: true,
+  });
 
   const selectedRepository = useAppStore((state) => state.selectedRepository);
   const setSelectedFileForRepo = useAppStore(
@@ -466,26 +511,55 @@ const ListFileChanges = () => {
 
   const { data: commitHistory } = useGetCommitHistory();
 
+  const hasActiveStatusFilters =
+    !statusFilters.modified ||
+    !statusFilters.renamed ||
+    !statusFilters.deleted ||
+    !statusFilters.conflicted;
+  const toggleStatusFilter = (filter: FileStatusFilter, checked: boolean) => {
+    setStatusFilters((prev) => ({
+      ...prev,
+      [filter]: checked,
+    }));
+  };
+
+  const matchesStatusFilters = (file: GetStatusResponse["files"][number]) => {
+    const isModified = file.status.some((s) => s.includes("Modified"));
+    const isRenamed = file.status.some((s) => s.includes("Renamed"));
+    const isDeleted = file.status.some((s) => s.includes("Deleted"));
+    const isConflicted = file.status.some((s) => s.includes("Conflicted"));
+
+    return (
+      (statusFilters.modified && isModified) ||
+      (statusFilters.renamed && isRenamed) ||
+      (statusFilters.deleted && isDeleted) ||
+      (statusFilters.conflicted && isConflicted)
+    );
+  };
+
   const stagedChanges: GetStatusResponse["files"] = (
     status?.files ?? []
   ).filter(
     (file) =>
       file.status.some((s) => s.startsWith("Index")) &&
-      file.path.toLowerCase().includes(query.toLowerCase()),
+      matchesStatusFilters(file) &&
+      matchesSearchQuery(file.path, query),
   );
   const unstagedChanges: GetStatusResponse["files"] = (
     status?.files ?? []
   ).filter(
     (file) =>
       file.status.some((s) => s.startsWith("Worktree")) &&
-      file.path.toLowerCase().includes(query.toLowerCase()),
+      matchesStatusFilters(file) &&
+      matchesSearchQuery(file.path, query),
   );
   const conflictedChanges: GetStatusResponse["files"] = (
     status?.files ?? []
   ).filter(
     (file) =>
       file.status.some((s) => s.includes("Conflicted")) &&
-      file.path.toLowerCase().includes(query.toLowerCase()),
+      matchesStatusFilters(file) &&
+      matchesSearchQuery(file.path, query),
   );
 
   return (
@@ -525,16 +599,82 @@ const ListFileChanges = () => {
                     aria-label="Copy options"
                     size="icon-sm"
                     variant={"outline"}
+                    className="relative"
                   />
                 }
               >
                 <ListFilterPlus aria-hidden="true" className="size-4" />
+                {hasActiveStatusFilters && (
+                  <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-primary" />
+                )}
               </MenuTrigger>
-              <MenuPopup align="end">
-                <MenuItem>
-                  <ShareIcon aria-hidden="true" />
-                  Share link
-                </MenuItem>
+              <MenuPopup align="end" className={"w-45"}>
+                <MenuGroup>
+                  <MenuGroupLabel className={"justify-between flex"}>
+                    <span>Filter by status</span>
+                    {hasActiveStatusFilters && (
+                      <span
+                        className="font-normal hover:underline cursor-pointer"
+                        onClick={() => {
+                          toggleStatusFilter("modified", true);
+                          toggleStatusFilter("renamed", true);
+                          toggleStatusFilter("deleted", true);
+                          toggleStatusFilter("conflicted", true);
+                        }}
+                      >
+                        clear
+                      </span>
+                    )}
+                  </MenuGroupLabel>
+                  <MenuCheckboxItem
+                    checked={statusFilters.modified}
+                    onCheckedChange={(checked) =>
+                      toggleStatusFilter("modified", Boolean(checked))
+                    }
+                    variant="switch"
+                  >
+                    <span className="flex gap-1.5">
+                      {getStatusIcon(["IndexModified"], 18)}
+                      Modified
+                    </span>
+                  </MenuCheckboxItem>
+                  <MenuCheckboxItem
+                    checked={statusFilters.renamed}
+                    onCheckedChange={(checked) =>
+                      toggleStatusFilter("renamed", Boolean(checked))
+                    }
+                    variant="switch"
+                  >
+                    <span className="flex gap-1.5">
+                      {getStatusIcon(["IndexRenamed"], 18)}
+                      Renamed
+                    </span>
+                  </MenuCheckboxItem>
+                  <MenuCheckboxItem
+                    checked={statusFilters.deleted}
+                    onCheckedChange={(checked) =>
+                      toggleStatusFilter("deleted", Boolean(checked))
+                    }
+                    variant="switch"
+                  >
+                    <span className="flex gap-1.5">
+                      {getStatusIcon(["IndexDeleted"], 18)}
+                      Deleted
+                    </span>
+                  </MenuCheckboxItem>
+                  <MenuCheckboxItem
+                    checked={statusFilters.conflicted}
+                    onCheckedChange={(checked) =>
+                      toggleStatusFilter("conflicted", Boolean(checked))
+                    }
+                    variant="switch"
+                  >
+                    <span className="flex gap-1.5">
+                      {getStatusIcon(["Conflicted"], 18)}
+                      Conflicted
+                    </span>
+                  </MenuCheckboxItem>
+                </MenuGroup>
               </MenuPopup>
             </Menu>
           </Group>
@@ -551,6 +691,7 @@ const ListFileChanges = () => {
                 (conflictedChanges && conflictedChanges?.length > 0) ||
                 (unstagedChanges && unstagedChanges?.length > 0)) ? (
                 <VirtualizedFileList
+                  searchQuery={query}
                   sections={[
                     {
                       id: "conflicted",
@@ -756,12 +897,15 @@ const ListRepositories = memo(() => {
   const { repositories, addRepo, removeRepo } = useRepositories();
   const [query, setQuery] = useState("");
 
-  const normalizedQuery = query.trim().toLowerCase();
+  const normalizedQuery = query.trim();
   const filteredRepositories = normalizedQuery
     ? repositories.filter((repo) => {
-        const name = repo.name?.toLowerCase() ?? "";
-        const path = repo.path?.toLowerCase() ?? "";
-        return name.includes(normalizedQuery) || path.includes(normalizedQuery);
+        const name = repo.name ?? "";
+        const path = repo.path ?? "";
+        return (
+          matchesSearchQuery(name, normalizedQuery) ||
+          matchesSearchQuery(path, normalizedQuery)
+        );
       })
     : repositories;
 

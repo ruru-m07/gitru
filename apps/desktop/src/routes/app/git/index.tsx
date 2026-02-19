@@ -18,6 +18,7 @@ import {
   ChevronsUp,
   Diff,
   GitBranch,
+  Loader2,
   MoveHorizontal,
   Settings,
   TextWrap,
@@ -33,7 +34,7 @@ import {
   useGetCurrentBranch,
   useGetDiff,
   useGetStatusAheadBehind,
-  useInvalidateAll,
+  useGitPush,
 } from "@/hooks";
 import { SelectedFile, useAppStore } from "@/store/useAppStore";
 import { SplitSVG } from "../../../components/svgs/splitSVG";
@@ -80,7 +81,7 @@ const MainActionBar = () => {
   const { data: currentBranch } = useGetCurrentBranch();
   const { data: statusAheadBehind } = useGetStatusAheadBehind();
 
-  const { mutateAsync: invalidateAll } = useInvalidateAll();
+  const { mutateAsync: push, isPending } = useGitPush();
 
   return (
     <div className="w-full justify-between min-h-14 max-h-14 h-14 border-b flex">
@@ -90,7 +91,7 @@ const MainActionBar = () => {
           variant={"ghost"}
         >
           <div className="flex items-center justify-center gap-4">
-            <GitBranch className="size-6" />
+            <GitBranch className="size-7.5" strokeWidth={1.5} />
             <div className="flex-col flex items-start">
               <span className="text-xs text-muted-foreground font-normal">
                 Current Branch
@@ -109,11 +110,18 @@ const MainActionBar = () => {
                 className="flex justify-between items-center min-h-full rounded-none border-x-0 w-72"
                 variant={"ghost"}
                 onClick={async () => {
-                  await invalidateAll();
+                  await push();
                 }}
               >
                 <div className="flex items-center justify-center gap-4">
-                  <ChevronsUp className="size-8" />
+                  {isPending ? (
+                    <Loader2
+                      className="animate-spin size-7.5"
+                      strokeWidth={1.5}
+                    />
+                  ) : (
+                    <ChevronsUp className="size-8" />
+                  )}
                   <div className="flex-col flex items-start">
                     <span className="text-xs text-muted-foreground font-normal">
                       {statusAheadBehind.ahead > 0
@@ -135,17 +143,24 @@ const MainActionBar = () => {
         ) : (
           <>
             <Button
-              className="flex border-x-0 justify-between items-center h-full rounded-none min-w-60"
+              className="flex border-x-0 justify-between items-center min-h-full rounded-none min-w-60"
               variant={"ghost"}
               onClick={async () => {
-                await invalidateAll();
+                await push();
               }}
             >
               <div className="flex items-center justify-center gap-4">
-                <ArrowUpFromLine className="size-7" />
+                {isPending ? (
+                  <Loader2
+                    className="animate-spin size-7.5"
+                    strokeWidth={1.5}
+                  />
+                ) : (
+                  <ArrowUpFromLine className="size-7.5" strokeWidth={1.5} />
+                )}
                 <div className="flex-col flex items-start">
                   <span className="text-xs text-muted-foreground font-normal">
-                    Published Branch
+                    Publish Branch
                   </span>
                   <span>Published as {currentBranch?.name}</span>
                 </div>
@@ -153,11 +168,9 @@ const MainActionBar = () => {
             </Button>
             <Separator orientation="vertical" className={"border-0"} />
             <Button
-              className="flex border-x-0 justify-between items-center h-full rounded-none"
+              className="flex border-x-0 justify-between items-center min-h-full rounded-none"
               variant={"ghost"}
-              onClick={async () => {
-                await invalidateAll();
-              }}
+              onClick={async () => {}}
             >
               <ChevronDown size={18} />
             </Button>
