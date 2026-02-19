@@ -537,6 +537,7 @@ const FileRow = memo(
                 });
               }
             }}
+            onDoubleClick={() => {}}
           >
             {isSelected && (
               <div className="absolute top-1/2 -translate-y-1/2 -left-1 rounded-md w-1.75 bg-primary h-4" />

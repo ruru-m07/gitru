@@ -32,6 +32,8 @@ import {
   DropdownMenuTrigger,
   Menu,
   MenuCheckboxItem,
+  MenuGroup,
+  MenuGroupLabel,
   MenuItem,
   MenuPopup,
   MenuTrigger,
@@ -64,7 +66,6 @@ import {
   ListFilterPlus,
   Loader2,
   SearchIcon,
-  ShareIcon,
   Sparkles,
   Undo2,
   UserPlus,
@@ -74,6 +75,7 @@ import { useDefaultLayout } from "react-resizable-panels";
 import { toast } from "sonner";
 import z from "zod";
 import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
+import { getStatusIcon } from "@/components/getStatusIcon";
 import PageLayout from "@/components/pageLayout";
 import { RepositoryListItem } from "@/components/RepositoryListItem";
 import StatusBar from "@/components/statusBar";
@@ -101,6 +103,7 @@ import { GIT_PROVIDERS } from "@/type";
 
 const CoAuthers = z.array(z.tuple([z.string(), z.string()]));
 type CoAuthers = z.infer<typeof CoAuthers>;
+type FileStatusFilter = "modified" | "renamed" | "conflicted" | "deleted";
 
 const matchesSearchQuery = (value: string, query: string) => {
   const normalizedQuery = query.trim();
@@ -483,6 +486,14 @@ const ToggelPanelButton = () => {
 
 const ListFileChanges = () => {
   const [query, setQuery] = useState("");
+  const [statusFilters, setStatusFilters] = useState<
+    Record<FileStatusFilter, boolean>
+  >({
+    modified: true,
+    renamed: true,
+    deleted: true,
+    conflicted: true,
+  });
 
   const selectedRepository = useAppStore((state) => state.selectedRepository);
   const setSelectedFileForRepo = useAppStore(
@@ -500,11 +511,38 @@ const ListFileChanges = () => {
 
   const { data: commitHistory } = useGetCommitHistory();
 
+  const hasActiveStatusFilters =
+    !statusFilters.modified ||
+    !statusFilters.renamed ||
+    !statusFilters.deleted ||
+    !statusFilters.conflicted;
+  const toggleStatusFilter = (filter: FileStatusFilter, checked: boolean) => {
+    setStatusFilters((prev) => ({
+      ...prev,
+      [filter]: checked,
+    }));
+  };
+
+  const matchesStatusFilters = (file: GetStatusResponse["files"][number]) => {
+    const isModified = file.status.some((s) => s.includes("Modified"));
+    const isRenamed = file.status.some((s) => s.includes("Renamed"));
+    const isDeleted = file.status.some((s) => s.includes("Deleted"));
+    const isConflicted = file.status.some((s) => s.includes("Conflicted"));
+
+    return (
+      (statusFilters.modified && isModified) ||
+      (statusFilters.renamed && isRenamed) ||
+      (statusFilters.deleted && isDeleted) ||
+      (statusFilters.conflicted && isConflicted)
+    );
+  };
+
   const stagedChanges: GetStatusResponse["files"] = (
     status?.files ?? []
   ).filter(
     (file) =>
       file.status.some((s) => s.startsWith("Index")) &&
+      matchesStatusFilters(file) &&
       matchesSearchQuery(file.path, query),
   );
   const unstagedChanges: GetStatusResponse["files"] = (
@@ -512,6 +550,7 @@ const ListFileChanges = () => {
   ).filter(
     (file) =>
       file.status.some((s) => s.startsWith("Worktree")) &&
+      matchesStatusFilters(file) &&
       matchesSearchQuery(file.path, query),
   );
   const conflictedChanges: GetStatusResponse["files"] = (
@@ -519,6 +558,7 @@ const ListFileChanges = () => {
   ).filter(
     (file) =>
       file.status.some((s) => s.includes("Conflicted")) &&
+      matchesStatusFilters(file) &&
       matchesSearchQuery(file.path, query),
   );
 
@@ -559,21 +599,67 @@ const ListFileChanges = () => {
                     aria-label="Copy options"
                     size="icon-sm"
                     variant={"outline"}
+                    className="relative"
                   />
                 }
               >
                 <ListFilterPlus aria-hidden="true" className="size-4" />
+                {hasActiveStatusFilters && (
+                  <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-primary" />
+                )}
               </MenuTrigger>
-              <MenuPopup align="end">
-                <MenuCheckboxItem defaultChecked variant="switch">
-                  Auto save
-                </MenuCheckboxItem>
-                <MenuCheckboxItem variant="switch">
-                  Notifications
-                </MenuCheckboxItem>
-                <MenuCheckboxItem defaultChecked variant="switch">
-                  Dark mode
-                </MenuCheckboxItem>
+              <MenuPopup align="end" className={"w-45"}>
+                <MenuGroup>
+                  <MenuGroupLabel>Filter by status</MenuGroupLabel>
+                  <MenuCheckboxItem
+                    checked={statusFilters.modified}
+                    onCheckedChange={(checked) =>
+                      toggleStatusFilter("modified", Boolean(checked))
+                    }
+                    variant="switch"
+                  >
+                    <span className="flex gap-1.5">
+                      {getStatusIcon(["IndexModified"], 18)}
+                      Modified
+                    </span>
+                  </MenuCheckboxItem>
+                  <MenuCheckboxItem
+                    checked={statusFilters.renamed}
+                    onCheckedChange={(checked) =>
+                      toggleStatusFilter("renamed", Boolean(checked))
+                    }
+                    variant="switch"
+                  >
+                    <span className="flex gap-1.5">
+                      {getStatusIcon(["IndexRenamed"], 18)}
+                      Renamed
+                    </span>
+                  </MenuCheckboxItem>
+                  <MenuCheckboxItem
+                    checked={statusFilters.deleted}
+                    onCheckedChange={(checked) =>
+                      toggleStatusFilter("deleted", Boolean(checked))
+                    }
+                    variant="switch"
+                  >
+                    <span className="flex gap-1.5">
+                      {getStatusIcon(["IndexDeleted"], 18)}
+                      Deleted
+                    </span>
+                  </MenuCheckboxItem>
+                  <MenuCheckboxItem
+                    checked={statusFilters.conflicted}
+                    onCheckedChange={(checked) =>
+                      toggleStatusFilter("conflicted", Boolean(checked))
+                    }
+                    variant="switch"
+                  >
+                    <span className="flex gap-1.5">
+                      {getStatusIcon(["Conflicted"], 18)}
+                      Conflicted
+                    </span>
+                  </MenuCheckboxItem>
+                </MenuGroup>
               </MenuPopup>
             </Menu>
           </Group>
