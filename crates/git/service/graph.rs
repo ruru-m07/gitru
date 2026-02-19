@@ -15,6 +15,7 @@ use crate::parsers::graph::{LOG_FORMAT, parse_log_entries, parse_search_query};
 
 const DEFAULT_CHUNK_SIZE: usize = 200;
 
+// TODO(phase2): migrate graph git invocations/cache to shared GitCommandRunner + RepoCache.
 struct GraphCacheEntry {
     state: GraphState,
     last_cursor: usize,

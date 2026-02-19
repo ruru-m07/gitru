@@ -1,7 +1,6 @@
 use crate::commands::RepoSitoryStore;
 use git::core::RepoServices;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, State};
@@ -151,47 +150,51 @@ impl RepoManager {
         &self,
         repo: &RepositoryInfo,
     ) -> Result<RepositoryInfo, String> {
-        let path = Path::new(&repo.path);
-
-        if !path.exists() {
+        if !std::path::Path::new(&repo.path).exists() {
             return Err(format!("Repository path does not exist: {}", repo.path));
         }
 
-        let (current_branch, ahead_behind) = match RepoServices::new(&repo.path) {
-            Ok(services) => {
-                let current_branch = services
-                    .branch()
-                    .get_current_branch()
-                    .await
-                    .ok()
-                    .map(|b| b.name);
-                let ahead_behind = services
-                    .branch()
-                    .status_ahead_behind()
-                    .await
-                    .ok()
-                    .map(|status| (status.ahead as u32, status.behind as u32));
-                (current_branch, ahead_behind)
-            }
-            Err(_) => (None, None),
-        };
-
-        let has_uncommitted_changes = {
-            use std::process::Command;
-            Command::new("git")
-                .args(&["status", "--porcelain"])
-                .current_dir(&repo.path)
-                .output()
-                .ok()
-                .map(|output| !output.stdout.is_empty())
-                .unwrap_or(false)
-        };
+        let (origin, current_branch, ahead_behind, has_uncommitted_changes) =
+            match RepoServices::new(&repo.path) {
+                Ok(services) => {
+                    let origin = services
+                        .origin()
+                        .repository_origin()
+                        .await
+                        .ok()
+                        .map(|o| o.remote_url);
+                    let current_branch = services
+                        .branch()
+                        .get_current_branch()
+                        .await
+                        .ok()
+                        .map(|b| b.name);
+                    let ahead_behind = services
+                        .branch()
+                        .status_ahead_behind()
+                        .await
+                        .ok()
+                        .map(|status| (status.ahead as u32, status.behind as u32));
+                    let has_uncommitted_changes = services
+                        .branch()
+                        .has_uncommitted_changes()
+                        .await
+                        .unwrap_or(false);
+                    (
+                        origin,
+                        current_branch,
+                        ahead_behind,
+                        has_uncommitted_changes,
+                    )
+                }
+                Err(_) => (repo.origin.clone(), None, None, false),
+            };
 
         Ok(RepositoryInfo {
             id: repo.id.clone(),
             name: repo.name.clone(),
             path: repo.path.clone(),
-            origin: repo.origin.clone(),
+            origin,
             current_branch,
             ahead_behind,
             has_uncommitted_changes,

@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
+pub mod cache;
 pub mod context;
 pub mod core;
 pub mod models;

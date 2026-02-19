@@ -1,4 +1,6 @@
 use crate::{
+    cache::CachePolicy,
+    cache::TTL_STATUS,
     context::RepoContext,
     models::status::GetStatusResponse,
     parsers::status::parse_porcelain_v2,
@@ -28,18 +30,29 @@ impl ActionService {
 
     #[logger::logger]
     pub async fn get_status(&self) -> Result<GetStatusResponse, String> {
-        let output = self
-            .ctx
-            .runner
-            .run_with_options(
-                &["status", "--porcelain=v2", "--untracked-files=all", "-z"],
-                GitRunOptions::default_read(),
+        let runner = self.ctx.runner.clone();
+
+        self.ctx
+            .cache
+            .get_or_refresh(
+                CachePolicy {
+                    namespace: "status",
+                    ttl: TTL_STATUS,
+                },
+                "porcelain_v2".to_string(),
+                move || async move {
+                    let output = runner
+                        .run_with_options(
+                            &["status", "--porcelain=v2", "--untracked-files=all", "-z"],
+                            GitRunOptions::default_read(),
+                        )
+                        .await?;
+
+                    let files = parse_porcelain_v2(output.as_bytes())?;
+                    Ok(GetStatusResponse { files })
+                },
             )
-            .await?;
-
-        let files = parse_porcelain_v2(output.as_bytes())?;
-
-        Ok(GetStatusResponse { files })
+            .await
     }
 
     #[logger::logger]
@@ -51,7 +64,8 @@ impl ActionService {
                 GitRunOptions::default_read().with_timeout(std::time::Duration::from_secs(60)),
             )
             .await?;
-        Ok(format!("Fetched successfully"))
+        self.ctx.cache.invalidate_all();
+        Ok("Fetched successfully".to_string())
     }
 
     #[logger::logger]
@@ -75,6 +89,7 @@ impl ActionService {
                 .await?;
         }
 
+        self.ctx.cache.invalidate_all();
         Ok("Added".to_string())
     }
 
@@ -99,6 +114,7 @@ impl ActionService {
                 .await?;
         }
 
+        self.ctx.cache.invalidate_all();
         Ok("Removed".to_string())
     }
 
@@ -106,11 +122,13 @@ impl ActionService {
     pub async fn git_discard(&self, file: &str, all: Option<bool>) -> Result<String, String> {
         if all.unwrap_or(false) {
             self.git_restore_all().await?;
-            return Ok(format!("All changes discarded"));
+            self.ctx.cache.invalidate_all();
+            return Ok("All changes discarded".to_string());
         }
 
         self.git_restore_file(file).await?;
-        Ok(format!("Changes discarded"))
+        self.ctx.cache.invalidate_all();
+        Ok("Changes discarded".to_string())
     }
 
     async fn git_restore_all(&self) -> Result<(), String> {

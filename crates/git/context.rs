@@ -1,8 +1,11 @@
-use crate::runner::GitCommandRunner;
+use std::sync::Arc;
+
+use crate::{cache::RepoCache, runner::GitCommandRunner};
 
 pub struct RepoContext {
     pub repo_path: String,
     pub runner: GitCommandRunner,
+    pub cache: Arc<RepoCache>,
 }
 
 impl RepoContext {
@@ -13,6 +16,7 @@ impl RepoContext {
         Ok(Self {
             repo_path: repo_path.to_string(),
             runner,
+            cache: Arc::new(RepoCache::new()),
         })
     }
 }

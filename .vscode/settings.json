@@ -54,5 +54,8 @@
   "svg.preview.background": "dark-transparent",
   "[svg]": {
     "editor.defaultFormatter": "jock.svg"
+  },
+  "json.schemaDownload.trustedDomains": {
+    "https://schema.tauri.app": true
   }
 }
