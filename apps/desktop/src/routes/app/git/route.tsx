@@ -31,6 +31,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   Menu,
+  MenuCheckboxItem,
   MenuItem,
   MenuPopup,
   MenuTrigger,
@@ -100,6 +101,39 @@ import { GIT_PROVIDERS } from "@/type";
 
 const CoAuthers = z.array(z.tuple([z.string(), z.string()]));
 type CoAuthers = z.infer<typeof CoAuthers>;
+
+const matchesSearchQuery = (value: string, query: string) => {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) return true;
+  if (normalizedQuery === "*") return true;
+
+  if (value.toLowerCase().includes(normalizedQuery.toLowerCase())) {
+    return true;
+  }
+
+  try {
+    if (normalizedQuery.startsWith("/") && normalizedQuery.length > 1) {
+      const lastSlashIndex = normalizedQuery.lastIndexOf("/");
+      if (lastSlashIndex > 0) {
+        const pattern = normalizedQuery.slice(1, lastSlashIndex);
+        const flags = normalizedQuery.slice(lastSlashIndex + 1) || "i";
+        return new RegExp(pattern, flags).test(value);
+      }
+    }
+
+    return new RegExp(normalizedQuery, "i").test(value);
+  } catch {
+    try {
+      const escapedGlob = normalizedQuery
+        .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+        .replace(/\*/g, ".*")
+        .replace(/\?/g, ".");
+      return new RegExp(escapedGlob, "i").test(value);
+    } catch {
+      return false;
+    }
+  }
+};
 
 export const Route = createFileRoute("/app/git")({
   component: GitPageLayout,
@@ -471,21 +505,21 @@ const ListFileChanges = () => {
   ).filter(
     (file) =>
       file.status.some((s) => s.startsWith("Index")) &&
-      file.path.toLowerCase().includes(query.toLowerCase()),
+      matchesSearchQuery(file.path, query),
   );
   const unstagedChanges: GetStatusResponse["files"] = (
     status?.files ?? []
   ).filter(
     (file) =>
       file.status.some((s) => s.startsWith("Worktree")) &&
-      file.path.toLowerCase().includes(query.toLowerCase()),
+      matchesSearchQuery(file.path, query),
   );
   const conflictedChanges: GetStatusResponse["files"] = (
     status?.files ?? []
   ).filter(
     (file) =>
       file.status.some((s) => s.includes("Conflicted")) &&
-      file.path.toLowerCase().includes(query.toLowerCase()),
+      matchesSearchQuery(file.path, query),
   );
 
   return (
@@ -531,10 +565,15 @@ const ListFileChanges = () => {
                 <ListFilterPlus aria-hidden="true" className="size-4" />
               </MenuTrigger>
               <MenuPopup align="end">
-                <MenuItem>
-                  <ShareIcon aria-hidden="true" />
-                  Share link
-                </MenuItem>
+                <MenuCheckboxItem defaultChecked variant="switch">
+                  Auto save
+                </MenuCheckboxItem>
+                <MenuCheckboxItem variant="switch">
+                  Notifications
+                </MenuCheckboxItem>
+                <MenuCheckboxItem defaultChecked variant="switch">
+                  Dark mode
+                </MenuCheckboxItem>
               </MenuPopup>
             </Menu>
           </Group>
@@ -551,6 +590,7 @@ const ListFileChanges = () => {
                 (conflictedChanges && conflictedChanges?.length > 0) ||
                 (unstagedChanges && unstagedChanges?.length > 0)) ? (
                 <VirtualizedFileList
+                  searchQuery={query}
                   sections={[
                     {
                       id: "conflicted",
@@ -756,12 +796,15 @@ const ListRepositories = memo(() => {
   const { repositories, addRepo, removeRepo } = useRepositories();
   const [query, setQuery] = useState("");
 
-  const normalizedQuery = query.trim().toLowerCase();
+  const normalizedQuery = query.trim();
   const filteredRepositories = normalizedQuery
     ? repositories.filter((repo) => {
-        const name = repo.name?.toLowerCase() ?? "";
-        const path = repo.path?.toLowerCase() ?? "";
-        return name.includes(normalizedQuery) || path.includes(normalizedQuery);
+        const name = repo.name ?? "";
+        const path = repo.path ?? "";
+        return (
+          matchesSearchQuery(name, normalizedQuery) ||
+          matchesSearchQuery(path, normalizedQuery)
+        );
       })
     : repositories;
 
