@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct RepositoryOrigin {
     pub remote_name: String,
     pub remote_url: String,

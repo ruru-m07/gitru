@@ -22,14 +22,14 @@ pub struct CommitInfo {
     pub authors: CommitAuthors,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CommitStats {
     pub insertions: usize,
     pub deletions: usize,
     pub files_changed: usize,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FullCommitInfo {
     pub id: String,
     pub timestamp: i64,

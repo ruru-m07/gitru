@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub enum FileStatusKind {
     IndexNew,
     IndexModified,
@@ -16,14 +16,14 @@ pub enum FileStatusKind {
     Conflicted,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct FileStatus {
     pub path: String,
     pub new_path: Option<String>,
     pub status: Vec<FileStatusKind>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub struct GetStatusResponse {
     pub files: Vec<FileStatus>,

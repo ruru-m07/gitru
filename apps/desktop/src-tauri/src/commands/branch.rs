@@ -89,9 +89,7 @@ pub async fn current_branch_stash(
 }
 
 #[tauri::command]
-pub async fn pop_current_branch_stash(
-    state: tauri::State<'_, AppState>,
-) -> Result<String, String> {
+pub async fn pop_current_branch_stash(state: tauri::State<'_, AppState>) -> Result<String, String> {
     let services = get_services(state).await?;
     services.branch().pop_current_branch_stash().await
 }

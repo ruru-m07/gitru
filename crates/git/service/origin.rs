@@ -1,7 +1,4 @@
-use crate::{
-    context::RepoContext, models::origin::RepositoryOrigin, parsers::origin::parse_remote_url,
-    runner::GitRunOptions,
-};
+use crate::{context::RepoContext, models::origin::RepositoryOrigin, service::query::QueryService};
 use std::sync::Arc;
 
 pub struct OriginService {
@@ -15,26 +12,8 @@ impl OriginService {
 
     #[logger::logger]
     pub async fn repository_origin(&self) -> Result<RepositoryOrigin, String> {
-        let url = self
-            .ctx
-            .runner
-            .run_with_options(
-                &["remote", "get-url", "origin"],
-                GitRunOptions::default_read(),
-            )
+        QueryService::new(self.ctx.clone())
+            .repository_origin()
             .await
-            .map_err(|_| "No origin remote found".to_string())?;
-
-        let (protocol, host, owner, repo_name, provider) = parse_remote_url(&url);
-
-        Ok(RepositoryOrigin {
-            remote_name: "origin".into(),
-            remote_url: url,
-            host,
-            provider,
-            owner,
-            repo: repo_name,
-            protocol,
-        })
     }
 }

@@ -20,7 +20,7 @@ pub struct BranchInfo {
     pub behind: Option<usize>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AheadBehindStatus {
     pub ahead: usize,
     pub behind: usize,

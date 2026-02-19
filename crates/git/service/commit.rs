@@ -1,3 +1,4 @@
+use crate::cache::{CachePolicy, TTL_COMMIT_BY_ID, TTL_LAST_COMMIT};
 use crate::context::RepoContext;
 use crate::models::commit::{CommitInfo, CommitMessage, FullCommitInfo};
 use crate::parsers::commit::{parse_commit_record, parse_shortstat};
@@ -15,59 +16,80 @@ impl CommitService {
 
     #[logger::logger]
     pub async fn last_commit(&self) -> Result<CommitInfo, String> {
-        let record = self
-            .ctx
-            .runner
-            .run_with_options(
-                &[
-                    "log",
-                    "-1",
-                    "--format=%H%x1f%an%x1f%ae%x1f%at%x1f%cn%x1f%ce%x1f%ct%x1f%s%x1f%b",
-                ],
-                GitRunOptions::default_read(),
-            )
-            .await?;
+        let runner = self.ctx.runner.clone();
+        self.ctx
+            .cache
+            .get_or_refresh(
+                CachePolicy {
+                    namespace: "last_commit",
+                    ttl: TTL_LAST_COMMIT,
+                },
+                "head".to_string(),
+                move || async move {
+                    let record = runner
+                        .run_with_options(
+                            &[
+                                "log",
+                                "-1",
+                                "--format=%H%x1f%an%x1f%ae%x1f%at%x1f%cn%x1f%ce%x1f%ct%x1f%s%x1f%b",
+                            ],
+                            GitRunOptions::default_read(),
+                        )
+                        .await?;
 
-        parse_commit_record(&record)
+                    parse_commit_record(&record)
+                },
+            )
+            .await
     }
 
     #[logger::logger]
     pub async fn commit_by_id(&self, hash: &str) -> Result<FullCommitInfo, String> {
-        let record = self
-            .ctx
-            .runner
-            .run_with_options(
-                &[
-                    "show",
-                    "-s",
-                    "--format=%H%x1f%an%x1f%ae%x1f%at%x1f%cn%x1f%ce%x1f%ct%x1f%s%x1f%b",
-                    hash,
-                ],
-                GitRunOptions::default_read(),
+        let hash = hash.to_string();
+        let runner = self.ctx.runner.clone();
+        self.ctx
+            .cache
+            .get_or_refresh(
+                CachePolicy {
+                    namespace: "commit_by_id",
+                    ttl: TTL_COMMIT_BY_ID,
+                },
+                hash.clone(),
+                move || async move {
+                    let record = runner
+                        .run_with_options(
+                            &[
+                                "show",
+                                "-s",
+                                "--format=%H%x1f%an%x1f%ae%x1f%at%x1f%cn%x1f%ce%x1f%ct%x1f%s%x1f%b",
+                                &hash,
+                            ],
+                            GitRunOptions::default_read(),
+                        )
+                        .await?;
+
+                    let commit_info = parse_commit_record(&record)?;
+
+                    let stats_output = runner
+                        .run_with_options(
+                            &["show", "--shortstat", "--format=", &hash],
+                            GitRunOptions::default_read(),
+                        )
+                        .await?;
+
+                    let stats = parse_shortstat(&stats_output);
+
+                    Ok(FullCommitInfo {
+                        id: commit_info.id,
+                        timestamp: commit_info.timestamp,
+                        summary: commit_info.summary,
+                        body: commit_info.body,
+                        authors: commit_info.authors,
+                        stats,
+                    })
+                },
             )
-            .await?;
-
-        let commit_info = parse_commit_record(&record)?;
-
-        let stats_output = self
-            .ctx
-            .runner
-            .run_with_options(
-                &["show", "--shortstat", "--format=", hash],
-                GitRunOptions::default_read(),
-            )
-            .await?;
-
-        let stats = parse_shortstat(&stats_output);
-
-        Ok(FullCommitInfo {
-            id: commit_info.id,
-            timestamp: commit_info.timestamp,
-            summary: commit_info.summary,
-            body: commit_info.body,
-            authors: commit_info.authors,
-            stats,
-        })
+            .await
     }
 
     #[logger::logger]
@@ -118,6 +140,7 @@ impl CommitService {
             .await
             .unwrap_or_default();
 
+        self.ctx.cache.invalidate_all();
         Ok(commit_id)
     }
 

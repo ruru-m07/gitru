@@ -30,6 +30,7 @@ impl GitRunOptions {
     }
 }
 
+#[derive(Clone)]
 pub struct GitCommandRunner {
     repo_path: PathBuf,
 }
