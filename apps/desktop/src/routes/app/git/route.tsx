@@ -610,7 +610,22 @@ const ListFileChanges = () => {
               </MenuTrigger>
               <MenuPopup align="end" className={"w-45"}>
                 <MenuGroup>
-                  <MenuGroupLabel>Filter by status</MenuGroupLabel>
+                  <MenuGroupLabel className={"justify-between flex"}>
+                    <span>Filter by status</span>
+                    {hasActiveStatusFilters && (
+                      <span
+                        className="font-normal hover:underline cursor-pointer"
+                        onClick={() => {
+                          toggleStatusFilter("modified", true);
+                          toggleStatusFilter("renamed", true);
+                          toggleStatusFilter("deleted", true);
+                          toggleStatusFilter("conflicted", true);
+                        }}
+                      >
+                        clear
+                      </span>
+                    )}
+                  </MenuGroupLabel>
                   <MenuCheckboxItem
                     checked={statusFilters.modified}
                     onCheckedChange={(checked) =>
