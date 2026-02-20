@@ -24,6 +24,7 @@ import {
   TextWrap,
   X,
 } from "lucide-react";
+import { motion } from "motion/react";
 import { useTheme } from "next-themes";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
@@ -85,20 +86,24 @@ const MainActionBar = () => {
 
   return (
     <div className="w-full justify-between min-h-14 max-h-14 h-14 border-b flex">
-      <div className="min-h-14 max-h-14 h-14 flex">
+      <div className="min-h-14 max-h-14 h-14 flex w-full">
         <Button
-          className="flex justify-between items-center min-h-full rounded-none border-x-0 min-w-72"
-          variant={"ghost"}
+          className="flex justify-between items-center min-h-full rounded-none border-x-0 max-w-72"
+          variant="ghost"
         >
-          <div className="flex items-center justify-center gap-4">
+          <div className="flex items-center gap-4 min-w-0 flex-1">
             <GitBranch className="size-7.5" strokeWidth={1.5} />
-            <div className="flex-col flex items-start">
+
+            <div className="flex flex-col items-start min-w-0 flex-1">
               <span className="text-xs text-muted-foreground font-normal">
                 Current Branch
               </span>
-              <span>{currentBranch?.display_name}</span>
+              <span className="truncate w-full">
+                {currentBranch?.display_name}
+              </span>
             </div>
           </div>
+
           <ChevronDown size={18} />
         </Button>
         <Separator orientation="vertical" className={"border-0"} />
@@ -443,6 +448,50 @@ const EmptyStateScreen = () => {
             </span>
           </div>
         </div>
+      </div>
+    </div>
+  );
+};
+
+const PushButton = () => {
+  const [pushedCount, setPushedCount] = React.useState(0);
+
+  React.useEffect(() => {
+    if (pushedCount >= 54) return;
+
+    const delay = Math.random() * 100 + 0.01;
+    const timer = setTimeout(() => {
+      setPushedCount((prev) => prev + 1);
+    }, delay);
+
+    return () => clearTimeout(timer);
+  }, [pushedCount]);
+
+  return (
+    <div className="max-w-72 min-w-0 p-2 flex flex-wrap">
+      <div className="flex items-center justify-between w-full">
+        <span className="text-xs text-muted-foreground font-normal">
+          Pushing...
+        </span>
+        <span className="text-xs text-muted-foreground font-normal tabular-nums">
+          {pushedCount}/54
+        </span>
+      </div>
+      <div className="gap-0.5 flex flex-wrap px-px">
+        {[...Array(54)].map((_, index) => (
+          <motion.div
+            key={index}
+            className={cn(
+              "size-2",
+              index < pushedCount ? "bg-foreground" : "bg-foreground/20",
+            )}
+            animate={{
+              backgroundColor:
+                index < pushedCount ? "#000000" : "rgba(0, 0, 0, 0.2)",
+            }}
+            // transition={{ duration: 0.3 }}
+          ></motion.div>
+        ))}
       </div>
     </div>
   );
