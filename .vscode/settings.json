@@ -56,6 +56,7 @@
     "editor.defaultFormatter": "jock.svg"
   },
   "json.schemaDownload.trustedDomains": {
-    "https://schema.tauri.app": true
+    "https://schema.tauri.app": true,
+    "https://ui.shadcn.com": true
   }
 }

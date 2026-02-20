@@ -1,6 +1,7 @@
 use git::AppState;
 use git::core::RepoServices;
 use serde::Serialize;
+use std::process::Command;
 use std::sync::Mutex;
 use std::{
     path::Path,
@@ -145,4 +146,21 @@ pub async fn select_repository(
     store.save().map_err(|e| e.to_string())?;
 
     Ok(true)
+}
+
+#[tauri::command]
+#[logger::logger]
+pub async fn open_vscode(file_path: String, line: Option<u32>) -> Result<(), String> {
+    let target = match line {
+        Some(l) => format!("{}:{}", file_path, l),
+        None => file_path,
+    };
+
+    Command::new("code")
+        .arg("-g")
+        .arg(target)
+        .spawn()
+        .map_err(|e| format!("Failed to launch VS Code: {}", e))?;
+
+    Ok(())
 }

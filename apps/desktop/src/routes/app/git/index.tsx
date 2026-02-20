@@ -87,7 +87,7 @@ const MainActionBar = () => {
     <div className="w-full justify-between min-h-14 max-h-14 h-14 border-b flex">
       <div className="min-h-14 max-h-14 h-14 flex w-full">
         <Button
-          className="flex justify-between items-center min-h-full rounded-none border-x-0 max-w-72"
+          className="flex justify-between items-center min-h-full rounded-none border-x-0 max-w-72 w-full"
           variant="ghost"
         >
           <div className="flex items-center gap-4 min-w-0 flex-1">
@@ -97,7 +97,7 @@ const MainActionBar = () => {
               <span className="text-xs text-muted-foreground font-normal">
                 Current Branch
               </span>
-              <span className="truncate w-full">
+              <span className="truncate w-full text-left  ">
                 {currentBranch?.display_name}
               </span>
             </div>
