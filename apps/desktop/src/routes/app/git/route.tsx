@@ -157,7 +157,6 @@ const ResizableArea = () => {
 
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: "git-page-layout",
-    panelIds: ["left", "right"],
     storage: localStorage,
   });
 
@@ -166,8 +165,6 @@ const ResizableArea = () => {
       <ResizablePanelGroup
         defaultLayout={defaultLayout}
         onLayoutChanged={onLayoutChanged}
-        orientation="horizontal"
-        id="git-page-layout"
       >
         <ResizablePanel
           defaultSize={320}
