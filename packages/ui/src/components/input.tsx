@@ -48,6 +48,10 @@ function Input({
           className={inputClassName}
           data-slot="input"
           size={typeof size === "number" ? size : undefined}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck="false"
           {...props}
         />
       ) : (
@@ -55,6 +59,10 @@ function Input({
           className={inputClassName}
           data-slot="input"
           size={typeof size === "number" ? size : undefined}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck="false"
           {...props}
         />
       )}

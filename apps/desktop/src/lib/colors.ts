@@ -1,6 +1,6 @@
 export const Colors = [
-  { key: "dark-classic", name: "Dark" },
-  { key: "light", name: "Light" },
+  { key: "dark-classic", name: "Gitru Dark" },
+  { key: "light", name: "Gitru Light" },
   { key: "dark-claude", name: "Claude Dark" },
   { key: "light-claude", name: "Claude Light" },
   { key: "dark-caffeine", name: "Caffeine Dark" },

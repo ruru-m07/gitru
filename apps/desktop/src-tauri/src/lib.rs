@@ -35,6 +35,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             ipc::commands::add_local_git_repo,
             ipc::commands::select_repository,
+            ipc::commands::open_vscode,
             ipc::repo_manager::list_repositories,
             ipc::repo_manager::add_repository,
             ipc::repo_manager::remove_repository,

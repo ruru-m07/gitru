@@ -85,20 +85,24 @@ const MainActionBar = () => {
 
   return (
     <div className="w-full justify-between min-h-14 max-h-14 h-14 border-b flex">
-      <div className="min-h-14 max-h-14 h-14 flex">
+      <div className="min-h-14 max-h-14 h-14 flex w-full">
         <Button
-          className="flex justify-between items-center min-h-full rounded-none border-x-0 min-w-72"
-          variant={"ghost"}
+          className="flex justify-between items-center min-h-full rounded-none border-x-0 max-w-72 w-full"
+          variant="ghost"
         >
-          <div className="flex items-center justify-center gap-4">
+          <div className="flex items-center gap-4 min-w-0 flex-1">
             <GitBranch className="size-7.5" strokeWidth={1.5} />
-            <div className="flex-col flex items-start">
+
+            <div className="flex flex-col items-start min-w-0 flex-1">
               <span className="text-xs text-muted-foreground font-normal">
                 Current Branch
               </span>
-              <span>{currentBranch?.display_name}</span>
+              <span className="truncate w-full text-left  ">
+                {currentBranch?.display_name}
+              </span>
             </div>
           </div>
+
           <ChevronDown size={18} />
         </Button>
         <Separator orientation="vertical" className={"border-0"} />
@@ -231,10 +235,10 @@ const DiffArea = ({ selectedFile }: { selectedFile: SelectedFile }) => {
                 },
                 unsafeCSS: `
                   [data-background] {
-                    --diffs-light-bg: transparent !important;
-                    --diffs-dark-bg: transparent !important;
-                    // --diffs-light-bg: color-mix(in oklab, var(--color-secondary) 70%, #ffffff) !important;
-                    // --diffs-dark-bg: color-mix(in oklab, var(--color-secondary) 70%, #ffffff) !important;
+                    // --diffs-light-bg: transparent !important;
+                    // --diffs-dark-bg: transparent !important;
+                    --diffs-light-bg: color-mix(in oklab, var(--color-secondary) 70%, var(--color-background)) !important;
+                    --diffs-dark-bg: color-mix(in oklab, var(--color-secondary) 70%, var(--color-background)) !important;
                   }
                 `,
               }}
@@ -341,7 +345,7 @@ const SettingsPopoverContent = () => {
     useDiffViewerSettings();
 
   return (
-    <PopoverContent className="fit mr-4 px-0 mt-0.5">
+    <PopoverContent className="fit mr-4 px-0 mt-0.5 w-96">
       <Label className="text-muted-foreground">Settings</Label>
       <Separator className={"mt-2 mb-3"} />
       <div className="flex flex-col gap-4 mt-1">
@@ -351,15 +355,14 @@ const SettingsPopoverContent = () => {
             Diff Style
           </Label>
           <div className="flex items-center justify-center ">
-            <Group className="flex">
+            <Group className="flex w-full h-full">
               <Button
                 className={cn(
-                  "rounded-none w-32 h-32 shadow-none first:rounded-s-md last:rounded-e-md focus-visible:z-10",
+                  "rounded-none w-32 h-32! shadow-none first:rounded-s-md last:rounded-e-md focus-visible:z-10",
                   diffStyle === "unified" &&
                     "border-primary/40 bg-primary/10! hover:bg-primary/13!",
                 )}
                 variant="outline"
-                size="icon"
                 onClick={() => {
                   setDiffStyle("unified");
                 }}
@@ -369,12 +372,11 @@ const SettingsPopoverContent = () => {
               <GroupSeparator className="bg-primary/40" />
               <Button
                 className={cn(
-                  "rounded-none w-32 h-32 shadow-none rounded-r-md border-l-0 focus-visible:z-10",
+                  "rounded-none w-32 h-32! shadow-none rounded-r-md border-l-0 focus-visible:z-10",
                   diffStyle === "split" &&
                     "border-primary/40 bg-primary/10! hover:bg-primary/13!",
                 )}
                 variant="outline"
-                size="icon"
                 onClick={() => {
                   setDiffStyle("split");
                 }}

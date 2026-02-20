@@ -1,4 +1,8 @@
-import { type FileStatus, GetStatusResponse } from "@gitru/commands";
+import {
+  type FileStatus,
+  GetStatusResponse,
+  openVscode,
+} from "@gitru/commands";
 import { Badge } from "@gitru/ui/components/badge";
 import { Button } from "@gitru/ui/components/button";
 import * as contextMenu from "@gitru/ui/components/context-menu";
@@ -24,7 +28,7 @@ import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { getStatusIcon } from "@/components/getStatusIcon";
-import { SelectedFile } from "@/store/useAppStore";
+import { SelectedFile, useAppStore } from "@/store/useAppStore";
 
 export interface FileListSection {
   id: string;
@@ -508,6 +512,8 @@ const FileRow = memo(
     const fileName = hasDirectory ? path.slice(lastSlashIndex + 1) : path;
     const matchRanges = getMatchRanges(path, searchQuery);
 
+    const selectedRepository = useAppStore((state) => state.selectedRepository);
+
     return (
       <contextMenu.ContextMenu>
         <contextMenu.ContextMenuTrigger
@@ -537,7 +543,12 @@ const FileRow = memo(
                 });
               }
             }}
-            onDoubleClick={() => {}}
+            onDoubleClick={async () => {
+              if (!file.path) return;
+              await openVscode({
+                filePath: `${selectedRepository?.path}/${file.new_path || file.path}`,
+              });
+            }}
           >
             {isSelected && (
               <div className="absolute top-1/2 -translate-y-1/2 -left-1 rounded-md w-1.75 bg-primary h-4" />
