@@ -3,8 +3,6 @@
 @import "./font.css";
 @import "./base.css";
 
-@custom-variant dark (&:is(.dark *));
-
 @source "../../../../apps/**/*.{ts,tsx}";
 @source "../components/**/*.{ts,tsx}";
 @source "../../../icon/**/*.{ts,tsx}";
