@@ -24,7 +24,6 @@ import {
   TextWrap,
   X,
 } from "lucide-react";
-import { motion } from "motion/react";
 import { useTheme } from "next-themes";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
@@ -448,50 +447,6 @@ const EmptyStateScreen = () => {
             </span>
           </div>
         </div>
-      </div>
-    </div>
-  );
-};
-
-const PushButton = () => {
-  const [pushedCount, setPushedCount] = React.useState(0);
-
-  React.useEffect(() => {
-    if (pushedCount >= 54) return;
-
-    const delay = Math.random() * 100 + 0.01;
-    const timer = setTimeout(() => {
-      setPushedCount((prev) => prev + 1);
-    }, delay);
-
-    return () => clearTimeout(timer);
-  }, [pushedCount]);
-
-  return (
-    <div className="max-w-72 min-w-0 p-2 flex flex-wrap">
-      <div className="flex items-center justify-between w-full">
-        <span className="text-xs text-muted-foreground font-normal">
-          Pushing...
-        </span>
-        <span className="text-xs text-muted-foreground font-normal tabular-nums">
-          {pushedCount}/54
-        </span>
-      </div>
-      <div className="gap-0.5 flex flex-wrap px-px">
-        {[...Array(54)].map((_, index) => (
-          <motion.div
-            key={index}
-            className={cn(
-              "size-2",
-              index < pushedCount ? "bg-foreground" : "bg-foreground/20",
-            )}
-            animate={{
-              backgroundColor:
-                index < pushedCount ? "#000000" : "rgba(0, 0, 0, 0.2)",
-            }}
-            // transition={{ duration: 0.3 }}
-          ></motion.div>
-        ))}
       </div>
     </div>
   );
