@@ -23,3 +23,10 @@
   scrollbar-color: var(--color-muted) transparent;
 }
 
+input::-webkit-credentials-auto-fill-button {
+  visibility: hidden;
+  display: none !important;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+}

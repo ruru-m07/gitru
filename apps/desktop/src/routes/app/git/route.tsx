@@ -350,7 +350,7 @@ const WriteCommitBox = memo(function WriteCommitBox() {
         <InputGroup>
           <InputGroupInput
             placeholder="Summary (required)"
-            className="h-8 dark:bg-background"
+            className="h-8"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
@@ -365,10 +365,9 @@ const WriteCommitBox = memo(function WriteCommitBox() {
             </Button>
           </InputGroupAddon>
         </InputGroup>
-        <InputGroup className="dark:bg-background!">
+        <InputGroup>
           <InputGroupTextarea
             placeholder="Description"
-            className="dark:bg-background!"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
@@ -413,7 +412,7 @@ const WriteCommitBox = memo(function WriteCommitBox() {
             <Button
               onClick={handelCommit}
               className="flex-1 truncate"
-              disabled={isAdding || isCreatingCommit || title.trim() === ""}
+              disabled={isAdding || isCreatingCommit}
             >
               {isAdding || isCreatingCommit ? (
                 <>

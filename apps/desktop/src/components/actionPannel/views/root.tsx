@@ -22,6 +22,7 @@ import {
   RefreshCcw,
   SearchIcon,
   Settings,
+  SwatchBook,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -55,6 +56,7 @@ const iconMap: Record<string, React.ReactNode> = {
   arrowDownToLine: <ArrowDownToLine className="size-4" />,
   arrowUpFromLine: <ArrowUpFromLine className="size-4" />,
   refreshCcw: <RefreshCcw className="size-4" />,
+  theme: <SwatchBook className="size-4" />,
 };
 
 export function useRootView(): CommandViewConfig<"root", ActionItem> {
@@ -221,6 +223,13 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             shortcut: ["⌘", "⇧", "R"],
             iconKey: "repositories",
           },
+          {
+            id: "switch-theme",
+            label: "Switch Theme",
+            shortcut: ["⌘", "⇧", "T"],
+            iconKey: "theme",
+            keywords: ["theme", "color", "appearance"],
+          },
         ] satisfies ActionItem[];
       },
       getItemValue: (item) => {
@@ -274,6 +283,8 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
               navigate.push("switch-repository");
             } else if (item.id === "checkout-branch") {
               navigate.push("branch-list");
+            } else if (item.id === "switch-theme") {
+              navigate.push("switch-theme");
             }
           }}
           emptyState={() => (

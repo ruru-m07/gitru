@@ -9,6 +9,7 @@ import { useConfirmCheckoutView } from "./views/confirm-checkout";
 import { CreateBranchProps, useCreateBranchView } from "./views/create-branch";
 import { ActionItem, useRootView } from "./views/root";
 import { useSwitchRepositoryView } from "./views/switch-repository";
+import { ThemeItem, useSwitchThemeView } from "./views/switch-theme";
 
 type RootAction = CommandViewConfig<"root", ActionItem>;
 type BranchListAction = CommandViewConfig<"branch-list", BranchItem>;
@@ -18,13 +19,15 @@ type SwitchRepositoryAction = CommandViewConfig<
   "switch-repository",
   RepositoryInfo
 >;
+type SwitchThemeAction = CommandViewConfig<"switch-theme", ThemeItem>;
 
 type Action =
   | RootAction
   | BranchListAction
   | CreateBranchAction
   | ConfirmCheckoutAction
-  | SwitchRepositoryAction;
+  | SwitchRepositoryAction
+  | SwitchThemeAction;
 
 export const ActionPannel = ({ children }: { children: React.ReactNode }) => {
   const views = [
@@ -33,6 +36,7 @@ export const ActionPannel = ({ children }: { children: React.ReactNode }) => {
     useCreateBranchView(),
     useConfirmCheckoutView(),
     useSwitchRepositoryView(),
+    useSwitchThemeView(),
   ] as const satisfies Action[];
 
   const viewRegistry = createCommandViewRegistry(views);

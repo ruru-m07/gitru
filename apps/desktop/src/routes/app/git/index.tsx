@@ -231,10 +231,10 @@ const DiffArea = ({ selectedFile }: { selectedFile: SelectedFile }) => {
                 },
                 unsafeCSS: `
                   [data-background] {
-                    --diffs-light-bg: transparent !important;
-                    --diffs-dark-bg: transparent !important;
-                    // --diffs-light-bg: color-mix(in oklab, var(--color-secondary) 70%, #ffffff) !important;
-                    // --diffs-dark-bg: color-mix(in oklab, var(--color-secondary) 70%, #ffffff) !important;
+                    // --diffs-light-bg: transparent !important;
+                    // --diffs-dark-bg: transparent !important;
+                    --diffs-light-bg: color-mix(in oklab, var(--color-secondary) 70%, var(--color-background)) !important;
+                    --diffs-dark-bg: color-mix(in oklab, var(--color-secondary) 70%, var(--color-background)) !important;
                   }
                 `,
               }}
@@ -341,7 +341,7 @@ const SettingsPopoverContent = () => {
     useDiffViewerSettings();
 
   return (
-    <PopoverContent className="fit mr-4 px-0 mt-0.5">
+    <PopoverContent className="fit mr-4 px-0 mt-0.5 w-96">
       <Label className="text-muted-foreground">Settings</Label>
       <Separator className={"mt-2 mb-3"} />
       <div className="flex flex-col gap-4 mt-1">
@@ -351,15 +351,14 @@ const SettingsPopoverContent = () => {
             Diff Style
           </Label>
           <div className="flex items-center justify-center ">
-            <Group className="flex">
+            <Group className="flex w-full h-full">
               <Button
                 className={cn(
-                  "rounded-none w-32 h-32 shadow-none first:rounded-s-md last:rounded-e-md focus-visible:z-10",
+                  "rounded-none w-32 h-32! shadow-none first:rounded-s-md last:rounded-e-md focus-visible:z-10",
                   diffStyle === "unified" &&
                     "border-primary/40 bg-primary/10! hover:bg-primary/13!",
                 )}
                 variant="outline"
-                size="icon"
                 onClick={() => {
                   setDiffStyle("unified");
                 }}
@@ -369,12 +368,11 @@ const SettingsPopoverContent = () => {
               <GroupSeparator className="bg-primary/40" />
               <Button
                 className={cn(
-                  "rounded-none w-32 h-32 shadow-none rounded-r-md border-l-0 focus-visible:z-10",
+                  "rounded-none w-32 h-32! shadow-none rounded-r-md border-l-0 focus-visible:z-10",
                   diffStyle === "split" &&
                     "border-primary/40 bg-primary/10! hover:bg-primary/13!",
                 )}
                 variant="outline"
-                size="icon"
                 onClick={() => {
                   setDiffStyle("split");
                 }}
