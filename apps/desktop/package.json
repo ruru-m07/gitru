@@ -64,7 +64,7 @@
     "@gitru/commands": "*",
     "@gitru/diff": "*",
     "@tauri-apps/cli": "2.10.0",
-    "@types/react": "^19.1.8",
+    "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "^4.6.0",
     "husky": "^9.1.7",
