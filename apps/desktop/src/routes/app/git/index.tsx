@@ -1,17 +1,9 @@
-import { openWithApp } from "@gitru/commands";
 import { DiffViewer } from "@gitru/diff";
-import { CursorIcon, GhosttyIcon, VSCodeIcon } from "@gitru/icon";
 import { Button } from "@gitru/ui/components/button";
 import { CopyButton } from "@gitru/ui/components/copy-button";
 import { Group, GroupSeparator } from "@gitru/ui/components/group";
 import { Kbd, KbdGroup } from "@gitru/ui/components/kbd";
 import { Label } from "@gitru/ui/components/label";
-import {
-  Menu,
-  MenuItem,
-  MenuPopup,
-  MenuTrigger,
-} from "@gitru/ui/components/menu";
 import {
   Popover,
   PopoverContent,
@@ -23,9 +15,7 @@ import { cn } from "@gitru/ui/lib/utils";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   ArrowUpFromLine,
-  Check,
   ChevronDown,
-  ChevronDownIcon,
   ChevronsUp,
   Diff,
   GitBranch,
@@ -48,7 +38,6 @@ import {
   useGitPush,
 } from "@/hooks";
 import {
-  type ExternalOpener,
   type SelectedFile,
   useAppStore,
 } from "@/store/useAppStore";
@@ -58,24 +47,6 @@ import { UnifiedSVG } from "../../../components/svgs/unifiedSVG";
 export const Route = createFileRoute("/app/git/")({
   component: App,
 });
-
-const EXTERNAL_OPENER_OPTIONS: {
-  value: ExternalOpener;
-  label: string;
-  buttonLabel: string;
-}[] = [
-  { value: "vscode", label: "VS Code", buttonLabel: "VS Code" },
-  { value: "cursor", label: "Cursor", buttonLabel: "Cursor" },
-  { value: "finder", label: "Finder", buttonLabel: "Finder" },
-  { value: "terminal", label: "Terminal", buttonLabel: "Terminal" },
-  { value: "ghostty", label: "Ghostty", buttonLabel: "Ghostty" },
-];
-
-const DEFAULT_OPENER: ExternalOpener = "vscode";
-
-const getOpenerOption = (opener: ExternalOpener) =>
-  EXTERNAL_OPENER_OPTIONS.find((option) => option.value === opener) ||
-  EXTERNAL_OPENER_OPTIONS[0];
 
 function App() {
   const mainWindowView = useAppStore((state) => state.mainWindowView);
@@ -229,24 +200,6 @@ const FileLevelStatusBar = ({
     (state) => state.setSelectedFileForRepo,
   );
   const setMainWindowView = useAppStore((state) => state.setMainWindowView);
-  const selectedRepository = useAppStore((state) => state.selectedRepository);
-  const preferredExternalOpener = useAppStore(
-    (state) => state.preferredExternalOpener,
-  );
-  const setPreferredExternalOpener = useAppStore(
-    (state) => state.setPreferredExternalOpener,
-  );
-  const selectedOpenerOption = getOpenerOption(preferredExternalOpener);
-
-  const openSelectedFile = async (opener: ExternalOpener) => {
-    if (!selectedFile?.filePath || !selectedRepository?.path) return;
-    setPreferredExternalOpener(opener);
-
-    await openWithApp({
-      filePath: `${selectedRepository.path}/${selectedFile.fileNewPath || selectedFile.filePath}`,
-      app: opener,
-    });
-  };
 
   return (
     <div className="w-full h-9.25 border-b flex justify-between items-center">
@@ -268,48 +221,7 @@ const FileLevelStatusBar = ({
         >
           <X />
         </Button>
-        <Group aria-label="Repository actions">
-          <Button
-            onClick={async () => {
-              await openSelectedFile(preferredExternalOpener || DEFAULT_OPENER);
-            }}
-            variant="outline"
-            size={"xs"}
-            className="pl-2.5"
-          >
-            {getAppIcon(selectedOpenerOption.value)}
-            <span className="ml-1">{selectedOpenerOption.buttonLabel}</span>
-          </Button>
-          <GroupSeparator />
-          <Menu>
-            <MenuTrigger
-              render={
-                <Button aria-label="Menu" size="icon-xs" variant="outline" />
-              }
-            >
-              <ChevronDownIcon aria-hidden="true" />
-            </MenuTrigger>
-            <MenuPopup align="end">
-              {EXTERNAL_OPENER_OPTIONS.map((option) => (
-                <MenuItem
-                  key={option.value}
-                  onClick={async () => {
-                    await openSelectedFile(option.value);
-                  }}
-                  className="justify-between gap-6"
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="size-4">{getAppIcon(option.value)}</div>
-                    <span>{option.label}</span>
-                  </div>
-                  {option.value === preferredExternalOpener ? (
-                    <Check size={14} />
-                  ) : null}
-                </MenuItem>
-              ))}
-            </MenuPopup>
-          </Menu>
-        </Group>
+      
         <SettingsPopover />
       </div>
     </div>
@@ -555,20 +467,3 @@ const EmptyStateScreen = () => {
     </div>
   );
 };
-
-function getAppIcon(appName: string) {
-  switch (appName) {
-    case "vscode":
-      return <VSCodeIcon />;
-    case "cursor":
-      return <CursorIcon />;
-    case "ghostty":
-      return <GhosttyIcon />;
-    case "finder":
-      return <GhosttyIcon />;
-    case "terminal":
-      return <GhosttyIcon />;
-    default:
-      return <></>;
-  }
-}
