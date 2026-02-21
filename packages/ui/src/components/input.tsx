@@ -45,7 +45,7 @@ function Input({
     >
       {nativeInput ? (
         <input
-          className={inputClassName}
+          className={cn("placeholder:select-none", inputClassName)}
           data-slot="input"
           size={typeof size === "number" ? size : undefined}
           autoComplete="off"
@@ -56,7 +56,7 @@ function Input({
         />
       ) : (
         <InputPrimitive
-          className={inputClassName}
+          className={cn("placeholder:select-none", inputClassName)}
           data-slot="input"
           size={typeof size === "number" ? size : undefined}
           autoComplete="off"

@@ -562,7 +562,7 @@ const ListFileChanges = () => {
     <Tabs defaultValue="tab-1" className={"gap-0 h-full flex flex-col"}>
       <TabsList
         className={
-          "rounded-none bg-background w-full shrink-0 border-y *:data-[slot=tab-indicator]:bg-secondary *:data-[slot=tab-indicator]:transition-none"
+          "select-none rounded-none bg-background w-full shrink-0 border-y *:data-[slot=tab-indicator]:bg-secondary *:data-[slot=tab-indicator]:transition-none"
         }
       >
         <TabsTab className={"rounded-none!"} value="tab-1">

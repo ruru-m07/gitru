@@ -1,8 +1,17 @@
+import { openWithApp } from "@gitru/commands";
 import { DiffViewer } from "@gitru/diff";
+import { CursorIcon, GhosttyIcon, VSCodeIcon } from "@gitru/icon";
 import { Button } from "@gitru/ui/components/button";
+import { CopyButton } from "@gitru/ui/components/copy-button";
 import { Group, GroupSeparator } from "@gitru/ui/components/group";
 import { Kbd, KbdGroup } from "@gitru/ui/components/kbd";
 import { Label } from "@gitru/ui/components/label";
+import {
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuTrigger,
+} from "@gitru/ui/components/menu";
 import {
   Popover,
   PopoverContent,
@@ -14,7 +23,9 @@ import { cn } from "@gitru/ui/lib/utils";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   ArrowUpFromLine,
+  Check,
   ChevronDown,
+  ChevronDownIcon,
   ChevronsUp,
   Diff,
   GitBranch,
@@ -36,13 +47,35 @@ import {
   useGetStatusAheadBehind,
   useGitPush,
 } from "@/hooks";
-import { SelectedFile, useAppStore } from "@/store/useAppStore";
+import {
+  type ExternalOpener,
+  type SelectedFile,
+  useAppStore,
+} from "@/store/useAppStore";
 import { SplitSVG } from "../../../components/svgs/splitSVG";
 import { UnifiedSVG } from "../../../components/svgs/unifiedSVG";
 
 export const Route = createFileRoute("/app/git/")({
   component: App,
 });
+
+const EXTERNAL_OPENER_OPTIONS: {
+  value: ExternalOpener;
+  label: string;
+  buttonLabel: string;
+}[] = [
+  { value: "vscode", label: "VS Code", buttonLabel: "VS Code" },
+  { value: "cursor", label: "Cursor", buttonLabel: "Cursor" },
+  { value: "finder", label: "Finder", buttonLabel: "Finder" },
+  { value: "terminal", label: "Terminal", buttonLabel: "Terminal" },
+  { value: "ghostty", label: "Ghostty", buttonLabel: "Ghostty" },
+];
+
+const DEFAULT_OPENER: ExternalOpener = "vscode";
+
+const getOpenerOption = (opener: ExternalOpener) =>
+  EXTERNAL_OPENER_OPTIONS.find((option) => option.value === opener) ||
+  EXTERNAL_OPENER_OPTIONS[0];
 
 function App() {
   const mainWindowView = useAppStore((state) => state.mainWindowView);
@@ -192,10 +225,93 @@ const FileLevelStatusBar = ({
 }: {
   selectedFile: SelectedFile;
 }) => {
+  const setSelectedFileForRepo = useAppStore(
+    (state) => state.setSelectedFileForRepo,
+  );
+  const setMainWindowView = useAppStore((state) => state.setMainWindowView);
+  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const preferredExternalOpener = useAppStore(
+    (state) => state.preferredExternalOpener,
+  );
+  const setPreferredExternalOpener = useAppStore(
+    (state) => state.setPreferredExternalOpener,
+  );
+  const selectedOpenerOption = getOpenerOption(preferredExternalOpener);
+
+  const openSelectedFile = async (opener: ExternalOpener) => {
+    if (!selectedFile?.filePath || !selectedRepository?.path) return;
+    setPreferredExternalOpener(opener);
+
+    await openWithApp({
+      filePath: `${selectedRepository.path}/${selectedFile.fileNewPath || selectedFile.filePath}`,
+      app: opener,
+    });
+  };
+
   return (
     <div className="w-full h-9.25 border-b flex justify-between items-center">
       <FileLevelStatusBarLeft selectedFile={selectedFile} />
-      <SettingsPopover />
+      <div className="flex items-center gap-2 pr-2">
+        <Button
+          size="icon-xs"
+          variant="outline"
+          className="relative"
+          aria-label="Open notifications"
+          onClick={() => {
+            setMainWindowView(null);
+            setSelectedFileForRepo({
+              filePath: undefined,
+              status: undefined,
+              fileNewPath: undefined,
+            });
+          }}
+        >
+          <X />
+        </Button>
+        <Group aria-label="Repository actions">
+          <Button
+            onClick={async () => {
+              await openSelectedFile(preferredExternalOpener || DEFAULT_OPENER);
+            }}
+            variant="outline"
+            size={"xs"}
+            className="pl-2.5"
+          >
+            {getAppIcon(selectedOpenerOption.value)}
+            <span className="ml-1">{selectedOpenerOption.buttonLabel}</span>
+          </Button>
+          <GroupSeparator />
+          <Menu>
+            <MenuTrigger
+              render={
+                <Button aria-label="Menu" size="icon-xs" variant="outline" />
+              }
+            >
+              <ChevronDownIcon aria-hidden="true" />
+            </MenuTrigger>
+            <MenuPopup align="end">
+              {EXTERNAL_OPENER_OPTIONS.map((option) => (
+                <MenuItem
+                  key={option.value}
+                  onClick={async () => {
+                    await openSelectedFile(option.value);
+                  }}
+                  className="justify-between gap-6"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="size-4">{getAppIcon(option.value)}</div>
+                    <span>{option.label}</span>
+                  </div>
+                  {option.value === preferredExternalOpener ? (
+                    <Check size={14} />
+                  ) : null}
+                </MenuItem>
+              ))}
+            </MenuPopup>
+          </Menu>
+        </Group>
+        <SettingsPopover />
+      </div>
     </div>
   );
 };
@@ -210,7 +326,7 @@ const DiffArea = ({ selectedFile }: { selectedFile: SelectedFile }) => {
   return (
     <div
       className={cn(
-        "max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*7))] h-full w-full relative overflow-y-auto _bg-secondary/70",
+        "max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*7))] h-full w-full relative overflow-y-auto bg-[color-mix(in_oklab,var(--color-secondary)_70%,var(--color-background))]",
       )}
     >
       {isLoading ? (
@@ -264,8 +380,15 @@ const FileLevelStatusBarLeft = ({
       {selectedFile?.status && selectedFile?.filePath ? (
         <>
           {getStatusIcon(selectedFile?.status)}
-          <span className="flex items-center">
+          <span className="group flex items-center">
             {renderPath(selectedFile?.filePath)}
+            <div className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity text-xs text-muted-foreground">
+              <CopyButton
+                size={"xs"}
+                variant="ghost"
+                text={selectedFile?.filePath || ""}
+              />
+            </div>
           </span>
         </>
       ) : null}
@@ -290,53 +413,34 @@ const renderPath = (path: string) => {
   const dir = parts.join("/");
 
   return (
-    <span className="flex items-center">
-      {dir && <span className="text-muted-foreground/75">{dir}/</span>}
-      <span>{fileName}</span>
+    <span>
+      {dir && (
+        <>
+          <span className="text-muted-foreground/75">{dir}/</span>
+        </>
+      )}
+      {fileName}
     </span>
   );
 };
 
 const SettingsPopover = () => {
-  const setSelectedFileForRepo = useAppStore(
-    (state) => state.setSelectedFileForRepo,
-  );
-  const setMainWindowView = useAppStore((state) => state.setMainWindowView);
-
   return (
-    <div>
-      <Button
-        size="icon"
-        variant="ghost"
-        className="relative"
-        aria-label="Open notifications"
-        onClick={() => {
-          setMainWindowView(null);
-          setSelectedFileForRepo({
-            filePath: undefined,
-            status: undefined,
-            fileNewPath: undefined,
-          });
-        }}
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button
+            size="icon-xs"
+            variant="outline"
+            className="relative"
+            aria-label="Open notifications"
+          />
+        }
       >
-        <X />
-      </Button>
-      <Popover>
-        <PopoverTrigger
-          render={
-            <Button
-              size="icon"
-              variant="ghost"
-              className="relative"
-              aria-label="Open notifications"
-            />
-          }
-        >
-          <Settings size={16} aria-hidden="true" />
-        </PopoverTrigger>
-        <SettingsPopoverContent />
-      </Popover>
-    </div>
+        <Settings size={16} aria-hidden="true" />
+      </PopoverTrigger>
+      <SettingsPopoverContent />
+    </Popover>
   );
 };
 
@@ -410,7 +514,7 @@ const EmptyStateScreen = () => {
     <div className="w-full flex justify-center h-full bg-background border-r">
       <div className="w-full h-full flex flex-col items-center justify-center -mt-20">
         <GitruBorderedSVG />
-        <div className="flex flex-col gap-0.5 w-60">
+        <div className="flex flex-col gap-0.5 w-60 select-none">
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground text-sm font-light">
               Command Pannel
@@ -451,3 +555,20 @@ const EmptyStateScreen = () => {
     </div>
   );
 };
+
+function getAppIcon(appName: string) {
+  switch (appName) {
+    case "vscode":
+      return <VSCodeIcon />;
+    case "cursor":
+      return <CursorIcon />;
+    case "ghostty":
+      return <GhosttyIcon />;
+    case "finder":
+      return <GhosttyIcon />;
+    case "terminal":
+      return <GhosttyIcon />;
+    default:
+      return <></>;
+  }
+}
