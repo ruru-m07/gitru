@@ -1,5 +1,7 @@
 export { Conflict } from "./icons/conflict";
+export { CursorIcon } from "./icons/cursor";
 export { Deleted } from "./icons/deleted";
+export { GhosttyIcon } from "./icons/ghostty";
 export { Git } from "./icons/git";
 export { Inbox } from "./icons/inbox";
 export { Issue } from "./icons/issue";
@@ -8,3 +10,4 @@ export { New } from "./icons/new";
 export { PullRequest } from "./icons/pullRequest";
 export { Renamed } from "./icons/renamed";
 export { Unknown } from "./icons/unknown";
+export { VSCodeIcon } from "./icons/vscode";

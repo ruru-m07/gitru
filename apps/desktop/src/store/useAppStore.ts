@@ -19,6 +19,13 @@ export type SelectedFile = {
   status?: FileStatusKind[];
 };
 
+export type ExternalOpener =
+  | "vscode"
+  | "cursor"
+  | "finder"
+  | "terminal"
+  | "ghostty";
+
 type RepoKey = string;
 
 type AppState = {
@@ -39,6 +46,9 @@ type AppState = {
 
   mainWindowView: "FileDiff" | "HistoryGraph" | null;
   setMainWindowView: (view: "FileDiff" | "HistoryGraph" | null) => void;
+
+  preferredExternalOpener: ExternalOpener;
+  setPreferredExternalOpener: (opener: ExternalOpener) => void;
 };
 
 export const useAppStore = create<AppState>()(
@@ -103,6 +113,10 @@ export const useAppStore = create<AppState>()(
 
         mainWindowView: null,
         setMainWindowView: (view) => set({ mainWindowView: view }),
+
+        preferredExternalOpener: "vscode",
+        setPreferredExternalOpener: (opener) =>
+          set({ preferredExternalOpener: opener }),
       }),
       {
         name: "app-data",

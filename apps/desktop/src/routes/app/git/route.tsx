@@ -103,7 +103,12 @@ import { GIT_PROVIDERS } from "@/type";
 
 const CoAuthers = z.array(z.tuple([z.string(), z.string()]));
 type CoAuthers = z.infer<typeof CoAuthers>;
-type FileStatusFilter = "modified" | "renamed" | "conflicted" | "deleted";
+type FileStatusFilter =
+  | "modified"
+  | "renamed"
+  | "conflicted"
+  | "deleted"
+  | "untracked";
 
 const matchesSearchQuery = (value: string, query: string) => {
   const normalizedQuery = query.trim();
@@ -489,6 +494,7 @@ const ListFileChanges = () => {
     renamed: true,
     deleted: true,
     conflicted: true,
+    untracked: true,
   });
 
   const selectedRepository = useAppStore((state) => state.selectedRepository);
@@ -511,7 +517,8 @@ const ListFileChanges = () => {
     !statusFilters.modified ||
     !statusFilters.renamed ||
     !statusFilters.deleted ||
-    !statusFilters.conflicted;
+    !statusFilters.conflicted ||
+    !statusFilters.untracked;
   const toggleStatusFilter = (filter: FileStatusFilter, checked: boolean) => {
     setStatusFilters((prev) => ({
       ...prev,
@@ -524,12 +531,14 @@ const ListFileChanges = () => {
     const isRenamed = file.status.some((s) => s.includes("Renamed"));
     const isDeleted = file.status.some((s) => s.includes("Deleted"));
     const isConflicted = file.status.some((s) => s.includes("Conflicted"));
+    const isUntracked = file.status.some((s) => s.includes("New"));
 
     return (
       (statusFilters.modified && isModified) ||
       (statusFilters.renamed && isRenamed) ||
       (statusFilters.deleted && isDeleted) ||
-      (statusFilters.conflicted && isConflicted)
+      (statusFilters.conflicted && isConflicted) ||
+      (statusFilters.untracked && isUntracked)
     );
   };
 
@@ -562,7 +571,7 @@ const ListFileChanges = () => {
     <Tabs defaultValue="tab-1" className={"gap-0 h-full flex flex-col"}>
       <TabsList
         className={
-          "rounded-none bg-background w-full shrink-0 border-y *:data-[slot=tab-indicator]:bg-secondary *:data-[slot=tab-indicator]:transition-none"
+          "select-none rounded-none bg-background w-full shrink-0 border-y *:data-[slot=tab-indicator]:bg-secondary *:data-[slot=tab-indicator]:transition-none"
         }
       >
         <TabsTab className={"rounded-none!"} value="tab-1">
@@ -616,12 +625,25 @@ const ListFileChanges = () => {
                           toggleStatusFilter("renamed", true);
                           toggleStatusFilter("deleted", true);
                           toggleStatusFilter("conflicted", true);
+                          toggleStatusFilter("untracked", true);
                         }}
                       >
                         clear
                       </span>
                     )}
                   </MenuGroupLabel>
+                   <MenuCheckboxItem
+                    checked={statusFilters.untracked}
+                    onCheckedChange={(checked) =>
+                      toggleStatusFilter("untracked", Boolean(checked))
+                    }
+                    variant="switch"
+                  >
+                    <span className="flex gap-1.5">
+                      {getStatusIcon(["WorktreeNew"], 18)}
+                      Untracked
+                    </span>
+                  </MenuCheckboxItem>
                   <MenuCheckboxItem
                     checked={statusFilters.modified}
                     onCheckedChange={(checked) =>

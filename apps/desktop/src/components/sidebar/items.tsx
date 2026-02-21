@@ -37,7 +37,7 @@ const SideBarItems: React.FC<{
           className="items-center"
           value={location.href}
         >
-          <TabsList className="bg-transparent! gap-1">
+          <TabsList className="bg-transparent! gap-1 select-none">
             {items.map((item: Item) => (
               <TooltipTrigger
                 className="after:absolute after:left-full after:h-full after:w-1"

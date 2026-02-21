@@ -1,7 +1,7 @@
 import {
   type FileStatus,
   GetStatusResponse,
-  openVscode,
+  openWithApp,
 } from "@gitru/commands";
 import { Badge } from "@gitru/ui/components/badge";
 import { Button } from "@gitru/ui/components/button";
@@ -289,7 +289,10 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
   const virtualItems = virtualizer.getVirtualItems();
 
   return (
-    <div ref={parentRef} className={cn("h-full overflow-auto", className)}>
+    <div
+      ref={parentRef}
+      className={cn("select-none h-full overflow-auto", className)}
+    >
       <div
         style={{
           height: `${virtualizer.getTotalSize()}px`,
@@ -545,7 +548,7 @@ const FileRow = memo(
             }}
             onDoubleClick={async () => {
               if (!file.path) return;
-              await openVscode({
+              await openWithApp({
                 filePath: `${selectedRepository?.path}/${file.new_path || file.path}`,
               });
             }}

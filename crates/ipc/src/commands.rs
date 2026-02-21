@@ -1,10 +1,11 @@
 use git::AppState;
 use git::core::RepoServices;
+use serde::Deserialize;
 use serde::Serialize;
+use std::path::Path;
 use std::process::Command;
 use std::sync::Mutex;
 use std::{
-    path::Path,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -150,17 +151,200 @@ pub async fn select_repository(
 
 #[tauri::command]
 #[logger::logger]
-pub async fn open_vscode(file_path: String, line: Option<u32>) -> Result<(), String> {
-    let target = match line {
-        Some(l) => format!("{}:{}", file_path, l),
-        None => file_path,
+pub async fn open_with_app(
+    file_path: String,
+    line: Option<u32>,
+    app: Option<String>,
+) -> Result<(), String> {
+    let opener = ExternalOpener::from_input(app.as_deref())?;
+
+    #[cfg(target_os = "macos")]
+    {
+        return open_on_macos(opener, &file_path, line);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        return open_on_windows(opener, &file_path, line);
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        return open_on_linux(opener, &file_path, line);
+    }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum ExternalOpener {
+    Vscode,
+    Cursor,
+    Finder,
+    Terminal,
+    Ghostty,
+}
+
+impl ExternalOpener {
+    fn from_input(input: Option<&str>) -> Result<Self, String> {
+        match input.unwrap_or("vscode").to_ascii_lowercase().as_str() {
+            "vscode" => Ok(Self::Vscode),
+            "cursor" => Ok(Self::Cursor),
+            "finder" => Ok(Self::Finder),
+            "terminal" => Ok(Self::Terminal),
+            "ghostty" | "ghosty" => Ok(Self::Ghostty),
+            other => Err(format!(
+                "Unsupported opener '{}'. Use one of: vscode, cursor, finder, terminal, ghostty",
+                other
+            )),
+        }
+    }
+}
+
+fn path_for_directory_apps(file_path: &str) -> String {
+    let path = Path::new(file_path);
+    if path.is_dir() {
+        return file_path.to_string();
+    }
+
+    match path.parent() {
+        Some(parent) => parent.to_string_lossy().to_string(),
+        None => file_path.to_string(),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn open_on_macos(opener: ExternalOpener, file_path: &str, line: Option<u32>) -> Result<(), String> {
+    let mut command = Command::new("open");
+
+    match opener {
+        ExternalOpener::Vscode => {
+            command.arg("-a").arg("Visual Studio Code");
+            if let Some(line) = line {
+                command
+                    .arg("--args")
+                    .arg("--goto")
+                    .arg(format!("{}:{}", file_path, line));
+            } else {
+                command.arg(file_path);
+            }
+        }
+        ExternalOpener::Cursor => {
+            command.arg("-a").arg("Cursor");
+            if let Some(line) = line {
+                command
+                    .arg("--args")
+                    .arg("--goto")
+                    .arg(format!("{}:{}", file_path, line));
+            } else {
+                command.arg(file_path);
+            }
+        }
+        ExternalOpener::Finder => {
+            command.arg("-a").arg("Finder").arg(file_path);
+        }
+        ExternalOpener::Terminal => {
+            command
+                .arg("-a")
+                .arg("Terminal")
+                .arg(path_for_directory_apps(file_path));
+        }
+        ExternalOpener::Ghostty => {
+            command
+                .arg("-a")
+                .arg("Ghostty")
+                .arg(path_for_directory_apps(file_path));
+        }
+    }
+
+    command
+        .spawn()
+        .map_err(|e| format!("Failed to launch opener on macOS: {}", e))?;
+
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn open_on_windows(
+    opener: ExternalOpener,
+    file_path: &str,
+    line: Option<u32>,
+) -> Result<(), String> {
+    let target_with_line = line
+        .map(|line| format!("{}:{}", file_path, line))
+        .unwrap_or_else(|| file_path.to_string());
+
+    let mut command = match opener {
+        ExternalOpener::Vscode => {
+            let mut cmd = Command::new("code");
+            cmd.arg("-g").arg(target_with_line);
+            cmd
+        }
+        ExternalOpener::Cursor => {
+            let mut cmd = Command::new("cursor");
+            cmd.arg("-g").arg(target_with_line);
+            cmd
+        }
+        ExternalOpener::Finder => {
+            let mut cmd = Command::new("explorer");
+            cmd.arg(file_path);
+            cmd
+        }
+        ExternalOpener::Terminal => {
+            let mut cmd = Command::new("wt");
+            cmd.arg("-d").arg(path_for_directory_apps(file_path));
+            cmd
+        }
+        ExternalOpener::Ghostty => {
+            let mut cmd = Command::new("ghostty");
+            cmd.arg(path_for_directory_apps(file_path));
+            cmd
+        }
     };
 
-    Command::new("code")
-        .arg("-g")
-        .arg(target)
+    command
         .spawn()
-        .map_err(|e| format!("Failed to launch VS Code: {}", e))?;
+        .map_err(|e| format!("Failed to launch opener on Windows: {}", e))?;
+
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn open_on_linux(opener: ExternalOpener, file_path: &str, line: Option<u32>) -> Result<(), String> {
+    let target_with_line = line
+        .map(|line| format!("{}:{}", file_path, line))
+        .unwrap_or_else(|| file_path.to_string());
+
+    let mut command = match opener {
+        ExternalOpener::Vscode => {
+            let mut cmd = Command::new("code");
+            cmd.arg("-g").arg(target_with_line);
+            cmd
+        }
+        ExternalOpener::Cursor => {
+            let mut cmd = Command::new("cursor");
+            cmd.arg("-g").arg(target_with_line);
+            cmd
+        }
+        ExternalOpener::Finder => {
+            let mut cmd = Command::new("xdg-open");
+            cmd.arg(file_path);
+            cmd
+        }
+        ExternalOpener::Terminal => {
+            let mut cmd = Command::new("xdg-open");
+            cmd.arg(path_for_directory_apps(file_path));
+            cmd
+        }
+        ExternalOpener::Ghostty => {
+            let mut cmd = Command::new("ghostty");
+            cmd.arg(path_for_directory_apps(file_path));
+            cmd
+        }
+    };
+
+    command
+        .spawn()
+        .map_err(|e| format!("Failed to launch opener on Linux: {}", e))?;
 
     Ok(())
 }
