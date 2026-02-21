@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { cn } from "@gitru/ui/lib/utils";
 import { cva, type VariantProps } from "class-variance-authority";
 

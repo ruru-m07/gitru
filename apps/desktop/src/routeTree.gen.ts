@@ -71,10 +71,10 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRouteRouteWithChildren
   '/app/git': typeof AppGitRouteRouteWithChildren
   '/app/git/': typeof AppGitIndexRoute
-  '/app/inbox': typeof AppInboxIndexRoute
-  '/app/issues': typeof AppIssuesIndexRoute
-  '/app/pulls': typeof AppPullsIndexRoute
-  '/auth/onboarding': typeof AuthOnboardingIndexRoute
+  '/app/inbox/': typeof AppInboxIndexRoute
+  '/app/issues/': typeof AppIssuesIndexRoute
+  '/app/pulls/': typeof AppPullsIndexRoute
+  '/auth/onboarding/': typeof AuthOnboardingIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -106,10 +106,10 @@ export interface FileRouteTypes {
     | '/auth'
     | '/app/git'
     | '/app/git/'
-    | '/app/inbox'
-    | '/app/issues'
-    | '/app/pulls'
-    | '/auth/onboarding'
+    | '/app/inbox/'
+    | '/app/issues/'
+    | '/app/pulls/'
+    | '/auth/onboarding/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -172,28 +172,28 @@ declare module '@tanstack/react-router' {
     '/auth/onboarding/': {
       id: '/auth/onboarding/'
       path: '/onboarding'
-      fullPath: '/auth/onboarding'
+      fullPath: '/auth/onboarding/'
       preLoaderRoute: typeof AuthOnboardingIndexRouteImport
       parentRoute: typeof AuthRouteRoute
     }
     '/app/pulls/': {
       id: '/app/pulls/'
       path: '/pulls'
-      fullPath: '/app/pulls'
+      fullPath: '/app/pulls/'
       preLoaderRoute: typeof AppPullsIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/app/issues/': {
       id: '/app/issues/'
       path: '/issues'
-      fullPath: '/app/issues'
+      fullPath: '/app/issues/'
       preLoaderRoute: typeof AppIssuesIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/app/inbox/': {
       id: '/app/inbox/'
       path: '/inbox'
-      fullPath: '/app/inbox'
+      fullPath: '/app/inbox/'
       preLoaderRoute: typeof AppInboxIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }

@@ -9,8 +9,8 @@
     "check-types": "turbo run check-types"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.3.8",
-    "turbo": "^2.6.3",
+    "@biomejs/biome": "2.4.4",
+    "turbo": "^2.8.10",
     "typescript": "catalog:"
   },
   "engines": {
@@ -28,7 +28,7 @@
       "typescript": "^5",
       "@types/react": "^19.0.0",
       "@types/react-dom": "^19.0.0",
-      "@tauri-apps/api": "^2.4.0",
+      "@tauri-apps/api": "^2.10.1",
       "react-resizable-panels": "4",
       "zod": "^4.3.5"
     }
