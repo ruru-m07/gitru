@@ -18,6 +18,7 @@ import {
   GitBranchPlus,
   GitPullRequestArrow,
   Inbox,
+  Download,
   PlusIcon,
   RefreshCcw,
   SearchIcon,
@@ -32,6 +33,11 @@ import {
   useGitPull,
   useGitPush,
 } from "@/hooks";
+import {
+  checkForUpdateByChannel,
+  installUpdateByChannel,
+} from "@/lib/updater";
+import { useAppStore } from "@/store/useAppStore";
 
 export interface ActionItem {
   id: string;
@@ -57,6 +63,7 @@ const iconMap: Record<string, React.ReactNode> = {
   arrowUpFromLine: <ArrowUpFromLine className="size-4" />,
   refreshCcw: <RefreshCcw className="size-4" />,
   theme: <SwatchBook className="size-4" />,
+  updates: <Download className="size-4" />,
 };
 
 export function useRootView(): CommandViewConfig<"root", ActionItem> {
@@ -68,6 +75,7 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
   const { data: aheadBehind } = useGetStatusAheadBehind();
 
   const tanstackNavigate = useNavigate();
+  const updateChannel = useAppStore((s) => s.updateChannel);
 
   return {
     id: "root",
@@ -230,6 +238,44 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             iconKey: "theme",
             keywords: ["theme", "color", "appearance"],
           },
+          {
+            id: "switch-update-channel",
+            label: "Switch Update Channel",
+            iconKey: "updates",
+            keywords: ["update", "channel", "stable", "beta"],
+          },
+          {
+            id: "check-for-updates",
+            label: `Check for Updates (${updateChannel})`,
+            iconKey: "updates",
+            keywords: ["update", "upgrade", "install"],
+            async onCallBack() {
+              try {
+                const update = await checkForUpdateByChannel(updateChannel);
+
+                if (!update.available) {
+                  toast.info(`No update available on ${updateChannel} channel`);
+                  return;
+                }
+
+                toast.promise(installUpdateByChannel(updateChannel), {
+                  loading: `Installing update ${update.version ?? ""}...`,
+                  success: (data) => {
+                    ctx.close();
+                    return data;
+                  },
+                  error: (err) =>
+                    typeof err === "string" ? err : "Failed to install update",
+                });
+              } catch (error) {
+                toast.error(
+                  error instanceof Error
+                    ? error.message
+                    : "Failed to check for updates",
+                );
+              }
+            },
+          },
         ] satisfies ActionItem[];
       },
       getItemValue: (item) => {
@@ -285,6 +331,8 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
               navigate.push("branch-list");
             } else if (item.id === "switch-theme") {
               navigate.push("switch-theme");
+            } else if (item.id === "switch-update-channel") {
+              navigate.push("switch-update-channel");
             }
           }}
           emptyState={() => (

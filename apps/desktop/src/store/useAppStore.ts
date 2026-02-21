@@ -27,6 +27,7 @@ export type ExternalOpener =
   | "ghostty";
 
 type RepoKey = string;
+export type UpdateChannel = "stable" | "beta";
 
 type AppState = {
   selectedRepository: RepositoryInfo | null;
@@ -49,6 +50,9 @@ type AppState = {
 
   preferredExternalOpener: ExternalOpener;
   setPreferredExternalOpener: (opener: ExternalOpener) => void;
+
+  updateChannel: UpdateChannel;
+  setUpdateChannel: (channel: UpdateChannel) => void;
 };
 
 export const useAppStore = create<AppState>()(
@@ -117,6 +121,9 @@ export const useAppStore = create<AppState>()(
         preferredExternalOpener: "vscode",
         setPreferredExternalOpener: (opener) =>
           set({ preferredExternalOpener: opener }),
+
+        updateChannel: "stable",
+        setUpdateChannel: (channel) => set({ updateChannel: channel }),
       }),
       {
         name: "app-data",

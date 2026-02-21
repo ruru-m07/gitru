@@ -65,6 +65,8 @@ pub fn run() {
             commands::actions::git_add,
             commands::actions::git_remove,
             commands::actions::git_discard,
+            commands::updater::check_for_update_by_channel,
+            commands::updater::install_update_by_channel,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

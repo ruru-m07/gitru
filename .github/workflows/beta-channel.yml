@@ -1,0 +1,249 @@
+name: 'beta-channel'
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform(s) to run'
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - ubuntu
+          - windows
+          - macos
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.inputs.platform || 'all' }}
+  cancel-in-progress: true
+
+jobs:
+  build-tauri:
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include: >-
+          ${{ fromJSON(
+            inputs.platform == 'all' && '[{"platform":"macos-latest","args":"--target universal-apple-darwin"},{"platform":"ubuntu-22.04","args":""},{"platform":"windows-latest","args":""}]' ||
+            inputs.platform == 'ubuntu' && '[{"platform":"ubuntu-22.04","args":""}]' ||
+            inputs.platform == 'windows' && '[{"platform":"windows-latest","args":""}]' ||
+            '[{"platform":"macos-latest","args":"--target universal-apple-darwin"}]'
+          ) }}
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Add additional Rust targets
+        if: matrix.platform == 'macos-latest'
+        run: |
+          rustup target add aarch64-apple-darwin
+          rustup target add x86_64-apple-darwin
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './apps/desktop/src-tauri -> target'
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.0-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install frontend dependencies
+        run: bun install
+
+      - name: Build with Tauri Action (no release upload)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          args: ${{ matrix.args }}
+
+      - name: Collect updater artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p collected
+
+          if [[ "${{ matrix.platform }}" == "macos-latest" ]]; then
+            find target/universal-apple-darwin/release/bundle -type f \
+              \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.app.tar.gz.sig" \) \
+              -exec cp {} collected/ \;
+          elif [[ "${{ matrix.platform }}" == "ubuntu-22.04" ]]; then
+            find target/release/bundle -type f \
+              \( -name "*.AppImage" -o -name "*.AppImage.sig" -o -name "*.deb" -o -name "*.deb.sig" -o -name "*.rpm" -o -name "*.rpm.sig" \) \
+              -exec cp {} collected/ \;
+          else
+            find target/release/bundle -type f \
+              \( -name "*setup.exe" -o -name "*setup.exe.sig" -o -name "*.msi" -o -name "*.msi.sig" \) \
+              -exec cp {} collected/ \;
+          fi
+
+          ls -lah collected
+          test -n "$(find collected -type f -print -quit)"
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-${{ matrix.platform }}
+          path: collected
+          if-no-files-found: error
+
+  publish-beta:
+    if: ${{ inputs.platform == 'all' }}
+    needs: build-tauri
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version from package.json
+        id: resolve_version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./apps/desktop/package.json').version")"
+          if [[ -z "${VERSION}" ]]; then
+            echo "Unable to read version from apps/desktop/package.json"
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: ${VERSION}"
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: tauri-macos-latest
+          path: artifacts/macos
+
+      - name: Download Ubuntu artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: tauri-ubuntu-22.04
+          path: artifacts/ubuntu
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: tauri-windows-latest
+          path: artifacts/windows
+
+      - name: Build beta manifest and staging tree
+        shell: bash
+        env:
+          VERSION: ${{ steps.resolve_version.outputs.version }}
+          BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        run: |
+          set -euo pipefail
+          BASE_URL="${BASE_URL%/}"
+          ROOT="out/beta"
+          DL_PREFIX="${ROOT}/downloads/${VERSION}"
+          MANIFEST_VERSIONED="${ROOT}/versions/${VERSION}/latest.json"
+          MANIFEST_LATEST="${ROOT}/latest.json"
+          PUB_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          mkdir -p "${DL_PREFIX}/darwin" "${DL_PREFIX}/linux" "${DL_PREFIX}/windows" "$(dirname "${MANIFEST_VERSIONED}")"
+
+          MAC_BIN="$(find artifacts/macos -type f -name '*.app.tar.gz' | head -n 1)"
+          MAC_SIG="$(find artifacts/macos -type f -name '*.app.tar.gz.sig' | head -n 1)"
+          LINUX_BIN="$(find artifacts/ubuntu -type f -name '*.AppImage' | head -n 1)"
+          LINUX_SIG="$(find artifacts/ubuntu -type f -name '*.AppImage.sig' | head -n 1)"
+          WIN_BIN="$(find artifacts/windows -type f -name '*setup.exe' | head -n 1)"
+          WIN_SIG="$(find artifacts/windows -type f -name '*setup.exe.sig' | head -n 1)"
+
+          for required in "$MAC_BIN" "$MAC_SIG" "$LINUX_BIN" "$LINUX_SIG" "$WIN_BIN" "$WIN_SIG"; do
+            if [[ -z "${required}" ]]; then
+              echo "Missing required updater artifact"
+              exit 1
+            fi
+          done
+
+          cp "$MAC_BIN" "${DL_PREFIX}/darwin/"
+          cp "$MAC_SIG" "${DL_PREFIX}/darwin/"
+          cp "$LINUX_BIN" "${DL_PREFIX}/linux/"
+          cp "$LINUX_SIG" "${DL_PREFIX}/linux/"
+          cp "$WIN_BIN" "${DL_PREFIX}/windows/"
+          cp "$WIN_SIG" "${DL_PREFIX}/windows/"
+
+          MAC_FILE="$(basename "$MAC_BIN")"
+          LINUX_FILE="$(basename "$LINUX_BIN")"
+          WIN_FILE="$(basename "$WIN_BIN")"
+
+          MAC_SIGNATURE="$(tr -d '\r\n' < "$MAC_SIG")"
+          LINUX_SIGNATURE="$(tr -d '\r\n' < "$LINUX_SIG")"
+          WIN_SIGNATURE="$(tr -d '\r\n' < "$WIN_SIG")"
+
+          cat > "${MANIFEST_VERSIONED}" <<EOF
+          {
+            "version": "${VERSION}",
+            "notes": "Beta build from workflow_dispatch",
+            "pub_date": "${PUB_DATE}",
+            "platforms": {
+              "darwin-aarch64": {
+                "signature": "${MAC_SIGNATURE}",
+                "url": "${BASE_URL}/beta/downloads/${VERSION}/darwin/${MAC_FILE}"
+              },
+              "darwin-x86_64": {
+                "signature": "${MAC_SIGNATURE}",
+                "url": "${BASE_URL}/beta/downloads/${VERSION}/darwin/${MAC_FILE}"
+              },
+              "linux-x86_64": {
+                "signature": "${LINUX_SIGNATURE}",
+                "url": "${BASE_URL}/beta/downloads/${VERSION}/linux/${LINUX_FILE}"
+              },
+              "windows-x86_64": {
+                "signature": "${WIN_SIGNATURE}",
+                "url": "${BASE_URL}/beta/downloads/${VERSION}/windows/${WIN_FILE}"
+              }
+            }
+          }
+          EOF
+
+          cp "${MANIFEST_VERSIONED}" "${MANIFEST_LATEST}"
+
+          echo "Staged files:"
+          find out -type f | sort
+
+      - name: Upload beta files to R2
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          VERSION: ${{ steps.resolve_version.outputs.version }}
+        run: |
+          set -euo pipefail
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+          aws s3 sync "out/beta/downloads/${VERSION}" "s3://${R2_BUCKET}/beta/downloads/${VERSION}" --endpoint-url "${ENDPOINT}" --no-progress
+          aws s3 cp "out/beta/versions/${VERSION}/latest.json" "s3://${R2_BUCKET}/beta/versions/${VERSION}/latest.json" --endpoint-url "${ENDPOINT}" --cache-control "public, max-age=300"
+          aws s3 cp "out/beta/latest.json" "s3://${R2_BUCKET}/beta/latest.json" --endpoint-url "${ENDPOINT}" --cache-control "no-store"
