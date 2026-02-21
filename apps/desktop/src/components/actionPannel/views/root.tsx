@@ -33,11 +33,12 @@ import {
   useGitPull,
   useGitPush,
 } from "@/hooks";
-import {
-  checkForUpdateByChannel,
-  installUpdateByChannel,
-} from "@/lib/updater";
+// import {
+//   checkForUpdateByChannel,
+//   installUpdateByChannel,
+// } from "@/lib/updater";
 import { useAppStore } from "@/store/useAppStore";
+import { checkForUpdateByChannel, installUpdateByChannel } from "@gitru/commands";
 
 export interface ActionItem {
   id: string;
@@ -251,14 +252,18 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             keywords: ["update", "upgrade", "install"],
             async onCallBack() {
               try {
-                const update = await checkForUpdateByChannel(updateChannel);
+                const update = await checkForUpdateByChannel({
+                  channel: updateChannel,
+                });
 
                 if (!update.available) {
                   toast.info(`No update available on ${updateChannel} channel`);
                   return;
                 }
 
-                toast.promise(installUpdateByChannel(updateChannel), {
+                toast.promise(installUpdateByChannel({
+                  channel: updateChannel,
+                }), {
                   loading: `Installing update ${update.version ?? ""}...`,
                   success: (data) => {
                     ctx.close();

@@ -1,4 +1,3 @@
-import { CursorIcon } from "@gitru/icon";
 import { buttonVariants } from "@gitru/ui/components/button";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import PageLayout from "@/components/pageLayout";
@@ -19,7 +18,6 @@ function RouteComponent() {
       >
         Go to Onboarding
       </Link>
-      <CursorIcon />
     </PageLayout>
   );
 }
