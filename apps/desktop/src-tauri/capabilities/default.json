@@ -9,6 +9,8 @@
     "core:window:default",
     "core:window:allow-start-dragging",
     "store:default",
+    "process:allow-restart",
+    "process:allow-exit",
     "dialog:default",
     "updater:default",
     "notification:default",
