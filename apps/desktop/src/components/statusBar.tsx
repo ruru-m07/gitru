@@ -31,8 +31,7 @@ import {
   RefreshCw,
   RotateCw,
 } from "lucide-react";
-import { motion, useAnimate } from "motion/react";
-import React, { useEffect, useRef } from "react";
+import React from "react";
 import {
   useGetCommitById,
   useGetCurrentBranch,
@@ -48,6 +47,7 @@ import { parseOrigin } from "@/lib/parseOrigin";
 import { timeAgoFromUnixSeconds } from "@/lib/time";
 import { appState } from "@/state";
 import { useAppStore } from "@/store/useAppStore";
+import { cn } from "@gitru/ui/lib/utils";
 
 const StatusBar = () => {
   const { data: statusAheadBehind } = useGetStatusAheadBehind();
@@ -310,68 +310,112 @@ const VersionBadge = () => {
 
 const FetchBadge = () => {
   const { mutateAsync: fetch, isPending } = useGitFetch();
-  const [scope, animate] = useAnimate();
-  const rotationRef = useRef(0);
-  const animationRef = useRef<any>(null);
+  const [spinState, setSpinState] = React.useState<
+    "idle" | "spinning" | "completing"
+  >("idle");
+  const iconRef = React.useRef<SVGSVGElement | null>(null);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (isPending) {
-      if (animationRef.current) {
-        animationRef.current.stop();
-      }
-
-      const startRotation = rotationRef.current;
-      animationRef.current = animate(
-        scope.current,
-        { rotate: startRotation + 360 },
-        {
-          duration: 1,
-          repeat: Infinity,
-          ease: "linear",
-          onUpdate: (latest) => {
-            rotationRef.current = latest;
-          },
-        },
-      );
-    } else {
-      if (animationRef.current) {
-        animationRef.current.stop();
-      }
-
-      const currentRotation = rotationRef.current % 360;
-      const nextCheckpoint = Math.ceil(currentRotation / 180) * 180;
-      const targetRotation =
-        rotationRef.current - currentRotation + nextCheckpoint;
-
-      animationRef.current = animate(
-        scope.current,
-        { rotate: targetRotation },
-        {
-          duration: ((nextCheckpoint - currentRotation) / 360) * 1,
-          ease: "easeOut",
-          onComplete: () => {
-            rotationRef.current = targetRotation % 360;
-          },
-        },
-      );
+      setSpinState("spinning");
+      return;
     }
 
-    return () => {
-      if (animationRef.current) {
-        animationRef.current.stop();
+    setSpinState((prev) => (prev === "spinning" ? "completing" : "idle"));
+  }, [isPending]);
+
+  React.useLayoutEffect(() => {
+    const icon = iconRef.current;
+
+    if (!icon) {
+      return;
+    }
+
+    if (spinState === "spinning") {
+      icon.style.animation = "";
+      icon.style.transition = "";
+      icon.style.transform = "";
+      return;
+    }
+
+    if (spinState !== "completing") {
+      return;
+    }
+
+    const transform = window.getComputedStyle(icon).transform;
+    let angle = 0;
+
+    if (transform && transform !== "none") {
+      const match = transform.match(/^matrix\((.+)\)$/);
+
+      if (match?.[1]) {
+        const values = match[1].split(",").map((value) => Number.parseFloat(value.trim()));
+
+        if (values.length >= 2) {
+          angle = (Math.atan2(values[1], values[0]) * 180) / Math.PI;
+        }
       }
+    }
+
+    if (angle < 0) {
+      angle += 360;
+    }
+
+    const remaining = angle === 0 ? 0 : 360 - angle;
+
+    if (remaining < 0.1) {
+      icon.style.animation = "";
+      icon.style.transition = "";
+      icon.style.transform = "";
+      setSpinState("idle");
+      return;
+    }
+
+    icon.style.animation = "none";
+    icon.style.transition = "none";
+    icon.style.transform = `rotate(${angle}deg)`;
+
+    void icon.getBoundingClientRect();
+
+    icon.style.transition = `transform ${(remaining / 360) * 0.8}s linear`;
+    icon.style.transform = `rotate(${angle + remaining}deg)`;
+
+    const handleTransitionEnd = (event: TransitionEvent) => {
+      if (event.propertyName !== "transform") {
+        return;
+      }
+
+      icon.style.animation = "";
+      icon.style.transition = "";
+      icon.style.transform = "";
+      setSpinState("idle");
     };
-  }, [isPending, animate, scope]);
+
+    icon.addEventListener("transitionend", handleTransitionEnd, { once: true });
+
+    return () => {
+      icon.removeEventListener("transitionend", handleTransitionEnd);
+    };
+  }, [spinState]);
 
   return (
     <Badge
       variant={"outline"}
-      className="text-muted-foreground! h-full rounded-none px-2 flex items-center cursor-pointer hover:bg-muted! border-transparent border-r-border"
-      onClick={async () => await fetch()}
+      className={cn("text-muted-foreground! h-full rounded-none px-2 flex items-center cursor-pointer hover:bg-muted! border-transparent border-r-border", isPending ? "pointer-events-none opacity-75" : "")}
+      onClick={async () => {
+        if (!isPending) {
+          await fetch();
+        }
+      }}
     >
-      <motion.div ref={scope}>
-        <RefreshCw />
-      </motion.div>
+      <RefreshCw
+        ref={iconRef}
+        className={
+          spinState !== "idle"
+            ? "animate-spin animation-duration-[0.8s]"
+            : ""
+        }
+      />
     </Badge>
   );
 };
