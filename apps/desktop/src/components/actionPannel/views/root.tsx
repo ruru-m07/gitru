@@ -33,12 +33,6 @@ import {
   useGitPull,
   useGitPush,
 } from "@/hooks";
-// import {
-//   checkForUpdateByChannel,
-//   installUpdateByChannel,
-// } from "@/lib/updater";
-import { useAppStore } from "@/store/useAppStore";
-import { checkForUpdateByChannel, installUpdateByChannel } from "@gitru/commands";
 
 export interface ActionItem {
   id: string;
@@ -76,8 +70,6 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
   const { data: aheadBehind } = useGetStatusAheadBehind();
 
   const tanstackNavigate = useNavigate();
-  const updateChannel = useAppStore((s) => s.updateChannel);
-
   return {
     id: "root",
     input: {
@@ -244,42 +236,6 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             label: "Switch Update Channel",
             iconKey: "updates",
             keywords: ["update", "channel", "stable", "beta"],
-          },
-          {
-            id: "check-for-updates",
-            label: `Check for Updates (${updateChannel})`,
-            iconKey: "updates",
-            keywords: ["update", "upgrade", "install"],
-            async onCallBack() {
-              try {
-                const update = await checkForUpdateByChannel({
-                  channel: updateChannel,
-                });
-
-                if (!update.available) {
-                  toast.info(`No update available on ${updateChannel} channel`);
-                  return;
-                }
-
-                toast.promise(installUpdateByChannel({
-                  channel: updateChannel,
-                }), {
-                  loading: `Installing update ${update.version ?? ""}...`,
-                  success: (data) => {
-                    ctx.close();
-                    return data;
-                  },
-                  error: (err) =>
-                    typeof err === "string" ? err : "Failed to install update",
-                });
-              } catch (error) {
-                toast.error(
-                  error instanceof Error
-                    ? error.message
-                    : "Failed to check for updates",
-                );
-              }
-            },
           },
         ] satisfies ActionItem[];
       },

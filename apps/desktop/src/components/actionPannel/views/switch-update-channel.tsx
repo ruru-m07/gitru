@@ -85,7 +85,7 @@ export function useSwitchUpdateChannelView(): CommandViewConfig<
           onSelect={(item) => {
             setUpdateChannel(item.id);
             toast.success(
-              `Update channel set to ${item.label}. Restart to apply automatic checks.`,
+              `Update channel set to ${item.label}. Re-checking for updates.`,
             );
             context.close();
           }}

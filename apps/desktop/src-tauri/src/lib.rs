@@ -16,6 +16,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -66,7 +67,7 @@ pub fn run() {
             commands::actions::git_remove,
             commands::actions::git_discard,
             commands::updater::check_for_update_by_channel,
-            commands::updater::install_update_by_channel,
+            commands::updater::download_and_install_update_by_channel,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

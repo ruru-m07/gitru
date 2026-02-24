@@ -1,4 +1,9 @@
 use serde::Serialize;
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc,
+};
+use tauri::Emitter;
 use tauri_plugin_updater::UpdaterExt;
 use url::Url;
 
@@ -12,6 +17,18 @@ pub struct UpdateCheckResponse {
     pub version: Option<String>,
     pub notes: Option<String>,
     pub pub_date: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdaterDownloadProgressEvent {
+    pub phase: String,
+    pub content_length: Option<u64>,
+    pub chunk_length: Option<usize>,
+    pub downloaded: Option<u64>,
+    pub percent: Option<f64>,
+    pub channel: String,
+    pub version: Option<String>,
 }
 
 fn normalize_channel(channel: &str) -> Result<&str, String> {
@@ -75,7 +92,7 @@ pub async fn check_for_update_by_channel(
 }
 
 #[tauri::command]
-pub async fn install_update_by_channel(
+pub async fn download_and_install_update_by_channel(
     app: tauri::AppHandle,
     channel: String,
 ) -> Result<String, String> {
@@ -101,8 +118,81 @@ pub async fn install_update_by_channel(
     };
 
     let next_version = update.version.clone();
+    let version = Some(next_version.clone());
+    let downloaded = Arc::new(AtomicU64::new(0));
+    let content_length = Arc::new(AtomicU64::new(0));
+    let started = Arc::new(AtomicBool::new(false));
+
+    let app_handle = app.clone();
+    let event_channel = channel.clone();
+    let event_version = version.clone();
+    let progress_downloaded = downloaded.clone();
+    let progress_content_length = content_length.clone();
+    let progress_started = started.clone();
+
     update
-        .download_and_install(|_, _| {}, || {})
+        .download_and_install(
+            move |chunk_length, total_length| {
+                let total_length_value = total_length.unwrap_or(0);
+                progress_content_length.store(total_length_value, Ordering::Relaxed);
+                if !progress_started.swap(true, Ordering::Relaxed) {
+                    let _ = app_handle.emit(
+                        "updater://download-progress",
+                        UpdaterDownloadProgressEvent {
+                            phase: "Started".to_string(),
+                            content_length: total_length,
+                            chunk_length: None,
+                            downloaded: Some(0),
+                            percent: Some(0.0),
+                            channel: event_channel.clone(),
+                            version: event_version.clone(),
+                        },
+                    );
+                }
+
+                let downloaded_now = progress_downloaded
+                    .fetch_add(chunk_length as u64, Ordering::Relaxed)
+                    .saturating_add(chunk_length as u64);
+                let percent = if total_length_value == 0 {
+                    0.0
+                } else {
+                    (downloaded_now as f64 / total_length_value as f64 * 100.0).clamp(0.0, 100.0)
+                };
+                let _ = app_handle.emit(
+                    "updater://download-progress",
+                    UpdaterDownloadProgressEvent {
+                        phase: "Progress".to_string(),
+                        content_length: total_length,
+                        chunk_length: Some(chunk_length),
+                        downloaded: Some(downloaded_now),
+                        percent: Some(percent),
+                        channel: event_channel.clone(),
+                        version: event_version.clone(),
+                    },
+                );
+            },
+            {
+                let app_handle = app.clone();
+                let event_channel = channel.clone();
+                let event_version = version.clone();
+                let finish_downloaded = downloaded.clone();
+                let finish_content_length = content_length.clone();
+                move || {
+                    let _ = app_handle.emit(
+                        "updater://download-progress",
+                        UpdaterDownloadProgressEvent {
+                            phase: "Finished".to_string(),
+                            content_length: Some(finish_content_length.load(Ordering::Relaxed)),
+                            chunk_length: None,
+                            downloaded: Some(finish_downloaded.load(Ordering::Relaxed)),
+                            percent: Some(100.0),
+                            channel: event_channel.clone(),
+                            version: event_version.clone(),
+                        },
+                    );
+                }
+            },
+        )
         .await
         .map_err(|e| format!("Failed to download/install update: {e}"))?;
 

@@ -24,6 +24,7 @@ ipc = { path = "../../../crates/ipc" }
 git = { path = "../../../crates/git" }
 tokio = { version = "1", features = ["full"] }
 tauri-plugin-opener = "2"
+tauri-plugin-process = "2"
 tauri-plugin-typegen = "0.1.1"
 tauri-plugin-store = "2"
 tauri-plugin-dialog = "2"
