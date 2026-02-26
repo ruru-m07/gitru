@@ -19,6 +19,7 @@ import {
   TooltipPopup,
   TooltipTrigger,
 } from "@gitru/ui/components/tooltip";
+import { cn } from "@gitru/ui/lib/utils";
 import { getVersion } from "@tauri-apps/api/app";
 import {
   ArrowDown,
@@ -47,14 +48,13 @@ import { parseOrigin } from "@/lib/parseOrigin";
 import { timeAgoFromUnixSeconds } from "@/lib/time";
 import { appState } from "@/state";
 import { useAppStore } from "@/store/useAppStore";
-import { cn } from "@gitru/ui/lib/utils";
 
 const StatusBar = () => {
   const { data: statusAheadBehind } = useGetStatusAheadBehind();
 
   return (
-    <div className="border-t overflow-hidden h-7 flex justify-between items-center">
-      <div className="flex h-full">
+    <div className="border-t overflow-hidden h-fit flex justify-between items-center">
+      <div className="flex">
         <OriginBadge />
         <CurrentBranchBadge />
         <FetchBadge />
@@ -62,7 +62,7 @@ const StatusBar = () => {
         <BehindBadge statusAheadBehind={statusAheadBehind || undefined} />
         <LastCommitBox />
       </div>
-      <div className="flex h-full">
+      <div className="flex">
         <EnvironmentBadge />
         <VersionBadge />
         <InvalidateAllBadge />
@@ -84,7 +84,7 @@ const LastCommitBox = () => {
         render={
           <Badge
             variant={"outline"}
-            className="h-full rounded-none flex items-center cursor-pointer hover:bg-muted! border-transparent border-r-border"
+            className="py-2.5 rounded-none flex items-center cursor-pointer hover:bg-muted! border-transparent border-r-border"
           >
             <GitCommitVertical className="size-4" strokeWidth={1} />
             <div className="flex group">
@@ -241,7 +241,7 @@ const EnvironmentBadge = () => {
     return (
       <Badge
         variant={"outline"}
-        className="h-full rounded-none border-0 border-l px-2 flex items-center"
+        className="py-2.5 rounded-none border-0 border-l px-2 flex items-center"
       >
         <span>
           <span className="text-muted-foreground! font-normal">Channel: </span>
@@ -268,7 +268,7 @@ const GitVersion = () => {
       <TooltipTrigger>
         <Badge
           variant={"outline"}
-          className="h-full rounded-none border-0 border-l px-2 flex items-center"
+          className="py-2.5 rounded-none border-0 border-l px-2 flex items-center"
         >
           <Git className="size-3.5" />
         </Badge>
@@ -299,7 +299,7 @@ const VersionBadge = () => {
   return (
     <Badge
       variant={"outline"}
-      className="h-full rounded-none border-0 border-l px-2 flex items-center"
+      className="py-2.5 rounded-none border-0 border-l px-2 flex items-center"
     >
       <span className="text-muted-foreground! font-mono font-normal tabular-nums">
         v{version}
@@ -349,7 +349,9 @@ const FetchBadge = () => {
       const match = transform.match(/^matrix\((.+)\)$/);
 
       if (match?.[1]) {
-        const values = match[1].split(",").map((value) => Number.parseFloat(value.trim()));
+        const values = match[1]
+          .split(",")
+          .map((value) => Number.parseFloat(value.trim()));
 
         if (values.length >= 2) {
           angle = (Math.atan2(values[1], values[0]) * 180) / Math.PI;
@@ -401,7 +403,10 @@ const FetchBadge = () => {
   return (
     <Badge
       variant={"outline"}
-      className={cn("text-muted-foreground! h-full rounded-none px-2 flex items-center cursor-pointer hover:bg-muted! border-transparent border-r-border", isPending ? "pointer-events-none opacity-75" : "")}
+      className={cn(
+        "py-2.5 text-muted-foreground! rounded-none px-2 flex items-center cursor-pointer hover:bg-muted! border-transparent border-r-border",
+        isPending ? "pointer-events-none opacity-75" : "",
+      )}
       onClick={async () => {
         if (!isPending) {
           await fetch();
@@ -411,9 +416,7 @@ const FetchBadge = () => {
       <RefreshCw
         ref={iconRef}
         className={
-          spinState !== "idle"
-            ? "animate-spin animation-duration-[0.8s]"
-            : ""
+          spinState !== "idle" ? "animate-spin animation-duration-[0.8s]" : ""
         }
       />
     </Badge>
@@ -434,7 +437,7 @@ const AheadBadge = ({
           {!statusAheadBehind.is_published ? (
             <Badge
               variant={"outline"}
-              className="h-full rounded-none border-0 border-r flex items-center font-normal tabular-nums px-1.5 cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
+              className="py-2.5 rounded-none border-0 border-r flex items-center font-normal tabular-nums px-1.5 cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
               onClick={async () => {
                 await push();
               }}
@@ -445,7 +448,7 @@ const AheadBadge = ({
           ) : statusAheadBehind?.ahead && statusAheadBehind.ahead > 0 ? (
             <Badge
               variant={"outline"}
-              className="text-muted-foreground! h-full rounded-none border-0 border-r flex items-center font-normal tabular-nums px-1.5 cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
+              className="py-2.5 text-muted-foreground! rounded-none border-0 border-r flex items-center font-normal tabular-nums px-1.5 cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
               onClick={async () => {
                 await push();
               }}
@@ -475,7 +478,7 @@ const BehindBadge = ({
       {statusAheadBehind?.behind && statusAheadBehind.behind > 0 ? (
         <Badge
           variant={"outline"}
-          className="text-muted-foreground! h-full rounded-none border-0 border-r flex items-center font-normal tabular-nums px-1.5 cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
+          className="py-2.5 text-muted-foreground! rounded-none border-0 border-r flex items-center font-normal tabular-nums px-1.5 cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
           onClick={async () => {
             await pull();
           }}
@@ -507,7 +510,7 @@ const OriginBadge = () => {
         <a target="_blank" href={origin.href} rel="noreferrer">
           <Badge
             variant={"outline"}
-            className="h-full rounded-none px-2 flex items-center cursor-pointer hover:bg-muted! border-transparent border-r-border"
+            className="rounded-none py-2.5 px-2 flex items-center cursor-pointer hover:bg-muted! border-transparent border-r-border"
           >
             <span className="flex items-center gap-1">
               <span className="text-muted-foreground! font-normal">
@@ -534,7 +537,7 @@ const CurrentBranchBadge = () => {
       {currentBranch?.display_name ? (
         <Badge
           variant={"outline"}
-          className="text-muted-foreground! h-full rounded-none hover:bg-muted! px-2 flex items-center font-normal cursor-pointer border-transparent border-r-border"
+          className="py-2.5 text-muted-foreground! rounded-none hover:bg-muted! px-2 flex items-center font-normal cursor-pointer border-transparent border-r-border"
           onClick={() => {
             navigation.setOpen(true);
             navigation.push("branch-list");
@@ -559,7 +562,7 @@ const InvalidateAllBadge = () => {
       {repo ? (
         <Badge
           variant={"outline"}
-          className="text-muted-foreground! h-full rounded-none border-0 border-l px-2 flex items-center font-normal cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
+          className="py-2.5 text-muted-foreground! rounded-none border-0 border-l px-2 flex items-center font-normal cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
           onClick={async () => {
             await repo.invalidateAll();
           }}

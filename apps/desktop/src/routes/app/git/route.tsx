@@ -59,6 +59,7 @@ import {
   BadgeQuestionMark,
   ChevronDown,
   ChevronDownIcon,
+  ChevronLeftIcon,
   ChevronsRight,
   ChevronUp,
   CircleAlertIcon,
@@ -71,7 +72,8 @@ import {
   Undo2,
   UserPlus,
 } from "lucide-react";
-import { memo, useCallback, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { useDefaultLayout } from "react-resizable-panels";
 import { toast } from "sonner";
 import z from "zod";
@@ -90,7 +92,8 @@ import {
   useGitAdd,
   useGitDiscard,
   useGitUnstage,
-  usePopCurrentBranchStash,
+  useStashList,
+  useStashShow,
 } from "@/hooks";
 import { useRepositories } from "@/hooks/useRepositories";
 import { formatNumber } from "@/lib/formatNumber";
@@ -151,7 +154,7 @@ export const Route = createFileRoute("/app/git")({
 
 function GitPageLayout() {
   return (
-    <PageLayout>
+    <PageLayout className="flex-col flex justify-between">
       <ResizableArea />
       <StatusBar />
     </PageLayout>
@@ -161,6 +164,30 @@ function GitPageLayout() {
 const ResizableArea = () => {
   const repoSelectIsOpen = useAppStore((state) => state.repoSelectIsOpen);
   const setRepoSelectIsOpen = useAppStore((state) => state.setRepoSelectIsOpen);
+  const shouldReduceMotion = useReducedMotion();
+  const [leftPanelView, setLeftPanelView] = useState<"changes" | "stash">(
+    "changes",
+  );
+  const [panelDirection, setPanelDirection] = useState<1 | -1>(1);
+
+  const panelSlideVariants = {
+    initial: (direction: 1 | -1) => ({
+      x: shouldReduceMotion ? 0 : direction > 0 ? 10 : -10,
+      opacity: shouldReduceMotion ? 1 : 0.94,
+    }),
+    animate: {
+      x: 0,
+      opacity: 1,
+    },
+    exit: (direction: 1 | -1) => ({
+      x: shouldReduceMotion ? 0 : direction > 0 ? -4 : 4,
+      opacity: shouldReduceMotion ? 1 : 0.97,
+    }),
+  };
+
+  const panelTransition = shouldReduceMotion
+    ? { duration: 0.06, ease: "linear" as const }
+    : { duration: 0.14, ease: [0.32, 0.72, 0, 1] as const };
 
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: "git-page-layout",
@@ -168,7 +195,7 @@ const ResizableArea = () => {
   });
 
   return (
-    <div className="flex">
+    <div className="flex h-full">
       <ResizablePanelGroup
         defaultLayout={defaultLayout}
         onLayoutChanged={onLayoutChanged}
@@ -181,8 +208,56 @@ const ResizableArea = () => {
           className="flex flex-col h-full"
         >
           <ToggelPanelButton />
-          <div className="h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*7)-calc(var(--spacing)*3))]">
-            {repoSelectIsOpen ? <ListRepositories /> : <ListFileChanges />}
+          <div className="h-full border-t max-h-[calc(100vh-calc(var(--spacing)*31.5))] relative overflow-hidden">
+            {repoSelectIsOpen ? (
+              <div className="absolute inset-0 bg-background">
+                <ListRepositories />
+              </div>
+            ) : (
+              <AnimatePresence
+                mode="sync"
+                initial={false}
+                custom={panelDirection}
+              >
+                {leftPanelView === "stash" ? (
+                  <motion.div
+                    key="stash"
+                    className="absolute inset-0 bg-background will-change-transform"
+                    custom={panelDirection}
+                    variants={panelSlideVariants}
+                    initial="initial"
+                    animate="animate"
+                    exit="exit"
+                    transition={panelTransition}
+                  >
+                    <StashPocView
+                      onBack={() => {
+                        setPanelDirection(-1);
+                        setLeftPanelView("changes");
+                      }}
+                    />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="changes"
+                    className="absolute inset-0 bg-background will-change-transform"
+                    custom={panelDirection}
+                    variants={panelSlideVariants}
+                    initial="initial"
+                    animate="animate"
+                    exit="exit"
+                    transition={panelTransition}
+                  >
+                    <ListFileChanges
+                      onOpenStashView={() => {
+                        setPanelDirection(1);
+                        setLeftPanelView("stash");
+                      }}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            )}
           </div>
         </ResizablePanel>
         <ResizableHandle withHandle />
@@ -459,7 +534,11 @@ const ToggelPanelButton = () => {
   );
 };
 
-const ListFileChanges = () => {
+const ListFileChanges = ({
+  onOpenStashView,
+}: {
+  onOpenStashView: () => void;
+}) => {
   const [query, setQuery] = useState("");
   const [statusFilters, setStatusFilters] = useState<
     Record<FileStatusFilter, boolean>
@@ -484,7 +563,6 @@ const ListFileChanges = () => {
   const { mutateAsync: unstageFile } = useGitUnstage();
 
   const { data: currentBranchStash } = useGetCurrentBranchStash();
-  const { mutateAsync: popCurrentBranchStash } = usePopCurrentBranchStash();
 
   const { handleFileClick } = useFileSelectionStore();
 
@@ -548,7 +626,7 @@ const ListFileChanges = () => {
     <Tabs defaultValue="tab-1" className={"gap-0 h-full flex flex-col"}>
       <TabsList
         className={
-          "select-none rounded-none bg-background w-full shrink-0 border-y *:data-[slot=tab-indicator]:bg-secondary *:data-[slot=tab-indicator]:transition-none"
+          "select-none rounded-none bg-background w-full shrink-0 border-b *:data-[slot=tab-indicator]:bg-secondary *:data-[slot=tab-indicator]:transition-none"
         }
       >
         <TabsTab className={"rounded-none!"} value="tab-1">
@@ -775,10 +853,7 @@ const ListFileChanges = () => {
               )
             `,
             }}
-            onClick={async () => {
-              const ahhh = await popCurrentBranchStash();
-              console.log({ ahhh });
-            }}
+            onClick={onOpenStashView}
           >
             <div
               className="absolute inset-0 pointer-events-none [--stripe-alpha:0.15] dark:[--stripe-alpha:0.1]"
@@ -1119,6 +1194,159 @@ const ListRepositories = memo(() => {
                 );
               })}
         </div>
+      </div>
+    </div>
+  );
+});
+
+const StashPocView = memo(function StashPocView({
+  onBack,
+}: {
+  onBack: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [selectedReference, setSelectedReference] = useState<string | null>(
+    null,
+  );
+
+  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const selectedFileByRepo = useAppStore((state) => state.selectedFileByRepo);
+  const setSelectedFileForRepo = useAppStore(
+    (state) => state.setSelectedFileForRepo,
+  );
+  const { handleFileClick } = useFileSelectionStore();
+
+  const { data: stashes, isLoading: isStashesLoading } = useStashList();
+
+  useEffect(() => {
+    if (!stashes || stashes.length === 0) {
+      setSelectedReference(null);
+      return;
+    }
+
+    setSelectedReference((currentReference) => {
+      if (
+        currentReference &&
+        stashes.some((stash) => stash.reference === currentReference)
+      ) {
+        return currentReference;
+      }
+      return stashes[0]?.reference ?? null;
+    });
+  }, [stashes]);
+
+  const { data: stashShow, isLoading: isStashShowLoading } =
+    useStashShow(selectedReference);
+
+  const selectedStash = stashes?.find(
+    (stash) => stash.reference === selectedReference,
+  );
+
+  const filteredFiles = (stashShow?.files ?? []).filter((file) =>
+    matchesSearchQuery(file.path, query),
+  );
+
+  return (
+    <div className="h-full flex flex-col">
+      <div className="p-1.5 max-h-10 min-h-10 border-b flex items-center gap-2">
+        <Group aria-label="Stash actions" className="w-full">
+          <Button size="icon-sm" variant="outline" onClick={onBack}>
+            <ChevronLeftIcon className="size-4" />
+          </Button>
+          <GroupSeparator />
+
+          <Input
+            aria-label="Filter stashed files"
+            placeholder="Filter files..."
+            // className={"rounded-l-md! border-border! w-full"}
+            size={"sm"}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <GroupSeparator />
+
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button size={"sm"} variant={"outline"} className="max-w-44" />
+              }
+            >
+              <span className="truncate">
+                {selectedReference || "Select stash"}
+              </span>
+              <ChevronDownIcon
+                className="-me-1 opacity-60"
+                size={16}
+                aria-hidden="true"
+              />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-90 max-h-72">
+              {(stashes ?? []).length > 0 ? (
+                (stashes ?? []).map((stash) => (
+                  <DropdownMenuItem
+                    key={stash.reference}
+                    onClick={() => setSelectedReference(stash.reference)}
+                    className="flex flex-col items-start"
+                  >
+                    <span className="truncate w-full">{stash.reference}</span>
+                    <span className="text-xs text-muted-foreground truncate w-full">
+                      {stash.message}
+                    </span>
+                  </DropdownMenuItem>
+                ))
+              ) : (
+                <DropdownMenuItem disabled>No stash found</DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </Group>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scroll **:data-[slot=file-row]:mr-2!">
+        {isStashesLoading || isStashShowLoading ? (
+          <div className="w-full h-full flex items-center justify-center">
+            <span className="text-sm text-muted-foreground">Loading...</span>
+          </div>
+        ) : !selectedReference ? (
+          <div className="w-full h-full flex items-center justify-center">
+            <span className="text-sm text-muted-foreground">
+              No stashed changes
+            </span>
+          </div>
+        ) : filteredFiles.length > 0 ? (
+          <VirtualizedFileList
+            sectionMode="flat"
+            searchQuery={query}
+            sections={[
+              {
+                id: "stash",
+                name: "Stashed Changes",
+                files: filteredFiles,
+              },
+            ]}
+            onFileClick={handleFileClick}
+            setSelectedFilePath={setSelectedFileForRepo}
+            selectedFilePath={
+              selectedFileByRepo[selectedRepository?.path || ""]
+                ? {
+                    path:
+                      selectedFileByRepo[selectedRepository?.path || ""]
+                        ?.filePath || "",
+                    newPath:
+                      selectedFileByRepo[selectedRepository?.path || ""]
+                        ?.fileNewPath,
+                  }
+                : undefined
+            }
+            className="h-full"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <span className="text-sm text-muted-foreground">
+              No matching stashed files
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

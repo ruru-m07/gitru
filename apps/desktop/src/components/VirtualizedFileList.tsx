@@ -44,6 +44,7 @@ export interface FileListSection {
 
 export interface VirtualizedFileListProps {
   sections: FileListSection[];
+  sectionMode?: "accordion" | "flat";
   searchQuery?: string;
   onFileClick: (
     file: FileStatus,
@@ -217,6 +218,7 @@ const renderHighlightedSlice = (
 
 export const VirtualizedFileList = memo(function VirtualizedFileList({
   sections,
+  sectionMode = "accordion",
   searchQuery = "",
   onFileClick,
   onAdd,
@@ -255,6 +257,18 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
     for (const section of sections) {
       if (section.files.length === 0) continue;
 
+      if (sectionMode === "flat") {
+        for (const file of section.files) {
+          result.push({
+            type: "file",
+            file,
+            sectionId: section.id,
+            sectionName: section.name,
+          });
+        }
+        continue;
+      }
+
       result.push({
         type: "header",
         sectionId: section.id,
@@ -276,7 +290,7 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
     }
 
     return result;
-  }, [sections, expandedSections]);
+  }, [sections, expandedSections, sectionMode]);
 
   const virtualizer = useVirtualizer({
     count: items.length,
@@ -556,7 +570,10 @@ const FileRow = memo(
             {isSelected && (
               <div className="absolute top-1/2 -translate-y-1/2 -left-1 rounded-md w-1.75 bg-primary h-4" />
             )}
-            <div className="flex items-center w-full min-w-0 pl-2 pr-0.5 py-0.5">
+            <div
+              data-slot="file-row"
+              className="flex items-center w-full min-w-0 pl-2 pr-0.5 py-0.5"
+            >
               <div className="shrink-0">{getStatusIcon(file.status, 18)}</div>
               <div className="flex items-center ml-1.5 min-w-0 flex-1">
                 <Label className="flex cursor-pointer items-center min-w-0 text-sm w-full gap-0">
