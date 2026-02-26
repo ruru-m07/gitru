@@ -1,5 +1,5 @@
 [package]
-name = "Gitru"
+name = "gitru"
 version = "0.1.0"
 description = "A Git Client"
 authors = ["ruru"]

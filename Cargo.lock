@@ -3,31 +3,6 @@
 version = 4
 
 [[package]]
-name = "Gitru"
-version = "0.1.0"
-dependencies = [
- "git",
- "ipc",
- "log",
- "openssl",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-log",
- "tauri-plugin-notification",
- "tauri-plugin-opener",
- "tauri-plugin-process",
- "tauri-plugin-store",
- "tauri-plugin-typegen",
- "tauri-plugin-updater",
- "tauri-plugin-window-state",
- "tokio",
- "url",
-]
-
-[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1580,6 +1555,31 @@ dependencies = [
  "serde",
  "tauri",
  "tokio",
+]
+
+[[package]]
+name = "gitru"
+version = "0.1.0"
+dependencies = [
+ "git",
+ "ipc",
+ "log",
+ "openssl",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-log",
+ "tauri-plugin-notification",
+ "tauri-plugin-opener",
+ "tauri-plugin-process",
+ "tauri-plugin-store",
+ "tauri-plugin-typegen",
+ "tauri-plugin-updater",
+ "tauri-plugin-window-state",
+ "tokio",
+ "url",
 ]
 
 [[package]]

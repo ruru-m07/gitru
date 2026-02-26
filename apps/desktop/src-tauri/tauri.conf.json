@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "gitru",
+  "productName": "Gitru",
   "version": "../package.json",
   "identifier": "com.ruru.gitru",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "gitru",
+        "title": "Gitru",
         "width": 1600,
         "height": 870,
         "hiddenTitle": true,
@@ -61,9 +61,7 @@
     },
     "updater": {
       "active": true,
-      "endpoints": [
-        "https://updates.gitru.app/stable/latest.json"
-      ],
+      "endpoints": ["https://updates.gitru.app/stable/latest.json"],
       "dialog": true,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQzMDQ0NTEwODlBNjAzMEEKUldRS0E2YUpFRVVFMDlzQzFkdExDRWJFbWRlUEkxcURnZFpiNktsZ0lOMllLNVh0aVljL0ZWZm8K"
     }
