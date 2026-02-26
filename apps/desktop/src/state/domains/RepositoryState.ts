@@ -30,6 +30,7 @@ import {
 } from "@gitru/commands";
 import { QueryClient } from "@tanstack/react-query";
 import { StateDomain } from "../core/StateManager";
+import { StashState } from "./StashState";
 
 class DiffState extends StateDomain {
   private readonly baseKey: readonly string[];
@@ -329,6 +330,7 @@ class RepositoryState extends StateDomain {
   readonly branches: BranchState;
   readonly file: FilesActionsState;
   readonly commit: Commit;
+  readonly stash: StashState;
   private readonly baseKey: readonly string[];
 
   constructor(
@@ -347,6 +349,7 @@ class RepositoryState extends StateDomain {
     this.branches = new BranchState(this.queryClient);
     this.file = new FilesActionsState(this.queryClient);
     this.commit = new Commit(this.queryClient);
+    this.stash = new StashState(this.queryClient);
   }
 
   async getRepositoryOrigin() {

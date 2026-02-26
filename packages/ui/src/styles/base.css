@@ -109,13 +109,13 @@
     --foreground: #ffffff;
     /* --background: color-mix(in srgb, var(--color-neutral-950) 95%, var(--color-white));
     --foreground: var(--color-neutral-100); */
-    --info: var(--color-blue-500);
-    --info-foreground: var(--color-blue-400);
-    --success: var(--color-emerald-500);
-    --success-foreground: var(--color-emerald-400);
-    --warning: var(--color-amber-500);
-    --warning-foreground: var(--color-amber-400);
-    --destructive-foreground: var(--color-red-400);
+    --info: var(--color-blue-500) !important;
+    --info-foreground: var(--color-blue-400) !important;
+    --success: var(--color-emerald-500) !important;
+    --success-foreground: var(--color-emerald-400) !important;
+    --warning: var(--color-amber-500) !important;
+    --warning-foreground: var(--color-amber-400) !important;
+    --destructive-foreground: var(--color-red-400) !important;
     --accent: --alpha(var(--color-white) / 4%);
     --accent-foreground: var(--color-neutral-100);
     --border: --alpha(var(--color-white) / 4.5%);
