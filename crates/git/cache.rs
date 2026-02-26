@@ -19,6 +19,7 @@ pub const TTL_LAST_COMMIT: Duration = Duration::from_millis(300);
 pub const TTL_COMMIT_BY_ID: Duration = Duration::from_millis(300);
 pub const TTL_PATCH_BY_FILE_PATH: Duration = Duration::from_millis(600);
 pub const TTL_HISTORY: Duration = Duration::from_millis(100);
+pub const TTL_STASH_LIST: Duration = Duration::from_millis(500);
 
 #[derive(Clone, Copy)]
 pub struct CachePolicy {

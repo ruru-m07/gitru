@@ -5,7 +5,7 @@ use crate::{
     context::RepoContext,
     service::{
         actions::ActionService, branch::BranchService, commit::CommitService, diff::DiffService,
-        history::HistoryService, origin::OriginService, query::QueryService,
+        history::HistoryService, origin::OriginService, query::QueryService, stash::StashService,
     },
 };
 
@@ -46,6 +46,10 @@ impl RepoServices {
 
     pub fn query(&self) -> QueryService {
         QueryService::new(self.ctx.clone())
+    }
+
+    pub fn stash(&self) -> StashService {
+        StashService::new(self.ctx.clone())
     }
 }
 

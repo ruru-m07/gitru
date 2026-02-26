@@ -1,4 +1,5 @@
 import { GetStatusResponse } from "@gitru/commands";
+import { Stashed } from "@gitru/icon";
 import {
   Avatar,
   AvatarFallback,
@@ -55,10 +56,10 @@ import { cn } from "@gitru/ui/lib/utils";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
-  ArchiveRestore,
   BadgeQuestionMark,
   ChevronDown,
   ChevronDownIcon,
+  ChevronsRight,
   ChevronUp,
   CircleAlertIcon,
   GitBranch,
@@ -92,6 +93,7 @@ import {
   usePopCurrentBranchStash,
 } from "@/hooks";
 import { useRepositories } from "@/hooks/useRepositories";
+import { formatNumber } from "@/lib/formatNumber";
 import { getAvatarByProvider } from "@/lib/getAvatarByGitProvider";
 import { parseOrigin } from "@/lib/parseOrigin";
 import {
@@ -316,9 +318,6 @@ const WriteCommitBox = memo(function WriteCommitBox() {
   const { mutateAsync: gitAdd, isPending: isAdding } = useGitAdd();
   const { mutateAsync: createCommit, isPending: isCreatingCommit } =
     useCreateCommit();
-  const { data: currentBranchStash } = useGetCurrentBranchStash();
-  const { mutateAsync: popCurrentBranchStash, isPending: isPoppingStash } =
-    usePopCurrentBranchStash();
 
   const nothingToCommit =
     status?.files.filter((file) =>
@@ -385,31 +384,6 @@ const WriteCommitBox = memo(function WriteCommitBox() {
           </InputGroupAddon>
         </InputGroup>
         <div className="w-full flex items-center gap-2">
-          {currentBranchStash ? (
-            <Button
-              variant="secondary"
-              title={currentBranchStash.message}
-              onClick={async () => {
-                const result = await popCurrentBranchStash();
-                if (result) {
-                  toast.success(result);
-                }
-              }}
-              disabled={isPoppingStash}
-            >
-              {isPoppingStash ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  Popping...
-                </>
-              ) : (
-                <>
-                  <ArchiveRestore className="size-4" />
-                  Pop Stash
-                </>
-              )}
-            </Button>
-          ) : null}
           <Group aria-label="Subscription actions" className="w-full">
             <Button
               onClick={handelCommit}
@@ -508,6 +482,9 @@ const ListFileChanges = () => {
 
   const { mutateAsync: addFile } = useGitAdd();
   const { mutateAsync: unstageFile } = useGitUnstage();
+
+  const { data: currentBranchStash } = useGetCurrentBranchStash();
+  const { mutateAsync: popCurrentBranchStash } = usePopCurrentBranchStash();
 
   const { handleFileClick } = useFileSelectionStore();
 
@@ -632,7 +609,7 @@ const ListFileChanges = () => {
                       </span>
                     )}
                   </MenuGroupLabel>
-                   <MenuCheckboxItem
+                  <MenuCheckboxItem
                     checked={statusFilters.untracked}
                     onCheckedChange={(checked) =>
                       toggleStatusFilter("untracked", Boolean(checked))
@@ -783,6 +760,73 @@ const ListFileChanges = () => {
             </>
           )}
         </div>
+        {currentBranchStash ? (
+          <Button
+            variant={"secondary"}
+            className="border-0 border-t! py-4 pl-2.5 ring-0! flex items-center justify-between rounded-none relative overflow-hidden [--glow-end:0.09] dark:[--glow-end:0.09]"
+            style={{
+              backgroundColor: "var(--color-background)",
+              backgroundImage: `
+              linear-gradient(
+                to right,
+                rgba(234, 179, 8, var(--glow-end)) 0%,
+                rgba(234, 179, 8, 0.03) 55%,
+                transparent 76%
+              )
+            `,
+            }}
+            onClick={async () => {
+              const ahhh = await popCurrentBranchStash();
+              console.log({ ahhh });
+            }}
+          >
+            <div
+              className="absolute inset-0 pointer-events-none [--stripe-alpha:0.15] dark:[--stripe-alpha:0.1]"
+              style={{
+                background: `
+                repeating-linear-gradient(
+                  45deg,
+                  rgba(234, 179, 8, var(--stripe-alpha)) 0px,
+                  rgba(234, 179, 8, var(--stripe-alpha)) 4px,
+                  transparent 4px,
+                  transparent 10px
+                )
+              `,
+                maskImage:
+                  "linear-gradient(to left, transparent 20%, black 80%)",
+                WebkitMaskImage:
+                  "linear-gradient(to left, transparent 20%, black 80%)",
+              }}
+            />
+            <div className="flex items-center justify-between w-full gap-2 relative z-1">
+              <div className="flex items-center gap-2 ">
+                <Stashed
+                  style={{
+                    width: "20px",
+                    height: "20px",
+                  }}
+                />
+                <span className="text-sm">Stashed changes</span>
+                <span className="tabular-nums flex items-center gap-1 text-muted-foreground font-normal">
+                  ({formatNumber(currentBranchStash?.files_changed || 0)})
+                </span>
+              </div>
+              <div className="text-xs flex items-center">
+                <span className="flex gap-2">
+                  <span className="text-green-600 tabular-nums font-normal">
+                    +{formatNumber(currentBranchStash?.insertions || 0)}
+                  </span>
+                  <span className="text-red-600 tabular-nums font-normal">
+                    -{formatNumber(currentBranchStash?.deletions || 0)}
+                  </span>
+                </span>
+              </div>
+            </div>
+            <div className="relative z-1">
+              <ChevronsRight className="size-6 text-muted-foreground/50" />
+            </div>
+          </Button>
+        ) : null}
         <WriteCommitBox />
       </TabsPanel>
       <TabsPanel value="tab-2" className={"h-full"} tabIndex={-1}>
