@@ -5,6 +5,7 @@ import type {
   StashPopParams,
   StashPushParams,
   StashQuickStat,
+  StashRestoreFileParams,
   StashShowResponse,
 } from "@gitru/commands";
 import {
@@ -191,6 +192,24 @@ export function useStashBranch() {
       await repo?.stash.invalidateAll();
       await repo?.branches.invalidateAll();
       await repo?.status.invalidate();
+    },
+    onError: (error: string) => {
+      toast.error(error);
+    },
+  });
+}
+
+export function useStashRestoreFile() {
+  const repo = appState.repository;
+
+  return useMutation({
+    mutationFn: async (params: StashRestoreFileParams) => {
+      if (!repo) throw new Error("No repository selected");
+      return await repo.stash.restoreFile(params);
+    },
+    onSuccess: async () => {
+      await repo?.status.invalidate();
+      await repo?.stash.invalidateAll();
     },
     onError: (error: string) => {
       toast.error(error);

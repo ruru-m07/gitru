@@ -69,6 +69,7 @@ pub fn run() {
             commands::stash::stash_drop,
             commands::stash::stash_clear,
             commands::stash::stash_branch,
+            commands::stash::stash_restore_file,
             commands::actions::git_version,
             commands::actions::get_status,
             commands::actions::git_fetch,

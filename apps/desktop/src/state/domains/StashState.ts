@@ -5,6 +5,7 @@ import {
   type StashPopParams,
   type StashPushParams,
   type StashQuickStat,
+  type StashRestoreFileParams,
   type StashShowResponse,
   stashApply,
   stashBranch,
@@ -15,6 +16,7 @@ import {
   stashPush,
   stashQuickStat,
   stashShow,
+  stashRestoreFile,
 } from "@gitru/commands";
 import { QueryClient } from "@tanstack/react-query";
 import { StateDomain } from "../core/StateManager";
@@ -85,6 +87,10 @@ class StashState extends StateDomain {
 
   async branch(params: StashBranchParams): Promise<string> {
     return await stashBranch(params);
+  }
+
+  async restoreFile(params: StashRestoreFileParams): Promise<string> {
+    return await stashRestoreFile(params);
   }
 
   getQueryKey(key: "list" | "quickStat" | "show") {

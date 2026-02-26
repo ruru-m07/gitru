@@ -330,7 +330,7 @@ export const GitDiscardParamsSchema = z.object({
 });
 
 export const GetPatchByFilePathParamsSchema = z.object({
-  filePath: z.string(),
+  filePath: z.string(),stashReference: z.string().optional().optional(),
 });
 
 export const CommitByIdParamsSchema = z.object({
@@ -383,6 +383,10 @@ export const StashDropParamsSchema = z.object({
 
 export const StashBranchParamsSchema = z.object({
   branchName: z.string(),reference: z.string().optional().optional(),
+});
+
+export const StashRestoreFileParamsSchema = z.object({
+  reference: z.string(),filePath: z.string(),
 });
 
 export const AddLocalGitRepoParamsSchema = z.object({
@@ -450,9 +454,10 @@ export type StashDropParams = z.infer<typeof StashDropParamsSchema>;
 
 export type StashBranchParams = z.infer<typeof StashBranchParamsSchema>;
 
+export type StashRestoreFileParams = z.infer<typeof StashRestoreFileParamsSchema>;
+
 export type AddLocalGitRepoParams = z.infer<typeof AddLocalGitRepoParamsSchema>;
 
 export type SelectRepositoryParams = z.infer<typeof SelectRepositoryParamsSchema>;
 
 export type OpenWithAppParams = z.infer<typeof OpenWithAppParamsSchema>;
-

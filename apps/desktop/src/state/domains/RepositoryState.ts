@@ -40,11 +40,16 @@ class DiffState extends StateDomain {
     this.baseKey = ["repository", "diff"] as const;
   }
 
-  async get(filePath: string) {
-    const queryKey = [...this.baseKey, filePath];
+  async get(filePath: string, options?: { stashReference?: string }) {
+    const queryKey = [
+      ...this.baseKey,
+      options?.stashReference ? `stash:${options.stashReference}` : "worktree",
+      filePath,
+    ];
 
     const data = await getPatchByFilePath({
       filePath: filePath,
+      stashReference: options?.stashReference,
     });
 
     this.queryClient.setQueryData(queryKey, data);
@@ -52,8 +57,12 @@ class DiffState extends StateDomain {
     return data;
   }
 
-  getQueryKey(filePath: string) {
-    return [...this.baseKey, filePath];
+  getQueryKey(filePath: string, stashReference?: string) {
+    return [
+      ...this.baseKey,
+      stashReference ? `stash:${stashReference}` : "worktree",
+      filePath,
+    ];
   }
 
   async invalidate(filePath?: string) {

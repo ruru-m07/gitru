@@ -1,6 +1,7 @@
 use git::{
     core::get_services,
     models::stash::{StashEntry, StashQuickStat, StashShowResponse},
+    runner::validate_relative_path,
     AppState,
 };
 
@@ -85,4 +86,16 @@ pub async fn stash_branch(
         .stash()
         .branch(branch_name, reference.as_deref())
         .await
+}
+
+#[tauri::command]
+pub async fn stash_restore_file(
+    reference: &str,
+    file_path: &str,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    validate_relative_path(file_path)?;
+
+    let services = get_services(state).await?;
+    services.stash().restore_file(reference, file_path).await
 }

@@ -1,8 +1,9 @@
-use std::sync::Arc;
+use std::{fs, path::Path, sync::Arc};
 
 use crate::{
     cache::{CachePolicy, TTL_STASH_LIST},
     context::RepoContext,
+    models::status::FileStatusKind,
     models::stash::{BranchStash, StashEntry, StashQuickStat, StashShowResponse},
     parsers::stash::{
         branch_name_matches, parse_gitru_stash_message, parse_stash_file_status, parse_stash_list,
@@ -264,6 +265,96 @@ impl StashService {
             "Created branch '{}' from {}",
             branch_name, resolved_ref
         ))
+    }
+
+    /// Restore a single file from a stash entry into the working tree.
+    #[logger::logger]
+    pub async fn restore_file(&self, reference: &str, file_path: &str) -> Result<String, String> {
+        validate_stash_ref(reference)?;
+
+        let stash_show = self.show(reference).await?;
+        let maybe_entry = stash_show
+            .files
+            .iter()
+            .find(|file| file.path == file_path || file.new_path.as_deref() == Some(file_path));
+
+        if let Some(file_entry) = maybe_entry {
+            let is_deleted = file_entry
+                .status
+                .iter()
+                .any(|status| matches!(status, FileStatusKind::IndexDeleted));
+            let is_renamed = file_entry
+                .status
+                .iter()
+                .any(|status| matches!(status, FileStatusKind::IndexRenamed));
+
+            if is_deleted {
+                Self::remove_path_if_exists(&self.ctx.repo_path, &file_entry.path)?;
+                self.ctx.cache.invalidate_all();
+                return Ok(format!(
+                    "Applied deletion for '{}' from {}",
+                    file_entry.path, reference
+                ));
+            }
+
+            if is_renamed {
+                let new_path = file_entry
+                    .new_path
+                    .as_deref()
+                    .ok_or_else(|| "Rename entry is missing new_path".to_string())?;
+
+                self.ctx
+                    .runner
+                    .run_with_options(
+                        &["checkout", reference, "--", new_path],
+                        GitRunOptions::default_read(),
+                    )
+                    .await?;
+
+                if file_entry.path != new_path {
+                    Self::remove_path_if_exists(&self.ctx.repo_path, &file_entry.path)?;
+                }
+
+                self.ctx.cache.invalidate_all();
+                return Ok(format!(
+                    "Restored renamed file '{}' -> '{}' from {}",
+                    file_entry.path, new_path, reference
+                ));
+            }
+        }
+
+        self.ctx
+            .runner
+            .run_with_options(
+                &["checkout", reference, "--", file_path],
+                GitRunOptions::default_read(),
+            )
+            .await?;
+
+        self.ctx.cache.invalidate_all();
+        Ok(format!("Restored '{}' from {}", file_path, reference))
+    }
+
+    fn remove_path_if_exists(repo_path: &str, relative_path: &str) -> Result<(), String> {
+        let absolute_path = Path::new(repo_path).join(relative_path);
+
+        if !absolute_path.exists() {
+            return Ok(());
+        }
+
+        if absolute_path.is_dir() {
+            fs::remove_dir_all(&absolute_path).map_err(|error| {
+                format!(
+                    "Failed to remove directory '{}': {}",
+                    relative_path, error
+                )
+            })?;
+        } else {
+            fs::remove_file(&absolute_path)
+                .map_err(|error| format!("Failed to remove file '{}': {}", relative_path, error))?;
+        }
+
+        Ok(())
     }
 
     // ── Gitru branch-stash helpers ───────────────────────────────────

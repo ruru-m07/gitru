@@ -1,5 +1,7 @@
 @import "@gitru/ui/globals.css";
 
+@custom-variant hover (&:hover);
+
 :root {
   --font-sans: Geist;
   --font-mono: GeistMono;

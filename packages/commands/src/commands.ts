@@ -800,6 +800,28 @@ export async function stashBranch(params: types.StashBranchParams, hooks?: Comma
 }
 
 
+export async function stashRestoreFile(params: types.StashRestoreFileParams, hooks?: CommandHooks<string>): Promise<string> {
+  try {
+    const result = types.StashRestoreFileParamsSchema.safeParse(params);
+
+    if (!result.success) {
+      hooks?.onValidationError?.(result.error);
+      throw result.error;
+    }
+    const data = await invoke<string>('stash_restore_file', result.data);
+    hooks?.onSuccess?.(data);
+    return data;
+  } catch (error) {
+    if (!(error instanceof ZodError)) {
+      hooks?.onInvokeError?.(error);
+    }
+    throw error;
+  } finally {
+    hooks?.onSettled?.();
+  }
+}
+
+
 export async function addLocalGitRepo(params: types.AddLocalGitRepoParams, hooks?: CommandHooks<types.RepoSitoryStore | null>): Promise<types.RepoSitoryStore | null> {
   try {
     const result = types.AddLocalGitRepoParamsSchema.safeParse(params);
@@ -864,5 +886,4 @@ export async function openWithApp(params: types.OpenWithAppParams, hooks?: Comma
     hooks?.onSettled?.();
   }
 }
-
 
