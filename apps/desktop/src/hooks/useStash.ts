@@ -103,6 +103,7 @@ export function useStashPush() {
     },
     onSuccess: async () => {
       await repo?.stash.invalidateAll();
+      await repo?.branches.invalidateAll();
       await repo?.status.invalidate();
     },
     onError: (error: string) => {
@@ -121,6 +122,7 @@ export function useStashClear() {
     },
     onSuccess: async () => {
       await repo?.stash.invalidateAll();
+      await repo?.branches.invalidateAll();
     },
     onError: (error: string) => {
       toast.error(error);
@@ -138,6 +140,7 @@ export function useStashPop() {
     },
     onSuccess: async () => {
       await repo?.stash.invalidateAll();
+      await repo?.branches.invalidateAll();
       await repo?.status.invalidate();
     },
     onError: (error: string) => {
@@ -173,6 +176,7 @@ export function useStashDrop() {
     },
     onSuccess: async () => {
       await repo?.stash.invalidateAll();
+      await repo?.branches.invalidateAll();
     },
     onError: (error: string) => {
       toast.error(error);
