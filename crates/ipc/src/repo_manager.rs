@@ -88,11 +88,11 @@ impl RepoManager {
         for (index, repo) in repos.iter().enumerate() {
             let age = current_time.saturating_sub(repo.last_updated);
 
-            if age > stale_threshold {
-                if let Ok(refreshed) = self.refresh_repository_info_internal(repo).await {
-                    updated_repos[index] = refreshed;
-                    needs_save = true;
-                }
+            if age > stale_threshold
+                && let Ok(refreshed) = self.refresh_repository_info_internal(repo).await
+            {
+                updated_repos[index] = refreshed;
+                needs_save = true;
             }
         }
 
