@@ -248,6 +248,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn reject_absolute_path_unix() {
         let result = validate_relative_path("/etc/passwd");
         assert!(result.is_err());
