@@ -141,3 +141,132 @@ pub fn parse_author_line(line: &str) -> Option<Author> {
         email: String::new(),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── normalize_email tests ────────────────────────────────────────
+
+    #[test]
+    fn normalize_email_removes_brackets() {
+        assert_eq!(normalize_email("<alice@example.com>"), "alice@example.com");
+    }
+
+    #[test]
+    fn normalize_email_trims_whitespace() {
+        assert_eq!(
+            normalize_email("  alice@example.com  "),
+            "alice@example.com"
+        );
+    }
+
+    #[test]
+    fn normalize_email_handles_both() {
+        assert_eq!(
+            normalize_email("  <alice@example.com>  "),
+            "alice@example.com"
+        );
+    }
+
+    #[test]
+    fn normalize_email_already_clean() {
+        assert_eq!(normalize_email("alice@example.com"), "alice@example.com");
+    }
+
+    // ── extract_co_authors tests ─────────────────────────────────────
+
+    #[test]
+    fn extract_co_authors_standard_format() {
+        let message = "Feature\n\nCo-authored-by: Bob <bob@example.com>";
+        let co_authors = extract_co_authors(message);
+        assert_eq!(co_authors.len(), 1);
+        assert_eq!(co_authors[0].name, "Bob");
+        assert_eq!(co_authors[0].email, "bob@example.com");
+    }
+
+    #[test]
+    fn extract_co_authors_case_insensitive() {
+        let message = "Feature\n\nCo-Authored-By: Bob <bob@example.com>";
+        let co_authors = extract_co_authors(message);
+        assert_eq!(co_authors.len(), 1);
+    }
+
+    #[test]
+    fn extract_co_authors_multiple() {
+        let message = "Feature\n\nCo-authored-by: Alice <alice@example.com>\nCo-authored-by: Bob <bob@example.com>\nCo-authored-by: Charlie <charlie@example.com>";
+        let co_authors = extract_co_authors(message);
+        assert_eq!(co_authors.len(), 3);
+    }
+
+    #[test]
+    fn extract_co_authors_none() {
+        let message = "Just a regular commit message";
+        let co_authors = extract_co_authors(message);
+        assert!(co_authors.is_empty());
+    }
+
+    #[test]
+    fn extract_co_authors_name_only() {
+        let message = "Feature\n\nCo-authored-by: Bob";
+        let co_authors = extract_co_authors(message);
+        assert_eq!(co_authors.len(), 1);
+        assert_eq!(co_authors[0].name, "Bob");
+        assert_eq!(co_authors[0].email, "");
+    }
+
+    // ── parse_shortstat edge case ────────────────────────────────────
+
+    #[test]
+    fn parse_shortstat_empty() {
+        // Edge case: empty input should return zeros
+        let output = "";
+        let stats = parse_shortstat(output);
+        assert_eq!(stats.files_changed, 0);
+        assert_eq!(stats.insertions, 0);
+        assert_eq!(stats.deletions, 0);
+    }
+
+    // ── parse_author_line tests ──────────────────────────────────────
+
+    #[test]
+    fn parse_author_line_full() {
+        let line = "Co-authored-by: Alice Smith <alice@example.com>";
+        let author = parse_author_line(line).unwrap();
+        assert_eq!(author.name, "Alice Smith");
+        assert_eq!(author.email, "alice@example.com");
+    }
+
+    #[test]
+    fn parse_author_line_name_only() {
+        let line = "Co-authored-by: Alice";
+        let author = parse_author_line(line).unwrap();
+        assert_eq!(author.name, "Alice");
+        assert_eq!(author.email, "");
+    }
+
+    #[test]
+    fn parse_author_line_no_colon() {
+        let line = "Invalid line";
+        let author = parse_author_line(line);
+        assert!(author.is_none());
+    }
+
+    #[test]
+    fn parse_author_line_empty_after_colon() {
+        let line = "Co-authored-by:";
+        let author = parse_author_line(line);
+        // Returns Some with empty name if there's content after colon
+        assert!(author.is_none() || author.unwrap().name.is_empty());
+    }
+
+    // ── parse_commit_record edge case ────────────────────────────────
+
+    #[test]
+    fn parse_commit_record_invalid_too_few_parts() {
+        let record = "abc123\u{001f}Alice";
+        let result = parse_commit_record(record);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid commit record"));
+    }
+}

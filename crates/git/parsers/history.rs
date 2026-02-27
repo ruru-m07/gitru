@@ -14,3 +14,29 @@ pub fn parse_history_records(output: &str) -> Result<Vec<CommitInfo>, String> {
     }
     Ok(commits)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Edge case tests ──────────────────────────────────────────────
+
+    #[test]
+    fn parse_empty_history() {
+        let result = parse_history_records("").unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn parse_whitespace_only() {
+        let result = parse_history_records("  \n\t\n  ").unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn parse_malformed_record_skipped() {
+        // Malformed records should be skipped, not cause errors
+        let result = parse_history_records("malformed\u{001e}also_bad").unwrap();
+        assert!(result.is_empty());
+    }
+}

@@ -76,3 +76,30 @@ pub fn parse_branch_records(output: &str, is_remote: bool) -> Result<Vec<BranchI
 
     Ok(branches)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Edge case tests ──────────────────────────────────────────────
+
+    #[test]
+    fn parse_empty_output() {
+        let branches = parse_branch_records("", false).unwrap();
+        assert!(branches.is_empty());
+    }
+
+    #[test]
+    fn parse_whitespace_only_output() {
+        let branches = parse_branch_records("  \n\t\n  ", false).unwrap();
+        assert!(branches.is_empty());
+    }
+
+    #[test]
+    fn skip_malformed_records() {
+        // Record with too few parts
+        let malformed = "main\u{001f}abc123";
+        let branches = parse_branch_records(&malformed, false).unwrap();
+        assert!(branches.is_empty());
+    }
+}

@@ -130,8 +130,9 @@ async fn run_git_command_once(
 }
 
 fn command_lock_for_repo(repo_path: &Path) -> Result<std::sync::Arc<AsyncMutex<()>>, String> {
-    static REPO_LOCKS: OnceLock<StdMutex<std::collections::HashMap<String, std::sync::Arc<AsyncMutex<()>>>>> =
-        OnceLock::new();
+    static REPO_LOCKS: OnceLock<
+        StdMutex<std::collections::HashMap<String, std::sync::Arc<AsyncMutex<()>>>>,
+    > = OnceLock::new();
 
     let locks = REPO_LOCKS.get_or_init(|| StdMutex::new(std::collections::HashMap::new()));
     let mut guard = locks
@@ -219,5 +220,167 @@ fn finalize_output(
                 output.status.code()
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── validate_relative_path tests ─────────────────────────────────
+
+    #[test]
+    fn validate_simple_filename() {
+        assert!(validate_relative_path("file.txt").is_ok());
+    }
+
+    #[test]
+    fn validate_nested_path() {
+        assert!(validate_relative_path("src/main.rs").is_ok());
+        assert!(validate_relative_path("deeply/nested/path/to/file.rs").is_ok());
+    }
+
+    #[test]
+    fn validate_path_with_dots_in_name() {
+        assert!(validate_relative_path("file.test.rs").is_ok());
+        assert!(validate_relative_path(".gitignore").is_ok());
+        assert!(validate_relative_path("src/.hidden").is_ok());
+    }
+
+    #[test]
+    fn reject_absolute_path_unix() {
+        let result = validate_relative_path("/etc/passwd");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Absolute"));
+    }
+
+    #[test]
+    fn reject_absolute_path_windows() {
+        // Windows-style paths should be rejected when running on Windows
+        // On non-Windows systems, this test is a no-op as the path looks relative
+        #[cfg(windows)]
+        {
+            let result = validate_relative_path("C:\\Windows\\System32");
+            assert!(result.is_err());
+        }
+        #[cfg(not(windows))]
+        {
+            // On Unix, Windows paths look like relative paths with special characters
+            // which may or may not be rejected depending on implementation
+            let _ = validate_relative_path("C:\\Windows\\System32");
+        }
+    }
+
+    #[test]
+    fn reject_parent_directory_traversal() {
+        let result = validate_relative_path("../secret");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("traversal"));
+    }
+
+    #[test]
+    fn reject_nested_parent_traversal() {
+        let result = validate_relative_path("src/../../outside");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("traversal"));
+    }
+
+    #[test]
+    fn reject_multiple_parent_dirs() {
+        let result = validate_relative_path("../../../etc/passwd");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn allow_current_dir_component() {
+        // ./ is allowed (current directory)
+        assert!(validate_relative_path("./file.txt").is_ok());
+        assert!(validate_relative_path("src/./file.txt").is_ok());
+    }
+
+    #[test]
+    fn validate_path_with_spaces() {
+        assert!(validate_relative_path("path with spaces/file.txt").is_ok());
+    }
+
+    #[test]
+    fn validate_path_with_unicode() {
+        assert!(validate_relative_path("日本語/ファイル.rs").is_ok());
+    }
+
+    // ── is_index_lock_error tests ────────────────────────────────────
+
+    #[test]
+    fn detect_index_lock_error() {
+        let err = "fatal: Unable to create '/path/.git/index.lock': File exists.";
+        assert!(is_index_lock_error(err));
+    }
+
+    #[test]
+    fn detect_index_lock_error_variant() {
+        let err = "Another process is locking index.lock File exists";
+        assert!(is_index_lock_error(err));
+    }
+
+    #[test]
+    fn not_index_lock_error() {
+        let err = "fatal: not a git repository";
+        assert!(!is_index_lock_error(err));
+    }
+
+    #[test]
+    fn not_index_lock_partial_match() {
+        // Must have both parts
+        let err = "index.lock";
+        assert!(!is_index_lock_error(err));
+
+        let err = "File exists";
+        assert!(!is_index_lock_error(err));
+    }
+
+    // ── GitRunOptions tests ──────────────────────────────────────────
+
+    #[test]
+    fn default_read_options() {
+        let opts = GitRunOptions::default_read();
+        assert_eq!(opts.timeout, Duration::from_secs(30));
+        assert!(opts.allow_failure_codes.is_empty());
+    }
+
+    #[test]
+    fn with_timeout() {
+        let opts = GitRunOptions::default_read().with_timeout(Duration::from_secs(60));
+        assert_eq!(opts.timeout, Duration::from_secs(60));
+    }
+
+    #[test]
+    fn allow_exit_codes() {
+        let opts = GitRunOptions::default_read().allow_exit_codes(&[1, 2]);
+        assert_eq!(opts.allow_failure_codes, &[1, 2]);
+    }
+
+    // ── GitCommandRunner tests ───────────────────────────────────────
+
+    #[test]
+    fn runner_rejects_invalid_path() {
+        let result = GitCommandRunner::new("/nonexistent/path/to/repo");
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert!(err.contains("Invalid repository path"));
+    }
+
+    #[test]
+    fn runner_accepts_valid_temp_dir() {
+        let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+
+        // Initialize git repo
+        std::process::Command::new("git")
+            .current_dir(temp_dir.path())
+            .args(["init"])
+            .output()
+            .expect("failed to init git");
+
+        let result = GitCommandRunner::new(temp_dir.path().to_str().unwrap());
+        assert!(result.is_ok());
     }
 }

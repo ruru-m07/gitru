@@ -1,4 +1,4 @@
-.PHONY: help setup clean dev dev-vite build-vite build-tauri build format typegen
+.PHONY: help setup clean dev dev-vite build-vite build-tauri build format typegen test test-git rust-coverage rust-coverage-open
 
 .DEFAULT_GOAL := help
 
@@ -64,3 +64,22 @@ clean: ## Clean build artifacts and dependencies
 	@echo "$(RED)Cleaning build artifacts...$(NC)"
 	@./scripts/clear.sh
 	@echo "$(GREEN)Clean complete!$(NC)"
+
+##@ Testing
+
+test: ## Run all Rust tests
+	@echo "$(GREEN)Running Rust tests...$(NC)"
+	cargo test --workspace --verbose
+
+test-git: ## Run git crate tests only
+	@echo "$(GREEN)Running git crate tests...$(NC)"
+	cargo test -p git --verbose
+
+rust-coverage: ## Generate Rust test coverage report (HTML)
+	@echo "$(GREEN)Generating coverage report...$(NC)"
+	@cargo llvm-cov --workspace --html --output-dir target/coverage \
+		--ignore-filename-regex '(crates/ipc/|crates/logger/|apps/desktop/src-tauri/)'
+	@echo "$(GREEN)Coverage report generated at target/coverage/html/index.html$(NC)"
+
+rust-coverage-open: rust-coverage ## Generate and open coverage report
+	@open target/coverage/html/index.html

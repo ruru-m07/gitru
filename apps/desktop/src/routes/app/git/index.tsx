@@ -238,7 +238,7 @@ const DiffArea = ({ selectedFile }: { selectedFile: SelectedFile }) => {
   return (
     <div
       className={cn(
-        "max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*7))] h-full w-full relative overflow-y-auto bg-[color-mix(in_oklab,var(--color-secondary)_70%,var(--color-background))]",
+        "max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*6))] h-full w-full relative overflow-y-auto bg-[color-mix(in_oklab,var(--color-secondary)_70%,var(--color-background))]",
       )}
     >
       {isLoading ? (
