@@ -203,8 +203,7 @@ pub fn validate_stash_ref(reference: &str) -> Result<(), String> {
         }
     }
     Err(format!(
-        "Invalid stash reference '{}': expected format stash@{{N}}",
-        reference
+        "Invalid stash reference '{reference}': expected format stash@{{N}}"
     ))
 }
 
@@ -216,9 +215,9 @@ fn parse_stash_index(reference: &str) -> Result<usize, String> {
         let inner = &reference[7..reference.len() - 1];
         inner
             .parse::<usize>()
-            .map_err(|_| format!("invalid stash index in '{}'", reference))
+            .map_err(|_| format!("invalid stash index in '{reference}'"))
     } else {
-        Err(format!("invalid stash reference '{}'", reference))
+        Err(format!("invalid stash reference '{reference}'"))
     }
 }
 

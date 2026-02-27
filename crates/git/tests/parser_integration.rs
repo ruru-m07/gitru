@@ -26,7 +26,7 @@ fn parse_real_commit_simple() {
     let repo = TestRepo::new();
     repo.commit_file("README.md", "# Hello", "Initial commit");
 
-    let output = repo.git(&["log", "-1", &format!("--format={}", COMMIT_STANDARD_FORMAT)]);
+    let output = repo.git(&["log", "-1", &format!("--format={COMMIT_STANDARD_FORMAT}")]);
 
     let commit = parse_commit_record(&output).unwrap();
     assert_eq!(commit.summary, "Initial commit");
@@ -48,7 +48,7 @@ fn parse_real_commit_with_body() {
         "Add feature\n\nThis is the body.\nWith multiple lines.",
     ]);
 
-    let output = repo.git(&["log", "-1", &format!("--format={}", COMMIT_STANDARD_FORMAT)]);
+    let output = repo.git(&["log", "-1", &format!("--format={COMMIT_STANDARD_FORMAT}")]);
 
     let commit = parse_commit_record(&output).unwrap();
     assert_eq!(commit.summary, "Add feature");
@@ -66,7 +66,7 @@ fn parse_real_commit_with_co_authors() {
     let message = "Add feature\n\nImplementation details.\n\nCo-authored-by: Alice <alice@example.com>\nCo-authored-by: Bob <bob@example.com>";
     repo.git(&["commit", "-m", message]);
 
-    let output = repo.git(&["log", "-1", &format!("--format={}", COMMIT_STANDARD_FORMAT)]);
+    let output = repo.git(&["log", "-1", &format!("--format={COMMIT_STANDARD_FORMAT}")]);
 
     let commit = parse_commit_record(&output).unwrap();
     assert_eq!(commit.authors.co_authors.len(), 2);
@@ -82,7 +82,7 @@ fn parse_real_commit_unicode_message() {
     let repo = TestRepo::new();
     repo.commit_file("日本語.txt", "こんにちは", "日本語のコミットメッセージ 🎉");
 
-    let output = repo.git(&["log", "-1", &format!("--format={}", COMMIT_STANDARD_FORMAT)]);
+    let output = repo.git(&["log", "-1", &format!("--format={COMMIT_STANDARD_FORMAT}")]);
 
     let commit = parse_commit_record(&output).unwrap();
     assert!(commit.summary.contains("日本語"));
@@ -219,7 +219,7 @@ fn parse_real_single_branch() {
     let output = repo.git(&[
         "for-each-ref",
         "refs/heads",
-        &format!("--format={}", BRANCH_STANDARD_FORMAT),
+        &format!("--format={BRANCH_STANDARD_FORMAT}"),
     ]);
 
     let branches = parse_branch_records(&output, false).unwrap();
@@ -243,7 +243,7 @@ fn parse_real_multiple_branches() {
     let output = repo.git(&[
         "for-each-ref",
         "refs/heads",
-        &format!("--format={}", BRANCH_STANDARD_FORMAT),
+        &format!("--format={BRANCH_STANDARD_FORMAT}"),
     ]);
 
     let branches = parse_branch_records(&output, false).unwrap();
@@ -266,7 +266,7 @@ fn parse_real_branch_after_switch() {
     let output = repo.git(&[
         "for-each-ref",
         "refs/heads",
-        &format!("--format={}", BRANCH_STANDARD_FORMAT),
+        &format!("--format={BRANCH_STANDARD_FORMAT}"),
     ]);
 
     let branches = parse_branch_records(&output, false).unwrap();
@@ -288,7 +288,7 @@ fn parse_real_branch_with_commit_info() {
     let output = repo.git(&[
         "for-each-ref",
         "refs/heads",
-        &format!("--format={}", BRANCH_STANDARD_FORMAT),
+        &format!("--format={BRANCH_STANDARD_FORMAT}"),
     ]);
 
     let branches = parse_branch_records(&output, false).unwrap();
@@ -310,7 +310,7 @@ fn parse_real_branch_unicode_name() {
     let output = repo.git(&[
         "for-each-ref",
         "refs/heads",
-        &format!("--format={}", BRANCH_STANDARD_FORMAT),
+        &format!("--format={BRANCH_STANDARD_FORMAT}"),
     ]);
 
     let branches = parse_branch_records(&output, false).unwrap();
@@ -509,7 +509,7 @@ fn parse_real_history_single_commit() {
     let repo = TestRepo::new();
     repo.commit_file("README.md", "# Test", "Initial commit");
 
-    let output = repo.git(&["log", &format!("--format={}", COMMIT_STANDARD_FORMAT)]);
+    let output = repo.git(&["log", &format!("--format={COMMIT_STANDARD_FORMAT}")]);
 
     let commits = parse_history_records(&output).unwrap();
     assert_eq!(commits.len(), 1);
@@ -524,7 +524,7 @@ fn parse_real_history_multiple_commits() {
     repo.commit_file("file2.txt", "2", "Second commit");
     repo.commit_file("file3.txt", "3", "Third commit");
 
-    let output = repo.git(&["log", &format!("--format={}", COMMIT_STANDARD_FORMAT)]);
+    let output = repo.git(&["log", &format!("--format={COMMIT_STANDARD_FORMAT}")]);
 
     let commits = parse_history_records(&output).unwrap();
     assert_eq!(commits.len(), 3);
@@ -541,13 +541,13 @@ fn parse_real_history_preserves_order() {
     let repo = TestRepo::new();
     for i in 1..=5 {
         repo.commit_file(
-            &format!("file{}.txt", i),
+            &format!("file{i}.txt"),
             &i.to_string(),
-            &format!("Commit {}", i),
+            &format!("Commit {i}"),
         );
     }
 
-    let output = repo.git(&["log", &format!("--format={}", COMMIT_STANDARD_FORMAT)]);
+    let output = repo.git(&["log", &format!("--format={COMMIT_STANDARD_FORMAT}")]);
 
     let commits = parse_history_records(&output).unwrap();
     assert_eq!(commits.len(), 5);
@@ -563,13 +563,13 @@ fn parse_real_history_with_limit() {
     let repo = TestRepo::new();
     for i in 1..=10 {
         repo.commit_file(
-            &format!("file{}.txt", i),
+            &format!("file{i}.txt"),
             &i.to_string(),
-            &format!("Commit {}", i),
+            &format!("Commit {i}"),
         );
     }
 
-    let output = repo.git(&["log", "-5", &format!("--format={}", COMMIT_STANDARD_FORMAT)]);
+    let output = repo.git(&["log", "-5", &format!("--format={COMMIT_STANDARD_FORMAT}")]);
 
     let commits = parse_history_records(&output).unwrap();
     assert_eq!(commits.len(), 5);

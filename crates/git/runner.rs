@@ -40,7 +40,7 @@ impl GitCommandRunner {
     pub fn new(repo_path: &str) -> Result<Self, String> {
         let path = Path::new(repo_path);
         if !path.is_dir() {
-            return Err(format!("Invalid repository path: {}", repo_path));
+            return Err(format!("Invalid repository path: {repo_path}"));
         }
         Ok(Self {
             repo_path: path.to_path_buf(),

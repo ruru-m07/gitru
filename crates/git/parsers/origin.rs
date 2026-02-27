@@ -55,7 +55,7 @@ pub fn parse_remote_url(
     ("unknown".into(), None, None, None, None)
 }
 
-pub fn detect_provider(host: &String) -> Option<String> {
+pub fn detect_provider(host: &str) -> Option<String> {
     if host.contains("github") {
         Some("github".into())
     } else if host.contains("gitlab") {
@@ -218,24 +218,18 @@ mod tests {
 
     #[test]
     fn detect_github_provider() {
+        assert_eq!(detect_provider("github.com"), Some("github".to_string()));
         assert_eq!(
-            detect_provider(&"github.com".to_string()),
-            Some("github".to_string())
-        );
-        assert_eq!(
-            detect_provider(&"api.github.com".to_string()),
+            detect_provider("api.github.com"),
             Some("github".to_string())
         );
     }
 
     #[test]
     fn detect_gitlab_provider() {
+        assert_eq!(detect_provider("gitlab.com"), Some("gitlab".to_string()));
         assert_eq!(
-            detect_provider(&"gitlab.com".to_string()),
-            Some("gitlab".to_string())
-        );
-        assert_eq!(
-            detect_provider(&"gitlab.company.com".to_string()),
+            detect_provider("gitlab.company.com"),
             Some("gitlab".to_string())
         );
     }
@@ -243,7 +237,7 @@ mod tests {
     #[test]
     fn detect_bitbucket_provider() {
         assert_eq!(
-            detect_provider(&"bitbucket.org".to_string()),
+            detect_provider("bitbucket.org"),
             Some("bitbucket".to_string())
         );
     }
@@ -251,11 +245,11 @@ mod tests {
     #[test]
     fn detect_unknown_provider() {
         assert_eq!(
-            detect_provider(&"git.example.com".to_string()),
+            detect_provider("git.example.com"),
             Some("unknown".to_string())
         );
         assert_eq!(
-            detect_provider(&"sourcehut.org".to_string()),
+            detect_provider("sourcehut.org"),
             Some("unknown".to_string())
         );
     }

@@ -155,8 +155,7 @@ fn create_branch_already_exists() {
         // Git error message should mention the branch already exists
         assert!(
             err.contains("exists") || err.contains("already") || err.contains("fatal"),
-            "Expected error about existing branch, got: {}",
-            err
+            "Expected error about existing branch, got: {err}"
         );
     });
 }

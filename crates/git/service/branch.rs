@@ -192,8 +192,7 @@ impl BranchService {
                             let _ = self.stash().pop(None).await;
                         }
                         Err(format!(
-                            "Failed to switch to {} even after stashing: {}",
-                            branch, err
+                            "Failed to switch to {branch} even after stashing: {err}"
                         ))
                     }
                 }
@@ -202,14 +201,13 @@ impl BranchService {
             _ => match do_switch().await {
                 Ok(_) => {
                     self.ctx.cache.invalidate_all();
-                    Ok(format!("Switched to {}", branch))
+                    Ok(format!("Switched to {branch}"))
                 }
                 Err(err) => match strategy {
                     Some(UncommittedChangesStrategy::BringChanges) => Err(format!(
-                        "Cannot bring uncommitted changes to {}: conflicts detected",
-                        branch
+                        "Cannot bring uncommitted changes to {branch}: conflicts detected"
                     )),
-                    None => Err(format!("Cannot switch to {}: {}", branch, err)),
+                    None => Err(format!("Cannot switch to {branch}: {err}")),
                     _ => unreachable!(),
                 },
             },
@@ -250,8 +248,7 @@ impl BranchService {
                             let _ = self.stash().pop(None).await;
                         }
                         Err(format!(
-                            "Failed to create branch {} even after stashing: {}",
-                            branch, err
+                            "Failed to create branch {branch} even after stashing: {err}"
                         ))
                     }
                 }
@@ -266,14 +263,13 @@ impl BranchService {
             {
                 Ok(_) => {
                     self.ctx.cache.invalidate_all();
-                    Ok(format!("Created and switched to {}", branch))
+                    Ok(format!("Created and switched to {branch}"))
                 }
                 Err(err) => match strategy {
                     Some(UncommittedChangesStrategy::BringChanges) => Err(format!(
-                        "Cannot bring uncommitted changes to new branch {}: {}",
-                        branch, err
+                        "Cannot bring uncommitted changes to new branch {branch}: {err}"
                     )),
-                    None => Err(format!("Cannot create branch {}: {}", branch, err)),
+                    None => Err(format!("Cannot create branch {branch}: {err}")),
                     _ => unreachable!(),
                 },
             },

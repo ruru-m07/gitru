@@ -369,8 +369,8 @@ fn stash_clear_all() {
 
         // Create multiple stashes
         for i in 1..=3 {
-            repo.create_file(&format!("file{}.txt", i), "content");
-            repo.stash_push(Some(&format!("Stash {}", i)));
+            repo.create_file(&format!("file{i}.txt"), "content");
+            repo.stash_push(Some(&format!("Stash {i}")));
         }
 
         let service = setup_stash_service(&repo);

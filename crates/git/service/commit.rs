@@ -159,7 +159,7 @@ impl CommitService {
         if !commit_meta.co_authors.is_empty() {
             msg.push('\n');
             for (name, email) in &commit_meta.co_authors {
-                msg.push_str(&format!("Co-authored-by: {} <{}>\n", name, email));
+                msg.push_str(&format!("Co-authored-by: {name} <{email}>\n"));
             }
         }
 

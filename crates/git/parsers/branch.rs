@@ -99,7 +99,7 @@ mod tests {
     fn skip_malformed_records() {
         // Record with too few parts
         let malformed = "main\u{001f}abc123";
-        let branches = parse_branch_records(&malformed, false).unwrap();
+        let branches = parse_branch_records(malformed, false).unwrap();
         assert!(branches.is_empty());
     }
 }

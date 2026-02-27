@@ -876,7 +876,7 @@ fn normalize_refs(entries: &mut [GraphLogEntry], remote_names: &[String]) {
             }
 
             let is_remote = remote_names.iter().any(|remote| {
-                let prefix = format!("{}/", remote);
+                let prefix = format!("{remote}/");
                 reference.name.starts_with(&prefix)
             });
 
