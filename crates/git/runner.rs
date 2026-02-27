@@ -1,9 +1,10 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex as StdMutex, OnceLock};
 use std::time::{Duration, Instant};
 use tokio::io::AsyncWriteExt;
-use tokio::time::timeout;
+use tokio::sync::Mutex as AsyncMutex;
+use tokio::time::{sleep, timeout};
 
 #[derive(Clone, Copy)]
 pub struct GitRunOptions {
@@ -70,6 +71,31 @@ async fn run_git_command_async(
     input: Option<&[u8]>,
     options: GitRunOptions,
 ) -> Result<String, String> {
+    let repo_lock = command_lock_for_repo(repo_path)?;
+    let _guard = repo_lock.lock().await;
+
+    let mut attempt: u32 = 0;
+    const MAX_INDEX_LOCK_RETRIES: u32 = 6;
+
+    loop {
+        attempt += 1;
+        match run_git_command_once(repo_path, args, input, options).await {
+            Ok(output) => return Ok(output),
+            Err(err) if is_index_lock_error(&err) && attempt < MAX_INDEX_LOCK_RETRIES => {
+                let backoff_ms = 50 * attempt as u64;
+                sleep(Duration::from_millis(backoff_ms)).await;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
+
+async fn run_git_command_once(
+    repo_path: &Path,
+    args: &[&str],
+    input: Option<&[u8]>,
+    options: GitRunOptions,
+) -> Result<String, String> {
     let mut command = tokio::process::Command::new("git");
     command.current_dir(repo_path);
     command.args(args);
@@ -103,6 +129,26 @@ async fn run_git_command_async(
     }
 }
 
+fn command_lock_for_repo(repo_path: &Path) -> Result<std::sync::Arc<AsyncMutex<()>>, String> {
+    static REPO_LOCKS: OnceLock<StdMutex<std::collections::HashMap<String, std::sync::Arc<AsyncMutex<()>>>>> =
+        OnceLock::new();
+
+    let locks = REPO_LOCKS.get_or_init(|| StdMutex::new(std::collections::HashMap::new()));
+    let mut guard = locks
+        .lock()
+        .map_err(|_| "Failed to lock command map".to_string())?;
+
+    let key = repo_path.to_string_lossy().to_string();
+    Ok(guard
+        .entry(key)
+        .or_insert_with(|| std::sync::Arc::new(AsyncMutex::new(())))
+        .clone())
+}
+
+fn is_index_lock_error(err: &str) -> bool {
+    err.contains("index.lock") && err.contains("File exists")
+}
+
 pub fn validate_relative_path(path: &str) -> Result<(), String> {
     let path = Path::new(path);
     if path.is_absolute() {
@@ -117,8 +163,9 @@ pub fn validate_relative_path(path: &str) -> Result<(), String> {
 }
 
 pub fn throttle_command(repo_key: &str, min_interval: Duration) -> Result<(), String> {
-    static THROTTLE: OnceLock<Mutex<std::collections::HashMap<String, Instant>>> = OnceLock::new();
-    let throttle = THROTTLE.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
+    static THROTTLE: OnceLock<StdMutex<std::collections::HashMap<String, Instant>>> =
+        OnceLock::new();
+    let throttle = THROTTLE.get_or_init(|| StdMutex::new(std::collections::HashMap::new()));
 
     let mut map = throttle
         .lock()

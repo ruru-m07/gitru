@@ -37,10 +37,7 @@ import {
   useGetStatusAheadBehind,
   useGitPush,
 } from "@/hooks";
-import {
-  type SelectedFile,
-  useAppStore,
-} from "@/store/useAppStore";
+import { type SelectedFile, useAppStore } from "@/store/useAppStore";
 import { SplitSVG } from "../../../components/svgs/splitSVG";
 import { UnifiedSVG } from "../../../components/svgs/unifiedSVG";
 
@@ -221,7 +218,7 @@ const FileLevelStatusBar = ({
         >
           <X />
         </Button>
-      
+
         <SettingsPopover />
       </div>
     </div>
@@ -231,6 +228,9 @@ const FileLevelStatusBar = ({
 const DiffArea = ({ selectedFile }: { selectedFile: SelectedFile }) => {
   const { data: diffData, isLoading } = useGetDiff(
     selectedFile?.filePath || null,
+    {
+      stashReference: selectedFile?.stashReference ?? null,
+    },
   );
   const { diffStyle, overflow } = useDiffViewerSettings();
   const { theme } = useTheme();

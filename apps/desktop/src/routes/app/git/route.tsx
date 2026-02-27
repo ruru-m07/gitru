@@ -1,4 +1,15 @@
 import { GetStatusResponse } from "@gitru/commands";
+import { Stashed } from "@gitru/icon";
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@gitru/ui/components/alert-dialog";
 import {
   Avatar,
   AvatarFallback,
@@ -55,10 +66,11 @@ import { cn } from "@gitru/ui/lib/utils";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
-  ArchiveRestore,
   BadgeQuestionMark,
   ChevronDown,
   ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronsRight,
   ChevronUp,
   CircleAlertIcon,
   GitBranch,
@@ -70,7 +82,8 @@ import {
   Undo2,
   UserPlus,
 } from "lucide-react";
-import { memo, useCallback, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { useDefaultLayout } from "react-resizable-panels";
 import { toast } from "sonner";
 import z from "zod";
@@ -89,9 +102,14 @@ import {
   useGitAdd,
   useGitDiscard,
   useGitUnstage,
-  usePopCurrentBranchStash,
+  useStashDrop,
+  useStashList,
+  useStashPop,
+  useStashRestoreFile,
+  useStashShow,
 } from "@/hooks";
 import { useRepositories } from "@/hooks/useRepositories";
+import { formatNumber } from "@/lib/formatNumber";
 import { getAvatarByProvider } from "@/lib/getAvatarByGitProvider";
 import { parseOrigin } from "@/lib/parseOrigin";
 import {
@@ -109,6 +127,40 @@ type FileStatusFilter =
   | "conflicted"
   | "deleted"
   | "untracked";
+
+const DEFAULT_STATUS_FILTERS: Record<FileStatusFilter, boolean> = {
+  modified: true,
+  renamed: true,
+  deleted: true,
+  conflicted: true,
+  untracked: true,
+};
+
+const hasActiveStatusFilters = (filters: Record<FileStatusFilter, boolean>) =>
+  !filters.modified ||
+  !filters.renamed ||
+  !filters.deleted ||
+  !filters.conflicted ||
+  !filters.untracked;
+
+const matchesStatusFilters = (
+  file: GetStatusResponse["files"][number],
+  filters: Record<FileStatusFilter, boolean>,
+) => {
+  const isModified = file.status.some((s) => s.includes("Modified"));
+  const isRenamed = file.status.some((s) => s.includes("Renamed"));
+  const isDeleted = file.status.some((s) => s.includes("Deleted"));
+  const isConflicted = file.status.some((s) => s.includes("Conflicted"));
+  const isUntracked = file.status.some((s) => s.includes("New"));
+
+  return (
+    (filters.modified && isModified) ||
+    (filters.renamed && isRenamed) ||
+    (filters.deleted && isDeleted) ||
+    (filters.conflicted && isConflicted) ||
+    (filters.untracked && isUntracked)
+  );
+};
 
 const matchesSearchQuery = (value: string, query: string) => {
   const normalizedQuery = query.trim();
@@ -149,7 +201,7 @@ export const Route = createFileRoute("/app/git")({
 
 function GitPageLayout() {
   return (
-    <PageLayout>
+    <PageLayout className="flex-col flex justify-between">
       <ResizableArea />
       <StatusBar />
     </PageLayout>
@@ -159,6 +211,52 @@ function GitPageLayout() {
 const ResizableArea = () => {
   const repoSelectIsOpen = useAppStore((state) => state.repoSelectIsOpen);
   const setRepoSelectIsOpen = useAppStore((state) => state.setRepoSelectIsOpen);
+  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const gitViewByRepo = useAppStore((state) => state.gitViewByRepo);
+  const setGitViewStateForRepo = useAppStore(
+    (state) => state.setGitViewStateForRepo,
+  );
+
+  const shouldReduceMotion = useReducedMotion();
+  const [panelDirection, setPanelDirection] = useState<1 | -1>(1);
+  const repoPath = selectedRepository?.path;
+  const gitViewState: {
+    leftPanelView: "changes" | "stash";
+    stashViewMode: "branch" | "all";
+    selectedStashReference: string | null;
+    stashStatusFilters: Record<FileStatusFilter, boolean>;
+  } = repoPath
+    ? (gitViewByRepo[repoPath] ?? {
+        leftPanelView: "changes",
+        stashViewMode: "branch",
+        selectedStashReference: null,
+        stashStatusFilters: DEFAULT_STATUS_FILTERS,
+      })
+    : {
+        leftPanelView: "changes",
+        stashViewMode: "branch",
+        selectedStashReference: null,
+        stashStatusFilters: DEFAULT_STATUS_FILTERS,
+      };
+
+  const panelSlideVariants = {
+    initial: (direction: 1 | -1) => ({
+      x: shouldReduceMotion ? 0 : direction > 0 ? 10 : -10,
+      opacity: shouldReduceMotion ? 1 : 0.94,
+    }),
+    animate: {
+      x: 0,
+      opacity: 1,
+    },
+    exit: (direction: 1 | -1) => ({
+      x: shouldReduceMotion ? 0 : direction > 0 ? -4 : 4,
+      opacity: shouldReduceMotion ? 1 : 0.97,
+    }),
+  };
+
+  const panelTransition = shouldReduceMotion
+    ? { duration: 0.06, ease: "linear" as const }
+    : { duration: 0.14, ease: [0.32, 0.72, 0, 1] as const };
 
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: "git-page-layout",
@@ -166,7 +264,7 @@ const ResizableArea = () => {
   });
 
   return (
-    <div className="flex">
+    <div className="flex h-full">
       <ResizablePanelGroup
         defaultLayout={defaultLayout}
         onLayoutChanged={onLayoutChanged}
@@ -179,8 +277,69 @@ const ResizableArea = () => {
           className="flex flex-col h-full"
         >
           <ToggelPanelButton />
-          <div className="h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*7)-calc(var(--spacing)*3))]">
-            {repoSelectIsOpen ? <ListRepositories /> : <ListFileChanges />}
+          <div className="h-full border-t max-h-[calc(100vh-calc(var(--spacing)*31.5))] relative overflow-hidden">
+            {repoSelectIsOpen ? (
+              <div className="absolute inset-0 bg-background">
+                <ListRepositories />
+              </div>
+            ) : (
+              <AnimatePresence
+                mode="sync"
+                initial={false}
+                custom={panelDirection}
+              >
+                {gitViewState.leftPanelView === "stash" ? (
+                  <motion.div
+                    key="stash"
+                    className="absolute inset-0 bg-background will-change-transform"
+                    custom={panelDirection}
+                    variants={panelSlideVariants}
+                    initial="initial"
+                    animate="animate"
+                    exit="exit"
+                    transition={panelTransition}
+                  >
+                    <StashPocView
+                      mode={gitViewState.stashViewMode}
+                      onBack={() => {
+                        setPanelDirection(-1);
+                        setGitViewStateForRepo(
+                          {
+                            leftPanelView: "changes",
+                          },
+                          repoPath,
+                        );
+                      }}
+                    />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="changes"
+                    className="absolute inset-0 bg-background will-change-transform"
+                    custom={panelDirection}
+                    variants={panelSlideVariants}
+                    initial="initial"
+                    animate="animate"
+                    exit="exit"
+                    transition={panelTransition}
+                  >
+                    <ListFileChanges
+                      onOpenStashView={(stashReference) => {
+                        setPanelDirection(1);
+                        setGitViewStateForRepo(
+                          {
+                            leftPanelView: "stash",
+                            stashViewMode: "branch",
+                            selectedStashReference: stashReference,
+                          },
+                          repoPath,
+                        );
+                      }}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            )}
           </div>
         </ResizablePanel>
         <ResizableHandle withHandle />
@@ -316,9 +475,6 @@ const WriteCommitBox = memo(function WriteCommitBox() {
   const { mutateAsync: gitAdd, isPending: isAdding } = useGitAdd();
   const { mutateAsync: createCommit, isPending: isCreatingCommit } =
     useCreateCommit();
-  const { data: currentBranchStash } = useGetCurrentBranchStash();
-  const { mutateAsync: popCurrentBranchStash, isPending: isPoppingStash } =
-    usePopCurrentBranchStash();
 
   const nothingToCommit =
     status?.files.filter((file) =>
@@ -385,31 +541,6 @@ const WriteCommitBox = memo(function WriteCommitBox() {
           </InputGroupAddon>
         </InputGroup>
         <div className="w-full flex items-center gap-2">
-          {currentBranchStash ? (
-            <Button
-              variant="secondary"
-              title={currentBranchStash.message}
-              onClick={async () => {
-                const result = await popCurrentBranchStash();
-                if (result) {
-                  toast.success(result);
-                }
-              }}
-              disabled={isPoppingStash}
-            >
-              {isPoppingStash ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  Popping...
-                </>
-              ) : (
-                <>
-                  <ArchiveRestore className="size-4" />
-                  Pop Stash
-                </>
-              )}
-            </Button>
-          ) : null}
           <Group aria-label="Subscription actions" className="w-full">
             <Button
               onClick={handelCommit}
@@ -485,17 +616,15 @@ const ToggelPanelButton = () => {
   );
 };
 
-const ListFileChanges = () => {
+const ListFileChanges = ({
+  onOpenStashView,
+}: {
+  onOpenStashView: (stashReference: string | null) => void;
+}) => {
   const [query, setQuery] = useState("");
   const [statusFilters, setStatusFilters] = useState<
     Record<FileStatusFilter, boolean>
-  >({
-    modified: true,
-    renamed: true,
-    deleted: true,
-    conflicted: true,
-    untracked: true,
-  });
+  >(DEFAULT_STATUS_FILTERS);
 
   const selectedRepository = useAppStore((state) => state.selectedRepository);
   const setSelectedFileForRepo = useAppStore(
@@ -509,16 +638,13 @@ const ListFileChanges = () => {
   const { mutateAsync: addFile } = useGitAdd();
   const { mutateAsync: unstageFile } = useGitUnstage();
 
+  const { data: currentBranchStash } = useGetCurrentBranchStash();
+
   const { handleFileClick } = useFileSelectionStore();
 
   const { data: commitHistory } = useGetCommitHistory();
 
-  const hasActiveStatusFilters =
-    !statusFilters.modified ||
-    !statusFilters.renamed ||
-    !statusFilters.deleted ||
-    !statusFilters.conflicted ||
-    !statusFilters.untracked;
+  const hasFilterSelection = hasActiveStatusFilters(statusFilters);
   const toggleStatusFilter = (filter: FileStatusFilter, checked: boolean) => {
     setStatusFilters((prev) => ({
       ...prev,
@@ -526,28 +652,12 @@ const ListFileChanges = () => {
     }));
   };
 
-  const matchesStatusFilters = (file: GetStatusResponse["files"][number]) => {
-    const isModified = file.status.some((s) => s.includes("Modified"));
-    const isRenamed = file.status.some((s) => s.includes("Renamed"));
-    const isDeleted = file.status.some((s) => s.includes("Deleted"));
-    const isConflicted = file.status.some((s) => s.includes("Conflicted"));
-    const isUntracked = file.status.some((s) => s.includes("New"));
-
-    return (
-      (statusFilters.modified && isModified) ||
-      (statusFilters.renamed && isRenamed) ||
-      (statusFilters.deleted && isDeleted) ||
-      (statusFilters.conflicted && isConflicted) ||
-      (statusFilters.untracked && isUntracked)
-    );
-  };
-
   const stagedChanges: GetStatusResponse["files"] = (
     status?.files ?? []
   ).filter(
     (file) =>
       file.status.some((s) => s.startsWith("Index")) &&
-      matchesStatusFilters(file) &&
+      matchesStatusFilters(file, statusFilters) &&
       matchesSearchQuery(file.path, query),
   );
   const unstagedChanges: GetStatusResponse["files"] = (
@@ -555,7 +665,7 @@ const ListFileChanges = () => {
   ).filter(
     (file) =>
       file.status.some((s) => s.startsWith("Worktree")) &&
-      matchesStatusFilters(file) &&
+      matchesStatusFilters(file, statusFilters) &&
       matchesSearchQuery(file.path, query),
   );
   const conflictedChanges: GetStatusResponse["files"] = (
@@ -563,7 +673,7 @@ const ListFileChanges = () => {
   ).filter(
     (file) =>
       file.status.some((s) => s.includes("Conflicted")) &&
-      matchesStatusFilters(file) &&
+      matchesStatusFilters(file, statusFilters) &&
       matchesSearchQuery(file.path, query),
   );
 
@@ -571,7 +681,7 @@ const ListFileChanges = () => {
     <Tabs defaultValue="tab-1" className={"gap-0 h-full flex flex-col"}>
       <TabsList
         className={
-          "select-none rounded-none bg-background w-full shrink-0 border-y *:data-[slot=tab-indicator]:bg-secondary *:data-[slot=tab-indicator]:transition-none"
+          "select-none rounded-none bg-background w-full shrink-0 border-b *:data-[slot=tab-indicator]:bg-secondary *:data-[slot=tab-indicator]:transition-none"
         }
       >
         <TabsTab className={"rounded-none!"} value="tab-1">
@@ -609,7 +719,7 @@ const ListFileChanges = () => {
                 }
               >
                 <ListFilterPlus aria-hidden="true" className="size-4" />
-                {hasActiveStatusFilters && (
+                {hasFilterSelection && (
                   <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-primary" />
                 )}
               </MenuTrigger>
@@ -617,22 +727,18 @@ const ListFileChanges = () => {
                 <MenuGroup>
                   <MenuGroupLabel className={"justify-between flex"}>
                     <span>Filter by status</span>
-                    {hasActiveStatusFilters && (
+                    {hasFilterSelection && (
                       <span
                         className="font-normal hover:underline cursor-pointer"
                         onClick={() => {
-                          toggleStatusFilter("modified", true);
-                          toggleStatusFilter("renamed", true);
-                          toggleStatusFilter("deleted", true);
-                          toggleStatusFilter("conflicted", true);
-                          toggleStatusFilter("untracked", true);
+                          setStatusFilters(DEFAULT_STATUS_FILTERS);
                         }}
                       >
                         clear
                       </span>
                     )}
                   </MenuGroupLabel>
-                   <MenuCheckboxItem
+                  <MenuCheckboxItem
                     checked={statusFilters.untracked}
                     onCheckedChange={(checked) =>
                       toggleStatusFilter("untracked", Boolean(checked))
@@ -714,6 +820,7 @@ const ListFileChanges = () => {
                     {
                       id: "conflicted",
                       name: "Conflicted",
+                      type: "conflicted",
                       files: conflictedChanges || [],
                       actions: {
                         onAddAll: async () => {
@@ -727,6 +834,7 @@ const ListFileChanges = () => {
                     {
                       id: "staged",
                       name: "Staged Changes",
+                      type: "staged",
                       files: stagedChanges || [],
                       actions: {
                         onUnstageAll: async () => {
@@ -737,6 +845,7 @@ const ListFileChanges = () => {
                     {
                       id: "unstaged",
                       name: "Changes",
+                      type: "changes",
                       files: unstagedChanges || [],
                       actions: {
                         onAddAll: async () => {
@@ -783,6 +892,72 @@ const ListFileChanges = () => {
             </>
           )}
         </div>
+        {currentBranchStash ? (
+          <Button
+            variant={"secondary"}
+            className="border-0 border-t! py-4 pl-2.5 ring-0! flex items-center justify-between rounded-none relative overflow-hidden [--glow-end:0.09] dark:[--glow-end:0.09]"
+            style={{
+              backgroundColor: "var(--color-background)",
+              backgroundImage: `
+              linear-gradient(
+                to right,
+                rgba(234, 179, 8, var(--glow-end)) 0%,
+                rgba(234, 179, 8, 0.03) 55%,
+                transparent 76%
+              )
+            `,
+            }}
+            onClick={() =>
+              onOpenStashView(currentBranchStash?.reference ?? null)
+            }
+          >
+            <div
+              className="absolute inset-0 pointer-events-none [--stripe-alpha:0.15] dark:[--stripe-alpha:0.1]"
+              style={{
+                background: `
+                repeating-linear-gradient(
+                  45deg,
+                  rgba(234, 179, 8, var(--stripe-alpha)) 0px,
+                  rgba(234, 179, 8, var(--stripe-alpha)) 4px,
+                  transparent 4px,
+                  transparent 10px
+                )
+              `,
+                maskImage:
+                  "linear-gradient(to left, transparent 20%, black 80%)",
+                WebkitMaskImage:
+                  "linear-gradient(to left, transparent 20%, black 80%)",
+              }}
+            />
+            <div className="flex items-center justify-between w-full gap-2 relative z-1">
+              <div className="flex items-center gap-2 ">
+                <Stashed
+                  style={{
+                    width: "20px",
+                    height: "20px",
+                  }}
+                />
+                <span className="text-sm">Stashed changes</span>
+                <span className="tabular-nums flex items-center gap-1 text-muted-foreground font-normal">
+                  ({formatNumber(currentBranchStash?.files_changed || 0)})
+                </span>
+              </div>
+              <div className="text-xs flex items-center">
+                <span className="flex gap-2">
+                  <span className="text-green-600 tabular-nums font-normal">
+                    +{formatNumber(currentBranchStash?.insertions || 0)}
+                  </span>
+                  <span className="text-red-600 tabular-nums font-normal">
+                    -{formatNumber(currentBranchStash?.deletions || 0)}
+                  </span>
+                </span>
+              </div>
+            </div>
+            <div className="relative z-1">
+              <ChevronsRight className="size-6 text-muted-foreground/50" />
+            </div>
+          </Button>
+        ) : null}
         <WriteCommitBox />
       </TabsPanel>
       <TabsPanel value="tab-2" className={"h-full"} tabIndex={-1}>
@@ -1075,6 +1250,405 @@ const ListRepositories = memo(() => {
                 );
               })}
         </div>
+      </div>
+    </div>
+  );
+});
+
+const StashPocView = memo(function StashPocView({
+  onBack,
+  mode,
+}: {
+  onBack: () => void;
+  mode: "branch" | "all";
+}) {
+  const [query, setQuery] = useState("");
+  const [statusFilters, setStatusFilters] = useState<
+    Record<FileStatusFilter, boolean>
+  >(DEFAULT_STATUS_FILTERS);
+
+  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const selectedFileByRepo = useAppStore((state) => state.selectedFileByRepo);
+  const setSelectedFileForRepo = useAppStore(
+    (state) => state.setSelectedFileForRepo,
+  );
+  const gitViewByRepo = useAppStore((state) => state.gitViewByRepo);
+  const setGitViewStateForRepo = useAppStore(
+    (state) => state.setGitViewStateForRepo,
+  );
+
+  const { handleFileClick } = useFileSelectionStore();
+  const { data: currentBranchStash } = useGetCurrentBranchStash();
+  const { data: stashes, isLoading: isStashesLoading } = useStashList();
+  const { mutateAsync: popStash, isPending: isRestoreAllPending } =
+    useStashPop();
+  const { mutateAsync: dropStash, isPending: isDiscardAllPending } =
+    useStashDrop();
+  const { mutateAsync: restoreStashFile } = useStashRestoreFile();
+
+  const repoPath = selectedRepository?.path ?? "";
+  const persistedSelectedReference =
+    gitViewByRepo[repoPath]?.selectedStashReference ?? null;
+  const selectedReference =
+    mode === "branch"
+      ? (currentBranchStash?.reference ?? null)
+      : persistedSelectedReference;
+
+  useEffect(() => {
+    if (mode !== "all") {
+      return;
+    }
+
+    if (!stashes || stashes.length === 0) {
+      setGitViewStateForRepo({ selectedStashReference: null }, repoPath);
+      return;
+    }
+
+    if (
+      selectedReference &&
+      stashes.some((stash) => stash.reference === selectedReference)
+    ) {
+      return;
+    }
+
+    setGitViewStateForRepo(
+      { selectedStashReference: stashes[0]?.reference ?? null },
+      repoPath,
+    );
+  }, [mode, repoPath, selectedReference, setGitViewStateForRepo, stashes]);
+
+  const { data: stashShow, isLoading: isStashShowLoading } =
+    useStashShow(selectedReference);
+
+  const hasFilterSelection = hasActiveStatusFilters(statusFilters);
+  const filteredFiles = (stashShow?.files ?? []).filter(
+    (file) =>
+      matchesStatusFilters(file, statusFilters) &&
+      matchesSearchQuery(file.path, query),
+  );
+
+  const selectedFileForCurrentRepo = selectedFileByRepo[repoPath];
+
+  return (
+    <div className="h-full flex flex-col">
+      <div className="p-1.5 min-h-10 border-b flex items-center gap-2">
+        <Button size="icon-sm" variant="outline" onClick={onBack}>
+          <ChevronLeftIcon className="size-4" />
+        </Button>
+        <Group aria-label="Stash actions" className="w-full">
+          <Input
+            aria-label="Filter stashed files"
+            placeholder="Filter files..."
+            size={"sm"}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <GroupSeparator />
+          {mode === "all" ? (
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      size={"sm"}
+                      variant={"outline"}
+                      className="max-w-44"
+                    />
+                  }
+                >
+                  <span className="truncate">
+                    {selectedReference || "Select stash"}
+                  </span>
+                  <ChevronDownIcon
+                    className="-me-1 opacity-60"
+                    size={16}
+                    aria-hidden="true"
+                  />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-90 max-h-72">
+                  {(stashes ?? []).length > 0 ? (
+                    (stashes ?? []).map((stash) => (
+                      <DropdownMenuItem
+                        key={stash.reference}
+                        onClick={() =>
+                          setGitViewStateForRepo(
+                            { selectedStashReference: stash.reference },
+                            repoPath,
+                          )
+                        }
+                        className="flex flex-col items-start"
+                      >
+                        <span className="truncate w-full">
+                          {stash.reference}
+                        </span>
+                        <span className="text-xs text-muted-foreground truncate w-full">
+                          {stash.message}
+                        </span>
+                      </DropdownMenuItem>
+                    ))
+                  ) : (
+                    <DropdownMenuItem disabled>No stash found</DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <GroupSeparator />
+            </>
+          ) : null}
+          <Menu>
+            <MenuTrigger
+              render={
+                <Button
+                  aria-label="Filter stash files by status"
+                  size="icon-sm"
+                  variant={"outline"}
+                  className="relative"
+                />
+              }
+            >
+              <ListFilterPlus aria-hidden="true" className="size-4" />
+              {hasFilterSelection && (
+                <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-primary" />
+              )}
+            </MenuTrigger>
+            <MenuPopup align="end" className={"w-45"}>
+              <MenuGroup>
+                <MenuGroupLabel className={"justify-between flex"}>
+                  <span>Filter by status</span>
+                  {hasFilterSelection && (
+                    <span
+                      className="font-normal hover:underline cursor-pointer"
+                      onClick={() => {
+                        setStatusFilters(DEFAULT_STATUS_FILTERS);
+                      }}
+                    >
+                      clear
+                    </span>
+                  )}
+                </MenuGroupLabel>
+                <MenuCheckboxItem
+                  checked={statusFilters.untracked}
+                  onCheckedChange={(checked) =>
+                    setStatusFilters((prev) => ({
+                      ...prev,
+                      untracked: Boolean(checked),
+                    }))
+                  }
+                  variant="switch"
+                >
+                  <span className="flex gap-1.5">
+                    {getStatusIcon(["WorktreeNew"], 18)}
+                    Untracked
+                  </span>
+                </MenuCheckboxItem>
+                <MenuCheckboxItem
+                  checked={statusFilters.modified}
+                  onCheckedChange={(checked) =>
+                    setStatusFilters((prev) => ({
+                      ...prev,
+                      modified: Boolean(checked),
+                    }))
+                  }
+                  variant="switch"
+                >
+                  <span className="flex gap-1.5">
+                    {getStatusIcon(["IndexModified"], 18)}
+                    Modified
+                  </span>
+                </MenuCheckboxItem>
+                <MenuCheckboxItem
+                  checked={statusFilters.renamed}
+                  onCheckedChange={(checked) =>
+                    setStatusFilters((prev) => ({
+                      ...prev,
+                      renamed: Boolean(checked),
+                    }))
+                  }
+                  variant="switch"
+                >
+                  <span className="flex gap-1.5">
+                    {getStatusIcon(["IndexRenamed"], 18)}
+                    Renamed
+                  </span>
+                </MenuCheckboxItem>
+                <MenuCheckboxItem
+                  checked={statusFilters.deleted}
+                  onCheckedChange={(checked) =>
+                    setStatusFilters((prev) => ({
+                      ...prev,
+                      deleted: Boolean(checked),
+                    }))
+                  }
+                  variant="switch"
+                >
+                  <span className="flex gap-1.5">
+                    {getStatusIcon(["IndexDeleted"], 18)}
+                    Deleted
+                  </span>
+                </MenuCheckboxItem>
+                <MenuCheckboxItem
+                  checked={statusFilters.conflicted}
+                  onCheckedChange={(checked) =>
+                    setStatusFilters((prev) => ({
+                      ...prev,
+                      conflicted: Boolean(checked),
+                    }))
+                  }
+                  variant="switch"
+                >
+                  <span className="flex gap-1.5">
+                    {getStatusIcon(["Conflicted"], 18)}
+                    Conflicted
+                  </span>
+                </MenuCheckboxItem>
+              </MenuGroup>
+            </MenuPopup>
+          </Menu>
+        </Group>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scroll **:data-[slot=file-row]:mr-2!">
+        {isStashesLoading || isStashShowLoading ? (
+          <div className="w-full h-full flex items-center justify-center">
+            <span className="text-sm text-muted-foreground">Loading...</span>
+          </div>
+        ) : mode === "branch" && !selectedReference ? (
+          <div className="w-full h-full flex items-center justify-center">
+            <span className="text-sm text-muted-foreground">
+              No !!Gitru stash for this branch
+            </span>
+          </div>
+        ) : !selectedReference ? (
+          <div className="w-full h-full flex items-center justify-center">
+            <span className="text-sm text-muted-foreground">
+              No stashed changes
+            </span>
+          </div>
+        ) : filteredFiles.length > 0 ? (
+          <VirtualizedFileList
+            sectionMode="flat"
+            searchQuery={query}
+            sections={[
+              {
+                id: "stash",
+                name: "Stashed Changes",
+                type: "stash",
+                files: filteredFiles,
+              },
+            ]}
+            onFileClick={handleFileClick}
+            setSelectedFilePath={(file) => {
+              if (!file) {
+                setSelectedFileForRepo(null);
+                return;
+              }
+
+              setSelectedFileForRepo({
+                ...file,
+                stashReference: selectedReference ?? undefined,
+              });
+            }}
+            getContextActions={({ file }) =>
+              selectedReference
+                ? [
+                    {
+                      id: "stash-restore-file",
+                      label: "Restore File",
+                      icon: <Undo2 size={16} />,
+                      onSelect: async () => {
+                        await restoreStashFile({
+                          reference: selectedReference,
+                          filePath: file.path,
+                        });
+                        toast.success(`Restored ${file.path}`);
+                      },
+                    },
+                  ]
+                : []
+            }
+            selectedFilePath={
+              selectedFileByRepo[repoPath]
+                ? {
+                    path: selectedFileByRepo[repoPath]?.filePath || "",
+                    newPath: selectedFileByRepo[repoPath]?.fileNewPath,
+                  }
+                : undefined
+            }
+            className="h-full"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <span className="text-sm text-muted-foreground">
+              No matching stashed files
+            </span>
+          </div>
+        )}
+      </div>
+      <div className="gap-2 flex px-2 py-2 border-t">
+        <AlertDialog>
+          <AlertDialogTrigger
+            render={
+              <Button
+                disabled={!selectedReference || isDiscardAllPending}
+                className="flex-1"
+                variant="destructive-outline"
+              />
+            }
+          >
+            Discard
+          </AlertDialogTrigger>
+          <AlertDialogPopup>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Are you sure you want to discard this stash?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. All stashed changes will be lost.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="px-4 py-3">
+              <AlertDialogClose render={<Button variant="outline" />}>
+                Cancel
+              </AlertDialogClose>
+              <AlertDialogClose
+                render={
+                  <Button
+                    variant="destructive"
+                    onClick={async () => {
+                      if (!selectedReference) return;
+                      await dropStash(selectedReference);
+                      if (
+                        selectedFileForCurrentRepo?.stashReference ===
+                        selectedReference
+                      ) {
+                        setSelectedFileForRepo(null);
+                      }
+                      toast.success("Discarded stash");
+                    }}
+                  />
+                }
+              >
+                Discard
+              </AlertDialogClose>
+            </AlertDialogFooter>
+          </AlertDialogPopup>
+        </AlertDialog>
+        <Button
+          disabled={!selectedReference || isRestoreAllPending}
+          className="flex-1"
+          onClick={async () => {
+            if (!selectedReference) return;
+            await popStash({ reference: selectedReference });
+            if (
+              selectedFileForCurrentRepo?.stashReference === selectedReference
+            ) {
+              setSelectedFileForRepo(null);
+            }
+            onBack();
+            toast.success("Restored changes");
+          }}
+        >
+          Restore
+        </Button>
       </div>
     </div>
   );

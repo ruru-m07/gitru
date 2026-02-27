@@ -88,16 +88,21 @@ export function useGetBranches(
 
 export function useGetDiff(
   filePath: string | null,
+  params?: {
+    stashReference?: string | null;
+  },
   options?: QueryOptions<FileDiff>,
 ) {
   const repo = appState.repository;
+  const stashReference = params?.stashReference ?? null;
 
   return useQuery({
     queryKey: filePath
-      ? (repo?.diff.getQueryKey(filePath) ?? [
+      ? (repo?.diff.getQueryKey(filePath, stashReference ?? undefined) ?? [
           "repository",
           "none",
           "diff",
+          stashReference ? `stash:${stashReference}` : "worktree",
           filePath,
         ])
       : ["repository", "none", "diff"],
@@ -109,7 +114,9 @@ export function useGetDiff(
       if (!repo || !filePath) return null;
 
       const start = performance.now();
-      const result = await repo.diff.get(filePath);
+      const result = await repo.diff.get(filePath, {
+        stashReference: stashReference ?? undefined,
+      });
       const end = performance.now();
 
       console.log(
@@ -515,9 +522,6 @@ export function useGitSwitchBranch() {
       await repo?.commit.invalidate();
       await repo?.status.invalidate();
     },
-    onError: (error: string) => {
-      toast.error(error);
-    },
   });
 
   return mutation;
@@ -541,9 +545,6 @@ export function useGitCreateBranch() {
       await repo?.branches.invalidateAll();
       await repo?.commit.invalidate();
       await repo?.status.invalidate();
-    },
-    onError: (error: string) => {
-      toast.error(error);
     },
   });
 

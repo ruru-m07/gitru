@@ -12,13 +12,13 @@ import {
   ArrowUpFromLine,
   ArrowUpIcon,
   CornerDownLeftIcon,
+  Download,
   FolderGit2,
   FolderRoot,
   GitBranchIcon,
   GitBranchPlus,
   GitPullRequestArrow,
   Inbox,
-  Download,
   PlusIcon,
   RefreshCcw,
   SearchIcon,
@@ -33,6 +33,7 @@ import {
   useGitPull,
   useGitPush,
 } from "@/hooks";
+import { useAppStore } from "@/store/useAppStore";
 
 export interface ActionItem {
   id: string;
@@ -70,6 +71,10 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
   const { data: aheadBehind } = useGetStatusAheadBehind();
 
   const tanstackNavigate = useNavigate();
+  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const setGitViewStateForRepo = useAppStore(
+    (state) => state.setGitViewStateForRepo,
+  );
   return {
     id: "root",
     input: {
@@ -139,6 +144,27 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             iconKey: "localGit",
             keywords: ["git", "version control"],
             redirect: "/app/git",
+          },
+          {
+            id: "stash-changes",
+            label: "Stashed Changes",
+            shortcut: ["G", "S"],
+            iconKey: "localGit",
+            keywords: ["stash", "stashed", "restore", "checkout stash"],
+            async onCallBack() {
+              if (selectedRepository?.path) {
+                setGitViewStateForRepo(
+                  {
+                    leftPanelView: "stash",
+                    stashViewMode: "all",
+                  },
+                  selectedRepository.path,
+                );
+              }
+
+              tanstackNavigate({ to: "/app/git" });
+              ctx.close();
+            },
           },
           {
             id: "new-branch",
@@ -229,7 +255,7 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             label: "Switch Theme",
             shortcut: ["⌘", "⇧", "T"],
             iconKey: "theme",
-            keywords: ["theme", "color", "appearance"],
+            keywords: ["theme", "color", "appearance", "dark", "light"],
           },
           {
             id: "switch-update-channel",

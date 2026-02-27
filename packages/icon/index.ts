@@ -9,5 +9,6 @@ export { Modifed } from "./icons/modifed";
 export { New } from "./icons/new";
 export { PullRequest } from "./icons/pullRequest";
 export { Renamed } from "./icons/renamed";
+export { Stashed } from "./icons/stashed";
 export { Unknown } from "./icons/unknown";
 export { VSCodeIcon } from "./icons/vscode";

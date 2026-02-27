@@ -17,6 +17,7 @@ export type SelectedFile = {
   filePath?: string;
   fileNewPath?: string;
   status?: FileStatusKind[];
+  stashReference?: string;
 };
 
 export type ExternalOpener =
@@ -28,6 +29,35 @@ export type ExternalOpener =
 
 type RepoKey = string;
 export type UpdateChannel = "stable" | "beta";
+export type GitSidebarView = "changes" | "stash";
+export type StashViewMode = "branch" | "all";
+
+export type StashStatusFilterMap = Record<
+  "modified" | "renamed" | "deleted" | "conflicted" | "untracked",
+  boolean
+>;
+
+export type GitViewState = {
+  leftPanelView: GitSidebarView;
+  stashViewMode: StashViewMode;
+  selectedStashReference: string | null;
+  stashStatusFilters: StashStatusFilterMap;
+};
+
+const DEFAULT_STASH_STATUS_FILTERS: StashStatusFilterMap = {
+  modified: true,
+  renamed: true,
+  deleted: true,
+  conflicted: true,
+  untracked: true,
+};
+
+const createDefaultGitViewState = (): GitViewState => ({
+  leftPanelView: "changes",
+  stashViewMode: "branch",
+  selectedStashReference: null,
+  stashStatusFilters: { ...DEFAULT_STASH_STATUS_FILTERS },
+});
 
 type AppState = {
   selectedRepository: RepositoryInfo | null;
@@ -53,6 +83,12 @@ type AppState = {
 
   updateChannel: UpdateChannel;
   setUpdateChannel: (channel: UpdateChannel) => void;
+
+  gitViewByRepo: Record<RepoKey, GitViewState>;
+  setGitViewStateForRepo: (
+    partial: Partial<GitViewState>,
+    repoPath?: string,
+  ) => void;
 };
 
 export const useAppStore = create<AppState>()(
@@ -124,6 +160,36 @@ export const useAppStore = create<AppState>()(
 
         updateChannel: "stable",
         setUpdateChannel: (channel) => set({ updateChannel: channel }),
+
+        gitViewByRepo: {},
+        setGitViewStateForRepo: (partial, repoPathArg) => {
+          const repoPath = repoPathArg ?? get().selectedRepository?.path;
+          if (!repoPath) {
+            return;
+          }
+
+          set((state) => {
+            const current = state.gitViewByRepo[repoPath] ?? createDefaultGitViewState();
+            const nextFilters = partial.stashStatusFilters
+              ? {
+                  ...DEFAULT_STASH_STATUS_FILTERS,
+                  ...current.stashStatusFilters,
+                  ...partial.stashStatusFilters,
+                }
+              : current.stashStatusFilters;
+
+            return {
+              gitViewByRepo: {
+                ...state.gitViewByRepo,
+                [repoPath]: {
+                  ...current,
+                  ...partial,
+                  stashStatusFilters: nextFilters,
+                },
+              },
+            };
+          });
+        },
       }),
       {
         name: "app-data",

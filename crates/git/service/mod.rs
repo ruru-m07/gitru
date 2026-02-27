@@ -6,3 +6,4 @@ pub mod graph;
 pub mod history;
 pub mod origin;
 pub mod query;
+pub mod stash;

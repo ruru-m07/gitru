@@ -31,13 +31,8 @@ pub struct AheadBehindStatus {
     pub is_published: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct BranchStash {
-    pub reference: String,
-    pub message: String,
-    pub from_branch: String,
-    pub to_branch: String,
-}
+// Re-export BranchStash from stash module for backward compatibility.
+pub use crate::models::stash::BranchStash;
 
 #[derive(Debug, Deserialize)]
 pub enum BranchKind {

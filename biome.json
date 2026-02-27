@@ -30,9 +30,6 @@
         "noStaticElementInteractions": "off",
         "noLabelWithoutControl": "off"
       },
-      "nursery": {
-        "useMaxParams": "off"
-      },
       "complexity": {
         "noExcessiveCognitiveComplexity": "off"
       },

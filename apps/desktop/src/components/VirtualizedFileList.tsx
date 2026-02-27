@@ -33,6 +33,7 @@ import { SelectedFile, useAppStore } from "@/store/useAppStore";
 export interface FileListSection {
   id: string;
   name: string;
+  type?: "changes" | "staged" | "conflicted" | "stash" | "custom";
   files: GetStatusResponse["files"];
   actions?: {
     onAddAll?: () => Promise<unknown>;
@@ -42,8 +43,18 @@ export interface FileListSection {
   };
 }
 
+export interface FileRowContextAction {
+  id: string;
+  label: string;
+  icon?: React.ReactNode;
+  onSelect: (file: FileStatus) => void | Promise<void>;
+  destructive?: boolean;
+  disabled?: boolean;
+}
+
 export interface VirtualizedFileListProps {
   sections: FileListSection[];
+  sectionMode?: "accordion" | "flat";
   searchQuery?: string;
   onFileClick: (
     file: FileStatus,
@@ -55,6 +66,12 @@ export interface VirtualizedFileListProps {
   onDiscard?: (filePath: string) => void;
   renderDiscard?: (filePath: string) => React.ReactNode;
   setSelectedFilePath: (file: SelectedFile | null) => void;
+  getContextActions?: (context: {
+    file: FileStatus;
+    sectionId: string;
+    sectionName: string;
+    sectionType?: FileListSection["type"];
+  }) => FileRowContextAction[];
   selectedFilePath?: {
     path: string;
     newPath?: string;
@@ -68,6 +85,7 @@ type VirtualItem =
       type: "header";
       sectionId: string;
       sectionName: string;
+      sectionType?: FileListSection["type"];
       count: number;
       actions?: FileListSection["actions"];
     }
@@ -76,11 +94,13 @@ type VirtualItem =
       file: FileStatus;
       sectionId: string;
       sectionName: string;
+      sectionType?: FileListSection["type"];
     };
 
 const ITEM_HEIGHT = 32;
 const SECTION_HEADER_HEIGHT = 36;
 type MatchRange = { start: number; end: number };
+const EMPTY_CONTEXT_ACTIONS: FileRowContextAction[] = [];
 
 const hasRegexFlags = (flags: string) => /^[dgimsuvy]*$/.test(flags);
 
@@ -217,6 +237,7 @@ const renderHighlightedSlice = (
 
 export const VirtualizedFileList = memo(function VirtualizedFileList({
   sections,
+  sectionMode = "accordion",
   searchQuery = "",
   onFileClick,
   onAdd,
@@ -224,6 +245,7 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
   onDiscard,
   renderDiscard,
   setSelectedFilePath,
+  getContextActions,
   selectedFilePath,
   className,
   defaultExpandedSections,
@@ -255,10 +277,24 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
     for (const section of sections) {
       if (section.files.length === 0) continue;
 
+      if (sectionMode === "flat") {
+        for (const file of section.files) {
+          result.push({
+            type: "file",
+            file,
+            sectionId: section.id,
+            sectionName: section.name,
+            sectionType: section.type,
+          });
+        }
+        continue;
+      }
+
       result.push({
         type: "header",
         sectionId: section.id,
         sectionName: section.name,
+        sectionType: section.type,
         count: section.files.length,
         actions: section.actions,
       });
@@ -270,17 +306,23 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
             file,
             sectionId: section.id,
             sectionName: section.name,
+            sectionType: section.type,
           });
         }
       }
     }
 
     return result;
-  }, [sections, expandedSections]);
+  }, [sections, expandedSections, sectionMode]);
 
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
+    getItemKey: (index) => {
+      const item = items[index];
+      if (item.type === "header") return `header:${item.sectionId}`;
+      return `file:${item.file.path}:${item.file.new_path ?? ""}:${item.sectionId}`;
+    },
     estimateSize: (index) =>
       items[index].type === "header" ? SECTION_HEADER_HEIGHT : ITEM_HEIGHT,
     overscan: 15,
@@ -322,6 +364,7 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
                 <SectionHeader
                   sectionId={item.sectionId}
                   sectionName={item.sectionName}
+                  sectionType={item.sectionType}
                   count={item.count}
                   isExpanded={isExpanded}
                   onToggle={toggleSection}
@@ -332,13 +375,9 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
           }
 
           const isSelected = selectedFilePath?.path === item.file.path;
-          const isChangesSection =
-            item.sectionName === "Changes" ||
-            item.sectionName === "Unstaged Changes";
-          const isStagedSection =
-            item.sectionName === "Staged Changes" ||
-            item.sectionName === "Staged";
-          const isConflictSection = item.sectionName === "Conflicted";
+          const isChangesSection = item.sectionType === "changes";
+          const isStagedSection = item.sectionType === "staged";
+          const isConflictSection = item.sectionType === "conflicted";
 
           return (
             <div
@@ -356,6 +395,9 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
               <FileRow
                 file={item.file}
                 index={virtualRow.index}
+                sectionId={item.sectionId}
+                sectionName={item.sectionName}
+                sectionType={item.sectionType}
                 onFileClick={onFileClick}
                 onAdd={
                   isChangesSection || isConflictSection ? onAdd : undefined
@@ -372,7 +414,7 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
                 searchQuery={searchQuery}
                 setSelectedFilePath={setSelectedFilePath}
                 isSelected={isSelected}
-                selectedFilePath={selectedFilePath}
+                getContextActions={getContextActions}
               />
             </div>
           );
@@ -385,6 +427,7 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
 interface SectionHeaderProps {
   sectionId: string;
   sectionName: string;
+  sectionType?: FileListSection["type"];
   count: number;
   isExpanded: boolean;
   onToggle: (sectionId: string) => void;
@@ -394,16 +437,15 @@ interface SectionHeaderProps {
 const SectionHeader = memo(function SectionHeader({
   sectionId,
   sectionName,
+  sectionType,
   count,
   isExpanded,
   onToggle,
   actions,
 }: SectionHeaderProps) {
-  const isChangesSection =
-    sectionName === "Changes" || sectionName === "Unstaged Changes";
-  const isStagedSection =
-    sectionName === "Staged Changes" || sectionName === "Staged";
-  const isConflictSection = sectionName === "Conflicted";
+  const isChangesSection = sectionType === "changes";
+  const isStagedSection = sectionType === "staged";
+  const isConflictSection = sectionType === "conflicted";
 
   return (
     <div className="sticky top-0 z-20">
@@ -477,6 +519,9 @@ interface FileRowProps {
   file: FileStatus;
   searchQuery: string;
   index: number;
+  sectionId: string;
+  sectionName: string;
+  sectionType?: FileListSection["type"];
   onFileClick: (
     file: FileStatus,
     index: number,
@@ -488,10 +533,7 @@ interface FileRowProps {
   renderDiscard?: (filePath: string) => React.ReactNode;
   setSelectedFilePath: (file: SelectedFile | null) => void;
   isSelected: boolean;
-  selectedFilePath?: {
-    path: string;
-    newPath?: string;
-  };
+  getContextActions?: VirtualizedFileListProps["getContextActions"];
 }
 
 const FileRow = memo(
@@ -499,6 +541,9 @@ const FileRow = memo(
     file,
     searchQuery,
     index,
+    sectionId,
+    sectionName,
+    sectionType,
     onFileClick,
     onAdd,
     onUnstage,
@@ -506,14 +551,28 @@ const FileRow = memo(
     renderDiscard,
     setSelectedFilePath,
     isSelected,
-    selectedFilePath: _selectedFilePath,
+    getContextActions,
   }: FileRowProps) {
     const path = file.path;
     const lastSlashIndex = path.lastIndexOf("/");
     const hasDirectory = lastSlashIndex !== -1;
     const directoryPath = hasDirectory ? path.slice(0, lastSlashIndex) : "";
     const fileName = hasDirectory ? path.slice(lastSlashIndex + 1) : path;
-    const matchRanges = getMatchRanges(path, searchQuery);
+    const matchRanges = useMemo(
+      () => getMatchRanges(path, searchQuery),
+      [path, searchQuery],
+    );
+
+    const contextActions = useMemo(
+      () =>
+        getContextActions?.({
+          file,
+          sectionId,
+          sectionName,
+          sectionType,
+        }) ?? EMPTY_CONTEXT_ACTIONS,
+      [file, getContextActions, sectionId, sectionName, sectionType],
+    );
 
     const selectedRepository = useAppStore((state) => state.selectedRepository);
 
@@ -521,15 +580,15 @@ const FileRow = memo(
       <contextMenu.ContextMenu>
         <contextMenu.ContextMenuTrigger
           className={cn(
-            `dark:[&[data-state=open]>div]:bg-blue-900/50! [&[data-state=open]>div]:bg-blue-50! border-y-transparent [&[data-state=open]>div]:border-y [&[data-state=open]>div]:border-y-blue-400! [&[data-state=open]>div]:border-dashed!`,
+            `group dark:[&[data-state=open]>div]:bg-blue-900/50! [&[data-state=open]>div]:bg-blue-50! border-y-transparent [&[data-state=open]>div]:border-y [&[data-state=open]>div]:border-y-blue-400! [&[data-state=open]>div]:border-dashed!`,
           )}
           asChild
         >
           <div
             data-index={index}
             className={cn(
-              "[--pattern-fg:color-mix(in_srgb,var(--primary)_20%,transparent)] flex relative select-none cursor-pointer hover:bg-muted items-center h-full",
-              isSelected && "bg-secondary hover:bg-muted-foreground/15!",
+              "[--pattern-fg:color-mix(in_srgb,var(--primary)_20%,transparent)] transition-none flex relative select-none cursor-pointer items-center h-full hover:bg-muted",
+              isSelected && "bg-secondary hover:bg-secondary/90",
             )}
             onClick={(e) => {
               onFileClick(file, index, {
@@ -556,7 +615,10 @@ const FileRow = memo(
             {isSelected && (
               <div className="absolute top-1/2 -translate-y-1/2 -left-1 rounded-md w-1.75 bg-primary h-4" />
             )}
-            <div className="flex items-center w-full min-w-0 pl-2 pr-0.5 py-0.5">
+            <div
+              data-slot="file-row"
+              className="flex items-center w-full min-w-0 pl-2 pr-0.5 py-0.5"
+            >
               <div className="shrink-0">{getStatusIcon(file.status, 18)}</div>
               <div className="flex items-center ml-1.5 min-w-0 flex-1">
                 <Label className="flex cursor-pointer items-center min-w-0 text-sm w-full gap-0">
@@ -650,11 +712,64 @@ const FileRow = memo(
             </div>
           </contextMenu.ContextMenuLabel>
           <contextMenu.ContextMenuSeparator />
-          <contextMenu.ContextMenuItem>
-            <Plus size={16} className="mr-2" />
-            Stage Changes
-          </contextMenu.ContextMenuItem>
-          <contextMenu.ContextMenuItem>
+          {contextActions.map((action) => (
+            <contextMenu.ContextMenuItem
+              key={action.id}
+              disabled={action.disabled}
+              className={cn(
+                action.destructive &&
+                  "hover:text-destructive! hover:bg-destructive/10!",
+              )}
+              onSelect={async () => {
+                await action.onSelect(file);
+              }}
+            >
+              {action.icon ? (
+                <span className="mr-2 inline-flex">{action.icon}</span>
+              ) : null}
+              {action.label}
+            </contextMenu.ContextMenuItem>
+          ))}
+          {contextActions.length > 0 && <contextMenu.ContextMenuSeparator />}
+          {onAdd && (
+            <contextMenu.ContextMenuItem
+              onSelect={async () => {
+                const success = await onAdd(file.path);
+                if (success) {
+                  toast.success("File staged");
+                } else {
+                  toast.error("Failed to stage file");
+                }
+              }}
+            >
+              <Plus size={16} className="mr-2" />
+              Stage Changes
+            </contextMenu.ContextMenuItem>
+          )}
+          {onUnstage && (
+            <contextMenu.ContextMenuItem
+              onSelect={async () => {
+                const success = await onUnstage(file.path);
+                if (success) {
+                  toast.success("File unstaged");
+                } else {
+                  toast.error("Failed to unstage file");
+                }
+              }}
+            >
+              <Minus size={16} className="mr-2" />
+              Unstage Changes
+            </contextMenu.ContextMenuItem>
+          )}
+          <contextMenu.ContextMenuItem
+            onSelect={() => {
+              setSelectedFilePath({
+                filePath: file.path,
+                fileNewPath: file.new_path,
+                status: file.status,
+              });
+            }}
+          >
             <Diff size={16} className="mr-2" />
             Open Diff
           </contextMenu.ContextMenuItem>
@@ -684,11 +799,20 @@ const FileRow = memo(
             <CopyPlus size={16} className="mr-2" />
             Amend Commit
           </contextMenu.ContextMenuItem>
-          <contextMenu.ContextMenuSeparator />
-          <contextMenu.ContextMenuItem className="hover:text-destructive! hover:bg-destructive/10!">
-            <Undo2 size={16} className="mr-2" />
-            Discard Changes
-          </contextMenu.ContextMenuItem>
+          {onDiscard && (
+            <>
+              <contextMenu.ContextMenuSeparator />
+              <contextMenu.ContextMenuItem
+                className="hover:text-destructive! hover:bg-destructive/10!"
+                onSelect={() => {
+                  onDiscard(file.path);
+                }}
+              >
+                <Undo2 size={16} className="mr-2" />
+                Discard Changes
+              </contextMenu.ContextMenuItem>
+            </>
+          )}
         </contextMenu.ContextMenuContent>
       </contextMenu.ContextMenu>
     );
@@ -698,14 +822,15 @@ const FileRow = memo(
       prevProps.file === nextProps.file &&
       prevProps.searchQuery === nextProps.searchQuery &&
       prevProps.index === nextProps.index &&
-      prevProps.onAdd === nextProps.onAdd &&
-      prevProps.onUnstage === nextProps.onUnstage &&
-      prevProps.onDiscard === nextProps.onDiscard &&
-      prevProps.renderDiscard === nextProps.renderDiscard &&
+      prevProps.sectionId === nextProps.sectionId &&
+      prevProps.sectionName === nextProps.sectionName &&
+      prevProps.sectionType === nextProps.sectionType &&
+      Boolean(prevProps.onAdd) === Boolean(nextProps.onAdd) &&
+      Boolean(prevProps.onUnstage) === Boolean(nextProps.onUnstage) &&
+      Boolean(prevProps.onDiscard) === Boolean(nextProps.onDiscard) &&
+      Boolean(prevProps.renderDiscard) === Boolean(nextProps.renderDiscard) &&
       prevProps.isSelected === nextProps.isSelected &&
-      prevProps.selectedFilePath?.path === nextProps.selectedFilePath?.path &&
-      prevProps.selectedFilePath?.newPath ===
-        nextProps.selectedFilePath?.newPath
+      prevProps.getContextActions === nextProps.getContextActions
     );
   },
 );
