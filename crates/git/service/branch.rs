@@ -4,7 +4,7 @@ use crate::models::branch::{
     AheadBehindStatus, Branch, BranchInfo, BranchKind, UncommittedChangesStrategy,
 };
 use crate::models::stash::BranchStash;
-use crate::parsers::branch::{BRANCH_STANDARD_FORMAT, parse_branch_records};
+use crate::parsers::branch::{parse_branch_records, BRANCH_STANDARD_FORMAT};
 use crate::runner::GitRunOptions;
 use crate::service::query::QueryService;
 use crate::service::stash::StashService;
@@ -174,7 +174,8 @@ impl BranchService {
 
         match strategy {
             Some(UncommittedChangesStrategy::StashOnCurrentBranch) => {
-                self.stash()
+                let did_create_stash = self
+                    .stash()
                     .push_gitru_stash(&current_branch.name, branch, false)
                     .await?;
 
@@ -187,7 +188,9 @@ impl BranchService {
                         ))
                     }
                     Err(err) => {
-                        let _ = self.stash().pop(None).await;
+                        if did_create_stash {
+                            let _ = self.stash().pop(None).await;
+                        }
                         Err(format!(
                             "Failed to switch to {} even after stashing: {}",
                             branch, err
@@ -224,7 +227,8 @@ impl BranchService {
         match strategy {
             // If strategy is StashOnCurrentBranch, stash FIRST before creating and switching.
             Some(UncommittedChangesStrategy::StashOnCurrentBranch) => {
-                self.stash()
+                let did_create_stash = self
+                    .stash()
                     .push_gitru_stash(&current_branch.name, branch, true)
                     .await?;
 
@@ -242,7 +246,9 @@ impl BranchService {
                         ))
                     }
                     Err(err) => {
-                        let _ = self.stash().pop(None).await;
+                        if did_create_stash {
+                            let _ = self.stash().pop(None).await;
+                        }
                         Err(format!(
                             "Failed to create branch {} even after stashing: {}",
                             branch, err

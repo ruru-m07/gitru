@@ -522,9 +522,6 @@ export function useGitSwitchBranch() {
       await repo?.commit.invalidate();
       await repo?.status.invalidate();
     },
-    onError: (error: string) => {
-      toast.error(error);
-    },
   });
 
   return mutation;
@@ -548,9 +545,6 @@ export function useGitCreateBranch() {
       await repo?.branches.invalidateAll();
       await repo?.commit.invalidate();
       await repo?.status.invalidate();
-    },
-    onError: (error: string) => {
-      toast.error(error);
     },
   });
 

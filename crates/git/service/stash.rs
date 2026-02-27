@@ -3,8 +3,8 @@ use std::{fs, path::Path, sync::Arc};
 use crate::{
     cache::{CachePolicy, TTL_STASH_LIST},
     context::RepoContext,
-    models::status::FileStatusKind,
     models::stash::{BranchStash, StashEntry, StashQuickStat, StashShowResponse},
+    models::status::FileStatusKind,
     parsers::stash::{
         branch_name_matches, parse_gitru_stash_message, parse_stash_file_status, parse_stash_list,
         parse_stash_stat, validate_stash_ref,
@@ -344,10 +344,7 @@ impl StashService {
 
         if absolute_path.is_dir() {
             fs::remove_dir_all(&absolute_path).map_err(|error| {
-                format!(
-                    "Failed to remove directory '{}': {}",
-                    relative_path, error
-                )
+                format!("Failed to remove directory '{}': {}", relative_path, error)
             })?;
         } else {
             fs::remove_file(&absolute_path)
@@ -368,11 +365,12 @@ impl StashService {
         from_branch: &str,
         to_branch: &str,
         is_new_branch: bool,
-    ) -> Result<String, String> {
+    ) -> Result<bool, String> {
         let suffix = if is_new_branch { " (new)" } else { "" };
         let stash_msg = format!("!!Gitru<{}> -> <{}>{}", from_branch, to_branch, suffix);
 
-        self.ctx
+        let output = self
+            .ctx
             .runner
             .run_with_options(
                 &["stash", "push", "-u", "-m", &stash_msg],
@@ -381,8 +379,12 @@ impl StashService {
             .await
             .map_err(|e| format!("Failed to stash changes: {e}"))?;
 
+        if output == "No local changes to save" {
+            return Ok(false);
+        }
+
         self.ctx.cache.invalidate_all();
-        Ok(stash_msg)
+        Ok(true)
     }
 
     /// Find a Gitru-managed stash for a specific branch.
