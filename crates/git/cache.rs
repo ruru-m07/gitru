@@ -113,14 +113,14 @@ impl RepoCache {
                 .get(&storage_key)
                 .and_then(|entry| self.clone_typed::<T>(&entry.value));
 
-            if let Some(entry) = state.entries.get(&storage_key) {
-                if entry.is_fresh(now) {
-                    if let Some(value) = self.clone_typed::<T>(&entry.value) {
-                        log::debug!("cache hit key='{storage_key}'");
-                        return Ok(value);
-                    }
-                    state.entries.remove(&storage_key);
+            if let Some(entry) = state.entries.get(&storage_key)
+                && entry.is_fresh(now)
+            {
+                if let Some(value) = self.clone_typed::<T>(&entry.value) {
+                    log::debug!("cache hit key='{storage_key}'");
+                    return Ok(value);
                 }
+                state.entries.remove(&storage_key);
             }
 
             if let Some(inflight) = state.inflight.get(&storage_key) {

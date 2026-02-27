@@ -64,14 +64,14 @@ pub fn parse_stash_stat(output: &str, reference: &str) -> Result<StashQuickStat,
             if let Some(n) = extract_leading_number(part) {
                 files_changed = n;
             }
-        } else if part.contains("insertion") {
-            if let Some(n) = extract_leading_number(part) {
-                insertions = n;
-            }
-        } else if part.contains("deletion") {
-            if let Some(n) = extract_leading_number(part) {
-                deletions = n;
-            }
+        } else if part.contains("insertion")
+            && let Some(n) = extract_leading_number(part)
+        {
+            insertions = n;
+        } else if part.contains("deletion")
+            && let Some(n) = extract_leading_number(part)
+        {
+            deletions = n;
         }
     }
 

@@ -112,11 +112,11 @@ async fn run_git_command_once(
         .spawn()
         .map_err(|e| e.to_string())?;
 
-    if let Some(payload) = input {
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(payload).await.map_err(|e| e.to_string())?;
-            drop(stdin);
-        }
+    if let Some(payload) = input
+        && let Some(mut stdin) = child.stdin.take()
+    {
+        stdin.write_all(payload).await.map_err(|e| e.to_string())?;
+        drop(stdin);
     }
 
     match timeout(options.timeout, child.wait_with_output()).await {
@@ -176,10 +176,10 @@ pub fn throttle_command(repo_key: &str, min_interval: Duration) -> Result<(), St
 
     map.retain(|_, last| now.duration_since(*last) < Duration::from_secs(3600));
 
-    if let Some(last) = map.get(repo_key) {
-        if now.duration_since(*last) < min_interval {
-            return Err("Command throttled to protect performance".to_string());
-        }
+    if let Some(last) = map.get(repo_key)
+        && now.duration_since(*last) < min_interval
+    {
+        return Err("Command throttled to protect performance".to_string());
     }
 
     map.insert(repo_key.to_string(), now);

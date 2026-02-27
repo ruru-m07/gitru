@@ -56,17 +56,16 @@ pub fn parse_search_query(input: &str) -> GraphSearchQuery {
             None => (false, token.as_str()),
         };
 
-        if let Some((key, value)) = token.split_once(':') {
-            if let Some(search_key) = parse_search_key(key) {
-                if !value.is_empty() {
-                    terms.push(GraphSearchTerm {
-                        key: Some(search_key),
-                        value: value.to_string(),
-                        negated,
-                    });
-                    continue;
-                }
-            }
+        if let Some((key, value)) = token.split_once(':')
+            && let Some(search_key) = parse_search_key(key)
+            && !value.is_empty()
+        {
+            terms.push(GraphSearchTerm {
+                key: Some(search_key),
+                value: value.to_string(),
+                negated,
+            });
+            continue;
         }
 
         if !token.is_empty() {
