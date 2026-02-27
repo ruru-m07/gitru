@@ -4,7 +4,7 @@
 
 mod common;
 
-use common::{run_async, TestRepo};
+use common::{TestRepo, run_async};
 use git::context::RepoContext;
 use git::models::branch::{BranchKind, UncommittedChangesStrategy};
 use git::service::branch::BranchService;
@@ -104,7 +104,10 @@ fn list_branches_marks_head_correctly() {
 
         // At least one branch should be marked as HEAD (the current branch)
         let head_branches: Vec<_> = branches.iter().filter(|b| b.is_head).collect();
-        assert!(!head_branches.is_empty(), "Expected at least one HEAD branch");
+        assert!(
+            !head_branches.is_empty(),
+            "Expected at least one HEAD branch"
+        );
 
         // The current branch should be feature/current since we just created and switched to it
         let current = service.get_current_branch().await.unwrap();

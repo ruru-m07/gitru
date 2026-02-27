@@ -4,7 +4,7 @@ use crate::models::branch::{
     AheadBehindStatus, Branch, BranchInfo, BranchKind, UncommittedChangesStrategy,
 };
 use crate::models::stash::BranchStash;
-use crate::parsers::branch::{parse_branch_records, BRANCH_STANDARD_FORMAT};
+use crate::parsers::branch::{BRANCH_STANDARD_FORMAT, parse_branch_records};
 use crate::runner::GitRunOptions;
 use crate::service::query::QueryService;
 use crate::service::stash::StashService;

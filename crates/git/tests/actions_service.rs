@@ -4,7 +4,7 @@
 
 mod common;
 
-use common::{run_async, TestRepo};
+use common::{TestRepo, run_async};
 use git::context::RepoContext;
 use git::service::actions::ActionService;
 use serial_test::serial;

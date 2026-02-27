@@ -4,7 +4,7 @@
 
 mod common;
 
-use common::{run_async, TestRepo};
+use common::{TestRepo, run_async};
 use git::context::RepoContext;
 use git::models::commit::CommitMessage;
 use git::service::commit::CommitService;
@@ -239,7 +239,9 @@ fn get_commit_by_invalid_id() {
         repo.commit_file("README.md", "# Test", "Initial");
 
         let service = setup_commit_service(&repo);
-        let result = service.commit_by_id("0000000000000000000000000000000000000000").await;
+        let result = service
+            .commit_by_id("0000000000000000000000000000000000000000")
+            .await;
 
         // Should fail - invalid commit reference
         assert!(result.is_err());
@@ -263,7 +265,9 @@ fn create_commit_multiline_message() {
         let service = setup_commit_service(&repo);
         let msg = CommitMessage {
             title: "Subject line".to_string(),
-            description: Some("This is the body of the commit.\nIt has multiple lines.".to_string()),
+            description: Some(
+                "This is the body of the commit.\nIt has multiple lines.".to_string(),
+            ),
             co_authors: vec![],
         };
         let result = service.create_commit(&msg, false).await;
@@ -369,7 +373,10 @@ fn commit_with_description() {
         let service = setup_commit_service(&repo);
         let msg = CommitMessage {
             title: "Add detailed feature".to_string(),
-            description: Some("This adds a detailed feature with lots of context.\n\nMore details here.".to_string()),
+            description: Some(
+                "This adds a detailed feature with lots of context.\n\nMore details here."
+                    .to_string(),
+            ),
             co_authors: vec![],
         };
         let result = service.create_commit(&msg, false).await;
