@@ -111,3 +111,85 @@ pub fn push_xy_status(status: &mut Vec<FileStatusKind>, x: u8, y: u8) {
         _ => {}
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Edge case tests ──────────────────────────────────────────────
+
+    #[test]
+    fn parse_empty_status() {
+        let result = parse_porcelain_v2(&[]).unwrap();
+        assert!(result.is_empty());
+    }
+
+    // ── push_xy_status tests ─────────────────────────────────────────
+    // These are pure function unit tests that don't need real git data
+
+    #[test]
+    fn push_xy_status_all_index_statuses() {
+        let test_cases = [
+            (b'A', FileStatusKind::IndexNew),
+            (b'M', FileStatusKind::IndexModified),
+            (b'D', FileStatusKind::IndexDeleted),
+            (b'R', FileStatusKind::IndexRenamed),
+            (b'T', FileStatusKind::IndexTypechange),
+        ];
+
+        for (x, expected) in test_cases {
+            let mut status = Vec::new();
+            push_xy_status(&mut status, x, b'.');
+            assert!(
+                status
+                    .iter()
+                    .any(|s| std::mem::discriminant(s) == std::mem::discriminant(&expected)),
+                "Expected {:?} for x={}",
+                expected,
+                x as char
+            );
+        }
+    }
+
+    #[test]
+    fn push_xy_status_all_worktree_statuses() {
+        let test_cases = [
+            (b'A', FileStatusKind::WorktreeNew),
+            (b'M', FileStatusKind::WorktreeModified),
+            (b'D', FileStatusKind::WorktreeDeleted),
+            (b'R', FileStatusKind::WorktreeRenamed),
+            (b'T', FileStatusKind::WorktreeTypechange),
+            (b'X', FileStatusKind::WorktreeUnreadable),
+        ];
+
+        for (y, expected) in test_cases {
+            let mut status = Vec::new();
+            push_xy_status(&mut status, b'.', y);
+            assert!(
+                status
+                    .iter()
+                    .any(|s| std::mem::discriminant(s) == std::mem::discriminant(&expected)),
+                "Expected {:?} for y={}",
+                expected,
+                y as char
+            );
+        }
+    }
+
+    #[test]
+    fn push_xy_status_both() {
+        let mut status = Vec::new();
+        push_xy_status(&mut status, b'M', b'M');
+        assert_eq!(status.len(), 2);
+    }
+
+    #[test]
+    fn push_xy_status_unknown_codes() {
+        let mut status = Vec::new();
+        push_xy_status(&mut status, b'.', b'.');
+        assert!(status.is_empty());
+
+        push_xy_status(&mut status, b'?', b'!');
+        assert!(status.is_empty());
+    }
+}

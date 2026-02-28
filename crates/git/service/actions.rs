@@ -181,8 +181,7 @@ impl ActionService {
         match (restore_result, clean_result) {
             (Ok(_), _) | (Err(_), Ok(_)) => Ok(()),
             (Err(restore_err), Err(clean_err)) => Err(format!(
-                "Failed to discard changes for '{}': restore failed ({}) and clean failed ({})",
-                file, restore_err, clean_err
+                "Failed to discard changes for '{file}': restore failed ({restore_err}) and clean failed ({clean_err})"
             )),
         }
     }

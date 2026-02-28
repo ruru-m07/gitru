@@ -153,7 +153,7 @@ impl StashService {
         let resolved_ref = self.resolve_reference(reference)?;
 
         if !self.stash_ref_exists(&resolved_ref).await {
-            return Err(format!("Stash '{}' does not exist", resolved_ref));
+            return Err(format!("Stash '{resolved_ref}' does not exist"));
         }
 
         let result = self
@@ -168,27 +168,25 @@ impl StashService {
         match result {
             Ok(_) => {
                 self.ctx.cache.invalidate_all();
-                Ok(format!("Popped {}", resolved_ref))
+                Ok(format!("Popped {resolved_ref}"))
             }
             Err(err) => {
                 // Some git versions can report non-zero exit even when the stash
                 // entry has already been removed. If the ref is gone, treat as success.
                 if !self.stash_ref_exists(&resolved_ref).await {
                     self.ctx.cache.invalidate_all();
-                    return Ok(format!("Popped {}", resolved_ref));
+                    return Ok(format!("Popped {resolved_ref}"));
                 }
 
                 if Self::is_untracked_conflict_error(&err) {
                     return Err(format!(
-                        "Unable to pop {} because untracked files would be overwritten. Resolve file conflicts and retry.",
-                        resolved_ref
+                        "Unable to pop {resolved_ref} because untracked files would be overwritten. Resolve file conflicts and retry."
                     ));
                 }
 
                 if Self::is_merge_conflict_error(&err) {
                     return Err(format!(
-                        "Stash {} was applied with conflicts and kept in stash list. Resolve conflicts, then drop it when ready.",
-                        resolved_ref
+                        "Stash {resolved_ref} was applied with conflicts and kept in stash list. Resolve conflicts, then drop it when ready."
                     ));
                 }
 
@@ -211,7 +209,7 @@ impl StashService {
             .await?;
 
         self.ctx.cache.invalidate_all();
-        Ok(format!("Applied {}", resolved_ref))
+        Ok(format!("Applied {resolved_ref}"))
     }
 
     /// Drop a single stash entry.
@@ -228,7 +226,7 @@ impl StashService {
             .await?;
 
         self.ctx.cache.invalidate_all();
-        Ok(format!("Dropped {}", reference))
+        Ok(format!("Dropped {reference}"))
     }
 
     /// Clear all stash entries.
@@ -262,8 +260,7 @@ impl StashService {
 
         self.ctx.cache.invalidate_all();
         Ok(format!(
-            "Created branch '{}' from {}",
-            branch_name, resolved_ref
+            "Created branch '{branch_name}' from {resolved_ref}"
         ))
     }
 
@@ -332,7 +329,7 @@ impl StashService {
             .await?;
 
         self.ctx.cache.invalidate_all();
-        Ok(format!("Restored '{}' from {}", file_path, reference))
+        Ok(format!("Restored '{file_path}' from {reference}"))
     }
 
     fn remove_path_if_exists(repo_path: &str, relative_path: &str) -> Result<(), String> {
@@ -344,11 +341,11 @@ impl StashService {
 
         if absolute_path.is_dir() {
             fs::remove_dir_all(&absolute_path).map_err(|error| {
-                format!("Failed to remove directory '{}': {}", relative_path, error)
+                format!("Failed to remove directory '{relative_path}': {error}")
             })?;
         } else {
             fs::remove_file(&absolute_path)
-                .map_err(|error| format!("Failed to remove file '{}': {}", relative_path, error))?;
+                .map_err(|error| format!("Failed to remove file '{relative_path}': {error}"))?;
         }
 
         Ok(())
@@ -367,7 +364,7 @@ impl StashService {
         is_new_branch: bool,
     ) -> Result<bool, String> {
         let suffix = if is_new_branch { " (new)" } else { "" };
-        let stash_msg = format!("!!Gitru<{}> -> <{}>{}", from_branch, to_branch, suffix);
+        let stash_msg = format!("!!Gitru<{from_branch}> -> <{to_branch}>{suffix}");
 
         let output = self
             .ctx
@@ -448,7 +445,7 @@ impl StashService {
         let stash = self
             .find_gitru_stash_for_branch(branch)
             .await?
-            .ok_or_else(|| format!("No !!Gitru stash found for branch '{}'", branch))?;
+            .ok_or_else(|| format!("No !!Gitru stash found for branch '{branch}'"))?;
 
         self.pop(Some(&stash.reference)).await
     }

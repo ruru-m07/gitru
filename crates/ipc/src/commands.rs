@@ -31,19 +31,18 @@ pub async fn add_local_git_repo(repo_path: String) -> Result<Option<RepoSitorySt
     let path = Path::new(&repo_path);
 
     if !path.exists() {
-        return Err(format!("Path does not exist: {}", repo_path));
+        return Err(format!("Path does not exist: {repo_path}"));
     }
 
     if !path.is_dir() {
-        return Err(format!("Path is not a directory: {}", repo_path));
+        return Err(format!("Path is not a directory: {repo_path}"));
     }
 
     let git_dir = path.join(".git");
 
     if !git_dir.exists() || !git_dir.is_dir() {
         return Err(format!(
-            "Not a valid Git repository (no .git folder): {}",
-            repo_path
+            "Not a valid Git repository (no .git folder): {repo_path}"
         ));
     }
 
@@ -141,7 +140,7 @@ pub async fn select_repository(
     let manager_guard = manager.lock().map_err(|e| e.to_string())?;
     let store = manager_guard
         .get_store()
-        .map_err(|e| format!("Failed to get store: {}", e))?;
+        .map_err(|e| format!("Failed to get store: {e}"))?;
 
     store.set(SELECTED_REPO_KEY, repo_id);
     store.save().map_err(|e| e.to_string())?;
@@ -193,8 +192,7 @@ impl ExternalOpener {
             "terminal" => Ok(Self::Terminal),
             "ghostty" | "ghosty" => Ok(Self::Ghostty),
             other => Err(format!(
-                "Unsupported opener '{}'. Use one of: vscode, cursor, finder, terminal, ghostty",
-                other
+                "Unsupported opener '{other}'. Use one of: vscode, cursor, finder, terminal, ghostty"
             )),
         }
     }
@@ -223,7 +221,7 @@ fn open_on_macos(opener: ExternalOpener, file_path: &str, line: Option<u32>) -> 
                 command
                     .arg("--args")
                     .arg("--goto")
-                    .arg(format!("{}:{}", file_path, line));
+                    .arg(format!("{file_path}:{line}"));
             } else {
                 command.arg(file_path);
             }
@@ -234,7 +232,7 @@ fn open_on_macos(opener: ExternalOpener, file_path: &str, line: Option<u32>) -> 
                 command
                     .arg("--args")
                     .arg("--goto")
-                    .arg(format!("{}:{}", file_path, line));
+                    .arg(format!("{file_path}:{line}"));
             } else {
                 command.arg(file_path);
             }
@@ -258,7 +256,7 @@ fn open_on_macos(opener: ExternalOpener, file_path: &str, line: Option<u32>) -> 
 
     command
         .spawn()
-        .map_err(|e| format!("Failed to launch opener on macOS: {}", e))?;
+        .map_err(|e| format!("Failed to launch opener on macOS: {e}"))?;
 
     Ok(())
 }

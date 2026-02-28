@@ -285,10 +285,10 @@ pub fn history_graph(
                 .any(|r| matches!(r.kind, GraphRefKind::Stash));
             let result = graph_state.process_commit(&entry.id, &entry.parents, is_stash);
 
-            if let Some(ref query) = search_query {
-                if !matches_search(&entry, query, search_context.as_ref()) {
-                    continue;
-                }
+            if let Some(ref query) = search_query
+                && !matches_search(&entry, query, search_context.as_ref())
+            {
+                continue;
             }
 
             let stats = stats_map
@@ -704,10 +704,10 @@ fn extract_co_authors(body: &str) -> Vec<Author> {
 
     for line in body.lines() {
         let line = line.trim();
-        if line.starts_with("Co-authored-by:") || line.starts_with("Co-Authored-By:") {
-            if let Some(author) = parse_author_line(line) {
-                co_authors.push(author);
-            }
+        if (line.starts_with("Co-authored-by:") || line.starts_with("Co-Authored-By:"))
+            && let Some(author) = parse_author_line(line)
+        {
+            co_authors.push(author);
         }
     }
 
@@ -717,12 +717,12 @@ fn extract_co_authors(body: &str) -> Vec<Author> {
 fn parse_author_line(line: &str) -> Option<Author> {
     let line = line.split(':').nth(1)?.trim();
 
-    if let Some(email_start) = line.rfind('<') {
-        if let Some(email_end) = line.rfind('>') {
-            let name = line[..email_start].trim().to_string();
-            let email = line[email_start + 1..email_end].trim().to_string();
-            return Some(Author { name, email });
-        }
+    if let Some(email_start) = line.rfind('<')
+        && let Some(email_end) = line.rfind('>')
+    {
+        let name = line[..email_start].trim().to_string();
+        let email = line[email_start + 1..email_end].trim().to_string();
+        return Some(Author { name, email });
     }
 
     Some(Author {
@@ -761,10 +761,10 @@ fn matches_term(
 ) -> bool {
     let value = term.value.to_ascii_lowercase();
 
-    if value == "@me" {
-        if let Some(context) = context {
-            return matches_me(entry, context);
-        }
+    if value == "@me"
+        && let Some(context) = context
+    {
+        return matches_me(entry, context);
     }
 
     match term.key {
@@ -876,7 +876,7 @@ fn normalize_refs(entries: &mut [GraphLogEntry], remote_names: &[String]) {
             }
 
             let is_remote = remote_names.iter().any(|remote| {
-                let prefix = format!("{}/", remote);
+                let prefix = format!("{remote}/");
                 reference.name.starts_with(&prefix)
             });
 

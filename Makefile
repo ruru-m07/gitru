@@ -1,4 +1,4 @@
-.PHONY: help setup clean dev dev-vite build-vite build-tauri build format typegen
+.PHONY: help setup clean dev dev-vite build-vite build-tauri build format typegen test format-check clippy
 
 .DEFAULT_GOAL := help
 
@@ -64,3 +64,17 @@ clean: ## Clean build artifacts and dependencies
 	@echo "$(RED)Cleaning build artifacts...$(NC)"
 	@./scripts/clear.sh
 	@echo "$(GREEN)Clean complete!$(NC)"
+
+##@ Testing
+
+test: ## Run all Rust tests
+	@echo "$(GREEN)Running Rust tests...$(NC)"
+	cargo test --workspace --verbose
+
+format-check: ## Check code formatting
+	@echo "$(YELLOW)Checking code formatting...$(NC)"
+	cargo fmt --all -- --check
+
+clippy: ## Run Clippy linter
+	@echo "$(YELLOW)Running Clippy linter...$(NC)"
+	cargo clippy --workspace --all-targets -- -D warnings

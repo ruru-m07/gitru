@@ -113,23 +113,23 @@ impl RepoCache {
                 .get(&storage_key)
                 .and_then(|entry| self.clone_typed::<T>(&entry.value));
 
-            if let Some(entry) = state.entries.get(&storage_key) {
-                if entry.is_fresh(now) {
-                    if let Some(value) = self.clone_typed::<T>(&entry.value) {
-                        log::debug!("cache hit key='{}'", storage_key);
-                        return Ok(value);
-                    }
-                    state.entries.remove(&storage_key);
+            if let Some(entry) = state.entries.get(&storage_key)
+                && entry.is_fresh(now)
+            {
+                if let Some(value) = self.clone_typed::<T>(&entry.value) {
+                    log::debug!("cache hit key='{storage_key}'");
+                    return Ok(value);
                 }
+                state.entries.remove(&storage_key);
             }
 
             if let Some(inflight) = state.inflight.get(&storage_key) {
-                log::debug!("cache wait-inflight key='{}'", storage_key);
+                log::debug!("cache wait-inflight key='{storage_key}'");
                 (inflight.clone(), false, stale)
             } else {
                 let inflight = Arc::new(InFlight::new());
                 state.inflight.insert(storage_key.clone(), inflight.clone());
-                log::debug!("cache miss key='{}'", storage_key);
+                log::debug!("cache miss key='{storage_key}'");
                 (inflight, true, stale)
             }
         };
@@ -177,7 +177,7 @@ impl RepoCache {
                 }
 
                 inflight.notify.notify_waiters();
-                log::debug!("cache refresh-success key='{}'", storage_key);
+                log::debug!("cache refresh-success key='{storage_key}'");
                 Ok(value)
             }
             Err(err) => {
@@ -201,14 +201,12 @@ impl RepoCache {
 
                 if let Some(stale_value) = stale {
                     log::warn!(
-                        "cache refresh failed for key '{}': {}; serving stale value",
-                        storage_key,
-                        err
+                        "cache refresh failed for key '{storage_key}': {err}; serving stale value"
                     );
                     return Ok(stale_value);
                 }
 
-                log::warn!("cache refresh-failed key='{}': {}", storage_key, err);
+                log::warn!("cache refresh-failed key='{storage_key}': {err}");
                 Err(err)
             }
         }
@@ -226,13 +224,11 @@ impl RepoCache {
         match result {
             Ok(value) => self
                 .clone_typed::<T>(&value)
-                .ok_or_else(|| format!("Cached value type mismatch for key '{}'", storage_key)),
+                .ok_or_else(|| format!("Cached value type mismatch for key '{storage_key}'")),
             Err(err) => {
                 if let Some(stale_value) = stale {
                     log::warn!(
-                        "cache refresh failed for key '{}': {}; serving stale value",
-                        storage_key,
-                        err
+                        "cache refresh failed for key '{storage_key}': {err}; serving stale value"
                     );
                     Ok(stale_value)
                 } else {
@@ -251,7 +247,7 @@ impl RepoCache {
 
     fn build_storage_key(&self, namespace: &str, key: &str) -> String {
         let generation = self.generation.load(Ordering::SeqCst);
-        format!("{}:{}:{}", generation, namespace, key)
+        format!("{generation}:{namespace}:{key}")
     }
 }
 

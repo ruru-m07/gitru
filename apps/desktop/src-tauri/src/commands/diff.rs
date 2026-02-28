@@ -18,5 +18,5 @@ pub async fn get_patch_by_file_path(
         .get_patch_by_file_path(file_path, stash_reference.as_deref())
         .await?;
 
-    return Ok(FileDiff { patch });
+    Ok(FileDiff { patch })
 }

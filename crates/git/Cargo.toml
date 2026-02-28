@@ -14,3 +14,8 @@ log = "0.4"
 [lib]
 name = "git"
 path = "lib.rs"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util", "macros"] }
+tempfile = "3"
+serial_test = "3"

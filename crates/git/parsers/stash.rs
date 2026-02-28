@@ -64,14 +64,14 @@ pub fn parse_stash_stat(output: &str, reference: &str) -> Result<StashQuickStat,
             if let Some(n) = extract_leading_number(part) {
                 files_changed = n;
             }
-        } else if part.contains("insertion") {
-            if let Some(n) = extract_leading_number(part) {
-                insertions = n;
-            }
-        } else if part.contains("deletion") {
-            if let Some(n) = extract_leading_number(part) {
-                deletions = n;
-            }
+        } else if part.contains("insertion")
+            && let Some(n) = extract_leading_number(part)
+        {
+            insertions = n;
+        } else if part.contains("deletion")
+            && let Some(n) = extract_leading_number(part)
+        {
+            deletions = n;
         }
     }
 
@@ -203,8 +203,7 @@ pub fn validate_stash_ref(reference: &str) -> Result<(), String> {
         }
     }
     Err(format!(
-        "Invalid stash reference '{}': expected format stash@{{N}}",
-        reference
+        "Invalid stash reference '{reference}': expected format stash@{{N}}"
     ))
 }
 
@@ -216,9 +215,9 @@ fn parse_stash_index(reference: &str) -> Result<usize, String> {
         let inner = &reference[7..reference.len() - 1];
         inner
             .parse::<usize>()
-            .map_err(|_| format!("invalid stash index in '{}'", reference))
+            .map_err(|_| format!("invalid stash index in '{reference}'"))
     } else {
-        Err(format!("invalid stash reference '{}'", reference))
+        Err(format!("invalid stash reference '{reference}'"))
     }
 }
 
@@ -248,30 +247,7 @@ fn extract_leading_number(s: &str) -> Option<usize> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_parse_stash_list() {
-        let output = "stash@{0}\x1fOn main: WIP changes\nstash@{1}\x1f!!Gitru<feature> -> <main>\n";
-        let entries = parse_stash_list(output).unwrap();
-        assert_eq!(entries.len(), 2);
-
-        assert_eq!(entries[0].index, 0);
-        assert_eq!(entries[0].reference, "stash@{0}");
-        assert_eq!(entries[0].message, "On main: WIP changes");
-        assert_eq!(entries[0].branch, Some("main".to_string()));
-        assert!(!entries[0].is_gitru);
-
-        assert_eq!(entries[1].index, 1);
-        assert!(entries[1].is_gitru);
-    }
-
-    #[test]
-    fn test_parse_stash_stat() {
-        let output = " src/main.rs | 10 ++++----\n src/lib.rs  |  5 ++---\n 2 files changed, 7 insertions(+), 8 deletions(-)\n";
-        let stat = parse_stash_stat(output, "stash@{0}").unwrap();
-        assert_eq!(stat.files_changed, 2);
-        assert_eq!(stat.insertions, 7);
-        assert_eq!(stat.deletions, 8);
-    }
+    // ── Pure function tests (no git data needed) ─────────────────────
 
     #[test]
     fn test_parse_gitru_stash_message() {
@@ -288,6 +264,13 @@ mod tests {
         let result = parse_gitru_stash_message(msg).unwrap();
         assert_eq!(result.0, "old-branch");
         assert_eq!(result.1, "new-branch");
+    }
+
+    #[test]
+    fn test_parse_gitru_stash_message_invalid() {
+        assert!(parse_gitru_stash_message("Regular stash message").is_none());
+        assert!(parse_gitru_stash_message("!!Gitru<> -> <main>").is_none());
+        assert!(parse_gitru_stash_message("!!Gitru<feature> -> <>").is_none());
     }
 
     #[test]
@@ -308,29 +291,45 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_stash_file_status() {
-        // With -z, git outputs alternating NUL-separated fields: status\0path\0
-        let output = b"M\0file1.rs\0A\0file2.rs\0D\0file3.rs\0";
-        let files = parse_stash_file_status(output).unwrap();
-        assert_eq!(files.len(), 3);
-        assert_eq!(files[0].path, "file1.rs");
-        assert!(matches!(files[0].status[0], FileStatusKind::IndexModified));
-        assert_eq!(files[1].path, "file2.rs");
-        assert!(matches!(files[1].status[0], FileStatusKind::IndexNew));
-        assert_eq!(files[2].path, "file3.rs");
-        assert!(matches!(files[2].status[0], FileStatusKind::IndexDeleted));
+    fn test_parse_stash_index() {
+        assert_eq!(parse_stash_index("stash@{0}").unwrap(), 0);
+        assert_eq!(parse_stash_index("stash@{5}").unwrap(), 5);
+        assert_eq!(parse_stash_index("stash@{99}").unwrap(), 99);
+        assert!(parse_stash_index("invalid").is_err());
+        assert!(parse_stash_index("stash@{abc}").is_err());
     }
 
     #[test]
-    fn test_parse_stash_file_status_rename() {
-        // Rename: R100\0old_path\0new_path\0
-        let output = b"R100\0old_name.rs\0new_name.rs\0M\0other.rs\0";
-        let files = parse_stash_file_status(output).unwrap();
-        assert_eq!(files.len(), 2);
-        assert_eq!(files[0].path, "old_name.rs");
-        assert_eq!(files[0].new_path, Some("new_name.rs".to_string()));
-        assert!(matches!(files[0].status[0], FileStatusKind::IndexRenamed));
-        assert_eq!(files[1].path, "other.rs");
-        assert!(matches!(files[1].status[0], FileStatusKind::IndexModified));
+    fn test_parse_branch_from_message() {
+        assert_eq!(
+            parse_branch_from_message("On main: WIP changes"),
+            Some("main".to_string())
+        );
+        assert_eq!(
+            parse_branch_from_message("On feature/test: some work"),
+            Some("feature/test".to_string())
+        );
+        assert!(parse_branch_from_message("Random message").is_none());
+    }
+
+    #[test]
+    fn test_extract_leading_number() {
+        assert_eq!(extract_leading_number("3 files changed"), Some(3));
+        assert_eq!(extract_leading_number("  42 insertions"), Some(42));
+        assert_eq!(extract_leading_number("no numbers"), None);
+    }
+
+    // ── Edge case tests ──────────────────────────────────────────────
+
+    #[test]
+    fn parse_empty_stash_list() {
+        let entries = parse_stash_list("").unwrap();
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn parse_empty_stash_file_status() {
+        let files = parse_stash_file_status(b"").unwrap();
+        assert!(files.is_empty());
     }
 }

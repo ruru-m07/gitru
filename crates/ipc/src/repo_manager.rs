@@ -49,7 +49,7 @@ impl RepoManager {
     pub fn get_store(&self) -> Result<Arc<tauri_plugin_store::Store<tauri::Wry>>, String> {
         self.app
             .store(STORE_FILE)
-            .map_err(|e| format!("Failed to get store: {}", e))
+            .map_err(|e| format!("Failed to get store: {e}"))
     }
 
     fn get_current_timestamp() -> u64 {
@@ -88,11 +88,11 @@ impl RepoManager {
         for (index, repo) in repos.iter().enumerate() {
             let age = current_time.saturating_sub(repo.last_updated);
 
-            if age > stale_threshold {
-                if let Ok(refreshed) = self.refresh_repository_info_internal(repo).await {
-                    updated_repos[index] = refreshed;
-                    needs_save = true;
-                }
+            if age > stale_threshold
+                && let Ok(refreshed) = self.refresh_repository_info_internal(repo).await
+            {
+                updated_repos[index] = refreshed;
+                needs_save = true;
             }
         }
 
@@ -208,7 +208,7 @@ impl RepoManager {
         let repo = repos
             .iter()
             .find(|r| r.id == repo_id)
-            .ok_or_else(|| format!("Repository not found: {}", repo_id))?;
+            .ok_or_else(|| format!("Repository not found: {repo_id}"))?;
 
         let updated_repo = self.refresh_repository_info_internal(repo).await?;
 
