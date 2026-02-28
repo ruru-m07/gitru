@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.0.0-beta.2](https://github.com/ruru-m07/gitru/compare/v0.0.0-beta.1...v0.0.0-beta.2) (2026-02-28)
+
+
+### Features
+
+* add StashState and related hooks for stash management functionality ([8660dc3](https://github.com/ruru-m07/gitru/commit/8660dc38f4777403621b2d912df708f77acd5c66))
+* enhance stash functionality and diff retrieval ([20b6e50](https://github.com/ruru-m07/gitru/commit/20b6e5060b3fe7b0b284acccbcb88714a690bca5))
+* enhance VirtualizedFileList with sectionMode prop and improve status bar styling ([e1c5bca](https://github.com/ruru-m07/gitru/commit/e1c5bcaeffdff1a409aaa91e9783a2fef396b3ac))
+* implement stash management commands and UI icons ([ab977f2](https://github.com/ruru-m07/gitru/commit/ab977f27420bc79550ecc060c607a903f7ab7633))
+* update versioning and add new update process ([521218b](https://github.com/ruru-m07/gitru/commit/521218bb92d47c7f06c1c432c0c04d18b22ed25e))
+
+
+### Bug Fixes
+
+* standardize casing for project name and update package details in configuration files ([4dddac8](https://github.com/ruru-m07/gitru/commit/4dddac8a7d8abc4c110f680d280b9bb3fc145bb4))
+* streamline checkout process and improve error handling in branch switching ([ab37ced](https://github.com/ruru-m07/gitru/commit/ab37cedd2275bdb10efa2332b4d56663b1730c9c))
+
+
+### Miscellaneous Chores
+
+* release 0.0.0-beta.2 ([210faaf](https://github.com/ruru-m07/gitru/commit/210faaf131b049e810ca664047dc84abf163c8cb))
+
 ## 0.0.0-beta.1 (2026-02-21)
 
 
