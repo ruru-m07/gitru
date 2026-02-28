@@ -1,8 +1,4 @@
-import {
-  type FileStatusKind,
-  type RepositoryInfo,
-  selectRepository,
-} from "@gitru/commands";
+import { type RepositoryInfo, selectRepository } from "@gitru/commands";
 import { toast } from "sonner";
 import { create } from "zustand";
 import {
@@ -13,11 +9,19 @@ import {
 import { appState } from "@/state";
 import { createTauriStorage } from "./tauriStoreAdapter";
 
-export type SelectedFile = {
-  filePath?: string;
+export type SelectionSource = "worktree" | "stash";
+
+export type FileSelectionIdentity = {
+  filePath: string;
   fileNewPath?: string;
-  status?: FileStatusKind[];
+  source: SelectionSource;
   stashReference?: string;
+  selectedAt: number;
+};
+
+export type RepoFileSelectionState = {
+  worktree: FileSelectionIdentity | null;
+  stashByReference: Record<string, FileSelectionIdentity | null>;
 };
 
 export type ExternalOpener =
@@ -59,6 +63,18 @@ const createDefaultGitViewState = (): GitViewState => ({
   stashStatusFilters: { ...DEFAULT_STASH_STATUS_FILTERS },
 });
 
+const createDefaultRepoFileSelectionState = (): RepoFileSelectionState => ({
+  worktree: null,
+  stashByReference: {},
+});
+
+const normalizeSelection = (
+  selection: FileSelectionIdentity,
+): FileSelectionIdentity => ({
+  ...selection,
+  selectedAt: selection.selectedAt || Date.now(),
+});
+
 type AppState = {
   selectedRepository: RepositoryInfo | null;
   setSelectedRepository: (repo: RepositoryInfo | null) => void;
@@ -69,11 +85,25 @@ type AppState = {
   repoSelectIsOpen: boolean;
   setRepoSelectIsOpen: (isOpen: boolean) => void;
 
-  selectedFileByRepo: Record<RepoKey, SelectedFile | null>;
+  selectionByRepo: Record<RepoKey, RepoFileSelectionState>;
 
-  setSelectedFileForRepo: (file: SelectedFile | null) => void;
-
-  clearSelectedFileForRepo: (repoKey: RepoKey) => void;
+  setWorktreeSelectionForRepo: (
+    selection: FileSelectionIdentity | null,
+  ) => void;
+  setStashSelectionForRepo: (
+    stashReference: string,
+    selection: FileSelectionIdentity | null,
+  ) => void;
+  clearSelectionForRepo: (repoKey: RepoKey) => void;
+  clearWorktreeSelectionForRepo: (repoKey?: RepoKey) => void;
+  clearStashSelectionForRepo: (
+    stashReference: string,
+    repoKey?: RepoKey,
+  ) => void;
+  pruneStashSelectionsForRepo: (
+    repoKey: RepoKey,
+    activeStashReferences: string[],
+  ) => void;
 
   mainWindowView: "FileDiff" | "HistoryGraph" | null;
   setMainWindowView: (view: "FileDiff" | "HistoryGraph" | null) => void;
@@ -91,6 +121,11 @@ type AppState = {
   ) => void;
 };
 
+const getTargetRepoPath = (
+  selectedRepository: RepositoryInfo | null,
+  repoPathArg?: string,
+) => repoPathArg ?? selectedRepository?.path;
+
 export const useAppStore = create<AppState>()(
   subscribeWithSelector(
     persist(
@@ -102,14 +137,13 @@ export const useAppStore = create<AppState>()(
             return;
           }
 
-          let result = await selectRepository({
+          const result = await selectRepository({
             repoId: repo.id,
           });
 
           if (result) {
             set({ selectedRepository: repo });
             const r = appState.repository;
-            // await r?.invalidateAll();
             setTimeout(async () => {
               await r?.invalidateAll();
             }, 100);
@@ -122,9 +156,9 @@ export const useAppStore = create<AppState>()(
         repoSelectIsOpen: false,
         setRepoSelectIsOpen: (isOpen) => set({ repoSelectIsOpen: isOpen }),
 
-        selectedFileByRepo: {},
+        selectionByRepo: {},
 
-        setSelectedFileForRepo: (file) => {
+        setWorktreeSelectionForRepo: (selection) => {
           const repoPath = get().selectedRepository?.path;
 
           if (!repoPath) {
@@ -132,24 +166,156 @@ export const useAppStore = create<AppState>()(
             return;
           }
 
-          set((state) => ({
-            selectedFileByRepo: {
-              ...state.selectedFileByRepo,
-              [repoPath]: file,
-            },
-          }));
+          set((state) => {
+            const current =
+              state.selectionByRepo[repoPath] ??
+              createDefaultRepoFileSelectionState();
 
-          if (file) {
+            return {
+              selectionByRepo: {
+                ...state.selectionByRepo,
+                [repoPath]: {
+                  ...current,
+                  worktree: selection
+                    ? normalizeSelection({
+                        ...selection,
+                        source: "worktree",
+                        stashReference: undefined,
+                      })
+                    : null,
+                },
+              },
+            };
+          });
+
+          if (selection) {
             get().setMainWindowView("FileDiff");
           }
         },
 
-        clearSelectedFileForRepo: (repoKey) =>
+        setStashSelectionForRepo: (stashReference, selection) => {
+          const repoPath = get().selectedRepository?.path;
+
+          if (!repoPath) {
+            toast.error("No repository selected");
+            return;
+          }
+
+          if (!stashReference) {
+            return;
+          }
+
           set((state) => {
-            const next = { ...state.selectedFileByRepo };
+            const current =
+              state.selectionByRepo[repoPath] ??
+              createDefaultRepoFileSelectionState();
+            const nextStashByReference = { ...current.stashByReference };
+
+            nextStashByReference[stashReference] = selection
+              ? normalizeSelection({
+                  ...selection,
+                  source: "stash",
+                  stashReference,
+                })
+              : null;
+
+            return {
+              selectionByRepo: {
+                ...state.selectionByRepo,
+                [repoPath]: {
+                  ...current,
+                  stashByReference: nextStashByReference,
+                },
+              },
+            };
+          });
+
+          if (selection) {
+            get().setMainWindowView("FileDiff");
+          }
+        },
+
+        clearSelectionForRepo: (repoKey) =>
+          set((state) => {
+            const next = { ...state.selectionByRepo };
             delete next[repoKey];
-            return { selectedFileByRepo: next };
+            return { selectionByRepo: next };
           }),
+
+        clearWorktreeSelectionForRepo: (repoPathArg) => {
+          const repoPath = getTargetRepoPath(
+            get().selectedRepository,
+            repoPathArg,
+          );
+          if (!repoPath) return;
+
+          set((state) => {
+            const current =
+              state.selectionByRepo[repoPath] ??
+              createDefaultRepoFileSelectionState();
+
+            return {
+              selectionByRepo: {
+                ...state.selectionByRepo,
+                [repoPath]: {
+                  ...current,
+                  worktree: null,
+                },
+              },
+            };
+          });
+        },
+
+        clearStashSelectionForRepo: (stashReference, repoPathArg) => {
+          const repoPath = getTargetRepoPath(
+            get().selectedRepository,
+            repoPathArg,
+          );
+          if (!repoPath || !stashReference) return;
+
+          set((state) => {
+            const current =
+              state.selectionByRepo[repoPath] ??
+              createDefaultRepoFileSelectionState();
+
+            return {
+              selectionByRepo: {
+                ...state.selectionByRepo,
+                [repoPath]: {
+                  ...current,
+                  stashByReference: {
+                    ...current.stashByReference,
+                    [stashReference]: null,
+                  },
+                },
+              },
+            };
+          });
+        },
+
+        pruneStashSelectionsForRepo: (repoKey, activeStashReferences) => {
+          set((state) => {
+            const current = state.selectionByRepo[repoKey];
+            if (!current) return state;
+
+            const activeSet = new Set(activeStashReferences);
+            const nextStashByReference = Object.fromEntries(
+              Object.entries(current.stashByReference).filter(([reference]) =>
+                activeSet.has(reference),
+              ),
+            );
+
+            return {
+              selectionByRepo: {
+                ...state.selectionByRepo,
+                [repoKey]: {
+                  ...current,
+                  stashByReference: nextStashByReference,
+                },
+              },
+            };
+          });
+        },
 
         mainWindowView: null,
         setMainWindowView: (view) => set({ mainWindowView: view }),
@@ -169,7 +335,8 @@ export const useAppStore = create<AppState>()(
           }
 
           set((state) => {
-            const current = state.gitViewByRepo[repoPath] ?? createDefaultGitViewState();
+            const current =
+              state.gitViewByRepo[repoPath] ?? createDefaultGitViewState();
             const nextFilters = partial.stashStatusFilters
               ? {
                   ...DEFAULT_STASH_STATUS_FILTERS,
@@ -194,6 +361,83 @@ export const useAppStore = create<AppState>()(
       {
         name: "app-data",
         storage: createJSONStorage(() => createTauriStorage()),
+        version: 2,
+        migrate: (persistedState: unknown, version) => {
+          const state = (persistedState ?? {}) as {
+            selectionByRepo?: Record<string, RepoFileSelectionState>;
+            selectedFileByRepo?: Record<
+              string,
+              {
+                filePath?: string;
+                fileNewPath?: string;
+                stashReference?: string;
+              } | null
+            >;
+          };
+
+          if (version >= 2) {
+            return state;
+          }
+
+          if (!state.selectedFileByRepo) {
+            return {
+              ...state,
+              selectionByRepo: state.selectionByRepo ?? {},
+            };
+          }
+
+          const migratedSelectionByRepo: Record<
+            string,
+            RepoFileSelectionState
+          > = { ...(state.selectionByRepo ?? {}) };
+
+          for (const [repoKey, legacySelection] of Object.entries(
+            state.selectedFileByRepo,
+          )) {
+            if (!legacySelection?.filePath) {
+              continue;
+            }
+
+            const current =
+              migratedSelectionByRepo[repoKey] ??
+              createDefaultRepoFileSelectionState();
+            const selectedAt = Date.now();
+
+            if (legacySelection.stashReference) {
+              migratedSelectionByRepo[repoKey] = {
+                ...current,
+                stashByReference: {
+                  ...current.stashByReference,
+                  [legacySelection.stashReference]: {
+                    filePath: legacySelection.filePath,
+                    fileNewPath: legacySelection.fileNewPath,
+                    source: "stash",
+                    stashReference: legacySelection.stashReference,
+                    selectedAt,
+                  },
+                },
+              };
+              continue;
+            }
+
+            migratedSelectionByRepo[repoKey] = {
+              ...current,
+              worktree: {
+                filePath: legacySelection.filePath,
+                fileNewPath: legacySelection.fileNewPath,
+                source: "worktree",
+                selectedAt,
+              },
+            };
+          }
+
+          const { selectedFileByRepo: _ignored, ...rest } = state;
+
+          return {
+            ...rest,
+            selectionByRepo: migratedSelectionByRepo,
+          };
+        },
       },
     ),
   ),

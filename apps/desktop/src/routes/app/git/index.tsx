@@ -17,6 +17,7 @@ import {
   ArrowUpFromLine,
   ChevronDown,
   ChevronsUp,
+  CircleAlertIcon,
   Diff,
   GitBranch,
   Loader2,
@@ -33,13 +34,21 @@ import LoaderIndicator from "@/components/loaderIndicator";
 import { GitruBorderedSVG } from "@/components/svgs/gitru-borderd";
 import {
   useGetCurrentBranch,
+  useGetCurrentBranchStash,
   useGetDiff,
+  useGetStatus,
   useGetStatusAheadBehind,
   useGitPush,
+  useStashList,
+  useStashShow,
 } from "@/hooks";
-import { type SelectedFile, useAppStore } from "@/store/useAppStore";
+import { useAppStore } from "@/store/useAppStore";
 import { SplitSVG } from "../../../components/svgs/splitSVG";
 import { UnifiedSVG } from "../../../components/svgs/unifiedSVG";
+import {
+  type ResolvedFileSelection,
+  resolveFileSelection,
+} from "./gitSelectionResolver";
 
 export const Route = createFileRoute("/app/git/")({
   component: App,
@@ -60,16 +69,59 @@ function App() {
 
 const DiffBoxBody = () => {
   const selectedRepository = useAppStore((state) => state.selectedRepository);
-  const selectedFileByRepo = useAppStore((state) => state.selectedFileByRepo);
+  const selectionByRepo = useAppStore((state) => state.selectionByRepo);
+  const gitViewByRepo = useAppStore((state) => state.gitViewByRepo);
+  const { data: status } = useGetStatus();
+  const { data: currentBranchStash } = useGetCurrentBranchStash();
+  const { data: stashes } = useStashList();
 
-  const selectedFile = selectedFileByRepo[selectedRepository?.path || ""];
+  const repoPath = selectedRepository?.path ?? "";
+  const gitViewState = gitViewByRepo[repoPath];
+  const activeSource =
+    gitViewState?.leftPanelView === "stash" ? "stash" : "worktree";
+  const activeStashReference =
+    activeSource === "stash"
+      ? gitViewState?.stashViewMode === "branch"
+        ? (currentBranchStash?.reference ?? null)
+        : (gitViewState?.selectedStashReference ?? null)
+      : null;
+
+  const { data: stashShow } = useStashShow(activeStashReference);
+
+  const activeSelection =
+    activeSource === "stash"
+      ? activeStashReference
+        ? (selectionByRepo[repoPath]?.stashByReference[activeStashReference] ??
+          null)
+        : null
+      : (selectionByRepo[repoPath]?.worktree ?? null);
+
+  const resolvedSelection = resolveFileSelection({
+    selection: activeSelection,
+    files:
+      activeSource === "stash"
+        ? (stashShow?.files ?? [])
+        : (status?.files ?? []),
+    context: {
+      source: activeSource,
+      stashReference: activeStashReference,
+      availableStashReferences: (stashes ?? []).map((stash) => stash.reference),
+    },
+  });
 
   return (
     <>
-      {selectedFile?.filePath ? (
+      {resolvedSelection.state === "valid" ? (
         <>
-          <FileLevelStatusBar selectedFile={selectedFile} />
-          <DiffArea selectedFile={selectedFile} />
+          <FileLevelStatusBar resolvedSelection={resolvedSelection} />
+          <DiffArea
+            filePath={resolvedSelection.file.path}
+            stashReference={
+              resolvedSelection.identity.source === "stash"
+                ? (resolvedSelection.identity.stashReference ?? null)
+                : null
+            }
+          />
         </>
       ) : (
         <EmptyStateScreen />
@@ -189,18 +241,21 @@ const MainActionBar = () => {
 };
 
 const FileLevelStatusBar = ({
-  selectedFile,
+  resolvedSelection,
 }: {
-  selectedFile: SelectedFile;
+  resolvedSelection: ResolvedFileSelection;
 }) => {
-  const setSelectedFileForRepo = useAppStore(
-    (state) => state.setSelectedFileForRepo,
+  const clearWorktreeSelectionForRepo = useAppStore(
+    (state) => state.clearWorktreeSelectionForRepo,
+  );
+  const clearStashSelectionForRepo = useAppStore(
+    (state) => state.clearStashSelectionForRepo,
   );
   const setMainWindowView = useAppStore((state) => state.setMainWindowView);
 
   return (
     <div className="w-full h-9.25 border-b flex justify-between items-center">
-      <FileLevelStatusBarLeft selectedFile={selectedFile} />
+      <FileLevelStatusBarLeft resolvedSelection={resolvedSelection} />
       <div className="flex items-center gap-2 pr-2">
         <Button
           size="icon-xs"
@@ -209,11 +264,17 @@ const FileLevelStatusBar = ({
           aria-label="Open notifications"
           onClick={() => {
             setMainWindowView(null);
-            setSelectedFileForRepo({
-              filePath: undefined,
-              status: undefined,
-              fileNewPath: undefined,
-            });
+            if (resolvedSelection.state === "none") {
+              return;
+            }
+
+            const selection = resolvedSelection.identity;
+            if (selection.source === "stash" && selection.stashReference) {
+              clearStashSelectionForRepo(selection.stashReference);
+              return;
+            }
+
+            clearWorktreeSelectionForRepo();
           }}
         >
           <X />
@@ -225,13 +286,16 @@ const FileLevelStatusBar = ({
   );
 };
 
-const DiffArea = ({ selectedFile }: { selectedFile: SelectedFile }) => {
-  const { data: diffData, isLoading } = useGetDiff(
-    selectedFile?.filePath || null,
-    {
-      stashReference: selectedFile?.stashReference ?? null,
-    },
-  );
+const DiffArea = ({
+  filePath,
+  stashReference,
+}: {
+  filePath: string;
+  stashReference: string | null;
+}) => {
+  const { data: diffData, isLoading } = useGetDiff(filePath, {
+    stashReference,
+  });
   const { diffStyle, overflow } = useDiffViewerSettings();
   const { theme } = useTheme();
 
@@ -279,13 +343,26 @@ const DiffArea = ({ selectedFile }: { selectedFile: SelectedFile }) => {
 };
 
 const FileLevelStatusBarLeft = ({
-  selectedFile,
+  resolvedSelection,
 }: {
-  selectedFile: SelectedFile;
+  resolvedSelection: ResolvedFileSelection;
 }) => {
-  if (!selectedFile) {
+  if (resolvedSelection.state === "none") {
     return null;
   }
+
+  const selectedFile =
+    resolvedSelection.state === "valid"
+      ? {
+          filePath: resolvedSelection.file.path,
+          fileNewPath: resolvedSelection.file.new_path,
+          status: resolvedSelection.file.status,
+        }
+      : {
+          filePath: resolvedSelection.identity.filePath,
+          fileNewPath: resolvedSelection.identity.fileNewPath,
+          status: undefined,
+        };
 
   return (
     <div className="items-center h-full px-2 flex gap-2">
@@ -303,6 +380,12 @@ const FileLevelStatusBarLeft = ({
             </div>
           </span>
         </>
+      ) : null}
+      {resolvedSelection.state === "stale" ? (
+        <span className="text-xs text-amber-600 flex items-center gap-1">
+          <CircleAlertIcon size={14} />
+          Unavailable
+        </span>
       ) : null}
       {selectedFile?.fileNewPath ? (
         <div>
