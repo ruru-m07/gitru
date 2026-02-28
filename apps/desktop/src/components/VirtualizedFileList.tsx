@@ -28,7 +28,7 @@ import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { getStatusIcon } from "@/components/getStatusIcon";
-import { SelectedFile, useAppStore } from "@/store/useAppStore";
+import { type FileSelectionIdentity, useAppStore } from "@/store/useAppStore";
 
 export interface FileListSection {
   id: string;
@@ -65,7 +65,7 @@ export interface VirtualizedFileListProps {
   onUnstage?: UseMutateAsyncFunction<string, string, string, unknown>;
   onDiscard?: (filePath: string) => void;
   renderDiscard?: (filePath: string) => React.ReactNode;
-  setSelectedFilePath: (file: SelectedFile | null) => void;
+  setSelectedFilePath: (file: FileSelectionIdentity | null) => void;
   getContextActions?: (context: {
     file: FileStatus;
     sectionId: string;
@@ -531,7 +531,7 @@ interface FileRowProps {
   onUnstage?: UseMutateAsyncFunction<string, string, string, unknown>;
   onDiscard?: (filePath: string) => void;
   renderDiscard?: (filePath: string) => React.ReactNode;
-  setSelectedFilePath: (file: SelectedFile | null) => void;
+  setSelectedFilePath: (file: FileSelectionIdentity | null) => void;
   isSelected: boolean;
   getContextActions?: VirtualizedFileListProps["getContextActions"];
 }
@@ -601,7 +601,8 @@ const FileRow = memo(
                 setSelectedFilePath({
                   filePath: file.path,
                   fileNewPath: file.new_path,
-                  status: file.status,
+                  source: "worktree",
+                  selectedAt: Date.now(),
                 });
               }
             }}
@@ -766,7 +767,8 @@ const FileRow = memo(
               setSelectedFilePath({
                 filePath: file.path,
                 fileNewPath: file.new_path,
-                status: file.status,
+                source: "worktree",
+                selectedAt: Date.now(),
               });
             }}
           >

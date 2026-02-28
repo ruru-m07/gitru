@@ -388,6 +388,9 @@ export function useGitFetch() {
       await repo?.commit.invalidate();
       await repo?.status.invalidate();
     },
+    onError: (error: string) => {
+      toast.error(error || "Failed to fetch");
+    },
   });
 
   return mutation;
@@ -405,6 +408,9 @@ export function useGitPublishBranch() {
       await repo?.branches.invalidateAll();
       await repo?.commit.invalidate();
       await repo?.status.invalidate();
+    },
+    onError: (error: string) => {
+      toast.error(error || "Failed to publish branch");
     },
   });
 
@@ -424,6 +430,9 @@ export function useGitPush() {
       await repo?.commit.invalidate();
       await repo?.status.invalidate();
     },
+    onError: (error: string) => {
+      toast.error(error || "Failed to push");
+    },
   });
 
   return mutation;
@@ -441,6 +450,9 @@ export function useGitPull() {
       await repo?.branches.invalidateAll();
       await repo?.commit.invalidate();
       await repo?.status.invalidate();
+    },
+    onError: (error: string) => {
+      toast.error(error || "Failed to pull");
     },
   });
 

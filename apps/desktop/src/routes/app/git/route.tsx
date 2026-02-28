@@ -118,6 +118,7 @@ import {
 } from "@/lib/time";
 import { useAppStore } from "@/store/useAppStore";
 import { GIT_PROVIDERS } from "@/type";
+import { resolveFileSelection } from "./gitSelectionResolver";
 
 const CoAuthers = z.array(z.tuple([z.string(), z.string()]));
 type CoAuthers = z.infer<typeof CoAuthers>;
@@ -627,10 +628,13 @@ const ListFileChanges = ({
   >(DEFAULT_STATUS_FILTERS);
 
   const selectedRepository = useAppStore((state) => state.selectedRepository);
-  const setSelectedFileForRepo = useAppStore(
-    (state) => state.setSelectedFileForRepo,
+  const setWorktreeSelectionForRepo = useAppStore(
+    (state) => state.setWorktreeSelectionForRepo,
   );
-  const selectedFileByRepo = useAppStore((state) => state.selectedFileByRepo);
+  const clearWorktreeSelectionForRepo = useAppStore(
+    (state) => state.clearWorktreeSelectionForRepo,
+  );
+  const selectionByRepo = useAppStore((state) => state.selectionByRepo);
   const setMainWindowView = useAppStore((state) => state.setMainWindowView);
 
   const { data: status, isLoading: isStatusLoading } = useGetStatus();
@@ -643,6 +647,19 @@ const ListFileChanges = ({
   const { handleFileClick } = useFileSelectionStore();
 
   const { data: commitHistory } = useGetCommitHistory();
+  const repoPath = selectedRepository?.path ?? "";
+  const worktreeSelection = selectionByRepo[repoPath]?.worktree ?? null;
+  const resolvedWorktreeSelection = resolveFileSelection({
+    selection: worktreeSelection,
+    files: status?.files ?? [],
+    context: {
+      source: "worktree",
+    },
+  });
+  const selectedFileForList =
+    resolvedWorktreeSelection.state === "valid"
+      ? resolvedWorktreeSelection.identity
+      : worktreeSelection;
 
   const hasFilterSelection = hasActiveStatusFilters(statusFilters);
   const toggleStatusFilter = (filter: FileStatusFilter, checked: boolean) => {
@@ -863,16 +880,12 @@ const ListFileChanges = ({
                   renderDiscard={(filePath) => (
                     <DiscardChangesDialog fileName={filePath} />
                   )}
-                  setSelectedFilePath={setSelectedFileForRepo}
+                  setSelectedFilePath={setWorktreeSelectionForRepo}
                   selectedFilePath={
-                    selectedFileByRepo[selectedRepository?.path || ""]
+                    selectedFileForList
                       ? {
-                          path:
-                            selectedFileByRepo[selectedRepository?.path || ""]
-                              ?.filePath || "",
-                          newPath:
-                            selectedFileByRepo[selectedRepository?.path || ""]
-                              ?.fileNewPath,
+                          path: selectedFileForList.filePath,
+                          newPath: selectedFileForList.fileNewPath,
                         }
                       : undefined
                   }
@@ -979,7 +992,7 @@ const ListFileChanges = ({
               className="rounded-r-md! border-border"
               onClick={() => {
                 setMainWindowView("HistoryGraph");
-                setSelectedFileForRepo(null);
+                clearWorktreeSelectionForRepo();
               }}
             >
               <History />
@@ -1268,9 +1281,15 @@ const StashPocView = memo(function StashPocView({
   >(DEFAULT_STATUS_FILTERS);
 
   const selectedRepository = useAppStore((state) => state.selectedRepository);
-  const selectedFileByRepo = useAppStore((state) => state.selectedFileByRepo);
-  const setSelectedFileForRepo = useAppStore(
-    (state) => state.setSelectedFileForRepo,
+  const selectionByRepo = useAppStore((state) => state.selectionByRepo);
+  const setStashSelectionForRepo = useAppStore(
+    (state) => state.setStashSelectionForRepo,
+  );
+  const clearStashSelectionForRepo = useAppStore(
+    (state) => state.clearStashSelectionForRepo,
+  );
+  const pruneStashSelectionsForRepo = useAppStore(
+    (state) => state.pruneStashSelectionsForRepo,
   );
   const gitViewByRepo = useAppStore((state) => state.gitViewByRepo);
   const setGitViewStateForRepo = useAppStore(
@@ -1317,6 +1336,15 @@ const StashPocView = memo(function StashPocView({
     );
   }, [mode, repoPath, selectedReference, setGitViewStateForRepo, stashes]);
 
+  useEffect(() => {
+    if (!repoPath) {
+      return;
+    }
+
+    const references = (stashes ?? []).map((stash) => stash.reference);
+    pruneStashSelectionsForRepo(repoPath, references);
+  }, [pruneStashSelectionsForRepo, repoPath, stashes]);
+
   const { data: stashShow, isLoading: isStashShowLoading } =
     useStashShow(selectedReference);
 
@@ -1327,7 +1355,23 @@ const StashPocView = memo(function StashPocView({
       matchesSearchQuery(file.path, query),
   );
 
-  const selectedFileForCurrentRepo = selectedFileByRepo[repoPath];
+  const selectedFileForCurrentRepo = selectedReference
+    ? (selectionByRepo[repoPath]?.stashByReference[selectedReference] ?? null)
+    : null;
+  const stashReferences = (stashes ?? []).map((stash) => stash.reference);
+  const resolvedStashSelection = resolveFileSelection({
+    selection: selectedFileForCurrentRepo,
+    files: stashShow?.files ?? [],
+    context: {
+      source: "stash",
+      stashReference: selectedReference,
+      availableStashReferences: stashReferences,
+    },
+  });
+  const selectedStashFileForList =
+    resolvedStashSelection.state === "valid"
+      ? resolvedStashSelection.identity
+      : selectedFileForCurrentRepo;
 
   return (
     <div className="h-full flex flex-col">
@@ -1538,14 +1582,15 @@ const StashPocView = memo(function StashPocView({
             onFileClick={handleFileClick}
             setSelectedFilePath={(file) => {
               if (!file) {
-                setSelectedFileForRepo(null);
+                if (selectedReference) {
+                  clearStashSelectionForRepo(selectedReference);
+                }
                 return;
               }
 
-              setSelectedFileForRepo({
-                ...file,
-                stashReference: selectedReference ?? undefined,
-              });
+              if (selectedReference) {
+                setStashSelectionForRepo(selectedReference, file);
+              }
             }}
             getContextActions={({ file }) =>
               selectedReference
@@ -1566,10 +1611,10 @@ const StashPocView = memo(function StashPocView({
                 : []
             }
             selectedFilePath={
-              selectedFileByRepo[repoPath]
+              selectedStashFileForList
                 ? {
-                    path: selectedFileByRepo[repoPath]?.filePath || "",
-                    newPath: selectedFileByRepo[repoPath]?.fileNewPath,
+                    path: selectedStashFileForList.filePath,
+                    newPath: selectedStashFileForList.fileNewPath,
                   }
                 : undefined
             }
@@ -1620,7 +1665,7 @@ const StashPocView = memo(function StashPocView({
                         selectedFileForCurrentRepo?.stashReference ===
                         selectedReference
                       ) {
-                        setSelectedFileForRepo(null);
+                        clearStashSelectionForRepo(selectedReference);
                       }
                       toast.success("Discarded stash");
                     }}
@@ -1641,7 +1686,7 @@ const StashPocView = memo(function StashPocView({
             if (
               selectedFileForCurrentRepo?.stashReference === selectedReference
             ) {
-              setSelectedFileForRepo(null);
+              clearStashSelectionForRepo(selectedReference);
             }
             onBack();
             toast.success("Restored changes");

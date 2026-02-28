@@ -532,6 +532,14 @@ const CurrentBranchBadge = () => {
   const { data: status } = useGetStatus();
   const navigation = useCommandNavigation();
 
+  const hasUnstaged = status?.files?.some((f) =>
+    f.status.some((s) => s.startsWith("Worktree") || s === "Conflicted"),
+  );
+  const hasStaged = status?.files?.some((f) =>
+    f.status.some((s) => s.startsWith("Index")),
+  );
+  const statusIndicator = `${hasUnstaged ? "*" : ""}${hasStaged ? "+" : ""}`;
+
   return (
     <>
       {currentBranch?.display_name ? (
@@ -546,7 +554,7 @@ const CurrentBranchBadge = () => {
           <GitBranch />
           <span className="ml-1 text-foreground!">
             {currentBranch?.display_name}
-            {status?.files && status?.files.length > 0 ? "*" : ""}
+            {statusIndicator}
           </span>
         </Badge>
       ) : null}
