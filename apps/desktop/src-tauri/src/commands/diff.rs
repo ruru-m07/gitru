@@ -7,6 +7,8 @@ use git::AppState;
 pub async fn get_patch_by_file_path(
     file_path: &str,
     stash_reference: Option<String>,
+    commit_hash: Option<String>,
+    parent_index: Option<usize>,
     state: tauri::State<'_, AppState>,
 ) -> Result<FileDiff, String> {
     validate_relative_path(file_path)?;
@@ -15,7 +17,12 @@ pub async fn get_patch_by_file_path(
 
     let patch = services
         .diff()
-        .get_patch_by_file_path(file_path, stash_reference.as_deref())
+        .get_patch_by_file_path(
+            file_path,
+            stash_reference.as_deref(),
+            commit_hash.as_deref(),
+            parent_index,
+        )
         .await?;
 
     Ok(FileDiff { patch })

@@ -1,4 +1,4 @@
-import { GetStatusResponse } from "@gitru/commands";
+import { GetStatusResponse, GraphRow } from "@gitru/commands";
 import { Stashed } from "@gitru/icon";
 import {
   AlertDialog,
@@ -16,6 +16,7 @@ import {
   AvatarImage,
 } from "@gitru/ui/components/avatar";
 import { Button } from "@gitru/ui/components/button";
+import { CopyButton } from "@gitru/ui/components/copy-button";
 import {
   Dialog,
   DialogClose,
@@ -54,7 +55,6 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@gitru/ui/components/resizable";
-import { ScrollArea } from "@gitru/ui/components/scroll-area";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@gitru/ui/components/tabs";
 import {
   Tooltip,
@@ -73,6 +73,7 @@ import {
   ChevronsRight,
   ChevronUp,
   CircleAlertIcon,
+  Files,
   GitBranch,
   History,
   ListFilterPlus,
@@ -83,7 +84,8 @@ import {
   UserPlus,
 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useOnInView } from "react-intersection-observer";
 import { useDefaultLayout } from "react-resizable-panels";
 import { toast } from "sonner";
 import z from "zod";
@@ -95,12 +97,13 @@ import StatusBar from "@/components/statusBar";
 import { VirtualizedFileList } from "@/components/VirtualizedFileList";
 import {
   useCreateCommit,
-  useGetCommitHistory,
+  useGetCommitById,
   useGetCurrentBranch,
   useGetCurrentBranchStash,
   useGetStatus,
   useGitAdd,
   useGitDiscard,
+  useGitHistoryGraph,
   useGitUnstage,
   useStashDrop,
   useStashList,
@@ -222,21 +225,27 @@ const ResizableArea = () => {
   const [panelDirection, setPanelDirection] = useState<1 | -1>(1);
   const repoPath = selectedRepository?.path;
   const gitViewState: {
-    leftPanelView: "changes" | "stash";
+    leftPanelView: "changes" | "stash" | "history";
+    changesTab: "changes" | "history";
     stashViewMode: "branch" | "all";
     selectedStashReference: string | null;
+    selectedHistoryCommitHash: string | null;
     stashStatusFilters: Record<FileStatusFilter, boolean>;
   } = repoPath
     ? (gitViewByRepo[repoPath] ?? {
         leftPanelView: "changes",
+        changesTab: "changes",
         stashViewMode: "branch",
         selectedStashReference: null,
+        selectedHistoryCommitHash: null,
         stashStatusFilters: DEFAULT_STATUS_FILTERS,
       })
     : {
         leftPanelView: "changes",
+        changesTab: "changes",
         stashViewMode: "branch",
         selectedStashReference: null,
+        selectedHistoryCommitHash: null,
         stashStatusFilters: DEFAULT_STATUS_FILTERS,
       };
 
@@ -307,6 +316,31 @@ const ResizableArea = () => {
                         setGitViewStateForRepo(
                           {
                             leftPanelView: "changes",
+                            changesTab: "changes",
+                          },
+                          repoPath,
+                        );
+                      }}
+                    />
+                  </motion.div>
+                ) : gitViewState.leftPanelView === "history" ? (
+                  <motion.div
+                    key="history"
+                    className="absolute inset-0 bg-background will-change-transform"
+                    custom={panelDirection}
+                    variants={panelSlideVariants}
+                    initial="initial"
+                    animate="animate"
+                    exit="exit"
+                    transition={panelTransition}
+                  >
+                    <HistoryDetailView
+                      onBack={() => {
+                        setPanelDirection(-1);
+                        setGitViewStateForRepo(
+                          {
+                            leftPanelView: "changes",
+                            changesTab: "history",
                           },
                           repoPath,
                         );
@@ -325,11 +359,30 @@ const ResizableArea = () => {
                     transition={panelTransition}
                   >
                     <ListFileChanges
+                      activeTab={gitViewState.changesTab}
+                      onTabChange={(nextTab) => {
+                        setGitViewStateForRepo(
+                          { changesTab: nextTab },
+                          repoPath,
+                        );
+                      }}
+                      onOpenHistoryView={(commitHash) => {
+                        setPanelDirection(1);
+                        setGitViewStateForRepo(
+                          {
+                            leftPanelView: "history",
+                            changesTab: "history",
+                            selectedHistoryCommitHash: commitHash,
+                          },
+                          repoPath,
+                        );
+                      }}
                       onOpenStashView={(stashReference) => {
                         setPanelDirection(1);
                         setGitViewStateForRepo(
                           {
                             leftPanelView: "stash",
+                            changesTab: "changes",
                             stashViewMode: "branch",
                             selectedStashReference: stashReference,
                           },
@@ -618,11 +671,18 @@ const ToggelPanelButton = () => {
 };
 
 const ListFileChanges = ({
+  activeTab,
+  onTabChange,
+  onOpenHistoryView,
   onOpenStashView,
 }: {
+  activeTab: "changes" | "history";
+  onTabChange: (tab: "changes" | "history") => void;
+  onOpenHistoryView: (commitHash: string) => void;
   onOpenStashView: (stashReference: string | null) => void;
 }) => {
-  const [query, setQuery] = useState("");
+  const [changesQuery, setChangesQuery] = useState("");
+  const [historySearchInput, setHistorySearchInput] = useState("");
   const [statusFilters, setStatusFilters] = useState<
     Record<FileStatusFilter, boolean>
   >(DEFAULT_STATUS_FILTERS);
@@ -646,7 +706,32 @@ const ListFileChanges = ({
 
   const { handleFileClick } = useFileSelectionStore();
 
-  const { data: commitHistory } = useGetCommitHistory();
+  const historySearch = historySearchInput.trim();
+  const historyQuery = useMemo(
+    () => ({
+      limit: 50,
+      search: historySearch.length > 0 ? historySearch : undefined,
+      include_local: true,
+      include_remotes: false,
+      include_tags: false,
+      include_stash: false,
+    }),
+    [historySearch],
+  );
+  const {
+    data: historyData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading: isHistoryLoading,
+  } = useGitHistoryGraph(historyQuery);
+  const historyRows = useMemo(
+    () =>
+      (historyData?.pages.flatMap((page) => page.rows) ?? []).filter(
+        (row) => row.type === "Commit",
+      ),
+    [historyData],
+  );
   const repoPath = selectedRepository?.path ?? "";
   const worktreeSelection = selectionByRepo[repoPath]?.worktree ?? null;
   const resolvedWorktreeSelection = resolveFileSelection({
@@ -675,7 +760,7 @@ const ListFileChanges = ({
     (file) =>
       file.status.some((s) => s.startsWith("Index")) &&
       matchesStatusFilters(file, statusFilters) &&
-      matchesSearchQuery(file.path, query),
+      matchesSearchQuery(file.path, changesQuery),
   );
   const unstagedChanges: GetStatusResponse["files"] = (
     status?.files ?? []
@@ -683,7 +768,7 @@ const ListFileChanges = ({
     (file) =>
       file.status.some((s) => s.startsWith("Worktree")) &&
       matchesStatusFilters(file, statusFilters) &&
-      matchesSearchQuery(file.path, query),
+      matchesSearchQuery(file.path, changesQuery),
   );
   const conflictedChanges: GetStatusResponse["files"] = (
     status?.files ?? []
@@ -691,11 +776,17 @@ const ListFileChanges = ({
     (file) =>
       file.status.some((s) => s.includes("Conflicted")) &&
       matchesStatusFilters(file, statusFilters) &&
-      matchesSearchQuery(file.path, query),
+      matchesSearchQuery(file.path, changesQuery),
   );
 
   return (
-    <Tabs defaultValue="tab-1" className={"gap-0 h-full flex flex-col"}>
+    <Tabs
+      value={activeTab === "changes" ? "tab-1" : "tab-2"}
+      onValueChange={(value) =>
+        onTabChange(value === "tab-2" ? "history" : "changes")
+      }
+      className={"gap-0 h-full flex flex-col"}
+    >
       <TabsList
         className={
           "select-none rounded-none bg-background w-full shrink-0 border-b *:data-[slot=tab-indicator]:bg-secondary *:data-[slot=tab-indicator]:transition-none"
@@ -720,8 +811,8 @@ const ListFileChanges = ({
               placeholder="Filter files..."
               className={"rounded-l-md! border-border! w-full"}
               size={"sm"}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              value={changesQuery}
+              onChange={(e) => setChangesQuery(e.target.value)}
             />
             <GroupSeparator />
             <Menu>
@@ -832,7 +923,7 @@ const ListFileChanges = ({
                 (conflictedChanges && conflictedChanges?.length > 0) ||
                 (unstagedChanges && unstagedChanges?.length > 0)) ? (
                 <VirtualizedFileList
-                  searchQuery={query}
+                  searchQuery={changesQuery}
                   sections={[
                     {
                       id: "conflicted",
@@ -985,8 +1076,8 @@ const ListFileChanges = ({
               placeholder="Filter commits..."
               className={"rounded-l-md! border-border! w-full"}
               size={"sm"}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              value={historySearchInput}
+              onChange={(e) => setHistorySearchInput(e.target.value)}
             />
             <GroupSeparator />
             <Button
@@ -1003,96 +1094,381 @@ const ListFileChanges = ({
             </Button>
           </Group>
         </div>
-        <ScrollArea scrollFade tabIndex={-1} className={""}>
-          {commitHistory?.map((commit) => (
-            <div
-              className="w-full p-2 border-b hover:bg-accent cursor-pointer"
-              key={commit.id}
-            >
-              <p className="truncate text-sm">{commit.summary}</p>
-              <div className="flex mt-1 items-center justify-between w-full">
-                <TooltipProvider>
-                  <div className="flex items-center">
-                    <div className="flex -mt-0.5 group">
-                      <Tooltip>
-                        <TooltipTrigger
-                          style={{
-                            zIndex: commit.authors.co_authors.length + 1,
-                          }}
-                        >
-                          <Avatar className="ring-2 ring-background rounded-sm size-4">
-                            <AvatarImage
-                              alt={commit.authors.author.name}
-                              src={`https://avatars.githubusercontent.com/u/e?email=${commit.authors.author.email}&s=64`}
-                            />
-                            <AvatarFallback>
-                              {commit.authors.author.name
-                                .split(" ")
-                                .map((n) => n[0])
-                                .join("")
-                                .toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                        </TooltipTrigger>
-                        <TooltipPopup side="bottom">
-                          {commit.authors.author.name}
-                        </TooltipPopup>
-                      </Tooltip>
-                      {commit.authors.co_authors.map((coAuthor, idx) => (
-                        <Tooltip key={`${idx}-tooltip-coauthor`}>
-                          <TooltipTrigger
-                            style={{
-                              zIndex: commit.authors.co_authors.length - idx,
-                            }}
-                            key={`${idx}-tooltip-trigger-coauthor`}
-                          >
-                            <Avatar className="ring-2 ring-background rounded-sm size-4 -ml-[0.2rem] group-hover:ml-0.5 transition-all duration-100">
-                              <AvatarImage
-                                alt="U1"
-                                src={`https://avatars.githubusercontent.com/u/e?email=${coAuthor.email}&s=64`}
-                              />
-                              <AvatarFallback>
-                                {coAuthor.name
-                                  .split(" ")
-                                  .map((n) => n[0])
-                                  .join("")
-                                  .toUpperCase()}
-                              </AvatarFallback>
-                            </Avatar>
-                          </TooltipTrigger>
-                          <TooltipPopup side="bottom">
-                            {coAuthor.name}
-                          </TooltipPopup>
-                        </Tooltip>
-                      ))}
-                    </div>
-                    <Label className="ml-1 text-muted-foreground text-xs font-light">
-                      <Tooltip>
-                        <TooltipTrigger>
-                          {commit.authors.author.name}
-                        </TooltipTrigger>
-                        <TooltipPopup side="bottom">
-                          {commit.authors.author.email}
-                        </TooltipPopup>
-                      </Tooltip>
-                      <span className="-mx-1">{" • "}</span>
-                      <Tooltip>
-                        <TooltipTrigger>
-                          {timeAgoFromUnixSeconds(commit.timestamp)}{" "}
-                        </TooltipTrigger>
-                        <TooltipPopup side="bottom">
-                          {formatUnixSecondsToDateTime(commit.timestamp)}
-                        </TooltipPopup>
-                      </Tooltip>
-                    </Label>
-                  </div>
-                </TooltipProvider>
-              </div>
-            </div>
-          ))}
-        </ScrollArea>
+        <HistoryCommitInfiniteList
+          rows={historyRows}
+          onOpenCommit={onOpenHistoryView}
+          fetchNextPage={fetchNextPage}
+          hasNextPage={hasNextPage}
+          isFetchingNextPage={isFetchingNextPage}
+          isLoading={isHistoryLoading}
+        />
       </TabsPanel>
     </Tabs>
+  );
+};
+
+const HistoryCommitInfiniteList = ({
+  rows,
+  onOpenCommit,
+  fetchNextPage,
+  hasNextPage,
+  isFetchingNextPage,
+  isLoading,
+}: {
+  rows: GraphRow[];
+  onOpenCommit: (commitHash: string) => void;
+  fetchNextPage: () => void;
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
+  isLoading: boolean;
+}) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useOnInView(
+    (inView) => {
+      if (inView && hasNextPage && !isFetchingNextPage) {
+        fetchNextPage();
+      }
+    },
+    {
+      root: scrollRef.current,
+      threshold: 0,
+      rootMargin: "500px",
+    },
+  );
+
+  if (isLoading) {
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <span className="text-sm text-muted-foreground">Loading...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
+      {rows.map((row) => (
+        <div
+          className="w-full p-2 border-b hover:bg-accent cursor-pointer"
+          key={row.oid}
+          onClick={() => onOpenCommit(row.commit.id)}
+        >
+          <p className="truncate text-sm">{row.commit.summary}</p>
+          <div className="flex mt-1 items-center justify-between w-full">
+            <TooltipProvider>
+              <div className="flex items-center">
+                <div className="flex -mt-0.5 group">
+                  <Tooltip>
+                    <TooltipTrigger
+                      style={{
+                        zIndex: row.commit.authors.co_authors.length + 1,
+                      }}
+                    >
+                      <Avatar className="ring-2 ring-background rounded-sm size-4">
+                        <AvatarImage
+                          alt={row.commit.authors.author.name}
+                          src={`https://avatars.githubusercontent.com/u/e?email=${row.commit.authors.author.email}&s=64`}
+                        />
+                        <AvatarFallback>
+                          {row.commit.authors.author.name
+                            .split(" ")
+                            .map((n) => n[0])
+                            .join("")
+                            .toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                    </TooltipTrigger>
+                    <TooltipPopup side="bottom">
+                      {row.commit.authors.author.name}
+                    </TooltipPopup>
+                  </Tooltip>
+                  {row.commit.authors.co_authors.map((coAuthor, idx) => (
+                    <Tooltip key={`${row.oid}-${idx}-tooltip-coauthor`}>
+                      <TooltipTrigger
+                        style={{
+                          zIndex: row.commit.authors.co_authors.length - idx,
+                        }}
+                        key={`${row.oid}-${idx}-tooltip-trigger-coauthor`}
+                      >
+                        <Avatar className="ring-2 ring-background rounded-sm size-4 -ml-[0.2rem] group-hover:ml-0.5 transition-all duration-100">
+                          <AvatarImage
+                            alt={coAuthor.name}
+                            src={`https://avatars.githubusercontent.com/u/e?email=${coAuthor.email}&s=64`}
+                          />
+                          <AvatarFallback>
+                            {coAuthor.name
+                              .split(" ")
+                              .map((n) => n[0])
+                              .join("")
+                              .toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                      </TooltipTrigger>
+                      <TooltipPopup side="bottom">{coAuthor.name}</TooltipPopup>
+                    </Tooltip>
+                  ))}
+                </div>
+                <Label className="ml-1 text-muted-foreground text-xs font-light">
+                  <Tooltip>
+                    <TooltipTrigger>
+                      {row.commit.authors.author.name}
+                    </TooltipTrigger>
+                    <TooltipPopup side="bottom">
+                      {row.commit.authors.author.email}
+                    </TooltipPopup>
+                  </Tooltip>
+                  <span className="-mx-1">{" • "}</span>
+                  <Tooltip>
+                    <TooltipTrigger>
+                      {timeAgoFromUnixSeconds(row.commit.timestamp)}{" "}
+                    </TooltipTrigger>
+                    <TooltipPopup side="bottom">
+                      {formatUnixSecondsToDateTime(row.commit.timestamp)}
+                    </TooltipPopup>
+                  </Tooltip>
+                </Label>
+              </div>
+            </TooltipProvider>
+          </div>
+        </div>
+      ))}
+      <div className="w-full flex justify-center p-2 text-xs text-muted-foreground">
+        {isFetchingNextPage ? "Loading more..." : null}
+      </div>
+      <div ref={bottomRef} className="h-4" />
+    </div>
+  );
+};
+
+const HistoryDetailView = ({ onBack }: { onBack: () => void }) => {
+  const [query, setQuery] = useState("");
+
+  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const gitViewByRepo = useAppStore((state) => state.gitViewByRepo);
+  const selectionByRepo = useAppStore((state) => state.selectionByRepo);
+  const setHistorySelectionForRepo = useAppStore(
+    (state) => state.setHistorySelectionForRepo,
+  );
+  const clearHistorySelectionForRepo = useAppStore(
+    (state) => state.clearHistorySelectionForRepo,
+  );
+  const { handleFileClick } = useFileSelectionStore();
+
+  const repoPath = selectedRepository?.path ?? "";
+  const selectedCommitHash =
+    gitViewByRepo[repoPath]?.selectedHistoryCommitHash ?? null;
+  const { data: commitDetails, isLoading: isCommitLoading } = useGetCommitById(
+    selectedCommitHash ?? "",
+  );
+
+  const selectedFileForCurrentRepo =
+    selectedCommitHash && repoPath
+      ? (selectionByRepo[repoPath]?.historyByCommit?.[selectedCommitHash] ??
+        null)
+      : null;
+  const resolvedHistorySelection = resolveFileSelection({
+    selection: selectedFileForCurrentRepo,
+    files: commitDetails?.files ?? [],
+    context: {
+      source: "history",
+      historyCommitHash: selectedCommitHash,
+    },
+  });
+
+  useEffect(() => {
+    if (!selectedCommitHash || !commitDetails?.files?.length) {
+      return;
+    }
+
+    if (resolvedHistorySelection.state === "valid") {
+      return;
+    }
+
+    const firstFile = commitDetails.files[0];
+    setHistorySelectionForRepo(selectedCommitHash, {
+      filePath: firstFile.path,
+      fileNewPath: firstFile.new_path,
+      source: "history",
+      historyCommitHash: selectedCommitHash,
+      selectedAt: Date.now(),
+    });
+  }, [
+    commitDetails?.files,
+    resolvedHistorySelection.state,
+    selectedCommitHash,
+    setHistorySelectionForRepo,
+  ]);
+
+  const selectedHistoryFileForList =
+    resolvedHistorySelection.state === "valid"
+      ? resolvedHistorySelection.identity
+      : selectedFileForCurrentRepo;
+  const filteredFiles = (commitDetails?.files ?? []).filter((file) =>
+    matchesSearchQuery(file.path, query),
+  );
+
+  return (
+    <div className="h-full flex flex-col">
+      <div className="px-2 py-1 border-b">
+        <div className="group flex-1 flex h-6 items-center">
+          <span className="text-sm truncate">
+            {commitDetails?.summary ?? ""}
+          </span>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <CopyButton
+                  size={"xs"}
+                  variant="ghost"
+                  text={selectedCommitHash ?? ""}
+                  className="group-hover:flex hidden"
+                />
+              }
+            ></TooltipTrigger>
+            <TooltipPopup>{selectedCommitHash}</TooltipPopup>
+          </Tooltip>
+        </div>
+        <div className="flex justify-between w-full flex-1">
+          <div className="flex items-center gap-1 flex-1 mr-1">
+            <div className="flex group">
+              <Tooltip>
+                <TooltipTrigger
+                  style={{
+                    zIndex: (commitDetails?.authors.co_authors.length || 0) + 1,
+                  }}
+                >
+                  <Avatar className="ring-2 ring-background rounded-sm size-4">
+                    <AvatarImage
+                      alt={commitDetails?.authors.author.name}
+                      src={`https://avatars.githubusercontent.com/u/e?email=${commitDetails?.authors.author.email}&s=64`}
+                    />
+                    <AvatarFallback>
+                      {commitDetails?.authors.author.name
+                        .split(" ")
+                        .map((n) => n[0])
+                        .join("")
+                        .toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                </TooltipTrigger>
+                <TooltipPopup side="bottom">
+                  {commitDetails?.authors.author.name}
+                </TooltipPopup>
+              </Tooltip>
+              {commitDetails?.authors.co_authors.map((coAuthor, idx) => (
+                <Tooltip key={`${idx}-tooltip-coauthor`}>
+                  <TooltipTrigger
+                    style={{
+                      zIndex: commitDetails?.authors.co_authors.length - idx,
+                    }}
+                    key={`${idx}-tooltip-trigger-coauthor`}
+                  >
+                    <Avatar className="ring-2 ring-background rounded-sm size-4 -ml-[0.2rem] group-hover:ml-0.5 transition-all duration-100">
+                      <AvatarImage
+                        alt="U1"
+                        src={`https://avatars.githubusercontent.com/u/e?email=${coAuthor.email}&s=64`}
+                      />
+                      <AvatarFallback>
+                        {coAuthor.name
+                          .split(" ")
+                          .map((n) => n[0])
+                          .join("")
+                          .toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                  </TooltipTrigger>
+                  <TooltipPopup side="bottom">{coAuthor.name}</TooltipPopup>
+                </Tooltip>
+              ))}
+            </div>
+            <span className="font-normal text-sm text-nowrap">
+              {commitDetails?.authors.author.name}
+            </span>
+            <span className="text-muted-foreground font-light text-xs text-nowrap flex-1 truncate">
+              ( {timeAgoFromUnixSeconds(commitDetails?.timestamp || 0)} ) {}
+            </span>
+          </div>
+          <div className="flex gap-1 items-center">
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <Files className="size-3.5" />
+              {commitDetails?.stats?.files_changed ?? 0}
+            </span>
+
+            <span className="text-xs text-muted-foreground">/</span>
+
+            <span className="text-xs text-green-600 tabular-nums font-normal">
+              +{commitDetails?.stats?.insertions ?? 0}
+            </span>
+            <span className="text-xs text-red-600 tabular-nums font-normal">
+              -{commitDetails?.stats?.deletions ?? 0}
+            </span>
+          </div>
+        </div>
+      </div>
+      <div className="p-1.5 min-h-10 border-b flex items-center gap-2">
+        <Button size="icon-sm" variant="outline" onClick={onBack}>
+          <ChevronLeftIcon className="size-4" />
+        </Button>
+        <Group aria-label="History file actions" className="w-full">
+          <Input
+            aria-label="Filter history files"
+            placeholder="Filter files..."
+            size={"sm"}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </Group>
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scroll **:data-[slot=file-row]:mr-2!">
+        {isCommitLoading ? (
+          <div className="w-full h-full flex items-center justify-center">
+            <span className="text-sm text-muted-foreground">Loading...</span>
+          </div>
+        ) : !selectedCommitHash ? (
+          <div className="w-full h-full flex items-center justify-center">
+            <span className="text-sm text-muted-foreground">
+              No commit selected
+            </span>
+          </div>
+        ) : filteredFiles.length > 0 ? (
+          <VirtualizedFileList
+            sectionMode="flat"
+            searchQuery={query}
+            sections={[
+              {
+                id: "history-files",
+                name: "Changed Files",
+                type: "custom",
+                files: filteredFiles,
+              },
+            ]}
+            onFileClick={handleFileClick}
+            setSelectedFilePath={(file) => {
+              if (!selectedCommitHash) return;
+              if (!file) {
+                clearHistorySelectionForRepo(selectedCommitHash);
+                return;
+              }
+              setHistorySelectionForRepo(selectedCommitHash, file);
+            }}
+            selectedFilePath={
+              selectedHistoryFileForList
+                ? {
+                    path: selectedHistoryFileForList.filePath,
+                    newPath: selectedHistoryFileForList.fileNewPath,
+                  }
+                : undefined
+            }
+            className="h-full"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <span className="text-sm text-muted-foreground">
+              No files changed in this commit
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 

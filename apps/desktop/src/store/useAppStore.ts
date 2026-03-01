@@ -9,19 +9,21 @@ import {
 import { appState } from "@/state";
 import { createTauriStorage } from "./tauriStoreAdapter";
 
-export type SelectionSource = "worktree" | "stash";
+export type SelectionSource = "worktree" | "stash" | "history";
 
 export type FileSelectionIdentity = {
   filePath: string;
   fileNewPath?: string;
   source: SelectionSource;
   stashReference?: string;
+  historyCommitHash?: string;
   selectedAt: number;
 };
 
 export type RepoFileSelectionState = {
   worktree: FileSelectionIdentity | null;
   stashByReference: Record<string, FileSelectionIdentity | null>;
+  historyByCommit: Record<string, FileSelectionIdentity | null>;
 };
 
 export type ExternalOpener =
@@ -33,8 +35,9 @@ export type ExternalOpener =
 
 type RepoKey = string;
 export type UpdateChannel = "stable" | "beta";
-export type GitSidebarView = "changes" | "stash";
+export type GitSidebarView = "changes" | "stash" | "history";
 export type StashViewMode = "branch" | "all";
+export type ChangesTab = "changes" | "history";
 
 export type StashStatusFilterMap = Record<
   "modified" | "renamed" | "deleted" | "conflicted" | "untracked",
@@ -43,8 +46,10 @@ export type StashStatusFilterMap = Record<
 
 export type GitViewState = {
   leftPanelView: GitSidebarView;
+  changesTab: ChangesTab;
   stashViewMode: StashViewMode;
   selectedStashReference: string | null;
+  selectedHistoryCommitHash: string | null;
   stashStatusFilters: StashStatusFilterMap;
 };
 
@@ -58,14 +63,17 @@ const DEFAULT_STASH_STATUS_FILTERS: StashStatusFilterMap = {
 
 const createDefaultGitViewState = (): GitViewState => ({
   leftPanelView: "changes",
+  changesTab: "changes",
   stashViewMode: "branch",
   selectedStashReference: null,
+  selectedHistoryCommitHash: null,
   stashStatusFilters: { ...DEFAULT_STASH_STATUS_FILTERS },
 });
 
 const createDefaultRepoFileSelectionState = (): RepoFileSelectionState => ({
   worktree: null,
   stashByReference: {},
+  historyByCommit: {},
 });
 
 const normalizeSelection = (
@@ -94,12 +102,17 @@ type AppState = {
     stashReference: string,
     selection: FileSelectionIdentity | null,
   ) => void;
+  setHistorySelectionForRepo: (
+    commitHash: string,
+    selection: FileSelectionIdentity | null,
+  ) => void;
   clearSelectionForRepo: (repoKey: RepoKey) => void;
   clearWorktreeSelectionForRepo: (repoKey?: RepoKey) => void;
   clearStashSelectionForRepo: (
     stashReference: string,
     repoKey?: RepoKey,
   ) => void;
+  clearHistorySelectionForRepo: (commitHash: string, repoKey?: RepoKey) => void;
   pruneStashSelectionsForRepo: (
     repoKey: RepoKey,
     activeStashReferences: string[],
@@ -181,6 +194,7 @@ export const useAppStore = create<AppState>()(
                         ...selection,
                         source: "worktree",
                         stashReference: undefined,
+                        historyCommitHash: undefined,
                       })
                     : null,
                 },
@@ -216,6 +230,7 @@ export const useAppStore = create<AppState>()(
                   ...selection,
                   source: "stash",
                   stashReference,
+                  historyCommitHash: undefined,
                 })
               : null;
 
@@ -225,6 +240,49 @@ export const useAppStore = create<AppState>()(
                 [repoPath]: {
                   ...current,
                   stashByReference: nextStashByReference,
+                },
+              },
+            };
+          });
+
+          if (selection) {
+            get().setMainWindowView("FileDiff");
+          }
+        },
+
+        setHistorySelectionForRepo: (commitHash, selection) => {
+          const repoPath = get().selectedRepository?.path;
+
+          if (!repoPath) {
+            toast.error("No repository selected");
+            return;
+          }
+
+          if (!commitHash) {
+            return;
+          }
+
+          set((state) => {
+            const current =
+              state.selectionByRepo[repoPath] ??
+              createDefaultRepoFileSelectionState();
+            const nextHistoryByCommit = { ...current.historyByCommit };
+
+            nextHistoryByCommit[commitHash] = selection
+              ? normalizeSelection({
+                  ...selection,
+                  source: "history",
+                  stashReference: undefined,
+                  historyCommitHash: commitHash,
+                })
+              : null;
+
+            return {
+              selectionByRepo: {
+                ...state.selectionByRepo,
+                [repoPath]: {
+                  ...current,
+                  historyByCommit: nextHistoryByCommit,
                 },
               },
             };
@@ -286,6 +344,33 @@ export const useAppStore = create<AppState>()(
                   stashByReference: {
                     ...current.stashByReference,
                     [stashReference]: null,
+                  },
+                },
+              },
+            };
+          });
+        },
+
+        clearHistorySelectionForRepo: (commitHash, repoPathArg) => {
+          const repoPath = getTargetRepoPath(
+            get().selectedRepository,
+            repoPathArg,
+          );
+          if (!repoPath || !commitHash) return;
+
+          set((state) => {
+            const current =
+              state.selectionByRepo[repoPath] ??
+              createDefaultRepoFileSelectionState();
+
+            return {
+              selectionByRepo: {
+                ...state.selectionByRepo,
+                [repoPath]: {
+                  ...current,
+                  historyByCommit: {
+                    ...current.historyByCommit,
+                    [commitHash]: null,
                   },
                 },
               },
@@ -361,7 +446,7 @@ export const useAppStore = create<AppState>()(
       {
         name: "app-data",
         storage: createJSONStorage(() => createTauriStorage()),
-        version: 2,
+        version: 3,
         migrate: (persistedState: unknown, version) => {
           const state = (persistedState ?? {}) as {
             selectionByRepo?: Record<string, RepoFileSelectionState>;
@@ -375,14 +460,44 @@ export const useAppStore = create<AppState>()(
             >;
           };
 
-          if (version >= 2) {
+          if (version >= 3) {
             return state;
+          }
+
+          const normalizeSelectionByRepo = (
+            value: Record<string, RepoFileSelectionState> | undefined,
+          ): Record<string, RepoFileSelectionState> =>
+            Object.fromEntries(
+              Object.entries(value ?? {}).map(([repoKey, repoSelection]) => {
+                const current =
+                  repoSelection ?? createDefaultRepoFileSelectionState();
+                return [
+                  repoKey,
+                  {
+                    ...createDefaultRepoFileSelectionState(),
+                    ...current,
+                    stashByReference: {
+                      ...(current.stashByReference ?? {}),
+                    },
+                    historyByCommit: {
+                      ...(current.historyByCommit ?? {}),
+                    },
+                  },
+                ];
+              }),
+            );
+
+          if (version >= 2) {
+            return {
+              ...state,
+              selectionByRepo: normalizeSelectionByRepo(state.selectionByRepo),
+            };
           }
 
           if (!state.selectedFileByRepo) {
             return {
               ...state,
-              selectionByRepo: state.selectionByRepo ?? {},
+              selectionByRepo: normalizeSelectionByRepo(state.selectionByRepo),
             };
           }
 
@@ -435,7 +550,7 @@ export const useAppStore = create<AppState>()(
 
           return {
             ...rest,
-            selectionByRepo: migratedSelectionByRepo,
+            selectionByRepo: normalizeSelectionByRepo(migratedSelectionByRepo),
           };
         },
       },

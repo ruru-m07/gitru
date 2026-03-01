@@ -106,6 +106,7 @@ export const FullCommitInfoSchema = z.object({
   body: z.string(),
   authors: CommitAuthorsSchema,
   stats: CommitStatsSchema,
+  files: z.array(FileStatusSchema),
 });
 
 export type FullCommitInfo = z.infer<typeof FullCommitInfoSchema>;
@@ -330,7 +331,7 @@ export const GitDiscardParamsSchema = z.object({
 });
 
 export const GetPatchByFilePathParamsSchema = z.object({
-  filePath: z.string(),stashReference: z.string().optional().optional(),
+  filePath: z.string(),stashReference: z.string().optional().optional(),commitHash: z.string().optional().optional(),parentIndex: z.coerce.number().optional().optional(),
 });
 
 export const CommitByIdParamsSchema = z.object({
