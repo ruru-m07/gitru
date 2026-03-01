@@ -973,7 +973,11 @@ const ListFileChanges = ({
         ) : null}
         <WriteCommitBox />
       </TabsPanel>
-      <TabsPanel value="tab-2" className={"h-full"} tabIndex={-1}>
+      <TabsPanel
+        value="tab-2"
+        className={"flex-1 flex flex-col min-h-0"}
+        tabIndex={-1}
+      >
         <div className="border-b max-h-10 min-h-10 p-1.5">
           <Group aria-label="Subscription actions" className="w-full">
             <Input
@@ -999,7 +1003,7 @@ const ListFileChanges = ({
             </Button>
           </Group>
         </div>
-        <ScrollArea className="flex-1 h-full" tabIndex={-1}>
+        <ScrollArea scrollFade tabIndex={-1} className={""}>
           {commitHistory?.map((commit) => (
             <div
               className="w-full p-2 border-b hover:bg-accent cursor-pointer"
@@ -1086,7 +1090,6 @@ const ListFileChanges = ({
               </div>
             </div>
           ))}
-          <div className="h-20" />
         </ScrollArea>
       </TabsPanel>
     </Tabs>
