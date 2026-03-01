@@ -33,6 +33,7 @@ import HistoryGraph from "@/components/historyGraph";
 import LoaderIndicator from "@/components/loaderIndicator";
 import { GitruBorderedSVG } from "@/components/svgs/gitru-borderd";
 import {
+  useGetCommitById,
   useGetCurrentBranch,
   useGetCurrentBranchStash,
   useGetDiff,
@@ -48,7 +49,7 @@ import { UnifiedSVG } from "../../../components/svgs/unifiedSVG";
 import {
   type ResolvedFileSelection,
   resolveFileSelection,
-} from "./gitSelectionResolver";
+} from "../../../lib/gitSelectionResolver";
 
 export const Route = createFileRoute("/app/git/")({
   component: App,
@@ -78,15 +79,24 @@ const DiffBoxBody = () => {
   const repoPath = selectedRepository?.path ?? "";
   const gitViewState = gitViewByRepo[repoPath];
   const activeSource =
-    gitViewState?.leftPanelView === "stash" ? "stash" : "worktree";
+    gitViewState?.leftPanelView === "stash"
+      ? "stash"
+      : gitViewState?.leftPanelView === "history"
+        ? "history"
+        : "worktree";
   const activeStashReference =
     activeSource === "stash"
       ? gitViewState?.stashViewMode === "branch"
         ? (currentBranchStash?.reference ?? null)
         : (gitViewState?.selectedStashReference ?? null)
       : null;
+  const activeHistoryCommitHash =
+    activeSource === "history"
+      ? (gitViewState?.selectedHistoryCommitHash ?? null)
+      : null;
 
   const { data: stashShow } = useStashShow(activeStashReference);
+  const { data: historyCommit } = useGetCommitById(activeHistoryCommitHash ?? "");
 
   const activeSelection =
     activeSource === "stash"
@@ -94,6 +104,12 @@ const DiffBoxBody = () => {
         ? (selectionByRepo[repoPath]?.stashByReference[activeStashReference] ??
           null)
         : null
+      : activeSource === "history"
+        ? activeHistoryCommitHash
+          ? (selectionByRepo[repoPath]?.historyByCommit?.[
+              activeHistoryCommitHash
+            ] ?? null)
+          : null
       : (selectionByRepo[repoPath]?.worktree ?? null);
 
   const resolvedSelection = resolveFileSelection({
@@ -101,11 +117,14 @@ const DiffBoxBody = () => {
     files:
       activeSource === "stash"
         ? (stashShow?.files ?? [])
+        : activeSource === "history"
+          ? (historyCommit?.files ?? [])
         : (status?.files ?? []),
     context: {
       source: activeSource,
       stashReference: activeStashReference,
       availableStashReferences: (stashes ?? []).map((stash) => stash.reference),
+      historyCommitHash: activeHistoryCommitHash,
     },
   });
 
@@ -119,6 +138,11 @@ const DiffBoxBody = () => {
             stashReference={
               resolvedSelection.identity.source === "stash"
                 ? (resolvedSelection.identity.stashReference ?? null)
+                : null
+            }
+            commitHash={
+              resolvedSelection.identity.source === "history"
+                ? (resolvedSelection.identity.historyCommitHash ?? null)
                 : null
             }
           />
@@ -251,6 +275,9 @@ const FileLevelStatusBar = ({
   const clearStashSelectionForRepo = useAppStore(
     (state) => state.clearStashSelectionForRepo,
   );
+  const clearHistorySelectionForRepo = useAppStore(
+    (state) => state.clearHistorySelectionForRepo,
+  );
   const setMainWindowView = useAppStore((state) => state.setMainWindowView);
 
   return (
@@ -274,6 +301,11 @@ const FileLevelStatusBar = ({
               return;
             }
 
+            if (selection.source === "history" && selection.historyCommitHash) {
+              clearHistorySelectionForRepo(selection.historyCommitHash);
+              return;
+            }
+
             clearWorktreeSelectionForRepo();
           }}
         >
@@ -289,12 +321,16 @@ const FileLevelStatusBar = ({
 const DiffArea = ({
   filePath,
   stashReference,
+  commitHash,
 }: {
   filePath: string;
   stashReference: string | null;
+  commitHash: string | null;
 }) => {
   const { data: diffData, isLoading } = useGetDiff(filePath, {
     stashReference,
+    commitHash,
+    parentIndex: commitHash ? 1 : undefined,
   });
   const { diffStyle, overflow } = useDiffViewerSettings();
   const { theme } = useTheme();

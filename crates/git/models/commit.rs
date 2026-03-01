@@ -1,3 +1,4 @@
+use crate::models::status::FileStatus;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -37,6 +38,7 @@ pub struct FullCommitInfo {
     pub body: String,
     pub authors: CommitAuthors,
     pub stats: CommitStats,
+    pub files: Vec<FileStatus>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

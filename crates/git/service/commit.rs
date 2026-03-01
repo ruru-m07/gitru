@@ -2,6 +2,7 @@ use crate::cache::{CachePolicy, TTL_COMMIT_BY_ID, TTL_LAST_COMMIT};
 use crate::context::RepoContext;
 use crate::models::commit::{CommitInfo, CommitMessage, FullCommitInfo};
 use crate::parsers::commit::{parse_commit_record, parse_shortstat};
+use crate::parsers::status::parse_name_status_z;
 use crate::runner::GitRunOptions;
 use std::sync::Arc;
 
@@ -78,6 +79,13 @@ impl CommitService {
                         .await?;
 
                     let stats = parse_shortstat(&stats_output);
+                    let files_output = runner
+                        .run_with_options(
+                            &["show", "--name-status", "-z", "--format=", &hash],
+                            GitRunOptions::default_read(),
+                        )
+                        .await?;
+                    let files = parse_name_status_z(files_output.as_bytes())?;
 
                     Ok(FullCommitInfo {
                         id: commit_info.id,
@@ -86,6 +94,7 @@ impl CommitService {
                         body: commit_info.body,
                         authors: commit_info.authors,
                         stats,
+                        files,
                     })
                 },
             )

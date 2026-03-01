@@ -10,12 +10,13 @@ import {
 } from "@gitru/ui/components/menu";
 import { Check, ChevronDownIcon } from "lucide-react";
 import {
+  useGetCommitById,
   useGetCurrentBranchStash,
   useGetStatus,
   useStashList,
   useStashShow,
 } from "@/hooks";
-import { resolveFileSelection } from "@/routes/app/git/gitSelectionResolver";
+import { resolveFileSelection } from "@/lib/gitSelectionResolver";
 import { ExternalOpener, useAppStore } from "@/store/useAppStore";
 
 const EXTERNAL_OPENER_OPTIONS: {
@@ -67,35 +68,50 @@ const OpenWith = () => {
   const repoPath = selectedRepository?.path ?? "";
   const gitViewState = gitViewByRepo[repoPath];
   const activeSource =
-    gitViewState?.leftPanelView === "stash" ? "stash" : "worktree";
+    gitViewState?.leftPanelView === "stash"
+      ? "stash"
+      : gitViewState?.leftPanelView === "history"
+        ? "history"
+        : "worktree";
   const { data: currentBranchStash } = useGetCurrentBranchStash();
   const { data: status } = useGetStatus();
   const { data: stashes } = useStashList();
   const activeStashReference =
-    gitViewState?.leftPanelView === "stash"
+    activeSource === "stash"
       ? gitViewState?.stashViewMode === "branch"
         ? (currentBranchStash?.reference ?? null)
         : (gitViewState?.selectedStashReference ?? null)
       : null;
+  const activeHistoryCommitHash =
+    activeSource === "history"
+      ? (gitViewState?.selectedHistoryCommitHash ?? null)
+      : null;
   const { data: stashShow } = useStashShow(activeStashReference);
+  const { data: historyCommit } = useGetCommitById(activeHistoryCommitHash ?? "");
   const activeSelection =
     activeSource === "stash" && activeStashReference
       ? (selectionByRepo[repoPath]?.stashByReference[activeStashReference] ??
         null)
+      : activeSource === "history" && activeHistoryCommitHash
+        ? (selectionByRepo[repoPath]?.historyByCommit?.[activeHistoryCommitHash] ??
+          null)
       : (selectionByRepo[repoPath]?.worktree ?? null);
   const resolvedSelection = resolveFileSelection({
     selection: activeSelection,
     files:
       activeSource === "stash"
         ? (stashShow?.files ?? [])
+        : activeSource === "history"
+          ? (historyCommit?.files ?? [])
         : (status?.files ?? []),
     context: {
       source: activeSource,
       stashReference: activeStashReference,
       availableStashReferences: (stashes ?? []).map((stash) => stash.reference),
+      historyCommitHash: activeHistoryCommitHash,
     },
   });
-  const canOpen = resolvedSelection.state === "valid";
+  const canOpen = resolvedSelection.state === "valid" && activeSource !== "history";
 
   const selectedOpenerOption = getOpenerOption(preferredExternalOpener);
 

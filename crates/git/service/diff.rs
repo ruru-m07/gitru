@@ -7,6 +7,8 @@ use crate::{
     runner::GitRunOptions,
 };
 
+const EMPTY_TREE_HASH: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
 pub struct DiffService {
     ctx: Arc<RepoContext>,
 }
@@ -21,18 +23,32 @@ impl DiffService {
         &self,
         file_path: &str,
         stash_reference: Option<&str>,
+        commit_hash: Option<&str>,
+        parent_index: Option<usize>,
     ) -> Result<String, String> {
+        if stash_reference.is_some() && commit_hash.is_some() {
+            return Err("Cannot request stash and commit diff together".to_string());
+        }
+
         if let Some(reference) = stash_reference {
             validate_stash_ref(reference)?;
+        }
+        if let Some(hash) = commit_hash {
+            validate_commit_hash(hash)?;
         }
 
         let runner = self.ctx.runner.clone();
         let repo_path = self.ctx.repo_path.clone();
         let file_path = file_path.to_string();
         let stash_reference = stash_reference.map(str::to_string);
+        let commit_hash = commit_hash.map(str::to_string);
+        let parent_index = parent_index.unwrap_or(1).max(1);
         let cache_key = match &stash_reference {
             Some(reference) => format!("stash:{reference}:{file_path}"),
-            None => format!("worktree:{file_path}"),
+            None => match &commit_hash {
+                Some(hash) => format!("commit:{hash}:p{parent_index}:{file_path}"),
+                None => format!("worktree:{file_path}"),
+            },
         };
 
         self.ctx
@@ -60,6 +76,27 @@ impl DiffService {
                             .await?;
 
                         return Ok(extract_single_diff_for_path(&out, &file_path));
+                    }
+
+                    if let Some(hash) = commit_hash {
+                        let base = resolve_commit_diff_base(&runner, &hash, parent_index).await?;
+                        let out = runner
+                            .run_with_options(
+                                &[
+                                    "diff",
+                                    "--no-ext-diff",
+                                    "--patch-with-raw",
+                                    "--no-color",
+                                    &base,
+                                    &hash,
+                                    "--",
+                                    &file_path,
+                                ],
+                                GitRunOptions::default_read().allow_exit_codes(&[1]),
+                            )
+                            .await?;
+
+                        return Ok(out);
                     }
 
                     let out = runner
@@ -107,6 +144,44 @@ impl DiffService {
             )
             .await
     }
+}
+
+async fn resolve_commit_diff_base(
+    runner: &crate::runner::GitCommandRunner,
+    commit_hash: &str,
+    parent_index: usize,
+) -> Result<String, String> {
+    let parents = runner
+        .run_with_options(
+            &["show", "-s", "--format=%P", commit_hash],
+            GitRunOptions::default_read(),
+        )
+        .await?;
+
+    let parent_oids: Vec<&str> = parents.split_whitespace().collect();
+    if parent_oids.is_empty() {
+        return Ok(EMPTY_TREE_HASH.to_string());
+    }
+
+    parent_oids
+        .get(parent_index.saturating_sub(1))
+        .map(|oid| (*oid).to_string())
+        .ok_or_else(|| format!("Parent #{parent_index} not found for commit {commit_hash}"))
+}
+
+fn validate_commit_hash(hash: &str) -> Result<(), String> {
+    let is_valid = (4..=64).contains(&hash.len())
+        && hash
+            .chars()
+            .all(|ch| ch.is_ascii_hexdigit() || ch == '^' || ch == '~');
+
+    if is_valid {
+        return Ok(());
+    }
+
+    Err(format!(
+        "Invalid commit hash '{hash}': expected abbreviated or full git oid"
+    ))
 }
 
 fn extract_single_diff_for_path(output: &str, file_path: &str) -> String {

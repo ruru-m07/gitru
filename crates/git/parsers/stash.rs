@@ -1,5 +1,6 @@
 use crate::models::stash::{StashEntry, StashQuickStat};
-use crate::models::status::{FileStatus, FileStatusKind};
+use crate::models::status::FileStatus;
+use crate::parsers::status::parse_name_status_z;
 
 /// Parse the output of `git stash list --format=%gd%x1f%gs`.
 ///
@@ -89,73 +90,7 @@ pub fn parse_stash_stat(output: &str, reference: &str) -> Result<StashQuickStat,
 ///   `<status>\0<path>\0` for regular changes
 ///   `<status>\0<new_path>\0<old_path>\0` for renames/copies
 pub fn parse_stash_file_status(output: &[u8]) -> Result<Vec<FileStatus>, String> {
-    let mut result = Vec::new();
-    let segments: Vec<&[u8]> = output.split(|b| *b == 0).collect();
-    let mut i = 0;
-
-    while i < segments.len() {
-        let segment = segments[i];
-        if segment.is_empty() {
-            i += 1;
-            continue;
-        }
-
-        let status_str = std::str::from_utf8(segment).map_err(|e| e.to_string())?;
-        let first_char = status_str.as_bytes().first().copied().unwrap_or(b'?');
-
-        match first_char {
-            b'R' | b'C' => {
-                // Rename/Copy with --name-status -z:
-                // status\0old_path\0new_path\0
-                let old_path = segments
-                    .get(i + 1)
-                    .and_then(|s| std::str::from_utf8(s).ok())
-                    .unwrap_or("")
-                    .to_string();
-                let new_path = segments
-                    .get(i + 2)
-                    .and_then(|s| std::str::from_utf8(s).ok())
-                    .unwrap_or("")
-                    .to_string();
-
-                result.push(FileStatus {
-                    path: old_path,
-                    new_path: Some(new_path),
-                    status: vec![FileStatusKind::IndexRenamed],
-                });
-                i += 3;
-            }
-            b'A' | b'M' | b'D' | b'T' => {
-                // Regular change: next NUL-segment is the path
-                let path = segments
-                    .get(i + 1)
-                    .and_then(|s| std::str::from_utf8(s).ok())
-                    .unwrap_or("")
-                    .to_string();
-
-                let kind = match first_char {
-                    b'A' => FileStatusKind::IndexNew,
-                    b'M' => FileStatusKind::IndexModified,
-                    b'D' => FileStatusKind::IndexDeleted,
-                    b'T' => FileStatusKind::IndexTypechange,
-                    _ => unreachable!(),
-                };
-
-                result.push(FileStatus {
-                    path,
-                    new_path: None,
-                    status: vec![kind],
-                });
-                i += 2;
-            }
-            _ => {
-                // Unknown status — skip
-                i += 1;
-            }
-        }
-    }
-
-    Ok(result)
+    parse_name_status_z(output)
 }
 
 /// Parse a `!!Gitru<from> -> <to>` stash message.

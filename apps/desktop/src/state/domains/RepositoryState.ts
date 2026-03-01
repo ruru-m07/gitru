@@ -40,16 +40,30 @@ class DiffState extends StateDomain {
     this.baseKey = ["repository", "diff"] as const;
   }
 
-  async get(filePath: string, options?: { stashReference?: string }) {
+  async get(
+    filePath: string,
+    options?: {
+      stashReference?: string;
+      commitHash?: string;
+      parentIndex?: number;
+    },
+  ) {
+    const sourceScope = options?.stashReference
+      ? `stash:${options.stashReference}`
+      : options?.commitHash
+        ? `commit:${options.commitHash}:p${options.parentIndex ?? 1}`
+        : "worktree";
     const queryKey = [
       ...this.baseKey,
-      options?.stashReference ? `stash:${options.stashReference}` : "worktree",
+      sourceScope,
       filePath,
     ];
 
     const data = await getPatchByFilePath({
       filePath: filePath,
       stashReference: options?.stashReference,
+      commitHash: options?.commitHash,
+      parentIndex: options?.parentIndex,
     });
 
     this.queryClient.setQueryData(queryKey, data);
@@ -57,10 +71,22 @@ class DiffState extends StateDomain {
     return data;
   }
 
-  getQueryKey(filePath: string, stashReference?: string) {
+  getDiffQueryKey(
+    filePath: string,
+    options?: {
+      stashReference?: string;
+      commitHash?: string;
+      parentIndex?: number;
+    },
+  ) {
+    const sourceScope = options?.stashReference
+      ? `stash:${options.stashReference}`
+      : options?.commitHash
+        ? `commit:${options.commitHash}:p${options.parentIndex ?? 1}`
+        : "worktree";
     return [
       ...this.baseKey,
-      stashReference ? `stash:${stashReference}` : "worktree",
+      sourceScope,
       filePath,
     ];
   }

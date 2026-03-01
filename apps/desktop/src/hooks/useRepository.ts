@@ -90,19 +90,32 @@ export function useGetDiff(
   filePath: string | null,
   params?: {
     stashReference?: string | null;
+    commitHash?: string | null;
+    parentIndex?: number;
   },
   options?: QueryOptions<FileDiff>,
 ) {
   const repo = appState.repository;
   const stashReference = params?.stashReference ?? null;
+  const commitHash = params?.commitHash ?? null;
+  const parentIndex = params?.parentIndex ?? 1;
+  const sourceScope = stashReference
+    ? `stash:${stashReference}`
+    : commitHash
+      ? `commit:${commitHash}:p${parentIndex}`
+      : "worktree";
 
   return useQuery({
     queryKey: filePath
-      ? (repo?.diff.getQueryKey(filePath, stashReference ?? undefined) ?? [
+      ? (repo?.diff.getDiffQueryKey(filePath, {
+          stashReference: stashReference ?? undefined,
+          commitHash: commitHash ?? undefined,
+          parentIndex,
+        }) ?? [
           "repository",
           "none",
           "diff",
-          stashReference ? `stash:${stashReference}` : "worktree",
+          sourceScope,
           filePath,
         ])
       : ["repository", "none", "diff"],
@@ -116,6 +129,8 @@ export function useGetDiff(
       const start = performance.now();
       const result = await repo.diff.get(filePath, {
         stashReference: stashReference ?? undefined,
+        commitHash: commitHash ?? undefined,
+        parentIndex,
       });
       const end = performance.now();
 
@@ -173,6 +188,9 @@ export function useGetCommitHistory(options?: QueryOptions<CommitInfo[]>) {
 
 export function useGitHistoryGraph(
   params: Partial<HistoryGraphParams["query"]> = {},
+  options?: {
+    enabled?: boolean;
+  },
 ) {
   const repo = appState.repository;
   const baseParams: HistoryGraphParams["query"] = {
@@ -194,7 +212,7 @@ export function useGitHistoryGraph(
     (string | HistoryGraphParams["query"])[],
     HistoryGraphParams["query"]
   >({
-    enabled: !!repo,
+    enabled: (options?.enabled ?? true) && !!repo,
     placeholderData: {
       pages: [],
       pageParams: [],
@@ -251,9 +269,10 @@ export function useGetCommitById(
     ],
     queryFn: async () => {
       if (!repo) return null;
+      if (!hash) return null;
       return await repo.commit.getCommitById(hash);
     },
-    enabled: !!repo,
+    enabled: !!repo && !!hash,
     ...options,
   });
 }

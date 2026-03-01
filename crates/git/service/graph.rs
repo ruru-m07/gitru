@@ -667,6 +667,7 @@ fn build_full_commit_info(entry: &GraphLogEntry, stats: CommitStats) -> FullComm
         timestamp: entry.committer_time,
         authors,
         stats,
+        files: Vec::new(),
     }
 }
 

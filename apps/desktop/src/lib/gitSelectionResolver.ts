@@ -24,6 +24,7 @@ type ResolveSelectionParams = {
     source: SelectionSource;
     stashReference?: string | null;
     availableStashReferences?: string[];
+    historyCommitHash?: string | null;
   };
 };
 
@@ -92,6 +93,24 @@ export const resolveFileSelection = ({
         state: "stale",
         identity: selection,
         reason: "stash_removed",
+      };
+    }
+  }
+
+  if (selection.source === "history") {
+    if (!selection.historyCommitHash || !context.historyCommitHash) {
+      return {
+        state: "stale",
+        identity: selection,
+        reason: "source_mismatch",
+      };
+    }
+
+    if (selection.historyCommitHash !== context.historyCommitHash) {
+      return {
+        state: "stale",
+        identity: selection,
+        reason: "source_mismatch",
       };
     }
   }

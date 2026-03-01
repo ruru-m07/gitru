@@ -35,17 +35,10 @@ impl HistoryService {
                 },
                 key,
                 move || async move {
+                    let format_arg = format!("--format={COMMIT_STANDARD_FORMAT}");
                     let output = runner
                         .run_with_options(
-                            &[
-                                "log",
-                                "--format",
-                                COMMIT_STANDARD_FORMAT,
-                                "--skip",
-                                &skip_str,
-                                "-n",
-                                &limit_str,
-                            ],
+                            &["log", &format_arg, "--skip", &skip_str, "-n", &limit_str],
                             GitRunOptions::default_read().with_timeout(Duration::from_secs(60)),
                         )
                         .await?;
