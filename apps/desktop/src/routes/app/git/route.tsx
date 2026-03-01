@@ -15,6 +15,7 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@gitru/ui/components/avatar";
+import { Badge } from "@gitru/ui/components/badge";
 import { Button } from "@gitru/ui/components/button";
 import { CopyButton } from "@gitru/ui/components/copy-button";
 import {
@@ -80,6 +81,7 @@ import {
   Loader2,
   SearchIcon,
   Sparkles,
+  Tags,
   Undo2,
   UserPlus,
 } from "lucide-react";
@@ -1226,6 +1228,43 @@ const HistoryCommitInfiniteList = ({
                     </TooltipPopup>
                   </Tooltip>
                 </Label>
+              </div>
+              <div className="flex gap-1 items-center">
+                {row.tags.length > 0 && (
+                  <>
+                    <Tooltip>
+                      <TooltipTrigger className={"flex gap-0.5"}>
+                        <Tags
+                          className="size-3.5 text-muted-foreground"
+                          aria-label={`${row.tags.length} tags`}
+                        />
+                        <span className="text-xs text-muted-foreground tabular-nums font-normal">
+                          {row.tags.length}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipPopup>
+                        {row.tags.map((tag) => (
+                          <Badge key={tag.name}>{tag.name}</Badge>
+                        ))}
+                      </TooltipPopup>
+                    </Tooltip>
+                    <span className="text-xs text-muted-foreground">/</span>
+                  </>
+                )}
+
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Files className="size-3.5" />
+                  {row?.commit.stats?.files_changed ?? 0}
+                </span>
+
+                <span className="text-xs text-muted-foreground">/</span>
+
+                <span className="text-xs text-green-600 tabular-nums font-normal">
+                  +{row?.commit.stats?.insertions ?? 0}
+                </span>
+                <span className="text-xs text-red-600 tabular-nums font-normal">
+                  -{row?.commit.stats?.deletions ?? 0}
+                </span>
               </div>
             </TooltipProvider>
           </div>
