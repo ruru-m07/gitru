@@ -118,7 +118,7 @@ import {
 } from "@/lib/time";
 import { useAppStore } from "@/store/useAppStore";
 import { GIT_PROVIDERS } from "@/type";
-import { resolveFileSelection } from "./gitSelectionResolver";
+import { resolveFileSelection } from "../../../lib/gitSelectionResolver";
 
 const CoAuthers = z.array(z.tuple([z.string(), z.string()]));
 type CoAuthers = z.infer<typeof CoAuthers>;

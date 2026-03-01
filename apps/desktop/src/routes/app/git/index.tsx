@@ -48,7 +48,7 @@ import { UnifiedSVG } from "../../../components/svgs/unifiedSVG";
 import {
   type ResolvedFileSelection,
   resolveFileSelection,
-} from "./gitSelectionResolver";
+} from "../../../lib/gitSelectionResolver";
 
 export const Route = createFileRoute("/app/git/")({
   component: App,

@@ -15,7 +15,7 @@ import {
   useStashList,
   useStashShow,
 } from "@/hooks";
-import { resolveFileSelection } from "@/routes/app/git/gitSelectionResolver";
+import { resolveFileSelection } from "@/lib/gitSelectionResolver";
 import { ExternalOpener, useAppStore } from "@/store/useAppStore";
 
 const EXTERNAL_OPENER_OPTIONS: {
