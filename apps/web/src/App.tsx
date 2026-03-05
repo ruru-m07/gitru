@@ -85,7 +85,7 @@ function App(): React.ReactNode {
               target="_blank"
               rel="noopener noreferrer"
               className="pointer-events-auto hover:underline cursor-pointer hover:text-foreground text-muted-foreground group-hover:text-foreground transition-colors size-4"
-              href="https://x.com/ruru_x"
+              href="https://x.com/ruru_1x"
             >
               <svg fill="none" viewBox="0 0 1200 1227">
                 <path
