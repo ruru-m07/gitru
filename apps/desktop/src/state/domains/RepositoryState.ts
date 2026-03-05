@@ -2,6 +2,7 @@ import {
   BranchKind,
   BranchStash,
   CreateCommitParams,
+  FileStatusKind,
   commitById,
   createBranch,
   createCommit,
@@ -43,6 +44,8 @@ class DiffState extends StateDomain {
   async get(
     filePath: string,
     options?: {
+      fileNewPath?: string;
+      status?: FileStatusKind[];
       stashReference?: string;
       commitHash?: string;
       parentIndex?: number;
@@ -57,10 +60,14 @@ class DiffState extends StateDomain {
       ...this.baseKey,
       sourceScope,
       filePath,
+      options?.fileNewPath ?? "",
+      options?.status?.join(",") ?? "",
     ];
 
     const data = await getPatchByFilePath({
       filePath: filePath,
+      fileNewPath: options?.fileNewPath,
+      status: options?.status,
       stashReference: options?.stashReference,
       commitHash: options?.commitHash,
       parentIndex: options?.parentIndex,
@@ -74,6 +81,8 @@ class DiffState extends StateDomain {
   getDiffQueryKey(
     filePath: string,
     options?: {
+      fileNewPath?: string;
+      status?: FileStatusKind[];
       stashReference?: string;
       commitHash?: string;
       parentIndex?: number;
@@ -88,6 +97,8 @@ class DiffState extends StateDomain {
       ...this.baseKey,
       sourceScope,
       filePath,
+      options?.fileNewPath ?? "",
+      options?.status?.join(",") ?? "",
     ];
   }
 

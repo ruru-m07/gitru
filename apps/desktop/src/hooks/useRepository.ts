@@ -7,6 +7,7 @@ import type {
   CommitInfo,
   CreateCommitParams,
   FileDiff,
+  FileStatusKind,
   FullCommitInfo,
   GetStatusResponse,
   HistoryGraphParams,
@@ -89,6 +90,8 @@ export function useGetBranches(
 export function useGetDiff(
   filePath: string | null,
   params?: {
+    fileNewPath?: string | null;
+    status?: FileStatusKind[];
     stashReference?: string | null;
     commitHash?: string | null;
     parentIndex?: number;
@@ -98,6 +101,8 @@ export function useGetDiff(
   const repo = appState.repository;
   const stashReference = params?.stashReference ?? null;
   const commitHash = params?.commitHash ?? null;
+  const fileNewPath = params?.fileNewPath ?? null;
+  const status = params?.status ?? [];
   const parentIndex = params?.parentIndex ?? 1;
   const sourceScope = stashReference
     ? `stash:${stashReference}`
@@ -110,6 +115,8 @@ export function useGetDiff(
       ? (repo?.diff.getDiffQueryKey(filePath, {
           stashReference: stashReference ?? undefined,
           commitHash: commitHash ?? undefined,
+          fileNewPath: fileNewPath ?? undefined,
+          status: status.length > 0 ? status : undefined,
           parentIndex,
         }) ?? [
           "repository",
@@ -117,6 +124,8 @@ export function useGetDiff(
           "diff",
           sourceScope,
           filePath,
+          fileNewPath ?? "",
+          status.join(","),
         ])
       : ["repository", "none", "diff"],
     // queryFn: async () => {
@@ -130,6 +139,8 @@ export function useGetDiff(
       const result = await repo.diff.get(filePath, {
         stashReference: stashReference ?? undefined,
         commitHash: commitHash ?? undefined,
+        fileNewPath: fileNewPath ?? undefined,
+        status: status.length > 0 ? status : undefined,
         parentIndex,
       });
       const end = performance.now();
