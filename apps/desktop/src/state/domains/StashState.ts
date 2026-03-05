@@ -15,8 +15,8 @@ import {
   stashPop,
   stashPush,
   stashQuickStat,
-  stashShow,
   stashRestoreFile,
+  stashShow,
 } from "@gitru/commands";
 import { QueryClient } from "@tanstack/react-query";
 import { StateDomain } from "../core/StateManager";

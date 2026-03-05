@@ -88,7 +88,8 @@ self.onmessage = async (event: MessageEvent<PixelDiffInput>) => {
 
     self.postMessage(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "unknown worker error";
+    const message =
+      error instanceof Error ? error.message : "unknown worker error";
     self.postMessage({ error: message });
   }
 };

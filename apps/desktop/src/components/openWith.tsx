@@ -87,15 +87,18 @@ const OpenWith = () => {
       ? (gitViewState?.selectedHistoryCommitHash ?? null)
       : null;
   const { data: stashShow } = useStashShow(activeStashReference);
-  const { data: historyCommit } = useGetCommitById(activeHistoryCommitHash ?? "");
+  const { data: historyCommit } = useGetCommitById(
+    activeHistoryCommitHash ?? "",
+  );
   const activeSelection =
     activeSource === "stash" && activeStashReference
       ? (selectionByRepo[repoPath]?.stashByReference[activeStashReference] ??
         null)
       : activeSource === "history" && activeHistoryCommitHash
-        ? (selectionByRepo[repoPath]?.historyByCommit?.[activeHistoryCommitHash] ??
-          null)
-      : (selectionByRepo[repoPath]?.worktree ?? null);
+        ? (selectionByRepo[repoPath]?.historyByCommit?.[
+            activeHistoryCommitHash
+          ] ?? null)
+        : (selectionByRepo[repoPath]?.worktree ?? null);
   const resolvedSelection = resolveFileSelection({
     selection: activeSelection,
     files:
@@ -103,7 +106,7 @@ const OpenWith = () => {
         ? (stashShow?.files ?? [])
         : activeSource === "history"
           ? (historyCommit?.files ?? [])
-        : (status?.files ?? []),
+          : (status?.files ?? []),
     context: {
       source: activeSource,
       stashReference: activeStashReference,
@@ -111,7 +114,8 @@ const OpenWith = () => {
       historyCommitHash: activeHistoryCommitHash,
     },
   });
-  const canOpen = resolvedSelection.state === "valid" && activeSource !== "history";
+  const canOpen =
+    resolvedSelection.state === "valid" && activeSource !== "history";
 
   const selectedOpenerOption = getOpenerOption(preferredExternalOpener);
 

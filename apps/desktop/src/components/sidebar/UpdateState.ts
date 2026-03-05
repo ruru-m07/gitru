@@ -40,9 +40,8 @@ type UpdaterDownloadProgressEvent = {
 
 export function useUpdateState(channel: UpdateChannel) {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>("idle");
-  const [availableUpdate, setAvailableUpdate] = useState<AvailableUpdate | null>(
-    null,
-  );
+  const [availableUpdate, setAvailableUpdate] =
+    useState<AvailableUpdate | null>(null);
   const [downloadProgress, setDownloadProgress] =
     useState<DownloadProgress | null>(null);
 
@@ -136,7 +135,10 @@ export function useUpdateState(channel: UpdateChannel) {
         if (payload.phase === "Progress") {
           setUpdateStatus("downloading");
           setDownloadProgress({
-            percent: Math.max(0, Math.min(100, Math.round(payload.percent ?? 0))),
+            percent: Math.max(
+              0,
+              Math.min(100, Math.round(payload.percent ?? 0)),
+            ),
             downloadedBytes: payload.downloaded ?? 0,
             totalBytes: payload.contentLength ?? 0,
           });

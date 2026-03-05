@@ -6,7 +6,6 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use crate::{
     cache::{CachePolicy, TTL_PATCH_BY_FILE_PATH},
     context::RepoContext,
@@ -17,6 +16,7 @@ use crate::{
     parsers::stash::validate_stash_ref,
     runner::GitRunOptions,
 };
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 
 const EMPTY_TREE_HASH: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 const IMAGE_DIFF_TEMP_DIR: &str = "gitru-image-diff";
@@ -185,6 +185,7 @@ impl DiffService {
             .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn resolve_asset_diff(
         &self,
         file_path: &str,
