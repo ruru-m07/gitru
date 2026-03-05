@@ -19,4 +19,28 @@ pub struct GetDiffResponse {
 #[derive(Serialize)]
 pub struct FileDiff {
     pub patch: String,
+    pub asset_diff: Option<AssetDiff>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum AssetDiffKind {
+    Image,
+    Binary,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct AssetDiffEntry {
+    pub absolute_path: String,
+    pub mime: String,
+    pub bytes: usize,
+    pub logical_path: String,
+    pub contents_base64: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct AssetDiff {
+    pub kind: AssetDiffKind,
+    pub before: Option<AssetDiffEntry>,
+    pub after: Option<AssetDiffEntry>,
 }

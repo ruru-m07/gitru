@@ -14,7 +14,11 @@ export type UpdateChannelItem = {
 };
 
 const CHANNELS: UpdateChannelItem[] = [
-  { id: "stable", label: "Stable", keywords: ["stable", "release", "production"] },
+  {
+    id: "stable",
+    label: "Stable",
+    keywords: ["stable", "release", "production"],
+  },
   { id: "beta", label: "Beta", keywords: ["beta", "test", "preview"] },
 ];
 
@@ -79,7 +83,9 @@ export function useSwitchUpdateChannelView(): CommandViewConfig<
                   {item.id}
                 </span>
               </div>
-              {currentChannel === item.id ? <CheckIcon className="size-4" /> : null}
+              {currentChannel === item.id ? (
+                <CheckIcon className="size-4" />
+              ) : null}
             </div>
           )}
           onSelect={(item) => {

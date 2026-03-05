@@ -1,3 +1,4 @@
+import type { FileStatusKind } from "@gitru/commands";
 import { DiffViewer } from "@gitru/diff";
 import { Button } from "@gitru/ui/components/button";
 import { CopyButton } from "@gitru/ui/components/copy-button";
@@ -27,6 +28,7 @@ import {
   X,
 } from "lucide-react";
 import { useTheme } from "next-themes";
+import { ImageDiffViewer } from "@/components/diff/image/ImageDiffViewer";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
 import HistoryGraph from "@/components/historyGraph";
@@ -96,7 +98,9 @@ const DiffBoxBody = () => {
       : null;
 
   const { data: stashShow } = useStashShow(activeStashReference);
-  const { data: historyCommit } = useGetCommitById(activeHistoryCommitHash ?? "");
+  const { data: historyCommit } = useGetCommitById(
+    activeHistoryCommitHash ?? "",
+  );
 
   const activeSelection =
     activeSource === "stash"
@@ -110,7 +114,7 @@ const DiffBoxBody = () => {
               activeHistoryCommitHash
             ] ?? null)
           : null
-      : (selectionByRepo[repoPath]?.worktree ?? null);
+        : (selectionByRepo[repoPath]?.worktree ?? null);
 
   const resolvedSelection = resolveFileSelection({
     selection: activeSelection,
@@ -119,7 +123,7 @@ const DiffBoxBody = () => {
         ? (stashShow?.files ?? [])
         : activeSource === "history"
           ? (historyCommit?.files ?? [])
-        : (status?.files ?? []),
+          : (status?.files ?? []),
     context: {
       source: activeSource,
       stashReference: activeStashReference,
@@ -135,6 +139,8 @@ const DiffBoxBody = () => {
           <FileLevelStatusBar resolvedSelection={resolvedSelection} />
           <DiffArea
             filePath={resolvedSelection.file.path}
+            fileNewPath={resolvedSelection.file.new_path ?? null}
+            status={resolvedSelection.file.status}
             stashReference={
               resolvedSelection.identity.source === "stash"
                 ? (resolvedSelection.identity.stashReference ?? null)
@@ -174,7 +180,7 @@ const MainActionBar = () => {
               <span className="text-xs text-muted-foreground font-normal">
                 Current Branch
               </span>
-              <span className="truncate w-full text-left  ">
+              <span className="truncate block w-full text-left">
                 {currentBranch?.display_name}
               </span>
             </div>
@@ -224,13 +230,13 @@ const MainActionBar = () => {
         ) : (
           <>
             <Button
-              className="flex border-x-0 justify-between items-center min-h-full rounded-none min-w-60"
+              className="flex border-x-0 justify-between items-center min-h-full rounded-none max-w-60 w-60"
               variant={"ghost"}
               onClick={async () => {
                 await push();
               }}
             >
-              <div className="flex items-center justify-center gap-4">
+              <div className="flex items-center gap-4 min-w-0 flex-1">
                 {isPending ? (
                   <Loader2
                     className="animate-spin size-7.5"
@@ -239,11 +245,13 @@ const MainActionBar = () => {
                 ) : (
                   <ArrowUpFromLine className="size-7.5" strokeWidth={1.5} />
                 )}
-                <div className="flex-col flex items-start">
+                <div className="flex flex-col flex-1 items-start min-w-0">
                   <span className="text-xs text-muted-foreground font-normal">
                     Publish Branch
                   </span>
-                  <span>Published as {currentBranch?.name}</span>
+                  <span className="truncate block w-full text-left">
+                    Published as {currentBranch?.name}
+                  </span>
                 </div>
               </div>
             </Button>
@@ -320,20 +328,31 @@ const FileLevelStatusBar = ({
 
 const DiffArea = ({
   filePath,
+  fileNewPath,
+  status,
   stashReference,
   commitHash,
 }: {
   filePath: string;
+  fileNewPath: string | null;
+  status: FileStatusKind[];
   stashReference: string | null;
   commitHash: string | null;
 }) => {
   const { data: diffData, isLoading } = useGetDiff(filePath, {
+    fileNewPath,
+    status,
     stashReference,
     commitHash,
     parentIndex: commitHash ? 1 : undefined,
   });
   const { diffStyle, overflow } = useDiffViewerSettings();
   const { theme } = useTheme();
+  const assetKind = String(diffData?.asset_diff?.kind ?? "").toLowerCase();
+  const isImageAssetDiff = assetKind === "image";
+  const imageAssetDiff = isImageAssetDiff
+    ? (diffData?.asset_diff ?? null)
+    : null;
 
   return (
     <div
@@ -347,7 +366,8 @@ const DiffArea = ({
         </div>
       ) : (
         <>
-          {diffData?.patch && (
+          {imageAssetDiff ? <ImageDiffViewer diff={imageAssetDiff} /> : null}
+          {diffData?.patch && !isImageAssetDiff && (
             <DiffViewer
               patch={diffData?.patch}
               options={{

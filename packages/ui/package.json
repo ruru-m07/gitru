@@ -33,7 +33,7 @@
     "@tanstack/react-virtual": "^3.13.18",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.575.0",
+    "lucide-react": "catalog:",
     "motion": "^12.34.3",
     "react": "catalog:",
     "react-aria-components": "^1.6.0",

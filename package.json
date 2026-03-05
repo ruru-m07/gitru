@@ -30,6 +30,7 @@
       "@types/react-dom": "^19.0.0",
       "@tauri-apps/api": "^2.10.1",
       "react-resizable-panels": "4",
+      "lucide-react": "^0.577.0",
       "zod": "^4.3.5"
     }
   }

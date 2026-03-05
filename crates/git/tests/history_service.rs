@@ -44,9 +44,8 @@ fn history_empty_repo_returns_empty() {
         let svc = setup(&repo);
         let result = svc.history(0, 50).await;
         // Acceptable outcomes: error OR empty vec
-        match result {
-            Ok(commits) => assert!(commits.is_empty(), "empty repo should have no commits"),
-            Err(_) => {} // git log exits non-zero on an empty repo – also fine
+        if let Ok(commits) = result {
+            assert!(commits.is_empty(), "empty repo should have no commits")
         }
     });
 }

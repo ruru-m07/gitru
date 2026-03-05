@@ -14,16 +14,21 @@ import {
 } from "@gitru/ui/components/tooltip";
 import { Download, Plus, RotateCcw } from "lucide-react";
 import { useAppStore } from "@/store/useAppStore";
-import { useUpdateState } from "./UpdateState";
 import SideBarItems from "./items";
+import { useUpdateState } from "./UpdateState";
 
 const CIRCLE_RADIUS = 12;
 const CIRCLE_CIRCUMFERENCE = 2 * Math.PI * CIRCLE_RADIUS;
 
 const Sidebar = () => {
   const updateChannel = useAppStore((s) => s.updateChannel);
-  const { updateStatus, availableUpdate, downloadProgress, startDownloadAndInstall, restartApp } =
-    useUpdateState(updateChannel);
+  const {
+    updateStatus,
+    availableUpdate,
+    downloadProgress,
+    startDownloadAndInstall,
+    restartApp,
+  } = useUpdateState(updateChannel);
 
   const showUpdateAction =
     updateStatus === "available" ||
@@ -152,21 +157,30 @@ const Sidebar = () => {
         {showUpdateAction ? (
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger render={  <Button
-                  variant={updateStatus === "available" || updateStatus === "downloaded" ? "default" : "ghost"}
-                  size="icon-sm"
-                  className="p-0 mb-1"
-                  onClick={handleUpdateAction}
-                  disabled={updateStatus === "downloading"}
-                  aria-label={updateTooltip}
-                />}>              
-                  {updateStatus === "downloading" ? (
-                    <DownloadProgressIcon percent={progressPercent} />
-                  ) : updateStatus === "downloaded" ? (
-                    <RotateCcw />
-                  ) : (
-                    <Download />
-                  )}
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant={
+                      updateStatus === "available" ||
+                      updateStatus === "downloaded"
+                        ? "default"
+                        : "ghost"
+                    }
+                    size="icon-sm"
+                    className="p-0 mb-1"
+                    onClick={handleUpdateAction}
+                    disabled={updateStatus === "downloading"}
+                    aria-label={updateTooltip}
+                  />
+                }
+              >
+                {updateStatus === "downloading" ? (
+                  <DownloadProgressIcon percent={progressPercent} />
+                ) : updateStatus === "downloaded" ? (
+                  <RotateCcw />
+                ) : (
+                  <Download />
+                )}
               </TooltipTrigger>
               <TooltipPopup side="right">{updateTooltip}</TooltipPopup>
             </Tooltip>
@@ -185,46 +199,46 @@ const Sidebar = () => {
 
 export default Sidebar;
 
-
 const DownloadProgressIcon = ({ percent }: { percent: number }) => {
   const clampedPercent = Math.max(0, Math.min(100, percent));
-  const dashOffset = CIRCLE_CIRCUMFERENCE - (clampedPercent / 100) * CIRCLE_CIRCUMFERENCE;
+  const dashOffset =
+    CIRCLE_CIRCUMFERENCE - (clampedPercent / 100) * CIRCLE_CIRCUMFERENCE;
 
   const progressPercent = Math.round(clampedPercent);
-  
+
   return (
-      <svg viewBox="0 0 28 28" aria-hidden="true" className="scale-170">
-        <circle
-          cx="14"
-          cy="14"
-          r={CIRCLE_RADIUS}
-          fill="none"
-          stroke="currentColor"
-          strokeOpacity="0.2"
-          strokeWidth="2"
-        />
-        <circle
-          cx="14"
-          cy="14"
-          r={CIRCLE_RADIUS}
-          fill="none"
-          stroke="var(--color-primary)"
-          strokeLinecap="round"
-          strokeWidth="2"
-          transform="rotate(-90 14 14)"
-          strokeDasharray={CIRCLE_CIRCUMFERENCE}
-          strokeDashoffset={dashOffset}
-        />
-        <text
-          x="14"
-          y="14"
-          textAnchor="middle"
-          dominantBaseline="middle"
-          className="text-[11px] tabular-nums"
-          fill="currentColor"
-        >
-          {progressPercent === 100 ? "99" : `${progressPercent}`}
-        </text>
-      </svg>
+    <svg viewBox="0 0 28 28" aria-hidden="true" className="scale-170">
+      <circle
+        cx="14"
+        cy="14"
+        r={CIRCLE_RADIUS}
+        fill="none"
+        stroke="currentColor"
+        strokeOpacity="0.2"
+        strokeWidth="2"
+      />
+      <circle
+        cx="14"
+        cy="14"
+        r={CIRCLE_RADIUS}
+        fill="none"
+        stroke="var(--color-primary)"
+        strokeLinecap="round"
+        strokeWidth="2"
+        transform="rotate(-90 14 14)"
+        strokeDasharray={CIRCLE_CIRCUMFERENCE}
+        strokeDashoffset={dashOffset}
+      />
+      <text
+        x="14"
+        y="14"
+        textAnchor="middle"
+        dominantBaseline="middle"
+        className="text-[11px] tabular-nums"
+        fill="currentColor"
+      >
+        {progressPercent === 100 ? "99" : `${progressPercent}`}
+      </text>
+    </svg>
   );
 };

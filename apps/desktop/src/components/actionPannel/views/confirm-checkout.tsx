@@ -151,7 +151,9 @@ function ConfirmCheckoutContent({
             )}
             <p className="font-medium _text-muted-foreground">
               {hasUncommittedChanges ? "Uncommitted changes" : "Checkout"}
-              <span className="ml-1 font-[550] text-foreground">"{branch}"</span>
+              <span className="ml-1 font-[550] text-foreground">
+                "{branch}"
+              </span>
             </p>
           </div>
           {hasUncommittedChanges ? (

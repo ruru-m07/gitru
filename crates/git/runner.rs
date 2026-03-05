@@ -63,6 +63,14 @@ impl GitCommandRunner {
     ) -> Result<String, String> {
         run_git_command_async(&self.repo_path, args, Some(input.as_bytes()), options).await
     }
+
+    pub async fn run_with_options_bytes(
+        &self,
+        args: &[&str],
+        options: GitRunOptions,
+    ) -> Result<Vec<u8>, String> {
+        run_git_command_bytes_async(&self.repo_path, args, None, options).await
+    }
 }
 
 async fn run_git_command_async(
@@ -79,8 +87,8 @@ async fn run_git_command_async(
 
     loop {
         attempt += 1;
-        match run_git_command_once(repo_path, args, input, options).await {
-            Ok(output) => return Ok(output),
+        match run_git_command_once_output(repo_path, args, input, options).await {
+            Ok(output) => return finalize_output(output, options.allow_failure_codes),
             Err(err) if is_index_lock_error(&err) && attempt < MAX_INDEX_LOCK_RETRIES => {
                 let backoff_ms = 50 * attempt as u64;
                 sleep(Duration::from_millis(backoff_ms)).await;
@@ -90,12 +98,37 @@ async fn run_git_command_async(
     }
 }
 
-async fn run_git_command_once(
+async fn run_git_command_bytes_async(
     repo_path: &Path,
     args: &[&str],
     input: Option<&[u8]>,
     options: GitRunOptions,
-) -> Result<String, String> {
+) -> Result<Vec<u8>, String> {
+    let repo_lock = command_lock_for_repo(repo_path)?;
+    let _guard = repo_lock.lock().await;
+
+    let mut attempt: u32 = 0;
+    const MAX_INDEX_LOCK_RETRIES: u32 = 6;
+
+    loop {
+        attempt += 1;
+        match run_git_command_once_output(repo_path, args, input, options).await {
+            Ok(output) => return finalize_output_bytes(output, options.allow_failure_codes),
+            Err(err) if is_index_lock_error(&err) && attempt < MAX_INDEX_LOCK_RETRIES => {
+                let backoff_ms = 50 * attempt as u64;
+                sleep(Duration::from_millis(backoff_ms)).await;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
+
+async fn run_git_command_once_output(
+    repo_path: &Path,
+    args: &[&str],
+    input: Option<&[u8]>,
+    options: GitRunOptions,
+) -> Result<std::process::Output, String> {
     let mut command = tokio::process::Command::new("git");
     command.current_dir(repo_path);
     command.args(args);
@@ -120,7 +153,7 @@ async fn run_git_command_once(
     }
 
     match timeout(options.timeout, child.wait_with_output()).await {
-        Ok(Ok(output)) => finalize_output(output, options.allow_failure_codes),
+        Ok(Ok(output)) => Ok(output),
         Ok(Err(e)) => Err(e.to_string()),
         Err(_) => {
             // Timeout - tokio's timeout drops the future, which kills the process
@@ -209,6 +242,38 @@ fn finalize_output(
         } else {
             Ok(stdout)
         }
+    } else {
+        let stderr_lossy = String::from_utf8_lossy(&output.stderr);
+        let stderr = stderr_lossy.trim();
+        if !stderr.is_empty() {
+            Err(stderr.to_string())
+        } else {
+            Err(format!(
+                "Command failed with exit code: {:?}",
+                output.status.code()
+            ))
+        }
+    }
+}
+
+fn finalize_output_bytes(
+    output: std::process::Output,
+    allow_failure_codes: &[i32],
+) -> Result<Vec<u8>, String> {
+    let is_allowed = output
+        .status
+        .code()
+        .map(|code| allow_failure_codes.contains(&code))
+        .unwrap_or(false);
+
+    if output.status.success() {
+        if output.stdout.is_empty() && !output.stderr.is_empty() {
+            Ok(output.stderr)
+        } else {
+            Ok(output.stdout)
+        }
+    } else if is_allowed {
+        Ok(output.stdout)
     } else {
         let stderr_lossy = String::from_utf8_lossy(&output.stderr);
         let stderr = stderr_lossy.trim();
