@@ -266,12 +266,14 @@ fn finalize_output_bytes(
         .map(|code| allow_failure_codes.contains(&code))
         .unwrap_or(false);
 
-    if output.status.success() || is_allowed {
+    if output.status.success() {
         if output.stdout.is_empty() && !output.stderr.is_empty() {
             Ok(output.stderr)
         } else {
             Ok(output.stdout)
         }
+    } else if is_allowed {
+        Ok(output.stdout)
     } else {
         let stderr_lossy = String::from_utf8_lossy(&output.stderr);
         let stderr = stderr_lossy.trim();

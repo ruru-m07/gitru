@@ -19,6 +19,9 @@ pub async fn get_patch_by_file_path(
     state: tauri::State<'_, AppState>,
 ) -> Result<FileDiff, String> {
     validate_relative_path(file_path)?;
+    if let Some(ref new_path) = file_new_path {
+        validate_relative_path(new_path)?;
+    }
 
     let services = get_services(state).await?;
 
@@ -37,7 +40,9 @@ pub async fn get_patch_by_file_path(
 
 #[derive(Debug, Serialize)]
 pub struct OdiffDiffResult {
+    #[serde(skip_serializing_if = "Option::is_none")]
     mask_data_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     mismatch_ratio: Option<f64>,
 }
 
@@ -56,6 +61,20 @@ pub async fn compute_odiff_difference(
 ) -> Result<OdiffDiffResult, String> {
     if before_path.is_empty() || after_path.is_empty() {
         return Err("Missing image path for odiff comparison".to_string());
+    }
+
+    let allowed_root = std::env::temp_dir().join("gitru-image-diff");
+    for (label, path_str) in [("before_path", &before_path), ("after_path", &after_path)] {
+        let canonical = std::fs::canonicalize(path_str)
+            .map_err(|e| format!("Invalid or inaccessible path for {label}: {e}"))?;
+        if !canonical.starts_with(&allowed_root) {
+            return Err(format!(
+                "Path for {label} is not within the allowed temp directory"
+            ));
+        }
+        if !canonical.is_file() {
+            return Err(format!("Path for {label} is not a regular file"));
+        }
     }
 
     let desktop_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -79,7 +98,7 @@ const fs = require('node:fs');
 const { compare } = require('odiff-bin');
 
 (async () => {
-  const [beforePath, afterPath, diffPath] = process.argv.slice(1);
+  const [beforePath, afterPath, diffPath] = process.argv.slice(2);
   try {
     const result = await compare(beforePath, afterPath, diffPath, {
       outputDiffMask: true,

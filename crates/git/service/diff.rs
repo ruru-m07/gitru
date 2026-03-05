@@ -20,6 +20,10 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 
 const EMPTY_TREE_HASH: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 const IMAGE_DIFF_TEMP_DIR: &str = "gitru-image-diff";
+/// Maximum image size (in bytes) to include as base64 in the response (~10 MB).
+const MAX_ASSET_INLINE_BYTES: usize = 10 * 1024 * 1024;
+/// Maximum age of temp files before they are eligible for cleanup (1 hour).
+const TEMP_FILE_MAX_AGE_SECS: u64 = 3600;
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub struct DiffService {
@@ -306,6 +310,10 @@ impl DiffService {
             return None;
         }
 
+        if bytes.len() > MAX_ASSET_INLINE_BYTES {
+            return None;
+        }
+
         let temp_path = write_temp_asset_file(logical_path, &bytes).ok()?;
         Some(AssetDiffEntry {
             absolute_path: temp_path.to_string_lossy().to_string(),
@@ -375,6 +383,22 @@ fn mime_for_path(path: &str) -> String {
 fn write_temp_asset_file(logical_path: &str, bytes: &[u8]) -> Result<PathBuf, String> {
     let root = std::env::temp_dir().join(IMAGE_DIFF_TEMP_DIR);
     fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+
+    // Clean up old temp files to prevent unbounded disk usage.
+    if let Ok(entries) = fs::read_dir(&root)
+        && let Some(cutoff) =
+            SystemTime::now().checked_sub(std::time::Duration::from_secs(TEMP_FILE_MAX_AGE_SECS))
+    {
+        for entry in entries.flatten() {
+            if let Ok(meta) = entry.metadata()
+                && meta.is_file()
+                && let Ok(modified) = meta.modified()
+                && modified < cutoff
+            {
+                let _ = fs::remove_file(entry.path());
+            }
+        }
+    }
 
     let ext = Path::new(logical_path)
         .extension()
