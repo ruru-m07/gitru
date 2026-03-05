@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.0.0-beta.3](https://github.com/ruru-m07/gitru/compare/v0.0.0-beta.2...v0.0.0-beta.3) (2026-03-05)
+
+
+### Features
+
+* add tags and file change statistics to history commit list ([511a6f9](https://github.com/ruru-m07/gitru/commit/511a6f90f7ee8e6dd61228850b0ec71070039393))
+* enhance diff and commit handling with history support ([8b595a1](https://github.com/ruru-m07/gitru/commit/8b595a16e89d2fde5635e2c3569c3db8c14c985a))
+* implement the support for asset diff ([ef046fa](https://github.com/ruru-m07/gitru/commit/ef046fab9be8309a78e0b478a4b64b2b07ff437d))
+
+
+### Bug Fixes
+
+* address review comments - security fixes, bug fixes, resource cleanup ([9dbd484](https://github.com/ruru-m07/gitru/commit/9dbd484b7b6455754cb96b3ca70fe0d21cab99c9))
+* update updater base URL to use the correct release endpoint ([e0b5974](https://github.com/ruru-m07/gitru/commit/e0b597476eba26915e1549f796b7f15dd9d9bf85))
+
+
+### Miscellaneous Chores
+
+* release 0.0.0-beta.3 ([810093b](https://github.com/ruru-m07/gitru/commit/810093b4e4496d47711d92dacd90249861a99deb))
+
 ## [0.0.0-beta.2](https://github.com/ruru-m07/gitru/compare/v0.0.0-beta.1...v0.0.0-beta.2) (2026-02-28)
 
 
