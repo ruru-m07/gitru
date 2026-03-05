@@ -385,20 +385,17 @@ fn write_temp_asset_file(logical_path: &str, bytes: &[u8]) -> Result<PathBuf, St
     fs::create_dir_all(&root).map_err(|e| e.to_string())?;
 
     // Clean up old temp files to prevent unbounded disk usage.
-    if let Ok(entries) = fs::read_dir(&root) {
-        if let Some(cutoff) = SystemTime::now()
-            .checked_sub(std::time::Duration::from_secs(TEMP_FILE_MAX_AGE_SECS))
-        {
-            for entry in entries.flatten() {
-                if let Ok(meta) = entry.metadata() {
-                    if meta.is_file() {
-                        if let Ok(modified) = meta.modified() {
-                            if modified < cutoff {
-                                let _ = fs::remove_file(entry.path());
-                            }
-                        }
-                    }
-                }
+    if let Ok(entries) = fs::read_dir(&root)
+        && let Some(cutoff) =
+            SystemTime::now().checked_sub(std::time::Duration::from_secs(TEMP_FILE_MAX_AGE_SECS))
+    {
+        for entry in entries.flatten() {
+            if let Ok(meta) = entry.metadata()
+                && meta.is_file()
+                && let Ok(modified) = meta.modified()
+                && modified < cutoff
+            {
+                let _ = fs::remove_file(entry.path());
             }
         }
     }
