@@ -252,24 +252,24 @@ class FilesActionsState extends StateDomain {
     super(queryClient);
   }
 
-  async add(filePath: string) {
-    const result = await gitAdd({
-      file: filePath,
-    });
+  async add(target: string | string[]) {
+    const result = await gitAdd(
+      Array.isArray(target) ? { files: target } : { file: target },
+    );
     return result;
   }
 
-  async unstage(filePath: string) {
-    const result = await gitRemove({
-      file: filePath,
-    });
+  async unstage(target: string | string[]) {
+    const result = await gitRemove(
+      Array.isArray(target) ? { files: target } : { file: target },
+    );
     return result;
   }
 
-  async discard(filePath: string) {
-    const result = await gitDiscard({
-      file: filePath,
-    });
+  async discard(target: string | string[]) {
+    const result = await gitDiscard(
+      Array.isArray(target) ? { files: target } : { file: target },
+    );
     return result;
   }
 

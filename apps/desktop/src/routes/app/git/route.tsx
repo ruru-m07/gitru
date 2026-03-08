@@ -201,6 +201,15 @@ const matchesSearchQuery = (value: string, query: string) => {
   }
 };
 
+const getVisibleFilePaths = (files: GetStatusResponse["files"]) =>
+  Array.from(
+    new Set(
+      files.flatMap((file) =>
+        file.new_path ? [file.path, file.new_path] : [file.path],
+      ),
+    ),
+  );
+
 export const Route = createFileRoute("/app/git")({
   component: GitPageLayout,
 });
@@ -415,14 +424,23 @@ const ResizableArea = () => {
 };
 
 const DiscardChangesDialog = memo(function DiscardChangesDialog({
-  fileName,
+  filePaths,
+  label,
 }: {
-  fileName: string;
+  filePaths: string[];
+  label?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [isDeleteLoading, setIsDeleteLoading] = useState(false);
 
   const { mutateAsync: discardChanges } = useGitDiscard();
+
+  const isBulkDiscard = filePaths.length > 1;
+  const titleLabel =
+    label ??
+    (isBulkDiscard
+      ? `${filePaths.length} visible files`
+      : filePaths[0]?.split("/").pop() ?? "selected changes");
 
   const handleOpenChange = useCallback((newOpen: boolean) => {
     setOpen(newOpen);
@@ -458,14 +476,12 @@ const DiscardChangesDialog = memo(function DiscardChangesDialog({
           <DialogHeader>
             <DialogTitle className="sm:text-center">
               Discard changes to{" "}
-              <span className="font-semibold text-destructive">
-                {fileName === "." ? "All" : fileName.split("/").pop()}
-              </span>
+              <span className="font-semibold text-destructive">{titleLabel}</span>
               ?
             </DialogTitle>
             <DialogDescription className="sm:text-center">
-              This action cannot be undone. All modifications to this file will
-              be permanently lost.
+              This action cannot be undone. Only the currently visible selected
+              changes will be permanently lost.
             </DialogDescription>
           </DialogHeader>
         </div>
@@ -500,7 +516,7 @@ const DiscardChangesDialog = memo(function DiscardChangesDialog({
 
               try {
                 await discardChanges({
-                  filePath: fileName,
+                  filePath: isBulkDiscard ? filePaths : filePaths[0] ?? "",
                 });
               } catch (error) {
                 toast.error("Unable to discard changes");
@@ -521,7 +537,11 @@ const DiscardChangesDialog = memo(function DiscardChangesDialog({
   );
 });
 
-const WriteCommitBox = memo(function WriteCommitBox() {
+const WriteCommitBox = memo(function WriteCommitBox({
+  visibleAddablePaths,
+}: {
+  visibleAddablePaths: string[];
+}) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [co_authors, setCoAuthors] = useState<CoAuthers>([]);
@@ -539,7 +559,12 @@ const WriteCommitBox = memo(function WriteCommitBox() {
 
   const handelCommit = useCallback(async () => {
     if (nothingToCommit) {
-      await gitAdd(".");
+      if (visibleAddablePaths.length === 0) {
+        toast.error("No visible changes to add");
+        return;
+      }
+
+      await gitAdd(visibleAddablePaths);
     }
 
     const data = await createCommit({
@@ -556,7 +581,15 @@ const WriteCommitBox = memo(function WriteCommitBox() {
       setCoAuthors([]);
       toast.success("Commit created successfully");
     }
-  }, [createCommit, title, description, co_authors]);
+  }, [
+    co_authors,
+    createCommit,
+    description,
+    gitAdd,
+    nothingToCommit,
+    title,
+    visibleAddablePaths,
+  ]);
 
   return (
     <div>
@@ -611,7 +644,7 @@ const WriteCommitBox = memo(function WriteCommitBox() {
               ) : (
                 <>
                   {nothingToCommit ? (
-                    <span>Add all & Commit</span>
+                    <span>Add visible & Commit</span>
                   ) : (
                     <span className="truncate">
                       Commit to <span>{currentBranch?.name}</span>
@@ -780,6 +813,22 @@ const ListFileChanges = ({
       matchesStatusFilters(file, statusFilters) &&
       matchesSearchQuery(file.path, changesQuery),
   );
+  const visibleConflictPaths = useMemo(
+    () => getVisibleFilePaths(conflictedChanges),
+    [conflictedChanges],
+  );
+  const visibleStagedPaths = useMemo(
+    () => getVisibleFilePaths(stagedChanges),
+    [stagedChanges],
+  );
+  const visibleUnstagedPaths = useMemo(
+    () => getVisibleFilePaths(unstagedChanges),
+    [unstagedChanges],
+  );
+  const visibleAddablePaths = useMemo(
+    () => Array.from(new Set([...visibleConflictPaths, ...visibleUnstagedPaths])),
+    [visibleConflictPaths, visibleUnstagedPaths],
+  );
 
   return (
     <Tabs
@@ -934,10 +983,13 @@ const ListFileChanges = ({
                       files: conflictedChanges || [],
                       actions: {
                         onAddAll: async () => {
-                          await addFile(".");
+                          await addFile(visibleConflictPaths);
                         },
                         renderDiscardAll: () => (
-                          <DiscardChangesDialog fileName="." />
+                          <DiscardChangesDialog
+                            filePaths={visibleConflictPaths}
+                            label={`${visibleConflictPaths.length} visible conflicted files`}
+                          />
                         ),
                       },
                     },
@@ -948,7 +1000,7 @@ const ListFileChanges = ({
                       files: stagedChanges || [],
                       actions: {
                         onUnstageAll: async () => {
-                          await unstageFile(".");
+                          await unstageFile(visibleStagedPaths);
                         },
                       },
                     },
@@ -959,10 +1011,13 @@ const ListFileChanges = ({
                       files: unstagedChanges || [],
                       actions: {
                         onAddAll: async () => {
-                          await addFile(".");
+                          await addFile(visibleUnstagedPaths);
                         },
                         renderDiscardAll: () => (
-                          <DiscardChangesDialog fileName="." />
+                          <DiscardChangesDialog
+                            filePaths={visibleUnstagedPaths}
+                            label={`${visibleUnstagedPaths.length} visible files`}
+                          />
                         ),
                       },
                     },
@@ -971,7 +1026,9 @@ const ListFileChanges = ({
                   onAdd={addFile}
                   onUnstage={unstageFile}
                   renderDiscard={(filePath) => (
-                    <DiscardChangesDialog fileName={filePath} />
+                    <DiscardChangesDialog
+                      filePaths={Array.isArray(filePath) ? filePath : [filePath]}
+                    />
                   )}
                   setSelectedFilePath={setWorktreeSelectionForRepo}
                   selectedFilePath={
@@ -1064,7 +1121,7 @@ const ListFileChanges = ({
             </div>
           </Button>
         ) : null}
-        <WriteCommitBox />
+        <WriteCommitBox visibleAddablePaths={visibleAddablePaths} />
       </TabsPanel>
       <TabsPanel
         value="tab-2"

@@ -28,7 +28,7 @@ fn git_add_single_file() {
         repo.create_file("new_file.txt", "content");
 
         let service = setup_action_service(&repo);
-        let result = service.git_add("new_file.txt").await;
+        let result = service.git_add(Some("new_file.txt"), None).await;
 
         assert!(result.is_ok());
 
@@ -48,7 +48,7 @@ fn git_add_all() {
         repo.create_file("subdir/c.txt", "c");
 
         let service = setup_action_service(&repo);
-        let result = service.git_add(".").await;
+        let result = service.git_add(Some("."), None).await;
 
         assert!(result.is_ok());
     });
@@ -65,7 +65,7 @@ fn git_add_modified_file() {
         repo.create_file("README.md", "# Modified");
 
         let service = setup_action_service(&repo);
-        let result = service.git_add("README.md").await;
+        let result = service.git_add(Some("README.md"), None).await;
 
         assert!(result.is_ok());
         assert!(repo.is_staged("README.md"));
@@ -80,7 +80,7 @@ fn git_add_nonexistent_file() {
         repo.commit_file("README.md", "# Test", "Initial commit");
 
         let service = setup_action_service(&repo);
-        let result = service.git_add("nonexistent.txt").await;
+        let result = service.git_add(Some("nonexistent.txt"), None).await;
 
         // git add on nonexistent files fails
         assert!(result.is_err());
@@ -98,9 +98,28 @@ fn git_add_directory() {
         repo.create_file("src/nested/c.txt", "c");
 
         let service = setup_action_service(&repo);
-        let result = service.git_add("src").await;
+        let result = service.git_add(Some("src"), None).await;
 
         assert!(result.is_ok());
+    });
+}
+
+#[test]
+#[serial]
+fn git_add_multiple_files() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("README.md", "# Test", "Initial commit");
+        repo.create_file("a.txt", "a");
+        repo.create_file("nested/b.txt", "b");
+
+        let service = setup_action_service(&repo);
+        let files = vec!["a.txt".to_string(), "nested/b.txt".to_string()];
+        let result = service.git_add(None, Some(&files)).await;
+
+        assert!(result.is_ok());
+        assert!(repo.is_staged("a.txt"));
+        assert!(repo.is_staged("nested/b.txt"));
     });
 }
 
@@ -120,7 +139,7 @@ fn git_remove_unstages_file() {
         assert!(repo.is_staged("staged.txt"));
 
         let service = setup_action_service(&repo);
-        let result = service.git_remove("staged.txt").await;
+        let result = service.git_remove(Some("staged.txt"), None).await;
 
         assert!(result.is_ok());
         assert!(!repo.is_staged("staged.txt"));
@@ -136,11 +155,32 @@ fn git_remove_not_staged() {
         repo.create_file("untracked.txt", "content");
 
         let service = setup_action_service(&repo);
-        let result = service.git_remove("untracked.txt").await;
+        let result = service.git_remove(Some("untracked.txt"), None).await;
 
         // git restore --staged on an untracked file fails
         // This is expected behavior
         assert!(result.is_err());
+    });
+}
+
+#[test]
+#[serial]
+fn git_remove_multiple_files() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("README.md", "# Test", "Initial commit");
+        repo.create_file("a.txt", "a");
+        repo.create_file("b.txt", "b");
+        repo.add("a.txt");
+        repo.add("b.txt");
+
+        let service = setup_action_service(&repo);
+        let files = vec!["a.txt".to_string(), "b.txt".to_string()];
+        let result = service.git_remove(None, Some(&files)).await;
+
+        assert!(result.is_ok());
+        assert!(!repo.is_staged("a.txt"));
+        assert!(!repo.is_staged("b.txt"));
     });
 }
 
@@ -159,7 +199,7 @@ fn git_discard_modified_file() {
         assert!(repo.has_changes());
 
         let service = setup_action_service(&repo);
-        let result = service.git_discard("README.md", None).await;
+        let result = service.git_discard(Some("README.md"), None, None).await;
 
         assert!(result.is_ok());
 
@@ -178,7 +218,9 @@ fn git_discard_untracked_file() {
         repo.create_file("untracked.txt", "content");
 
         let service = setup_action_service(&repo);
-        let result = service.git_discard("untracked.txt", None).await;
+        let result = service
+            .git_discard(Some("untracked.txt"), None, None)
+            .await;
 
         // For untracked files, discard removes the file
         // Just verify it doesn't panic
@@ -196,7 +238,7 @@ fn git_discard_staged_changes() {
         repo.add("README.md");
 
         let service = setup_action_service(&repo);
-        let result = service.git_discard("README.md", None).await;
+        let result = service.git_discard(Some("README.md"), None, None).await;
 
         assert!(result.is_ok());
 
@@ -217,10 +259,32 @@ fn git_discard_all() {
         repo.create_file("b.txt", "modified-b");
 
         let service = setup_action_service(&repo);
-        let result = service.git_discard(".", Some(true)).await;
+        let result = service.git_discard(Some("."), None, Some(true)).await;
 
         assert!(result.is_ok());
         assert!(!repo.has_changes());
+    });
+}
+
+#[test]
+#[serial]
+fn git_discard_selected_files_only() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("a.txt", "a", "Initial");
+        repo.commit_file("b.txt", "b", "Add b");
+        repo.create_file("a.txt", "modified-a");
+        repo.create_file("b.txt", "modified-b");
+
+        let service = setup_action_service(&repo);
+        let files = vec!["a.txt".to_string()];
+        let result = service.git_discard(None, Some(&files), None).await;
+
+        assert!(result.is_ok());
+        let a_content = std::fs::read_to_string(repo.path().join("a.txt")).unwrap();
+        let b_content = std::fs::read_to_string(repo.path().join("b.txt")).unwrap();
+        assert_eq!(a_content, "a");
+        assert_eq!(b_content, "modified-b");
     });
 }
 
@@ -365,7 +429,9 @@ fn git_add_file_with_spaces() {
         repo.create_file("file with spaces.txt", "content");
 
         let service = setup_action_service(&repo);
-        let result = service.git_add("file with spaces.txt").await;
+        let result = service
+            .git_add(Some("file with spaces.txt"), None)
+            .await;
 
         assert!(result.is_ok());
     });
@@ -380,7 +446,7 @@ fn git_add_file_with_unicode() {
         repo.create_file("文件.txt", "内容");
 
         let service = setup_action_service(&repo);
-        let result = service.git_add("文件.txt").await;
+        let result = service.git_add(Some("文件.txt"), None).await;
 
         assert!(result.is_ok());
     });
