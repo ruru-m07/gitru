@@ -2,7 +2,9 @@
   "name": "api",
   "version": "0.0.0",
   "scripts": {
-    "dev": "bun run --port=0000 --watch src/index.ts"
+    "dev": "bun run --port=0000 --watch src/index.ts",
+    "build": "bun build --compile --minify --sourcemap ./src/index.ts --outfile ./dist/elysia-server",
+    "start": "./dist/elysia-server"
   },
   "dependencies": {
     "@elysiajs/cors": "^1.4.0",
