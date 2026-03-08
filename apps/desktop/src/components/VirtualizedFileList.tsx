@@ -61,10 +61,15 @@ export interface VirtualizedFileListProps {
     index: number,
     event: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean },
   ) => void;
-  onAdd?: UseMutateAsyncFunction<string, string, string, unknown>;
-  onUnstage?: UseMutateAsyncFunction<string, string, string, unknown>;
-  onDiscard?: (filePath: string) => void;
-  renderDiscard?: (filePath: string) => React.ReactNode;
+  onAdd?: UseMutateAsyncFunction<string, string, string | string[], unknown>;
+  onUnstage?: UseMutateAsyncFunction<
+    string,
+    string,
+    string | string[],
+    unknown
+  >;
+  onDiscard?: (filePath: string | string[]) => void;
+  renderDiscard?: (filePath: string | string[]) => React.ReactNode;
   setSelectedFilePath: (file: FileSelectionIdentity | null) => void;
   getContextActions?: (context: {
     file: FileStatus;
@@ -101,6 +106,10 @@ const ITEM_HEIGHT = 32;
 const SECTION_HEADER_HEIGHT = 36;
 type MatchRange = { start: number; end: number };
 const EMPTY_CONTEXT_ACTIONS: FileRowContextAction[] = [];
+const getFileTargets = (file: FileStatus) =>
+  file.new_path
+    ? Array.from(new Set([file.path, file.new_path]))
+    : file.path;
 
 const hasRegexFlags = (flags: string) => /^[dgimsuvy]*$/.test(flags);
 
@@ -527,10 +536,15 @@ interface FileRowProps {
     index: number,
     event: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean },
   ) => void;
-  onAdd?: UseMutateAsyncFunction<string, string, string, unknown>;
-  onUnstage?: UseMutateAsyncFunction<string, string, string, unknown>;
-  onDiscard?: (filePath: string) => void;
-  renderDiscard?: (filePath: string) => React.ReactNode;
+  onAdd?: UseMutateAsyncFunction<string, string, string | string[], unknown>;
+  onUnstage?: UseMutateAsyncFunction<
+    string,
+    string,
+    string | string[],
+    unknown
+  >;
+  onDiscard?: (filePath: string | string[]) => void;
+  renderDiscard?: (filePath: string | string[]) => React.ReactNode;
   setSelectedFilePath: (file: FileSelectionIdentity | null) => void;
   isSelected: boolean;
   getContextActions?: VirtualizedFileListProps["getContextActions"];
@@ -554,6 +568,7 @@ const FileRow = memo(
     getContextActions,
   }: FileRowProps) {
     const path = file.path;
+    const fileTargets = getFileTargets(file);
     const lastSlashIndex = path.lastIndexOf("/");
     const hasDirectory = lastSlashIndex !== -1;
     const directoryPath = hasDirectory ? path.slice(0, lastSlashIndex) : "";
@@ -651,12 +666,12 @@ const FileRow = memo(
               {onAdd && (
                 <div className="flex ml-2 shrink-0">
                   {renderDiscard
-                    ? renderDiscard(file.path)
+                    ? renderDiscard(fileTargets)
                     : onDiscard && (
                         <Button
                           onClick={(e) => {
                             e.stopPropagation();
-                            onDiscard(file.path);
+                            onDiscard(fileTargets);
                           }}
                           size="icon-sm"
                           variant="ghost"
@@ -667,7 +682,7 @@ const FileRow = memo(
                   <Button
                     onClick={async (e) => {
                       e.stopPropagation();
-                      const success = await onAdd(file.path);
+                      const success = await onAdd(fileTargets);
                       if (success) {
                         toast.success("File staged");
                       } else {
@@ -686,7 +701,7 @@ const FileRow = memo(
                   <Button
                     onClick={async (e) => {
                       e.stopPropagation();
-                      const success = await onUnstage(file.path);
+                      const success = await onUnstage(fileTargets);
                       if (success) {
                         toast.success("File unstaged");
                       } else {
@@ -735,7 +750,7 @@ const FileRow = memo(
           {onAdd && (
             <contextMenu.ContextMenuItem
               onSelect={async () => {
-                const success = await onAdd(file.path);
+                const success = await onAdd(fileTargets);
                 if (success) {
                   toast.success("File staged");
                 } else {
@@ -750,7 +765,7 @@ const FileRow = memo(
           {onUnstage && (
             <contextMenu.ContextMenuItem
               onSelect={async () => {
-                const success = await onUnstage(file.path);
+                const success = await onUnstage(fileTargets);
                 if (success) {
                   toast.success("File unstaged");
                 } else {
@@ -807,7 +822,7 @@ const FileRow = memo(
               <contextMenu.ContextMenuItem
                 className="hover:text-destructive! hover:bg-destructive/10!"
                 onSelect={() => {
-                  onDiscard(file.path);
+                  onDiscard(fileTargets);
                 }}
               >
                 <Undo2 size={16} className="mr-2" />

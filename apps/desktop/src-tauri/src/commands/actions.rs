@@ -19,23 +19,35 @@ pub async fn git_fetch(state: tauri::State<'_, AppState>) -> Result<String, Stri
 }
 
 #[tauri::command]
-pub async fn git_add(file: &str, state: tauri::State<'_, AppState>) -> Result<String, String> {
+pub async fn git_add(
+    file: Option<String>,
+    files: Option<Vec<String>>,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
     let services = get_services(state).await?;
-    services.action().git_add(file).await
+    services.action().git_add(file.as_deref(), files.as_deref()).await
 }
 
 #[tauri::command]
-pub async fn git_remove(file: &str, state: tauri::State<'_, AppState>) -> Result<String, String> {
+pub async fn git_remove(
+    file: Option<String>,
+    files: Option<Vec<String>>,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
     let services = get_services(state).await?;
-    services.action().git_remove(file).await
+    services.action().git_remove(file.as_deref(), files.as_deref()).await
 }
 
 #[tauri::command]
 pub async fn git_discard(
-    file: &str,
+    file: Option<String>,
+    files: Option<Vec<String>>,
     all: Option<bool>,
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
     let services = get_services(state).await?;
-    services.action().git_discard(file, all).await
+    services
+        .action()
+        .git_discard(file.as_deref(), files.as_deref(), all)
+        .await
 }
