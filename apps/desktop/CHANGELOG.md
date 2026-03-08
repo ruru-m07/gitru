@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0-beta.3](https://github.com/ruru-m07/gitru/compare/v0.0.0-beta.3...v0.1.0-beta.3) (2026-03-08)
+
+
+### Features
+
+* update bulk operation on working tree to filter specific ([51d70c0](https://github.com/ruru-m07/gitru/commit/51d70c0678941903f8601996ddd72da8c35209ee))
+
 ## [0.0.0-beta.3](https://github.com/ruru-m07/gitru/compare/v0.0.0-beta.2...v0.0.0-beta.3) (2026-03-05)
 
 
