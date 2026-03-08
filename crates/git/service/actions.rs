@@ -69,8 +69,12 @@ impl ActionService {
     }
 
     #[logger::logger]
-    pub async fn git_add(&self, file: &str) -> Result<String, String> {
-        if file == "." {
+    pub async fn git_add(
+        &self,
+        file: Option<&str>,
+        files: Option<&[String]>,
+    ) -> Result<String, String> {
+        if matches!(file, Some(".")) && files.is_none() {
             self.ctx
                 .runner
                 .run_with_options(
@@ -79,14 +83,8 @@ impl ActionService {
                 )
                 .await?;
         } else {
-            validate_relative_path(file)?;
-            self.ctx
-                .runner
-                .run_with_options(
-                    &["add", "-A", "--", file],
-                    GitRunOptions::default_read().with_timeout(std::time::Duration::from_secs(30)),
-                )
-                .await?;
+            let paths = normalize_paths(file, files)?;
+            self.run_pathspec_command("add", &["-A"], &paths).await?;
         }
 
         self.ctx.cache.invalidate_all();
@@ -94,8 +92,12 @@ impl ActionService {
     }
 
     #[logger::logger]
-    pub async fn git_remove(&self, file: &str) -> Result<String, String> {
-        if file == "." {
+    pub async fn git_remove(
+        &self,
+        file: Option<&str>,
+        files: Option<&[String]>,
+    ) -> Result<String, String> {
+        if matches!(file, Some(".")) && files.is_none() {
             self.ctx
                 .runner
                 .run_with_options(
@@ -104,13 +106,8 @@ impl ActionService {
                 )
                 .await?;
         } else {
-            validate_relative_path(file)?;
-            self.ctx
-                .runner
-                .run_with_options(
-                    &["restore", "--staged", "--", file],
-                    GitRunOptions::default_read().with_timeout(std::time::Duration::from_secs(30)),
-                )
+            let paths = normalize_paths(file, files)?;
+            self.run_pathspec_command("restore", &["--staged"], &paths)
                 .await?;
         }
 
@@ -119,14 +116,26 @@ impl ActionService {
     }
 
     #[logger::logger]
-    pub async fn git_discard(&self, file: &str, all: Option<bool>) -> Result<String, String> {
+    pub async fn git_discard(
+        &self,
+        file: Option<&str>,
+        files: Option<&[String]>,
+        all: Option<bool>,
+    ) -> Result<String, String> {
         if all.unwrap_or(false) {
             self.git_restore_all().await?;
             self.ctx.cache.invalidate_all();
             return Ok("All changes discarded".to_string());
         }
 
-        self.git_restore_file(file).await?;
+        if matches!(file, Some(".")) && files.is_none() {
+            self.git_restore_all().await?;
+            self.ctx.cache.invalidate_all();
+            return Ok("All changes discarded".to_string());
+        }
+
+        let paths = normalize_paths(file, files)?;
+        self.git_restore_files(&paths).await?;
         self.ctx.cache.invalidate_all();
         Ok("Changes discarded".to_string())
     }
@@ -149,6 +158,22 @@ impl ActionService {
             .await?;
 
         Ok(())
+    }
+
+    async fn git_restore_files(&self, files: &[String]) -> Result<(), String> {
+        let mut errors = Vec::new();
+
+        for file in files {
+            if let Err(error) = self.git_restore_file(file).await {
+                errors.push(error);
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("; "))
+        }
     }
 
     async fn git_restore_file(&self, file: &str) -> Result<(), String> {
@@ -185,4 +210,50 @@ impl ActionService {
             )),
         }
     }
+
+    async fn run_pathspec_command(
+        &self,
+        command: &str,
+        fixed_args: &[&str],
+        paths: &[String],
+    ) -> Result<String, String> {
+        let mut args = Vec::with_capacity(2 + fixed_args.len() + paths.len());
+        args.push(command.to_string());
+        args.extend(fixed_args.iter().map(|arg| (*arg).to_string()));
+        args.push("--".to_string());
+        args.extend(paths.iter().cloned());
+
+        let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
+        self.ctx
+            .runner
+            .run_with_options(
+                &arg_refs,
+                GitRunOptions::default_read().with_timeout(std::time::Duration::from_secs(30)),
+            )
+            .await
+    }
+}
+
+fn normalize_paths(file: Option<&str>, files: Option<&[String]>) -> Result<Vec<String>, String> {
+    let mut normalized = Vec::new();
+
+    if let Some(file) = file {
+        validate_relative_path(file)?;
+        normalized.push(file.to_string());
+    }
+
+    if let Some(files) = files {
+        for file in files {
+            validate_relative_path(file)?;
+            if !normalized.iter().any(|existing| existing == file) {
+                normalized.push(file.clone());
+            }
+        }
+    }
+
+    if normalized.is_empty() {
+        return Err("At least one file path is required".to_string());
+    }
+
+    Ok(normalized)
 }
