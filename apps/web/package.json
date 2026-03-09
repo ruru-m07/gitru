@@ -1,16 +1,17 @@
 {
   "name": "gitru-web",
   "private": true,
+  "packageManager": "bun@1.3.0",
   "type": "module",
   "sideEffects": false,
   "scripts": {
     "dev": "vite dev",
     "build": "vite build && mv .output/dist/client/* .output/public/",
     "start": "serve .output/public --config ../../serve.json",
-    "preview": "bun run build && wrangler dev",
+    "preview": "bun run build && wrangler pages dev .output/public",
     "types:check": "fumadocs-mdx && tsc --noEmit",
     "postinstall": "fumadocs-mdx",
-    "deploy": "bun run build && wrangler deploy",
+    "deploy": "bun run build && wrangler pages deploy .output/public --project-name gitru",
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
