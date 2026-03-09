@@ -6,12 +6,12 @@
   "sideEffects": false,
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build && mv .output/dist/client/* .output/public/",
-    "start": "serve .output/public --config ../../serve.json",
-    "preview": "bun run build && wrangler pages dev .output/public",
+    "build": "bun install --frozen-lockfile && vite build && cp dist/client/_shell.html dist/client/index.html",
+    "start": "serve -s dist/client",
+    "preview": "bun run build && wrangler pages dev dist/client",
     "types:check": "fumadocs-mdx && tsc --noEmit",
     "postinstall": "fumadocs-mdx",
-    "deploy": "bun run build && wrangler pages deploy .output/public --project-name gitru",
+    "deploy": "bun run build && wrangler pages deploy dist/client --project-name gitru",
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
