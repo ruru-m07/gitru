@@ -1,5 +1,5 @@
-import { cn } from "@gitru/ui/lib/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
 
 export type CursorVariant = "primary" | "default";
 
