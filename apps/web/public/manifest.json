@@ -1,6 +1,6 @@
 {
-  "short_name": "TanStack App",
-  "name": "Create TanStack App Sample",
+  "short_name": "Gitru",
+  "name": "A Git Client for humans",
   "icons": [
     {
       "src": "favicon.ico",

@@ -1,9 +1,12 @@
-import { Link } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import * as React from "react";
-import BackgroundShader from "./components/BackgroundShader";
+import BackgroundShader from "@/components/BackgroundShader";
 
-function App(): React.ReactNode {
+export const Route = createFileRoute("/")({
+  component: Home,
+});
+
+function Home() {
   return (
     <div className="relative h-screen w-full flex md:items-center justify-center ">
       <BackgroundShader />
@@ -49,7 +52,7 @@ function App(): React.ReactNode {
             <span className="pointer-events-auto">
               It started as a pet project, and now I'm trying to spend more time
               on it. Gitru will be available free and open-source soon. Join the{" "}
-              <Link to="/waitlist" className="underline hover:text-primary">
+              <Link to="/waitlist/$" className="underline hover:text-primary">
                 waitlist
               </Link>{" "}
               for early access and updates!
@@ -61,21 +64,21 @@ function App(): React.ReactNode {
           <div className="flex items-center gap-2 font-mono justify-between group">
             <span className="flex items-center gap-2 pointer-events-auto">
               <Link
-                to="/waitlist"
+                to="/waitlist/$"
                 className="hover:underline cursor-pointer hover:text-primary text-muted-foreground group-hover:text-foreground transition-colors"
               >
                 Waitlist
               </Link>
               <p className="text-muted-foreground">·</p>
               <Link
-                to="/roadmap"
+                to="/roadmap/$"
                 className="hover:underline cursor-pointer hover:text-primary text-muted-foreground group-hover:text-foreground transition-colors"
               >
                 Roadmap
               </Link>
               <p className="text-muted-foreground">·</p>
               <Link
-                to="/progress"
+                to="/progress/$"
                 className="hover:underline cursor-pointer hover:text-primary text-muted-foreground group-hover:text-foreground transition-colors"
               >
                 Progress
@@ -107,5 +110,3 @@ function App(): React.ReactNode {
     </div>
   );
 }
-
-export default App;

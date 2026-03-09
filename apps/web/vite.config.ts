@@ -1,24 +1,47 @@
-import { fileURLToPath, URL } from "node:url";
-import tailwindcss from "@tailwindcss/vite";
-import { devtools } from "@tanstack/devtools-vite";
-import viteReact from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import react from '@vitejs/plugin-react';
+import { tanstackStart } from '@tanstack/react-start/plugin/vite';
+import { defineConfig } from 'vite';
+import tsConfigPaths from 'vite-tsconfig-paths';
+import tailwindcss from '@tailwindcss/vite';
+import mdx from 'fumadocs-mdx/vite';
+import { nitro } from 'nitro/vite';
 
-// https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [
-    devtools(),
-    viteReact({
-      babel: {
-        plugins: ["babel-plugin-react-compiler"],
-      },
-    }),
-    tailwindcss(),
-  ],
-  resolve: {
-    dedupe: ["react", "react-dom", "motion"],
-    alias: {
-      "@": fileURLToPath(new URL("./src", import.meta.url)),
-    },
+  server: {
+    port: 3000,
   },
+  plugins: [
+    mdx(await import('./source.config')),
+    tailwindcss(),
+    tsConfigPaths({
+      projects: ['./tsconfig.json'],
+    }),
+    tanstackStart({
+      spa: {
+        enabled: true,
+        prerender: {
+          enabled: true,
+          crawlLinks: true,
+        },
+      },
+
+      pages: [
+        {
+          path: '/docs',
+        },
+        {
+          path: '/api/search',
+        },
+        {
+          path: 'llms-full.txt',
+        },
+        {
+          path: 'llms.txt',
+        },
+      ],
+    }),
+    react(),
+    // please see https://tanstack.com/start/latest/docs/framework/react/guide/hosting#nitro for guides on hosting
+    nitro(),
+  ],
 });

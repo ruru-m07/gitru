@@ -1,0 +1,11 @@
+{
+  "title": "Stash & Patches",
+  "icon": "Archive",
+  "collapsible": false,
+  "defaultOpen": true,
+  "pages": [
+    "stash-management",
+    "patch-creation",
+    "patch-application"
+  ]
+}

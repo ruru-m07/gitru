@@ -1,0 +1,26 @@
+{
+  "title": "Documentation",
+  "root": true,
+  "pages": [
+    "---Introduction---",
+    "index",
+    "installation",
+    "brand-guidelines",
+    "---Repository---",
+    "...repository",
+    "---Changes & Diff---",
+    "...changes-diff",
+    "---History---",
+    "...history",
+    "---Branching---",
+    "...branching",
+    "---Merge & Rebase---",
+    "...merge-rebase",
+    "---Stash & Patches---",
+    "...stash-patches",
+    "---Search---",
+    "...search",
+    "---Productivity---",
+    "...productivity"
+  ]
+}

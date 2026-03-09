@@ -1,9 +1,9 @@
-import { cn } from "@gitru/ui/lib/utils";
 import { Link } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import TypeWriter, { type TypeSegment, typeStyles } from "./type-writer";
+import { cn } from "@/lib/utils";
 
 // export const cat = `
 //       へ
