@@ -1,23 +1,53 @@
-import { getPageImage, source } from "@/lib/source";
+import type { TOCItemType } from "fumadocs-core/toc";
+import { createRelativeLink } from "fumadocs-ui/mdx";
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import type { ComponentType } from "react";
+import { ImageZoom } from "@/components/image-zoom";
 import {
   DocsBody,
   DocsDescription,
   DocsPage,
   DocsTitle,
 } from "@/components/layout/notebook/page";
-import { notFound } from "next/navigation";
-import { getMDXComponents } from "@/mdx-components";
-import type { Metadata } from "next";
-import { createRelativeLink } from "fumadocs-ui/mdx";
 import { cn } from "@/lib/cn";
-import { ImageZoom } from "@/components/image-zoom";
+import { getPageImage, source } from "@/lib/source";
+import { getMDXComponents } from "@/mdx-components";
+
+type MDXRenderable = {
+  body: ComponentType<Record<string, unknown>>;
+  toc?: TOCItemType[];
+  full?: boolean;
+  title?: string;
+  description?: string;
+};
+
+type LazyMDXRenderable = {
+  load: () => Promise<MDXRenderable>;
+};
+
+function hasBody(value: unknown): value is MDXRenderable {
+  return typeof value === "object" && value !== null && "body" in value;
+}
+
+function hasLoad(value: unknown): value is LazyMDXRenderable {
+  return typeof value === "object" && value !== null && "load" in value;
+}
 
 export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
   const params = await props.params;
   const page = source.getPage(params.slug);
   if (!page) notFound();
 
-  const MDX = page.data.body;
+  // Fumadocs can expose MDX either eagerly (`data.body`) or lazily (`data.load()`).
+  const pageData = hasBody(page.data)
+    ? page.data
+    : hasLoad(page.data)
+      ? await page.data.load()
+      : null;
+  if (!pageData) notFound();
+
+  const MDX = pageData.body;
   const markdownUrl = `/llms.mdx/docs/${[...page.slugs, "index.mdx"].join("/")}`;
 
   return (
@@ -25,13 +55,13 @@ export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
       tableOfContent={{
         style: "clerk",
       }}
-      toc={page.data.toc}
-      full={page.data.full}
+      toc={pageData.toc}
+      full={pageData.full}
       className="gap-0"
     >
-      <DocsTitle>{page.data.title}</DocsTitle>
+      <DocsTitle>{pageData.title ?? page.data.title}</DocsTitle>
       <DocsDescription className="mb-0">
-        {page.data.description}
+        {pageData.description ?? page.data.description}
       </DocsDescription>
       <DocsBody>
         <MDX
@@ -54,7 +84,7 @@ export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
               />
             ),
             img: ({ className, ...props }) => (
-              <ImageZoom className={cn("rounded-md",)} {...props} />
+              <ImageZoom className={cn("rounded-md")} {...props} />
             ),
           })}
         />
