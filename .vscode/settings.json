@@ -41,6 +41,7 @@
     "**/dist": true,
     "**/build": true,
     "**/.git": true,
+    "**/.next": true,
     "**/.temp": true,
     "bun.lock": true,
     "**/routeTree.gen.ts": true
