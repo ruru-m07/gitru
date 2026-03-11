@@ -1,0 +1,11 @@
+{
+  "title": "Changes & Diff",
+  "icon": "FileDiff",
+  "collapsible": false,
+  "defaultOpen": true,
+  "pages": [
+    "working-directory",
+    "file-diff-viewer",
+    "image-binary-diff"
+  ]
+}

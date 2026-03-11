@@ -1,0 +1,11 @@
+{
+  "title": "Productivity",
+  "icon": "Command",
+  "collapsible": false,
+  "defaultOpen": true,
+  "pages": [
+    "command-palette",
+    "keyboard-shortcuts",
+    "workspace-dashboard"
+  ]
+}
