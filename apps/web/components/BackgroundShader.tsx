@@ -4,6 +4,7 @@ const fragmentShaderSource = `precision highp float;
 
 uniform vec2 u_resolution;
 uniform float u_time;
+uniform float u_darkMode;
 
 const int MAX_RIPPLES = 8;
 uniform vec2 u_clicks[MAX_RIPPLES];
@@ -97,9 +98,13 @@ void main() {
   float r = hash(cell);
   float gmask = drawGlyph(uv, r);
 
-  // Clean minimal background
-  vec3 base = vec3(1.0);
-  vec3 grid = vec3(0.94);
+  // Theme-aware background so the canvas doesn't stay white in dark mode.
+  vec3 lightBase = vec3(1.0);
+  vec3 lightGrid = vec3(0.94);
+  vec3 darkBase = vec3(0.04, 0.05, 0.06);
+  vec3 darkGrid = vec3(0.10, 0.12, 0.14);
+  vec3 base = mix(lightBase, darkBase, u_darkMode);
+  vec3 grid = mix(lightGrid, darkGrid, u_darkMode);
 
   vec2 m = mod(pixel, cellSize);
   float line = min(step(m.x, 1.0), step(m.y, 1.0));
@@ -109,8 +114,8 @@ void main() {
   float charInfluence = 0.0;
   float particleGlow = 0.0;
 
-  vec3 primaryColor = vec3(1.0, 0.44, 0.12); 
-  vec3 sparkColor = vec3(1.0, 0.7, 0.3);       // Bright spark
+  vec3 primaryColor = mix(vec3(1.0, 0.44, 0.12), vec3(1.0, 0.52, 0.22), u_darkMode);
+  vec3 sparkColor = mix(vec3(1.0, 0.7, 0.3), vec3(1.0, 0.78, 0.48), u_darkMode);
 
   for (int i = 0; i < MAX_RIPPLES; i++) {
     if (u_clickTimes[i] < 0.0) continue;
@@ -158,10 +163,10 @@ void main() {
   float useRipple = smoothstep(0.05, 0.35, charInfluence);
   float glyphMask = mix(baseMask, rippleMask, useRipple);
 
-  color -= gmask * 0.03;
+  color -= gmask * mix(0.03, 0.09, u_darkMode);
 
-  // Subtle overall glow
-  color = mix(color, primaryColor * 0.5 + 0.5, charInfluence * 0.1);
+  // Keep glow readable in both themes.
+  color = mix(color, primaryColor * 0.5 + 0.5, charInfluence * mix(0.1, 0.18, u_darkMode));
 
   // Apply git-themed coloring
   color = mix(color, primaryColor, glyphMask * charInfluence * 0.9);
@@ -174,12 +179,20 @@ void main() {
 }
 `;
 
+import { useTheme } from "next-themes";
 import { useEffect, useRef } from "react";
 
 const MAX_RIPPLES = 8;
 
 const BackgroundShader = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const darkModeRef = useRef(0);
+  const { resolvedTheme } = useTheme();
+  const isDarkMode = resolvedTheme === "dark";
+
+  useEffect(() => {
+    darkModeRef.current = isDarkMode ? 1 : 0;
+  }, [isDarkMode]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -239,6 +252,7 @@ const BackgroundShader = () => {
     // uniforms
     const resLoc = gl.getUniformLocation(program, "u_resolution");
     const timeLoc = gl.getUniformLocation(program, "u_time");
+    const darkModeLoc = gl.getUniformLocation(program, "u_darkMode");
     const clickLoc = gl.getUniformLocation(program, "u_clicks");
     const clickTimeLoc = gl.getUniformLocation(program, "u_clickTimes");
 
@@ -309,6 +323,10 @@ const BackgroundShader = () => {
     gl.uniform1f(glyphColsLoc, cols);
     gl.uniform1f(glyphRowsLoc, rows);
 
+    if (darkModeLoc) {
+      gl.uniform1f(darkModeLoc, darkModeRef.current);
+    }
+
     // ripple state
     const clicks = new Float32Array(MAX_RIPPLES * 2);
     const clickTimes = new Float32Array(MAX_RIPPLES);
@@ -350,6 +368,7 @@ const BackgroundShader = () => {
 
       gl.uniform2f(resLoc, canvas.width, canvas.height);
       gl.uniform1f(timeLoc, time);
+      if (darkModeLoc) gl.uniform1f(darkModeLoc, darkModeRef.current);
       gl.uniform2fv(clickLoc, clicks);
       gl.uniform1fv(clickTimeLoc, clickTimes);
 

@@ -1,8 +1,8 @@
 "use client";
 
-import BackgroundShader from "@/components/BackgroundShader";
-import Link from "next/link";
 import { motion } from "motion/react";
+import Link from "next/link";
+import BackgroundShader from "@/components/BackgroundShader";
 
 export default function HomePage() {
   return (
