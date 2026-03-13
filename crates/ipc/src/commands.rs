@@ -1,5 +1,6 @@
 use git::AppState;
 use git::core::RepoServices;
+use git::service::repository::RepositoryService;
 use serde::Deserialize;
 use serde::Serialize;
 use std::path::Path;
@@ -9,9 +10,10 @@ use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
+use tauri::Emitter;
 use uuid::Uuid;
 
-use crate::repo_manager::{RepoManager, SELECTED_REPO_KEY};
+use crate::repo_manager::{RepoManager, RepositoryInfo, SELECTED_REPO_KEY};
 
 #[derive(Serialize)]
 pub struct RepoSitoryStore {
@@ -108,6 +110,96 @@ pub async fn add_local_git_repo(repo_path: String) -> Result<Option<RepoSitorySt
             .unwrap_or_default()
             .as_secs(),
     }))
+}
+
+#[tauri::command]
+#[logger::logger]
+pub async fn clone_repository(
+    url: String,
+    destination_path: String,
+    operation_id: String,
+    state: tauri::State<'_, AppState>,
+    manager: tauri::State<'_, Arc<Mutex<RepoManager>>>,
+    app: tauri::AppHandle,
+) -> Result<RepositoryInfo, String> {
+    RepositoryService::clone_repository(&url, &destination_path, &operation_id, &app).await?;
+
+    persist_and_select_repository(destination_path, state, manager).await
+}
+
+#[tauri::command]
+#[logger::logger]
+pub async fn init_repository(
+    repo_path: String,
+    state: tauri::State<'_, AppState>,
+    manager: tauri::State<'_, Arc<Mutex<RepoManager>>>,
+) -> Result<RepositoryInfo, String> {
+    RepositoryService::init_repository(&repo_path).await?;
+
+    persist_and_select_repository(repo_path, state, manager).await
+}
+
+#[tauri::command]
+#[logger::logger]
+pub async fn cancel_clone_repository(
+    operation_id: String,
+    app: tauri::AppHandle,
+) -> Result<bool, String> {
+    let cancelled = RepositoryService::cancel_clone_repository(&operation_id)?;
+
+    if cancelled {
+        let _ = app.emit(
+            git::service::repository::CLONE_PROGRESS_EVENT,
+            git::service::repository::CloneProgressEvent {
+                operation_id,
+                phase: git::service::repository::CloneProgressPhase::Message,
+                status: Some("Cancelling clone".to_string()),
+                line: Some("Cancelling git clone operation...".to_string()),
+                percent: None,
+                current: None,
+                total: None,
+                transfer: None,
+                pack: None,
+                ref_update: None,
+                error_kind: None,
+            },
+        );
+    }
+
+    Ok(cancelled)
+}
+
+async fn persist_and_select_repository(
+    repo_path: String,
+    state: tauri::State<'_, AppState>,
+    manager: tauri::State<'_, Arc<Mutex<RepoManager>>>,
+) -> Result<RepositoryInfo, String> {
+    let basic_info = add_local_git_repo(repo_path)
+        .await?
+        .ok_or("Unable to read repository metadata")?;
+
+    let app = {
+        let manager_guard = manager.lock().map_err(|e| e.to_string())?;
+        manager_guard.app.clone()
+    };
+
+    let temp_manager = RepoManager::new(app);
+    let repo = temp_manager.add_repository(basic_info.into()).await?;
+
+    let services = Arc::new(RepoServices::new(&repo.path)?);
+    {
+        let mut lock = state.services.write().await;
+        *lock = Some(services);
+    }
+
+    let manager_guard = manager.lock().map_err(|e| e.to_string())?;
+    let store = manager_guard
+        .get_store()
+        .map_err(|e| format!("Failed to get store: {e}"))?;
+    store.set(SELECTED_REPO_KEY, repo.id.clone());
+    store.save().map_err(|e| e.to_string())?;
+
+    Ok(repo)
 }
 
 #[tauri::command]

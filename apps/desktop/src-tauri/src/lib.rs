@@ -35,6 +35,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             ipc::commands::add_local_git_repo,
+            ipc::commands::clone_repository,
+            ipc::commands::cancel_clone_repository,
+            ipc::commands::init_repository,
             ipc::commands::select_repository,
             ipc::commands::open_with_app,
             ipc::repo_manager::list_repositories,

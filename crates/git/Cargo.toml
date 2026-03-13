@@ -10,6 +10,7 @@ serde = "1.0.219"
 base64 = "0.22"
 logger = { path = "../logger" }
 log = "0.4"
+git2 = "0.20.3"
 
 [lib]
 name = "git"

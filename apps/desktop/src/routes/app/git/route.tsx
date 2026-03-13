@@ -17,6 +17,7 @@ import {
 } from "@gitru/ui/components/avatar";
 import { Badge } from "@gitru/ui/components/badge";
 import { Button } from "@gitru/ui/components/button";
+import { useCommandNavigation } from "@gitru/ui/components/command";
 import { CopyButton } from "@gitru/ui/components/copy-button";
 import {
   Dialog,
@@ -440,7 +441,7 @@ const DiscardChangesDialog = memo(function DiscardChangesDialog({
     label ??
     (isBulkDiscard
       ? `${filePaths.length} visible files`
-      : filePaths[0]?.split("/").pop() ?? "selected changes");
+      : (filePaths[0]?.split("/").pop() ?? "selected changes"));
 
   const handleOpenChange = useCallback((newOpen: boolean) => {
     setOpen(newOpen);
@@ -476,7 +477,9 @@ const DiscardChangesDialog = memo(function DiscardChangesDialog({
           <DialogHeader>
             <DialogTitle className="sm:text-center">
               Discard changes to{" "}
-              <span className="font-semibold text-destructive">{titleLabel}</span>
+              <span className="font-semibold text-destructive">
+                {titleLabel}
+              </span>
               ?
             </DialogTitle>
             <DialogDescription className="sm:text-center">
@@ -516,7 +519,7 @@ const DiscardChangesDialog = memo(function DiscardChangesDialog({
 
               try {
                 await discardChanges({
-                  filePath: isBulkDiscard ? filePaths : filePaths[0] ?? "",
+                  filePath: isBulkDiscard ? filePaths : (filePaths[0] ?? ""),
                 });
               } catch (error) {
                 toast.error("Unable to discard changes");
@@ -826,7 +829,8 @@ const ListFileChanges = ({
     [unstagedChanges],
   );
   const visibleAddablePaths = useMemo(
-    () => Array.from(new Set([...visibleConflictPaths, ...visibleUnstagedPaths])),
+    () =>
+      Array.from(new Set([...visibleConflictPaths, ...visibleUnstagedPaths])),
     [visibleConflictPaths, visibleUnstagedPaths],
   );
 
@@ -1027,7 +1031,9 @@ const ListFileChanges = ({
                   onUnstage={unstageFile}
                   renderDiscard={(filePath) => (
                     <DiscardChangesDialog
-                      filePaths={Array.isArray(filePath) ? filePath : [filePath]}
+                      filePaths={
+                        Array.isArray(filePath) ? filePath : [filePath]
+                      }
                     />
                   )}
                   setSelectedFilePath={setWorktreeSelectionForRepo}
@@ -1569,6 +1575,7 @@ const HistoryDetailView = ({ onBack }: { onBack: () => void }) => {
 };
 
 const ListRepositories = memo(() => {
+  const navigation = useCommandNavigation();
   const selectedRepository = useAppStore((state) => state.selectedRepository);
   const setSelectedRepository = useAppStore(
     (state) => state.setSelectedRepository,
@@ -1649,11 +1656,20 @@ const ListRepositories = memo(() => {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem
-              onClick={async () => {
-                console.log(repositories);
+              onClick={() => {
+                navigation.setOpen(true);
+                navigation.push("clone-repository");
               }}
             >
               Clone repository...
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                navigation.setOpen(true);
+                navigation.push("init-repository");
+              }}
+            >
+              Initialize repository...
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={async () => {
@@ -1693,6 +1709,7 @@ const ListRepositories = memo(() => {
               .filter(([, repos]) => repos.repos.length > 0)
               .map(([owner, repos]) => {
                 const icon = getAvatarByProvider(repos?.provider || undefined);
+                const hasKnownOrigin = repos.provider !== "unknown";
 
                 return (
                   <div key={owner} className="border-b">
@@ -1700,7 +1717,7 @@ const ListRepositories = memo(() => {
                       <div className="size-3.5 text-lg text-foreground mr-1">
                         {icon || <BadgeQuestionMark className="size-3.5" />}
                       </div>
-                      {origin ? (
+                      {hasKnownOrigin ? (
                         <div>
                           <span>/</span>
                           <Avatar className="rounded-sm size-4 -translate-y-px mx-1">
@@ -1721,6 +1738,7 @@ const ListRepositories = memo(() => {
                       <RepositoryListItem
                         key={repo.id}
                         repo={repo}
+                        dataRepoId={repo.id}
                         isSelected={selectedRepository?.id === repo.id}
                         onSelect={() => {
                           setSelectedRepository(repo);
