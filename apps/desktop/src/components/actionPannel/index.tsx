@@ -5,8 +5,10 @@ import {
   createCommandViewRegistry,
 } from "@gitru/ui/components/command";
 import { BranchItem, useBranchListView } from "./views/branch-list";
+import { useCloneRepositoryView } from "./views/clone-repository";
 import { useConfirmCheckoutView } from "./views/confirm-checkout";
 import { CreateBranchProps, useCreateBranchView } from "./views/create-branch";
+import { useInitRepositoryView } from "./views/init-repository";
 import { ActionItem, useRootView } from "./views/root";
 import { useSwitchRepositoryView } from "./views/switch-repository";
 import { ThemeItem, useSwitchThemeView } from "./views/switch-theme";
@@ -19,6 +21,8 @@ type RootAction = CommandViewConfig<"root", ActionItem>;
 type BranchListAction = CommandViewConfig<"branch-list", BranchItem>;
 type CreateBranchAction = CommandViewConfig<"create-branch", CreateBranchProps>;
 type ConfirmCheckoutAction = CommandViewConfig<"confirm-checkout", undefined>;
+type CloneRepositoryAction = CommandViewConfig<"clone-repository", undefined>;
+type InitRepositoryAction = CommandViewConfig<"init-repository", undefined>;
 type SwitchRepositoryAction = CommandViewConfig<
   "switch-repository",
   RepositoryInfo
@@ -34,6 +38,8 @@ type Action =
   | BranchListAction
   | CreateBranchAction
   | ConfirmCheckoutAction
+  | CloneRepositoryAction
+  | InitRepositoryAction
   | SwitchRepositoryAction
   | SwitchThemeAction
   | SwitchUpdateChannelAction;
@@ -44,6 +50,8 @@ export const ActionPannel = ({ children }: { children: React.ReactNode }) => {
     useBranchListView(),
     useCreateBranchView(),
     useConfirmCheckoutView(),
+    useCloneRepositoryView(),
+    useInitRepositoryView(),
     useSwitchRepositoryView(),
     useSwitchThemeView(),
     useSwitchUpdateChannelView(),

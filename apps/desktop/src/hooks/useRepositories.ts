@@ -1,6 +1,9 @@
 import {
   addLocalGitRepo,
   addRepository,
+  cancelCloneRepository,
+  cloneRepository,
+  initRepository,
   listRepositories,
   type RepositoryInfo,
   refreshRepositoryInfo,
@@ -50,6 +53,44 @@ export function useRepositories() {
     }
   }
 
+  async function cloneRepo(params: {
+    url: string;
+    destinationPath: string;
+    operationId: string;
+  }): Promise<RepositoryInfo> {
+    try {
+      const repo = await cloneRepository(params);
+      setRepositories([...repositories, repo]);
+      return repo;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(message);
+      throw error;
+    }
+  }
+
+  async function cancelClone(operationId: string): Promise<boolean> {
+    try {
+      return await cancelCloneRepository({ operationId });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(message);
+      throw error;
+    }
+  }
+
+  async function initRepo(repoPath: string): Promise<RepositoryInfo> {
+    try {
+      const repo = await initRepository({ repoPath });
+      setRepositories([...repositories, repo]);
+      return repo;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(message);
+      throw error;
+    }
+  }
+
   async function removeRepo(repoId: string) {
     try {
       await removeRepository({ repoId });
@@ -82,6 +123,9 @@ export function useRepositories() {
     repositories,
     loadRepositories,
     addRepo,
+    cloneRepo,
+    cancelClone,
+    initRepo,
     removeRepo,
     refreshRepo,
   };

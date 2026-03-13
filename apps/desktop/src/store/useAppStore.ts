@@ -93,6 +93,11 @@ type AppState = {
   repoSelectIsOpen: boolean;
   setRepoSelectIsOpen: (isOpen: boolean) => void;
 
+  optimisticRepositoryCard: { name: string; path: string } | null;
+  setOptimisticRepositoryCard: (
+    card: { name: string; path: string } | null,
+  ) => void;
+
   selectionByRepo: Record<RepoKey, RepoFileSelectionState>;
 
   setWorktreeSelectionForRepo: (
@@ -168,6 +173,10 @@ export const useAppStore = create<AppState>()(
 
         repoSelectIsOpen: false,
         setRepoSelectIsOpen: (isOpen) => set({ repoSelectIsOpen: isOpen }),
+
+        optimisticRepositoryCard: null,
+        setOptimisticRepositoryCard: (card) =>
+          set({ optimisticRepositoryCard: card }),
 
         selectionByRepo: {},
 

@@ -28,6 +28,7 @@ interface RepositoryListItemProps {
   isSelected: boolean;
   onSelect: () => void;
   onRemove: () => void;
+  dataRepoId?: string;
 }
 
 export const RepositoryListItem = memo(function RepositoryListItem({
@@ -35,11 +36,13 @@ export const RepositoryListItem = memo(function RepositoryListItem({
   isSelected,
   onSelect,
   onRemove,
+  dataRepoId,
 }: RepositoryListItemProps) {
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <button
+          data-repo-id={dataRepoId}
           className={`py-1 px-2 flex w-full h-10 hover:bg-secondary cursor-pointer ${
             isSelected ? "bg-secondary hover:bg-accent" : ""
           }`}

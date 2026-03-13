@@ -251,6 +251,20 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             iconKey: "repositories",
           },
           {
+            id: "clone-repository",
+            label: "Clone Repository",
+            shortcut: ["⌘", "⇧", "L"],
+            iconKey: "repositories",
+            keywords: ["clone", "repository", "remote", "git clone"],
+          },
+          {
+            id: "init-repository",
+            label: "Initialize Repository",
+            shortcut: ["⌘", "⇧", "I"],
+            iconKey: "repositories",
+            keywords: ["init", "initialize", "repository", "git init"],
+          },
+          {
             id: "switch-theme",
             label: "Switch Theme",
             shortcut: ["⌘", "⇧", "T"],
@@ -314,6 +328,10 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
               navigate.push("create-branch");
             } else if (item.id === "switch-repository") {
               navigate.push("switch-repository");
+            } else if (item.id === "clone-repository") {
+              navigate.push("clone-repository");
+            } else if (item.id === "init-repository") {
+              navigate.push("init-repository");
             } else if (item.id === "checkout-branch") {
               navigate.push("branch-list");
             } else if (item.id === "switch-theme") {
