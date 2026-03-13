@@ -226,13 +226,13 @@ impl RepositoryService {
                     "Destination folder is not empty. Choose a new or empty folder.".to_string(),
                 );
             }
-        } else if let Some(parent) = path.parent() {
-            if !parent.exists() {
-                return Err(format!(
-                    "Destination parent folder does not exist: {}",
-                    parent.display()
-                ));
-            }
+        } else if let Some(parent) = path.parent()
+            && !parent.exists()
+        {
+            return Err(format!(
+                "Destination parent folder does not exist: {}",
+                parent.display()
+            ));
         }
 
         Ok(())

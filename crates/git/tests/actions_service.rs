@@ -218,9 +218,7 @@ fn git_discard_untracked_file() {
         repo.create_file("untracked.txt", "content");
 
         let service = setup_action_service(&repo);
-        let result = service
-            .git_discard(Some("untracked.txt"), None, None)
-            .await;
+        let result = service.git_discard(Some("untracked.txt"), None, None).await;
 
         // For untracked files, discard removes the file
         // Just verify it doesn't panic
@@ -429,9 +427,7 @@ fn git_add_file_with_spaces() {
         repo.create_file("file with spaces.txt", "content");
 
         let service = setup_action_service(&repo);
-        let result = service
-            .git_add(Some("file with spaces.txt"), None)
-            .await;
+        let result = service.git_add(Some("file with spaces.txt"), None).await;
 
         assert!(result.is_ok());
     });
