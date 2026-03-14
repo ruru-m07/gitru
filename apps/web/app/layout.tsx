@@ -66,6 +66,7 @@ export default function Layout({ children }: LayoutProps<"/">) {
         <meta name="twitter:image:height" content="630" />
         <meta name="twitter:image:content_type" content="image/png" />
 
+        <title>Gitru</title>
       </head>
       <body className="flex flex-col min-h-screen">
         <Provider>{children}</Provider>
