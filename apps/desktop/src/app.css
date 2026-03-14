@@ -4,6 +4,7 @@
 
 * {
   user-select: none;
+  -moz-user-select: none;
 }
 
 :root {
