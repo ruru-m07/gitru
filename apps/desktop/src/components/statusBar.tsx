@@ -1,8 +1,4 @@
-import {
-  AheadBehindStatus,
-  cancelCloneRepository,
-  gitVersion,
-} from "@gitru/commands";
+import { AheadBehindStatus, gitVersion } from "@gitru/commands";
 import { Git } from "@gitru/icon";
 import {
   Avatar,
@@ -29,18 +25,15 @@ import {
   ArrowDown,
   ArrowUp,
   CloudUpload,
-  CopyPlus,
   File,
   GitBranch,
   GitCommitVertical,
   Loader2,
   RefreshCw,
   RotateCw,
-  X,
 } from "lucide-react";
 import React from "react";
 import {
-  useCloneProgress,
   useGetCommitById,
   useGetCurrentBranch,
   useGetLastCommit,
@@ -258,77 +251,6 @@ const EnvironmentBadge = () => {
       </Badge>
     );
   }
-};
-
-const CloneProgressBadge = () => {
-  const { event, status } = useCloneProgress();
-  const [isCancelling, setIsCancelling] = React.useState(false);
-
-  const handleCancel = async () => {
-    if (!event?.operationId) return;
-
-    setIsCancelling(true);
-    try {
-      await cancelCloneRepository({ operationId: event.operationId });
-    } catch (error) {
-      console.error("Failed to cancel clone:", error);
-    } finally {
-      setIsCancelling(false);
-    }
-  };
-
-  if (!event || status === "idle") {
-    return null;
-  }
-
-  const percent = Math.round(event.percent ?? 0);
-  const label =
-    event.phase === "Error" || event.phase === "Cancelled"
-      ? event.line || "Clone failed"
-      : event.phase === "Finished"
-        ? "Clone completed"
-        : `${event.status || "Cloning"}${event.percent != null ? ` ${percent}%` : ""}`;
-
-  return (
-    <Tooltip>
-      <TooltipTrigger>
-        <Badge
-          variant={
-            event.phase === "Error" || event.phase === "Cancelled"
-              ? "destructive"
-              : "outline"
-          }
-          className="py-2.5 rounded-none border-0 border-l px-2 flex items-center gap-1.5"
-        >
-          {status === "running" ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <CopyPlus className="size-3.5" />
-          )}
-          <span className="text-xs tabular-nums">{label}</span>
-          {status === "running" && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleCancel();
-              }}
-              disabled={isCancelling}
-              className="ml-1 hover:opacity-70 disabled:opacity-50"
-              title="Cancel clone"
-            >
-              <X className="size-3.5" />
-            </button>
-          )}
-        </Badge>
-      </TooltipTrigger>
-      <TooltipPopup side="top" align="end">
-        <span className="max-w-96 break-all text-xs">
-          {event.line || label}
-        </span>
-      </TooltipPopup>
-    </Tooltip>
-  );
 };
 
 const GitVersion = () => {
