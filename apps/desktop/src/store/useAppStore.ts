@@ -83,6 +83,22 @@ const normalizeSelection = (
   selectedAt: selection.selectedAt || Date.now(),
 });
 
+const isSameSelectionIdentity = (
+  left: FileSelectionIdentity | null,
+  right: FileSelectionIdentity | null,
+) => {
+  if (!left && !right) return true;
+  if (!left || !right) return false;
+
+  return (
+    left.filePath === right.filePath &&
+    left.fileNewPath === right.fileNewPath &&
+    left.source === right.source &&
+    left.stashReference === right.stashReference &&
+    left.historyCommitHash === right.historyCommitHash
+  );
+};
+
 type AppState = {
   selectedRepository: RepositoryInfo | null;
   setSelectedRepository: (repo: RepositoryInfo | null) => void;
@@ -192,20 +208,25 @@ export const useAppStore = create<AppState>()(
             const current =
               state.selectionByRepo[repoPath] ??
               createDefaultRepoFileSelectionState();
+            const nextWorktree = selection
+              ? normalizeSelection({
+                  ...selection,
+                  source: "worktree",
+                  stashReference: undefined,
+                  historyCommitHash: undefined,
+                })
+              : null;
+
+            if (isSameSelectionIdentity(current.worktree, nextWorktree)) {
+              return state;
+            }
 
             return {
               selectionByRepo: {
                 ...state.selectionByRepo,
                 [repoPath]: {
                   ...current,
-                  worktree: selection
-                    ? normalizeSelection({
-                        ...selection,
-                        source: "worktree",
-                        stashReference: undefined,
-                        historyCommitHash: undefined,
-                      })
-                    : null,
+                  worktree: nextWorktree,
                 },
               },
             };
@@ -233,8 +254,9 @@ export const useAppStore = create<AppState>()(
               state.selectionByRepo[repoPath] ??
               createDefaultRepoFileSelectionState();
             const nextStashByReference = { ...current.stashByReference };
-
-            nextStashByReference[stashReference] = selection
+            const previousSelection =
+              nextStashByReference[stashReference] ?? null;
+            const nextSelection = selection
               ? normalizeSelection({
                   ...selection,
                   source: "stash",
@@ -242,6 +264,12 @@ export const useAppStore = create<AppState>()(
                   historyCommitHash: undefined,
                 })
               : null;
+
+            if (isSameSelectionIdentity(previousSelection, nextSelection)) {
+              return state;
+            }
+
+            nextStashByReference[stashReference] = nextSelection;
 
             return {
               selectionByRepo: {
@@ -276,8 +304,8 @@ export const useAppStore = create<AppState>()(
               state.selectionByRepo[repoPath] ??
               createDefaultRepoFileSelectionState();
             const nextHistoryByCommit = { ...current.historyByCommit };
-
-            nextHistoryByCommit[commitHash] = selection
+            const previousSelection = nextHistoryByCommit[commitHash] ?? null;
+            const nextSelection = selection
               ? normalizeSelection({
                   ...selection,
                   source: "history",
@@ -285,6 +313,12 @@ export const useAppStore = create<AppState>()(
                   historyCommitHash: commitHash,
                 })
               : null;
+
+            if (isSameSelectionIdentity(previousSelection, nextSelection)) {
+              return state;
+            }
+
+            nextHistoryByCommit[commitHash] = nextSelection;
 
             return {
               selectionByRepo: {
@@ -412,7 +446,10 @@ export const useAppStore = create<AppState>()(
         },
 
         mainWindowView: null,
-        setMainWindowView: (view) => set({ mainWindowView: view }),
+        setMainWindowView: (view) =>
+          set((state) =>
+            state.mainWindowView === view ? state : { mainWindowView: view },
+          ),
 
         preferredExternalOpener: "vscode",
         setPreferredExternalOpener: (opener) =>
@@ -456,6 +493,15 @@ export const useAppStore = create<AppState>()(
         name: "app-data",
         storage: createJSONStorage(() => createTauriStorage()),
         version: 3,
+        partialize: (state) => ({
+          selectedRepository: state.selectedRepository,
+          repositories: state.repositories,
+          repoSelectIsOpen: state.repoSelectIsOpen,
+          optimisticRepositoryCard: state.optimisticRepositoryCard,
+          preferredExternalOpener: state.preferredExternalOpener,
+          updateChannel: state.updateChannel,
+          gitViewByRepo: state.gitViewByRepo,
+        }),
         migrate: (persistedState: unknown, version) => {
           const state = (persistedState ?? {}) as {
             selectionByRepo?: Record<string, RepoFileSelectionState>;

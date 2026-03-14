@@ -386,24 +386,6 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
 
   const virtualItems = virtualizer.getVirtualItems();
 
-  const selectedFilesInView = useMemo(
-    () => fileItems.filter((file) => selectedFiles.has(file.path)),
-    [fileItems, selectedFiles],
-  );
-
-  const bulkTargets = useMemo(() => {
-    const targets: string[] = [];
-    for (const file of selectedFilesInView) {
-      const fileTargets = getFileTargets(file);
-      if (Array.isArray(fileTargets)) {
-        targets.push(...fileTargets);
-      } else {
-        targets.push(fileTargets);
-      }
-    }
-    return Array.from(new Set(targets));
-  }, [selectedFilesInView]);
-
   const focusContainer = useCallback(() => {
     parentRef.current?.focus();
   }, []);
@@ -641,8 +623,6 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
                 ariaPosInSet={fileIndex + 1}
                 ariaSetSize={listSize}
                 onRequestFocus={focusContainer}
-                selectedCount={selectedFilesInView.length}
-                bulkTargets={bulkTargets}
               />
             </div>
           );
@@ -776,8 +756,6 @@ interface FileRowProps {
   ariaPosInSet: number;
   ariaSetSize: number;
   onRequestFocus: () => void;
-  selectedCount: number;
-  bulkTargets: string[];
 }
 
 const FileRow = memo(
@@ -805,8 +783,6 @@ const FileRow = memo(
     ariaPosInSet,
     ariaSetSize,
     onRequestFocus,
-    selectedCount,
-    bulkTargets,
   }: FileRowProps) {
     const path = file.path;
     const fileTargets = getFileTargets(file);
@@ -831,6 +807,32 @@ const FileRow = memo(
     );
 
     const selectedRepository = useAppStore((state) => state.selectedRepository);
+    const getSelectionTargets = useCallback(() => {
+      const { selectedFiles, allFiles } = useFileSelectionStore.getState();
+
+      if (!isSelected || selectedFiles.size <= 1) {
+        return Array.isArray(fileTargets) ? fileTargets : [fileTargets];
+      }
+
+      const targets: string[] = [];
+
+      for (const selectedFile of allFiles) {
+        if (!selectedFiles.has(selectedFile.path)) continue;
+        const targetsForFile = getFileTargets(selectedFile);
+        if (Array.isArray(targetsForFile)) {
+          targets.push(...targetsForFile);
+        } else {
+          targets.push(targetsForFile);
+        }
+      }
+
+      const uniqueTargets = Array.from(new Set(targets));
+      if (uniqueTargets.length > 0) {
+        return uniqueTargets;
+      }
+
+      return Array.isArray(fileTargets) ? fileTargets : [fileTargets];
+    }, [fileTargets, isSelected]);
 
     return (
       <contextMenu.ContextMenu>
@@ -1009,47 +1011,49 @@ const FileRow = memo(
             </div>
           </contextMenu.ContextMenuLabel>
           <contextMenu.ContextMenuSeparator />
-          {isSelected && selectedCount > 1 && (
+          {isSelected && (
             <>
               {onAdd && (
                 <contextMenu.ContextMenuItem
                   onSelect={async () => {
-                    const success = await onAdd(bulkTargets);
+                    const selectedTargets = getSelectionTargets();
+                    const success = await onAdd(selectedTargets);
                     if (success) {
-                      toast.success(`Staged ${selectedCount} files`);
+                      toast.success("Selected files staged");
                     } else {
                       toast.error("Failed to stage selected files");
                     }
                   }}
                 >
                   <Plus size={16} className="mr-2" />
-                  Stage Selected ({selectedCount})
+                  Stage Selected
                 </contextMenu.ContextMenuItem>
               )}
               {onUnstage && (
                 <contextMenu.ContextMenuItem
                   onSelect={async () => {
-                    const success = await onUnstage(bulkTargets);
+                    const selectedTargets = getSelectionTargets();
+                    const success = await onUnstage(selectedTargets);
                     if (success) {
-                      toast.success(`Unstaged ${selectedCount} files`);
+                      toast.success("Selected files unstaged");
                     } else {
                       toast.error("Failed to unstage selected files");
                     }
                   }}
                 >
                   <Minus size={16} className="mr-2" />
-                  Unstage Selected ({selectedCount})
+                  Unstage Selected
                 </contextMenu.ContextMenuItem>
               )}
               {onDiscard && (
                 <contextMenu.ContextMenuItem
                   className="hover:text-destructive! hover:bg-destructive/10!"
                   onSelect={() => {
-                    onDiscard(bulkTargets);
+                    onDiscard(getSelectionTargets());
                   }}
                 >
                   <Undo2 size={16} className="mr-2" />
-                  Discard Selected ({selectedCount})
+                  Discard Selected
                 </contextMenu.ContextMenuItem>
               )}
               <contextMenu.ContextMenuSeparator />
@@ -1183,8 +1187,6 @@ const FileRow = memo(
       prevProps.ariaPosInSet === nextProps.ariaPosInSet &&
       prevProps.ariaSetSize === nextProps.ariaSetSize &&
       prevProps.onRequestFocus === nextProps.onRequestFocus &&
-      prevProps.selectedCount === nextProps.selectedCount &&
-      prevProps.bulkTargets === nextProps.bulkTargets &&
       prevProps.getContextActions === nextProps.getContextActions
     );
   },
