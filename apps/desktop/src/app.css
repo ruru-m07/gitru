@@ -2,6 +2,11 @@
 
 @custom-variant hover (&:hover);
 
+* {
+  user-select: none;
+  -moz-user-select: none;
+}
+
 :root {
   --font-sans: Geist;
   --font-mono: GeistMono;

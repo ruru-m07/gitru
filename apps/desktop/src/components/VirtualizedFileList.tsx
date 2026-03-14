@@ -24,9 +24,17 @@ import {
   Plus,
   Undo2,
 } from "lucide-react";
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
-
+import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
 import { type FileSelectionIdentity, useAppStore } from "@/store/useAppStore";
 
@@ -107,9 +115,7 @@ const SECTION_HEADER_HEIGHT = 36;
 type MatchRange = { start: number; end: number };
 const EMPTY_CONTEXT_ACTIONS: FileRowContextAction[] = [];
 const getFileTargets = (file: FileStatus) =>
-  file.new_path
-    ? Array.from(new Set([file.path, file.new_path]))
-    : file.path;
+  file.new_path ? Array.from(new Set([file.path, file.new_path])) : file.path;
 
 const hasRegexFlags = (flags: string) => /^[dgimsuvy]*$/.test(flags);
 
@@ -260,6 +266,15 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
   defaultExpandedSections,
 }: VirtualizedFileListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
+  const listId = useId();
+  const [isContainerFocused, setIsContainerFocused] = useState(false);
+  const selectedFiles = useFileSelectionStore((state) => state.selectedFiles);
+  const focusedIndex = useFileSelectionStore((state) => state.focusedIndex);
+  const setAllFiles = useFileSelectionStore((state) => state.setAllFiles);
+  const setFocusedIndex = useFileSelectionStore(
+    (state) => state.setFocusedIndex,
+  );
+  const clearSelection = useFileSelectionStore((state) => state.clearSelection);
 
   const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
     if (defaultExpandedSections) {
@@ -280,49 +295,81 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
     });
   }, []);
 
-  const items = useMemo(() => {
-    const result: VirtualItem[] = [];
+  const { items, fileItems, fileIndexByPath, fileIndexToItemIndex } =
+    useMemo(() => {
+      const result: VirtualItem[] = [];
+      const fileItems: FileStatus[] = [];
+      const fileIndexByPath = new Map<string, number>();
+      const fileIndexToItemIndex: number[] = [];
 
-    for (const section of sections) {
-      if (section.files.length === 0) continue;
+      for (const section of sections) {
+        if (section.files.length === 0) continue;
 
-      if (sectionMode === "flat") {
-        for (const file of section.files) {
-          result.push({
-            type: "file",
-            file,
-            sectionId: section.id,
-            sectionName: section.name,
-            sectionType: section.type,
-          });
+        if (sectionMode === "flat") {
+          for (const file of section.files) {
+            result.push({
+              type: "file",
+              file,
+              sectionId: section.id,
+              sectionName: section.name,
+              sectionType: section.type,
+            });
+            fileIndexByPath.set(file.path, fileItems.length);
+            fileIndexToItemIndex.push(result.length - 1);
+            fileItems.push(file);
+          }
+          continue;
         }
-        continue;
+
+        result.push({
+          type: "header",
+          sectionId: section.id,
+          sectionName: section.name,
+          sectionType: section.type,
+          count: section.files.length,
+          actions: section.actions,
+        });
+
+        if (expandedSections.has(section.id)) {
+          for (const file of section.files) {
+            result.push({
+              type: "file",
+              file,
+              sectionId: section.id,
+              sectionName: section.name,
+              sectionType: section.type,
+            });
+            fileIndexByPath.set(file.path, fileItems.length);
+            fileIndexToItemIndex.push(result.length - 1);
+            fileItems.push(file);
+          }
+        }
       }
 
-      result.push({
-        type: "header",
-        sectionId: section.id,
-        sectionName: section.name,
-        sectionType: section.type,
-        count: section.files.length,
-        actions: section.actions,
-      });
+      return {
+        items: result,
+        fileItems,
+        fileIndexByPath,
+        fileIndexToItemIndex,
+      };
+    }, [sections, expandedSections, sectionMode]);
 
-      if (expandedSections.has(section.id)) {
-        for (const file of section.files) {
-          result.push({
-            type: "file",
-            file,
-            sectionId: section.id,
-            sectionName: section.name,
-            sectionType: section.type,
-          });
-        }
+  useEffect(() => {
+    setAllFiles(fileItems);
+  }, [fileItems, setAllFiles]);
+
+  useEffect(() => {
+    if (fileItems.length === 0) {
+      if (focusedIndex !== -1) {
+        setFocusedIndex(-1);
       }
+      return;
     }
 
-    return result;
-  }, [sections, expandedSections, sectionMode]);
+    if (focusedIndex >= fileItems.length) {
+      setFocusedIndex(fileItems.length - 1);
+    }
+  }, [fileItems.length, focusedIndex, setFocusedIndex]);
 
   const virtualizer = useVirtualizer({
     count: items.length,
@@ -339,10 +386,134 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
 
   const virtualItems = virtualizer.getVirtualItems();
 
+  const focusContainer = useCallback(() => {
+    parentRef.current?.focus();
+  }, []);
+
+  const handleContainerFocus = useCallback(
+    (event: React.FocusEvent<HTMLDivElement>) => {
+      if (event.currentTarget !== event.target) return;
+      setIsContainerFocused(true);
+      if (focusedIndex === -1 && fileItems.length > 0) {
+        const firstSelected = fileItems.findIndex((file) =>
+          selectedFiles.has(file.path),
+        );
+        setFocusedIndex(firstSelected >= 0 ? firstSelected : 0);
+      }
+    },
+    [fileItems, focusedIndex, selectedFiles, setFocusedIndex],
+  );
+
+  const handleContainerBlur = useCallback(
+    (event: React.FocusEvent<HTMLDivElement>) => {
+      if (event.currentTarget !== event.target) return;
+      setIsContainerFocused(false);
+    },
+    [],
+  );
+
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.currentTarget !== event.target) return;
+
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        if (fileItems.length === 0) return;
+
+        const delta = event.key === "ArrowDown" ? 1 : -1;
+        const startIndex = focusedIndex === -1 ? 0 : focusedIndex;
+        const nextFocusedIndex = Math.max(
+          0,
+          Math.min(fileItems.length - 1, startIndex + delta),
+        );
+        const file = fileItems[nextFocusedIndex];
+        if (!file) return;
+
+        if (event.metaKey || event.ctrlKey) {
+          setFocusedIndex(nextFocusedIndex);
+        } else {
+          onFileClick(file, nextFocusedIndex, {
+            shiftKey: event.shiftKey,
+            metaKey: event.metaKey,
+            ctrlKey: event.ctrlKey,
+          });
+
+          if (!event.shiftKey && !event.metaKey && !event.ctrlKey) {
+            setSelectedFilePath({
+              filePath: file.path,
+              fileNewPath: file.new_path,
+              source: "worktree",
+              selectedAt: Date.now(),
+            });
+          }
+        }
+
+        const itemIndex = fileIndexToItemIndex[nextFocusedIndex];
+        if (itemIndex !== undefined) {
+          virtualizer.scrollToIndex(itemIndex, { align: "auto" });
+        }
+        return;
+      }
+
+      if (event.key === "Enter") {
+        event.preventDefault();
+        if (fileItems.length === 0) return;
+        const activeIndex = focusedIndex >= 0 ? focusedIndex : 0;
+        const file = fileItems[activeIndex];
+        if (!file) return;
+
+        onFileClick(file, activeIndex, {
+          shiftKey: event.shiftKey,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+        });
+
+        if (!event.shiftKey && !event.metaKey && !event.ctrlKey) {
+          setSelectedFilePath({
+            filePath: file.path,
+            fileNewPath: file.new_path,
+            source: "worktree",
+            selectedAt: Date.now(),
+          });
+        }
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        clearSelection();
+      }
+    },
+    [
+      fileItems,
+      fileIndexToItemIndex,
+      focusedIndex,
+      clearSelection,
+      onFileClick,
+      setFocusedIndex,
+      setSelectedFilePath,
+      virtualizer,
+    ],
+  );
+
   return (
     <div
       ref={parentRef}
-      className={cn("select-none h-full overflow-auto", className)}
+      role="listbox"
+      aria-label="File status list"
+      aria-multiselectable={true}
+      aria-activedescendant={
+        isContainerFocused && focusedIndex >= 0
+          ? `${listId}-option-${focusedIndex}`
+          : undefined
+      }
+      tabIndex={0}
+      onFocus={handleContainerFocus}
+      onBlur={handleContainerBlur}
+      onKeyDown={handleKeyDown}
+      className={cn(
+        "select-none h-full overflow-auto focus-visible:outline-none",
+        className,
+      )}
     >
       <div
         style={{
@@ -361,6 +532,7 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
               <div
                 key={virtualRow.key}
                 data-index={virtualRow.index}
+                role="presentation"
                 style={{
                   position: "absolute",
                   top: 0,
@@ -384,9 +556,27 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
           }
 
           const isSelected = selectedFilePath?.path === item.file.path;
+          const isMultiSelected = selectedFiles.has(item.file.path);
           const isChangesSection = item.sectionType === "changes";
           const isStagedSection = item.sectionType === "staged";
           const isConflictSection = item.sectionType === "conflicted";
+          const fileIndex = fileIndexByPath.get(item.file.path) ?? -1;
+          const isFocused = isContainerFocused && focusedIndex === fileIndex;
+          const listSize = fileItems.length;
+          const prevSelected =
+            fileIndex > 0
+              ? selectedFiles.has(fileItems[fileIndex - 1]?.path)
+              : false;
+          const nextSelected =
+            fileIndex >= 0 && fileIndex < fileItems.length - 1
+              ? selectedFiles.has(fileItems[fileIndex + 1]?.path)
+              : false;
+          const isGroupStart =
+            (isSelected || isMultiSelected) && !prevSelected && nextSelected;
+          const isGroupMiddle =
+            (isSelected || isMultiSelected) && prevSelected && nextSelected;
+          const isGroupEnd =
+            (isSelected || isMultiSelected) && prevSelected && !nextSelected;
 
           return (
             <div
@@ -404,6 +594,7 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
               <FileRow
                 file={item.file}
                 index={virtualRow.index}
+                fileIndex={fileIndex}
                 sectionId={item.sectionId}
                 sectionName={item.sectionName}
                 sectionType={item.sectionType}
@@ -422,8 +613,16 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
                 }
                 searchQuery={searchQuery}
                 setSelectedFilePath={setSelectedFilePath}
-                isSelected={isSelected}
+                isSelected={isSelected || isMultiSelected}
+                isFocused={isFocused}
+                isGroupStart={isGroupStart}
+                isGroupMiddle={isGroupMiddle}
+                isGroupEnd={isGroupEnd}
                 getContextActions={getContextActions}
+                optionId={`${listId}-option-${fileIndex}`}
+                ariaPosInSet={fileIndex + 1}
+                ariaSetSize={listSize}
+                onRequestFocus={focusContainer}
               />
             </div>
           );
@@ -528,6 +727,7 @@ interface FileRowProps {
   file: FileStatus;
   searchQuery: string;
   index: number;
+  fileIndex: number;
   sectionId: string;
   sectionName: string;
   sectionType?: FileListSection["type"];
@@ -547,7 +747,15 @@ interface FileRowProps {
   renderDiscard?: (filePath: string | string[]) => React.ReactNode;
   setSelectedFilePath: (file: FileSelectionIdentity | null) => void;
   isSelected: boolean;
+  isFocused: boolean;
+  isGroupStart: boolean;
+  isGroupMiddle: boolean;
+  isGroupEnd: boolean;
   getContextActions?: VirtualizedFileListProps["getContextActions"];
+  optionId: string;
+  ariaPosInSet: number;
+  ariaSetSize: number;
+  onRequestFocus: () => void;
 }
 
 const FileRow = memo(
@@ -555,6 +763,7 @@ const FileRow = memo(
     file,
     searchQuery,
     index,
+    fileIndex,
     sectionId,
     sectionName,
     sectionType,
@@ -565,7 +774,15 @@ const FileRow = memo(
     renderDiscard,
     setSelectedFilePath,
     isSelected,
+    isFocused,
+    isGroupStart,
+    isGroupMiddle,
+    isGroupEnd,
     getContextActions,
+    optionId,
+    ariaPosInSet,
+    ariaSetSize,
+    onRequestFocus,
   }: FileRowProps) {
     const path = file.path;
     const fileTargets = getFileTargets(file);
@@ -590,23 +807,64 @@ const FileRow = memo(
     );
 
     const selectedRepository = useAppStore((state) => state.selectedRepository);
+    const getSelectionTargets = useCallback(() => {
+      const { selectedFiles, allFiles } = useFileSelectionStore.getState();
+
+      if (!isSelected || selectedFiles.size <= 1) {
+        return Array.isArray(fileTargets) ? fileTargets : [fileTargets];
+      }
+
+      const targets: string[] = [];
+
+      for (const selectedFile of allFiles) {
+        if (!selectedFiles.has(selectedFile.path)) continue;
+        const targetsForFile = getFileTargets(selectedFile);
+        if (Array.isArray(targetsForFile)) {
+          targets.push(...targetsForFile);
+        } else {
+          targets.push(targetsForFile);
+        }
+      }
+
+      const uniqueTargets = Array.from(new Set(targets));
+      if (uniqueTargets.length > 0) {
+        return uniqueTargets;
+      }
+
+      return Array.isArray(fileTargets) ? fileTargets : [fileTargets];
+    }, [fileTargets, isSelected]);
 
     return (
       <contextMenu.ContextMenu>
         <contextMenu.ContextMenuTrigger
           className={cn(
-            `group dark:[&[data-state=open]>div]:bg-blue-900/50! [&[data-state=open]>div]:bg-blue-50! border-y-transparent [&[data-state=open]>div]:border-y [&[data-state=open]>div]:border-y-blue-400! [&[data-state=open]>div]:border-dashed!`,
+            "group",
+            "border-y-transparent",
+            "dark:[&[data-state=open]>div]:bg-blue-900/50!",
+            "[&[data-state=open]>div]:bg-blue-50!",
+            "dark:[&[data-state=open]>div]:bg-blue-900/50!",
+            "[&[data-state=open]>span]:bg-blue-400!",
           )}
           asChild
         >
           <div
             data-index={index}
+            id={optionId}
+            role="option"
+            aria-selected={isSelected}
+            aria-posinset={ariaPosInSet}
+            aria-setsize={ariaSetSize}
+            data-focused={isFocused ? "true" : "false"}
             className={cn(
               "[--pattern-fg:color-mix(in_srgb,var(--primary)_20%,transparent)] transition-none flex relative select-none cursor-pointer items-center h-full hover:bg-muted",
-              isSelected && "bg-secondary hover:bg-secondary/90",
+              "data-[focused=true]:bg-muted-foreground/20!",
+              isSelected &&
+                "bg-muted-foreground/10 hover:bg-muted-foreground/15",
             )}
             onClick={(e) => {
-              onFileClick(file, index, {
+              onRequestFocus();
+              if (fileIndex < 0) return;
+              onFileClick(file, fileIndex, {
                 shiftKey: e.shiftKey,
                 metaKey: e.metaKey,
                 ctrlKey: e.ctrlKey,
@@ -629,7 +887,32 @@ const FileRow = memo(
             }}
           >
             {isSelected && (
-              <div className="absolute top-1/2 -translate-y-1/2 -left-1 rounded-md w-1.75 bg-primary h-4" />
+              <span
+                className="absolute -left-1 rounded-md w-1.75 bg-primary z-50!"
+                style={
+                  isGroupMiddle
+                    ? { top: 0, height: "100%", borderRadius: "0" }
+                    : isGroupStart
+                      ? {
+                          top: "25%",
+                          height: "75%",
+                          WebkitBorderBottomLeftRadius: "0",
+                          WebkitBorderBottomRightRadius: "0",
+                        }
+                      : isGroupEnd
+                        ? {
+                            top: 0,
+                            height: "75%",
+                            WebkitBorderTopLeftRadius: "0",
+                            WebkitBorderTopRightRadius: "0",
+                          }
+                        : {
+                            top: "50%",
+                            height: "16px",
+                            transform: "translateY(-50%)",
+                          }
+                }
+              />
             )}
             <div
               data-slot="file-row"
@@ -728,6 +1011,54 @@ const FileRow = memo(
             </div>
           </contextMenu.ContextMenuLabel>
           <contextMenu.ContextMenuSeparator />
+          {isSelected && (
+            <>
+              {onAdd && (
+                <contextMenu.ContextMenuItem
+                  onSelect={async () => {
+                    const selectedTargets = getSelectionTargets();
+                    const success = await onAdd(selectedTargets);
+                    if (success) {
+                      toast.success("Selected files staged");
+                    } else {
+                      toast.error("Failed to stage selected files");
+                    }
+                  }}
+                >
+                  <Plus size={16} className="mr-2" />
+                  Stage Selected
+                </contextMenu.ContextMenuItem>
+              )}
+              {onUnstage && (
+                <contextMenu.ContextMenuItem
+                  onSelect={async () => {
+                    const selectedTargets = getSelectionTargets();
+                    const success = await onUnstage(selectedTargets);
+                    if (success) {
+                      toast.success("Selected files unstaged");
+                    } else {
+                      toast.error("Failed to unstage selected files");
+                    }
+                  }}
+                >
+                  <Minus size={16} className="mr-2" />
+                  Unstage Selected
+                </contextMenu.ContextMenuItem>
+              )}
+              {onDiscard && (
+                <contextMenu.ContextMenuItem
+                  className="hover:text-destructive! hover:bg-destructive/10!"
+                  onSelect={() => {
+                    onDiscard(getSelectionTargets());
+                  }}
+                >
+                  <Undo2 size={16} className="mr-2" />
+                  Discard Selected
+                </contextMenu.ContextMenuItem>
+              )}
+              <contextMenu.ContextMenuSeparator />
+            </>
+          )}
           {contextActions.map((action) => (
             <contextMenu.ContextMenuItem
               key={action.id}
@@ -839,6 +1170,7 @@ const FileRow = memo(
       prevProps.file === nextProps.file &&
       prevProps.searchQuery === nextProps.searchQuery &&
       prevProps.index === nextProps.index &&
+      prevProps.fileIndex === nextProps.fileIndex &&
       prevProps.sectionId === nextProps.sectionId &&
       prevProps.sectionName === nextProps.sectionName &&
       prevProps.sectionType === nextProps.sectionType &&
@@ -847,6 +1179,14 @@ const FileRow = memo(
       Boolean(prevProps.onDiscard) === Boolean(nextProps.onDiscard) &&
       Boolean(prevProps.renderDiscard) === Boolean(nextProps.renderDiscard) &&
       prevProps.isSelected === nextProps.isSelected &&
+      prevProps.isFocused === nextProps.isFocused &&
+      prevProps.isGroupStart === nextProps.isGroupStart &&
+      prevProps.isGroupMiddle === nextProps.isGroupMiddle &&
+      prevProps.isGroupEnd === nextProps.isGroupEnd &&
+      prevProps.optionId === nextProps.optionId &&
+      prevProps.ariaPosInSet === nextProps.ariaPosInSet &&
+      prevProps.ariaSetSize === nextProps.ariaSetSize &&
+      prevProps.onRequestFocus === nextProps.onRequestFocus &&
       prevProps.getContextActions === nextProps.getContextActions
     );
   },

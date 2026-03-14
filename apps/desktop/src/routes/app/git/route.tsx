@@ -739,6 +739,7 @@ const ListFileChanges = ({
 
   const { mutateAsync: addFile } = useGitAdd();
   const { mutateAsync: unstageFile } = useGitUnstage();
+  const { mutateAsync: discardChanges } = useGitDiscard();
 
   const { data: currentBranchStash } = useGetCurrentBranchStash();
 
@@ -1029,6 +1030,7 @@ const ListFileChanges = ({
                   onFileClick={handleFileClick}
                   onAdd={addFile}
                   onUnstage={unstageFile}
+                  onDiscard={(filePath) => discardChanges({ filePath })}
                   renderDiscard={(filePath) => (
                     <DiscardChangesDialog
                       filePaths={

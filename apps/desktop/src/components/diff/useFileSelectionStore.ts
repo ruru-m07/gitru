@@ -40,7 +40,21 @@ export const useFileSelectionStore = create<FileSelectionState>((set, get) => ({
   focusedIndex: -1,
   allFiles: [],
 
-  setAllFiles: (files) => set({ allFiles: files }),
+  setAllFiles: (files) =>
+    set((state) => {
+      const prev = state.allFiles;
+      if (
+        prev.length === files.length &&
+        prev.every(
+          (file, index) =>
+            file.path === files[index]?.path &&
+            file.new_path === files[index]?.new_path,
+        )
+      ) {
+        return state;
+      }
+      return { allFiles: files };
+    }),
 
   setFocusedIndex: (index) => set({ focusedIndex: index }),
 
@@ -129,8 +143,6 @@ export const useFileSelectionStore = create<FileSelectionState>((set, get) => ({
       if (newIndex !== state.focusedIndex && state.allFiles[newIndex]) {
         return {
           focusedIndex: newIndex,
-          selectedFiles: new Set([state.allFiles[newIndex].path]),
-          lastClickedFile: state.allFiles[newIndex].path,
         };
       }
       return state;
@@ -145,8 +157,6 @@ export const useFileSelectionStore = create<FileSelectionState>((set, get) => ({
       if (newIndex !== state.focusedIndex && state.allFiles[newIndex]) {
         return {
           focusedIndex: newIndex,
-          selectedFiles: new Set([state.allFiles[newIndex].path]),
-          lastClickedFile: state.allFiles[newIndex].path,
         };
       }
       return state;
