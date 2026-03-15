@@ -69,8 +69,6 @@ import { cn } from "@gitru/ui/lib/utils";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
-  ArrowDown,
-  ArrowUp,
   BadgeQuestionMark,
   BookCopy,
   ChevronDown,
@@ -242,12 +240,13 @@ function GitPageLayout() {
             <span className="text-3xl">Gitru</span>
           </span>
           <div className="flex justify-between items-end px-[calc(--spacing(3)-1px)]">
-            <h1 className="text-muted-foreground font-[350]">
-              Add repositorys to get start!
+            <h1 className="text-muted-foreground font-normal">
+              {repositories?.length === 0 ? "Add" : "Select"} repositorys to get
+              start!
             </h1>
             <a
               href="https://gitru.app/docs"
-              className="text-sm text-muted-foreground hover:underline opacity-70 hover:opacity-100 transition-opacity"
+              className="text-sm font-normal text-muted-foreground hover:underline opacity-70 hover:opacity-100 transition-opacity"
               target="_blank"
             >
               Learn more ↗
@@ -282,7 +281,7 @@ function GitPageLayout() {
               className="flex-col group h-fit! items-start pt-4 pb-2 gap-2 w-64"
             >
               <BookCopy className="size-5.5" />
-              <span className="text-lg font-[330]">
+              <span className="text-lg font-normal">
                 Import Local Repository
               </span>
             </Button>
@@ -307,7 +306,7 @@ function GitPageLayout() {
                   {getAvatarByProvider("gitlab", "size-5.5")}
                 </span>
               </span>
-              <span className="text-lg font-[330]">Clone from Remote</span>
+              <span className="text-lg font-normal">Clone from Remote</span>
             </Button>
             <Button
               variant={"secondary"}
@@ -318,14 +317,14 @@ function GitPageLayout() {
               }}
             >
               <CopyPlus className="size-5.5" />
-              <span className="text-lg font-[330]">Create New Repository</span>
+              <span className="text-lg font-normal">Create New Repository</span>
             </Button>
           </div>
           <div className="flex flex-col w-full">
             <div className="px-[calc(--spacing(3)-1px)] w-full">
               <div className="relative my-4">
                 <Separator />
-                <span className="absolute -top-3 left-6 font-light -translate-x-1/2 bg-background px-2 text-sm text-muted-foreground">
+                <span className="font-normal absolute -top-3 left-6 -translate-x-1/2 bg-background px-2 text-sm text-muted-foreground">
                   Recent
                 </span>
               </div>
@@ -349,7 +348,7 @@ function GitPageLayout() {
                         <div className="text-muted-foreground flex items-center">
                           {origin ? (
                             <div>
-                              <Avatar className="rounded-sm size-4">
+                              <Avatar className="rounded-sm size-4 -translate-y-px">
                                 <AvatarImage
                                   alt="User"
                                   src={origin.avatarUrl}
@@ -387,23 +386,35 @@ function GitPageLayout() {
                       </div>
                       <div className="flex items-center gap-1 ml-1 min-w-0">
                         {(repo.ahead_behind?.[0] || 0) > 0 ? (
-                          <Badge variant={"error"} className="ml-1">
-                            <ArrowUp />
-                            {repo.ahead_behind?.[0] || 0}
+                          <Badge
+                            variant={"error"}
+                            className="ml-1 font-normal tabular-nums"
+                          >
+                            <span className="translate-y-px">
+                              <span className="ml-0.5 mr-0.75 h-fit">↑</span>
+                              {repo.ahead_behind?.[0] || 0}
+                            </span>
                           </Badge>
                         ) : null}
                         {(repo.ahead_behind?.[1] || 0) > 0 ? (
-                          <Badge variant={"warning"} className="ml-1">
-                            <ArrowDown />
-                            {repo.ahead_behind?.[1] || 0}
+                          <Badge
+                            variant={"warning"}
+                            className="ml-1 font-normal flex items-center tabular-nums"
+                          >
+                            <span className="translate-y-px">
+                              <span className="ml-0.5 mr-0.75 h-fit">↓</span>
+                              {repo.ahead_behind?.[1] || 0}
+                            </span>
                           </Badge>
                         ) : null}
                         <Badge
                           variant={"info"}
-                          className="flex items-center gap-1 min-w-0 flex-1"
+                          className="flex items-center min-w-0 flex-1"
                         >
-                          <GitBranch />
-                          <span className="truncate max-w-full min-w-0">
+                          <span className="ml-0.5 mr-px h-fit">
+                            <GitBranch strokeWidth={2.5} className="size-3" />
+                          </span>
+                          <span className="truncate max-w-full min-w-0 font-[450]">
                             {repo.current_branch}
                           </span>
                         </Badge>
