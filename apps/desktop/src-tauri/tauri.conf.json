@@ -17,6 +17,7 @@
         "height": 870,
         "hiddenTitle": true,
         "titleBarStyle": "Overlay",
+        "zoomHotkeysEnabled": true,
         "trafficLightPosition": {
           "x": 19,
           "y": 22

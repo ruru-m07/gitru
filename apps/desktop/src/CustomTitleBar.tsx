@@ -24,7 +24,7 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
 
   return (
     <div
-      className="h-(--main-custom-header-height) flex items-center justify-between relative px-4 select-none _border-b"
+      className="h-(--main-custom-header-height) flex items-center justify-between relative pl-4 mr-1 select-none _border-b"
       data-tauri-drag-region
       style={{
         // @ts-expect-error - ¯\_(ツ)_/¯
@@ -71,14 +71,14 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
               WebkitAppRegion: "no-drag",
             }}
           >
-            <div className="flex items-center gap-1.5 text-sm">
+            {/* <div className="flex items-center gap-1.5 text-sm">
               <GitPullRequestArrow
                 className="text-green-600 mr-1"
                 size={18}
                 strokeWidth={2}
                 aria-hidden="true"
               />{" "}
-              <div className="flex items-center gap-1 text-muted-foreground">
+              <div className="flex items-center gap-1 text-muted-foreground font-medium">
                 ruru-m07
                 <ChevronRight size={14} />
                 gitru
@@ -87,17 +87,17 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
                 <ChevronRight size={14} />
                 <span className="text-foreground">#69</span>
               </div>
-            </div>
+            </div> */}
           </div>
 
           <div
-            className="flex items-center space-x-2"
+            className="flex items-center"
             style={{
               // @ts-expect-error - ¯\_(ツ)_/¯
               WebkitAppRegion: "no-drag",
             }}
           >
-            <Button size={"icon"} className="size-7" variant="ghost">
+            <Button size={"icon"} variant={"ghost"} disabled>
               <Plus size={16} aria-hidden="true" />
             </Button>
           </div>
