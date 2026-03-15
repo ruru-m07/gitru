@@ -150,7 +150,7 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             label: "Stashed Changes",
             shortcut: ["G", "S"],
             iconKey: "localGit",
-            keywords: ["stash", "stashed", "restore", "checkout stash"],
+            keywords: ["stash", "stashed", "restore"],
             async onCallBack() {
               if (selectedRepository?.path) {
                 setGitViewStateForRepo(

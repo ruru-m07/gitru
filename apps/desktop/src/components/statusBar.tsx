@@ -479,7 +479,7 @@ const BehindBadge = ({
       {statusAheadBehind?.behind && statusAheadBehind.behind > 0 ? (
         <Badge
           variant={"outline"}
-          className="py-2.5 text-muted-foreground! rounded-none border-0 border-r flex items-center font-normal tabular-nums px-1.5 cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
+          className="rounded-none py-2.5 px-2 flex items-center cursor-pointer hover:bg-muted! border-transparent border-r-border"
           onClick={async () => {
             await pull();
           }}

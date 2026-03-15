@@ -6,16 +6,17 @@ import { GIT_PROVIDERS } from "@/type";
 
 export function getAvatarByProvider(
   provider: GIT_PROVIDERS | undefined,
+  className?: string,
 ): JSX.Element | null {
   if (!provider) return null;
 
   switch (provider) {
     case "github":
-      return <GithubIcon />;
+      return <GithubIcon className={className} />;
     case "gitlab":
-      return <GitlabIcon />;
+      return <GitlabIcon className={className} />;
     case "bitbucket":
-      return <BitbucketIcon />;
+      return <BitbucketIcon className={className} />;
     default:
       return null;
   }

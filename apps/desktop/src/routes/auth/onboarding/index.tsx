@@ -153,7 +153,7 @@ const SchemaSelector = () => {
               className: "group",
             }),
           )}
-          to="/app"
+          to="/app/inbox"
         >
           Get Started
           <ChevronRightIcon
