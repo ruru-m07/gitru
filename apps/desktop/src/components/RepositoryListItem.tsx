@@ -27,7 +27,7 @@ interface RepositoryListItemProps {
   repo: RepositoryInfo;
   isSelected: boolean;
   onSelect: () => void;
-  onRemove: () => void;
+  onRemove?: () => void;
   dataRepoId?: string;
 }
 
@@ -110,7 +110,9 @@ export const RepositoryListItem = memo(function RepositoryListItem({
             className="w-full justify-start"
             onClick={(e) => {
               e.stopPropagation();
-              onRemove();
+              if (onRemove) {
+                onRemove();
+              }
             }}
           >
             <Minus size={16} />

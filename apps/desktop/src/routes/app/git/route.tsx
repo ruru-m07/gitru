@@ -57,6 +57,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@gitru/ui/components/resizable";
+import { Separator } from "@gitru/ui/components/separator";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@gitru/ui/components/tabs";
 import {
   Tooltip,
@@ -68,13 +69,18 @@ import { cn } from "@gitru/ui/lib/utils";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
+  ArrowDown,
+  ArrowUp,
   BadgeQuestionMark,
+  BookCopy,
   ChevronDown,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronsRight,
   ChevronUp,
   CircleAlertIcon,
+  CircleDashed,
+  CopyPlus,
   Files,
   GitBranch,
   History,
@@ -94,6 +100,7 @@ import { toast } from "sonner";
 import z from "zod";
 import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
+import Logo from "@/components/logo";
 import PageLayout from "@/components/pageLayout";
 import { RepositoryListItem } from "@/components/RepositoryListItem";
 import StatusBar from "@/components/statusBar";
@@ -216,6 +223,202 @@ export const Route = createFileRoute("/app/git")({
 });
 
 function GitPageLayout() {
+  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const setSelectedRepository = useAppStore(
+    (state) => state.setSelectedRepository,
+  );
+  const setRepoSelectIsOpen = useAppStore((state) => state.setRepoSelectIsOpen);
+  const { repositories, addRepo } = useRepositories();
+  const navigation = useCommandNavigation();
+
+  if (!selectedRepository) {
+    return (
+      <PageLayout className="flex-col flex justify-center items-center gap-4">
+        <div className="flex flex-col gap-4 justify-center">
+          <span className="flex items-center gap-3 px-[calc(--spacing(3)-1px)]">
+            {/* <GitruBorderedSmallSmileSVG /> */}
+            <Logo size={40} />
+            {/* <h1 className="text-3xl font-[350]">Add your first repository</h1> */}
+            <span className="text-3xl">Gitru</span>
+          </span>
+          <div className="flex justify-between items-end px-[calc(--spacing(3)-1px)]">
+            <h1 className="text-muted-foreground font-[350]">
+              Add repositorys to get start!
+            </h1>
+            <a
+              href="https://gitru.app/docs"
+              className="text-sm text-muted-foreground hover:underline opacity-70 hover:opacity-100 transition-opacity"
+              target="_blank"
+            >
+              Learn more ↗
+            </a>
+          </div>
+          <div className="grid grid-cols-3 gap-4 px-[calc(--spacing(3)-1px)]">
+            <Button
+              onClick={async () => {
+                const folder = await open({
+                  directory: true,
+                  multiple: false,
+                });
+
+                if (folder) {
+                  if (repositories.find((r) => r.path === folder)) {
+                    toast.error("Repository already added");
+                    return;
+                  }
+
+                  try {
+                    const repo = await addRepo(folder);
+                    if (repo) {
+                      setSelectedRepository(repo);
+                      setRepoSelectIsOpen(false);
+                      toast.success("Repository added successfully!");
+                    }
+                  } catch (error) {
+                    // Error already handled by the hook
+                  }
+                }
+              }}
+              className="flex-col group h-fit! items-start pt-4 pb-2 gap-2 w-64"
+            >
+              <BookCopy className="size-5.5" />
+              <span className="text-lg font-[330]">
+                Import Local Repository
+              </span>
+            </Button>
+            <Button
+              variant="secondary"
+              className="flex-col group h-fit! items-start pt-4 pb-2 gap-2 w-64"
+              onClick={() => {
+                navigation.setOpen(true);
+                navigation.push("clone-repository");
+              }}
+            >
+              <span className="flex items-center gap-2 pl-1">
+                <span className="-rotate-20 -mr-2">
+                  {getAvatarByProvider("bitbucket", "size-5.5")}
+                </span>
+
+                <span className="z-10">
+                  {getAvatarByProvider("github", "size-5.5")}
+                </span>
+
+                <span className="rotate-20 -ml-2">
+                  {getAvatarByProvider("gitlab", "size-5.5")}
+                </span>
+              </span>
+              <span className="text-lg font-[330]">Clone from Remote</span>
+            </Button>
+            <Button
+              variant={"secondary"}
+              className="flex-col group h-fit! items-start pt-4 pb-2 gap-2 w-64"
+              onClick={() => {
+                navigation.setOpen(true);
+                navigation.push("init-repository");
+              }}
+            >
+              <CopyPlus className="size-5.5" />
+              <span className="text-lg font-[330]">Create New Repository</span>
+            </Button>
+          </div>
+          <div className="flex flex-col w-full">
+            <div className="px-[calc(--spacing(3)-1px)] w-full">
+              <div className="relative my-4">
+                <Separator />
+                <span className="absolute -top-3 left-6 font-light -translate-x-1/2 bg-background px-2 text-sm text-muted-foreground">
+                  Recent
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-col w-full">
+              {repositories.map((repo) => {
+                const origin = parseOrigin(repo.origin || "");
+
+                return (
+                  <Button
+                    variant={"ghost"}
+                    className={`py-4 px-[calc(--spacing(3)-1px)]`}
+                    size={"lg"}
+                    onClick={() => {
+                      setSelectedRepository(repo);
+                      setRepoSelectIsOpen(false);
+                    }}
+                  >
+                    <div className="flex w-full justify-between items-center gap-2 overflow-hidden">
+                      <div className="flex items-center gap-1 flex-1">
+                        <div className="text-muted-foreground flex items-center">
+                          {origin ? (
+                            <div>
+                              <Avatar className="rounded-sm size-4">
+                                <AvatarImage
+                                  alt="User"
+                                  src={origin.avatarUrl}
+                                />
+                                <AvatarFallback>{repo.origin}</AvatarFallback>
+                              </Avatar>
+                              <span className="ml-1.5">{origin?.owner}</span>
+                              <span className="ml-1">/</span>
+                            </div>
+                          ) : (
+                            <div>
+                              <span className="text-foreground">
+                                {repo.origin}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <span className="font-medium text-sm text-left text-nowrap leading-none">
+                          {repo.name}
+                        </span>
+                        {repo?.has_uncommitted_changes && (
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <Badge variant={"warning"} className="ml-1" />
+                              }
+                            >
+                              <CircleDashed />
+                            </TooltipTrigger>
+                            <TooltipPopup className={"dark"}>
+                              Uncommitted changes
+                            </TooltipPopup>
+                          </Tooltip>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 ml-1 min-w-0">
+                        {(repo.ahead_behind?.[0] || 0) > 0 ? (
+                          <Badge variant={"error"} className="ml-1">
+                            <ArrowUp />
+                            {repo.ahead_behind?.[0] || 0}
+                          </Badge>
+                        ) : null}
+                        {(repo.ahead_behind?.[1] || 0) > 0 ? (
+                          <Badge variant={"warning"} className="ml-1">
+                            <ArrowDown />
+                            {repo.ahead_behind?.[1] || 0}
+                          </Badge>
+                        ) : null}
+                        <Badge
+                          variant={"info"}
+                          className="flex items-center gap-1 min-w-0 flex-1"
+                        >
+                          <GitBranch />
+                          <span className="truncate max-w-full min-w-0">
+                            {repo.current_branch}
+                          </span>
+                        </Badge>
+                      </div>
+                    </div>
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </PageLayout>
+    );
+  }
+
   return (
     <PageLayout className="flex-col flex justify-between">
       <ResizableArea />
