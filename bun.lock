@@ -65,7 +65,6 @@
         "monaco-textmate": "^3.0.1",
         "motion": "^12.33.0",
         "next-themes": "^0.4.6",
-        "odiff-bin": "^4.3.2",
         "react": "^19.1.0",
         "react-dom": "catalog:",
         "react-hotkeys-hook": "^5.2.1",
@@ -1914,8 +1913,6 @@
     "object-inspect": ["object-inspect@1.13.4", "", {}, "sha512-W67iLl4J2EXEGTbfeHCffrjDfitvLANg0UlX3wFUUSTx92KXRFegMHUVgSqE+wvhAbi4WqjGg9czysTV2Epbew=="],
 
     "object-treeify": ["object-treeify@1.1.33", "", {}, "sha512-EFVjAYfzWqWsBMRHPMAXLCDIJnpMhdWAqR7xG6M6a2cs6PMFpl/+Z20w9zDW4vkxOFfddegBKq9Rehd0bxWE7A=="],
-
-    "odiff-bin": ["odiff-bin@4.3.2", "", { "bin": { "odiff": "bin/odiff.exe" } }, "sha512-irdWCW/b/b4aQiEfwNolbS0ZYUe2PAK6BKPt9Orzz3mGlko7ZqmEB1oDwCTAd2TQe3RmTpnePyd77xJzvWJHYQ=="],
 
     "on-finished": ["on-finished@2.4.1", "", { "dependencies": { "ee-first": "1.1.1" } }, "sha512-oVlzkg3ENAhCk2zdv7IJwd/QUD4z2RxRwpkcGY8psCVcCYZNq4wYnVWALHM+brtuJjePWiYF/ClmuDr8Ch5+kg=="],
 

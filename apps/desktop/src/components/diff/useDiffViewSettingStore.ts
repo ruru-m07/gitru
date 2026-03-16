@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware";
 
 type ViewMode = "split" | "unified";
 export type ImageDiffMode = "twoUp" | "swipe" | "onionSkin" | "difference";
-export type DifferenceDiffProvider = "worker" | "cssOnly" | "odiffNode";
+export type DifferenceDiffProvider = "worker" | "cssOnly";
 
 interface DiffViewState {
   diffStyle: ViewMode;

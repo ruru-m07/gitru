@@ -1,12 +1,6 @@
 import { Button } from "@gitru/ui/components/button";
 import { useCanGoBack, useRouterState } from "@tanstack/react-router";
-import {
-  ArrowLeft,
-  ArrowRight,
-  ChevronRight,
-  GitPullRequestArrow,
-  Plus,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight, Plus } from "lucide-react";
 
 type CustomTitleBarProps = {
   restrictedPaths: string[];

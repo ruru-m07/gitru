@@ -1,5 +1,3 @@
-import { computeOdiffDifference } from "@gitru/commands";
-
 export type PixelDiffInput = {
   beforeUrl: string;
   afterUrl: string;
@@ -17,11 +15,6 @@ export type PixelDiffResult = {
 export interface PixelDiffProvider {
   compute(input: PixelDiffInput): Promise<PixelDiffResult | null>;
 }
-
-type OdiffCommandResult = {
-  mask_data_url: string | null;
-  mismatch_ratio: number | null;
-};
 
 export class WorkerPixelDiffProvider implements PixelDiffProvider {
   async compute(input: PixelDiffInput): Promise<PixelDiffResult | null> {
@@ -61,36 +54,6 @@ export class WorkerPixelDiffProvider implements PixelDiffProvider {
       return result;
     } catch (error) {
       console.warn("[ImageDiff] pixel diff worker setup failed", error);
-      return null;
-    }
-  }
-}
-
-export class OdiffNodePixelDiffProvider implements PixelDiffProvider {
-  async compute(input: PixelDiffInput): Promise<PixelDiffResult | null> {
-    try {
-      if (!input.beforePath || !input.afterPath) {
-        return null;
-      }
-
-      const result = (await computeOdiffDifference({
-        beforePath: input.beforePath,
-        afterPath: input.afterPath,
-      })) as OdiffCommandResult;
-
-      if (!result.mask_data_url) {
-        return {
-          maskDataUrl: "",
-          mismatchRatio: result.mismatch_ratio ?? 0,
-        };
-      }
-
-      return {
-        maskDataUrl: result.mask_data_url,
-        mismatchRatio: result.mismatch_ratio ?? 0,
-      };
-    } catch (error) {
-      console.warn("[ImageDiff] odiff provider failed", error);
       return null;
     }
   }
