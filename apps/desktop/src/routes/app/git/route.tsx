@@ -376,7 +376,7 @@ function GitPageLayout() {
                                 <Badge variant={"warning"} className="ml-1" />
                               }
                             >
-                              <CircleDashed />
+                              <CircleDashed className="size-3" />
                             </TooltipTrigger>
                             <TooltipPopup className={"dark"}>
                               Uncommitted changes

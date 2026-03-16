@@ -1,14 +1,10 @@
 import { useEffect, useState } from "react";
 import { useDiffViewerSettings } from "../useDiffViewSettingStore";
 import { formatBytes } from "./ImageDiffViewer";
-import {
-  OdiffNodePixelDiffProvider,
-  WorkerPixelDiffProvider,
-} from "./pixelDiffProvider";
+import { WorkerPixelDiffProvider } from "./pixelDiffProvider";
 import type { ImageDiffViewProps } from "./types";
 
 const workerProvider = new WorkerPixelDiffProvider();
-const odiffProvider = new OdiffNodePixelDiffProvider();
 
 export const DifferenceView = ({
   before,
@@ -57,17 +53,7 @@ export const DifferenceView = ({
           afterPath: after?.absolute_path,
         });
 
-      const result =
-        differenceDiffProvider === "odiffNode"
-          ? ((await odiffProvider.compute({
-              beforeUrl,
-              afterUrl,
-              width,
-              height,
-              beforePath: before?.absolute_path,
-              afterPath: after?.absolute_path,
-            })) ?? (await runWorker()))
-          : await runWorker();
+      const result = await runWorker();
 
       if (!active || !result) {
         return;
@@ -97,17 +83,6 @@ export const DifferenceView = ({
 
   return (
     <div>
-      <div className="text-sm text-muted-foreground mb-2">
-        {(differenceDiffProvider === "odiffNode" ||
-          differenceDiffProvider === "worker") && (
-          <span className="tabular-nums">
-            <span className="font-semibold text-foreground">
-              {((ratio || 0) * 100).toFixed(2)}%
-            </span>
-            <span className="ml-1">pixels changed</span>
-          </span>
-        )}
-      </div>
       <div className="flex items-center justify-between text-xs mb-2 select-none">
         <div className="tabular-nums text-red-600">
           <span className="font-medium">Deleted</span>
@@ -175,6 +150,17 @@ export const DifferenceView = ({
             {formatBytes(Math.abs(bytesDelta))} (
             {((Math.abs(bytesDelta) / (before.bytes || 1)) * 100).toFixed(2)}%)
           </span>
+          {differenceDiffProvider === "worker" && (
+            <>
+              <span className="mx-1 text-muted-foreground">-</span>
+              <span className="tabular-nums">
+                <span className="font-semibold text-blue-500">
+                  {((ratio || 0) * 100).toFixed(2)}%
+                </span>
+                <span className="ml-1">pixels changed</span>
+              </span>
+            </>
+          )}
         </div>
       ) : null}
     </div>

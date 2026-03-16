@@ -7,7 +7,6 @@ import {
   Diff,
   Grip,
   Icon,
-  Snail,
   SquareSplitHorizontal,
 } from "lucide-react";
 import { useEffect, useMemo } from "react";
@@ -36,11 +35,8 @@ const getModeLabel = (mode: "twoUp" | "swipe" | "onionSkin" | "difference") => {
   return "Difference";
 };
 
-const getDifferenceProviderLabel = (
-  provider: "worker" | "cssOnly" | "odiffNode",
-) => {
+const getDifferenceProviderLabel = (provider: "worker" | "cssOnly") => {
   if (provider === "worker") return "Pixelmatch";
-  if (provider === "odiffNode") return "ODiff";
   return "CSS blend";
 };
 
@@ -110,7 +106,7 @@ export const ImageDiffViewer = ({ diff }: { diff: AssetDiff }) => {
 
   return (
     <div className="p-2.5 border-b bg-background h-full flex flex-col">
-      <div className="flex items-center justify-center mb-4 flex-col gap-4 select-none">
+      <div className="flex items-center justify-center mb-4 flex-col gap-2 select-none">
         <Tabs value={imageDiffMode} defaultValue="twoUp">
           <TabsList className={"w-200"}>
             {(
@@ -140,7 +136,6 @@ export const ImageDiffViewer = ({ diff }: { diff: AssetDiff }) => {
                 [
                   { icon: <Blend />, name: "cssOnly" },
                   { icon: <Grip />, name: "worker" },
-                  { icon: <Snail />, name: "odiffNode" },
                 ] as const
               ).map((mode) => (
                 <TabsTab
