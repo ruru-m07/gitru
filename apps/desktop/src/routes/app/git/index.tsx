@@ -1,4 +1,4 @@
-import type { FileStatusKind } from "@gitru/commands";
+import { type FileStatusKind, useTauriEvent } from "@gitru/commands";
 import { DiffViewer } from "@gitru/diff";
 import { Button } from "@gitru/ui/components/button";
 import { CopyButton } from "@gitru/ui/components/copy-button";
@@ -28,6 +28,7 @@ import {
   X,
 } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ImageDiffViewer } from "@/components/diff/image/ImageDiffViewer";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
@@ -52,6 +53,7 @@ import {
   type ResolvedFileSelection,
   resolveFileSelection,
 } from "../../../lib/gitSelectionResolver";
+import { DiffPayload } from "../inbox";
 
 export const Route = createFileRoute("/app/git/")({
   component: App,
@@ -354,6 +356,29 @@ const DiffArea = ({
     ? (diffData?.asset_diff ?? null)
     : null;
 
+  const [eventData, setEventData] = useState<DiffPayload | null>(null);
+
+  // Track the current filePath in a ref so the event handler always sees the
+  // latest value without needing to re-subscribe on every navigation.
+  const filePathRef = useRef(filePath);
+  filePathRef.current = filePath;
+
+  // Clear stale data immediately when the user navigates to a different file.
+  // useEffect(() => {
+  //   setEventData(null);
+  // }, [filePath]);
+
+  const handleDiffEvent = useCallback((payload: DiffPayload) => {
+    // Ignore events for any file other than the one currently on screen.
+    // This prevents a slow result for file Y from overwriting file Z's display.
+    if (payload.filePath !== filePathRef.current) return;
+    if (payload?.status === "ready") {
+      setEventData(payload);
+    }
+  }, []);
+
+  useTauriEvent<DiffPayload>("diff_event", handleDiffEvent);
+
   return (
     <div
       className={cn(
@@ -366,8 +391,15 @@ const DiffArea = ({
         </div>
       ) : (
         <>
+          <pre
+            onClick={() => {
+              navigator.clipboard.writeText(JSON.stringify(eventData));
+            }}
+          >
+            {JSON.stringify(eventData)}
+          </pre>
           {imageAssetDiff ? <ImageDiffViewer diff={imageAssetDiff} /> : null}
-          {diffData?.patch && !isImageAssetDiff && (
+          {/* {diffData?.patch && !isImageAssetDiff && (
             <DiffViewer
               patch={diffData?.patch}
               options={{
@@ -391,7 +423,7 @@ const DiffArea = ({
                 `,
               }}
             />
-          )}
+          )} */}
         </>
       )}
     </div>

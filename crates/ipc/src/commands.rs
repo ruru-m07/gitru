@@ -187,10 +187,10 @@ async fn persist_and_select_repository(
         manager_guard.app.clone()
     };
 
-    let temp_manager = RepoManager::new(app);
+    let temp_manager = RepoManager::new(app.clone());
     let repo = temp_manager.add_repository(basic_info.into()).await?;
 
-    sync_repo_context(&repo.path, &app_state, &diff_engine_state).await?;
+    sync_repo_context(&repo.path, &app, &app_state, &diff_engine_state).await?;
 
     let manager_guard = manager.lock().map_err(|e| e.to_string())?;
     let store = manager_guard
@@ -209,12 +209,13 @@ pub async fn select_repository(
     diff_engine_state: tauri::State<'_, DiffEngineState>,
     manager: tauri::State<'_, Arc<Mutex<RepoManager>>>,
 ) -> Result<bool, String> {
+    let app = {
+        let manager_guard = manager.lock().map_err(|e| e.to_string())?;
+        manager_guard.app.clone()
+    };
+
     let repos = {
-        let app = {
-            let manager_guard = manager.lock().map_err(|e| e.to_string())?;
-            manager_guard.app.clone()
-        };
-        let temp = RepoManager::new(app);
+        let temp = RepoManager::new(app.clone());
         temp.list_repositories(false).await?
     };
 
@@ -223,7 +224,7 @@ pub async fn select_repository(
         .find(|r| r.id == repo_id)
         .ok_or("Repository not found")?;
 
-    sync_repo_context(&repo.path, &app_state, &diff_engine_state).await?;
+    sync_repo_context(&repo.path, &app, &app_state, &diff_engine_state).await?;
 
     let manager_guard = manager.lock().map_err(|e| e.to_string())?;
     let store = manager_guard
@@ -238,6 +239,7 @@ pub async fn select_repository(
 
 async fn sync_repo_context(
     repo_path: &str,
+    app: &tauri::AppHandle,
     app_state: &tauri::State<'_, AppState>,
     diff_engine_state: &tauri::State<'_, DiffEngineState>,
 ) -> Result<(), String> {
@@ -247,7 +249,7 @@ async fn sync_repo_context(
         *lock = Some(services);
     }
 
-    let diff_engine = Arc::new(DiffEngine::new(repo_path)?);
+    let diff_engine = Arc::new(DiffEngine::new(repo_path, app.clone())?);
     {
         let mut lock = diff_engine_state.services.write().await;
         *lock = Some(diff_engine);

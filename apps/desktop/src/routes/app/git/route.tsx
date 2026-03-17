@@ -1,4 +1,4 @@
-import { GetStatusResponse, GraphRow } from "@gitru/commands";
+import { GetStatusResponse, GraphRow, requestDiff } from "@gitru/commands";
 import { Stashed } from "@gitru/icon";
 import {
   AlertDialog,
@@ -1252,7 +1252,15 @@ const ListFileChanges = ({
                       }
                     />
                   )}
-                  setSelectedFilePath={setWorktreeSelectionForRepo}
+                  setSelectedFilePath={async (v) => {
+                    setWorktreeSelectionForRepo(v);
+                    const jobId = await requestDiff({
+                      filePath: v?.fileNewPath ?? v?.filePath ?? "",
+                    });
+                    console.log({
+                      jobId,
+                    });
+                  }}
                   selectedFilePath={
                     selectedFileForList
                       ? {

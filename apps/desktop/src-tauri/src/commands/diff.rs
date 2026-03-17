@@ -1,4 +1,5 @@
 use crate::DiffEngineState;
+use diff_engine::models::DiffRequest;
 use git::core::get_services;
 use git::models::diff::FileDiff;
 use git::models::status::FileStatusKind;
@@ -39,12 +40,15 @@ pub async fn get_patch_by_file_path(
 pub async fn request_diff(
     file_path: &str,
     state: tauri::State<'_, DiffEngineState>,
-    app: tauri::AppHandle,
 ) -> Result<String, String> {
+    validate_relative_path(file_path)?;
+
     let lock = state.services.read().await;
-    let services = lock.clone().ok_or("Not initialized")?;
+    let engine = lock.as_ref().ok_or("Diff engine not initialized")?;
 
-    let id = services.spawn_worker(file_path, app);
-
-    Ok(id)
+    engine
+        .enqueue_job(DiffRequest {
+            file_path: file_path.to_string(),
+        })
+        .await
 }

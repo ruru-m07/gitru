@@ -1,4 +1,4 @@
-use diff_engine::{DiffEngine, DiffEngineContext, DiffEngineState};
+use diff_engine::{DiffEngine, DiffEngineState};
 use git::{core::RepoServices, AppState};
 use ipc::{
     self,
@@ -127,9 +127,9 @@ fn setup_managers(app: &mut App) {
                         let mut lock = app_state.services.write().await;
                         *lock = Some(Arc::new(services));
                     }
-                    if let Ok(ctx) = DiffEngineContext::new(&repo.path) {
+                    if let Ok(engine) = DiffEngine::new(&repo.path, app_handle.clone()) {
                         let mut lock = diff_engine_state.services.write().await;
-                        *lock = Some(Arc::new(DiffEngine { ctx: Arc::new(ctx) }));
+                        *lock = Some(Arc::new(engine));
                     }
                 }
             }
