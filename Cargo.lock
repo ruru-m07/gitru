@@ -897,6 +897,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "diff-engine"
+version = "0.1.0"
+dependencies = [
+ "similar",
+ "tauri",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1581,6 +1591,7 @@ dependencies = [
 name = "gitru"
 version = "0.1.0"
 dependencies = [
+ "diff-engine",
  "git",
  "ipc",
  "log",
@@ -2074,6 +2085,7 @@ dependencies = [
 name = "ipc"
 version = "0.1.0"
 dependencies = [
+ "diff-engine",
  "git",
  "log",
  "logger",
@@ -4186,6 +4198,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 
 [[package]]
+name = "similar"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
+
+[[package]]
 name = "siphasher"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5410,9 +5428,9 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
-version = "1.21.0"
+version = "1.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b672338555252d43fd2240c714dc444b8c6fb0a5c5335e65a07bba7742735ddb"
+checksum = "a68d3c8f01c0cfa54a75291d83601161799e4a89a39e0929f4b0354d88757a37"
 dependencies = [
  "getrandom 0.4.1",
  "js-sys",

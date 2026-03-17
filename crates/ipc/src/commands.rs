@@ -1,3 +1,4 @@
+use diff_engine::{DiffEngine, DiffEngineState};
 use git::AppState;
 use git::core::RepoServices;
 use git::service::repository::RepositoryService;
@@ -118,25 +119,27 @@ pub async fn clone_repository(
     url: String,
     destination_path: String,
     operation_id: String,
-    state: tauri::State<'_, AppState>,
+    app_state: tauri::State<'_, AppState>,
+    diff_engine_state: tauri::State<'_, DiffEngineState>,
     manager: tauri::State<'_, Arc<Mutex<RepoManager>>>,
     app: tauri::AppHandle,
 ) -> Result<RepositoryInfo, String> {
     RepositoryService::clone_repository(&url, &destination_path, &operation_id, &app).await?;
 
-    persist_and_select_repository(destination_path, state, manager).await
+    persist_and_select_repository(destination_path, app_state, diff_engine_state, manager).await
 }
 
 #[tauri::command]
 #[logger::logger]
 pub async fn init_repository(
     repo_path: String,
-    state: tauri::State<'_, AppState>,
+    app_state: tauri::State<'_, AppState>,
+    diff_engine_state: tauri::State<'_, DiffEngineState>,
     manager: tauri::State<'_, Arc<Mutex<RepoManager>>>,
 ) -> Result<RepositoryInfo, String> {
     RepositoryService::init_repository(&repo_path).await?;
 
-    persist_and_select_repository(repo_path, state, manager).await
+    persist_and_select_repository(repo_path, app_state, diff_engine_state, manager).await
 }
 
 #[tauri::command]
@@ -171,7 +174,8 @@ pub async fn cancel_clone_repository(
 
 async fn persist_and_select_repository(
     repo_path: String,
-    state: tauri::State<'_, AppState>,
+    app_state: tauri::State<'_, AppState>,
+    diff_engine_state: tauri::State<'_, DiffEngineState>,
     manager: tauri::State<'_, Arc<Mutex<RepoManager>>>,
 ) -> Result<RepositoryInfo, String> {
     let basic_info = add_local_git_repo(repo_path)
@@ -186,11 +190,7 @@ async fn persist_and_select_repository(
     let temp_manager = RepoManager::new(app);
     let repo = temp_manager.add_repository(basic_info.into()).await?;
 
-    let services = Arc::new(RepoServices::new(&repo.path)?);
-    {
-        let mut lock = state.services.write().await;
-        *lock = Some(services);
-    }
+    sync_repo_context(&repo.path, &app_state, &diff_engine_state).await?;
 
     let manager_guard = manager.lock().map_err(|e| e.to_string())?;
     let store = manager_guard
@@ -205,7 +205,8 @@ async fn persist_and_select_repository(
 #[tauri::command]
 pub async fn select_repository(
     repo_id: String,
-    state: tauri::State<'_, AppState>,
+    app_state: tauri::State<'_, AppState>,
+    diff_engine_state: tauri::State<'_, DiffEngineState>,
     manager: tauri::State<'_, Arc<Mutex<RepoManager>>>,
 ) -> Result<bool, String> {
     let repos = {
@@ -222,12 +223,7 @@ pub async fn select_repository(
         .find(|r| r.id == repo_id)
         .ok_or("Repository not found")?;
 
-    let services = Arc::new(RepoServices::new(&repo.path)?);
-
-    {
-        let mut lock = state.services.write().await;
-        *lock = Some(services);
-    }
+    sync_repo_context(&repo.path, &app_state, &diff_engine_state).await?;
 
     let manager_guard = manager.lock().map_err(|e| e.to_string())?;
     let store = manager_guard
@@ -238,6 +234,26 @@ pub async fn select_repository(
     store.save().map_err(|e| e.to_string())?;
 
     Ok(true)
+}
+
+async fn sync_repo_context(
+    repo_path: &str,
+    app_state: &tauri::State<'_, AppState>,
+    diff_engine_state: &tauri::State<'_, DiffEngineState>,
+) -> Result<(), String> {
+    let services = Arc::new(RepoServices::new(repo_path)?);
+    {
+        let mut lock = app_state.services.write().await;
+        *lock = Some(services);
+    }
+
+    let diff_engine = Arc::new(DiffEngine::new(repo_path)?);
+    {
+        let mut lock = diff_engine_state.services.write().await;
+        *lock = Some(diff_engine);
+    }
+
+    Ok(())
 }
 
 #[tauri::command]

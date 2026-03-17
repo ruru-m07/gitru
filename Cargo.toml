@@ -2,5 +2,5 @@
 resolver = "2"
 
 members = [
-  "apps/desktop/src-tauri", "crates/git", "crates/ipc", "crates/logger",
+  "apps/desktop/src-tauri", "crates/diff-engine", "crates/git", "crates/ipc", "crates/logger",
 ]

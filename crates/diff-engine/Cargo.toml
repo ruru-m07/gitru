@@ -1,0 +1,10 @@
+[package]
+name = "diff-engine"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tokio = { version = "1", features = ["full"] }
+uuid = "1.22.0"
+similar = "2.7.0"

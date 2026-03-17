@@ -1,3 +1,4 @@
+use diff_engine::{DiffEngine, DiffEngineContext, DiffEngineState};
 use git::{core::RepoServices, AppState};
 use ipc::{
     self,
@@ -29,6 +30,9 @@ pub fn run() {
         .manage(AppState {
             services: RwLock::new(None),
         })
+        .manage(DiffEngineState {
+            services: RwLock::new(None),
+        })
         .setup(|app| {
             setup_managers(app);
             Ok(())
@@ -49,6 +53,7 @@ pub fn run() {
             commands::branch::status_ahead_behind,
             commands::branch::get_branch_info,
             commands::diff::get_patch_by_file_path,
+            commands::diff::request_diff,
             commands::history::history,
             commands::history::history_graph,
             commands::origin::repository_origin,
@@ -105,6 +110,7 @@ fn setup_managers(app: &mut App) {
         if let Some(id) = selected_id {
             let manager_state = app_handle.state::<Arc<Mutex<RepoManager>>>();
             let app_state = app_handle.state::<AppState>();
+            let diff_engine_state = app_handle.state::<DiffEngineState>();
 
             let repos = {
                 let app = {
@@ -120,6 +126,10 @@ fn setup_managers(app: &mut App) {
                     if let Ok(services) = RepoServices::new(&repo.path) {
                         let mut lock = app_state.services.write().await;
                         *lock = Some(Arc::new(services));
+                    }
+                    if let Ok(ctx) = DiffEngineContext::new(&repo.path) {
+                        let mut lock = diff_engine_state.services.write().await;
+                        *lock = Some(Arc::new(DiffEngine { ctx: Arc::new(ctx) }));
                     }
                 }
             }
