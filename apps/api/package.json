@@ -12,7 +12,7 @@
     "better-auth": "^1.4.3",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.44.7",
-    "elysia": "1.4.26",
+    "elysia": "1.4.27",
     "pg": "^8.16.3"
   },
   "devDependencies": {
