@@ -1,0 +1,117 @@
+.diff-deletion {
+  &::before {
+    --diffs-bg-deletion: color-mix(in lab, var(--background) 88%, var(--code-line-bg));
+    --diffs-deletion-base: var(--code-line-bg);
+
+    background-image: linear-gradient(
+      0deg,
+      var(--diffs-bg-deletion) 50%,
+      var(--diffs-deletion-base) 50%
+    );
+    background-repeat: repeat;
+    /* background-size: calc(1lh / round(1lh / 3px)) calc(1lh / round(1lh / 3px)); */
+    background-size: calc(1lh / round(1lh / 2px)) calc(2lh / round(1lh / 1px));
+  }
+
+  &::before {
+    content: "";
+    display: block;
+    width: 3px;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    -webkit-user-select: none;
+    user-select: none;
+    contain: strict;
+  }
+}
+
+.diff-merged-lines {
+  position: relative;
+  
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0px;
+    width: 3px;
+    height: 100%;
+
+    background-color: var(--code-line-bg);
+
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 6 100' preserveAspectRatio='none'%3E%3Cpath d='M3 0 Q6 5 3 10 T3 20 T3 30 T3 40 T3 50 T3 60 T3 70 T3 80 T3 90 T3 100' fill='none' stroke='white' stroke-width='2.5'/%3E%3C/svg%3E");
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 6 100' preserveAspectRatio='none'%3E%3Cpath d='M3 0 Q6 5 3 10 T3 20 T3 30 T3 40 T3 50 T3 60 T3 70 T3 80 T3 90 T3 100' fill='none' stroke='white' stroke-width='2.5'/%3E%3C/svg%3E");
+
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+
+    pointer-events: none;
+    user-select: none;
+    contain: strict;
+  }
+}
+
+/* .diff-merged-lines {
+  &::before {
+    --diffs-bg-merged: color-mix(
+      in lab,
+      #ffffff 88%,
+      var(--code-line-bg)
+    );
+    --diffs-merged-base: var(--code-line-bg);
+
+    background-image: repeating-linear-gradient(
+      -45deg,
+      color-mix(in oklch, var(--code-line-merge) 0%, transparent) 0px,
+      color-mix(in oklch, var(--code-line-merge) 0%, transparent) 1px,
+      var(--diffs-merged-base) 1px,
+      var(--diffs-merged-base) 2px
+    );
+  }
+
+  &::before {
+    content: "";
+    display: block;
+    width: 3px;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    user-select: none;
+    contain: strict;
+  }
+} */
+
+.diff-added-lines {
+  &::before {
+    content: "";
+    display: block;
+    width: 3px;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    user-select: none;
+    contain: strict;
+    background-color: var(--code-line-bg);
+  }
+}
+
+.diff-normal-lines {
+  &::before {
+    content: "";
+    display: block;
+    width: 3px;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    user-select: none;
+    contain: strict;
+    background-color: color-mix(in oklch, var(--secondary-foreground) 8%, var(--background));
+  }
+}

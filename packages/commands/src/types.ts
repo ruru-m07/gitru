@@ -89,6 +89,26 @@ export const AssetDiffSchema = z.object({
 
 export type AssetDiff = z.infer<typeof AssetDiffSchema>;
 
+export const BlameInfoSchema = z.object({
+  commit: z.string(),
+  original_line: z.coerce.number(),
+  final_line: z.coerce.number(),
+  author: z.string(),
+  author_mail: z.string(),
+  author_time: z.string(),
+  author_tz: z.string(),
+  committer: z.string(),
+  committer_mail: z.string(),
+  committer_time: z.string(),
+  committer_tz: z.string(),
+  summary: z.string(),
+  previous: z.string(),
+  filename: z.string(),
+  content: z.string(),
+});
+
+export type BlameInfo = z.infer<typeof BlameInfoSchema>;
+
 export const GraphPagingSchema = z.object({
   starting_cursor: z.string().optional(),
   has_more: z.coerce.boolean(),
@@ -171,9 +191,18 @@ export type HistoryGraphResponse = z.infer<typeof HistoryGraphResponseSchema>;
 export const FileDiffSchema = z.object({
   patch: z.string(),
   asset_diff: AssetDiffSchema.optional(),
+  oldBlame: z.array(BlameInfoSchema).optional(),
+  newBlame: z.array(BlameInfoSchema).optional(),
 });
 
 export type FileDiff = z.infer<typeof FileDiffSchema>;
+
+export const BlameDiffSchema = z.object({
+  oldBlame: z.array(BlameInfoSchema).optional(),
+  newBlame: z.array(BlameInfoSchema).optional(),
+});
+
+export type BlameDiff = z.infer<typeof BlameDiffSchema>;
 
 export const AheadBehindStatusSchema = z.object({
   ahead: z.coerce.number(),
@@ -363,6 +392,10 @@ export const GetPatchByFilePathParamsSchema = z.object({
   filePath: z.string(),fileNewPath: z.string().optional().optional(),status: z.array(FileStatusKindSchema).optional().optional(),stashReference: z.string().optional().optional(),commitHash: z.string().optional().optional(),parentIndex: z.coerce.number().optional().optional(),
 });
 
+export const GetBlameByFilePathParamsSchema = z.object({
+  filePath: z.string(),fileNewPath: z.string().optional().optional(),status: z.array(FileStatusKindSchema).optional().optional(),stashReference: z.string().optional().optional(),commitHash: z.string().optional().optional(),parentIndex: z.coerce.number().optional().optional(),
+});
+
 export const HistoryParamsSchema = z.object({
   skip: z.coerce.number(),limit: z.coerce.number(),
 });
@@ -465,6 +498,8 @@ export type CheckForUpdateByChannelParams = z.infer<typeof CheckForUpdateByChann
 export type DownloadAndInstallUpdateByChannelParams = z.infer<typeof DownloadAndInstallUpdateByChannelParamsSchema>;
 
 export type GetPatchByFilePathParams = z.infer<typeof GetPatchByFilePathParamsSchema>;
+
+export type GetBlameByFilePathParams = z.infer<typeof GetBlameByFilePathParamsSchema>;
 
 export type HistoryParams = z.infer<typeof HistoryParamsSchema>;
 

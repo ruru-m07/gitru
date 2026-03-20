@@ -27,7 +27,7 @@ import {
   TextWrap,
   X,
 } from "lucide-react";
-import { useTheme } from "next-themes";
+// import { useTheme } from "next-themes";
 import { ImageDiffViewer } from "@/components/diff/image/ImageDiffViewer";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
@@ -346,8 +346,16 @@ const DiffArea = ({
     commitHash,
     parentIndex: commitHash ? 1 : undefined,
   });
-  const { diffStyle, overflow } = useDiffViewerSettings();
-  const { theme } = useTheme();
+  // const { data: blameData } = useGetDiffBlame(filePath, {
+  //   fileNewPath,
+  //   status,
+  //   stashReference,
+  //   commitHash,
+  //   parentIndex: commitHash ? 1 : undefined,
+  // });
+
+  // const { diffStyle, overflow } = useDiffViewerSettings();
+  // const { theme } = useTheme();
   const assetKind = String(diffData?.asset_diff?.kind ?? "").toLowerCase();
   const isImageAssetDiff = assetKind === "image";
   const imageAssetDiff = isImageAssetDiff
@@ -357,7 +365,7 @@ const DiffArea = ({
   return (
     <div
       className={cn(
-        "max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*6))] h-full w-full relative overflow-y-auto bg-[color-mix(in_oklab,var(--color-secondary)_70%,var(--color-background))]",
+        "bg-background max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*6))] h-full w-full relative overflow-y-auto _bg-[color-mix(in_oklab,var(--color-secondary)_70%,var(--color-background))]",
       )}
     >
       {isLoading ? (
@@ -368,29 +376,59 @@ const DiffArea = ({
         <>
           {imageAssetDiff ? <ImageDiffViewer diff={imageAssetDiff} /> : null}
           {diffData?.patch && !isImageAssetDiff && (
-            <DiffViewer
-              patch={diffData?.patch}
-              options={{
-                diffStyle,
-                overflow,
-                disableFileHeader: true,
-                themeType: theme?.startsWith("dark-") ? "dark" : "light",
-                theme: {
-                  dark: "vesper",
-                  light: "vesper-light",
-                  // dark: "github-dark-default",
-                  // light: "github-light-default",
-                },
-                unsafeCSS: `
-                  [data-background] {
-                    // --diffs-light-bg: transparent !important;
-                    // --diffs-dark-bg: transparent !important;
-                    --diffs-light-bg: color-mix(in oklab, var(--color-secondary) 70%, var(--color-background)) !important;
-                    --diffs-dark-bg: color-mix(in oklab, var(--color-secondary) 70%, var(--color-background)) !important;
-                  }
-                `,
-              }}
-            />
+            // <div className="relative w-full flex overflow-auto py-1">
+            //   <DiffViewer
+            //     patch={diffData?.patch}
+            //     options={{
+            //       maxChangeRatio: 0.45,
+            //       maxDiffDistance: 1,
+            //       inlineMaxCharEdits: 0,
+            //       mergeModifiedLines: true,
+            //     }}
+            //   />
+            // </div>
+            <>
+              <div className="relative! w-full flex overflow-auto py-1">
+                <DiffViewer
+                  patch={diffData?.patch}
+                  options={{
+                    maxChangeRatio: 0.45,
+                    maxDiffDistance: 1,
+                    inlineMaxCharEdits: 0,
+                    mergeModifiedLines: true,
+                  }}
+                  // oldBlame={blameData?.oldBlame}
+                  // newBlame={blameData?.newBlame}
+                />
+              </div>
+              {/* <span
+                onClick={() => {
+                  navigator.clipboard.writeText(diffData.patch);
+                }}
+              >
+                {diffData.patch.split("\n").length} lines of patch
+              </span>
+              <br />
+              <span
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    JSON.stringify(blameData?.oldBlame),
+                  );
+                }}
+              >
+                {blameData?.oldBlame?.length}
+              </span>
+              <br />
+              <span
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    JSON.stringify(blameData?.newBlame),
+                  );
+                }}
+              >
+                {blameData?.newBlame?.length}
+              </span> */}
+            </>
           )}
         </>
       )}

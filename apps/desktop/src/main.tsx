@@ -10,7 +10,6 @@ import { routeTree } from "./routeTree.gen";
 import { useLastPageStore } from "./store/useLastPageStore.ts";
 import "./app.css";
 
-import { themeLoader } from "@gitru/diff/loader";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { appState } from "./state";
@@ -45,7 +44,6 @@ async function redirectToLastPage() {
 }
 
 await redirectToLastPage();
-themeLoader();
 initializeQueryFocusBridge();
 
 const rootElement = document.getElementById("root");

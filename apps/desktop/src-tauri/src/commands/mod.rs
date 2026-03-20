@@ -1,4 +1,5 @@
 pub mod actions;
+pub mod blame;
 pub mod branch;
 pub mod commit;
 pub mod diff;

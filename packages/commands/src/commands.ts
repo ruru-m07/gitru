@@ -393,6 +393,28 @@ export async function getPatchByFilePath(params: types.GetPatchByFilePathParams,
 }
 
 
+export async function getBlameByFilePath(params: types.GetBlameByFilePathParams, hooks?: CommandHooks<types.BlameDiff>): Promise<types.BlameDiff> {
+  try {
+    const result = types.GetBlameByFilePathParamsSchema.safeParse(params);
+
+    if (!result.success) {
+      hooks?.onValidationError?.(result.error);
+      throw result.error;
+    }
+    const data = await invoke<types.BlameDiff>('get_blame_by_file_path', result.data);
+    hooks?.onSuccess?.(data);
+    return data;
+  } catch (error) {
+    if (!(error instanceof ZodError)) {
+      hooks?.onInvokeError?.(error);
+    }
+    throw error;
+  } finally {
+    hooks?.onSettled?.();
+  }
+}
+
+
 export async function history(params: types.HistoryParams, hooks?: CommandHooks<types.CommitInfo[]>): Promise<types.CommitInfo[]> {
   try {
     const result = types.HistoryParamsSchema.safeParse(params);

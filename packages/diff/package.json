@@ -5,18 +5,19 @@
   "devDependencies": {
     "@types/bun": "^1.3.6",
     "@gitru/ui": "*",
-    "@types/react": "catalog:"
+    "@gitru/commands": "*",
+    "@types/react": "catalog:",
+    "lucide-react": "catalog:"
   },
   "exports": {
     ".": {
-      "import": "./index.ts"
-    },
-    "./loader": {
-      "import": "./loader.ts"
+      "import": "./index.tsx"
     }
   },
   "dependencies": {
-    "@pierre/diffs": "1.0.11",
-    "react": "catalog:"
+    "diff": "^8.0.3",
+    "gitdiff-parser": "^0.3.1",
+    "react": "catalog:",
+    "refractor": "^5.0.0"
   }
 }

@@ -16,13 +16,79 @@ pub struct GetDiffResponse {
     pub patch: Option<String>,
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub struct BlameInfo {
+    commit: String,
+    original_line: usize,
+    final_line: usize,
+    author: String,
+    author_mail: String,
+    author_time: String,
+    author_tz: String,
+    committer: String,
+    committer_mail: String,
+    committer_time: String,
+    committer_tz: String,
+    summary: String,
+    previous: String,
+    filename: String,
+    content: String,
+}
+
+impl BlameInfo {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        commit: String,
+        original_line: usize,
+        final_line: usize,
+        author: String,
+        author_mail: String,
+        author_time: String,
+        author_tz: String,
+        committer: String,
+        committer_mail: String,
+        committer_time: String,
+        committer_tz: String,
+        summary: String,
+        previous: String,
+        filename: String,
+        content: String,
+    ) -> Self {
+        Self {
+            commit,
+            original_line,
+            final_line,
+            author,
+            author_mail,
+            author_time,
+            author_tz,
+            committer,
+            committer_mail,
+            committer_time,
+            committer_tz,
+            summary,
+            previous,
+            filename,
+            content,
+        }
+    }
+}
+
 #[derive(Serialize)]
 pub struct FileDiff {
     pub patch: String,
     pub asset_diff: Option<AssetDiff>,
+    pub oldBlame: Option<Vec<BlameInfo>>,
+    pub newBlame: Option<Vec<BlameInfo>>,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Serialize)]
+pub struct BlameDiff {
+    pub oldBlame: Option<Vec<BlameInfo>>,
+    pub newBlame: Option<Vec<BlameInfo>>,
+}
+
+#[derive(Debug, Serialize, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 pub enum AssetDiffKind {
     Image,
