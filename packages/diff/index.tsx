@@ -1,9 +1,16 @@
 "use client";
 
 import { BlameInfo } from "@gitru/commands";
-import { Checkbox } from "@gitru/ui/components/checkbox";
+import { Button } from "@gitru/ui/components/button";
 import { cn } from "@gitru/ui/lib/utils";
-import { ChevronDownIcon, ChevronsUpDown, ChevronUpIcon } from "lucide-react";
+import {
+  Check,
+  ChevronDownIcon,
+  ChevronsUpDown,
+  ChevronUpIcon,
+  Plus,
+  Undo,
+} from "lucide-react";
 import React from "react";
 import { refractor } from "refractor/all";
 import type {
@@ -442,8 +449,8 @@ export const Diff: React.FC<DiffProps> = ({
       <table
         {...props}
         className={cn(
-          "relative [--background:#ffffff] dark:[--background:#000000] [--code-added:var(--color-green-600)] [--code-removed:var(--color-red-600)] font-mono text-sm _text-[0.8rem] w-full m-0 border-separate border-0 outline-none border-spacing-0",
-          "[--line-status-width:3px] [--line-number-width:5ch] [--gutter-width:4ch]",
+          "relative [--background:#ffffff] dark:[--background:#000000] [--code-added:var(--color-green-600)] [--code-removed:var(--color-red-600)] font-mono text-sm _text-[0.8rem] w-max min-w-full m-0 border-separate border-0 outline-none border-spacing-0",
+          "[--line-status-width:3px] [--line-number-width:64px] [--gutter-width:32px]",
           "table-fixed",
           className,
         )}
@@ -451,7 +458,7 @@ export const Diff: React.FC<DiffProps> = ({
         <colgroup>
           <col className="min-w-(--line-status-width) w-(--line-status-width)" />
           <col className="min-w-(--gutter-width) w-(--gutter-width)" />
-          <col className="min-w-(--line-number-width) w-(--line-number-width)" />
+          <col className="w-(--line-number-width) min-w-(--line-number-width) max-w-(--line-number-width)" />
           <col />
         </colgroup>
         <tbody className="w-full box-border [&:has(td[data-line-type]:nth-child(3):hover)_td[data-line-type]:nth-child(3)_span.group-hover\:hidden]:hidden [&:has(td[data-line-type]:nth-child(3):hover)_td[data-line-type]:nth-child(3)_span.group-hover\:flex]:flex">
@@ -762,18 +769,31 @@ const Line: React.FC<{
           // !isLineMerged && line.type === "normal" && "diff-normal-lines",
         )}
       />
-      <td className="min-w-(--gutter-width) select-all pointer-events-auto">
-        <div className="flex items-center justify-center w-full h-full">
-          {line.type == "delete" || line.type == "insert" || isLineMerged ? (
-            <Checkbox />
-          ) : null}
-        </div>
-      </td>
+      {line.type == "delete" || line.type == "insert" || isLineMerged ? (
+        <td className="min-w-(--gutter-width) select-all h-6 pointer-events-auto _bg-blue-500/20 flex items-center gap-0.5 justify-center px-1">
+          <Button
+            className="size-5 rounded-sm"
+            size={"icon-xs"}
+            variant={"ghost"}
+          >
+            <Plus className="_text-blue-500 size-4" />
+          </Button>
+          <Button
+            className="size-5 rounded-sm"
+            size={"icon-xs"}
+            variant={"ghost"}
+          >
+            <Undo className="_text-blue-500 size-4" />
+          </Button>
+        </td>
+      ) : (
+        <td className="min-w-(--gutter-width) select-all h-6 pointer-events-auto"></td>
+      )}
       <td
         className={cn(
-          "tabular-nums relative px-2 text-xs select-none text-end z-10",
+          "tabular-nums relative px-2 text-xs select-none text-end z-10 w-(--line-number-width) min-w-(--line-number-width) max-w-(--line-number-width) overflow-hidden",
           // "bg-[color-mix(in_oklch,var(--muted)_60%,var(--background))] _bg-muted/60 text-foreground/70 relative",
-          "sticky left-0  bg-background",
+          "sticky left-[calc(var(--line-status-width)+var(--gutter-width))] bg-background",
           {
             "bg-[color-mix(in_oklch,var(--code-added)_20%,var(--background))] _bg-(--code-added)/10 [--code-line-bg:var(--code-added)] text-(--code-added) opacity-100":
               line.type === "insert",
@@ -783,11 +803,10 @@ const Line: React.FC<{
           isLineMerged &&
             "bg-[color-mix(in_oklch,var(--code-line-merge)_20%,var(--background))] _bg-(--code-line-merge)/10 text-(--code-line-merge) opacity-100",
           // "border-r border-current/5",
-          "min-w-(--line-number-width) max-w-(--line-number-width)",
         )}
         data-line-type={line.type}
       >
-        <div className="flex items-center justify-between px-1">
+        <div className="flex items-center justify-between px-1 w-full overflow-hidden">
           {/* <div className="w-fit flex items-center justify-between mr-2">
             {normalisezedEmail ? (
               <img
@@ -818,11 +837,11 @@ const Line: React.FC<{
           </div> */}
           <div className="w-0.5" />
           {line.type === "delete" ? (
-            <span>
-              <span className="group-hover:hidden delay-[10s] flex justify-end">
+            <span className="inline-flex w-full justify-end overflow-hidden">
+              <span className="group-hover:hidden delay-[10s] flex justify-end w-full">
                 {"–"}
               </span>
-              <span className="group-hover:flex delay-[10s] hidden justify-end">
+              <span className="group-hover:flex delay-[10s] hidden justify-end w-full">
                 {lineNumberNew}
               </span>
             </span>
