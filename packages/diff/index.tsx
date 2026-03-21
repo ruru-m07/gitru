@@ -1,6 +1,7 @@
 "use client";
 
 import { BlameInfo } from "@gitru/commands";
+import { Checkbox } from "@gitru/ui/components/checkbox";
 import { cn } from "@gitru/ui/lib/utils";
 import { ChevronDownIcon, ChevronsUpDown, ChevronUpIcon } from "lucide-react";
 import React from "react";
@@ -369,13 +370,13 @@ const RenderedHunk: React.FC<{
     <>
       {shouldVirtualize && (
         <tr aria-hidden>
-          <td ref={anchorRef} colSpan={3} className="p-0 border-0 h-0" />
+          <td ref={anchorRef} colSpan={4} className="p-0 border-0 h-0" />
         </tr>
       )}
 
       {topSpacerHeight > 0 && (
         <tr aria-hidden>
-          <td colSpan={3} className="p-0 border-0">
+          <td colSpan={4} className="p-0 border-0">
             <div style={{ height: topSpacerHeight }} />
           </td>
         </tr>
@@ -396,7 +397,7 @@ const RenderedHunk: React.FC<{
 
       {bottomSpacerHeight > 0 && (
         <tr aria-hidden>
-          <td colSpan={3} className="p-0 border-0">
+          <td colSpan={4} className="p-0 border-0">
             <div style={{ height: bottomSpacerHeight }} />
           </td>
         </tr>
@@ -441,16 +442,19 @@ export const Diff: React.FC<DiffProps> = ({
       <table
         {...props}
         className={cn(
-          "relative [--background:#ffffff] dark:[--background:#000000] [--code-added:var(--color-green-600)] [--code-removed:var(--color-red-600)] font-mono text-sm _text-[0.8rem] w-full m-0 border-separate border-0 outline-none overflow-x-auto border-spacing-0",
+          "relative [--background:#ffffff] dark:[--background:#000000] [--code-added:var(--color-green-600)] [--code-removed:var(--color-red-600)] font-mono text-sm _text-[0.8rem] w-full m-0 border-separate border-0 outline-none border-spacing-0",
+          "[--line-status-width:3px] [--line-number-width:5ch] [--gutter-width:4ch]",
+          "table-fixed",
           className,
         )}
       >
         <colgroup>
-          <col className="w-0.75" />
-          <col className="w-0.75" />
+          <col className="min-w-(--line-status-width) w-(--line-status-width)" />
+          <col className="min-w-(--gutter-width) w-(--gutter-width)" />
+          <col className="min-w-(--line-number-width) w-(--line-number-width)" />
           <col />
         </colgroup>
-        <tbody className="w-full box-border [&:has(td[data-line-type]:nth-child(2):hover)_td[data-line-type]:nth-child(2)_span.group-hover\:hidden]:hidden [&:has(td[data-line-type]:nth-child(2):hover)_td[data-line-type]:nth-child(2)_span.group-hover\:flex]:flex">
+        <tbody className="w-full box-border [&:has(td[data-line-type]:nth-child(3):hover)_td[data-line-type]:nth-child(3)_span.group-hover\:hidden]:hidden [&:has(td[data-line-type]:nth-child(3):hover)_td[data-line-type]:nth-child(3)_span.group-hover\:flex]:flex">
           {children ??
             items.map(({ hunk, index, hasHunkBefore, hasHunkAfter }) => (
               <Hunk
@@ -566,14 +570,19 @@ const SkipBlockRow: React.FC<{
           {hasHunkBefore && (
             <tr className="h-1">
               <td data-line-type className="w-0.75" />
+              <td />
               <td data-line-type />
               <td />
             </tr>
           )}
-          <tr className={cn("h-8 font-mono text-muted-foreground")}>
-            <td className="w-0.75" />
+          <tr
+            className={cn(
+              "h-8 font-mono text-muted-foreground sticky left-0 z-30",
+            )}
+          >
+            <td className="w-0.75 diff-whitespace-lines" />
             <td data-line-type className="select-none">
-              <div className="w-full">
+              <div>
                 {isLeadingBoundarySkip ? (
                   <div className="flex flex-col w-full h-8 justify-between">
                     <button
@@ -581,7 +590,7 @@ const SkipBlockRow: React.FC<{
                       onClick={expandAllToTop}
                       className="group h-8 flex items-center justify-center bg-muted rounded-l-[4px] transition-colors duration-75 hover:bg-secondary-foreground/15 cursor-pointer"
                     >
-                      <ChevronUpIcon className="size-3.5 text-muted-foreground/50 group-hover:text-muted-foreground duration-75 transition-colors" />
+                      <ChevronUpIcon className="size-5 text-muted-foreground/50 group-hover:text-muted-foreground duration-75 transition-colors" />
                     </button>
                   </div>
                 ) : isTrailingBoundarySkip ? (
@@ -591,7 +600,7 @@ const SkipBlockRow: React.FC<{
                       onClick={expandAllToBottom}
                       className="group h-8 flex items-center justify-center bg-muted rounded-l-[4px] transition-colors duration-75 hover:bg-secondary-foreground/15 cursor-pointer"
                     >
-                      <ChevronDownIcon className="size-3.5 text-muted-foreground/50 group-hover:text-muted-foreground duration-75 transition-colors" />
+                      <ChevronDownIcon className="size-5 text-muted-foreground/50 group-hover:text-muted-foreground duration-75 transition-colors" />
                     </button>
                   </div>
                 ) : remainingLines > EXPENDED_SKIP_BLOCK_LINES ? (
@@ -634,7 +643,10 @@ const SkipBlockRow: React.FC<{
                 )}
               </div>
             </td>
-            <td className="bg-muted relative  select-none h-8 flex items-center w-full">
+            <td
+              colSpan={2}
+              className="bg-muted relative select-none h-8 items-center w-full"
+            >
               <div className="absolute h-full left-px top-1/2 w-0.5 bg-background -translate-x-1/2 -translate-y-1/2" />
               <span className="px-0 sticky left-0 pl-2">
                 <span>{`${remainingLines} `}</span>
@@ -645,6 +657,7 @@ const SkipBlockRow: React.FC<{
           {hasHunkAfter && (
             <tr className="h-1">
               <td data-line-type className="w-0.75" />
+              <td />
               <td data-line-type />
               <td />
             </tr>
@@ -736,7 +749,7 @@ const Line: React.FC<{
     >
       <td
         className={cn(
-          "border-transparent _border-l-3",
+          "border-transparent min-w-0.75",
           "sticky left-0 z-20",
           {
             "border-(--code-added)/60 [--code-line-bg:var(--code-added)] diff-added-lines":
@@ -746,14 +759,21 @@ const Line: React.FC<{
           },
           isLineMerged &&
             "[--code-line-bg:var(--code-line-merge)] border-(--code-line-merge)/20 diff-merged-lines",
-          !isLineMerged && line.type === "normal" && "diff-normal-lines",
+          // !isLineMerged && line.type === "normal" && "diff-normal-lines",
         )}
       />
+      <td className="min-w-(--gutter-width) select-all pointer-events-auto">
+        <div className="flex items-center justify-center w-full h-full">
+          {line.type == "delete" || line.type == "insert" || isLineMerged ? (
+            <Checkbox />
+          ) : null}
+        </div>
+      </td>
       <td
         className={cn(
           "tabular-nums relative px-2 text-xs select-none text-end z-10",
-          "bg-[color-mix(in_oklch,var(--muted)_60%,var(--background))] _bg-muted/60 text-foreground/70 relative",
-          "sticky left-0 min-w-0",
+          // "bg-[color-mix(in_oklch,var(--muted)_60%,var(--background))] _bg-muted/60 text-foreground/70 relative",
+          "sticky left-0  bg-background",
           {
             "bg-[color-mix(in_oklch,var(--code-added)_20%,var(--background))] _bg-(--code-added)/10 [--code-line-bg:var(--code-added)] text-(--code-added) opacity-100":
               line.type === "insert",
@@ -762,13 +782,9 @@ const Line: React.FC<{
           },
           isLineMerged &&
             "bg-[color-mix(in_oklch,var(--code-line-merge)_20%,var(--background))] _bg-(--code-line-merge)/10 text-(--code-line-merge) opacity-100",
-          "border-r border-current/5",
+          // "border-r border-current/5",
+          "min-w-(--line-number-width) max-w-(--line-number-width)",
         )}
-        // style={{
-        //   width: "minmax(min-content, max-content)",
-        //   maxWidth: "100%",
-        //   minWidth: line.type === "normal" ? "3ch" : "2ch",
-        // }}
         data-line-type={line.type}
       >
         <div className="flex items-center justify-between px-1">

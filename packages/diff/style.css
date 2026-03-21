@@ -101,7 +101,7 @@
   }
 }
 
-.diff-normal-lines {
+.diff-normal-lines {  
   &::before {
     content: "";
     display: block;
@@ -113,5 +113,20 @@
     user-select: none;
     contain: strict;
     background-color: color-mix(in oklch, var(--secondary-foreground) 8%, var(--background));
+  }
+}
+
+.diff-whitespace-lines {
+  &::before {
+    content: "";
+    display: block;
+    width: 3px;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    user-select: none;
+    contain: strict;
+    background-color: var(--background);
   }
 }

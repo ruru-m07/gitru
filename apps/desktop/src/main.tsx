@@ -61,18 +61,18 @@ if (rootElement && !rootElement.innerHTML) {
         >
           <RouterProvider router={router} />
           <Toaster />
-          <ReactQueryDevtools
+          {/* <ReactQueryDevtools
             buttonPosition="top-right"
             initialIsOpen={false}
-          />
+          /> */}
         </NextThemesProvider>
       </QueryClientProvider>
     </StrictMode>,
   );
 }
 
-if (import.meta.env.DEV) {
-  scan({
-    enabled: true,
-  });
-}
+// if (import.meta.env.DEV) {
+//   scan({
+//     enabled: true,
+//   });
+// }
