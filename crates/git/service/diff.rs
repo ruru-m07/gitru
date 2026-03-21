@@ -11,7 +11,7 @@ use crate::{
     cache::{CachePolicy, TTL_PATCH_BY_FILE_PATH},
     context::RepoContext,
     models::{
-        diff::{AssetDiff, AssetDiffEntry, AssetDiffKind, FileDiff},
+        diff::{AssetDiff, AssetDiffEntry, AssetDiffKind, DiffTextFile, FileDiff},
         status::FileStatusKind,
     },
     parsers::stash::validate_stash_ref,
@@ -105,11 +105,22 @@ impl DiffService {
                 )
                 .await?;
 
+            let (old_file, new_file) = self
+                .resolve_text_diff_files(
+                    file_path,
+                    file_new_path,
+                    status,
+                    stash_reference,
+                    commit_hash,
+                    parent_index,
+                )
+                .await?;
+
             Ok(FileDiff {
                 patch,
                 asset_diff,
-                newBlame: None,
-                oldBlame: None,
+                old_file,
+                new_file,
             })
         }
         .await;
@@ -329,6 +340,139 @@ impl DiffService {
             contents_base64: BASE64_STANDARD.encode(&bytes),
         })
     }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn resolve_text_diff_files(
+        &self,
+        file_path: &str,
+        file_new_path: Option<&str>,
+        status: Option<&[FileStatusKind]>,
+        stash_reference: Option<&str>,
+        commit_hash: Option<&str>,
+        parent_index: Option<usize>,
+    ) -> Result<(Option<DiffTextFile>, Option<DiffTextFile>), String> {
+        let status = status.unwrap_or(&[]);
+        let is_new = status
+            .iter()
+            .any(|s| matches!(s, FileStatusKind::IndexNew | FileStatusKind::WorktreeNew));
+        let is_deleted = status.iter().any(|s| {
+            matches!(
+                s,
+                FileStatusKind::IndexDeleted | FileStatusKind::WorktreeDeleted
+            )
+        });
+        let is_renamed = status.iter().any(|s| {
+            matches!(
+                s,
+                FileStatusKind::IndexRenamed | FileStatusKind::WorktreeRenamed
+            )
+        });
+
+        let logical_before = file_path.to_string();
+        let logical_after = file_new_path.unwrap_or(file_path).to_string();
+        let before_should_exist = !is_new;
+        let after_should_exist = !is_deleted;
+        let effective_before_path = if is_renamed {
+            logical_before.as_str()
+        } else {
+            file_path
+        };
+        let effective_after_path = logical_after.as_str();
+
+        let before = if before_should_exist {
+            if let Some(reference) = stash_reference {
+                let base = format!("{reference}^1");
+                self.load_blob_text_file(&base, effective_before_path, &logical_before)
+                    .await
+            } else if let Some(hash) = commit_hash {
+                let base = resolve_commit_diff_base(
+                    &self.ctx.runner,
+                    hash,
+                    parent_index.unwrap_or(1).max(1),
+                )
+                .await?;
+                self.load_blob_text_file(&base, effective_before_path, &logical_before)
+                    .await
+            } else {
+                self.load_blob_text_file("HEAD", effective_before_path, &logical_before)
+                    .await
+            }
+        } else {
+            None
+        };
+
+        let after = if after_should_exist {
+            if let Some(reference) = stash_reference {
+                self.load_blob_text_file(reference, effective_after_path, &logical_after)
+                    .await
+            } else if let Some(hash) = commit_hash {
+                self.load_blob_text_file(hash, effective_after_path, &logical_after)
+                    .await
+            } else {
+                self.load_worktree_text_file(effective_after_path, &logical_after)
+                    .await
+            }
+        } else {
+            None
+        };
+
+        Ok((before, after))
+    }
+
+    async fn load_blob_text_file(
+        &self,
+        rev: &str,
+        rev_path: &str,
+        logical_path: &str,
+    ) -> Option<DiffTextFile> {
+        let spec = format!("{rev}:{rev_path}");
+        let bytes = self
+            .ctx
+            .runner
+            .run_with_options_bytes_unlocked(
+                &["show", "--no-ext-diff", "--no-textconv", &spec],
+                GitRunOptions::default_read().allow_exit_codes(&[1, 128]),
+            )
+            .await
+            .ok()?;
+
+        decode_text_file(logical_path, bytes)
+    }
+
+    async fn load_worktree_text_file(
+        &self,
+        repo_relative_path: &str,
+        logical_path: &str,
+    ) -> Option<DiffTextFile> {
+        let absolute = Path::new(&self.ctx.repo_path).join(repo_relative_path);
+        let bytes = fs::read(&absolute).ok()?;
+        decode_text_file(logical_path, bytes)
+    }
+}
+
+fn decode_text_file(logical_path: &str, bytes: Vec<u8>) -> Option<DiffTextFile> {
+    if bytes.is_empty() {
+        return Some(DiffTextFile {
+            name: logical_path.to_string(),
+            contents: String::new(),
+            byte_length: 0,
+            encoding: "utf-8".to_string(),
+        });
+    }
+
+    if bytes.contains(&0) {
+        return None;
+    }
+
+    let byte_length = bytes.len();
+    let contents = String::from_utf8(bytes).ok()?;
+
+    Some(DiffTextFile {
+        name: logical_path.to_string(),
+        contents,
+        byte_length,
+        encoding: "utf-8".to_string(),
+    })
 }
 
 fn build_patch_cache_key(

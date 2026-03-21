@@ -68,8 +68,8 @@ impl BlameService {
 
             if !should_collect_blame(file_path, file_new_path, status) {
                 return Ok(BlameDiff {
-                    oldBlame: None,
-                    newBlame: None,
+                    old_blame: None,
+                    new_blame: None,
                 });
             }
 
@@ -101,14 +101,14 @@ impl BlameService {
 
             if token.is_cancelled() {
                 return Ok(BlameDiff {
-                    oldBlame: None,
-                    newBlame: None,
+                    old_blame: None,
+                    new_blame: None,
                 });
             }
 
             Ok(BlameDiff {
-                oldBlame: Some(old_res.unwrap_or_default()),
-                newBlame: Some(new_res.unwrap_or_default()),
+                old_blame: Some(old_res.unwrap_or_default()),
+                new_blame: Some(new_res.unwrap_or_default()),
             })
         }
         .await;

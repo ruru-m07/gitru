@@ -35,8 +35,8 @@ fn text_blame_worktree_modified_returns_old_and_new_blame() {
             .await
             .expect("failed to get blame");
 
-        let old_blame = blame.oldBlame.expect("old blame should be present");
-        let new_blame = blame.newBlame.expect("new blame should be present");
+        let old_blame = blame.old_blame.expect("old blame should be present");
+        let new_blame = blame.new_blame.expect("new blame should be present");
         assert!(!old_blame.is_empty());
         assert!(!new_blame.is_empty());
     });
@@ -63,8 +63,8 @@ fn text_blame_deleted_file_returns_empty_new_blame() {
             .await
             .expect("failed to get blame");
 
-        let old_blame = blame.oldBlame.expect("old blame should be present");
-        let new_blame = blame.newBlame.expect("new blame should be present");
+        let old_blame = blame.old_blame.expect("old blame should be present");
+        let new_blame = blame.new_blame.expect("new blame should be present");
         assert!(!old_blame.is_empty());
         assert!(new_blame.is_empty());
     });
@@ -92,8 +92,8 @@ fn text_blame_commit_mode_returns_old_and_new_blame() {
             .await
             .expect("failed to get commit blame");
 
-        let old_blame = blame.oldBlame.expect("old blame should be present");
-        let new_blame = blame.newBlame.expect("new blame should be present");
+        let old_blame = blame.old_blame.expect("old blame should be present");
+        let new_blame = blame.new_blame.expect("new blame should be present");
         assert!(!old_blame.is_empty());
         assert!(!new_blame.is_empty());
     });

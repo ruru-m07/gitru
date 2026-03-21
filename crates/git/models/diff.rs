@@ -78,14 +78,26 @@ impl BlameInfo {
 pub struct FileDiff {
     pub patch: String,
     pub asset_diff: Option<AssetDiff>,
-    pub oldBlame: Option<Vec<BlameInfo>>,
-    pub newBlame: Option<Vec<BlameInfo>>,
+    #[serde(rename = "oldFile")]
+    pub old_file: Option<DiffTextFile>,
+    #[serde(rename = "newFile")]
+    pub new_file: Option<DiffTextFile>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct DiffTextFile {
+    pub name: String,
+    pub contents: String,
+    pub byte_length: usize,
+    pub encoding: String,
 }
 
 #[derive(Serialize)]
 pub struct BlameDiff {
-    pub oldBlame: Option<Vec<BlameInfo>>,
-    pub newBlame: Option<Vec<BlameInfo>>,
+    #[serde(rename = "oldBlame")]
+    pub old_blame: Option<Vec<BlameInfo>>,
+    #[serde(rename = "newBlame")]
+    pub new_blame: Option<Vec<BlameInfo>>,
 }
 
 #[derive(Debug, Serialize, Clone, Copy)]

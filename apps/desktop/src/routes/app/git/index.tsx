@@ -1,5 +1,4 @@
 import type { FileStatusKind } from "@gitru/commands";
-import { DiffViewer } from "@gitru/diff";
 import { Button } from "@gitru/ui/components/button";
 import { CopyButton } from "@gitru/ui/components/copy-button";
 import { Group, GroupSeparator } from "@gitru/ui/components/group";
@@ -13,6 +12,12 @@ import {
 import { Separator } from "@gitru/ui/components/separator";
 import { Switch } from "@gitru/ui/components/switch";
 import { cn } from "@gitru/ui/lib/utils";
+import { parseDiffFromFile } from "@pierre/diffs";
+import {
+  MultiFileDiff,
+  Virtualizer,
+  WorkerPoolContextProvider,
+} from "@pierre/diffs/react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   ArrowUpFromLine,
@@ -23,10 +28,13 @@ import {
   GitBranch,
   Loader2,
   MoveHorizontal,
+  Plus,
   Settings,
   TextWrap,
+  Undo,
   X,
 } from "lucide-react";
+import { useMemo } from "react";
 // import { useTheme } from "next-themes";
 import { ImageDiffViewer } from "@/components/diff/image/ImageDiffViewer";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
@@ -39,7 +47,6 @@ import {
   useGetCurrentBranch,
   useGetCurrentBranchStash,
   useGetDiff,
-  useGetDiffBlame,
   useGetStatus,
   useGetStatusAheadBehind,
   useGitPush,
@@ -49,6 +56,7 @@ import {
 import { useAppStore } from "@/store/useAppStore";
 import { SplitSVG } from "../../../components/svgs/splitSVG";
 import { UnifiedSVG } from "../../../components/svgs/unifiedSVG";
+import { diffWorkerFactory } from "../../../lib/diffWorkerFactory";
 import {
   type ResolvedFileSelection,
   resolveFileSelection,
@@ -347,16 +355,167 @@ const DiffArea = ({
     commitHash,
     parentIndex: commitHash ? 1 : undefined,
   });
-  const { data: blameData } = useGetDiffBlame(filePath, {
-    fileNewPath,
-    status,
-    stashReference,
-    commitHash,
-    parentIndex: commitHash ? 1 : undefined,
-  });
 
-  // const { diffStyle, overflow } = useDiffViewerSettings();
-  // const { theme } = useTheme();
+  const { diffStyle, overflow } = useDiffViewerSettings();
+
+  const source = stashReference ? "stash" : commitHash ? "history" : "worktree";
+
+  const parsedDiff = useMemo(() => {
+    if (!diffData?.oldFile || !diffData?.newFile) {
+      return null;
+    }
+
+    try {
+      return parseDiffFromFile(
+        {
+          name: diffData.oldFile.name,
+          contents: diffData.oldFile.contents,
+          cacheKey: `${source}:${filePath}:old`,
+        },
+        {
+          name: diffData.newFile.name,
+          contents: diffData.newFile.contents,
+          cacheKey: `${source}:${filePath}:new`,
+        },
+      );
+    } catch (error) {
+      console.warn("Failed to parse diff from file contents", error);
+      return null;
+    }
+  }, [diffData, filePath, source]);
+
+  const blockMetadataLookup = useMemo(() => {
+    if (!parsedDiff) {
+      return new Map<string, ChunkActionMetadata>();
+    }
+
+    const lookup = new Map<string, ChunkActionMetadata>();
+
+    for (let hunkIndex = 0; hunkIndex < parsedDiff.hunks.length; hunkIndex++) {
+      const hunk = parsedDiff.hunks[hunkIndex];
+      let additionCursor = hunk.additionStart;
+      let deletionCursor = hunk.deletionStart;
+      let changeIndex = 0;
+
+      for (const content of hunk.hunkContent) {
+        if (content.type === "context") {
+          const contextLen = content.lines;
+          additionCursor += contextLen;
+          deletionCursor += contextLen;
+          continue;
+        }
+
+        const additionsLen = content.additions;
+        const deletionsLen = content.deletions;
+
+        // Store metadata for the FIRST line of each block only
+        // Smart pairing: if both additions and deletions exist, show only 1 annotation (on additions side)
+        // If only one side exists, show annotation on that side
+
+        if (additionsLen > 0 && deletionsLen > 0) {
+          // Replacement block (paired): show one annotation on additions side
+          const payload: ChunkActionMetadata = {
+            source,
+            filePath,
+            fileNewPath,
+            stashReference,
+            commitHash,
+            hunkIndex,
+            changeIndex,
+            side: "additions",
+            additions: {
+              start: additionCursor,
+              end: additionCursor + additionsLen - 1,
+              count: additionsLen,
+            },
+            deletions: {
+              start: deletionCursor,
+              end: deletionCursor + deletionsLen - 1,
+              count: deletionsLen,
+            },
+          };
+          lookup.set(`additions:${additionCursor + additionsLen - 1}`, payload);
+        } else if (additionsLen > 0) {
+          // Pure addition: show annotation on additions side
+          const payload: ChunkActionMetadata = {
+            source,
+            filePath,
+            fileNewPath,
+            stashReference,
+            commitHash,
+            hunkIndex,
+            changeIndex,
+            side: "additions",
+            additions: {
+              start: additionCursor,
+              end: additionCursor + additionsLen - 1,
+              count: additionsLen,
+            },
+            deletions: {
+              start: null,
+              end: null,
+              count: 0,
+            },
+          };
+          lookup.set(`additions:${additionCursor + additionsLen - 1}`, payload);
+        } else if (deletionsLen > 0) {
+          // Pure deletion: show annotation on deletions side
+          const payload: ChunkActionMetadata = {
+            source,
+            filePath,
+            fileNewPath,
+            stashReference,
+            commitHash,
+            hunkIndex,
+            changeIndex,
+            side: "deletions",
+            additions: {
+              start: null,
+              end: null,
+              count: 0,
+            },
+            deletions: {
+              start: deletionCursor,
+              end: deletionCursor + deletionsLen - 1,
+              count: deletionsLen,
+            },
+          };
+          lookup.set(`deletions:${deletionCursor + deletionsLen - 1}`, payload);
+        }
+
+        additionCursor += additionsLen;
+        deletionCursor += deletionsLen;
+        changeIndex += 1;
+      }
+    }
+
+    return lookup;
+  }, [parsedDiff, source, filePath, fileNewPath, stashReference, commitHash]);
+
+  const blockAnnotations = useMemo(() => {
+    const annotations: Array<{
+      side: "additions" | "deletions";
+      lineNumber: number;
+      metadata: ChunkActionMetadata;
+    }> = [];
+
+    // Convert blockMetadataLookup Map entries to lineAnnotations array
+    blockMetadataLookup.forEach((metadata, key) => {
+      const [side, lineNumberStr] = key.split(":");
+      const lineNumber = parseInt(lineNumberStr, 10);
+
+      if (!isNaN(lineNumber)) {
+        annotations.push({
+          side: side as "additions" | "deletions",
+          lineNumber,
+          metadata,
+        });
+      }
+    });
+
+    return annotations;
+  }, [blockMetadataLookup]);
+
   const assetKind = String(diffData?.asset_diff?.kind ?? "").toLowerCase();
   const isImageAssetDiff = assetKind === "image";
   const imageAssetDiff = isImageAssetDiff
@@ -376,65 +535,119 @@ const DiffArea = ({
       ) : (
         <>
           {imageAssetDiff ? <ImageDiffViewer diff={imageAssetDiff} /> : null}
-          {diffData?.patch && !isImageAssetDiff && (
-            // <div className="relative w-full flex overflow-auto py-1">
-            //   <DiffViewer
-            //     patch={diffData?.patch}
-            //     options={{
-            //       maxChangeRatio: 0.45,
-            //       maxDiffDistance: 1,
-            //       inlineMaxCharEdits: 0,
-            //       mergeModifiedLines: true,
-            //     }}
-            //   />
-            // </div>
-            <>
-              <div className="relative! w-full flex overflow-auto py-1">
-                <DiffViewer
-                  patch={diffData?.patch}
-                  options={{
-                    maxChangeRatio: 0.45,
-                    maxDiffDistance: 1,
-                    inlineMaxCharEdits: 0,
-                    mergeModifiedLines: true,
-                  }}
-                  oldBlame={blameData?.oldBlame}
-                  newBlame={blameData?.newBlame}
-                />
-              </div>
-              {/* <span
-                onClick={() => {
-                  navigator.clipboard.writeText(diffData.patch);
+          {!isImageAssetDiff && parsedDiff && (
+            <div className="max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*6))] h-full w-full flex overflow-auto">
+              <WorkerPoolContextProvider
+                poolOptions={{
+                  workerFactory: diffWorkerFactory,
+                  poolSize: 4,
+                }}
+                highlighterOptions={{
+                  theme: {
+                    dark: "github-dark",
+                    light: "github-light",
+                  },
+                  langs: [
+                    "typescript",
+                    "tsx",
+                    "javascript",
+                    "jsx",
+                    "rust",
+                    "json",
+                    "css",
+                    "html",
+                    "markdown",
+                    "toml",
+                    "yaml",
+                  ],
                 }}
               >
-                {diffData.patch.split("\n").length} lines of patch
-              </span>
-              <br />
-              <span
-                onClick={() => {
-                  navigator.clipboard.writeText(
-                    JSON.stringify(blameData?.oldBlame),
-                  );
-                }}
-              >
-                {blameData?.oldBlame?.length}
-              </span>
-              <br />
-              <span
-                onClick={() => {
-                  navigator.clipboard.writeText(
-                    JSON.stringify(blameData?.newBlame),
-                  );
-                }}
-              >
-                {blameData?.newBlame?.length}
-              </span> */}
-            </>
+                <Virtualizer
+                  className="max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*6))] overflow-auto w-full"
+                  contentClassName="space-y-4 w-full!"
+                >
+                  <MultiFileDiff
+                    key={`${diffData?.oldFile?.name}-${diffData?.newFile?.name}`}
+                    className="w-full"
+                    oldFile={{
+                      contents: diffData?.oldFile?.contents ?? "",
+                      name: diffData?.oldFile?.name ?? "Old File",
+                    }}
+                    newFile={{
+                      contents: diffData?.newFile?.contents ?? "",
+                      name: diffData?.newFile?.name ?? "New File",
+                    }}
+                    options={{
+                      diffStyle,
+                      overflow,
+                      disableFileHeader: true,
+                      collapsedContextThreshold: 0,
+                      lineHoverHighlight: "both",
+                    }}
+                    lineAnnotations={blockAnnotations}
+                    renderAnnotation={(annotation) => (
+                      <div
+                        style={{
+                          position: "relative",
+                          zIndex: 10,
+                          width: "100%",
+                          overflow: "visible",
+                        }}
+                      >
+                        <div className="absolute -top-2 right-4 flex gap-1">
+                          <Button
+                            size={"icon-xs"}
+                            variant={"outline"}
+                            aria-label="Stage changes"
+                            onClick={() => {
+                              console.log("stage_block", annotation.metadata);
+                            }}
+                          >
+                            <Plus />
+                          </Button>
+                          <Button
+                            size={"icon-xs"}
+                            variant={"outline"}
+                            aria-label="Discard changes"
+                            onClick={() => {
+                              console.log("discard_block", annotation.metadata);
+                            }}
+                          >
+                            <Undo />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  />
+                </Virtualizer>
+              </WorkerPoolContextProvider>
+            </div>
           )}
         </>
       )}
     </div>
   );
+};
+
+type ChunkActionMetadata = {
+  source: "worktree" | "stash" | "history";
+  filePath: string;
+  fileNewPath: string | null;
+  stashReference: string | null;
+  commitHash: string | null;
+  hunkIndex: number;
+  changeIndex: number;
+  side: "additions" | "deletions";
+  additions: {
+    start: number | null;
+    end: number | null;
+    count: number;
+  };
+  deletions: {
+    start: number | null;
+    end: number | null;
+    count: number;
+  };
 };
 
 const FileLevelStatusBarLeft = ({
