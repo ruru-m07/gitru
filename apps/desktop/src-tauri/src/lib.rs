@@ -49,7 +49,6 @@ pub fn run() {
             commands::branch::status_ahead_behind,
             commands::branch::get_branch_info,
             commands::diff::get_patch_by_file_path,
-            commands::blame::get_blame_by_file_path,
             commands::history::history,
             commands::history::history_graph,
             commands::origin::repository_origin,

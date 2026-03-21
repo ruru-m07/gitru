@@ -1,5 +1,4 @@
 import {
-  BlameDiff,
   BranchKind,
   BranchStash,
   CreateCommitParams,
@@ -9,7 +8,6 @@ import {
   currentBranch,
   currentBranchStash,
   FileStatusKind,
-  getBlameByFilePath,
   getPatchByFilePath,
   getStatus,
   gitAdd,
@@ -37,12 +35,10 @@ import { StashState } from "./StashState";
 
 class DiffState extends StateDomain {
   private readonly baseKey: readonly string[];
-  private readonly blameBaseKey: readonly string[];
 
   constructor(protected queryClient: QueryClient) {
     super(queryClient);
     this.baseKey = ["repository", "diff"] as const;
-    this.blameBaseKey = ["repository", "blame"] as const;
   }
 
   async get(
@@ -99,66 +95,6 @@ class DiffState extends StateDomain {
         : "worktree";
     return [
       ...this.baseKey,
-      sourceScope,
-      filePath,
-      options?.fileNewPath ?? "",
-      options?.status?.join(",") ?? "",
-    ];
-  }
-
-  async getBlame(
-    filePath: string,
-    options?: {
-      fileNewPath?: string;
-      status?: FileStatusKind[];
-      stashReference?: string;
-      commitHash?: string;
-      parentIndex?: number;
-    },
-  ): Promise<BlameDiff> {
-    const sourceScope = options?.stashReference
-      ? `stash:${options.stashReference}`
-      : options?.commitHash
-        ? `commit:${options.commitHash}:p${options.parentIndex ?? 1}`
-        : "worktree";
-    const queryKey = [
-      ...this.blameBaseKey,
-      sourceScope,
-      filePath,
-      options?.fileNewPath ?? "",
-      options?.status?.join(",") ?? "",
-    ];
-
-    const data = await getBlameByFilePath({
-      filePath: filePath,
-      fileNewPath: options?.fileNewPath,
-      status: options?.status,
-      stashReference: options?.stashReference,
-      commitHash: options?.commitHash,
-      parentIndex: options?.parentIndex,
-    });
-
-    this.queryClient.setQueryData(queryKey, data);
-    return data;
-  }
-
-  getBlameQueryKey(
-    filePath: string,
-    options?: {
-      fileNewPath?: string;
-      status?: FileStatusKind[];
-      stashReference?: string;
-      commitHash?: string;
-      parentIndex?: number;
-    },
-  ) {
-    const sourceScope = options?.stashReference
-      ? `stash:${options.stashReference}`
-      : options?.commitHash
-        ? `commit:${options.commitHash}:p${options.parentIndex ?? 1}`
-        : "worktree";
-    return [
-      ...this.blameBaseKey,
       sourceScope,
       filePath,
       options?.fileNewPath ?? "",

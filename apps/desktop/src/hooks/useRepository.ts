@@ -1,6 +1,5 @@
 import type {
   AheadBehindStatus,
-  BlameDiff,
   Branch,
   BranchInfo,
   BranchKind,
@@ -147,67 +146,6 @@ export function useGetDiff(
       return result;
     },
 
-    staleTime: 3000,
-    enabled: !!repo && !!filePath,
-    placeholderData: (prev) => prev,
-    ...options,
-  });
-}
-
-export function useGetDiffBlame(
-  filePath: string | null,
-  params?: {
-    fileNewPath?: string | null;
-    status?: FileStatusKind[];
-    stashReference?: string | null;
-    commitHash?: string | null;
-    parentIndex?: number;
-  },
-  options?: QueryOptions<BlameDiff>,
-) {
-  const repo = appState.repository;
-  const stashReference = params?.stashReference ?? null;
-  const commitHash = params?.commitHash ?? null;
-  const fileNewPath = params?.fileNewPath ?? null;
-  const status = params?.status ?? [];
-  const parentIndex = params?.parentIndex ?? 1;
-  const sourceScope = stashReference
-    ? `stash:${stashReference}`
-    : commitHash
-      ? `commit:${commitHash}:p${parentIndex}`
-      : "worktree";
-
-  return useQuery({
-    queryKey: filePath
-      ? (repo?.diff.getBlameQueryKey(filePath, {
-          stashReference: stashReference ?? undefined,
-          commitHash: commitHash ?? undefined,
-          fileNewPath: fileNewPath ?? undefined,
-          status: status.length > 0 ? status : undefined,
-          parentIndex,
-        }) ?? [
-          "repository",
-          "none",
-          "blame",
-          sourceScope,
-          filePath,
-          fileNewPath ?? "",
-          status.join(","),
-        ])
-      : ["repository", "none", "blame"],
-    queryFn: async () => {
-      if (!repo || !filePath) return null;
-
-      const result = await repo.diff.getBlame(filePath, {
-        stashReference: stashReference ?? undefined,
-        commitHash: commitHash ?? undefined,
-        fileNewPath: fileNewPath ?? undefined,
-        status: status.length > 0 ? status : undefined,
-        parentIndex,
-      });
-
-      return result;
-    },
     staleTime: 3000,
     enabled: !!repo && !!filePath,
     placeholderData: (prev) => prev,

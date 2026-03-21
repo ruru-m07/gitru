@@ -4,9 +4,8 @@ use crate::{
     AppState,
     context::RepoContext,
     service::{
-        actions::ActionService, blame::BlameService, branch::BranchService, commit::CommitService,
-        diff::DiffService, history::HistoryService, origin::OriginService, query::QueryService,
-        stash::StashService,
+        actions::ActionService, branch::BranchService, commit::CommitService, diff::DiffService,
+        history::HistoryService, origin::OriginService, query::QueryService, stash::StashService,
     },
 };
 
@@ -23,10 +22,6 @@ impl RepoServices {
 
     pub fn diff(&self) -> DiffService {
         DiffService::new(self.ctx.clone())
-    }
-
-    pub fn blame(&self) -> BlameService {
-        BlameService::new(self.ctx.clone())
     }
 
     pub fn branch(&self) -> BranchService {
