@@ -27,17 +27,8 @@
   }
 }
 
-.diff-merged-lines {
-  position: relative;
-  
+.diff-merged-lines {  
   &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0px;
-    width: 3px;
-    height: 100%;
-
     background-color: var(--code-line-bg);
 
     -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 6 100' preserveAspectRatio='none'%3E%3Cpath d='M3 0 Q6 5 3 10 T3 20 T3 30 T3 40 T3 50 T3 60 T3 70 T3 80 T3 90 T3 100' fill='none' stroke='white' stroke-width='2.5'/%3E%3C/svg%3E");
@@ -48,8 +39,17 @@
 
     -webkit-mask-repeat: no-repeat;
     mask-repeat: no-repeat;
+  }
 
-    pointer-events: none;
+
+  &::before {
+    content: "";
+    display: block;
+    width: 3px;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
     user-select: none;
     contain: strict;
   }

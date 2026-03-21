@@ -39,6 +39,7 @@ import {
   useGetCurrentBranch,
   useGetCurrentBranchStash,
   useGetDiff,
+  useGetDiffBlame,
   useGetStatus,
   useGetStatusAheadBehind,
   useGitPush,
@@ -346,13 +347,13 @@ const DiffArea = ({
     commitHash,
     parentIndex: commitHash ? 1 : undefined,
   });
-  // const { data: blameData } = useGetDiffBlame(filePath, {
-  //   fileNewPath,
-  //   status,
-  //   stashReference,
-  //   commitHash,
-  //   parentIndex: commitHash ? 1 : undefined,
-  // });
+  const { data: blameData } = useGetDiffBlame(filePath, {
+    fileNewPath,
+    status,
+    stashReference,
+    commitHash,
+    parentIndex: commitHash ? 1 : undefined,
+  });
 
   // const { diffStyle, overflow } = useDiffViewerSettings();
   // const { theme } = useTheme();
@@ -397,8 +398,8 @@ const DiffArea = ({
                     inlineMaxCharEdits: 0,
                     mergeModifiedLines: true,
                   }}
-                  // oldBlame={blameData?.oldBlame}
-                  // newBlame={blameData?.newBlame}
+                  oldBlame={blameData?.oldBlame}
+                  newBlame={blameData?.newBlame}
                 />
               </div>
               {/* <span

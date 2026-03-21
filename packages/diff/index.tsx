@@ -331,6 +331,8 @@ export const Hunk = ({
       hiddenLines={hunk.hiddenLines}
       hasHunkBefore={hasHunkBefore}
       hasHunkAfter={hasHunkAfter}
+      newBlame={newBlame}
+      oldBlame={oldBlame}
     />
   );
 };
@@ -481,11 +483,15 @@ const SkipBlockRow: React.FC<{
   hiddenLines?: LineType[];
   hasHunkBefore?: boolean;
   hasHunkAfter?: boolean;
+  newBlame?: BlameInfo[];
+  oldBlame?: BlameInfo[];
 }> = ({
   lines,
   hiddenLines = [],
   hasHunkBefore = true,
   hasHunkAfter = true,
+  newBlame,
+  oldBlame,
 }) => {
   const { language } = useDiffContext();
   const highlightedHiddenLines = React.useMemo(
@@ -550,6 +556,8 @@ const SkipBlockRow: React.FC<{
           key={`skip-top-${getLineKeyNumber(line) ?? index}`}
           line={line}
           highlightedSegments={highlightedHiddenLines[index] ?? []}
+          newBlame={newBlame}
+          oldBlame={oldBlame}
         />
       ))}
 
@@ -651,6 +659,8 @@ const SkipBlockRow: React.FC<{
             key={`skip-bottom-${getLineKeyNumber(line) ?? highlightedIndex}`}
             line={line}
             highlightedSegments={highlightedHiddenLines[highlightedIndex] ?? []}
+            newBlame={newBlame}
+            oldBlame={oldBlame}
           />
         );
       })}
@@ -684,7 +694,7 @@ const Line: React.FC<{
   highlightedSegments: HighlightedSegment[];
   oldBlame?: BlameInfo[];
   newBlame?: BlameInfo[];
-}> = ({ line, highlightedSegments }) => {
+}> = ({ line, highlightedSegments, newBlame = [], oldBlame = [] }) => {
   const segmentsToRender =
     highlightedSegments.length > 0
       ? highlightedSegments
@@ -704,10 +714,10 @@ const Line: React.FC<{
       (segment) => segment.type === "insert" || segment.type === "delete",
     );
 
-  // const _normalisezedEmail = normalizeToAuthor(
-  //   lineNumberNew ?? -1,
-  //   line.type === "delete" ? oldBlame : newBlame,
-  // );
+  const normalisezedEmail = normalizeToAuthor(
+    lineNumberNew ?? -1,
+    line.type === "delete" ? oldBlame : newBlame,
+  );
 
   return (
     <tr
@@ -763,33 +773,33 @@ const Line: React.FC<{
       >
         <div className="flex items-center justify-between px-1">
           {/* <div className="w-fit flex items-center justify-between mr-2">
-          {normalisezedEmail ? (
-            <img
-              src={`https://avatars.githubusercontent.com/u/e?email=${normalisezedEmail}&s=64`}
-              alt="avatar"
-              className={cn(
-                "rounded-[4px] size-3 ml-1 shrink-0",
-                line.type === "delete" && "opacity-50",
-                line.type === "normal" && !isLineMerged ? "opacity-80" : "",
-              )}
-            />
-          ) : (
-            <div
-              className={cn(
-                "rounded-[4px] flex items-center justify-center text-[10px] size-3 ml-1 shrink-0 ring-[1px] ring-inset",
-                line.type === "insert"
-                  ? "text-[color-mix(in_oklch,var(--code-added)_90%,var(--background))] ring-[color-mix(in_oklch,var(--code-added)_65%,var(--background))]"
-                  : "ring-[color-mix(in_oklch,var(--code-line-merge)_70%,var(--background))]",
-              )}
-            >
-              {line.type === "insert" ? (
-                <span className="font-mono -translate-y-[0.5px]">{"+"}</span>
-              ) : (
-                <span className="size-[4.5px] rounded-full bg-[color-mix(in_oklch,var(--code-line-merge)_90%,var(--background))]" />
-              )}
-            </div>
-          )}
-        </div> */}
+            {normalisezedEmail ? (
+              <img
+                src={`https://avatars.githubusercontent.com/u/e?email=${normalisezedEmail}&s=64`}
+                alt="avatar"
+                className={cn(
+                  "rounded-[4px] size-3.5 ml-1 shrink-0",
+                  line.type === "delete" && "opacity-50",
+                  line.type === "normal" && !isLineMerged ? "opacity-80" : "",
+                )}
+              />
+            ) : (
+              <div
+                className={cn(
+                  "rounded-[4px] flex items-center justify-center text-[10px] size-3.5 ml-1 shrink-0 ring-[1px] ring-inset",
+                  line.type === "insert"
+                    ? "text-[color-mix(in_oklch,var(--code-added)_90%,var(--background))] ring-[color-mix(in_oklch,var(--code-added)_65%,var(--background))]"
+                    : "ring-[color-mix(in_oklch,var(--code-line-merge)_70%,var(--background))]",
+                )}
+              >
+                {line.type === "insert" ? (
+                  <span className="font-mono -translate-y-[0.5px]">{"+"}</span>
+                ) : (
+                  <span className="size-[4.5px] rounded-full bg-[color-mix(in_oklch,var(--code-line-merge)_90%,var(--background))]" />
+                )}
+              </div>
+            )}
+          </div> */}
           <div className="w-0.5" />
           {line.type === "delete" ? (
             <span>
