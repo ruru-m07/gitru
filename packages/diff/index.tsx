@@ -24,6 +24,7 @@ import type {
 import { guessLang, parseDiff } from "./utils";
 import "./style.css";
 import "./theme.css";
+import "./grid-layout.css";
 
 const EXPENDED_SKIP_BLOCK_LINES = 10;
 const SKIP_BLOCK_EXPAND_STEP = 20;
@@ -230,7 +231,7 @@ function renderRuns(runs: TokenRun[], keyPrefix: string): React.ReactNode[] {
 }
 
 function useVirtualHunkRange(totalLines: number, enabled: boolean) {
-  const anchorRef = React.useRef<HTMLTableCellElement | null>(null);
+  const anchorRef = React.useRef<HTMLDivElement | null>(null);
   const [range, setRange] = React.useState(() => ({
     start: 0,
     end: Math.max(0, totalLines - 1),
@@ -376,17 +377,15 @@ const RenderedHunk: React.FC<{
   return (
     <>
       {shouldVirtualize && (
-        <tr aria-hidden>
-          <td ref={anchorRef} colSpan={4} className="p-0 border-0 h-0" />
-        </tr>
+        <div aria-hidden ref={anchorRef} className="col-span-4 p-0 h-0" />
       )}
 
       {topSpacerHeight > 0 && (
-        <tr aria-hidden>
-          <td colSpan={4} className="p-0 border-0">
-            <div style={{ height: topSpacerHeight }} />
-          </td>
-        </tr>
+        <div
+          aria-hidden
+          className="col-span-4 p-0"
+          style={{ height: topSpacerHeight }}
+        />
       )}
 
       {visibleLines.map((line, index) => {
@@ -403,11 +402,11 @@ const RenderedHunk: React.FC<{
       })}
 
       {bottomSpacerHeight > 0 && (
-        <tr aria-hidden>
-          <td colSpan={4} className="p-0 border-0">
-            <div style={{ height: bottomSpacerHeight }} />
-          </td>
-        </tr>
+        <div
+          aria-hidden
+          className="col-span-4 p-0"
+          style={{ height: bottomSpacerHeight }}
+        />
       )}
     </>
   );
@@ -422,6 +421,7 @@ export const Diff: React.FC<DiffProps> = ({
   newBlame,
   oldBlame,
   isBlameLoading = false,
+  style,
   ...props
 }) => {
   const items = React.useMemo(
@@ -446,36 +446,35 @@ export const Diff: React.FC<DiffProps> = ({
 
   return (
     <DiffContext.Provider value={{ language }}>
-      <table
+      <div
         {...props}
         className={cn(
-          "relative [--background:#ffffff] dark:[--background:#000000] [--code-added:var(--color-green-600)] [--code-removed:var(--color-red-600)] font-mono text-sm _text-[0.8rem] w-max min-w-full m-0 border-separate border-0 outline-none border-spacing-0",
-          "[--line-status-width:3px] [--line-number-width:64px] [--gutter-width:32px]",
-          "table-fixed",
+          "relative [--background:#ffffff] dark:[--background:#000000] [--code-added:var(--color-green-600)] [--code-removed:var(--color-red-600)] font-mono text-sm _text-[0.8rem] m-0 outline-none",
+          "[--line-status-width:3px] [--line-number-width:64px] [--gutter-width:50px]",
+          "grid w-full gap-0 overflow-x-auto",
           className,
         )}
+        style={{
+          gridTemplateColumns:
+            "var(--line-status-width) var(--gutter-width) var(--line-number-width) 1fr",
+          gridAutoFlow: "row",
+          gridAutoRows: "minmax(20px, auto)",
+          ...style,
+        }}
       >
-        <colgroup>
-          <col className="min-w-(--line-status-width) w-(--line-status-width)" />
-          <col className="min-w-(--gutter-width) w-(--gutter-width)" />
-          <col className="w-(--line-number-width) min-w-(--line-number-width) max-w-(--line-number-width)" />
-          <col />
-        </colgroup>
-        <tbody className="w-full box-border [&:has(td[data-line-type]:nth-child(3):hover)_td[data-line-type]:nth-child(3)_span.group-hover\:hidden]:hidden [&:has(td[data-line-type]:nth-child(3):hover)_td[data-line-type]:nth-child(3)_span.group-hover\:flex]:flex">
-          {children ??
-            items.map(({ hunk, index, hasHunkBefore, hasHunkAfter }) => (
-              <Hunk
-                key={index}
-                hunk={hunk}
-                hasHunkBefore={hasHunkBefore}
-                hasHunkAfter={hasHunkAfter}
-                newBlame={newBlame}
-                oldBlame={oldBlame}
-                isBlameLoading={isBlameLoading}
-              />
-            ))}
-        </tbody>
-      </table>
+        {children ??
+          items.map(({ hunk, index, hasHunkBefore, hasHunkAfter }) => (
+            <Hunk
+              key={index}
+              hunk={hunk}
+              hasHunkBefore={hasHunkBefore}
+              hasHunkAfter={hasHunkAfter}
+              newBlame={newBlame}
+              oldBlame={oldBlame}
+              isBlameLoading={isBlameLoading}
+            />
+          ))}
+      </div>
     </DiffContext.Provider>
   );
 };
@@ -575,99 +574,95 @@ const SkipBlockRow: React.FC<{
       {remainingLines > 0 && (
         <>
           {hasHunkBefore && (
-            <tr className="h-1">
-              <td data-line-type className="w-0.75" />
-              <td />
-              <td data-line-type />
-              <td />
-            </tr>
+            <>
+              <div
+                data-line-type
+                className="w-0.75 h-1 sticky left-0 top-0 z-40"
+              />
+              <div className="h-1 sticky left-[3px] top-0 z-40" />
+              <div
+                data-line-type
+                className="h-1 sticky left-[calc(3px+50px)] top-0 z-40"
+              />
+              <div className="h-1 sticky left-[calc(3px+50px+64px)] top-0 z-40" />
+            </>
           )}
-          <tr
-            className={cn(
-              "h-8 font-mono text-muted-foreground sticky left-0 z-30",
-            )}
+          <div className="w-0.75 diff-whitespace-lines h-8 sticky left-0 top-1 z-40" />
+          <div
+            data-line-type
+            className="select-none h-8 font-mono text-muted-foreground sticky left-[3px] top-1 z-40"
           >
-            <td className="w-0.75 diff-whitespace-lines" />
-            <td data-line-type className="select-none">
-              <div>
-                {isLeadingBoundarySkip ? (
-                  <div className="flex flex-col w-full h-8 justify-between">
-                    <button
-                      type="button"
-                      onClick={expandAllToTop}
-                      className="group h-8 flex items-center justify-center bg-muted rounded-l-[4px] transition-colors duration-75 hover:bg-secondary-foreground/15 cursor-pointer"
-                    >
-                      <ChevronUpIcon className="size-5 text-muted-foreground/50 group-hover:text-muted-foreground duration-75 transition-colors" />
-                    </button>
-                  </div>
-                ) : isTrailingBoundarySkip ? (
-                  <div className="flex flex-col w-full h-8 justify-between">
-                    <button
-                      type="button"
-                      onClick={expandAllToBottom}
-                      className="group h-8 flex items-center justify-center bg-muted rounded-l-[4px] transition-colors duration-75 hover:bg-secondary-foreground/15 cursor-pointer"
-                    >
-                      <ChevronDownIcon className="size-5 text-muted-foreground/50 group-hover:text-muted-foreground duration-75 transition-colors" />
-                    </button>
-                  </div>
-                ) : remainingLines > EXPENDED_SKIP_BLOCK_LINES ? (
-                  <div className="flex flex-col w-full h-8 justify-between">
-                    <button
-                      type="button"
-                      onClick={expandTop}
-                      className="group h-3.75 flex items-center justify-center bg-muted rounded-tl-[4px] transition-colors duration-75 hover:bg-secondary-foreground/15 cursor-pointer"
-                    >
-                      <ChevronDownIcon className="size-3.5 text-muted-foreground/50 group-hover:text-muted-foreground duration-75 transition-colors" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={expandBottom}
-                      className="group h-3.75 flex items-center justify-center bg-muted rounded-bl-[4px] transition-colors duration-75 hover:bg-secondary-foreground/15 cursor-pointer"
-                    >
-                      <ChevronUpIcon className="size-3.5 text-muted-foreground/50 group-hover:text-muted-foreground duration-75 transition-colors" />
-                    </button>
-                  </div>
-                ) : isOnlySkipInView ? (
-                  <div className="flex flex-col w-full h-8 justify-between">
-                    <button
-                      type="button"
-                      onClick={expandAll}
-                      className="group h-8 flex items-center justify-center bg-muted rounded-l-[4px] transition-colors duration-75 hover:bg-secondary-foreground/15 cursor-pointer"
-                    >
-                      <ChevronsUpDown className="size-3.5 text-muted-foreground/50 group-hover:text-muted-foreground duration-75 transition-colors" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex flex-col w-full h-8 justify-between">
-                    <button
-                      type="button"
-                      onClick={expandAll}
-                      className="group h-8 flex items-center justify-center bg-muted rounded-l-[4px] transition-colors duration-75 hover:bg-secondary-foreground/15 cursor-pointer"
-                    >
-                      <ChevronsUpDown className="size-3.5 text-muted-foreground/50 group-hover:text-muted-foreground duration-75 transition-colors" />
-                    </button>
-                  </div>
-                )}
+            {isLeadingBoundarySkip ? (
+              <button
+                type="button"
+                onClick={expandAllToTop}
+                className="group h-8 w-full flex items-center justify-center bg-muted rounded-l-[4px] transition-colors duration-75 hover:bg-secondary-foreground/15 cursor-pointer"
+              >
+                <ChevronUpIcon className="size-5 text-muted-foreground/50 group-hover:text-muted-foreground duration-75 transition-colors" />
+              </button>
+            ) : isTrailingBoundarySkip ? (
+              <button
+                type="button"
+                onClick={expandAllToBottom}
+                className="group h-8 w-full flex items-center justify-center bg-muted rounded-l-[4px] transition-colors duration-75 hover:bg-secondary-foreground/15 cursor-pointer"
+              >
+                <ChevronDownIcon className="size-5 text-muted-foreground/50 group-hover:text-muted-foreground duration-75 transition-colors" />
+              </button>
+            ) : remainingLines > EXPENDED_SKIP_BLOCK_LINES ? (
+              <div className="flex flex-col w-full h-8 justify-between">
+                <button
+                  type="button"
+                  onClick={expandTop}
+                  className="group h-3.75 flex items-center justify-center bg-muted rounded-tl-[4px] transition-colors duration-75 hover:bg-secondary-foreground/15 cursor-pointer"
+                >
+                  <ChevronDownIcon className="size-3.5 text-muted-foreground/50 group-hover:text-muted-foreground duration-75 transition-colors" />
+                </button>
+                <button
+                  type="button"
+                  onClick={expandBottom}
+                  className="group h-3.75 flex items-center justify-center bg-muted rounded-bl-[4px] transition-colors duration-75 hover:bg-secondary-foreground/15 cursor-pointer"
+                >
+                  <ChevronUpIcon className="size-3.5 text-muted-foreground/50 group-hover:text-muted-foreground duration-75 transition-colors" />
+                </button>
               </div>
-            </td>
-            <td
-              colSpan={2}
-              className="bg-muted relative select-none h-8 items-center w-full"
-            >
-              <div className="absolute h-full left-px top-1/2 w-0.5 bg-background -translate-x-1/2 -translate-y-1/2" />
-              <span className="px-0 sticky left-0 pl-2">
-                <span>{`${remainingLines} `}</span>
-                {"unchanged lines"}
-              </span>
-            </td>
-          </tr>
+            ) : isOnlySkipInView ? (
+              <button
+                type="button"
+                onClick={expandAll}
+                className="group h-8 w-full flex items-center justify-center bg-muted rounded-l-[4px] transition-colors duration-75 hover:bg-secondary-foreground/15 cursor-pointer"
+              >
+                <ChevronsUpDown className="size-3.5 text-muted-foreground/50 group-hover:text-muted-foreground duration-75 transition-colors" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={expandAll}
+                className="group h-8 w-full flex items-center justify-center bg-muted rounded-l-[4px] transition-colors duration-75 hover:bg-secondary-foreground/15 cursor-pointer"
+              >
+                <ChevronsUpDown className="size-3.5 text-muted-foreground/50 group-hover:text-muted-foreground duration-75 transition-colors" />
+              </button>
+            )}
+          </div>
+          <div className="bg-muted relative select-none h-8 items-center w-full col-span-2 font-mono text-muted-foreground sticky left-[calc(3px+50px+64px)] top-1 z-40">
+            <div className="absolute h-full left-px top-1/2 w-0.5 bg-background -translate-x-1/2 -translate-y-1/2" />
+            <span className="px-0 sticky items-center flex gap-1 h-8 left-0 pl-2">
+              <span>{`${remainingLines} `}</span>
+              <span>{" unchanged lines"}</span>
+            </span>
+          </div>
           {hasHunkAfter && (
-            <tr className="h-1">
-              <td data-line-type className="w-0.75" />
-              <td />
-              <td data-line-type />
-              <td />
-            </tr>
+            <>
+              <div
+                data-line-type
+                className="w-0.75 h-1 sticky left-0 top-0 z-40"
+              />
+              <div className="h-1 sticky left-[3px] top-0 z-40" />
+              <div
+                data-line-type
+                className="h-1 sticky left-[calc(3px+50px)] top-0 z-40"
+              />
+              <div className="h-1 sticky left-[calc(3px+50px+64px)] top-0 z-40" />
+            </>
           )}
         </>
       )}
@@ -687,22 +682,20 @@ const SkipBlockRow: React.FC<{
 
       {totalHiddenLines === 0 && lines > 0 && (
         <>
-          <tr className="h-2" />
-          <tr className={cn("h-8 font-mono text-muted-foreground")}>
-            <td colSpan={2} className="select-none">
-              <div className="h-8 flex items-center justify-center bg-muted rounded-l-sm">
-                <ChevronsUpDown className="size-4" />
-              </div>
-            </td>
-            <td className="bg-muted relative select-none">
-              <div className="absolute h-full left-px top-1/2 w-0.5 bg-background -translate-x-1/2 -translate-y-1/2" />
-              <span className="px-0 sticky left-0 pl-2">
-                <span>{`${lines} `}</span>
-                {"lines hidden"}
-              </span>
-            </td>
-          </tr>
-          <tr className="h-2" />
+          <div className="col-span-4 h-2" />
+          <div className="col-span-2 h-8 font-mono text-muted-foreground select-none sticky left-[3px] top-1 z-40">
+            <div className="h-8 flex items-center justify-center bg-muted rounded-l-sm">
+              <ChevronsUpDown className="size-4" />
+            </div>
+          </div>
+          <div className="bg-muted relative select-none h-8 col-span-2 font-mono text-muted-foreground sticky left-[calc(3px+50px+64px)] top-1 z-40">
+            <div className="absolute h-full left-px top-1/2 w-0.5 bg-background -translate-x-1/2 -translate-y-1/2" />
+            <span className="px-0 sticky left-0 pl-2">
+              <span>{`${lines} `}</span>
+              {"lines hidden"}
+            </span>
+          </div>
+          <div className="col-span-4 h-2" />
         </>
       )}
     </>
@@ -740,24 +733,24 @@ const Line: React.FC<{
   );
 
   return (
-    <tr
-      data-line-new={lineNumberNew ?? undefined}
-      data-line-old={lineNumberOld ?? undefined}
-      data-line-kind={line.type}
-      className={cn(
-        "relative whitespace-pre-wrap box-border border-none h-5 min-h-5 group",
-        {
-          "bg-(--code-added)/10": line.type === "insert",
-          "bg-(--code-removed)/10": line.type === "delete",
-        },
-        isLineMerged &&
-          "[--code-line-merge:var(--color-blue-500)] bg-(--code-line-merge)/10",
-      )}
-    >
-      <td
+    <>
+      {/* Status indicator column */}
+      <div
+        // className={cn(
+        //   "relative whitespace-pre-wrap box-border border-none h-5 min-h-5 group",
+        //   {
+        //     "bg-(--code-added)/10": line.type === "insert",
+        //     "bg-(--code-removed)/10": line.type === "delete",
+        //   },
+        //   isLineMerged &&
+        //     "[--code-line-merge:var(--color-blue-500)] bg-(--code-line-merge)/10",
+        // )}
+        data-line-new={lineNumberNew ?? undefined}
+        data-line-old={lineNumberOld ?? undefined}
+        data-line-kind={line.type}
         className={cn(
-          "border-transparent min-w-0.75",
-          "sticky left-0 z-20",
+          "border-transparent min-w-0.75 h-5 min-h-5",
+          "sticky left-0 z-20 group",
           {
             "border-(--code-added)/60 [--code-line-bg:var(--code-added)] diff-added-lines":
               line.type === "insert",
@@ -766,75 +759,64 @@ const Line: React.FC<{
           },
           isLineMerged &&
             "[--code-line-bg:var(--code-line-merge)] border-(--code-line-merge)/20 diff-merged-lines",
-          // !isLineMerged && line.type === "normal" && "diff-normal-lines",
         )}
       />
-      {line.type == "delete" || line.type == "insert" || isLineMerged ? (
-        <td className="min-w-(--gutter-width) select-all h-6 pointer-events-auto _bg-blue-500/20 flex items-center gap-0.5 justify-center px-1">
-          <Button
-            className="size-5 rounded-sm"
-            size={"icon-xs"}
-            variant={"ghost"}
-          >
-            <Plus className="_text-blue-500 size-4" />
-          </Button>
-          <Button
-            className="size-5 rounded-sm"
-            size={"icon-xs"}
-            variant={"ghost"}
-          >
-            <Undo className="_text-blue-500 size-4" />
-          </Button>
-        </td>
-      ) : (
-        <td className="min-w-(--gutter-width) select-all h-6 pointer-events-auto"></td>
-      )}
-      <td
+
+      {/* Gutter column */}
+      <div
         className={cn(
-          "tabular-nums relative px-2 text-xs select-none text-end z-10 w-(--line-number-width) min-w-(--line-number-width) max-w-(--line-number-width) overflow-hidden",
-          // "bg-[color-mix(in_oklch,var(--muted)_60%,var(--background))] _bg-muted/60 text-foreground/70 relative",
-          "sticky left-[calc(var(--line-status-width)+var(--gutter-width))] bg-background",
+          "min-w-(--gutter-width) h-5 min-h-5 pointer-events-auto select-all",
+          line.type == "delete" || line.type == "insert" || isLineMerged
+            ? "_bg-blue-500/20 flex items-center gap-0.5 justify-center px-1"
+            : "",
           {
-            "bg-[color-mix(in_oklch,var(--code-added)_20%,var(--background))] _bg-(--code-added)/10 [--code-line-bg:var(--code-added)] text-(--code-added) opacity-100":
+            "bg-(--code-added)/10": line.type === "insert",
+            "bg-(--code-removed)/10": line.type === "delete",
+          },
+          isLineMerged &&
+            "[--code-line-merge:var(--color-blue-500)] bg-(--code-line-merge)/10",
+        )}
+      >
+        {line.type == "delete" || line.type == "insert" || isLineMerged ? (
+          <>
+            <Button
+              className="size-5 rounded-sm"
+              size={"icon-xs"}
+              variant={"ghost"}
+            >
+              <Plus className="_text-blue-500 size-4" />
+            </Button>
+            <Button
+              className="size-5 rounded-sm"
+              size={"icon-xs"}
+              variant={"ghost"}
+            >
+              <Undo className="_text-blue-500 size-4" />
+            </Button>
+          </>
+        ) : null}
+      </div>
+
+      {/* Line number column */}
+      <div
+        className={cn(
+          "tabular-nums relative px-2 text-xs select-none text-end z-10 h-5 min-h-5",
+          "w-(--line-number-width) min-w-(--line-number-width) max-w-(--line-number-width) overflow-hidden",
+          "sticky left-0 bg-background",
+          {
+            "bg-[color-mix(in_oklch,var(--code-added)_20%,var(--background))] [--code-line-bg:var(--code-added)] text-(--code-added) opacity-100":
               line.type === "insert",
-            "bg-[color-mix(in_oklch,var(--code-removed)_20%,var(--background))] _bg-(--code-removed)/10 [--code-line-bg:var(--code-removed)] opacity-100 text-(--code-removed)":
+            "bg-[color-mix(in_oklch,var(--code-removed)_20%,var(--background))] [--code-line-bg:var(--code-removed)] opacity-100 text-(--code-removed)":
               line.type === "delete",
           },
           isLineMerged &&
-            "bg-[color-mix(in_oklch,var(--code-line-merge)_20%,var(--background))] _bg-(--code-line-merge)/10 text-(--code-line-merge) opacity-100",
-          // "border-r border-current/5",
+            "[--code-line-merge:var(--color-blue-500)] bg-(--code-line-merge)/10",
+          isLineMerged &&
+            "bg-[color-mix(in_oklch,var(--code-line-merge)_20%,var(--background))] text-(--code-line-merge) opacity-100",
         )}
         data-line-type={line.type}
       >
-        <div className="flex items-center justify-between px-1 w-full overflow-hidden">
-          {/* <div className="w-fit flex items-center justify-between mr-2">
-            {normalisezedEmail ? (
-              <img
-                src={`https://avatars.githubusercontent.com/u/e?email=${normalisezedEmail}&s=64`}
-                alt="avatar"
-                className={cn(
-                  "rounded-[4px] size-3.5 ml-1 shrink-0",
-                  line.type === "delete" && "opacity-50",
-                  line.type === "normal" && !isLineMerged ? "opacity-80" : "",
-                )}
-              />
-            ) : (
-              <div
-                className={cn(
-                  "rounded-[4px] flex items-center justify-center text-[10px] size-3.5 ml-1 shrink-0 ring-[1px] ring-inset",
-                  line.type === "insert"
-                    ? "text-[color-mix(in_oklch,var(--code-added)_90%,var(--background))] ring-[color-mix(in_oklch,var(--code-added)_65%,var(--background))]"
-                    : "ring-[color-mix(in_oklch,var(--code-line-merge)_70%,var(--background))]",
-                )}
-              >
-                {line.type === "insert" ? (
-                  <span className="font-mono -translate-y-[0.5px]">{"+"}</span>
-                ) : (
-                  <span className="size-[4.5px] rounded-full bg-[color-mix(in_oklch,var(--code-line-merge)_90%,var(--background))]" />
-                )}
-              </div>
-            )}
-          </div> */}
+        <div className="flex items-center justify-between px-1 w-full overflow-hidden h-full">
           <div className="w-0.5" />
           {line.type === "delete" ? (
             <span className="inline-flex w-full justify-end overflow-hidden">
@@ -849,16 +831,28 @@ const Line: React.FC<{
             lineNumberNew
           )}
         </div>
-      </td>
-      <td className="text-nowrap pr-6 pl-2">
+      </div>
+
+      {/* Content column */}
+      <pre
+        className={cn(
+          "text-nowrap pr-6 pl-2 h-5 min-h-5 overflow-visible",
+          {
+            "bg-(--code-added)/10": line.type === "insert",
+            "bg-(--code-removed)/10": line.type === "delete",
+          },
+          isLineMerged &&
+            "[--code-line-merge:var(--color-blue-500)] bg-(--code-line-merge)/10",
+        )}
+      >
         <Tag>
           {segmentsToRender.map((segment, index) => (
             <span
               key={index}
               className={cn({
-                "bg-[color-mix(in_oklch,var(--code-added)_25%,var(--background))] _bg-[var(--code-added)]/20 rounded-xs":
+                "bg-[color-mix(in_oklch,var(--code-added)_25%,var(--background))] rounded-xs":
                   segment.type === "insert",
-                "bg-[color-mix(in_oklch,var(--code-removed)_25%,var(--background))] _bg-[var(--code-removed)]/20 rounded-xs":
+                "bg-[color-mix(in_oklch,var(--code-removed)_25%,var(--background))] rounded-xs":
                   segment.type === "delete",
               })}
             >
@@ -869,8 +863,8 @@ const Line: React.FC<{
             </span>
           ))}
         </Tag>
-      </td>
-    </tr>
+      </pre>
+    </>
   );
 };
 
