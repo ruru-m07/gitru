@@ -539,7 +539,8 @@ fn git_apply_patch_block_discard_deletion() {
         assert!(result.is_ok());
         let contents =
             std::fs::read_to_string(repo.path().join("note.txt")).expect("failed to read file");
-        assert_eq!(contents, "one\ntwo\nthree\n");
+        let normalized = contents.replace("\r\n", "\n");
+        assert_eq!(normalized, "one\ntwo\nthree\n");
     });
 }
 
