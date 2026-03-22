@@ -6,6 +6,7 @@ mod common;
 
 use common::{TestRepo, run_async};
 use git::context::RepoContext;
+use git::models::diff::{DiffScope, PatchAction, PatchRange};
 use git::service::actions::ActionService;
 use serial_test::serial;
 use std::sync::Arc;
@@ -474,5 +475,103 @@ fn git_fetch_no_remote() {
 
         // Should succeed even without remote (no-op)
         assert!(result.is_ok());
+    });
+}
+
+#[test]
+#[serial]
+fn git_apply_patch_block_stage_addition() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("note.txt", "one\n", "init");
+        repo.create_file("note.txt", "one\ntwo\n");
+
+        let service = setup_action_service(&repo);
+        let result = service
+            .git_apply_patch_block(
+                "note.txt",
+                None,
+                DiffScope::Unstaged,
+                PatchRange {
+                    start: Some(2),
+                    count: 1,
+                },
+                PatchRange {
+                    start: None,
+                    count: 0,
+                },
+                PatchAction::Stage,
+            )
+            .await;
+
+        assert!(result.is_ok());
+        let staged = repo.git(&["diff", "--cached", "--", "note.txt"]);
+        assert!(staged.contains("+two"));
+    });
+}
+
+#[test]
+#[serial]
+fn git_apply_patch_block_discard_deletion() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("note.txt", "one\ntwo\nthree\n", "init");
+        repo.create_file("note.txt", "one\nthree\n");
+
+        let service = setup_action_service(&repo);
+        let result = service
+            .git_apply_patch_block(
+                "note.txt",
+                None,
+                DiffScope::Unstaged,
+                PatchRange {
+                    start: None,
+                    count: 0,
+                },
+                PatchRange {
+                    start: Some(2),
+                    count: 1,
+                },
+                PatchAction::Discard,
+            )
+            .await;
+
+        assert!(result.is_ok());
+        let contents = std::fs::read_to_string(repo.path().join("note.txt"))
+            .expect("failed to read file");
+        assert_eq!(contents, "one\ntwo\nthree\n");
+    });
+}
+
+#[test]
+#[serial]
+fn git_apply_patch_block_unstage_addition() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("note.txt", "one\n", "init");
+        repo.create_file("note.txt", "one\ntwo\n");
+        repo.add("note.txt");
+
+        let service = setup_action_service(&repo);
+        let result = service
+            .git_apply_patch_block(
+                "note.txt",
+                None,
+                DiffScope::Staged,
+                PatchRange {
+                    start: Some(2),
+                    count: 1,
+                },
+                PatchRange {
+                    start: None,
+                    count: 0,
+                },
+                PatchAction::Unstage,
+            )
+            .await;
+
+        assert!(result.is_ok());
+        let staged = repo.git(&["diff", "--cached", "--", "note.txt"]);
+        assert!(staged.is_empty());
     });
 }

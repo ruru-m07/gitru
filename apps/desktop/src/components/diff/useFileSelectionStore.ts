@@ -1,32 +1,39 @@
 import type { FileStatus } from "@gitru/commands";
 import { create } from "zustand";
 
+type FileSelectionEntry = {
+  key: string;
+  file: FileStatus;
+  sectionType?: string;
+};
+
 interface FileSelectionState {
-  // Multi-selected files (paths)
+  // Multi-selected files (selection keys)
   selectedFiles: Set<string>;
   // Last clicked file for shift-click range selection
   lastClickedFile: string | null;
   // Current focus index for keyboard navigation
   focusedIndex: number;
   // All files in current view (for navigation)
-  allFiles: FileStatus[];
+  allFiles: FileSelectionEntry[];
 
   // Actions
-  setAllFiles: (files: FileStatus[]) => void;
+  setAllFiles: (files: FileSelectionEntry[]) => void;
   setFocusedIndex: (index: number) => void;
-  selectFile: (path: string) => void;
-  deselectFile: (path: string) => void;
-  toggleFileSelection: (path: string) => void;
-  selectRange: (fromPath: string, toPath: string) => void;
+  selectFile: (key: string) => void;
+  deselectFile: (key: string) => void;
+  toggleFileSelection: (key: string) => void;
+  selectRange: (fromKey: string, toKey: string) => void;
   selectAll: () => void;
   clearSelection: () => void;
-  isSelected: (path: string) => boolean;
+  isSelected: (key: string) => boolean;
 
   // Handle click with modifiers
   handleFileClick: (
     file: FileStatus,
     index: number,
     event: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean },
+    selectionKey: string,
   ) => void;
 
   // Keyboard navigation
@@ -45,11 +52,7 @@ export const useFileSelectionStore = create<FileSelectionState>((set, get) => ({
       const prev = state.allFiles;
       if (
         prev.length === files.length &&
-        prev.every(
-          (file, index) =>
-            file.path === files[index]?.path &&
-            file.new_path === files[index]?.new_path,
-        )
+        prev.every((entry, index) => entry.key === files[index]?.key)
       ) {
         return state;
       }
@@ -58,35 +61,35 @@ export const useFileSelectionStore = create<FileSelectionState>((set, get) => ({
 
   setFocusedIndex: (index) => set({ focusedIndex: index }),
 
-  selectFile: (path) =>
+  selectFile: (key) =>
     set((state) => ({
-      selectedFiles: new Set([...state.selectedFiles, path]),
-      lastClickedFile: path,
+      selectedFiles: new Set([...state.selectedFiles, key]),
+      lastClickedFile: key,
     })),
 
-  deselectFile: (path) =>
+  deselectFile: (key) =>
     set((state) => {
       const newSet = new Set(state.selectedFiles);
-      newSet.delete(path);
+      newSet.delete(key);
       return { selectedFiles: newSet };
     }),
 
-  toggleFileSelection: (path) =>
+  toggleFileSelection: (key) =>
     set((state) => {
       const newSet = new Set(state.selectedFiles);
-      if (newSet.has(path)) {
-        newSet.delete(path);
+      if (newSet.has(key)) {
+        newSet.delete(key);
       } else {
-        newSet.add(path);
+        newSet.add(key);
       }
-      return { selectedFiles: newSet, lastClickedFile: path };
+      return { selectedFiles: newSet, lastClickedFile: key };
     }),
 
-  selectRange: (fromPath, toPath) =>
+  selectRange: (fromKey, toKey) =>
     set((state) => {
       const { allFiles } = state;
-      const fromIndex = allFiles.findIndex((f) => f.path === fromPath);
-      const toIndex = allFiles.findIndex((f) => f.path === toPath);
+      const fromIndex = allFiles.findIndex((f) => f.key === fromKey);
+      const toIndex = allFiles.findIndex((f) => f.key === toKey);
 
       if (fromIndex === -1 || toIndex === -1) return state;
 
@@ -95,7 +98,7 @@ export const useFileSelectionStore = create<FileSelectionState>((set, get) => ({
 
       const newSet = new Set(state.selectedFiles);
       for (let i = start; i <= end; i++) {
-        newSet.add(allFiles[i].path);
+        newSet.add(allFiles[i].key);
       }
 
       return { selectedFiles: newSet };
@@ -103,7 +106,7 @@ export const useFileSelectionStore = create<FileSelectionState>((set, get) => ({
 
   selectAll: () =>
     set((state) => ({
-      selectedFiles: new Set(state.allFiles.map((f) => f.path)),
+      selectedFiles: new Set(state.allFiles.map((f) => f.key)),
     })),
 
   clearSelection: () =>
@@ -112,26 +115,26 @@ export const useFileSelectionStore = create<FileSelectionState>((set, get) => ({
       lastClickedFile: null,
     }),
 
-  isSelected: (path) => get().selectedFiles.has(path),
+  isSelected: (key) => get().selectedFiles.has(key),
 
-  handleFileClick: (file, index, event) => {
+  handleFileClick: (_file, index, event, selectionKey) => {
     const state = get();
     const { shiftKey, metaKey, ctrlKey } = event;
     const isCmdOrCtrl = metaKey || ctrlKey;
 
     if (shiftKey && state.lastClickedFile) {
       // Shift+click: select range from last clicked to current
-      state.selectRange(state.lastClickedFile, file.path);
+      state.selectRange(state.lastClickedFile, selectionKey);
       set({ focusedIndex: index });
     } else if (isCmdOrCtrl) {
       // Cmd/Ctrl+click: toggle individual selection
-      state.toggleFileSelection(file.path);
+      state.toggleFileSelection(selectionKey);
       set({ focusedIndex: index });
     } else {
       // Normal click: clear selection and select only this file
       set({
-        selectedFiles: new Set([file.path]),
-        lastClickedFile: file.path,
+        selectedFiles: new Set([selectionKey]),
+        lastClickedFile: selectionKey,
         focusedIndex: index,
       });
     }

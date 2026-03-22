@@ -17,6 +17,7 @@ export type FileSelectionIdentity = {
   source: SelectionSource;
   stashReference?: string;
   historyCommitHash?: string;
+  worktreeScope?: "staged" | "unstaged" | "conflicted";
   selectedAt: number;
 };
 
@@ -95,7 +96,8 @@ const isSameSelectionIdentity = (
     left.fileNewPath === right.fileNewPath &&
     left.source === right.source &&
     left.stashReference === right.stashReference &&
-    left.historyCommitHash === right.historyCommitHash
+    left.historyCommitHash === right.historyCommitHash &&
+    left.worktreeScope === right.worktreeScope
   );
 };
 

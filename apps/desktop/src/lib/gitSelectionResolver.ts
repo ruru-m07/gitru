@@ -51,6 +51,23 @@ const matchesSelectionIdentity = (
   return false;
 };
 
+const matchesWorktreeScope = (
+  scope: FileSelectionIdentity["worktreeScope"],
+  file: FileStatus,
+) => {
+  if (!scope) return true;
+  if (scope === "staged") {
+    return file.status.some((s) => String(s).startsWith("Index"));
+  }
+  if (scope === "unstaged") {
+    return file.status.some((s) => String(s).startsWith("Worktree"));
+  }
+  if (scope === "conflicted") {
+    return file.status.some((s) => String(s).includes("Conflicted"));
+  }
+  return true;
+};
+
 export const resolveFileSelection = ({
   selection,
   files,
@@ -115,7 +132,12 @@ export const resolveFileSelection = ({
     }
   }
 
-  const match = files.find((file) => matchesSelectionIdentity(selection, file));
+  const match = files.find(
+    (file) =>
+      matchesSelectionIdentity(selection, file) &&
+      (selection.source !== "worktree" ||
+        matchesWorktreeScope(selection.worktreeScope, file)),
+  );
 
   if (!match) {
     return {

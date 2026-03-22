@@ -11,7 +11,7 @@ use crate::{
     cache::{CachePolicy, TTL_PATCH_BY_FILE_PATH},
     context::RepoContext,
     models::{
-        diff::{AssetDiff, AssetDiffEntry, AssetDiffKind, DiffTextFile, FileDiff},
+        diff::{AssetDiff, AssetDiffEntry, AssetDiffKind, DiffScope, DiffTextFile, FileDiff},
         status::FileStatusKind,
     },
     parsers::stash::validate_stash_ref,
@@ -51,6 +51,7 @@ impl DiffService {
         stash_reference: Option<&str>,
         commit_hash: Option<&str>,
         parent_index: Option<usize>,
+        diff_scope: Option<DiffScope>,
     ) -> Result<FileDiff, String> {
         // Register this request and get a cancellation token
         // This cancels only previous requests for the same file path.
@@ -88,6 +89,7 @@ impl DiffService {
                     stash_reference,
                     commit_hash,
                     parent_index,
+                    diff_scope,
                     &token,
                 )
                 .await?;
@@ -100,6 +102,7 @@ impl DiffService {
                     stash_reference,
                     commit_hash,
                     parent_index,
+                    diff_scope,
                     &patch,
                     &token,
                 )
@@ -113,6 +116,7 @@ impl DiffService {
                     stash_reference,
                     commit_hash,
                     parent_index,
+                    diff_scope,
                 )
                 .await?;
 
@@ -135,6 +139,7 @@ impl DiffService {
         stash_reference: Option<&str>,
         commit_hash: Option<&str>,
         parent_index: Option<usize>,
+        diff_scope: Option<DiffScope>,
         token: &CancellationToken,
     ) -> Result<String, String> {
         // Check if request was cancelled
@@ -148,11 +153,13 @@ impl DiffService {
         let stash_reference = stash_reference.map(str::to_string);
         let commit_hash = commit_hash.map(str::to_string);
         let parent_index = parent_index.unwrap_or(1).max(1);
+        let diff_scope = diff_scope.unwrap_or(DiffScope::Worktree);
         let cache_key = build_patch_cache_key(
             &file_path,
             stash_reference.as_deref(),
             commit_hash.as_deref(),
             parent_index,
+            diff_scope,
         );
         let token = token.clone();
 
@@ -172,6 +179,7 @@ impl DiffService {
                         stash_reference.as_deref(),
                         commit_hash.as_deref(),
                         parent_index,
+                        diff_scope,
                         &token,
                     )
                     .await
@@ -189,6 +197,7 @@ impl DiffService {
         stash_reference: Option<&str>,
         commit_hash: Option<&str>,
         parent_index: Option<usize>,
+        diff_scope: Option<DiffScope>,
         patch: &str,
         token: &CancellationToken,
     ) -> Result<Option<AssetDiff>, String> {
@@ -202,21 +211,14 @@ impl DiffService {
         }
 
         let status = status.unwrap_or(&[]);
-        let is_new = status
-            .iter()
-            .any(|s| matches!(s, FileStatusKind::IndexNew | FileStatusKind::WorktreeNew));
-        let is_deleted = status.iter().any(|s| {
-            matches!(
-                s,
-                FileStatusKind::IndexDeleted | FileStatusKind::WorktreeDeleted
-            )
-        });
-        let is_renamed = status.iter().any(|s| {
-            matches!(
-                s,
-                FileStatusKind::IndexRenamed | FileStatusKind::WorktreeRenamed
-            )
-        });
+        let diff_scope = if stash_reference.is_some() || commit_hash.is_some() {
+            DiffScope::Worktree
+        } else {
+            diff_scope.unwrap_or(DiffScope::Worktree)
+        };
+        let is_new = is_new_for_scope(status, diff_scope);
+        let is_deleted = is_deleted_for_scope(status, diff_scope);
+        let is_renamed = is_renamed_for_scope(status, diff_scope);
 
         let logical_before = file_path.to_string();
         let logical_after = file_new_path.unwrap_or(file_path).to_string();
@@ -256,8 +258,20 @@ impl DiffService {
                 self.load_blob_entry(&base, effective_before_path, &logical_before)
                     .await
             } else {
-                self.load_blob_entry("HEAD", effective_before_path, &logical_before)
-                    .await
+                match diff_scope {
+                    DiffScope::Staged => {
+                        self.load_blob_entry("HEAD", effective_before_path, &logical_before)
+                            .await
+                    }
+                    DiffScope::Unstaged => {
+                        self.load_index_entry(effective_before_path, &logical_before)
+                            .await
+                    }
+                    DiffScope::Worktree => {
+                        self.load_blob_entry("HEAD", effective_before_path, &logical_before)
+                            .await
+                    }
+                }
             }
         } else {
             None
@@ -268,8 +282,20 @@ impl DiffService {
                 self.load_blob_entry(hash, effective_after_path, &logical_after)
                     .await
             } else {
-                self.load_worktree_entry(effective_after_path, &logical_after)
-                    .await
+                match diff_scope {
+                    DiffScope::Staged => {
+                        self.load_index_entry(effective_after_path, &logical_after)
+                            .await
+                    }
+                    DiffScope::Unstaged => {
+                        self.load_worktree_entry(effective_after_path, &logical_after)
+                            .await
+                    }
+                    DiffScope::Worktree => {
+                        self.load_worktree_entry(effective_after_path, &logical_after)
+                            .await
+                    }
+                }
             }
         } else {
             None
@@ -293,6 +319,40 @@ impl DiffService {
         logical_path: &str,
     ) -> Option<AssetDiffEntry> {
         let spec = format!("{rev}:{rev_path}");
+        let bytes = self
+            .ctx
+            .runner
+            .run_with_options_bytes_unlocked(
+                &["show", "--no-ext-diff", "--no-textconv", &spec],
+                GitRunOptions::default_read().allow_exit_codes(&[1, 128]),
+            )
+            .await
+            .ok()?;
+
+        if bytes.is_empty() {
+            return None;
+        }
+
+        if bytes.len() > MAX_ASSET_INLINE_BYTES {
+            return None;
+        }
+
+        let temp_path = write_temp_asset_file(logical_path, &bytes).ok()?;
+        Some(AssetDiffEntry {
+            absolute_path: temp_path.to_string_lossy().to_string(),
+            mime: mime_for_path(logical_path),
+            bytes: bytes.len(),
+            logical_path: logical_path.to_string(),
+            contents_base64: BASE64_STANDARD.encode(&bytes),
+        })
+    }
+
+    async fn load_index_entry(
+        &self,
+        rev_path: &str,
+        logical_path: &str,
+    ) -> Option<AssetDiffEntry> {
+        let spec = format!(":{rev_path}");
         let bytes = self
             .ctx
             .runner
@@ -350,23 +410,17 @@ impl DiffService {
         stash_reference: Option<&str>,
         commit_hash: Option<&str>,
         parent_index: Option<usize>,
+        diff_scope: Option<DiffScope>,
     ) -> Result<(Option<DiffTextFile>, Option<DiffTextFile>), String> {
         let status = status.unwrap_or(&[]);
-        let is_new = status
-            .iter()
-            .any(|s| matches!(s, FileStatusKind::IndexNew | FileStatusKind::WorktreeNew));
-        let is_deleted = status.iter().any(|s| {
-            matches!(
-                s,
-                FileStatusKind::IndexDeleted | FileStatusKind::WorktreeDeleted
-            )
-        });
-        let is_renamed = status.iter().any(|s| {
-            matches!(
-                s,
-                FileStatusKind::IndexRenamed | FileStatusKind::WorktreeRenamed
-            )
-        });
+        let diff_scope = if stash_reference.is_some() || commit_hash.is_some() {
+            DiffScope::Worktree
+        } else {
+            diff_scope.unwrap_or(DiffScope::Worktree)
+        };
+        let is_new = is_new_for_scope(status, diff_scope);
+        let is_deleted = is_deleted_for_scope(status, diff_scope);
+        let is_renamed = is_renamed_for_scope(status, diff_scope);
 
         let logical_before = file_path.to_string();
         let logical_after = file_new_path.unwrap_or(file_path).to_string();
@@ -394,8 +448,20 @@ impl DiffService {
                 self.load_blob_text_file(&base, effective_before_path, &logical_before)
                     .await
             } else {
-                self.load_blob_text_file("HEAD", effective_before_path, &logical_before)
-                    .await
+                match diff_scope {
+                    DiffScope::Staged => {
+                        self.load_blob_text_file("HEAD", effective_before_path, &logical_before)
+                            .await
+                    }
+                    DiffScope::Unstaged => {
+                        self.load_index_text_file(effective_before_path, &logical_before)
+                            .await
+                    }
+                    DiffScope::Worktree => {
+                        self.load_blob_text_file("HEAD", effective_before_path, &logical_before)
+                            .await
+                    }
+                }
             }
         } else {
             None
@@ -409,8 +475,20 @@ impl DiffService {
                 self.load_blob_text_file(hash, effective_after_path, &logical_after)
                     .await
             } else {
-                self.load_worktree_text_file(effective_after_path, &logical_after)
-                    .await
+                match diff_scope {
+                    DiffScope::Staged => {
+                        self.load_index_text_file(effective_after_path, &logical_after)
+                            .await
+                    }
+                    DiffScope::Unstaged => {
+                        self.load_worktree_text_file(effective_after_path, &logical_after)
+                            .await
+                    }
+                    DiffScope::Worktree => {
+                        self.load_worktree_text_file(effective_after_path, &logical_after)
+                            .await
+                    }
+                }
             }
         } else {
             None
@@ -426,6 +504,25 @@ impl DiffService {
         logical_path: &str,
     ) -> Option<DiffTextFile> {
         let spec = format!("{rev}:{rev_path}");
+        let bytes = self
+            .ctx
+            .runner
+            .run_with_options_bytes_unlocked(
+                &["show", "--no-ext-diff", "--no-textconv", &spec],
+                GitRunOptions::default_read().allow_exit_codes(&[1, 128]),
+            )
+            .await
+            .ok()?;
+
+        decode_text_file(logical_path, bytes)
+    }
+
+    async fn load_index_text_file(
+        &self,
+        rev_path: &str,
+        logical_path: &str,
+    ) -> Option<DiffTextFile> {
+        let spec = format!(":{rev_path}");
         let bytes = self
             .ctx
             .runner
@@ -475,18 +572,57 @@ fn decode_text_file(logical_path: &str, bytes: Vec<u8>) -> Option<DiffTextFile> 
     })
 }
 
+fn is_new_for_scope(status: &[FileStatusKind], diff_scope: DiffScope) -> bool {
+    match diff_scope {
+        DiffScope::Staged => status.iter().any(|s| matches!(s, FileStatusKind::IndexNew)),
+        DiffScope::Unstaged => status.iter().any(|s| matches!(s, FileStatusKind::WorktreeNew)),
+        DiffScope::Worktree => status.iter().any(|s| {
+            matches!(s, FileStatusKind::IndexNew | FileStatusKind::WorktreeNew)
+        }),
+    }
+}
+
+fn is_deleted_for_scope(status: &[FileStatusKind], diff_scope: DiffScope) -> bool {
+    match diff_scope {
+        DiffScope::Staged => status.iter().any(|s| matches!(s, FileStatusKind::IndexDeleted)),
+        DiffScope::Unstaged => status.iter().any(|s| matches!(s, FileStatusKind::WorktreeDeleted)),
+        DiffScope::Worktree => status.iter().any(|s| {
+            matches!(s, FileStatusKind::IndexDeleted | FileStatusKind::WorktreeDeleted)
+        }),
+    }
+}
+
+fn is_renamed_for_scope(status: &[FileStatusKind], diff_scope: DiffScope) -> bool {
+    match diff_scope {
+        DiffScope::Staged => status.iter().any(|s| matches!(s, FileStatusKind::IndexRenamed)),
+        DiffScope::Unstaged => status.iter().any(|s| matches!(s, FileStatusKind::WorktreeRenamed)),
+        DiffScope::Worktree => status.iter().any(|s| {
+            matches!(s, FileStatusKind::IndexRenamed | FileStatusKind::WorktreeRenamed)
+        }),
+    }
+}
+
 fn build_patch_cache_key(
     file_path: &str,
     stash_reference: Option<&str>,
     commit_hash: Option<&str>,
     parent_index: usize,
+    diff_scope: DiffScope,
 ) -> String {
     match stash_reference {
         Some(reference) => format!("stash:{reference}:{file_path}"),
         None => match commit_hash {
             Some(hash) => format!("commit:{hash}:p{parent_index}:{file_path}"),
-            None => format!("worktree:{file_path}"),
+            None => format!("{}:{file_path}", diff_scope_key(diff_scope)),
         },
+    }
+}
+
+fn diff_scope_key(diff_scope: DiffScope) -> &'static str {
+    match diff_scope {
+        DiffScope::Worktree => "worktree",
+        DiffScope::Staged => "staged",
+        DiffScope::Unstaged => "unstaged",
     }
 }
 
@@ -497,6 +633,7 @@ async fn fetch_patch_text_impl(
     stash_reference: Option<&str>,
     commit_hash: Option<&str>,
     parent_index: usize,
+    diff_scope: DiffScope,
     token: &CancellationToken,
 ) -> Result<String, String> {
     if token.is_cancelled() {
@@ -546,16 +683,7 @@ async fn fetch_patch_text_impl(
 
     let out = run_git_text_unlocked_cancellable(
         runner.clone(),
-        vec![
-            "diff".to_string(),
-            "-U999999".to_string(),
-            "--no-ext-diff".to_string(),
-            "--patch-with-raw".to_string(),
-            "--no-color".to_string(),
-            "HEAD".to_string(),
-            "--".to_string(),
-            file_path.to_string(),
-        ],
+        build_diff_command_for_scope(file_path, diff_scope),
         GitRunOptions::default_read().allow_exit_codes(PATCH_ALLOW_EXIT_CODES),
         token,
     )
@@ -570,22 +698,26 @@ async fn fetch_patch_text_impl(
         return Ok(String::new());
     }
 
-    let out = run_git_text_unlocked_cancellable(
-        runner.clone(),
-        vec![
-            "diff".to_string(),
-            "-U999999".to_string(),
-            "--no-index".to_string(),
-            "--patch-with-raw".to_string(),
-            "--no-color".to_string(),
-            "/dev/null".to_string(),
-            "--".to_string(),
-            file_path.to_string(),
-        ],
-        GitRunOptions::default_read().allow_exit_codes(PATCH_ALLOW_EXIT_CODES),
-        token,
-    )
-    .await?;
+    let out = if matches!(diff_scope, DiffScope::Worktree | DiffScope::Unstaged) {
+        run_git_text_unlocked_cancellable(
+            runner.clone(),
+            vec![
+                "diff".to_string(),
+                "-U999999".to_string(),
+                "--no-index".to_string(),
+                "--patch-with-raw".to_string(),
+                "--no-color".to_string(),
+                "/dev/null".to_string(),
+                "--".to_string(),
+                file_path.to_string(),
+            ],
+            GitRunOptions::default_read().allow_exit_codes(PATCH_ALLOW_EXIT_CODES),
+            token,
+        )
+        .await?
+    } else {
+        String::new()
+    };
 
     Ok(out)
 }
@@ -736,6 +868,30 @@ fn extract_single_diff_for_path(output: &str, file_path: &str) -> String {
         .unwrap_or(sections[0]);
 
     lines[selected.0..selected.1].join("\n")
+}
+
+fn build_diff_command_for_scope(file_path: &str, diff_scope: DiffScope) -> Vec<String> {
+    let mut args = vec![
+        "diff".to_string(),
+        "-U999999".to_string(),
+        "--no-ext-diff".to_string(),
+        "--patch-with-raw".to_string(),
+        "--no-color".to_string(),
+    ];
+
+    match diff_scope {
+        DiffScope::Staged => {
+            args.push("--cached".to_string());
+        }
+        DiffScope::Worktree => {
+            args.push("HEAD".to_string());
+        }
+        DiffScope::Unstaged => {}
+    }
+
+    args.push("--".to_string());
+    args.push(file_path.to_string());
+    args
 }
 
 async fn wait_for_cancellation(token: &CancellationToken) {

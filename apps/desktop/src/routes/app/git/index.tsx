@@ -27,6 +27,7 @@ import {
   Diff,
   GitBranch,
   Loader2,
+  Minus,
   MoveHorizontal,
   Plus,
   Settings,
@@ -49,6 +50,7 @@ import {
   useGetDiff,
   useGetStatus,
   useGetStatusAheadBehind,
+  useGitApplyPatchBlock,
   useGitPush,
   useStashList,
   useStashShow,
@@ -159,6 +161,11 @@ const DiffBoxBody = () => {
               resolvedSelection.identity.source === "history"
                 ? (resolvedSelection.identity.historyCommitHash ?? null)
                 : null
+            }
+            worktreeScope={
+              resolvedSelection.identity.source === "worktree"
+                ? resolvedSelection.identity.worktreeScope
+                : undefined
             }
           />
         </>
@@ -341,24 +348,52 @@ const DiffArea = ({
   status,
   stashReference,
   commitHash,
+  worktreeScope,
 }: {
   filePath: string;
   fileNewPath: string | null;
   status: FileStatusKind[];
   stashReference: string | null;
   commitHash: string | null;
+  worktreeScope?: "staged" | "unstaged" | "conflicted";
 }) => {
+  const derivedScope =
+    worktreeScope ??
+    (status?.some((s) => String(s).startsWith("Index")) &&
+    !status?.some((s) => String(s).startsWith("Worktree"))
+      ? "staged"
+      : status?.some((s) => String(s).startsWith("Worktree"))
+        ? "unstaged"
+        : undefined);
+
   const { data: diffData, isLoading } = useGetDiff(filePath, {
     fileNewPath,
     status,
     stashReference,
     commitHash,
     parentIndex: commitHash ? 1 : undefined,
+    diffScope:
+      derivedScope === "staged"
+        ? "Staged"
+        : derivedScope === "unstaged" || derivedScope === "conflicted"
+          ? "Unstaged"
+          : "Worktree",
   });
 
   const { diffStyle, overflow } = useDiffViewerSettings();
+  const { mutateAsync: applyPatchBlock } = useGitApplyPatchBlock();
 
   const source = stashReference ? "stash" : commitHash ? "history" : "worktree";
+
+  const canStageOrDiscard =
+    source === "worktree" && derivedScope === "unstaged";
+  const canUnstage = source === "worktree" && derivedScope === "staged";
+  const patchDiffScope =
+    derivedScope === "staged"
+      ? "Staged"
+      : derivedScope === "unstaged" || derivedScope === "conflicted"
+        ? "Unstaged"
+        : "Worktree";
 
   const parsedDiff = useMemo(() => {
     if (!diffData?.oldFile || !diffData?.newFile) {
@@ -535,7 +570,7 @@ const DiffArea = ({
       ) : (
         <>
           {imageAssetDiff ? <ImageDiffViewer diff={imageAssetDiff} /> : null}
-          {!isImageAssetDiff && (
+          {!isImageAssetDiff && parsedDiff && (
             <div className="max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*6))] h-full w-full flex overflow-auto select-auto">
               <WorkerPoolContextProvider
                 poolOptions={{
@@ -567,7 +602,7 @@ const DiffArea = ({
                   contentClassName="space-y-4 w-full!"
                 >
                   <MultiFileDiff
-                    key={`${diffData?.oldFile?.name}-${diffData?.newFile?.name}`}
+                    key={`${diffData?.oldFile?.name}-${diffData?.newFile?.name}-${source}-${patchDiffScope}-${diffData?.patch}`}
                     className="w-full"
                     oldFile={{
                       contents: diffData?.oldFile?.contents || "",
@@ -585,39 +620,98 @@ const DiffArea = ({
                       lineHoverHighlight: "both",
                     }}
                     lineAnnotations={blockAnnotations}
-                    renderAnnotation={(annotation) => (
-                      <div
-                        style={{
-                          position: "relative",
-                          zIndex: 10,
-                          width: "100%",
-                          overflow: "visible",
-                        }}
-                      >
-                        <div className="absolute -top-2 right-4 flex gap-1">
-                          <Button
-                            size={"icon-xs"}
-                            variant={"outline"}
-                            aria-label="Stage changes"
-                            onClick={() => {
-                              console.log("stage_block", annotation.metadata);
-                            }}
-                          >
-                            <Plus />
-                          </Button>
-                          <Button
-                            size={"icon-xs"}
-                            variant={"outline"}
-                            aria-label="Discard changes"
-                            onClick={() => {
-                              console.log("discard_block", annotation.metadata);
-                            }}
-                          >
-                            <Undo />
-                          </Button>
+                    renderAnnotation={(annotation) => {
+                      if (!canStageOrDiscard && !canUnstage) {
+                        return null;
+                      }
+
+                      const payload = {
+                        filePath: annotation.metadata.filePath,
+                        fileNewPath: annotation.metadata.fileNewPath,
+                        diffScope: patchDiffScope,
+                        additions: {
+                          start:
+                            annotation.metadata.additions.start ?? undefined,
+                          count: annotation.metadata.additions.count,
+                        },
+                        deletions: {
+                          start:
+                            annotation.metadata.deletions.start ?? undefined,
+                          count: annotation.metadata.deletions.count,
+                        },
+                      } as const;
+
+                      return (
+                        <div
+                          style={{
+                            position: "relative",
+                            zIndex: 10,
+                            width: "100%",
+                            overflow: "visible",
+                          }}
+                        >
+                          <div className="absolute -top-2 right-4 flex gap-1">
+                            {canStageOrDiscard && (
+                              <>
+                                <Button
+                                  size={"icon-xs"}
+                                  variant={"outline"}
+                                  aria-label="Stage changes"
+                                  onClick={async () => {
+                                    try {
+                                      await applyPatchBlock({
+                                        ...payload,
+                                        action: "Stage",
+                                      });
+                                    } catch {
+                                      // handled by mutation toast
+                                    }
+                                  }}
+                                >
+                                  <Plus />
+                                </Button>
+                                <Button
+                                  size={"icon-xs"}
+                                  variant={"outline"}
+                                  aria-label="Discard changes"
+                                  onClick={async () => {
+                                    try {
+                                      await applyPatchBlock({
+                                        ...payload,
+                                        action: "Discard",
+                                      });
+                                    } catch {
+                                      // handled by mutation toast
+                                    }
+                                  }}
+                                >
+                                  <Undo />
+                                </Button>
+                              </>
+                            )}
+                            {canUnstage && (
+                              <Button
+                                size={"icon-xs"}
+                                variant={"outline"}
+                                aria-label="Unstage changes"
+                                onClick={async () => {
+                                  try {
+                                    await applyPatchBlock({
+                                      ...payload,
+                                      action: "Unstage",
+                                    });
+                                  } catch {
+                                    // handled by mutation toast
+                                  }
+                                }}
+                              >
+                                <Minus />
+                              </Button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    }}
                   />
                 </Virtualizer>
               </WorkerPoolContextProvider>

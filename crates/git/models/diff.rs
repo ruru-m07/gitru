@@ -1,4 +1,24 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+pub enum DiffScope {
+    Worktree,
+    Staged,
+    Unstaged,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+pub enum PatchAction {
+    Stage,
+    Unstage,
+    Discard,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PatchRange {
+    pub start: Option<usize>,
+    pub count: usize,
+}
 
 #[derive(Debug, Serialize)]
 pub struct FileVersion {
