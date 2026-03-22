@@ -17,7 +17,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: 'macos-latest'
+          - platform: 'macos-26'
             args: '--target universal-apple-darwin'
             target: 'universal-apple-darwin'
           - platform: 'ubuntu-22.04'
@@ -39,10 +39,10 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.platform == 'macos-26' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Add additional Rust targets
-        if: matrix.platform == 'macos-latest'
+        if: matrix.platform == 'macos-26'
         run: |
           rustup target add aarch64-apple-darwin
           rustup target add x86_64-apple-darwin
@@ -91,7 +91,7 @@ jobs:
           set -euo pipefail
           mkdir -p collected
 
-          if [[ "${{ matrix.platform }}" == "macos-latest" ]]; then
+          if [[ "${{ matrix.platform }}" == "macos-26" ]]; then
             find target/universal-apple-darwin/release/bundle -type f \
               \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.app.tar.gz.sig" \) \
               -exec cp {} collected/ \;
