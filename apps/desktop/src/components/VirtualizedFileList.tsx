@@ -123,7 +123,8 @@ const buildSelectionKey = (
   file: FileStatus,
   sectionId: string,
   sectionType?: FileListSection["type"],
-) => `${sectionType ?? "custom"}:${sectionId}:${file.path}:${file.new_path ?? ""}`;
+) =>
+  `${sectionType ?? "custom"}:${sectionId}:${file.path}:${file.new_path ?? ""}`;
 const getWorktreeScope = (sectionType?: FileListSection["type"]) => {
   if (sectionType === "staged") return "staged";
   if (sectionType === "changes") return "unstaged";
@@ -471,11 +472,16 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
         if (event.metaKey || event.ctrlKey) {
           setFocusedIndex(nextFocusedIndex);
         } else {
-          onFileClick(file, nextFocusedIndex, {
-            shiftKey: event.shiftKey,
-            metaKey: event.metaKey,
-            ctrlKey: event.ctrlKey,
-          }, selectionKey);
+          onFileClick(
+            file,
+            nextFocusedIndex,
+            {
+              shiftKey: event.shiftKey,
+              metaKey: event.metaKey,
+              ctrlKey: event.ctrlKey,
+            },
+            selectionKey,
+          );
 
           if (!event.shiftKey && !event.metaKey && !event.ctrlKey) {
             setSelectedFilePath({
@@ -503,11 +509,16 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
         if (!entry) return;
         const { file, key: selectionKey } = entry;
 
-        onFileClick(file, activeIndex, {
-          shiftKey: event.shiftKey,
-          metaKey: event.metaKey,
-          ctrlKey: event.ctrlKey,
-        }, selectionKey);
+        onFileClick(
+          file,
+          activeIndex,
+          {
+            shiftKey: event.shiftKey,
+            metaKey: event.metaKey,
+            ctrlKey: event.ctrlKey,
+          },
+          selectionKey,
+        );
 
         if (!event.shiftKey && !event.metaKey && !event.ctrlKey) {
           setSelectedFilePath({
@@ -917,11 +928,16 @@ const FileRow = memo(
             onClick={(e) => {
               onRequestFocus();
               if (fileIndex < 0) return;
-              onFileClick(file, fileIndex, {
-                shiftKey: e.shiftKey,
-                metaKey: e.metaKey,
-                ctrlKey: e.ctrlKey,
-              }, selectionKey);
+              onFileClick(
+                file,
+                fileIndex,
+                {
+                  shiftKey: e.shiftKey,
+                  metaKey: e.metaKey,
+                  ctrlKey: e.ctrlKey,
+                },
+                selectionKey,
+              );
 
               if (!e.shiftKey && !e.metaKey && !e.ctrlKey) {
                 setSelectedFilePath({
@@ -974,7 +990,7 @@ const FileRow = memo(
             >
               <div className="shrink-0">{getStatusIcon(file.status, 18)}</div>
               <div className="flex items-center ml-1.5 min-w-0 flex-1">
-                <Label className="flex cursor-pointer items-center min-w-0 text-sm w-full gap-0">
+                <Label className="flex cursor-pointer items-center min-w-0 text-sm w-full gap-0 font-[450]">
                   <span className="inline-flex w-fit max-w-full min-w-0 items-center gap-0">
                     {hasDirectory && (
                       <>
