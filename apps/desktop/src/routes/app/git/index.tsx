@@ -535,8 +535,8 @@ const DiffArea = ({
       ) : (
         <>
           {imageAssetDiff ? <ImageDiffViewer diff={imageAssetDiff} /> : null}
-          {!isImageAssetDiff && parsedDiff && (
-            <div className="max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*6))] h-full w-full flex overflow-auto">
+          {!isImageAssetDiff && (
+            <div className="max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*6))] h-full w-full flex overflow-auto select-auto">
               <WorkerPoolContextProvider
                 poolOptions={{
                   workerFactory: diffWorkerFactory,
@@ -570,12 +570,12 @@ const DiffArea = ({
                     key={`${diffData?.oldFile?.name}-${diffData?.newFile?.name}`}
                     className="w-full"
                     oldFile={{
-                      contents: diffData?.oldFile?.contents ?? "",
-                      name: diffData?.oldFile?.name ?? "Old File",
+                      contents: diffData?.oldFile?.contents || "",
+                      name: diffData?.oldFile?.name || "untitled.txt",
                     }}
                     newFile={{
-                      contents: diffData?.newFile?.contents ?? "",
-                      name: diffData?.newFile?.name ?? "New File",
+                      contents: diffData?.newFile?.contents || "",
+                      name: diffData?.newFile?.name || "untitled.txt",
                     }}
                     options={{
                       diffStyle,

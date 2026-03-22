@@ -2,7 +2,7 @@
 
 @custom-variant hover (&:hover);
 
-* {
+body {
   -webkit-user-select: none;
   user-select: none;
   -moz-user-select: none;
