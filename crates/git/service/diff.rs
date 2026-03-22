@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -347,11 +349,7 @@ impl DiffService {
         })
     }
 
-    async fn load_index_entry(
-        &self,
-        rev_path: &str,
-        logical_path: &str,
-    ) -> Option<AssetDiffEntry> {
+    async fn load_index_entry(&self, rev_path: &str, logical_path: &str) -> Option<AssetDiffEntry> {
         let spec = format!(":{rev_path}");
         let bytes = self
             .ctx
@@ -575,29 +573,45 @@ fn decode_text_file(logical_path: &str, bytes: Vec<u8>) -> Option<DiffTextFile> 
 fn is_new_for_scope(status: &[FileStatusKind], diff_scope: DiffScope) -> bool {
     match diff_scope {
         DiffScope::Staged => status.iter().any(|s| matches!(s, FileStatusKind::IndexNew)),
-        DiffScope::Unstaged => status.iter().any(|s| matches!(s, FileStatusKind::WorktreeNew)),
-        DiffScope::Worktree => status.iter().any(|s| {
-            matches!(s, FileStatusKind::IndexNew | FileStatusKind::WorktreeNew)
-        }),
+        DiffScope::Unstaged => status
+            .iter()
+            .any(|s| matches!(s, FileStatusKind::WorktreeNew)),
+        DiffScope::Worktree => status
+            .iter()
+            .any(|s| matches!(s, FileStatusKind::IndexNew | FileStatusKind::WorktreeNew)),
     }
 }
 
 fn is_deleted_for_scope(status: &[FileStatusKind], diff_scope: DiffScope) -> bool {
     match diff_scope {
-        DiffScope::Staged => status.iter().any(|s| matches!(s, FileStatusKind::IndexDeleted)),
-        DiffScope::Unstaged => status.iter().any(|s| matches!(s, FileStatusKind::WorktreeDeleted)),
+        DiffScope::Staged => status
+            .iter()
+            .any(|s| matches!(s, FileStatusKind::IndexDeleted)),
+        DiffScope::Unstaged => status
+            .iter()
+            .any(|s| matches!(s, FileStatusKind::WorktreeDeleted)),
         DiffScope::Worktree => status.iter().any(|s| {
-            matches!(s, FileStatusKind::IndexDeleted | FileStatusKind::WorktreeDeleted)
+            matches!(
+                s,
+                FileStatusKind::IndexDeleted | FileStatusKind::WorktreeDeleted
+            )
         }),
     }
 }
 
 fn is_renamed_for_scope(status: &[FileStatusKind], diff_scope: DiffScope) -> bool {
     match diff_scope {
-        DiffScope::Staged => status.iter().any(|s| matches!(s, FileStatusKind::IndexRenamed)),
-        DiffScope::Unstaged => status.iter().any(|s| matches!(s, FileStatusKind::WorktreeRenamed)),
+        DiffScope::Staged => status
+            .iter()
+            .any(|s| matches!(s, FileStatusKind::IndexRenamed)),
+        DiffScope::Unstaged => status
+            .iter()
+            .any(|s| matches!(s, FileStatusKind::WorktreeRenamed)),
         DiffScope::Worktree => status.iter().any(|s| {
-            matches!(s, FileStatusKind::IndexRenamed | FileStatusKind::WorktreeRenamed)
+            matches!(
+                s,
+                FileStatusKind::IndexRenamed | FileStatusKind::WorktreeRenamed
+            )
         }),
     }
 }

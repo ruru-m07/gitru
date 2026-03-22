@@ -5,6 +5,7 @@ use git::runner::validate_relative_path;
 use git::AppState;
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn get_patch_by_file_path(
     file_path: &str,
     file_new_path: Option<String>,
