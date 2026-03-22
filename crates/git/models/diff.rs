@@ -20,9 +20,21 @@ pub struct GetDiffResponse {
 pub struct FileDiff {
     pub patch: String,
     pub asset_diff: Option<AssetDiff>,
+    #[serde(rename = "oldFile")]
+    pub old_file: Option<DiffTextFile>,
+    #[serde(rename = "newFile")]
+    pub new_file: Option<DiffTextFile>,
 }
 
 #[derive(Debug, Serialize, Clone)]
+pub struct DiffTextFile {
+    pub name: String,
+    pub contents: String,
+    pub byte_length: usize,
+    pub encoding: String,
+}
+
+#[derive(Debug, Serialize, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 pub enum AssetDiffKind {
     Image,

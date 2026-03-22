@@ -5,16 +5,18 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
+use tokio::time::{Duration as TokioDuration, sleep};
 
 use crate::{
     cache::{CachePolicy, TTL_PATCH_BY_FILE_PATH},
     context::RepoContext,
     models::{
-        diff::{AssetDiff, AssetDiffEntry, AssetDiffKind, FileDiff},
+        diff::{AssetDiff, AssetDiffEntry, AssetDiffKind, DiffTextFile, FileDiff},
         status::FileStatusKind,
     },
     parsers::stash::validate_stash_ref,
     runner::GitRunOptions,
+    service::request_queue::{CancellationToken, RequestQueueManager},
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 
@@ -24,15 +26,20 @@ const IMAGE_DIFF_TEMP_DIR: &str = "gitru-image-diff";
 const MAX_ASSET_INLINE_BYTES: usize = 10 * 1024 * 1024;
 /// Maximum age of temp files before they are eligible for cleanup (1 hour).
 const TEMP_FILE_MAX_AGE_SECS: u64 = 3600;
+const PATCH_ALLOW_EXIT_CODES: &[i32] = &[1];
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub struct DiffService {
     ctx: Arc<RepoContext>,
+    queue_manager: Arc<RequestQueueManager>,
 }
 
 impl DiffService {
     pub fn new(ctx: Arc<RepoContext>) -> Self {
-        Self { ctx }
+        Self {
+            ctx,
+            queue_manager: Arc::new(RequestQueueManager::new()),
+        }
     }
 
     #[logger::logger]
@@ -45,34 +52,81 @@ impl DiffService {
         commit_hash: Option<&str>,
         parent_index: Option<usize>,
     ) -> Result<FileDiff, String> {
-        if stash_reference.is_some() && commit_hash.is_some() {
-            return Err("Cannot request stash and commit diff together".to_string());
+        // Register this request and get a cancellation token
+        // This cancels only previous requests for the same file path.
+        let token = self.queue_manager.register_request(file_path).await;
+
+        // Acquire a worker slot (respects MAX_CONCURRENT_OPERATIONS limit)
+        if !self.queue_manager.acquire_worker_slot(&token).await {
+            self.queue_manager.cleanup_request(&token).await;
+            return Err("Request cancelled (superseded by newer request)".to_string());
         }
 
-        if let Some(reference) = stash_reference {
-            validate_stash_ref(reference)?;
+        // Ensure we release the worker slot when done
+        let _guard = WorkerSlotGuard::new(self.queue_manager.clone());
+
+        let result = async {
+            // Early return if this request was cancelled before we started
+            if token.is_cancelled() {
+                return Err("Request cancelled (superseded by newer request)".to_string());
+            }
+
+            if stash_reference.is_some() && commit_hash.is_some() {
+                return Err("Cannot request stash and commit diff together".to_string());
+            }
+
+            if let Some(reference) = stash_reference {
+                validate_stash_ref(reference)?;
+            }
+            if let Some(hash) = commit_hash {
+                validate_commit_hash(hash)?;
+            }
+
+            let patch = self
+                .get_patch_text_by_file_path(
+                    file_path,
+                    stash_reference,
+                    commit_hash,
+                    parent_index,
+                    &token,
+                )
+                .await?;
+
+            let asset_diff = self
+                .resolve_asset_diff(
+                    file_path,
+                    file_new_path,
+                    status,
+                    stash_reference,
+                    commit_hash,
+                    parent_index,
+                    &patch,
+                    &token,
+                )
+                .await?;
+
+            let (old_file, new_file) = self
+                .resolve_text_diff_files(
+                    file_path,
+                    file_new_path,
+                    status,
+                    stash_reference,
+                    commit_hash,
+                    parent_index,
+                )
+                .await?;
+
+            Ok(FileDiff {
+                patch,
+                asset_diff,
+                old_file,
+                new_file,
+            })
         }
-        if let Some(hash) = commit_hash {
-            validate_commit_hash(hash)?;
-        }
+        .await;
 
-        let patch = self
-            .get_patch_text_by_file_path(file_path, stash_reference, commit_hash, parent_index)
-            .await?;
-
-        let asset_diff = self
-            .resolve_asset_diff(
-                file_path,
-                file_new_path,
-                status,
-                stash_reference,
-                commit_hash,
-                parent_index,
-                &patch,
-            )
-            .await?;
-
-        Ok(FileDiff { patch, asset_diff })
+        self.queue_manager.cleanup_request(&token).await;
+        result
     }
 
     async fn get_patch_text_by_file_path(
@@ -81,20 +135,26 @@ impl DiffService {
         stash_reference: Option<&str>,
         commit_hash: Option<&str>,
         parent_index: Option<usize>,
+        token: &CancellationToken,
     ) -> Result<String, String> {
+        // Check if request was cancelled
+        if token.is_cancelled() {
+            return Err("Request cancelled (superseded by newer request)".to_string());
+        }
+
         let runner = self.ctx.runner.clone();
         let repo_path = self.ctx.repo_path.clone();
         let file_path = file_path.to_string();
         let stash_reference = stash_reference.map(str::to_string);
         let commit_hash = commit_hash.map(str::to_string);
         let parent_index = parent_index.unwrap_or(1).max(1);
-        let cache_key = match &stash_reference {
-            Some(reference) => format!("stash:{reference}:{file_path}"),
-            None => match &commit_hash {
-                Some(hash) => format!("commit:{hash}:p{parent_index}:{file_path}"),
-                None => format!("worktree:{file_path}"),
-            },
-        };
+        let cache_key = build_patch_cache_key(
+            &file_path,
+            stash_reference.as_deref(),
+            commit_hash.as_deref(),
+            parent_index,
+        );
+        let token = token.clone();
 
         self.ctx
             .cache
@@ -105,85 +165,16 @@ impl DiffService {
                 },
                 cache_key,
                 move || async move {
-                    if let Some(reference) = stash_reference {
-                        let out = runner
-                            .run_with_options(
-                                &[
-                                    "stash",
-                                    "show",
-                                    "-p",
-                                    "--no-color",
-                                    "--include-untracked",
-                                    &reference,
-                                ],
-                                GitRunOptions::default_read().allow_exit_codes(&[1]),
-                            )
-                            .await?;
-
-                        return Ok(extract_single_diff_for_path(&out, &file_path));
-                    }
-
-                    if let Some(hash) = commit_hash {
-                        let base = resolve_commit_diff_base(&runner, &hash, parent_index).await?;
-                        let out = runner
-                            .run_with_options(
-                                &[
-                                    "diff",
-                                    "--no-ext-diff",
-                                    "--patch-with-raw",
-                                    "--no-color",
-                                    &base,
-                                    &hash,
-                                    "--",
-                                    &file_path,
-                                ],
-                                GitRunOptions::default_read().allow_exit_codes(&[1]),
-                            )
-                            .await?;
-
-                        return Ok(out);
-                    }
-
-                    let out = runner
-                        .run_with_options(
-                            &[
-                                "diff",
-                                "--no-ext-diff",
-                                "--patch-with-raw",
-                                "--no-color",
-                                "HEAD",
-                                "--",
-                                &file_path,
-                            ],
-                            GitRunOptions::default_read().allow_exit_codes(&[1]),
-                        )
-                        .await?;
-
-                    if !out.is_empty() {
-                        return Ok(out);
-                    }
-
-                    let abs = Path::new(&repo_path).join(&file_path);
-                    if !abs.exists() {
-                        return Ok(String::new());
-                    }
-
-                    let out = runner
-                        .run_with_options(
-                            &[
-                                "diff",
-                                "--no-index",
-                                "--patch-with-raw",
-                                "--no-color",
-                                "/dev/null",
-                                "--",
-                                &file_path,
-                            ],
-                            GitRunOptions::default_read().allow_exit_codes(&[1]),
-                        )
-                        .await?;
-
-                    Ok(out)
+                    fetch_patch_text_impl(
+                        &runner,
+                        &repo_path,
+                        &file_path,
+                        stash_reference.as_deref(),
+                        commit_hash.as_deref(),
+                        parent_index,
+                        &token,
+                    )
+                    .await
                 },
             )
             .await
@@ -199,7 +190,13 @@ impl DiffService {
         commit_hash: Option<&str>,
         parent_index: Option<usize>,
         patch: &str,
+        token: &CancellationToken,
     ) -> Result<Option<AssetDiff>, String> {
+        // Check if request was cancelled
+        if token.is_cancelled() {
+            return Err("Request cancelled (superseded by newer request)".to_string());
+        }
+
         if stash_reference.is_some() {
             return Ok(None);
         }
@@ -299,7 +296,7 @@ impl DiffService {
         let bytes = self
             .ctx
             .runner
-            .run_with_options_bytes(
+            .run_with_options_bytes_unlocked(
                 &["show", "--no-ext-diff", "--no-textconv", &spec],
                 GitRunOptions::default_read().allow_exit_codes(&[1, 128]),
             )
@@ -343,6 +340,254 @@ impl DiffService {
             contents_base64: BASE64_STANDARD.encode(&bytes),
         })
     }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn resolve_text_diff_files(
+        &self,
+        file_path: &str,
+        file_new_path: Option<&str>,
+        status: Option<&[FileStatusKind]>,
+        stash_reference: Option<&str>,
+        commit_hash: Option<&str>,
+        parent_index: Option<usize>,
+    ) -> Result<(Option<DiffTextFile>, Option<DiffTextFile>), String> {
+        let status = status.unwrap_or(&[]);
+        let is_new = status
+            .iter()
+            .any(|s| matches!(s, FileStatusKind::IndexNew | FileStatusKind::WorktreeNew));
+        let is_deleted = status.iter().any(|s| {
+            matches!(
+                s,
+                FileStatusKind::IndexDeleted | FileStatusKind::WorktreeDeleted
+            )
+        });
+        let is_renamed = status.iter().any(|s| {
+            matches!(
+                s,
+                FileStatusKind::IndexRenamed | FileStatusKind::WorktreeRenamed
+            )
+        });
+
+        let logical_before = file_path.to_string();
+        let logical_after = file_new_path.unwrap_or(file_path).to_string();
+        let before_should_exist = !is_new;
+        let after_should_exist = !is_deleted;
+        let effective_before_path = if is_renamed {
+            logical_before.as_str()
+        } else {
+            file_path
+        };
+        let effective_after_path = logical_after.as_str();
+
+        let before = if before_should_exist {
+            if let Some(reference) = stash_reference {
+                let base = format!("{reference}^1");
+                self.load_blob_text_file(&base, effective_before_path, &logical_before)
+                    .await
+            } else if let Some(hash) = commit_hash {
+                let base = resolve_commit_diff_base(
+                    &self.ctx.runner,
+                    hash,
+                    parent_index.unwrap_or(1).max(1),
+                )
+                .await?;
+                self.load_blob_text_file(&base, effective_before_path, &logical_before)
+                    .await
+            } else {
+                self.load_blob_text_file("HEAD", effective_before_path, &logical_before)
+                    .await
+            }
+        } else {
+            None
+        };
+
+        let after = if after_should_exist {
+            if let Some(reference) = stash_reference {
+                self.load_blob_text_file(reference, effective_after_path, &logical_after)
+                    .await
+            } else if let Some(hash) = commit_hash {
+                self.load_blob_text_file(hash, effective_after_path, &logical_after)
+                    .await
+            } else {
+                self.load_worktree_text_file(effective_after_path, &logical_after)
+                    .await
+            }
+        } else {
+            None
+        };
+
+        Ok((before, after))
+    }
+
+    async fn load_blob_text_file(
+        &self,
+        rev: &str,
+        rev_path: &str,
+        logical_path: &str,
+    ) -> Option<DiffTextFile> {
+        let spec = format!("{rev}:{rev_path}");
+        let bytes = self
+            .ctx
+            .runner
+            .run_with_options_bytes_unlocked(
+                &["show", "--no-ext-diff", "--no-textconv", &spec],
+                GitRunOptions::default_read().allow_exit_codes(&[1, 128]),
+            )
+            .await
+            .ok()?;
+
+        decode_text_file(logical_path, bytes)
+    }
+
+    async fn load_worktree_text_file(
+        &self,
+        repo_relative_path: &str,
+        logical_path: &str,
+    ) -> Option<DiffTextFile> {
+        let absolute = Path::new(&self.ctx.repo_path).join(repo_relative_path);
+        let bytes = fs::read(&absolute).ok()?;
+        decode_text_file(logical_path, bytes)
+    }
+}
+
+fn decode_text_file(logical_path: &str, bytes: Vec<u8>) -> Option<DiffTextFile> {
+    if bytes.is_empty() {
+        return Some(DiffTextFile {
+            name: logical_path.to_string(),
+            contents: String::new(),
+            byte_length: 0,
+            encoding: "utf-8".to_string(),
+        });
+    }
+
+    if bytes.contains(&0) {
+        return None;
+    }
+
+    let byte_length = bytes.len();
+    let contents = String::from_utf8(bytes).ok()?;
+
+    Some(DiffTextFile {
+        name: logical_path.to_string(),
+        contents,
+        byte_length,
+        encoding: "utf-8".to_string(),
+    })
+}
+
+fn build_patch_cache_key(
+    file_path: &str,
+    stash_reference: Option<&str>,
+    commit_hash: Option<&str>,
+    parent_index: usize,
+) -> String {
+    match stash_reference {
+        Some(reference) => format!("stash:{reference}:{file_path}"),
+        None => match commit_hash {
+            Some(hash) => format!("commit:{hash}:p{parent_index}:{file_path}"),
+            None => format!("worktree:{file_path}"),
+        },
+    }
+}
+
+async fn fetch_patch_text_impl(
+    runner: &crate::runner::GitCommandRunner,
+    repo_path: &str,
+    file_path: &str,
+    stash_reference: Option<&str>,
+    commit_hash: Option<&str>,
+    parent_index: usize,
+    token: &CancellationToken,
+) -> Result<String, String> {
+    if token.is_cancelled() {
+        return Err("Request cancelled (superseded by newer request)".to_string());
+    }
+
+    if let Some(reference) = stash_reference {
+        let out = run_git_text_unlocked_cancellable(
+            runner.clone(),
+            vec![
+                "stash".to_string(),
+                "show".to_string(),
+                "-p".to_string(),
+                "--no-color".to_string(),
+                "--include-untracked".to_string(),
+                reference.to_string(),
+            ],
+            GitRunOptions::default_read().allow_exit_codes(PATCH_ALLOW_EXIT_CODES),
+            token,
+        )
+        .await?;
+
+        return Ok(extract_single_diff_for_path(&out, file_path));
+    }
+
+    if let Some(hash) = commit_hash {
+        let base = resolve_commit_diff_base(runner, hash, parent_index).await?;
+        let out = run_git_text_unlocked_cancellable(
+            runner.clone(),
+            vec![
+                "diff".to_string(),
+                "--no-ext-diff".to_string(),
+                "--patch-with-raw".to_string(),
+                "--no-color".to_string(),
+                base,
+                hash.to_string(),
+                "--".to_string(),
+                file_path.to_string(),
+            ],
+            GitRunOptions::default_read().allow_exit_codes(PATCH_ALLOW_EXIT_CODES),
+            token,
+        )
+        .await?;
+
+        return Ok(out);
+    }
+
+    let out = run_git_text_unlocked_cancellable(
+        runner.clone(),
+        vec![
+            "diff".to_string(),
+            "-U999999".to_string(),
+            "--no-ext-diff".to_string(),
+            "--patch-with-raw".to_string(),
+            "--no-color".to_string(),
+            "HEAD".to_string(),
+            "--".to_string(),
+            file_path.to_string(),
+        ],
+        GitRunOptions::default_read().allow_exit_codes(PATCH_ALLOW_EXIT_CODES),
+        token,
+    )
+    .await?;
+
+    if !out.is_empty() {
+        return Ok(out);
+    }
+
+    let abs = Path::new(repo_path).join(file_path);
+    if !abs.exists() {
+        return Ok(String::new());
+    }
+
+    let out = run_git_text_unlocked_cancellable(
+        runner.clone(),
+        vec![
+            "diff".to_string(),
+            "-U999999".to_string(),
+            "--no-index".to_string(),
+            "--patch-with-raw".to_string(),
+            "--no-color".to_string(),
+            "/dev/null".to_string(),
+            "--".to_string(),
+            file_path.to_string(),
+        ],
+        GitRunOptions::default_read().allow_exit_codes(PATCH_ALLOW_EXIT_CODES),
+        token,
+    )
+    .await?;
+
+    Ok(out)
 }
 
 fn is_supported_image_extension(path: &str) -> bool {
@@ -421,7 +666,7 @@ async fn resolve_commit_diff_base(
     parent_index: usize,
 ) -> Result<String, String> {
     let parents = runner
-        .run_with_options(
+        .run_with_options_unlocked(
             &["show", "-s", "--format=%P", commit_hash],
             GitRunOptions::default_read(),
         )
@@ -491,4 +736,56 @@ fn extract_single_diff_for_path(output: &str, file_path: &str) -> String {
         .unwrap_or(sections[0]);
 
     lines[selected.0..selected.1].join("\n")
+}
+
+async fn wait_for_cancellation(token: &CancellationToken) {
+    while !token.is_cancelled() {
+        sleep(TokioDuration::from_millis(4)).await;
+    }
+}
+
+async fn run_git_text_unlocked_cancellable(
+    runner: crate::runner::GitCommandRunner,
+    args: Vec<String>,
+    options: GitRunOptions,
+    token: &CancellationToken,
+) -> Result<String, String> {
+    if token.is_cancelled() {
+        return Err("Request cancelled (superseded by newer request)".to_string());
+    }
+
+    let mut command_task = tokio::spawn(async move {
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        runner.run_with_options_unlocked(&refs, options).await
+    });
+
+    tokio::select! {
+        result = &mut command_task => {
+            match result {
+                Ok(result) => result,
+                Err(err) => Err(format!("Failed to join git task: {err}")),
+            }
+        }
+        _ = wait_for_cancellation(token) => {
+            command_task.abort();
+            Err("Request cancelled (superseded by newer request)".to_string())
+        }
+    }
+}
+
+/// RAII guard that automatically releases a worker slot when dropped
+struct WorkerSlotGuard {
+    queue_manager: Arc<RequestQueueManager>,
+}
+
+impl WorkerSlotGuard {
+    fn new(queue_manager: Arc<RequestQueueManager>) -> Self {
+        Self { queue_manager }
+    }
+}
+
+impl Drop for WorkerSlotGuard {
+    fn drop(&mut self) {
+        self.queue_manager.release_worker_slot();
+    }
 }

@@ -10,7 +10,6 @@ import { routeTree } from "./routeTree.gen";
 import { useLastPageStore } from "./store/useLastPageStore.ts";
 import "./app.css";
 
-import { themeLoader } from "@gitru/diff/loader";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { appState } from "./state";
@@ -45,7 +44,6 @@ async function redirectToLastPage() {
 }
 
 await redirectToLastPage();
-themeLoader();
 initializeQueryFocusBridge();
 
 const rootElement = document.getElementById("root");
@@ -63,18 +61,18 @@ if (rootElement && !rootElement.innerHTML) {
         >
           <RouterProvider router={router} />
           <Toaster />
-          <ReactQueryDevtools
+          {/* <ReactQueryDevtools
             buttonPosition="top-right"
             initialIsOpen={false}
-          />
+          /> */}
         </NextThemesProvider>
       </QueryClientProvider>
     </StrictMode>,
   );
 }
 
-if (import.meta.env.DEV) {
-  scan({
-    enabled: true,
-  });
-}
+// if (import.meta.env.DEV) {
+//   scan({
+//     enabled: true,
+//   });
+// }

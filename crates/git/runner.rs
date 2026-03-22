@@ -55,6 +55,14 @@ impl GitCommandRunner {
         run_git_command_async(&self.repo_path, args, None, options).await
     }
 
+    pub async fn run_with_options_unlocked(
+        &self,
+        args: &[&str],
+        options: GitRunOptions,
+    ) -> Result<String, String> {
+        run_git_command_async_unlocked(&self.repo_path, args, None, options).await
+    }
+
     pub async fn run_with_input(
         &self,
         args: &[&str],
@@ -70,6 +78,14 @@ impl GitCommandRunner {
         options: GitRunOptions,
     ) -> Result<Vec<u8>, String> {
         run_git_command_bytes_async(&self.repo_path, args, None, options).await
+    }
+
+    pub async fn run_with_options_bytes_unlocked(
+        &self,
+        args: &[&str],
+        options: GitRunOptions,
+    ) -> Result<Vec<u8>, String> {
+        run_git_command_bytes_async_unlocked(&self.repo_path, args, None, options).await
     }
 }
 
@@ -98,6 +114,28 @@ async fn run_git_command_async(
     }
 }
 
+async fn run_git_command_async_unlocked(
+    repo_path: &Path,
+    args: &[&str],
+    input: Option<&[u8]>,
+    options: GitRunOptions,
+) -> Result<String, String> {
+    let mut attempt: u32 = 0;
+    const MAX_INDEX_LOCK_RETRIES: u32 = 6;
+
+    loop {
+        attempt += 1;
+        match run_git_command_once_output(repo_path, args, input, options).await {
+            Ok(output) => return finalize_output(output, options.allow_failure_codes),
+            Err(err) if is_index_lock_error(&err) && attempt < MAX_INDEX_LOCK_RETRIES => {
+                let backoff_ms = 50 * attempt as u64;
+                sleep(Duration::from_millis(backoff_ms)).await;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
+
 async fn run_git_command_bytes_async(
     repo_path: &Path,
     args: &[&str],
@@ -107,6 +145,28 @@ async fn run_git_command_bytes_async(
     let repo_lock = command_lock_for_repo(repo_path)?;
     let _guard = repo_lock.lock().await;
 
+    let mut attempt: u32 = 0;
+    const MAX_INDEX_LOCK_RETRIES: u32 = 6;
+
+    loop {
+        attempt += 1;
+        match run_git_command_once_output(repo_path, args, input, options).await {
+            Ok(output) => return finalize_output_bytes(output, options.allow_failure_codes),
+            Err(err) if is_index_lock_error(&err) && attempt < MAX_INDEX_LOCK_RETRIES => {
+                let backoff_ms = 50 * attempt as u64;
+                sleep(Duration::from_millis(backoff_ms)).await;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
+
+async fn run_git_command_bytes_async_unlocked(
+    repo_path: &Path,
+    args: &[&str],
+    input: Option<&[u8]>,
+    options: GitRunOptions,
+) -> Result<Vec<u8>, String> {
     let mut attempt: u32 = 0;
     const MAX_INDEX_LOCK_RETRIES: u32 = 6;
 

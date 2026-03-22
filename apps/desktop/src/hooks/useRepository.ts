@@ -135,7 +135,6 @@ export function useGetDiff(
     queryFn: async () => {
       if (!repo || !filePath) return null;
 
-      const start = performance.now();
       const result = await repo.diff.get(filePath, {
         stashReference: stashReference ?? undefined,
         commitHash: commitHash ?? undefined,
@@ -143,11 +142,6 @@ export function useGetDiff(
         status: status.length > 0 ? status : undefined,
         parentIndex,
       });
-      const end = performance.now();
-
-      console.log(
-        `[useGetDiff] repo.diff.get took ${(end - start).toFixed(2)} ms`,
-      );
 
       return result;
     },
