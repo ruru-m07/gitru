@@ -1,3 +1,6 @@
+import type * as PageTree from "fumadocs-core/page-tree";
+import { TreeContextProvider } from "fumadocs-ui/contexts/tree";
+import { Languages, Sidebar as SidebarIcon, X } from "lucide-react";
 import {
   type ComponentProps,
   type FC,
@@ -5,7 +8,26 @@ import {
   type ReactNode,
   useMemo,
 } from "react";
+import { cn } from "../../../lib/cn";
+import { buttonVariants } from "../../ui/button";
+import { LanguageToggle } from "../language-toggle";
+import { LinkItem, type LinkItemType } from "../link-item";
+import { LargeSearchToggle, SearchToggle } from "../search-toggle";
 import { type BaseLayoutProps, renderTitleNav, useLinkItems } from "../shared";
+import type { SidebarPageTreeComponents } from "../sidebar/page-tree";
+import { type GetSidebarTabsOptions, getSidebarTabs } from "../sidebar/tabs";
+import {
+  SidebarTabsDropdown,
+  type SidebarTabWithProps,
+} from "../sidebar/tabs/dropdown";
+import { ThemeToggle } from "../theme-toggle";
+import {
+  LayoutBody,
+  LayoutContextProvider,
+  LayoutHeader,
+  LayoutHeaderTabs,
+  NavbarLinkItem,
+} from "./client";
 import {
   Sidebar,
   SidebarCollapseTrigger,
@@ -16,28 +38,6 @@ import {
   SidebarTrigger,
   SidebarViewport,
 } from "./sidebar";
-import { TreeContextProvider } from "fumadocs-ui/contexts/tree";
-import { cn } from "../../../lib/cn";
-import { buttonVariants } from "../../ui/button";
-import { Languages, Sidebar as SidebarIcon, X } from "lucide-react";
-import { LanguageToggle } from "../language-toggle";
-import { ThemeToggle } from "../theme-toggle";
-import type * as PageTree from "fumadocs-core/page-tree";
-import {
-  LayoutBody,
-  LayoutContextProvider,
-  LayoutHeader,
-  LayoutHeaderTabs,
-  NavbarLinkItem,
-} from "./client";
-import { LargeSearchToggle, SearchToggle } from "../search-toggle";
-import { LinkItem, type LinkItemType } from "../link-item";
-import type { SidebarPageTreeComponents } from "../sidebar/page-tree";
-import { getSidebarTabs, type GetSidebarTabsOptions } from "../sidebar/tabs";
-import {
-  SidebarTabsDropdown,
-  type SidebarTabWithProps,
-} from "../sidebar/tabs/dropdown";
 
 export interface DocsLayoutProps extends BaseLayoutProps {
   tree: PageTree.Root;
@@ -53,8 +53,7 @@ export interface DocsLayoutProps extends BaseLayoutProps {
 }
 
 interface SidebarOptions
-  extends
-    ComponentProps<"aside">,
+  extends ComponentProps<"aside">,
     Pick<ComponentProps<typeof Sidebar>, "defaultOpenLevel" | "prefetch"> {
   components?: Partial<SidebarPageTreeComponents>;
 

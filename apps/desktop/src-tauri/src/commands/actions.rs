@@ -1,4 +1,11 @@
-use git::{core::get_services, models::status::GetStatusResponse, AppState};
+use git::{
+    core::get_services,
+    models::{
+        diff::{DiffScope, PatchAction, PatchRange},
+        status::GetStatusResponse,
+    },
+    AppState,
+};
 
 #[tauri::command]
 pub async fn git_version(state: tauri::State<'_, AppState>) -> Result<String, String> {
@@ -55,5 +62,29 @@ pub async fn git_discard(
     services
         .action()
         .git_discard(file.as_deref(), files.as_deref(), all)
+        .await
+}
+
+#[tauri::command]
+pub async fn git_apply_patch_block(
+    file_path: String,
+    file_new_path: Option<String>,
+    diff_scope: DiffScope,
+    additions: PatchRange,
+    deletions: PatchRange,
+    action: PatchAction,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let services = get_services(state).await?;
+    services
+        .action()
+        .git_apply_patch_block(
+            &file_path,
+            file_new_path.as_deref(),
+            diff_scope,
+            additions,
+            deletions,
+            action,
+        )
         .await
 }

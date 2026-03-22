@@ -4,7 +4,7 @@ mod common;
 
 use common::{TestRepo, run_async};
 use git::context::RepoContext;
-use git::models::diff::AssetDiffKind;
+use git::models::diff::{AssetDiffKind, DiffScope};
 use git::models::status::FileStatusKind;
 use git::service::diff::DiffService;
 use serial_test::serial;
@@ -43,6 +43,7 @@ fn image_diff_worktree_modified_has_before_and_after() {
                 None,
                 None,
                 None,
+                None,
             )
             .await
             .expect("failed to get diff");
@@ -77,6 +78,7 @@ fn image_diff_rename_maps_old_and_new_paths() {
                 "old-name.png",
                 Some("new-name.png"),
                 Some(&[FileStatusKind::IndexRenamed]),
+                None,
                 None,
                 None,
                 None,
@@ -120,6 +122,7 @@ fn image_diff_history_commit_has_before_and_after() {
                 None,
                 Some(&head),
                 Some(1),
+                None,
             )
             .await
             .expect("failed to get history diff");
@@ -144,6 +147,7 @@ fn image_diff_new_file_has_only_after() {
                 "new.png",
                 None,
                 Some(&[FileStatusKind::WorktreeNew]),
+                None,
                 None,
                 None,
                 None,
@@ -177,6 +181,7 @@ fn non_image_binary_returns_binary_or_none_asset_diff() {
                 None,
                 None,
                 None,
+                None,
             )
             .await
             .expect("failed to get binary diff");
@@ -184,5 +189,93 @@ fn non_image_binary_returns_binary_or_none_asset_diff() {
         if let Some(asset) = diff.asset_diff {
             assert!(matches!(asset.kind, AssetDiffKind::Binary));
         }
+    });
+}
+
+#[test]
+#[serial]
+fn diff_scope_staged_reads_index_contents() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("note.txt", "one\n", "init");
+
+        repo.create_file("note.txt", "one\nstaged\n");
+        repo.add("note.txt");
+        repo.create_file("note.txt", "one\nstaged\nunstaged\n");
+
+        let service = setup_diff_service(&repo);
+        let diff = service
+            .get_patch_by_file_path(
+                "note.txt",
+                None,
+                Some(&[
+                    FileStatusKind::IndexModified,
+                    FileStatusKind::WorktreeModified,
+                ]),
+                None,
+                None,
+                None,
+                Some(DiffScope::Staged),
+            )
+            .await
+            .expect("failed to get staged diff");
+
+        let old_contents = diff
+            .old_file
+            .as_ref()
+            .map(|file| file.contents.as_str())
+            .unwrap_or("");
+        let new_contents = diff
+            .new_file
+            .as_ref()
+            .map(|file| file.contents.as_str())
+            .unwrap_or("");
+
+        assert_eq!(old_contents, "one\n");
+        assert_eq!(new_contents, "one\nstaged\n");
+    });
+}
+
+#[test]
+#[serial]
+fn diff_scope_unstaged_reads_worktree_contents() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("note.txt", "one\n", "init");
+
+        repo.create_file("note.txt", "one\nstaged\n");
+        repo.add("note.txt");
+        repo.create_file("note.txt", "one\nstaged\nunstaged\n");
+
+        let service = setup_diff_service(&repo);
+        let diff = service
+            .get_patch_by_file_path(
+                "note.txt",
+                None,
+                Some(&[
+                    FileStatusKind::IndexModified,
+                    FileStatusKind::WorktreeModified,
+                ]),
+                None,
+                None,
+                None,
+                Some(DiffScope::Unstaged),
+            )
+            .await
+            .expect("failed to get unstaged diff");
+
+        let old_contents = diff
+            .old_file
+            .as_ref()
+            .map(|file| file.contents.as_str())
+            .unwrap_or("");
+        let new_contents = diff
+            .new_file
+            .as_ref()
+            .map(|file| file.contents.as_str())
+            .unwrap_or("");
+
+        assert_eq!(old_contents, "one\nstaged\n");
+        assert_eq!(new_contents, "one\nstaged\nunstaged\n");
     });
 }

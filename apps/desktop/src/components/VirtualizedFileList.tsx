@@ -68,6 +68,7 @@ export interface VirtualizedFileListProps {
     file: FileStatus,
     index: number,
     event: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean },
+    selectionKey: string,
   ) => void;
   onAdd?: UseMutateAsyncFunction<string, string, string | string[], unknown>;
   onUnstage?: UseMutateAsyncFunction<
@@ -88,6 +89,7 @@ export interface VirtualizedFileListProps {
   selectedFilePath?: {
     path: string;
     newPath?: string;
+    scope?: FileListSection["type"];
   };
   className?: string;
   defaultExpandedSections?: string[];
@@ -105,6 +107,7 @@ type VirtualItem =
   | {
       type: "file";
       file: FileStatus;
+      selectionKey: string;
       sectionId: string;
       sectionName: string;
       sectionType?: FileListSection["type"];
@@ -116,6 +119,18 @@ type MatchRange = { start: number; end: number };
 const EMPTY_CONTEXT_ACTIONS: FileRowContextAction[] = [];
 const getFileTargets = (file: FileStatus) =>
   file.new_path ? Array.from(new Set([file.path, file.new_path])) : file.path;
+const buildSelectionKey = (
+  file: FileStatus,
+  sectionId: string,
+  sectionType?: FileListSection["type"],
+) =>
+  `${sectionType ?? "custom"}:${sectionId}:${file.path}:${file.new_path ?? ""}`;
+const getWorktreeScope = (sectionType?: FileListSection["type"]) => {
+  if (sectionType === "staged") return "staged";
+  if (sectionType === "changes") return "unstaged";
+  if (sectionType === "conflicted") return "conflicted";
+  return undefined;
+};
 
 const hasRegexFlags = (flags: string) => /^[dgimsuvy]*$/.test(flags);
 
@@ -295,11 +310,15 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
     });
   }, []);
 
-  const { items, fileItems, fileIndexByPath, fileIndexToItemIndex } =
+  const { items, fileItems, fileIndexByKey, fileIndexToItemIndex } =
     useMemo(() => {
       const result: VirtualItem[] = [];
-      const fileItems: FileStatus[] = [];
-      const fileIndexByPath = new Map<string, number>();
+      const fileItems: Array<{
+        key: string;
+        file: FileStatus;
+        sectionType?: FileListSection["type"];
+      }> = [];
+      const fileIndexByKey = new Map<string, number>();
       const fileIndexToItemIndex: number[] = [];
 
       for (const section of sections) {
@@ -307,16 +326,26 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
 
         if (sectionMode === "flat") {
           for (const file of section.files) {
+            const selectionKey = buildSelectionKey(
+              file,
+              section.id,
+              section.type,
+            );
             result.push({
               type: "file",
               file,
+              selectionKey,
               sectionId: section.id,
               sectionName: section.name,
               sectionType: section.type,
             });
-            fileIndexByPath.set(file.path, fileItems.length);
+            fileIndexByKey.set(selectionKey, fileItems.length);
             fileIndexToItemIndex.push(result.length - 1);
-            fileItems.push(file);
+            fileItems.push({
+              key: selectionKey,
+              file,
+              sectionType: section.type,
+            });
           }
           continue;
         }
@@ -332,16 +361,26 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
 
         if (expandedSections.has(section.id)) {
           for (const file of section.files) {
+            const selectionKey = buildSelectionKey(
+              file,
+              section.id,
+              section.type,
+            );
             result.push({
               type: "file",
               file,
+              selectionKey,
               sectionId: section.id,
               sectionName: section.name,
               sectionType: section.type,
             });
-            fileIndexByPath.set(file.path, fileItems.length);
+            fileIndexByKey.set(selectionKey, fileItems.length);
             fileIndexToItemIndex.push(result.length - 1);
-            fileItems.push(file);
+            fileItems.push({
+              key: selectionKey,
+              file,
+              sectionType: section.type,
+            });
           }
         }
       }
@@ -349,7 +388,7 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
       return {
         items: result,
         fileItems,
-        fileIndexByPath,
+        fileIndexByKey,
         fileIndexToItemIndex,
       };
     }, [sections, expandedSections, sectionMode]);
@@ -395,8 +434,8 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
       if (event.currentTarget !== event.target) return;
       setIsContainerFocused(true);
       if (focusedIndex === -1 && fileItems.length > 0) {
-        const firstSelected = fileItems.findIndex((file) =>
-          selectedFiles.has(file.path),
+        const firstSelected = fileItems.findIndex((entry) =>
+          selectedFiles.has(entry.key),
         );
         setFocusedIndex(firstSelected >= 0 ? firstSelected : 0);
       }
@@ -426,23 +465,30 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
           0,
           Math.min(fileItems.length - 1, startIndex + delta),
         );
-        const file = fileItems[nextFocusedIndex];
-        if (!file) return;
+        const entry = fileItems[nextFocusedIndex];
+        if (!entry) return;
+        const { file, key: selectionKey } = entry;
 
         if (event.metaKey || event.ctrlKey) {
           setFocusedIndex(nextFocusedIndex);
         } else {
-          onFileClick(file, nextFocusedIndex, {
-            shiftKey: event.shiftKey,
-            metaKey: event.metaKey,
-            ctrlKey: event.ctrlKey,
-          });
+          onFileClick(
+            file,
+            nextFocusedIndex,
+            {
+              shiftKey: event.shiftKey,
+              metaKey: event.metaKey,
+              ctrlKey: event.ctrlKey,
+            },
+            selectionKey,
+          );
 
           if (!event.shiftKey && !event.metaKey && !event.ctrlKey) {
             setSelectedFilePath({
               filePath: file.path,
               fileNewPath: file.new_path,
               source: "worktree",
+              worktreeScope: getWorktreeScope(entry.sectionType),
               selectedAt: Date.now(),
             });
           }
@@ -459,20 +505,27 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
         event.preventDefault();
         if (fileItems.length === 0) return;
         const activeIndex = focusedIndex >= 0 ? focusedIndex : 0;
-        const file = fileItems[activeIndex];
-        if (!file) return;
+        const entry = fileItems[activeIndex];
+        if (!entry) return;
+        const { file, key: selectionKey } = entry;
 
-        onFileClick(file, activeIndex, {
-          shiftKey: event.shiftKey,
-          metaKey: event.metaKey,
-          ctrlKey: event.ctrlKey,
-        });
+        onFileClick(
+          file,
+          activeIndex,
+          {
+            shiftKey: event.shiftKey,
+            metaKey: event.metaKey,
+            ctrlKey: event.ctrlKey,
+          },
+          selectionKey,
+        );
 
         if (!event.shiftKey && !event.metaKey && !event.ctrlKey) {
           setSelectedFilePath({
             filePath: file.path,
             fileNewPath: file.new_path,
             source: "worktree",
+            worktreeScope: getWorktreeScope(entry.sectionType),
             selectedAt: Date.now(),
           });
         }
@@ -555,21 +608,27 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
             );
           }
 
-          const isSelected = selectedFilePath?.path === item.file.path;
-          const isMultiSelected = selectedFiles.has(item.file.path);
+          const matchesScope = selectedFilePath?.scope
+            ? selectedFilePath.scope === getWorktreeScope(item.sectionType)
+            : true;
+          const isSelected =
+            matchesScope &&
+            selectedFilePath?.path === item.file.path &&
+            (selectedFilePath?.newPath ?? "") === (item.file.new_path ?? "");
+          const isMultiSelected = selectedFiles.has(item.selectionKey);
           const isChangesSection = item.sectionType === "changes";
           const isStagedSection = item.sectionType === "staged";
           const isConflictSection = item.sectionType === "conflicted";
-          const fileIndex = fileIndexByPath.get(item.file.path) ?? -1;
+          const fileIndex = fileIndexByKey.get(item.selectionKey) ?? -1;
           const isFocused = isContainerFocused && focusedIndex === fileIndex;
           const listSize = fileItems.length;
           const prevSelected =
             fileIndex > 0
-              ? selectedFiles.has(fileItems[fileIndex - 1]?.path)
+              ? selectedFiles.has(fileItems[fileIndex - 1]?.key)
               : false;
           const nextSelected =
             fileIndex >= 0 && fileIndex < fileItems.length - 1
-              ? selectedFiles.has(fileItems[fileIndex + 1]?.path)
+              ? selectedFiles.has(fileItems[fileIndex + 1]?.key)
               : false;
           const isGroupStart =
             (isSelected || isMultiSelected) && !prevSelected && nextSelected;
@@ -593,6 +652,7 @@ export const VirtualizedFileList = memo(function VirtualizedFileList({
             >
               <FileRow
                 file={item.file}
+                selectionKey={item.selectionKey}
                 index={virtualRow.index}
                 fileIndex={fileIndex}
                 sectionId={item.sectionId}
@@ -725,6 +785,7 @@ const SectionHeader = memo(function SectionHeader({
 
 interface FileRowProps {
   file: FileStatus;
+  selectionKey: string;
   searchQuery: string;
   index: number;
   fileIndex: number;
@@ -735,6 +796,7 @@ interface FileRowProps {
     file: FileStatus,
     index: number,
     event: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean },
+    selectionKey: string,
   ) => void;
   onAdd?: UseMutateAsyncFunction<string, string, string | string[], unknown>;
   onUnstage?: UseMutateAsyncFunction<
@@ -761,6 +823,7 @@ interface FileRowProps {
 const FileRow = memo(
   function FileRow({
     file,
+    selectionKey,
     searchQuery,
     index,
     fileIndex,
@@ -816,9 +879,10 @@ const FileRow = memo(
 
       const targets: string[] = [];
 
-      for (const selectedFile of allFiles) {
-        if (!selectedFiles.has(selectedFile.path)) continue;
-        const targetsForFile = getFileTargets(selectedFile);
+      for (const selectedEntry of allFiles) {
+        if (!selectedFiles.has(selectedEntry.key)) continue;
+        if (selectedEntry.sectionType !== sectionType) continue;
+        const targetsForFile = getFileTargets(selectedEntry.file);
         if (Array.isArray(targetsForFile)) {
           targets.push(...targetsForFile);
         } else {
@@ -864,17 +928,23 @@ const FileRow = memo(
             onClick={(e) => {
               onRequestFocus();
               if (fileIndex < 0) return;
-              onFileClick(file, fileIndex, {
-                shiftKey: e.shiftKey,
-                metaKey: e.metaKey,
-                ctrlKey: e.ctrlKey,
-              });
+              onFileClick(
+                file,
+                fileIndex,
+                {
+                  shiftKey: e.shiftKey,
+                  metaKey: e.metaKey,
+                  ctrlKey: e.ctrlKey,
+                },
+                selectionKey,
+              );
 
               if (!e.shiftKey && !e.metaKey && !e.ctrlKey) {
                 setSelectedFilePath({
                   filePath: file.path,
                   fileNewPath: file.new_path,
                   source: "worktree",
+                  worktreeScope: getWorktreeScope(sectionType),
                   selectedAt: Date.now(),
                 });
               }
@@ -920,7 +990,7 @@ const FileRow = memo(
             >
               <div className="shrink-0">{getStatusIcon(file.status, 18)}</div>
               <div className="flex items-center ml-1.5 min-w-0 flex-1">
-                <Label className="flex cursor-pointer items-center min-w-0 text-sm w-full gap-0">
+                <Label className="flex cursor-pointer items-center min-w-0 text-sm w-full gap-0 font-[450]">
                   <span className="inline-flex w-fit max-w-full min-w-0 items-center gap-0">
                     {hasDirectory && (
                       <>
@@ -1114,6 +1184,7 @@ const FileRow = memo(
                 filePath: file.path,
                 fileNewPath: file.new_path,
                 source: "worktree",
+                worktreeScope: getWorktreeScope(sectionType),
                 selectedAt: Date.now(),
               });
             }}

@@ -3,9 +3,5 @@
   "icon": "Archive",
   "collapsible": false,
   "defaultOpen": true,
-  "pages": [
-    "stash-management",
-    "patch-creation",
-    "patch-application"
-  ]
+  "pages": ["stash-management", "patch-creation", "patch-application"]
 }

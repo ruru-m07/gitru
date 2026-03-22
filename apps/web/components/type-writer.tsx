@@ -1,5 +1,5 @@
-import { cn } from "@/lib/cn";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { cn } from "@/lib/cn";
 
 export type CursorVariant = "primary" | "default";
 

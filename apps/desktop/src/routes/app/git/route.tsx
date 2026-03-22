@@ -1258,6 +1258,7 @@ const ListFileChanges = ({
                       ? {
                           path: selectedFileForList.filePath,
                           newPath: selectedFileForList.fileNewPath,
+                          scope: selectedFileForList.worktreeScope,
                         }
                       : undefined
                   }

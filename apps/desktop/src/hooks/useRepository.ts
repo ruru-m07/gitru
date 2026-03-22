@@ -12,6 +12,7 @@ import type {
   GetStatusResponse,
   HistoryGraphParams,
   HistoryGraphResponse,
+  PatchRange,
   RepositoryOrigin,
   UncommittedChangesStrategy,
 } from "@gitru/commands";
@@ -29,6 +30,9 @@ type QueryOptions<T> = Omit<
   UseQueryOptions<T | null, Error>,
   "queryKey" | "queryFn" | "enabled"
 >;
+
+type DiffScope = "Worktree" | "Staged" | "Unstaged";
+type PatchAction = "Stage" | "Unstage" | "Discard";
 
 /* #region // ? Query */
 export function useGetStatus(options?: QueryOptions<GetStatusResponse>) {
@@ -95,6 +99,7 @@ export function useGetDiff(
     stashReference?: string | null;
     commitHash?: string | null;
     parentIndex?: number;
+    diffScope?: DiffScope;
   },
   options?: QueryOptions<FileDiff>,
 ) {
@@ -104,6 +109,7 @@ export function useGetDiff(
   const fileNewPath = params?.fileNewPath ?? null;
   const status = params?.status ?? [];
   const parentIndex = params?.parentIndex ?? 1;
+  const diffScope = params?.diffScope ?? "Worktree";
   const sourceScope = stashReference
     ? `stash:${stashReference}`
     : commitHash
@@ -118,11 +124,13 @@ export function useGetDiff(
           fileNewPath: fileNewPath ?? undefined,
           status: status.length > 0 ? status : undefined,
           parentIndex,
+          diffScope,
         }) ?? [
           "repository",
           "none",
           "diff",
           sourceScope,
+          diffScope,
           filePath,
           fileNewPath ?? "",
           status.join(","),
@@ -141,6 +149,7 @@ export function useGetDiff(
         fileNewPath: fileNewPath ?? undefined,
         status: status.length > 0 ? status : undefined,
         parentIndex,
+        diffScope,
       });
 
       return result;
@@ -393,6 +402,40 @@ export function useGitUnstage() {
     },
     onError: (error: string) => {
       toast.error(error);
+    },
+  });
+
+  return mutation;
+}
+
+export function useGitApplyPatchBlock() {
+  const repo = appState.repository;
+
+  const mutation = useMutation({
+    mutationFn: async (params: {
+      filePath: string;
+      fileNewPath?: string | null;
+      diffScope: DiffScope;
+      additions: PatchRange;
+      deletions: PatchRange;
+      action: PatchAction;
+    }) => {
+      if (!repo) throw new Error("No repository selected");
+      return await repo.file.applyPatchBlock({
+        filePath: params.filePath,
+        fileNewPath: params.fileNewPath ?? undefined,
+        diffScope: params.diffScope,
+        additions: params.additions,
+        deletions: params.deletions,
+        action: params.action,
+      });
+    },
+    onSuccess: async () => {
+      await repo?.status.invalidate();
+      await repo?.diff.invalidateAll();
+    },
+    onError: (error: string) => {
+      toast.error(error || "Failed to apply patch");
     },
   });
 

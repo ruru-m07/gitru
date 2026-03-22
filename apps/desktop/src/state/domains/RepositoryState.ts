@@ -11,6 +11,7 @@ import {
   getPatchByFilePath,
   getStatus,
   gitAdd,
+  gitApplyPatchBlock,
   gitDiscard,
   gitFetch,
   gitRemove,
@@ -20,6 +21,7 @@ import {
   historyGraph,
   lastCommit,
   listBranches,
+  PatchRange,
   popCurrentBranchStash,
   publishBranch,
   pull,
@@ -32,6 +34,9 @@ import {
 import { QueryClient } from "@tanstack/react-query";
 import { StateDomain } from "../core/StateManager";
 import { StashState } from "./StashState";
+
+type DiffScope = "Worktree" | "Staged" | "Unstaged";
+type PatchAction = "Stage" | "Unstage" | "Discard";
 
 class DiffState extends StateDomain {
   private readonly baseKey: readonly string[];
@@ -49,6 +54,7 @@ class DiffState extends StateDomain {
       stashReference?: string;
       commitHash?: string;
       parentIndex?: number;
+      diffScope?: DiffScope;
     },
   ) {
     const sourceScope = options?.stashReference
@@ -56,9 +62,11 @@ class DiffState extends StateDomain {
       : options?.commitHash
         ? `commit:${options.commitHash}:p${options.parentIndex ?? 1}`
         : "worktree";
+    const diffScope = options?.diffScope ?? "Worktree";
     const queryKey = [
       ...this.baseKey,
       sourceScope,
+      diffScope,
       filePath,
       options?.fileNewPath ?? "",
       options?.status?.join(",") ?? "",
@@ -71,6 +79,7 @@ class DiffState extends StateDomain {
       stashReference: options?.stashReference,
       commitHash: options?.commitHash,
       parentIndex: options?.parentIndex,
+      diffScope,
     });
 
     this.queryClient.setQueryData(queryKey, data);
@@ -86,6 +95,7 @@ class DiffState extends StateDomain {
       stashReference?: string;
       commitHash?: string;
       parentIndex?: number;
+      diffScope?: DiffScope;
     },
   ) {
     const sourceScope = options?.stashReference
@@ -93,9 +103,11 @@ class DiffState extends StateDomain {
       : options?.commitHash
         ? `commit:${options.commitHash}:p${options.parentIndex ?? 1}`
         : "worktree";
+    const diffScope = options?.diffScope ?? "Worktree";
     return [
       ...this.baseKey,
       sourceScope,
+      diffScope,
       filePath,
       options?.fileNewPath ?? "",
       options?.status?.join(",") ?? "",
@@ -256,6 +268,25 @@ class FilesActionsState extends StateDomain {
     const result = await gitAdd(
       Array.isArray(target) ? { files: target } : { file: target },
     );
+    return result;
+  }
+
+  async applyPatchBlock(params: {
+    filePath: string;
+    fileNewPath?: string | null;
+    diffScope: DiffScope;
+    additions: PatchRange;
+    deletions: PatchRange;
+    action: PatchAction;
+  }) {
+    const result = await gitApplyPatchBlock({
+      filePath: params.filePath,
+      fileNewPath: params.fileNewPath ?? undefined,
+      diffScope: params.diffScope,
+      additions: params.additions,
+      deletions: params.deletions,
+      action: params.action,
+    });
     return result;
   }
 

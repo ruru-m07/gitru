@@ -1,9 +1,16 @@
-import { useTreeContext, useTreePath } from 'fumadocs-ui/contexts/tree';
-import { type FC, Fragment, type ReactNode, createContext, use, useMemo } from 'react';
-import type * as PageTree from 'fumadocs-core/page-tree';
-import type * as Base from './base';
-import { usePathname } from 'fumadocs-core/framework';
-import { isActive } from '../../../lib/urls';
+import { usePathname } from "fumadocs-core/framework";
+import type * as PageTree from "fumadocs-core/page-tree";
+import { useTreeContext, useTreePath } from "fumadocs-ui/contexts/tree";
+import {
+  createContext,
+  type FC,
+  Fragment,
+  type ReactNode,
+  use,
+  useMemo,
+} from "react";
+import { isActive } from "../../../lib/urls";
+import type * as Base from "./base";
 
 export interface SidebarPageTreeComponents {
   Item: FC<{ item: PageTree.Item }>;
@@ -20,12 +27,12 @@ const RendererContext = createContext<
 
 type InternalComponents = Pick<
   typeof Base,
-  | 'SidebarSeparator'
-  | 'SidebarFolder'
-  | 'SidebarFolderLink'
-  | 'SidebarFolderContent'
-  | 'SidebarFolderTrigger'
-  | 'SidebarItem'
+  | "SidebarSeparator"
+  | "SidebarFolder"
+  | "SidebarFolderLink"
+  | "SidebarFolderContent"
+  | "SidebarFolderTrigger"
+  | "SidebarItem"
 >;
 
 export function createPageTreeRenderer({
@@ -43,7 +50,7 @@ export function createPageTreeRenderer({
   function PageTreeNode({ node }: { node: PageTree.Node }) {
     const { Separator, Item, Folder, pathname } = use(RendererContext)!;
 
-    if (node.type === 'separator') {
+    if (node.type === "separator") {
       if (Separator) return <Separator item={node} />;
       return (
         <SidebarSeparator>
@@ -53,10 +60,11 @@ export function createPageTreeRenderer({
       );
     }
 
-    if (node.type === 'folder') {
+    if (node.type === "folder") {
       // eslint-disable-next-line react-hooks/rules-of-hooks -- assume node type unchanged
       const path = useTreePath();
-      if (Folder) return <Folder item={node}>{renderList(node.children)}</Folder>;
+      if (Folder)
+        return <Folder item={node}>{renderList(node.children)}</Folder>;
 
       return (
         <SidebarFolder
@@ -79,7 +87,9 @@ export function createPageTreeRenderer({
               {node.name}
             </SidebarFolderTrigger>
           )}
-          <SidebarFolderContent>{renderList(node.children)}</SidebarFolderContent>
+          <SidebarFolderContent>
+            {renderList(node.children)}
+          </SidebarFolderContent>
         </SidebarFolder>
       );
     }
@@ -100,7 +110,9 @@ export function createPageTreeRenderer({
   /**
    * Render sidebar items from page tree
    */
-  return function SidebarPageTree(components: Partial<SidebarPageTreeComponents>) {
+  return function SidebarPageTree(
+    components: Partial<SidebarPageTreeComponents>,
+  ) {
     const { Folder, Item, Separator } = components;
     const { root } = useTreeContext();
     const pathname = usePathname();

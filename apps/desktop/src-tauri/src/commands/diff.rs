@@ -1,10 +1,11 @@
 use git::core::get_services;
-use git::models::diff::FileDiff;
+use git::models::diff::{DiffScope, FileDiff};
 use git::models::status::FileStatusKind;
 use git::runner::validate_relative_path;
 use git::AppState;
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn get_patch_by_file_path(
     file_path: &str,
     file_new_path: Option<String>,
@@ -12,6 +13,7 @@ pub async fn get_patch_by_file_path(
     stash_reference: Option<String>,
     commit_hash: Option<String>,
     parent_index: Option<usize>,
+    diff_scope: Option<DiffScope>,
     state: tauri::State<'_, AppState>,
 ) -> Result<FileDiff, String> {
     validate_relative_path(file_path)?;
@@ -30,6 +32,7 @@ pub async fn get_patch_by_file_path(
             stash_reference.as_deref(),
             commit_hash.as_deref(),
             parent_index,
+            diff_scope,
         )
         .await
 }

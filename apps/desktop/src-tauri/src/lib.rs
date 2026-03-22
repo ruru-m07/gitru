@@ -79,6 +79,7 @@ pub fn run() {
             commands::actions::git_add,
             commands::actions::git_remove,
             commands::actions::git_discard,
+            commands::actions::git_apply_patch_block,
             commands::updater::check_for_update_by_channel,
             commands::updater::download_and_install_update_by_channel,
         ])

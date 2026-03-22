@@ -1,11 +1,9 @@
 "use client";
 
-import Waitlist from '@/components/waitlist'
+import Waitlist from "@/components/waitlist";
 
 const WaitlistPage = () => {
-  return (
-    <Waitlist />
-  )
-}
+  return <Waitlist />;
+};
 
-export default WaitlistPage
+export default WaitlistPage;
