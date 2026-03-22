@@ -1,10 +1,16 @@
-'use client';
-import { type ComponentProps, useMemo, useState } from 'react';
-import { Check, ChevronDown, Copy, ExternalLinkIcon, TextIcon } from 'lucide-react';
-import { cn } from '../../lib/cn';
-import { useCopyButton } from 'fumadocs-ui/utils/use-copy-button';
-import { Popover, PopoverTrigger, PopoverContent } from '../ui/popover';
-import { buttonVariants } from '../ui/button';
+"use client";
+import { useCopyButton } from "fumadocs-ui/utils/use-copy-button";
+import {
+  Check,
+  ChevronDown,
+  Copy,
+  ExternalLinkIcon,
+  TextIcon,
+} from "lucide-react";
+import { type ComponentProps, useMemo, useState } from "react";
+import { cn } from "../../lib/cn";
+import { buttonVariants } from "../ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 
 const cache = new Map<string, Promise<string>>();
 
@@ -14,7 +20,7 @@ const cache = new Map<string, Promise<string>>();
 export function MarkdownCopyButton({
   markdownUrl,
   ...props
-}: ComponentProps<'button'> & {
+}: ComponentProps<"button"> & {
   /**
    * A URL to fetch the raw Markdown/MDX content of page
    */
@@ -32,7 +38,7 @@ export function MarkdownCopyButton({
       cache.set(markdownUrl, promise);
       await navigator.clipboard.write([
         new ClipboardItem({
-          'text/plain': promise,
+          "text/plain": promise,
         }),
       ]);
     } finally {
@@ -47,9 +53,9 @@ export function MarkdownCopyButton({
       {...props}
       className={cn(
         buttonVariants({
-          color: 'secondary',
-          size: 'sm',
-          className: 'gap-2 [&_svg]:size-3.5 [&_svg]:text-fd-muted-foreground',
+          color: "secondary",
+          size: "sm",
+          className: "gap-2 [&_svg]:size-3.5 [&_svg]:text-fd-muted-foreground",
         }),
         props.className,
       )}
@@ -79,12 +85,13 @@ export function ViewOptionsPopover({
   githubUrl: string;
 }) {
   const items = useMemo(() => {
-    const pageUrl = typeof window !== 'undefined' ? window.location.href : 'loading';
+    const pageUrl =
+      typeof window !== "undefined" ? window.location.href : "loading";
     const q = `Read ${pageUrl}, I want to ask questions about it.`;
 
     return [
       {
-        title: 'Open in GitHub',
+        title: "Open in GitHub",
         href: githubUrl,
         icon: (
           <svg fill="currentColor" role="img" viewBox="0 0 24 24">
@@ -94,12 +101,12 @@ export function ViewOptionsPopover({
         ),
       },
       {
-        title: 'View as Markdown',
+        title: "View as Markdown",
         href: markdownUrl,
         icon: <TextIcon />,
       },
       {
-        title: 'Open in Scira AI',
+        title: "Open in Scira AI",
         href: `https://scira.ai/?${new URLSearchParams({
           q,
         })}`,
@@ -163,9 +170,9 @@ export function ViewOptionsPopover({
         ),
       },
       {
-        title: 'Open in ChatGPT',
+        title: "Open in ChatGPT",
         href: `https://chatgpt.com/?${new URLSearchParams({
-          hints: 'search',
+          hints: "search",
           q,
         })}`,
         icon: (
@@ -181,7 +188,7 @@ export function ViewOptionsPopover({
         ),
       },
       {
-        title: 'Open in Claude',
+        title: "Open in Claude",
         href: `https://claude.ai/new?${new URLSearchParams({
           q,
         })}`,
@@ -198,7 +205,7 @@ export function ViewOptionsPopover({
         ),
       },
       {
-        title: 'Open in Cursor',
+        title: "Open in Cursor",
         icon: (
           <svg
             fill="currentColor"
@@ -223,10 +230,10 @@ export function ViewOptionsPopover({
         {...props}
         className={cn(
           buttonVariants({
-            color: 'secondary',
-            size: 'sm',
+            color: "secondary",
+            size: "sm",
           }),
-          'gap-2 data-[state=open]:bg-fd-accent data-[state=open]:text-fd-accent-foreground',
+          "gap-2 data-[state=open]:bg-fd-accent data-[state=open]:text-fd-accent-foreground",
           props.className,
         )}
       >

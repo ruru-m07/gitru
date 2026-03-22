@@ -1,5 +1,10 @@
-'use client';
-import { ChevronDown, ExternalLink } from 'lucide-react';
+"use client";
+import { Presence } from "@radix-ui/react-presence";
+import { usePathname } from "fumadocs-core/framework";
+import Link, { type LinkProps } from "fumadocs-core/link";
+import { useMediaQuery } from "fumadocs-core/utils/use-media-query";
+import { useOnChange } from "fumadocs-core/utils/use-on-change";
+import { ChevronDown, ExternalLink } from "lucide-react";
 import {
   type ComponentProps,
   createContext,
@@ -11,21 +16,16 @@ import {
   useMemo,
   useRef,
   useState,
-} from 'react';
-import Link, { type LinkProps } from 'fumadocs-core/link';
-import { useOnChange } from 'fumadocs-core/utils/use-on-change';
-import { cn } from '../../../lib/cn';
+} from "react";
+import scrollIntoView from "scroll-into-view-if-needed";
+import { cn } from "../../../lib/cn";
 import {
   Collapsible,
   CollapsibleContent,
   type CollapsibleContentProps,
   CollapsibleTrigger,
   type CollapsibleTriggerProps,
-} from '../../ui/collapsible';
-import { useMediaQuery } from 'fumadocs-core/utils/use-media-query';
-import { Presence } from '@radix-ui/react-presence';
-import scrollIntoView from 'scroll-into-view-if-needed';
-import { usePathname } from 'fumadocs-core/framework';
+} from "../../ui/collapsible";
 
 interface SidebarContext {
   open: boolean;
@@ -59,7 +59,7 @@ export interface SidebarProviderProps {
   children?: ReactNode;
 }
 
-type Mode = 'drawer' | 'full';
+type Mode = "drawer" | "full";
 
 const SidebarContext = createContext<SidebarContext | null>(null);
 
@@ -79,7 +79,7 @@ export function SidebarProvider({
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
-  const mode: Mode = useMediaQuery('(width < 768px)') ? 'drawer' : 'full';
+  const mode: Mode = useMediaQuery("(width < 768px)") ? "drawer" : "full";
 
   useOnChange(pathname, () => {
     if (closeOnRedirect.current) {
@@ -113,7 +113,7 @@ export function useSidebar(): SidebarContext {
   const ctx = use(SidebarContext);
   if (!ctx)
     throw new Error(
-      'Missing SidebarContext, make sure you have wrapped the component in <DocsLayout /> and the context is available.',
+      "Missing SidebarContext, make sure you have wrapped the component in <DocsLayout /> and the context is available.",
     );
 
   return ctx;
@@ -128,7 +128,7 @@ export function useFolderDepth() {
 }
 
 export function SidebarContent({
-  mode: allowedMode = 'full',
+  mode: allowedMode = "full",
   children,
 }: {
   mode?: Mode | true;
@@ -155,7 +155,11 @@ export function SidebarContent({
     const element = ref.current;
     if (!element) return true;
 
-    return !collapsed || e.pointerType === 'touch' || element.getAnimations().length > 0;
+    return (
+      !collapsed ||
+      e.pointerType === "touch" ||
+      element.getAnimations().length > 0
+    );
   }
 
   return children({
@@ -174,35 +178,45 @@ export function SidebarContent({
       timerRef.current = window.setTimeout(
         () => setHover(false),
         // if mouse is leaving the viewport, add a close delay
-        Math.min(e.clientX, document.body.clientWidth - e.clientX) > 100 ? 0 : 500,
+        Math.min(e.clientX, document.body.clientWidth - e.clientX) > 100
+          ? 0
+          : 500,
       );
     },
   });
 }
 
-export function SidebarDrawerOverlay(props: ComponentProps<'div'>) {
+export function SidebarDrawerOverlay(props: ComponentProps<"div">) {
   const { open, setOpen, mode } = useSidebar();
 
-  if (mode !== 'drawer') return;
+  if (mode !== "drawer") return;
   return (
     <Presence present={open}>
-      <div data-state={open ? 'open' : 'closed'} onClick={() => setOpen(false)} {...props} />
+      <div
+        data-state={open ? "open" : "closed"}
+        onClick={() => setOpen(false)}
+        {...props}
+      />
     </Presence>
   );
 }
 
-export function SidebarDrawerContent({ className, children, ...props }: ComponentProps<'aside'>) {
+export function SidebarDrawerContent({
+  className,
+  children,
+  ...props
+}: ComponentProps<"aside">) {
   const { open, mode } = useSidebar();
-  const state = open ? 'open' : 'closed';
+  const state = open ? "open" : "closed";
 
-  if (mode !== 'drawer') return;
+  if (mode !== "drawer") return;
   return (
     <Presence present={open}>
       {({ present }) => (
         <aside
           id="nd-sidebar-mobile"
           data-state={state}
-          className={cn(!present && 'invisible', className)}
+          className={cn(!present && "invisible", className)}
           {...props}
         >
           {children}
@@ -212,7 +226,7 @@ export function SidebarDrawerContent({ className, children, ...props }: Componen
   );
 }
 
-export function SidebarSeparator(props: ComponentProps<'p'>) {
+export function SidebarSeparator(props: ComponentProps<"p">) {
   return <p {...props} />;
 }
 
@@ -244,7 +258,7 @@ export function SidebarFolder({
   active = false,
   children,
   ...props
-}: ComponentProps<'div'> & {
+}: ComponentProps<"div"> & {
   active?: boolean;
   defaultOpen?: boolean;
   collapsible?: boolean;
@@ -252,7 +266,9 @@ export function SidebarFolder({
   const { defaultOpenLevel } = useSidebar();
   const depth = useFolderDepth() + 1;
   const defaultOpen =
-    collapsible === false || active || (defaultOpenProp ?? defaultOpenLevel >= depth);
+    collapsible === false ||
+    active ||
+    (defaultOpenProp ?? defaultOpenLevel >= depth);
   const [open, setOpen] = useState(defaultOpen);
 
   useOnChange(defaultOpen, (v) => {
@@ -260,9 +276,17 @@ export function SidebarFolder({
   });
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} disabled={!collapsible} {...props}>
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      disabled={!collapsible}
+      {...props}
+    >
       <FolderContext
-        value={useMemo(() => ({ open, setOpen, depth, collapsible }), [collapsible, depth, open])}
+        value={useMemo(
+          () => ({ open, setOpen, depth, collapsible }),
+          [collapsible, depth, open],
+        )}
       >
         {children}
       </FolderContext>
@@ -270,7 +294,10 @@ export function SidebarFolder({
   );
 }
 
-export function SidebarFolderTrigger({ children, ...props }: CollapsibleTriggerProps) {
+export function SidebarFolderTrigger({
+  children,
+  ...props
+}: CollapsibleTriggerProps) {
   const { open, collapsible } = use(FolderContext)!;
 
   if (collapsible) {
@@ -279,13 +306,16 @@ export function SidebarFolderTrigger({ children, ...props }: CollapsibleTriggerP
         {children}
         <ChevronDown
           data-icon
-          className={cn('ms-auto transition-transform', !open && '-rotate-90 rtl:rotate-90')}
+          className={cn(
+            "ms-auto transition-transform",
+            !open && "-rotate-90 rtl:rotate-90",
+          )}
         />
       </CollapsibleTrigger>
     );
   }
 
-  return <div {...(props as ComponentProps<'div'>)}>{children}</div>;
+  return <div {...(props as ComponentProps<"div">)}>{children}</div>;
 }
 
 export function SidebarFolderLink({
@@ -308,7 +338,10 @@ export function SidebarFolderLink({
       onClick={(e) => {
         if (!collapsible) return;
 
-        if (e.target instanceof Element && e.target.matches('[data-icon], [data-icon] *')) {
+        if (
+          e.target instanceof Element &&
+          e.target.matches("[data-icon], [data-icon] *")
+        ) {
           setOpen(!open);
           e.preventDefault();
         } else {
@@ -322,7 +355,10 @@ export function SidebarFolderLink({
       {collapsible && (
         <ChevronDown
           data-icon
-          className={cn('ms-auto transition-transform', !open && '-rotate-90 rtl:rotate-90')}
+          className={cn(
+            "ms-auto transition-transform",
+            !open && "-rotate-90 rtl:rotate-90",
+          )}
         />
       )}
     </Link>
@@ -333,17 +369,24 @@ export function SidebarFolderContent(props: CollapsibleContentProps) {
   return <CollapsibleContent {...props}>{props.children}</CollapsibleContent>;
 }
 
-export function SidebarTrigger({ children, ...props }: ComponentProps<'button'>) {
+export function SidebarTrigger({
+  children,
+  ...props
+}: ComponentProps<"button">) {
   const { setOpen } = useSidebar();
 
   return (
-    <button aria-label="Open Sidebar" onClick={() => setOpen((prev) => !prev)} {...props}>
+    <button
+      aria-label="Open Sidebar"
+      onClick={() => setOpen((prev) => !prev)}
+      {...props}
+    >
       {children}
     </button>
   );
 }
 
-export function SidebarCollapseTrigger(props: ComponentProps<'button'>) {
+export function SidebarCollapseTrigger(props: ComponentProps<"button">) {
   const { collapsed, setCollapsed } = useSidebar();
 
   return (
@@ -364,14 +407,19 @@ export function SidebarCollapseTrigger(props: ComponentProps<'button'>) {
 /**
  * scroll to the element if `active` is true
  */
-export function useAutoScroll(active: boolean, ref: RefObject<HTMLElement | null>) {
+export function useAutoScroll(
+  active: boolean,
+  ref: RefObject<HTMLElement | null>,
+) {
   const { mode } = useSidebar();
 
   useEffect(() => {
     if (active && ref.current) {
       scrollIntoView(ref.current, {
-        boundary: document.getElementById(mode === 'drawer' ? 'nd-sidebar-mobile' : 'nd-sidebar'),
-        scrollMode: 'if-needed',
+        boundary: document.getElementById(
+          mode === "drawer" ? "nd-sidebar-mobile" : "nd-sidebar",
+        ),
+        scrollMode: "if-needed",
       });
     }
   }, [active, mode, ref]);

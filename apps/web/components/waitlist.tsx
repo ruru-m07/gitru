@@ -1,12 +1,11 @@
 "use client";
 
-
 import { motion } from "motion/react";
+import Link from "next/link";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
-import TypeWriter, { type TypeSegment, typeStyles } from "./type-writer";
-import Link from "next/link";
 import { cn } from "@/lib/cn";
+import TypeWriter, { type TypeSegment, typeStyles } from "./type-writer";
 
 // export const cat = `
 //       へ

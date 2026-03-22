@@ -1,5 +1,5 @@
-import Wordmark from '@/components/wordmark';
-import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared';
+import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
+import Wordmark from "@/components/wordmark";
 
 export const gitConfig = {
   user: "ruru-m07",
