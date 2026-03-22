@@ -311,12 +311,7 @@ impl ActionService {
             return Err("diff_scope=worktree is not supported for patch actions".to_string());
         }
 
-        let mut args = vec![
-            "diff",
-            "-U0",
-            "--no-color",
-            "--no-ext-diff",
-        ];
+        let mut args = vec!["diff", "-U0", "--no-color", "--no-ext-diff"];
         if diff_scope == DiffScope::Staged {
             args.push("--cached");
         }
@@ -370,11 +365,7 @@ fn build_patch_for_range(
     Ok(format!("{}\n", lines.join("\n")))
 }
 
-fn hunk_matches_range(
-    hunk: &ParsedHunk,
-    additions: &PatchRange,
-    deletions: &PatchRange,
-) -> bool {
+fn hunk_matches_range(hunk: &ParsedHunk, additions: &PatchRange, deletions: &PatchRange) -> bool {
     let add_count = additions.count;
     let del_count = deletions.count;
 
