@@ -1,38 +1,5 @@
 # Changelog
 
-## [0.0.0-beta.4](https://github.com/ruru-m07/gitru/compare/v0.0.0-beta.3...v0.0.0-beta.4) (2026-03-23)
-
-
-### Features
-
-* add -moz-user-select style for better text selection prevention in Firefox ([3ac961f](https://github.com/ruru-m07/gitru/commit/3ac961f23c156f10446f4ec56dbe8440dba4e5fa))
-* add -webkit-user-select to prevent text selection on hover ([2988780](https://github.com/ruru-m07/gitru/commit/2988780bdb835259b579bf35e2857260e4877dcd))
-* add repository cloning and initialization features ([ef6e036](https://github.com/ruru-m07/gitru/commit/ef6e036ea8c5409db8541289e97dbb45072ac319))
-* add user-select none style to prevent text selection ([1fb5b4a](https://github.com/ruru-m07/gitru/commit/1fb5b4a2e6324bf0b491187a5519ba57cc4c19e7))
-* **diff:** add language guessing utility and parsing enhancements ([65ea0c0](https://github.com/ruru-m07/gitru/commit/65ea0c03a54caaa44b8d22ee8d2ffd8070a8d20e))
-* **diff:** integrate @pierre/diffs for enhanced diff functionality and refactor related structures ([32a0a0c](https://github.com/ruru-m07/gitru/commit/32a0a0cc7f322ab047d77f8cf657c7c0264f2c83))
-* enhance UI and functionality in various components ([3e1be5f](https://github.com/ruru-m07/gitru/commit/3e1be5f7dd19a0ecb284128b44b79d1b873b0b2d))
-* enhance VirtualizedFileList with file selection and keyboard navigation features ([8f6043c](https://github.com/ruru-m07/gitru/commit/8f6043c652c3d7bfeea4ab4bb66c76b787102259))
-* implement apply patch per block of hunks ([11a5117](https://github.com/ruru-m07/gitru/commit/11a5117bb90813bc30f9c68f1584bbb33d44cfdc))
-* improve onboarding flow ([13905ae](https://github.com/ruru-m07/gitru/commit/13905ae2c8082e4ea1629779fe741e8c203f926b))
-* optimize file selection handling in useAppStore and VirtualizedFileList ([30f0a1b](https://github.com/ruru-m07/gitru/commit/30f0a1b00644bb3151e2d4e19c1b06572d1028c5))
-* remove unused SVG code from GitruBorderedSmallSmileSVG component ([b508a14](https://github.com/ruru-m07/gitru/commit/b508a14bbfc36d4dcff49f28c236c1b190efe861))
-* update bulk operation on working tree to filter specific files ([bf00b04](https://github.com/ruru-m07/gitru/commit/bf00b04500d6aceb57e684177aeafc4e8fe6a060))
-* update web UI and shader ([ce980ea](https://github.com/ruru-m07/gitru/commit/ce980eabc249191ab3aa0a269f881d2dc2b73fdf))
-
-
-### Bug Fixes
-
-* allow clippy warning for too many arguments in patch retrieval functions ([5e0c30d](https://github.com/ruru-m07/gitru/commit/5e0c30d13518164007b5b04601bc6c148c4c1f31))
-* **ci:** update frontend lint testing in same test workflow ([47050e4](https://github.com/ruru-m07/gitru/commit/47050e405027927918901d92f2e3c317ec0f9023))
-* minor style issues ([c1e58de](https://github.com/ruru-m07/gitru/commit/c1e58de2b5377b12a967d580eafe6ebd40af8ea4))
-* refine CSS user-select property and update default file names in DiffArea ([7bbe8f0](https://github.com/ruru-m07/gitru/commit/7bbe8f065ff2472cc7798ffb664ca523603a513b))
-
-
-### Miscellaneous Chores
-
-* release 0.0.0-beta.4 ([64db42b](https://github.com/ruru-m07/gitru/commit/64db42bb028d845dfccd605c8df694404c1e73ef))
-
 ## [0.0.0-beta.3](https://github.com/ruru-m07/gitru/compare/v0.0.0-beta.2...v0.0.0-beta.3) (2026-03-05)
 
 
