@@ -43,7 +43,8 @@ export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
   const pageData = hasBody(page.data)
     ? page.data
     : hasLoad(page.data)
-      ? await page.data.load()
+      ? // @ts-ignore
+        await page.data.load()
       : null;
   if (!pageData) notFound();
 
