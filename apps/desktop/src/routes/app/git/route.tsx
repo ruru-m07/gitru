@@ -281,7 +281,7 @@ function GitPageLayout() {
               className="flex-col group h-fit! items-start pt-4 pb-2 gap-2 w-64"
             >
               <BookCopy className="size-5.5" />
-              <span className="text-lg font-normal">
+              <span className="text-lg font-[450]">
                 Import Local Repository
               </span>
             </Button>
@@ -320,111 +320,113 @@ function GitPageLayout() {
               <span className="text-lg font-normal">Create New Repository</span>
             </Button>
           </div>
-          <div className="flex flex-col w-full">
-            <div className="px-[calc(--spacing(3)-1px)] w-full">
-              <div className="relative my-4">
-                <Separator />
-                <span className="font-normal absolute -top-3 left-6 -translate-x-1/2 bg-background px-2 text-sm text-muted-foreground">
-                  Recent
-                </span>
-              </div>
-            </div>
+          {repositories && repositories.length > 0 ? (
             <div className="flex flex-col w-full">
-              {repositories.map((repo) => {
-                const origin = parseOrigin(repo.origin || "");
+              <div className="px-[calc(--spacing(3)-1px)] w-full">
+                <div className="relative my-4">
+                  <Separator />
+                  <span className="font-normal absolute -top-3 left-6 -translate-x-1/2 bg-background px-2 text-sm text-muted-foreground">
+                    Recent
+                  </span>
+                </div>
+              </div>
+              <div className="flex flex-col w-full">
+                {repositories.map((repo) => {
+                  const origin = parseOrigin(repo.origin || "");
 
-                return (
-                  <Button
-                    variant={"ghost"}
-                    className={`py-4 px-[calc(--spacing(3)-1px)]`}
-                    size={"lg"}
-                    onClick={() => {
-                      setSelectedRepository(repo);
-                      setRepoSelectIsOpen(false);
-                    }}
-                  >
-                    <div className="flex w-full justify-between items-center gap-2 overflow-hidden">
-                      <div className="flex items-center gap-1 flex-1">
-                        <div className="text-muted-foreground flex items-center">
-                          {origin ? (
-                            <div>
-                              <Avatar className="rounded-sm size-4 -translate-y-px">
-                                <AvatarImage
-                                  alt="User"
-                                  src={origin.avatarUrl}
-                                />
-                                <AvatarFallback>{repo.origin}</AvatarFallback>
-                              </Avatar>
-                              <span className="ml-1.5">{origin?.owner}</span>
-                              <span className="ml-1">/</span>
-                            </div>
-                          ) : (
-                            <div>
-                              <span className="text-foreground">
-                                {repo.origin}
-                              </span>
-                            </div>
+                  return (
+                    <Button
+                      variant={"ghost"}
+                      className={`py-4 px-[calc(--spacing(3)-1px)]`}
+                      size={"lg"}
+                      onClick={() => {
+                        setSelectedRepository(repo);
+                        setRepoSelectIsOpen(false);
+                      }}
+                    >
+                      <div className="flex w-full justify-between items-center gap-2 overflow-hidden">
+                        <div className="flex items-center gap-1 flex-1">
+                          <div className="text-muted-foreground flex items-center">
+                            {origin ? (
+                              <div>
+                                <Avatar className="rounded-sm size-4 -translate-y-px">
+                                  <AvatarImage
+                                    alt="User"
+                                    src={origin.avatarUrl}
+                                  />
+                                  <AvatarFallback>{repo.origin}</AvatarFallback>
+                                </Avatar>
+                                <span className="ml-1.5">{origin?.owner}</span>
+                                <span className="ml-1">/</span>
+                              </div>
+                            ) : (
+                              <div>
+                                <span className="text-foreground">
+                                  {repo.origin}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                          <span className="font-medium text-sm text-left text-nowrap leading-none">
+                            {repo.name}
+                          </span>
+                          {repo?.has_uncommitted_changes && (
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <Badge variant={"warning"} className="ml-1" />
+                                }
+                              >
+                                <CircleDashed className="size-3" />
+                              </TooltipTrigger>
+                              <TooltipPopup className={"dark"}>
+                                Uncommitted changes
+                              </TooltipPopup>
+                            </Tooltip>
                           )}
                         </div>
-                        <span className="font-medium text-sm text-left text-nowrap leading-none">
-                          {repo.name}
-                        </span>
-                        {repo?.has_uncommitted_changes && (
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={
-                                <Badge variant={"warning"} className="ml-1" />
-                              }
+                        <div className="flex items-center gap-1 ml-1 min-w-0">
+                          {(repo.ahead_behind?.[0] || 0) > 0 ? (
+                            <Badge
+                              variant={"error"}
+                              className="ml-1 font-normal tabular-nums"
                             >
-                              <CircleDashed className="size-3" />
-                            </TooltipTrigger>
-                            <TooltipPopup className={"dark"}>
-                              Uncommitted changes
-                            </TooltipPopup>
-                          </Tooltip>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1 ml-1 min-w-0">
-                        {(repo.ahead_behind?.[0] || 0) > 0 ? (
+                              <span className="translate-y-px">
+                                <span className="ml-0.5 mr-0.75 h-fit">↑</span>
+                                {repo.ahead_behind?.[0] || 0}
+                              </span>
+                            </Badge>
+                          ) : null}
+                          {(repo.ahead_behind?.[1] || 0) > 0 ? (
+                            <Badge
+                              variant={"warning"}
+                              className="ml-1 font-normal flex items-center tabular-nums"
+                            >
+                              <span className="translate-y-px">
+                                <span className="ml-0.5 mr-0.75 h-fit">↓</span>
+                                {repo.ahead_behind?.[1] || 0}
+                              </span>
+                            </Badge>
+                          ) : null}
                           <Badge
-                            variant={"error"}
-                            className="ml-1 font-normal tabular-nums"
+                            variant={"info"}
+                            className="flex items-center min-w-0 flex-1"
                           >
-                            <span className="translate-y-px">
-                              <span className="ml-0.5 mr-0.75 h-fit">↑</span>
-                              {repo.ahead_behind?.[0] || 0}
+                            <span className="ml-0.5 mr-px h-fit">
+                              <GitBranch strokeWidth={2.5} className="size-3" />
+                            </span>
+                            <span className="truncate max-w-full min-w-0 font-[450]">
+                              {repo.current_branch}
                             </span>
                           </Badge>
-                        ) : null}
-                        {(repo.ahead_behind?.[1] || 0) > 0 ? (
-                          <Badge
-                            variant={"warning"}
-                            className="ml-1 font-normal flex items-center tabular-nums"
-                          >
-                            <span className="translate-y-px">
-                              <span className="ml-0.5 mr-0.75 h-fit">↓</span>
-                              {repo.ahead_behind?.[1] || 0}
-                            </span>
-                          </Badge>
-                        ) : null}
-                        <Badge
-                          variant={"info"}
-                          className="flex items-center min-w-0 flex-1"
-                        >
-                          <span className="ml-0.5 mr-px h-fit">
-                            <GitBranch strokeWidth={2.5} className="size-3" />
-                          </span>
-                          <span className="truncate max-w-full min-w-0 font-[450]">
-                            {repo.current_branch}
-                          </span>
-                        </Badge>
+                        </div>
                       </div>
-                    </div>
-                  </Button>
-                );
-              })}
+                    </Button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
       </PageLayout>
     );
@@ -1258,7 +1260,10 @@ const ListFileChanges = ({
                       ? {
                           path: selectedFileForList.filePath,
                           newPath: selectedFileForList.fileNewPath,
-                          scope: selectedFileForList.worktreeScope,
+                          scope:
+                            selectedFileForList.worktreeScope === "unstaged"
+                              ? "changes"
+                              : selectedFileForList.worktreeScope,
                         }
                       : undefined
                   }

@@ -54,11 +54,25 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+      
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: './crates -> target'
+
+      - name: Install frontend dependencies
+        run: bun install --frozen
+      
+      - name: Build frontend
+        run: bun run build --filter gitru
+
+      - name: Run frontend lint
+        run: bun run lint --filter gitru
 
       - name: Check formatting
         run: cargo fmt --all -- --check
