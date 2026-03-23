@@ -26,9 +26,18 @@ body {
   font-display: swap;
 }
 
+@font-face {
+  font-family: "Mona Sans Mono";
+  src: url("/font/MonaSansMonoVF[wght].woff2") format("woff2");
+  font-weight: 200 900;
+  font-stretch: 75% 125%;
+  font-style: normal italic;
+  font-display: swap;
+}
+
 :root {
   font-family: "Mona Sans", system-ui, sans-serif;
-  
+  --font-mono: "Mona Sans Mono";
   --radius: 0.65rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.141 0.005 285.823);

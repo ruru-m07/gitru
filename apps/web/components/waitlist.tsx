@@ -552,7 +552,7 @@ const Waitlist = () => {
     <div className="relative h-screen w-full flex items-center justify-center pt-20">
       <div className="max-w-[600px] h-full w-full mx-1">
         {!openNextStep ? (
-          <span className="mono whitespace-pre-wrap">
+          <span className="font-mono whitespace-pre-wrap">
             {bootingSegmentsText}
             {/* <TypeWriter
             segments={bootingSegments}
@@ -585,7 +585,7 @@ const Waitlist = () => {
         ) : (
           <>
             {carEyes ? (
-              <pre className="font-mono">
+              <pre className="mono">
                 {"      へ\n"}
                 {"  ૮  "}
                 <span className="text-primary">{">"}</span>
@@ -596,7 +596,7 @@ const Waitlist = () => {
                 {"乀(ˍ, ل ل"}
               </pre>
             ) : (
-              <pre className="font-mono">
+              <pre className="mono">
                 {"      へ\n"}
                 {"  ૮  "}
                 <span className="text-primary">{"o"}</span>
@@ -608,7 +608,7 @@ const Waitlist = () => {
               </pre>
             )}
             <br />
-            <span className="mono whitespace-pre-wrap">
+            <span className="font-mono whitespace-pre-wrap">
               <TypeWriter
                 segments={allSegments}
                 defaultSpeed={50}

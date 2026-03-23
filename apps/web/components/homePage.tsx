@@ -2,12 +2,17 @@
 
 import { motion } from "motion/react";
 import Link from "next/link";
-import BackgroundShader from "@/components/BackgroundShader";
+import { useTheme } from "next-themes";
+import { useEffect, useRef } from "react";
 
 export default function HomePage() {
+  const { setTheme } = useTheme();
+
+  setTheme("light");
+
   return (
     <div className="relative h-screen w-full flex md:items-center justify-center ">
-      <BackgroundShader />
+      <PlusMinusShader />
       <div className="absolute inset-0 pointer-events-none px-6 md:px-0">
         <div className="max-w-150 mx-auto py-1 mt-6 md:mt-20">
           <motion.img
@@ -67,21 +72,21 @@ export default function HomePage() {
               >
                 Waitlist
               </Link>
-              <p className="text-muted-foreground">·</p>
-              <Link
-                href="/roadmap"
-                className="hover:underline cursor-pointer hover:text-primary text-muted-foreground group-hover:text-foreground transition-colors"
-              >
-                Roadmap
-              </Link>
-              <p className="text-muted-foreground">·</p>
+              {/* <p className="text-muted-foreground">·</p>
               <Link
                 href="/progress"
                 className="hover:underline cursor-pointer hover:text-primary text-muted-foreground group-hover:text-foreground transition-colors"
               >
                 Progress
-              </Link>
-            </span>{" "}
+              </Link> */}
+              {/* <p className="text-muted-foreground">·</p>
+              <Link
+                href="/roadmap"
+                className="hover:underline cursor-pointer hover:text-primary text-muted-foreground group-hover:text-foreground transition-colors"
+              >
+                Roadmap
+              </Link> */}
+            </span>
             <a
               target="_blank"
               rel="noopener noreferrer"
@@ -106,5 +111,156 @@ export default function HomePage() {
         <div className="h-20" />
       </div>
     </div>
+  );
+}
+
+function PlusMinusShader() {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current!;
+    const gl = canvas.getContext("webgl")!;
+
+    function resize() {
+      canvas.width = canvas.clientWidth;
+      canvas.height = canvas.clientHeight;
+      gl.viewport(0, 0, canvas.width, canvas.height);
+    }
+
+    resize();
+    window.addEventListener("resize", resize);
+
+    const vertexShader = gl.createShader(gl.VERTEX_SHADER)!;
+    gl.shaderSource(
+      vertexShader,
+      `
+      attribute vec2 position;
+      void main() {
+        gl_Position = vec4(position, 0.0, 1.0);
+      }
+    `,
+    );
+    gl.compileShader(vertexShader);
+
+    const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER)!;
+    gl.shaderSource(
+      fragmentShader,
+      `
+    precision mediump float;
+
+    uniform vec2 u_resolution;
+    uniform float u_time;
+
+    float random(vec2 st) {
+      return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453);
+    }
+
+    float line(vec2 p, vec2 a, vec2 b, float width) {
+      vec2 pa = p - a;
+      vec2 ba = b - a;
+      float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+      float d = length(pa - ba * h);
+      return smoothstep(width, width - 0.01, d);
+    }
+
+    float drawPlus(vec2 uv) {
+      float h = line(uv, vec2(0.2, 0.5), vec2(0.8, 0.5), 0.15);
+      float v = line(uv, vec2(0.5, 0.2), vec2(0.5, 0.8), 0.15);
+      return max(h, v);
+    }
+
+    float drawMinus(vec2 uv) {
+      return line(uv, vec2(0.2, 0.5), vec2(0.8, 0.5), 0.15);
+    }
+
+    void main() {
+      vec2 uv = gl_FragCoord.xy / u_resolution.xy;
+
+      // ~5–10px cells
+      vec2 cellCount = u_resolution / 10.0;
+      vec2 gridUV = fract(uv * cellCount);
+      vec2 id = floor(uv * cellCount);
+
+      float r = random(id);
+
+      // sparse mask (static layout)
+      float mask = step(0.92, r);
+
+      // per-cell animation params
+      float phase = random(id * 2.1) * 6.2831;      // 0 → 2π
+      float speed = mix(0.5, 1.5, random(id * 3.7)); // random speed
+
+      float t = u_time * speed + phase;
+
+      // smooth fade in/out
+      float fade = smoothstep(0.35, 0.65, sin(t) * 0.5 + 0.5);
+
+      float shape = 0.0;
+
+      if (mask > 0.0) {
+        if (random(id * 1.3) > 0.5) {
+          shape = drawPlus(gridUV);
+        } else {
+          shape = drawMinus(gridUV);
+        }
+      }
+
+      // subtle whites
+      vec3 bg = vec3(1.0);
+      vec3 fg = vec3(0.94);
+
+      float finalAlpha = shape * mask * fade;
+
+      vec3 color = mix(bg, fg, finalAlpha);
+
+      gl_FragColor = vec4(color, 1.0);
+    }
+    `,
+    );
+    gl.compileShader(fragmentShader);
+
+    const program = gl.createProgram()!;
+    gl.attachShader(program, vertexShader);
+    gl.attachShader(program, fragmentShader);
+    gl.linkProgram(program);
+    gl.useProgram(program);
+
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
+      gl.STATIC_DRAW,
+    );
+
+    const position = gl.getAttribLocation(program, "position");
+    gl.enableVertexAttribArray(position);
+    gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+
+    const uResolution = gl.getUniformLocation(program, "u_resolution");
+    const uTime = gl.getUniformLocation(program, "u_time");
+
+    function render(time: number) {
+      gl.uniform2f(uResolution, canvas.width, canvas.height);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      gl.uniform1f(uTime, time * 0.001); // seconds
+      requestAnimationFrame(render);
+    }
+
+    render(0.0001);
+
+    return () => window.removeEventListener("resize", resize);
+  }, []);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "block",
+        background: "#fff",
+      }}
+    />
   );
 }

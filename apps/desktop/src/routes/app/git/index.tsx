@@ -570,7 +570,7 @@ const DiffArea = ({
       ) : (
         <>
           {imageAssetDiff ? <ImageDiffViewer diff={imageAssetDiff} /> : null}
-          {!isImageAssetDiff && parsedDiff && (
+          {!isImageAssetDiff && (
             <div className="max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*6))] h-full w-full flex overflow-auto select-auto">
               <WorkerPoolContextProvider
                 poolOptions={{
