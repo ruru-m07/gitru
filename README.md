@@ -1,1 +1,3 @@
-<img width="2970" height="2060" alt="Frame 2147238431" src="https://github.com/user-attachments/assets/9f1616ca-e7c4-42db-a19d-71dc57e71254" />
+<div align="center">
+  <img width="128" height="128" alt="image" src="https://github.com/user-attachments/assets/c9cfa4d8-58d6-4d3c-bdc3-87689c2bf761" />
+</div>
