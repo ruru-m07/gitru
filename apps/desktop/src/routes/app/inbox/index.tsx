@@ -1,6 +1,6 @@
-import { buttonVariants } from "@gitru/ui/components/button";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import PageLayout from "@/components/pageLayout";
+import { ResizableLayout } from "@/components/resizableLayout";
 
 export const Route = createFileRoute("/app/inbox/")({
   component: RouteComponent,
@@ -8,16 +8,16 @@ export const Route = createFileRoute("/app/inbox/")({
 
 function RouteComponent() {
   return (
-    <PageLayout className="p-4">
-      Cooking inbox
-      <Link
-        className={buttonVariants({
-          className: "mt-4 w-fit",
-        })}
-        to="/auth/onboarding"
+    <PageLayout className="overflow-y-auto">
+      <ResizableLayout
+        rightPannelClassName="h-full"
+        id="inbox-layout"
+        minWidth={350}
+        maxWidth={800}
       >
-        Go to Onboarding
-      </Link>
+        <div className="p-4">Left</div>
+        <div className="p-4">Right</div>
+      </ResizableLayout>
     </PageLayout>
   );
 }

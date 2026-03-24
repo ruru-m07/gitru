@@ -35,7 +35,7 @@ import {
   Undo,
   X,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 // import { useTheme } from "next-themes";
 import { ImageDiffViewer } from "@/components/diff/image/ImageDiffViewer";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
@@ -357,6 +357,10 @@ const DiffArea = ({
   commitHash: string | null;
   worktreeScope?: "staged" | "unstaged" | "conflicted";
 }) => {
+  const { diffStyle, overflow } = useDiffViewerSettings();
+  const [effectiveDiffStyle, setEffectiveDiffStyle] =
+    useState<typeof diffStyle>(diffStyle);
+
   const derivedScope =
     worktreeScope ??
     (status?.some((s) => String(s).startsWith("Index")) &&
@@ -380,7 +384,64 @@ const DiffArea = ({
           : "Worktree",
   });
 
-  const { diffStyle, overflow } = useDiffViewerSettings();
+  useEffect(() => {
+    let mounted = true;
+
+    const compute = () => {
+      try {
+        const layoutEl = document.querySelector(
+          '[data-layout-id="local-git-layout"]',
+        );
+        if (!layoutEl) {
+          return diffStyle;
+        }
+
+        const raw =
+          getComputedStyle(layoutEl).getPropertyValue("--right-width") || "";
+        const num = parseFloat(raw.trim().replace("px", ""));
+
+        if (!isNaN(num) && num < 750) {
+          return "unified" as typeof diffStyle;
+        }
+      } catch (e) {
+        console.error("[DiffArea] Error reading --right-width:", e);
+      }
+
+      return diffStyle;
+    };
+
+    const recompute = () => {
+      if (!mounted) return;
+      setEffectiveDiffStyle(compute());
+    };
+
+    recompute();
+
+    window.addEventListener("resize", recompute);
+
+    const layoutEl = document.querySelector(
+      '[data-layout-id="local-git-layout"]',
+    );
+    let mo: MutationObserver | undefined;
+
+    if (layoutEl) {
+      mo = new MutationObserver(() => {
+        console.log("[DiffArea] Layout element changed, recomputing...");
+        recompute();
+      });
+      mo.observe(layoutEl, {
+        attributes: true,
+        attributeFilter: ["style"],
+      });
+    }
+
+    return () => {
+      mounted = false;
+      window.removeEventListener("resize", recompute);
+      mo?.disconnect();
+    };
+  }, [diffStyle]);
+
   const { mutateAsync: applyPatchBlock } = useGitApplyPatchBlock();
 
   const source = stashReference ? "stash" : commitHash ? "history" : "worktree";
@@ -560,7 +621,7 @@ const DiffArea = ({
   return (
     <div
       className={cn(
-        "bg-background max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*6))] h-full w-full relative overflow-y-auto _bg-[color-mix(in_oklab,var(--color-secondary)_70%,var(--color-background))]",
+        "bg-secondary h-full max-h-[calc(var(--layout-height)---spacing(23.25))] w-full relative overflow-y-auto _bg-[color-mix(in_oklab,var(--color-secondary)_70%,var(--color-background))]",
       )}
     >
       {isLoading ? (
@@ -571,7 +632,7 @@ const DiffArea = ({
         <>
           {imageAssetDiff ? <ImageDiffViewer diff={imageAssetDiff} /> : null}
           {!isImageAssetDiff && (
-            <div className="max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*6))] h-full w-full flex overflow-auto select-auto">
+            <div className="max-h-[calc(var(--layout-height)---spacing(23.25))] h-full w-full flex overflow-auto select-auto">
               <WorkerPoolContextProvider
                 poolOptions={{
                   workerFactory: diffWorkerFactory,
@@ -598,7 +659,7 @@ const DiffArea = ({
                 }}
               >
                 <Virtualizer
-                  className="max-h-[calc(100vh-calc(var(--spacing)*14)-calc(var(--spacing)*9)-calc(var(--spacing)*12)-calc(var(--spacing)*6))] overflow-auto w-full"
+                  className="max-h-[calc(var(--layout-height)---spacing(23.25))] overflow-auto w-full"
                   contentClassName="space-y-4 w-full!"
                 >
                   <MultiFileDiff
@@ -613,11 +674,17 @@ const DiffArea = ({
                       name: diffData?.newFile?.name || "untitled.txt",
                     }}
                     options={{
-                      diffStyle,
+                      diffStyle: effectiveDiffStyle,
                       overflow,
                       disableFileHeader: true,
                       collapsedContextThreshold: 0,
                       lineHoverHighlight: "both",
+                      unsafeCSS: `
+                      [data-background] {
+                        --diffs-light-bg: var(--secondary) !important;
+                        --diffs-dark-bg: var(--secondary) !important;
+                      }
+                      `,
                     }}
                     lineAnnotations={blockAnnotations}
                     renderAnnotation={(annotation) => {
@@ -908,7 +975,7 @@ const SettingsPopoverContent = () => {
 
 const EmptyStateScreen = () => {
   return (
-    <div className="w-full flex justify-center h-full bg-background border-r">
+    <div className="w-full flex justify-center max-h-[calc(var(--layout-height)---spacing(14))] h-full bg-background border-r">
       <div className="w-full h-full flex flex-col items-center justify-center -mt-20">
         <GitruBorderedSVG />
         <div className="flex flex-col gap-0.5 w-60 select-none">

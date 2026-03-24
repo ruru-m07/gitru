@@ -52,11 +52,6 @@ import {
   MenuPopup,
   MenuTrigger,
 } from "@gitru/ui/components/menu";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "@gitru/ui/components/resizable";
 import { Separator } from "@gitru/ui/components/separator";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@gitru/ui/components/tabs";
 import {
@@ -93,7 +88,6 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useOnInView } from "react-intersection-observer";
-import { useDefaultLayout } from "react-resizable-panels";
 import { toast } from "sonner";
 import z from "zod";
 import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
@@ -101,6 +95,7 @@ import { getStatusIcon } from "@/components/getStatusIcon";
 import Logo from "@/components/logo";
 import PageLayout from "@/components/pageLayout";
 import { RepositoryListItem } from "@/components/RepositoryListItem";
+import { ResizableLayout } from "@/components/resizableLayout";
 import StatusBar from "@/components/statusBar";
 import { VirtualizedFileList } from "@/components/VirtualizedFileList";
 import {
@@ -496,26 +491,12 @@ const ResizableArea = () => {
     ? { duration: 0.06, ease: "linear" as const }
     : { duration: 0.14, ease: [0.32, 0.72, 0, 1] as const };
 
-  const { defaultLayout, onLayoutChanged } = useDefaultLayout({
-    id: "git-page-layout",
-    storage: localStorage,
-  });
-
   return (
     <div className="flex h-full">
-      <ResizablePanelGroup
-        defaultLayout={defaultLayout}
-        onLayoutChanged={onLayoutChanged}
-      >
-        <ResizablePanel
-          defaultSize={320}
-          minSize={270}
-          maxSize={800}
-          id="left"
-          className="flex flex-col h-full"
-        >
+      <ResizableLayout id="local-git-layout" minWidth={350} maxWidth={800}>
+        <div className="flex flex-col h-full">
           <ToggelPanelButton />
-          <div className="h-full border-t max-h-[calc(100vh-calc(var(--spacing)*31.5))] relative overflow-hidden">
+          <div className="h-full border-t max-h-[calc(var(--layout-height)---spacing(13.75))] relative overflow-hidden">
             {repoSelectIsOpen ? (
               <div className="absolute inset-0 bg-background">
                 <ListRepositories />
@@ -623,19 +604,20 @@ const ResizableArea = () => {
               </AnimatePresence>
             )}
           </div>
-        </ResizablePanel>
-        <ResizableHandle withHandle />
-        <ResizablePanel
-          className={cn("relative", repoSelectIsOpen && "cursor-pointer")}
+        </div>
+        <div
+          className={cn(
+            "relative w-(--right-width) h-(--layout-height)",
+            repoSelectIsOpen && "cursor-pointer",
+          )}
           onClick={() => setRepoSelectIsOpen(false)}
-          id="right"
         >
           {repoSelectIsOpen && (
             <div className="absolute inset-0 bg-background/40 z-10 w-full h-full backdrop-blur-[2px]"></div>
           )}
           <Outlet />
-        </ResizablePanel>
-      </ResizablePanelGroup>
+        </div>
+      </ResizableLayout>
     </div>
   );
 };

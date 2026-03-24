@@ -58,7 +58,7 @@ const Sidebar = () => {
   };
 
   return (
-    <div className="w-[--sidebar-width] flex flex-col justify-between items-center -mr-2 ml-0.5">
+    <div className="flex flex-col justify-between items-center -mr-2 ml-0.5">
       <div className="w-full _m-2 _mt-4 flex flex-col items-center">
         <TooltipProvider>
           <div className="flex flex-col items-center gap-1">
