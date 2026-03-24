@@ -51,3 +51,9 @@ input::-webkit-credentials-auto-fill-button {
   background-size: 20px 20px;
   background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
 }
+
+.dragging,
+.dragging * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
