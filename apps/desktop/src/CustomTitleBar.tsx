@@ -1,4 +1,5 @@
 import { type RepositoryInfo } from "@gitru/commands";
+import { Inbox } from "@gitru/icon";
 import {
   Avatar,
   AvatarFallback,
@@ -6,12 +7,9 @@ import {
 } from "@gitru/ui/components/avatar";
 import { Button } from "@gitru/ui/components/button";
 import { cn } from "@gitru/ui/lib/utils";
-import {
-  useCanGoBack,
-  useRouterState,
-} from "@tanstack/react-router";
+import { useCanGoBack, useRouterState } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, Plus, X } from "lucide-react";
-import { type MouseEvent, useEffect } from "react";
+import { Fragment, type MouseEvent, useEffect, useState } from "react";
 import { getAvatarByProvider } from "./lib/getAvatarByGitProvider";
 import { parseOrigin } from "./lib/parseOrigin";
 import { appState } from "./state";
@@ -38,9 +36,15 @@ const isEmbeddedRuntime = () => {
     return window.location.search.includes("embedded=1") ||
       window.location.search.includes("embedded=true")
       ? true
-      : (window as Window & { __TAURI_INTERNALS__?: { metadata?: { currentWebview?: { label?: string } } } })
-          .__TAURI_INTERNALS__?.metadata?.currentWebview?.label
-          ?.startsWith("tab-webview:") ?? false;
+      : ((
+          window as Window & {
+            __TAURI_INTERNALS__?: {
+              metadata?: { currentWebview?: { label?: string } };
+            };
+          }
+        ).__TAURI_INTERNALS__?.metadata?.currentWebview?.label?.startsWith(
+          "tab-webview:",
+        ) ?? false);
   } catch {
     return false;
   }
@@ -49,7 +53,9 @@ const isEmbeddedRuntime = () => {
 const getRoutePathname = (routePath: string) => {
   try {
     const origin =
-      typeof window !== "undefined" ? window.location.origin : "http://localhost";
+      typeof window !== "undefined"
+        ? window.location.origin
+        : "http://localhost";
     return new URL(routePath, origin).pathname;
   } catch {
     return routePath.split("?")[0].split("#")[0];
@@ -173,6 +179,7 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
 
   const tabs = useAppStore((state) => state.tabs);
   const activeTabId = useAppStore((state) => state.activeTabId);
+  const [hoveredTabId, setHoveredTabId] = useState<string | null>(null);
   const ensureActiveTab = useAppStore((state) => state.ensureActiveTab);
   const createTab = useAppStore((state) => state.createTab);
   const activateTab = useAppStore((state) => state.activateTab);
@@ -300,7 +307,6 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
     if (!wasActive) {
       return;
     }
-
   };
 
   if (restrictedPaths.includes(pathname)) {
@@ -345,99 +351,142 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
           </Button>
         </div>
         <div className="-translate-x-2 flex w-fit items-center h-[calc(var(--main-custom-header-height)-0px)]">
-          <div className="ml-2 flex min-w-0 flex-1 items-center gap-1 h-full pt-1">
-            {tabs.map((tab) => {
+          <div className="relative ml-2 flex min-w-0 flex-1 items-center gap-1 h-full pt-1">
+            {tabs.map((tab, index) => {
               const isActive = tab.id === activeTabId;
+              const isHovered = tab.id === hoveredTabId;
               const tabRepository = tab.repositoryId
                 ? (repositories.find((repo) => repo.id === tab.repositoryId) ??
                   null)
                 : null;
               const showGitTitle = isGitRoute(tab.routePath);
+              const nextTab = tabs[index + 1] ?? null;
+              const shouldHideSeparator =
+                !!nextTab &&
+                (isActive ||
+                  isHovered ||
+                  nextTab.id === activeTabId ||
+                  nextTab.id === hoveredTabId);
 
               return (
-                <div key={tab.id} className="relative flex items-end h-full">
-                  {isActive && (
-                    <svg
-                      width="15"
-                      height="15"
-                      viewBox="0 0 15 15"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="filter-[drop-shadow(-1px_-1px_1px_#00000011)] absolute -left-3.75 bottom-0"
-                    >
-                      <path
-                        d="M15 15H0C8.28427 15 15 8.28427 15 0V15Z"
-                        fill="var(--background)"
-                      />
-                    </svg>
-                  )}
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => {
-                      void handleActivateTab(tab.id);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
+                <div key={tab.id} className="relative h-full">
+                  <div className="relative flex items-end h-full">
+                    {isActive && (
+                      <svg
+                        width="15"
+                        height="15"
+                        viewBox="0 0 15 15"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="filter-[drop-shadow(-1px_-1px_1px_#00000011)] absolute -left-3.75 bottom-0"
+                      >
+                        <path
+                          d="M15 15H0C8.28427 15 15 8.28427 15 0V15Z"
+                          fill="var(--background)"
+                        />
+                      </svg>
+                    )}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
                         void handleActivateTab(tab.id);
-                      }
-                    }}
-                    className={cn(
-                      "group flex h-full min-w-44 max-w-72 shrink-0 items-center gap-1 pl-2.5 pr-1 text-sm rounded-t-2xl",
-                      isActive
-                        ? "bg-background flex items-center [box-shadow:-1px_-1px_1px_0px_#00000011,1px_-1px_1px_0px_#00000011]"
-                        : "bg-transparent hover:bg-foreground/10 text-muted-foreground rounded-xl",
-                    )}
-                  >
-                    {showGitTitle ? (
-                      renderTitleForGitPage({
-                        repository: tabRepository,
-                        isActive,
-                      })
-                    ) : (
-                      <span className="truncate font-medium">{tab.title}</span>
-                    )}
-                    <Button
-                      size={"icon-xs"}
-                      variant={"ghost"}
-                      className={cn(
-                        "ms-auto h-5 w-5 rounded-full",
-                        isActive
-                          ? "text-muted-foreground hover:text-foreground"
-                          : "text-muted-foreground/70",
-                      )}
-                      onClick={(event) => {
-                        void handleCloseTab(tab.id, event);
                       }}
+                      onMouseEnter={() => {
+                        setHoveredTabId(tab.id);
+                      }}
+                      onMouseLeave={() => {
+                        setHoveredTabId((currentHoveredTabId) =>
+                          currentHoveredTabId === tab.id
+                            ? null
+                            : currentHoveredTabId,
+                        );
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          void handleActivateTab(tab.id);
+                        }
+                      }}
+                      className={cn(
+                        "group flex h-full min-w-44 max-w-72 shrink-0 items-center gap-1 text-sm rounded-t-2xl pb-1",
+                        isActive
+                          ? "bg-background flex items-center [box-shadow:-1px_-1px_1px_0px_#00000011,1px_-1px_1px_0px_#00000011]"
+                          : "bg-transparent text-muted-foreground",
+                      )}
                     >
-                      <X size={12} aria-hidden="true" />
-                    </Button>
+                      <div
+                        className={cn(
+                          "flex max-w-full w-full items-center gap-1 h-full pl-1.5 pr-1 rounded-[12px]",
+                          !isActive && "hover:bg-foreground/10",
+                        )}
+                      >
+                        {showGitTitle ? (
+                          renderTitleForGitPage({
+                            repository: tabRepository,
+                            isActive,
+                          })
+                        ) : tab.routePath === "/app/inbox" ? (
+                          <div className="flex items-center gap-1.5 font-medium">
+                            <Inbox className={"size-4.5"} />
+                            {tab.title}
+                          </div>
+                        ) : (
+                          <span className="truncate font-medium">
+                            {tab.title}
+                          </span>
+                        )}
+                        <Button
+                          size={"icon-xs"}
+                          variant={"ghost"}
+                          className={cn(
+                            "ms-auto h-5 w-5 rounded-full",
+                            isActive
+                              ? "text-muted-foreground hover:text-foreground"
+                              : "text-muted-foreground/70",
+                          )}
+                          onClick={(event) => {
+                            void handleCloseTab(tab.id, event);
+                          }}
+                        >
+                          <X size={12} aria-hidden="true" />
+                        </Button>
+                      </div>
+                    </div>
+                    {isActive && (
+                      <svg
+                        width="15"
+                        height="15"
+                        viewBox="0 0 15 15"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="filter-[drop-shadow(1px_-1px_1px_#00000011)] absolute -right-3.75 bottom-0"
+                      >
+                        <path
+                          d="M0 15L6.5568e-07 0C2.93563e-07 8.28427 6.71573 15 15 15L0 15Z"
+                          fill="var(--background)"
+                        />
+                      </svg>
+                    )}
                   </div>
-                  {isActive && (
-                    <svg
-                      width="15"
-                      height="15"
-                      viewBox="0 0 15 15"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="filter-[drop-shadow(1px_-1px_1px_#00000011)] absolute -right-3.75 bottom-0"
-                    >
-                      <path
-                        d="M0 15L6.5568e-07 0C2.93563e-07 8.28427 6.71573 15 15 15L0 15Z"
-                        fill="var(--background)"
-                      />
-                    </svg>
-                  )}
+                  {nextTab ? (
+                    <div
+                      aria-hidden="true"
+                      className={cn(
+                        "absolute -right-px bottom-2",
+                        "w-0.5 h-4 bg-foreground/5 mb-1 transition-opacity",
+                        shouldHideSeparator && "opacity-0",
+                      )}
+                    />
+                  ) : null}
                 </div>
               );
             })}
-            <div className="w-0.5 h-4 bg-foreground/10" />
 
             <Button
               size={"icon-sm"}
               variant={"ghost"}
-              className="_-translate-y-0.5"
+              className="mb-1"
               onClick={() => {
                 void handleCreateTab();
               }}
