@@ -8,7 +8,21 @@ class AppState {
   readonly repositories = repositories;
 
   get repository(): RepositoryState | null {
-    const selectedRepository = useAppStore.getState().selectedRepository;
+    const state = useAppStore.getState();
+    const runtimeId = state.activeSessionId ?? state.activeTabId;
+    const selectedRepository = runtimeId
+      ? (() => {
+          const repositoryId =
+            state.sessionsById[runtimeId]?.repositoryId ?? null;
+          if (!repositoryId) {
+            return null;
+          }
+
+          return (
+            state.repositories.find((repo) => repo.id === repositoryId) ?? null
+          );
+        })()
+      : null;
     const contextId = getActiveRepoContextId();
 
     if (!selectedRepository?.path || !contextId) {

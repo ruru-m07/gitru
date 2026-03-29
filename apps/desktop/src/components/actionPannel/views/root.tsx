@@ -33,7 +33,7 @@ import {
   useGitPull,
   useGitPush,
 } from "@/hooks";
-import { useAppStore } from "@/store/useAppStore";
+import { selectActiveRepositoryPath, useAppStore } from "@/store/useAppStore";
 
 export interface ActionItem {
   id: string;
@@ -71,7 +71,7 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
   const { data: aheadBehind } = useGetStatusAheadBehind();
 
   const tanstackNavigate = useNavigate();
-  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const activeRepositoryPath = useAppStore(selectActiveRepositoryPath);
   const setGitViewStateForRepo = useAppStore(
     (state) => state.setGitViewStateForRepo,
   );
@@ -146,19 +146,27 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             redirect: "/app/git",
           },
           {
+            id: "tab-switch-stress",
+            label: "Tab Switch Stress Test",
+            shortcut: ["G", "T"],
+            iconKey: "localGit",
+            keywords: ["tab", "stress", "benchmark", "latency"],
+            redirect: "/app/git?tabStress=1",
+          },
+          {
             id: "stash-changes",
             label: "Stashed Changes",
             shortcut: ["G", "S"],
             iconKey: "localGit",
             keywords: ["stash", "stashed", "restore"],
             async onCallBack() {
-              if (selectedRepository?.path) {
+              if (activeRepositoryPath) {
                 setGitViewStateForRepo(
                   {
                     leftPanelView: "stash",
                     stashViewMode: "all",
                   },
-                  selectedRepository.path,
+                  activeRepositoryPath,
                 );
               }
 

@@ -2,12 +2,22 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
+  "remote": {
+    "urls": ["http://localhost:1420/*", "http://127.0.0.1:1420/*"]
+  },
   "windows": ["*"],
   "permissions": [
     "core:default",
     "opener:default",
     "core:window:default",
     "core:window:allow-start-dragging",
+    "core:webview:allow-create-webview",
+    "core:webview:allow-webview-show",
+    "core:webview:allow-webview-hide",
+    "core:webview:allow-webview-close",
+    "core:webview:allow-set-webview-position",
+    "core:webview:allow-set-webview-size",
+    "core:webview:allow-set-webview-focus",
     "core:webview:allow-set-webview-zoom",
     "store:default",
     "process:allow-restart",

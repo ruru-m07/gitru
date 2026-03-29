@@ -4,14 +4,26 @@ import { useAppStore } from "@/store/useAppStore";
 import { appState } from "./index";
 
 export function useActiveRepositoryState() {
-  const selectedRepository = useAppStore((state) => state.selectedRepository);
-  const { contextId } = useTabContext();
-
-  return useMemo(() => {
-    if (!selectedRepository?.path || !contextId) {
+  const activeRepository = useAppStore((state) => {
+    const runtimeId = state.activeSessionId ?? state.activeTabId;
+    if (!runtimeId) {
       return null;
     }
 
-    return appState.repositories.for(selectedRepository.path, contextId);
-  }, [selectedRepository?.path, contextId]);
+    const repositoryId = state.sessionsById[runtimeId]?.repositoryId ?? null;
+    if (!repositoryId) {
+      return null;
+    }
+
+    return state.repositories.find((repo) => repo.id === repositoryId) ?? null;
+  });
+  const { contextId } = useTabContext();
+
+  return useMemo(() => {
+    if (!activeRepository?.path || !contextId) {
+      return null;
+    }
+
+    return appState.repositories.for(activeRepository.path, contextId);
+  }, [activeRepository?.path, contextId]);
 }

@@ -1,6 +1,6 @@
 import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { ThemeProvider as NextThemesProvider } from "next-themes";
-import { StrictMode } from "react";
+import { StrictMode, useEffect, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import { scan } from "react-scan";
 import { Toaster } from "sonner";
@@ -12,10 +12,18 @@ import "./app.css";
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { TabContextProvider } from "./context/TabContextProvider";
 import { appState } from "./state";
 import { initializeQueryFocusBridge } from "./state/core/StateManager";
-import { useAppStore } from "./store/useAppStore";
+import {
+  type GitViewState,
+  type RepoFileSelectionState,
+  selectActiveRepositoryPath,
+  selectActiveSessionRepoKey,
+  useAppStore,
+  type WorkspaceSessionSnapshot,
+} from "./store/useAppStore";
 
 const router = createRouter({
   routeTree,
@@ -26,9 +34,177 @@ const router = createRouter({
   defaultPreloadStaleTime: 0,
 });
 
-router.subscribe("onResolved", (state) => {
-  useLastPageStore.getState().setLastPage(state.toLocation.href);
+const isTauriRuntime = () =>
+  typeof window !== "undefined" &&
+  typeof (window as Window & { __TAURI_INTERNALS__?: unknown })
+    .__TAURI_INTERNALS__ !== "undefined";
+
+const isEmbeddedRuntime = () => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const hasEmbeddedFlag =
+    searchParams.get("embedded") === "1" ||
+    searchParams.get("embedded") === "true";
+
+  if (hasEmbeddedFlag) {
+    return true;
+  }
+
+  if (!isTauriRuntime()) {
+    return false;
+  }
+
+  try {
+    const label = getCurrentWebview().label;
+    return label.startsWith("tab-webview:");
+  } catch {
+    return false;
+  }
+};
+
+const enableDevDiagnostics = import.meta.env.DEV && isEmbeddedRuntime();
+
+const TAB_RUNTIME_STATE_EVENT = "gitru:tab-runtime-state";
+const TAB_RUNTIME_READY_EVENT = "gitru:tab-runtime-ready";
+const TAB_RUNTIME_REQUEST_SYNC_EVENT = "gitru:tab-runtime-request-sync";
+const TAB_WEBVIEW_LABEL_PREFIX = "tab-webview:";
+const HOST_SHELL_ROUTE = "/app";
+const SNAPSHOT_EMIT_DEBOUNCE_MS = 180;
+
+const DEFAULT_STASH_STATUS_FILTERS: GitViewState["stashStatusFilters"] = {
+  modified: true,
+  renamed: true,
+  deleted: true,
+  conflicted: true,
+  untracked: true,
+};
+
+const cloneRuntimeSelectionState = (
+  value: RepoFileSelectionState | null | undefined,
+): RepoFileSelectionState => ({
+  worktree: value?.worktree ?? null,
+  stashByReference: { ...(value?.stashByReference ?? {}) },
+  historyByCommit: { ...(value?.historyByCommit ?? {}) },
 });
+
+const cloneRuntimeGitViewState = (
+  value: GitViewState | null | undefined,
+): GitViewState => ({
+  leftPanelView:
+    value?.leftPanelView === "stash" || value?.leftPanelView === "history"
+      ? value.leftPanelView
+      : "changes",
+  changesTab: value?.changesTab === "history" ? "history" : "changes",
+  stashViewMode: value?.stashViewMode === "all" ? "all" : "branch",
+  selectedStashReference: value?.selectedStashReference ?? null,
+  selectedHistoryCommitHash: value?.selectedHistoryCommitHash ?? null,
+  stashStatusFilters: {
+    ...DEFAULT_STASH_STATUS_FILTERS,
+    ...(value?.stashStatusFilters ?? {}),
+  },
+});
+
+const sanitizeTabWebviewLabel = (tabId: string) =>
+  `${TAB_WEBVIEW_LABEL_PREFIX}${tabId.replace(/[^a-zA-Z0-9\-/:_]/g, "_")}`;
+
+const isDesktopHostRuntime = () => isTauriRuntime() && !isEmbeddedRuntime();
+
+type TabRuntimeStatePayload = {
+  tabId: string;
+  routePath?: string;
+  repositoryId?: string | null;
+  title?: string;
+  snapshot?: WorkspaceSessionSnapshot | null;
+};
+
+type TabRuntimeReadyPayload = {
+  tabId?: string;
+};
+
+const getRoutePathname = (routePath: string) => {
+  try {
+    const origin =
+      typeof window !== "undefined"
+        ? window.location.origin
+        : "http://localhost";
+    return new URL(routePath, origin).pathname;
+  } catch {
+    return routePath.split("?")[0].split("#")[0];
+  }
+};
+
+const normalizeWorkspaceRoutePath = (routePath: string) => {
+  const pathname = getRoutePathname(routePath);
+
+  if (pathname === "/app" || pathname === "/app/") {
+    return "/app/git";
+  }
+
+  return routePath;
+};
+
+const stripEmbeddedQueryFromRoutePath = (routePath: string) => {
+  try {
+    const url = new URL(routePath, window.location.origin);
+    url.searchParams.delete("embedded");
+    const query = url.searchParams.toString();
+    return `${url.pathname}${query ? `?${query}` : ""}${url.hash}`;
+  } catch {
+    const [pathPart, rawQuery = ""] = routePath.split("?");
+    const params = new URLSearchParams(rawQuery);
+    params.delete("embedded");
+    const query = params.toString();
+    return `${pathPart}${query ? `?${query}` : ""}`;
+  }
+};
+
+const getTabTitleFromRoute = (routePath: string) => {
+  const pathname = getRoutePathname(routePath);
+
+  if (pathname.startsWith("/app/")) {
+    const segment = pathname.slice("/app/".length).split("/")[0];
+    if (segment) {
+      return segment.charAt(0).toUpperCase() + segment.slice(1);
+    }
+  }
+
+  return "Workspace";
+};
+
+const isGitRoutePath = (routePath: string) =>
+  getRoutePathname(routePath).startsWith("/app/git");
+
+const getEmbeddedTabId = () => {
+  if (!isEmbeddedRuntime()) {
+    return null;
+  }
+
+  try {
+    const label = getCurrentWebview().label;
+    return label.startsWith(TAB_WEBVIEW_LABEL_PREFIX)
+      ? label.slice(TAB_WEBVIEW_LABEL_PREFIX.length)
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+if (!isEmbeddedRuntime()) {
+  router.subscribe("onResolved", (state) => {
+    if (
+      isDesktopHostRuntime() &&
+      getRoutePathname(state.toLocation.href).startsWith("/app")
+    ) {
+      useLastPageStore.getState().setLastPage(HOST_SHELL_ROUTE);
+      return;
+    }
+
+    useLastPageStore.getState().setLastPage(state.toLocation.href);
+  });
+}
 
 declare module "@tanstack/react-router" {
   interface Register {
@@ -37,9 +213,52 @@ declare module "@tanstack/react-router" {
 }
 
 async function redirectToLastPage() {
+  if (isEmbeddedRuntime()) return;
+
+  if (isDesktopHostRuntime()) {
+    const currentPathIsApp = window.location.pathname.startsWith("/app");
+    const alreadyAtHostShell =
+      window.location.pathname === HOST_SHELL_ROUTE &&
+      window.location.search.length === 0 &&
+      window.location.hash.length === 0;
+
+    if (currentPathIsApp && !alreadyAtHostShell) {
+      await router.navigate({ to: HOST_SHELL_ROUTE });
+      return;
+    }
+  }
+
   const { lastPage } = useLastPageStore.getState();
   if (!lastPage) return;
   if (lastPage === "/") return;
+
+  const hasEmbeddedFlag = (() => {
+    try {
+      const url = new URL(lastPage, window.location.origin);
+      const embedded = url.searchParams.get("embedded");
+      return embedded === "1" || embedded === "true";
+    } catch {
+      return (
+        lastPage.includes("embedded=1") || lastPage.includes("embedded=true")
+      );
+    }
+  })();
+
+  if (hasEmbeddedFlag) {
+    return;
+  }
+
+  if (isDesktopHostRuntime() && getRoutePathname(lastPage).startsWith("/app")) {
+    if (
+      window.location.pathname !== HOST_SHELL_ROUTE ||
+      window.location.search.length > 0 ||
+      window.location.hash.length > 0
+    ) {
+      await router.navigate({ to: HOST_SHELL_ROUTE });
+    }
+    return;
+  }
+
   if (window.location.pathname + window.location.search !== lastPage) {
     await router.navigate({ to: lastPage });
   }
@@ -53,10 +272,361 @@ if (rootElement && !rootElement.innerHTML) {
   const root = ReactDOM.createRoot(rootElement);
 
   const AppRouter = () => {
+    const selectedRepository = useAppStore((state) => state.selectedRepository);
+    const setEmbeddedRuntimeSession = useAppStore(
+      (state) => state.setEmbeddedRuntimeSession,
+    );
+    const syncTabMetadata = useAppStore((state) => state.syncTabMetadata);
     const activeTabId = useAppStore((state) => state.activeTabId);
+    const activeRuntimeId = useAppStore(
+      (state) => state.activeSessionId ?? state.activeTabId,
+    );
+    const activeRepositoryPath = useAppStore(selectActiveRepositoryPath);
+    const activeRepoStateKey = useAppStore(selectActiveSessionRepoKey);
+    const activeGitViewState = useAppStore((state) =>
+      activeRepoStateKey ? state.gitViewByRepo[activeRepoStateKey] : null,
+    );
+    const activeSelectionState = useAppStore((state) =>
+      activeRepoStateKey ? state.selectionByRepo[activeRepoStateKey] : null,
+    );
+    const mainWindowView = useAppStore((state) => state.mainWindowView);
+    const captureActiveSessionSnapshot = useAppStore(
+      (state) => state.captureActiveSessionSnapshot,
+    );
+    const embeddedRuntime = isEmbeddedRuntime();
+    const embeddedTabId = getEmbeddedTabId();
+    const embeddedRuntimeSessionExists = useAppStore((state) => {
+      if (!embeddedTabId) {
+        return false;
+      }
+
+      return (
+        Boolean(state.sessionsById[embeddedTabId]) ||
+        state.tabs.some((tab) => tab.id === embeddedTabId)
+      );
+    });
+    const isEmbeddedRuntimeBound = useAppStore((state) => {
+      if (!embeddedTabId) {
+        return false;
+      }
+
+      const runtimeId = state.activeSessionId ?? state.activeTabId;
+      return runtimeId === embeddedTabId;
+    });
+    const emitRuntimeStateRef = useRef<((href: string) => void) | null>(null);
+    const snapshotEmitTimerRef = useRef<number | null>(null);
+
+    useEffect(() => {
+      if (
+        !embeddedRuntime ||
+        !embeddedTabId ||
+        !embeddedRuntimeSessionExists ||
+        isEmbeddedRuntimeBound
+      ) {
+        return;
+      }
+
+      setEmbeddedRuntimeSession(embeddedTabId);
+    }, [
+      embeddedRuntime,
+      embeddedTabId,
+      embeddedRuntimeSessionExists,
+      isEmbeddedRuntimeBound,
+      setEmbeddedRuntimeSession,
+    ]);
+
+    useEffect(() => {
+      if (embeddedRuntime) {
+        return;
+      }
+
+      captureActiveSessionSnapshot();
+    }, [
+      captureActiveSessionSnapshot,
+      embeddedRuntime,
+      activeRuntimeId,
+      activeRepoStateKey,
+      activeRepositoryPath,
+      activeGitViewState,
+      activeSelectionState,
+      mainWindowView,
+    ]);
+
+    useEffect(() => {
+      if (embeddedRuntime) {
+        return;
+      }
+
+      const captureSnapshot = () => {
+        captureActiveSessionSnapshot();
+      };
+
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === "hidden") {
+          captureSnapshot();
+        }
+      };
+
+      window.addEventListener("beforeunload", captureSnapshot);
+      window.addEventListener("pagehide", captureSnapshot);
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+
+      return () => {
+        window.removeEventListener("beforeunload", captureSnapshot);
+        window.removeEventListener("pagehide", captureSnapshot);
+        document.removeEventListener(
+          "visibilitychange",
+          handleVisibilityChange,
+        );
+      };
+    }, [captureActiveSessionSnapshot, embeddedRuntime]);
+
+    useEffect(() => {
+      if (
+        !embeddedTabId ||
+        !isTauriRuntime() ||
+        !embeddedRuntimeSessionExists
+      ) {
+        emitRuntimeStateRef.current = null;
+        return;
+      }
+
+      const emitRuntimeState = (href: string) => {
+        const runtimeState = useAppStore.getState();
+        const runtimeId =
+          runtimeState.activeSessionId ?? runtimeState.activeTabId;
+
+        if (runtimeId !== embeddedTabId) {
+          return;
+        }
+
+        const runtimeSession = runtimeState.sessionsById[runtimeId] ?? null;
+        const runtimeRepositoryId = runtimeId
+          ? (runtimeSession?.repositoryId ?? null)
+          : null;
+        const runtimeRepository = runtimeRepositoryId
+          ? (runtimeState.repositories.find(
+              (repo) => repo.id === runtimeRepositoryId,
+            ) ?? null)
+          : null;
+        const runtimeRepoStateKey = selectActiveSessionRepoKey(runtimeState);
+        const runtimeGitViewState = runtimeRepoStateKey
+          ? (runtimeState.gitViewByRepo[runtimeRepoStateKey] ?? null)
+          : null;
+        const runtimeSelectionState = runtimeRepoStateKey
+          ? (runtimeState.selectionByRepo[runtimeRepoStateKey] ?? null)
+          : null;
+
+        const normalizedRoutePath = normalizeWorkspaceRoutePath(
+          stripEmbeddedQueryFromRoutePath(href),
+        );
+        const isGitTabRoute = isGitRoutePath(normalizedRoutePath);
+        const snapshot: WorkspaceSessionSnapshot = {
+          repositoryPath:
+            runtimeRepository?.path ??
+            runtimeSession?.snapshot?.repositoryPath ??
+            null,
+          mainWindowView: runtimeState.mainWindowView,
+          fileSelection: cloneRuntimeSelectionState(runtimeSelectionState),
+          gitViewState: cloneRuntimeGitViewState(runtimeGitViewState),
+          capturedAt: Date.now(),
+        };
+
+        const payload: TabRuntimeStatePayload = {
+          tabId: embeddedTabId,
+          routePath: normalizedRoutePath,
+          snapshot,
+          ...(isGitTabRoute
+            ? {
+                repositoryId: runtimeRepositoryId,
+                title:
+                  runtimeRepository?.name ??
+                  getTabTitleFromRoute(normalizedRoutePath),
+              }
+            : {
+                title: getTabTitleFromRoute(normalizedRoutePath),
+              }),
+        };
+
+        void getCurrentWebview().emit(TAB_RUNTIME_STATE_EVENT, payload);
+      };
+
+      emitRuntimeStateRef.current = emitRuntimeState;
+
+      let unlistenSyncRequest: (() => void) | undefined;
+
+      const registerSyncRequestListener = async () => {
+        unlistenSyncRequest =
+          await getCurrentWebview().listen<TabRuntimeReadyPayload>(
+            TAB_RUNTIME_REQUEST_SYNC_EVENT,
+            ({ payload }) => {
+              if (payload?.tabId && payload.tabId !== embeddedTabId) {
+                return;
+              }
+
+              emitRuntimeState(router.state.location.href);
+            },
+          );
+      };
+
+      void registerSyncRequestListener();
+      void getCurrentWebview().emit(TAB_RUNTIME_READY_EVENT, {
+        tabId: embeddedTabId,
+      });
+
+      emitRuntimeState(router.state.location.href);
+
+      const unsubscribe = router.subscribe("onResolved", (state) => {
+        emitRuntimeState(state.toLocation.href);
+      });
+
+      return () => {
+        if (snapshotEmitTimerRef.current !== null) {
+          window.clearTimeout(snapshotEmitTimerRef.current);
+          snapshotEmitTimerRef.current = null;
+        }
+
+        emitRuntimeStateRef.current = null;
+
+        if (unlistenSyncRequest) {
+          unlistenSyncRequest();
+        }
+
+        if (typeof unsubscribe === "function") {
+          unsubscribe();
+        }
+      };
+    }, [embeddedTabId, embeddedRuntimeSessionExists]);
+
+    useEffect(() => {
+      if (
+        !embeddedRuntime ||
+        !embeddedTabId ||
+        !isTauriRuntime() ||
+        !embeddedRuntimeSessionExists ||
+        !isEmbeddedRuntimeBound
+      ) {
+        return;
+      }
+
+      if (snapshotEmitTimerRef.current !== null) {
+        window.clearTimeout(snapshotEmitTimerRef.current);
+      }
+
+      snapshotEmitTimerRef.current = window.setTimeout(() => {
+        const emitRuntimeState = emitRuntimeStateRef.current;
+        if (emitRuntimeState) {
+          emitRuntimeState(router.state.location.href);
+        }
+        snapshotEmitTimerRef.current = null;
+      }, SNAPSHOT_EMIT_DEBOUNCE_MS);
+
+      return () => {
+        if (snapshotEmitTimerRef.current !== null) {
+          window.clearTimeout(snapshotEmitTimerRef.current);
+          snapshotEmitTimerRef.current = null;
+        }
+      };
+    }, [
+      activeGitViewState,
+      activeRepositoryPath,
+      activeSelectionState,
+      embeddedRuntime,
+      embeddedTabId,
+      mainWindowView,
+      selectedRepository?.id,
+      selectedRepository?.name,
+      selectedRepository?.path,
+      embeddedRuntimeSessionExists,
+      isEmbeddedRuntimeBound,
+    ]);
+
+    useEffect(() => {
+      if (isEmbeddedRuntime() || !isTauriRuntime()) {
+        return;
+      }
+
+      let unlistenRuntimeState: (() => void) | undefined;
+      let unlistenRuntimeReady: (() => void) | undefined;
+
+      const register = async () => {
+        unlistenRuntimeState =
+          await getCurrentWebview().listen<TabRuntimeStatePayload>(
+            TAB_RUNTIME_STATE_EVENT,
+            ({ payload }) => {
+              if (
+                !payload ||
+                typeof payload.tabId !== "string" ||
+                !payload.tabId
+              ) {
+                return;
+              }
+
+              const nextRoutePath =
+                typeof payload.routePath === "string"
+                  ? normalizeWorkspaceRoutePath(
+                      stripEmbeddedQueryFromRoutePath(payload.routePath),
+                    )
+                  : undefined;
+
+              syncTabMetadata(payload.tabId, {
+                routePath: nextRoutePath,
+                repositoryId: payload.repositoryId,
+                title: payload.title,
+                snapshot: payload.snapshot,
+              });
+            },
+          );
+
+        unlistenRuntimeReady =
+          await getCurrentWebview().listen<TabRuntimeReadyPayload>(
+            TAB_RUNTIME_READY_EVENT,
+            ({ payload }) => {
+              const tabId = payload?.tabId;
+
+              if (!tabId) {
+                return;
+              }
+
+              void getCurrentWebview().emitTo(
+                sanitizeTabWebviewLabel(tabId),
+                TAB_RUNTIME_REQUEST_SYNC_EVENT,
+                { tabId },
+              );
+            },
+          );
+
+        const currentTabs = useAppStore.getState().tabs;
+
+        for (const tab of currentTabs) {
+          void getCurrentWebview().emitTo(
+            sanitizeTabWebviewLabel(tab.id),
+            TAB_RUNTIME_REQUEST_SYNC_EVENT,
+            { tabId: tab.id },
+          );
+        }
+      };
+
+      void register();
+
+      return () => {
+        if (unlistenRuntimeState) {
+          unlistenRuntimeState();
+        }
+
+        if (unlistenRuntimeReady) {
+          unlistenRuntimeReady();
+        }
+      };
+    }, [syncTabMetadata]);
+
+    const tabScopeId =
+      embeddedRuntime && embeddedTabId
+        ? embeddedTabId
+        : (activeRuntimeId ?? activeTabId ?? "tab-main");
 
     return (
-      <TabContextProvider scopeId={activeTabId ?? "tab-main"}>
+      <TabContextProvider scopeId={tabScopeId}>
         <RouterProvider router={router} />
       </TabContextProvider>
     );
@@ -73,7 +643,7 @@ if (rootElement && !rootElement.innerHTML) {
         >
           <AppRouter />
           <Toaster />
-          {import.meta.env.DEV && (
+          {enableDevDiagnostics && (
             <ReactQueryDevtools
               buttonPosition="top-right"
               initialIsOpen={false}
@@ -85,7 +655,7 @@ if (rootElement && !rootElement.innerHTML) {
   );
 }
 
-if (import.meta.env.DEV) {
+if (enableDevDiagnostics) {
   scan({
     enabled: true,
   });

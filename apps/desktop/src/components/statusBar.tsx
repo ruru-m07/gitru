@@ -48,7 +48,7 @@ import { getAvatarByProvider } from "@/lib/getAvatarByGitProvider";
 import { parseOrigin } from "@/lib/parseOrigin";
 import { timeAgoFromUnixSeconds } from "@/lib/time";
 import { useActiveRepositoryState } from "@/state/useActiveRepositoryState";
-import { useAppStore } from "@/store/useAppStore";
+import { selectActiveRepository, useAppStore } from "@/store/useAppStore";
 
 const StatusBar = () => {
   const { data: statusAheadBehind } = useGetStatusAheadBehind();
@@ -503,13 +503,13 @@ const BehindBadge = ({
 };
 
 const OriginBadge = () => {
-  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const activeRepository = useAppStore(selectActiveRepository);
 
-  if (!selectedRepository?.origin) {
+  if (!activeRepository?.origin) {
     return null;
   }
 
-  const origin = parseOrigin(selectedRepository?.origin);
+  const origin = parseOrigin(activeRepository?.origin);
   const icon = getAvatarByProvider(origin?.provider);
 
   return (

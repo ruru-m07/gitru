@@ -95,13 +95,14 @@ const Sidebar = () => {
               <div className="flex flex-col items-center gap-1">
                 {[
                   "legions-developer",
-                  "shadcn",
-                  "manuarora700",
+                  "ruru-m07",
                   "vercel",
-                  "supabase",
+                  "tauri-apps",
                   "aceternity",
                   "shadcn-ui",
-                  "oraczen",
+                  "pierrecomputer",
+                  "raycast",
+                  "gitru-app",
                 ].map((v) => (
                   <Button
                     className="size-8 p-0"

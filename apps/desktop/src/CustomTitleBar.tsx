@@ -8,13 +8,13 @@ import { Button } from "@gitru/ui/components/button";
 import { cn } from "@gitru/ui/lib/utils";
 import {
   useCanGoBack,
-  useNavigate,
   useRouterState,
 } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, Plus, X } from "lucide-react";
 import { type MouseEvent, useEffect } from "react";
 import { getAvatarByProvider } from "./lib/getAvatarByGitProvider";
 import { parseOrigin } from "./lib/parseOrigin";
+import { appState } from "./state";
 import { repoContextRegistry } from "./state/core/RepoContextRegistry";
 import { useAppStore } from "./store/useAppStore";
 
@@ -22,8 +22,42 @@ type CustomTitleBarProps = {
   restrictedPaths: string[];
 };
 
+const DEFAULT_TAB_ROUTE = "/app/git";
+
+const isTauriRuntime = () =>
+  typeof window !== "undefined" &&
+  typeof (window as Window & { __TAURI_INTERNALS__?: unknown })
+    .__TAURI_INTERNALS__ !== "undefined";
+
+const isEmbeddedRuntime = () => {
+  if (!isTauriRuntime()) {
+    return false;
+  }
+
+  try {
+    return window.location.search.includes("embedded=1") ||
+      window.location.search.includes("embedded=true")
+      ? true
+      : (window as Window & { __TAURI_INTERNALS__?: { metadata?: { currentWebview?: { label?: string } } } })
+          .__TAURI_INTERNALS__?.metadata?.currentWebview?.label
+          ?.startsWith("tab-webview:") ?? false;
+  } catch {
+    return false;
+  }
+};
+
+const getRoutePathname = (routePath: string) => {
+  try {
+    const origin =
+      typeof window !== "undefined" ? window.location.origin : "http://localhost";
+    return new URL(routePath, origin).pathname;
+  } catch {
+    return routePath.split("?")[0].split("#")[0];
+  }
+};
+
 const getTitleFromRoute = (routePath: string) => {
-  const pathname = routePath.split("?")[0];
+  const pathname = getRoutePathname(routePath);
 
   if (pathname.startsWith("/app/")) {
     const segment = pathname.slice("/app/".length).split("/")[0];
@@ -37,7 +71,20 @@ const getTitleFromRoute = (routePath: string) => {
 };
 
 const isGitRoute = (routePath: string) =>
-  routePath.split("?")[0].startsWith("/app/git");
+  getRoutePathname(routePath).startsWith("/app/git");
+
+const normalizeTabRoutePath = (routePath: string | null | undefined) => {
+  if (!routePath) {
+    return DEFAULT_TAB_ROUTE;
+  }
+
+  const pathname = getRoutePathname(routePath);
+  if (pathname === "/app" || pathname === "/app/") {
+    return DEFAULT_TAB_ROUTE;
+  }
+
+  return routePath;
+};
 
 const renderTitleForGitPage = ({
   repository,
@@ -116,16 +163,12 @@ const renderTitleForGitPage = ({
 
 const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
   const routerState = useRouterState();
-  const navigate = useNavigate();
   const pathname = routerState.location.pathname;
   const routePath = routerState.location.href;
 
   const canGoBack = useCanGoBack();
 
   const selectedRepository = useAppStore((state) => state.selectedRepository);
-  const setSelectedRepository = useAppStore(
-    (state) => state.setSelectedRepository,
-  );
   const repositories = useAppStore((state) => state.repositories);
 
   const tabs = useAppStore((state) => state.tabs);
@@ -136,17 +179,46 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
   const closeTab = useAppStore((state) => state.closeTab);
   const syncActiveTab = useAppStore((state) => state.syncActiveTab);
 
+  const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
+  const isRootShellMode = isTauriRuntime() && !isEmbeddedRuntime();
+  const effectiveRoutePath = isRootShellMode
+    ? normalizeTabRoutePath(activeTab?.routePath)
+    : routePath;
+  const isGitEffectiveRoute = isGitRoute(effectiveRoutePath);
+  const effectiveTitle = isGitEffectiveRoute
+    ? (selectedRepository?.name ?? getTitleFromRoute(effectiveRoutePath))
+    : getTitleFromRoute(effectiveRoutePath);
+
+  const disposeRuntimeForTab = (tabId: string) => {
+    const tab = tabs.find((item) => item.id === tabId);
+    const contextEntry = repoContextRegistry.getScopeContext(tabId);
+
+    if (tab?.repositoryId && contextEntry?.contextId) {
+      const repository =
+        repositories.find((repo) => repo.id === tab.repositoryId) ?? null;
+
+      if (repository?.path) {
+        void appState.repositories.dispose(
+          repository.path,
+          contextEntry.contextId,
+        );
+      }
+    }
+
+    void repoContextRegistry.disposeScope(tabId);
+  };
+
   useEffect(() => {
     ensureActiveTab({
-      routePath,
+      routePath: effectiveRoutePath,
       repositoryId: selectedRepository?.id ?? null,
-      title: selectedRepository?.name ?? getTitleFromRoute(routePath),
+      title: effectiveTitle,
     });
   }, [
+    effectiveRoutePath,
+    effectiveTitle,
     ensureActiveTab,
-    routePath,
     selectedRepository?.id,
-    selectedRepository?.name,
   ]);
 
   useEffect(() => {
@@ -154,51 +226,61 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
       return;
     }
 
+    if (
+      isRootShellMode &&
+      activeTab &&
+      getRoutePathname(activeTab.routePath) === "/app"
+    ) {
+      syncActiveTab({
+        routePath: DEFAULT_TAB_ROUTE,
+        repositoryId: selectedRepository?.id ?? null,
+        title: selectedRepository?.name ?? getTitleFromRoute(DEFAULT_TAB_ROUTE),
+      });
+      return;
+    }
+
+    // In root shell mode, route changes happen inside child webviews.
+    // Avoid overwriting the active tab route with the shell route (`/app`).
+    if (isRootShellMode) {
+      return;
+    }
+
     syncActiveTab({
-      routePath,
+      routePath: effectiveRoutePath,
       repositoryId: selectedRepository?.id ?? null,
-      title: selectedRepository?.name ?? getTitleFromRoute(routePath),
+      title: effectiveTitle,
     });
   }, [
     activeTabId,
-    routePath,
+    activeTab,
+    effectiveRoutePath,
+    effectiveTitle,
+    isRootShellMode,
     selectedRepository?.id,
-    selectedRepository?.name,
     syncActiveTab,
   ]);
 
   const handleActivateTab = async (tabId: string) => {
-    const tab = tabs.find((item) => item.id === tabId);
-
-    if (!tab) {
+    if (!tabs.some((item) => item.id === tabId)) {
       return;
     }
 
     activateTab(tabId);
-
-    const targetRepository = tab.repositoryId
-      ? (repositories.find((repo) => repo.id === tab.repositoryId) ?? null)
-      : null;
-
-    if ((targetRepository?.id ?? null) !== (selectedRepository?.id ?? null)) {
-      await setSelectedRepository(targetRepository);
-    }
-
-    if (tab.routePath !== routePath) {
-      await navigate({ to: tab.routePath });
-    }
   };
 
   const handleCreateTab = async () => {
-    const newTab = createTab({
-      routePath,
-      repositoryId: selectedRepository?.id ?? null,
-      title: selectedRepository?.name ?? getTitleFromRoute(routePath),
-    });
+    const sourceRoutePath = isRootShellMode
+      ? normalizeTabRoutePath(activeTab?.routePath)
+      : routePath;
+    const isGitSourceRoute = isGitRoute(sourceRoutePath);
 
-    if (newTab.routePath !== routePath) {
-      await navigate({ to: newTab.routePath });
-    }
+    createTab({
+      routePath: sourceRoutePath,
+      repositoryId: selectedRepository?.id ?? null,
+      title: isGitSourceRoute
+        ? (selectedRepository?.name ?? getTitleFromRoute(sourceRoutePath))
+        : getTitleFromRoute(sourceRoutePath),
+    });
   };
 
   const handleCloseTab = async (
@@ -213,29 +295,12 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
 
     const wasActive = tabId === activeTabId;
     closeTab(tabId);
-    void repoContextRegistry.disposeScope(tabId);
+    disposeRuntimeForTab(tabId);
 
     if (!wasActive) {
       return;
     }
 
-    const state = useAppStore.getState();
-    const nextTab = state.tabs.find((tab) => tab.id === state.activeTabId);
-
-    if (nextTab) {
-      const nextRepository = nextTab.repositoryId
-        ? (repositories.find((repo) => repo.id === nextTab.repositoryId) ??
-          null)
-        : null;
-
-      if ((nextRepository?.id ?? null) !== (selectedRepository?.id ?? null)) {
-        await setSelectedRepository(nextRepository);
-      }
-    }
-
-    if (nextTab && nextTab.routePath !== routePath) {
-      await navigate({ to: nextTab.routePath });
-    }
   };
 
   if (restrictedPaths.includes(pathname)) {
@@ -252,7 +317,7 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
       }}
     >
       <div
-        className="absolute flex w-full items-center pr-4"
+        className="absolute flex w-fit items-center pr-4"
         style={{
           // @ts-expect-error - ¯\_(ツ)_/¯
           WebkitAppRegion: "no-drag",

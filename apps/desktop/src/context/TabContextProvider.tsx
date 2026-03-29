@@ -31,7 +31,14 @@ export function TabContextProvider({
   children,
   scopeId = "main",
 }: TabContextProviderProps) {
-  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const activeSessionRepositoryId = useAppStore((state) => {
+    const runtimeId = state.activeSessionId ?? state.activeTabId;
+    if (!runtimeId) {
+      return null;
+    }
+
+    return state.sessionsById[runtimeId]?.repositoryId ?? null;
+  });
   const [contextId, setContextId] = useState<string | null>(
     repoContextRegistry.getActiveContextId(),
   );
@@ -54,7 +61,7 @@ export function TabContextProvider({
     let cancelled = false;
 
     const syncScopeContext = async () => {
-      const repoId = selectedRepository?.id;
+      const repoId = activeSessionRepositoryId;
 
       if (!repoId) {
         setIsInitializing(false);
@@ -78,7 +85,7 @@ export function TabContextProvider({
     return () => {
       cancelled = true;
     };
-  }, [scopeId, selectedRepository?.id]);
+  }, [scopeId, activeSessionRepositoryId]);
 
   useEffect(() => {
     return () => {

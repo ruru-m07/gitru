@@ -12,6 +12,11 @@ class RepoContextRegistry {
   private readonly listeners = new Set<(contextId: string | null) => void>();
   private activeScopeId: ScopeId | null = null;
 
+  getScopeContext(scopeId: ScopeId): ScopeContextEntry | null {
+    const context = this.contextsByScope.get(scopeId);
+    return context ? { ...context } : null;
+  }
+
   setActiveScope(scopeId: ScopeId) {
     this.activeScopeId = scopeId;
     this.notify();
