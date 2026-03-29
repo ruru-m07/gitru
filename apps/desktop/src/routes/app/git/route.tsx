@@ -1036,9 +1036,15 @@ const ListFileChanges = ({
   return (
     <Tabs
       value={activeTab === "changes" ? "tab-1" : "tab-2"}
-      onValueChange={(value) =>
-        onTabChange(value === "tab-2" ? "history" : "changes")
-      }
+      onValueChange={(value) => {
+        const nextTab = value === "tab-2" ? "history" : "changes";
+
+        if (nextTab === activeTab) {
+          return;
+        }
+
+        onTabChange(nextTab);
+      }}
       className={"gap-0 h-full flex flex-col"}
     >
       <TabsList

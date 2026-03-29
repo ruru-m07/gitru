@@ -1,4 +1,4 @@
-import { type RepositoryInfo, selectRepository } from "@gitru/commands";
+import { type RepositoryInfo } from "@gitru/commands";
 import { toast } from "sonner";
 import { create } from "zustand";
 import {
@@ -6,7 +6,6 @@ import {
   persist,
   subscribeWithSelector,
 } from "zustand/middleware";
-import { appState } from "@/state";
 import { createTauriStorage } from "./tauriStoreAdapter";
 
 export type SelectionSource = "worktree" | "stash" | "history";
@@ -33,6 +32,15 @@ export type ExternalOpener =
   | "finder"
   | "terminal"
   | "ghostty";
+
+export type WorkspaceTab = {
+  id: string;
+  title: string;
+  routePath: string;
+  repositoryId: string | null;
+  createdAt: number;
+  updatedAt: number;
+};
 
 type RepoKey = string;
 export type UpdateChannel = "stable" | "beta";
@@ -105,6 +113,26 @@ type AppState = {
   selectedRepository: RepositoryInfo | null;
   setSelectedRepository: (repo: RepositoryInfo | null) => void;
 
+  tabs: WorkspaceTab[];
+  activeTabId: string | null;
+  ensureActiveTab: (payload?: {
+    routePath?: string;
+    repositoryId?: string | null;
+    title?: string;
+  }) => void;
+  createTab: (payload?: {
+    routePath?: string;
+    repositoryId?: string | null;
+    title?: string;
+  }) => WorkspaceTab;
+  activateTab: (tabId: string) => void;
+  closeTab: (tabId: string) => void;
+  syncActiveTab: (payload: {
+    routePath?: string;
+    repositoryId?: string | null;
+    title?: string;
+  }) => void;
+
   repositories: RepositoryInfo[];
   setRepositories: (repos: RepositoryInfo[]) => void;
 
@@ -162,28 +190,275 @@ const getTargetRepoPath = (
   repoPathArg?: string,
 ) => repoPathArg ?? selectedRepository?.path;
 
+const DEFAULT_TAB_ID = "tab-main";
+const DEFAULT_TAB_ROUTE = "/app/git";
+
+const getTabTitleFromRoute = (routePath: string) => {
+  const pathname = routePath.split("?")[0];
+
+  if (pathname.startsWith("/app/")) {
+    const segment = pathname.slice("/app/".length).split("/")[0];
+
+    if (segment) {
+      return segment.charAt(0).toUpperCase() + segment.slice(1);
+    }
+  }
+
+  return "Workspace";
+};
+
+const generateTabId = () => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `tab-${crypto.randomUUID()}`;
+  }
+
+  return `tab-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+};
+
+const createWorkspaceTab = (payload?: {
+  id?: string;
+  routePath?: string;
+  repositoryId?: string | null;
+  title?: string;
+}): WorkspaceTab => {
+  const routePath = payload?.routePath || DEFAULT_TAB_ROUTE;
+  const now = Date.now();
+
+  return {
+    id: payload?.id ?? generateTabId(),
+    title: payload?.title?.trim() || getTabTitleFromRoute(routePath),
+    routePath,
+    repositoryId: payload?.repositoryId ?? null,
+    createdAt: now,
+    updatedAt: now,
+  };
+};
+
+const createDefaultTab = () =>
+  createWorkspaceTab({
+    id: DEFAULT_TAB_ID,
+    routePath: DEFAULT_TAB_ROUTE,
+    title: "Git",
+    repositoryId: null,
+  });
+
+const normalizePersistedTabs = (value: unknown): WorkspaceTab[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+
+      const tab = item as Partial<WorkspaceTab>;
+
+      if (!tab.id || typeof tab.id !== "string") {
+        return null;
+      }
+
+      const routePath =
+        typeof tab.routePath === "string" && tab.routePath.length > 0
+          ? tab.routePath
+          : DEFAULT_TAB_ROUTE;
+
+      const createdAt =
+        typeof tab.createdAt === "number" ? tab.createdAt : Date.now();
+      const updatedAt =
+        typeof tab.updatedAt === "number" ? tab.updatedAt : createdAt;
+
+      return {
+        id: tab.id,
+        title:
+          typeof tab.title === "string" && tab.title.trim().length > 0
+            ? tab.title.trim()
+            : getTabTitleFromRoute(routePath),
+        routePath,
+        repositoryId:
+          typeof tab.repositoryId === "string" ? tab.repositoryId : null,
+        createdAt,
+        updatedAt,
+      } satisfies WorkspaceTab;
+    })
+    .filter((tab): tab is WorkspaceTab => tab !== null);
+};
+
+const ensurePersistedTabState = (
+  state: Record<string, unknown>,
+): Record<string, unknown> => {
+  const parsedTabs = normalizePersistedTabs(state.tabs);
+  const tabs = parsedTabs.length > 0 ? parsedTabs : [createDefaultTab()];
+
+  const persistedActiveTabId =
+    typeof state.activeTabId === "string" ? state.activeTabId : null;
+  const activeTabId =
+    persistedActiveTabId && tabs.some((tab) => tab.id === persistedActiveTabId)
+      ? persistedActiveTabId
+      : (tabs[0]?.id ?? null);
+
+  return {
+    ...state,
+    tabs,
+    activeTabId,
+  };
+};
+
 export const useAppStore = create<AppState>()(
   subscribeWithSelector(
     persist(
       (set, get) => ({
         selectedRepository: null,
         setSelectedRepository: async (repo) => {
-          if (!repo) {
-            set({ selectedRepository: null });
-            return;
-          }
+          set((state) => {
+            if ((state.selectedRepository?.id ?? null) === (repo?.id ?? null)) {
+              return state;
+            }
 
-          const result = await selectRepository({
-            repoId: repo.id,
+            return { selectedRepository: repo };
+          });
+        },
+
+        tabs: [createDefaultTab()],
+        activeTabId: DEFAULT_TAB_ID,
+        ensureActiveTab: (payload) => {
+          set((state) => {
+            const hasActiveTab =
+              !!state.activeTabId &&
+              state.tabs.some((tab) => tab.id === state.activeTabId);
+
+            if (state.tabs.length > 0 && hasActiveTab) {
+              return state;
+            }
+
+            if (state.tabs.length > 0) {
+              return {
+                activeTabId: state.tabs[0]?.id ?? null,
+              };
+            }
+
+            const fallbackTab = createWorkspaceTab({
+              routePath: payload?.routePath,
+              repositoryId: payload?.repositoryId ?? null,
+              title: payload?.title,
+            });
+
+            return {
+              tabs: [fallbackTab],
+              activeTabId: fallbackTab.id,
+            };
+          });
+        },
+        createTab: (payload) => {
+          const newTab = createWorkspaceTab({
+            routePath: payload?.routePath,
+            repositoryId: payload?.repositoryId ?? null,
+            title: payload?.title,
           });
 
-          if (result) {
-            set({ selectedRepository: repo });
-            const r = appState.repository;
-            setTimeout(async () => {
-              await r?.invalidateAll();
-            }, 100);
-          }
+          set((state) => ({
+            tabs: [...state.tabs, newTab],
+            activeTabId: newTab.id,
+          }));
+
+          return newTab;
+        },
+        activateTab: (tabId) => {
+          set((state) => {
+            if (state.activeTabId === tabId) {
+              return state;
+            }
+
+            const exists = state.tabs.some((tab) => tab.id === tabId);
+
+            if (!exists) {
+              return state;
+            }
+
+            return {
+              activeTabId: tabId,
+            };
+          });
+        },
+        closeTab: (tabId) => {
+          set((state) => {
+            if (state.tabs.length <= 1) {
+              return state;
+            }
+
+            const closingIndex = state.tabs.findIndex(
+              (tab) => tab.id === tabId,
+            );
+
+            if (closingIndex === -1) {
+              return state;
+            }
+
+            const nextTabs = state.tabs.filter((tab) => tab.id !== tabId);
+            let nextActiveTabId = state.activeTabId;
+
+            if (state.activeTabId === tabId) {
+              const fallbackIndex = Math.max(0, closingIndex - 1);
+              nextActiveTabId =
+                nextTabs[fallbackIndex]?.id ?? nextTabs[0]?.id ?? null;
+            } else if (
+              nextActiveTabId &&
+              !nextTabs.some((tab) => tab.id === nextActiveTabId)
+            ) {
+              nextActiveTabId = nextTabs[0]?.id ?? null;
+            }
+
+            return {
+              tabs: nextTabs,
+              activeTabId: nextActiveTabId,
+            };
+          });
+        },
+        syncActiveTab: (payload) => {
+          set((state) => {
+            if (!state.activeTabId) {
+              return state;
+            }
+
+            const activeIndex = state.tabs.findIndex(
+              (tab) => tab.id === state.activeTabId,
+            );
+
+            if (activeIndex === -1) {
+              return state;
+            }
+
+            const activeTab = state.tabs[activeIndex];
+            const nextRoutePath = payload.routePath ?? activeTab.routePath;
+            const nextRepositoryId =
+              payload.repositoryId === undefined
+                ? activeTab.repositoryId
+                : payload.repositoryId;
+            const nextTitle = payload.title?.trim() || activeTab.title;
+
+            const didChange =
+              nextRoutePath !== activeTab.routePath ||
+              nextRepositoryId !== activeTab.repositoryId ||
+              nextTitle !== activeTab.title;
+
+            if (!didChange) {
+              return state;
+            }
+
+            const nextTabs = [...state.tabs];
+            nextTabs[activeIndex] = {
+              ...activeTab,
+              routePath: nextRoutePath,
+              repositoryId: nextRepositoryId,
+              title: nextTitle,
+              updatedAt: Date.now(),
+            };
+
+            return {
+              tabs: nextTabs,
+            };
+          });
         },
 
         repositories: [],
@@ -478,14 +753,39 @@ export const useAppStore = create<AppState>()(
                 }
               : current.stashStatusFilters;
 
+            const nextState: GitViewState = {
+              ...current,
+              ...partial,
+              stashStatusFilters: nextFilters,
+            };
+
+            const hasChanged =
+              current.leftPanelView !== nextState.leftPanelView ||
+              current.changesTab !== nextState.changesTab ||
+              current.stashViewMode !== nextState.stashViewMode ||
+              current.selectedStashReference !==
+                nextState.selectedStashReference ||
+              current.selectedHistoryCommitHash !==
+                nextState.selectedHistoryCommitHash ||
+              current.stashStatusFilters.modified !==
+                nextState.stashStatusFilters.modified ||
+              current.stashStatusFilters.renamed !==
+                nextState.stashStatusFilters.renamed ||
+              current.stashStatusFilters.deleted !==
+                nextState.stashStatusFilters.deleted ||
+              current.stashStatusFilters.conflicted !==
+                nextState.stashStatusFilters.conflicted ||
+              current.stashStatusFilters.untracked !==
+                nextState.stashStatusFilters.untracked;
+
+            if (!hasChanged) {
+              return state;
+            }
+
             return {
               gitViewByRepo: {
                 ...state.gitViewByRepo,
-                [repoPath]: {
-                  ...current,
-                  ...partial,
-                  stashStatusFilters: nextFilters,
-                },
+                [repoPath]: nextState,
               },
             };
           });
@@ -494,9 +794,11 @@ export const useAppStore = create<AppState>()(
       {
         name: "app-data",
         storage: createJSONStorage(() => createTauriStorage()),
-        version: 3,
+        version: 4,
         partialize: (state) => ({
           selectedRepository: state.selectedRepository,
+          tabs: state.tabs,
+          activeTabId: state.activeTabId,
           repositories: state.repositories,
           repoSelectIsOpen: state.repoSelectIsOpen,
           optimisticRepositoryCard: state.optimisticRepositoryCard,
@@ -517,8 +819,12 @@ export const useAppStore = create<AppState>()(
             >;
           };
 
+          if (version >= 4) {
+            return ensurePersistedTabState(state as Record<string, unknown>);
+          }
+
           if (version >= 3) {
-            return state;
+            return ensurePersistedTabState(state as Record<string, unknown>);
           }
 
           const normalizeSelectionByRepo = (
@@ -545,17 +851,17 @@ export const useAppStore = create<AppState>()(
             );
 
           if (version >= 2) {
-            return {
+            return ensurePersistedTabState({
               ...state,
               selectionByRepo: normalizeSelectionByRepo(state.selectionByRepo),
-            };
+            });
           }
 
           if (!state.selectedFileByRepo) {
-            return {
+            return ensurePersistedTabState({
               ...state,
               selectionByRepo: normalizeSelectionByRepo(state.selectionByRepo),
-            };
+            });
           }
 
           const migratedSelectionByRepo: Record<
@@ -605,10 +911,10 @@ export const useAppStore = create<AppState>()(
 
           const { selectedFileByRepo: _ignored, ...rest } = state;
 
-          return {
+          return ensurePersistedTabState({
             ...rest,
             selectionByRepo: normalizeSelectionByRepo(migratedSelectionByRepo),
-          };
+          });
         },
       },
     ),

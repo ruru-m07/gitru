@@ -37,13 +37,20 @@ import { StashState } from "./StashState";
 
 type DiffScope = "Worktree" | "Staged" | "Unstaged";
 type PatchAction = "Stage" | "Unstage" | "Discard";
+type CreateCommitPayload = Omit<CreateCommitParams, "contextId">;
 
 class DiffState extends StateDomain {
   private readonly baseKey: readonly string[];
+  private readonly contextId: string;
 
-  constructor(protected queryClient: QueryClient) {
+  constructor(
+    protected queryClient: QueryClient,
+    repositoryBaseKey: readonly string[],
+    contextId: string,
+  ) {
     super(queryClient);
-    this.baseKey = ["repository", "diff"] as const;
+    this.baseKey = [...repositoryBaseKey, "diff"] as const;
+    this.contextId = contextId;
   }
 
   async get(
@@ -73,6 +80,7 @@ class DiffState extends StateDomain {
     ];
 
     const data = await getPatchByFilePath({
+      contextId: this.contextId,
       filePath: filePath,
       fileNewPath: options?.fileNewPath,
       status: options?.status,
@@ -126,16 +134,24 @@ class DiffState extends StateDomain {
 
 class StatusState extends StateDomain {
   private readonly baseKey: readonly string[];
+  private readonly contextId: string;
 
-  constructor(protected queryClient: QueryClient) {
+  constructor(
+    protected queryClient: QueryClient,
+    repositoryBaseKey: readonly string[],
+    contextId: string,
+  ) {
     super(queryClient);
-    this.baseKey = ["repository", "status"] as const;
+    this.baseKey = [...repositoryBaseKey, "status"] as const;
+    this.contextId = contextId;
   }
 
   async get() {
     await this.queryClient.cancelQueries({ queryKey: [...this.baseKey] });
 
-    const data = await getStatus();
+    const data = await getStatus({
+      contextId: this.contextId,
+    });
 
     this.queryClient.setQueryData([...this.baseKey], data);
 
@@ -159,10 +175,16 @@ class StatusState extends StateDomain {
 
 class BranchState extends StateDomain {
   private readonly baseKey: readonly string[];
+  private readonly contextId: string;
 
-  constructor(protected queryClient: QueryClient) {
+  constructor(
+    protected queryClient: QueryClient,
+    repositoryBaseKey: readonly string[],
+    contextId: string,
+  ) {
     super(queryClient);
-    this.baseKey = ["repository", "branches"] as const;
+    this.baseKey = [...repositoryBaseKey, "branches"] as const;
+    this.contextId = contextId;
   }
 
   async list(kind: BranchKind) {
@@ -171,6 +193,7 @@ class BranchState extends StateDomain {
     });
 
     const data = await listBranches({
+      contextId: this.contextId,
       kind,
     });
 
@@ -183,7 +206,9 @@ class BranchState extends StateDomain {
       queryKey: [...this.baseKey, "current"],
     });
 
-    const data = await currentBranch();
+    const data = await currentBranch({
+      contextId: this.contextId,
+    });
 
     this.queryClient.setQueryData([...this.baseKey, "current"], data);
     return data;
@@ -194,7 +219,9 @@ class BranchState extends StateDomain {
       queryKey: [...this.baseKey, "statusAheadBehind"],
     });
 
-    const data = await statusAheadBehind();
+    const data = await statusAheadBehind({
+      contextId: this.contextId,
+    });
 
     this.queryClient.setQueryData([...this.baseKey, "statusAheadBehind"], data);
     return data;
@@ -223,17 +250,23 @@ class BranchState extends StateDomain {
   }
 
   async hasUncommittedChanges() {
-    const data = await hasUncommittedChanges();
+    const data = await hasUncommittedChanges({
+      contextId: this.contextId,
+    });
     return data;
   }
 
   async currentBranchStash(): Promise<BranchStash | null> {
-    const data = await currentBranchStash();
+    const data = await currentBranchStash({
+      contextId: this.contextId,
+    });
     return data;
   }
 
   async popCurrentBranchStash(): Promise<string> {
-    return await popCurrentBranchStash();
+    return await popCurrentBranchStash({
+      contextId: this.contextId,
+    });
   }
 
   async switchBranch(
@@ -241,6 +274,7 @@ class BranchState extends StateDomain {
     strategy?: UncommittedChangesStrategy,
   ) {
     const result = await switchBranch({
+      contextId: this.contextId,
       branch: branchName,
       strategy,
     });
@@ -252,6 +286,7 @@ class BranchState extends StateDomain {
     strategy?: UncommittedChangesStrategy,
   ) {
     const result = await createBranch({
+      contextId: this.contextId,
       branch: branchName,
       strategy,
     });
@@ -260,13 +295,21 @@ class BranchState extends StateDomain {
 }
 
 class FilesActionsState extends StateDomain {
-  constructor(protected queryClient: QueryClient) {
+  private readonly contextId: string;
+
+  constructor(
+    protected queryClient: QueryClient,
+    contextId: string,
+  ) {
     super(queryClient);
+    this.contextId = contextId;
   }
 
   async add(target: string | string[]) {
     const result = await gitAdd(
-      Array.isArray(target) ? { files: target } : { file: target },
+      Array.isArray(target)
+        ? { contextId: this.contextId, files: target }
+        : { contextId: this.contextId, file: target },
     );
     return result;
   }
@@ -280,6 +323,7 @@ class FilesActionsState extends StateDomain {
     action: PatchAction;
   }) {
     const result = await gitApplyPatchBlock({
+      contextId: this.contextId,
       filePath: params.filePath,
       fileNewPath: params.fileNewPath ?? undefined,
       diffScope: params.diffScope,
@@ -292,52 +336,72 @@ class FilesActionsState extends StateDomain {
 
   async unstage(target: string | string[]) {
     const result = await gitRemove(
-      Array.isArray(target) ? { files: target } : { file: target },
+      Array.isArray(target)
+        ? { contextId: this.contextId, files: target }
+        : { contextId: this.contextId, file: target },
     );
     return result;
   }
 
   async discard(target: string | string[]) {
     const result = await gitDiscard(
-      Array.isArray(target) ? { files: target } : { file: target },
+      Array.isArray(target)
+        ? { contextId: this.contextId, files: target }
+        : { contextId: this.contextId, file: target },
     );
     return result;
   }
 
   async fetch() {
-    const result = await gitFetch();
+    const result = await gitFetch({
+      contextId: this.contextId,
+    });
     return result;
   }
 
   async publishBranch() {
-    const result = await publishBranch();
+    const result = await publishBranch({
+      contextId: this.contextId,
+    });
     return result;
   }
 
   async push() {
-    const result = await push();
+    const result = await push({
+      contextId: this.contextId,
+    });
     return result;
   }
 
   async pull() {
-    const result = await pull();
+    const result = await pull({
+      contextId: this.contextId,
+    });
     return result;
   }
 }
 
 class Commit extends StateDomain {
   private readonly baseKey: readonly string[];
+  private readonly contextId: string;
 
-  constructor(protected queryClient: QueryClient) {
+  constructor(
+    protected queryClient: QueryClient,
+    repositoryBaseKey: readonly string[],
+    contextId: string,
+  ) {
     super(queryClient);
-    this.baseKey = ["repository", "commit"] as const;
+    this.baseKey = [...repositoryBaseKey, "commit"] as const;
+    this.contextId = contextId;
   }
   async last() {
     await this.queryClient.cancelQueries({
       queryKey: [...this.baseKey, "last"],
     });
 
-    const data = await lastCommit();
+    const data = await lastCommit({
+      contextId: this.contextId,
+    });
 
     this.queryClient.setQueryData([...this.baseKey, "last"], data);
 
@@ -350,6 +414,7 @@ class Commit extends StateDomain {
     });
 
     const data = await commitById({
+      contextId: this.contextId,
       hash,
     });
 
@@ -361,8 +426,9 @@ class Commit extends StateDomain {
     return data;
   }
 
-  async createCommit(payload: CreateCommitParams) {
+  async createCommit(payload: CreateCommitPayload) {
     const data = await createCommit({
+      contextId: this.contextId,
       ...payload,
     });
 
@@ -375,6 +441,7 @@ class Commit extends StateDomain {
     });
 
     const data = await history({
+      contextId: this.contextId,
       limit: 100,
       skip: 0,
     });
@@ -386,6 +453,7 @@ class Commit extends StateDomain {
 
   async historyGraph(params: HistoryGraphParams["query"]) {
     const data = await historyGraph({
+      contextId: this.contextId,
       query: params,
     });
 
@@ -409,10 +477,12 @@ class RepositoryState extends StateDomain {
   readonly commit: Commit;
   readonly stash: StashState;
   private readonly baseKey: readonly string[];
+  readonly contextId: string;
 
   constructor(
     protected queryClient: QueryClient,
     public readonly path: string,
+    contextId: string,
   ) {
     super(queryClient);
 
@@ -420,13 +490,26 @@ class RepositoryState extends StateDomain {
       throw new Error("[RepositoryState] Path cannot be empty!");
     }
 
-    this.baseKey = ["repository", this.path] as const;
-    this.diff = new DiffState(this.queryClient);
-    this.status = new StatusState(this.queryClient);
-    this.branches = new BranchState(this.queryClient);
-    this.file = new FilesActionsState(this.queryClient);
-    this.commit = new Commit(this.queryClient);
-    this.stash = new StashState(this.queryClient);
+    if (!contextId) {
+      throw new Error("[RepositoryState] Context ID cannot be empty!");
+    }
+
+    this.contextId = contextId;
+    this.baseKey = ["repository", this.contextId, this.path] as const;
+    this.diff = new DiffState(this.queryClient, this.baseKey, this.contextId);
+    this.status = new StatusState(
+      this.queryClient,
+      this.baseKey,
+      this.contextId,
+    );
+    this.branches = new BranchState(
+      this.queryClient,
+      this.baseKey,
+      this.contextId,
+    );
+    this.file = new FilesActionsState(this.queryClient, this.contextId);
+    this.commit = new Commit(this.queryClient, this.baseKey, this.contextId);
+    this.stash = new StashState(this.queryClient, this.baseKey, this.contextId);
   }
 
   async getRepositoryOrigin() {
@@ -435,7 +518,9 @@ class RepositoryState extends StateDomain {
       queryKey: [...this.baseKey, "origin"],
     });
 
-    const data = await repositoryOrigin();
+    const data = await repositoryOrigin({
+      contextId: this.contextId,
+    });
 
     this.queryClient.setQueryData([...this.baseKey, "origin"], data);
 
@@ -447,7 +532,7 @@ class RepositoryState extends StateDomain {
   }
 
   async invalidateAll() {
-    await this.queryClient.invalidateQueries();
+    await this.queryClient.invalidateQueries({ queryKey: [...this.baseKey] });
   }
 }
 

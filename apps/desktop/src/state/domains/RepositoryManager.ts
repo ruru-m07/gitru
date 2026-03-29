@@ -1,77 +1,34 @@
-import type { RepoSitoryStore } from "@gitru/commands";
-import { useAppStore } from "@/store/useAppStore";
 import { queryClient } from "../core/StateManager";
 import { RepositoryState } from "./RepositoryState";
 
 class RepositoryManager {
   private instances = new Map<string, RepositoryState>();
-  private _current: RepositoryState | null = null;
-  private _unsubscribe: (() => void) | null = null;
 
-  constructor() {
-    this.initializeSync();
-  }
-
-  private initializeSync() {
-    this._unsubscribe = useAppStore.subscribe(
-      (state) => state.selectedRepository,
-      (selectedRepo, previousRepo) => {
-        if (selectedRepo?.path !== previousRepo?.path) {
-          this.syncFromStore(selectedRepo);
-        }
-      },
-      { fireImmediately: false },
-    );
-
-    const initialRepo = useAppStore.getState().selectedRepository;
-    if (initialRepo) {
-      this.syncFromStore(initialRepo);
-    }
-  }
-
-  private syncFromStore(repo: RepoSitoryStore | null) {
-    if (repo?.path) {
-      this._current = this.for(repo.path);
-    } else {
-      this._current = null;
-    }
-  }
-
-  for(repoPath: string): RepositoryState {
+  for(repoPath: string, contextId: string): RepositoryState {
     const normalizedPath = this.normalizePath(repoPath);
+    const key = this.getKey(normalizedPath, contextId);
 
-    if (!this.instances.has(normalizedPath)) {
+    if (!this.instances.has(key)) {
       this.instances.set(
-        normalizedPath,
-        new RepositoryState(queryClient, normalizedPath),
+        key,
+        new RepositoryState(queryClient, normalizedPath, contextId),
       );
     }
 
-    return this.instances.get(normalizedPath)!;
-  }
-
-  /**
-   * Get the current active repository
-   * Returns **null** if **no** repository is selected
-   */
-  get current(): RepositoryState | null {
-    return this._current;
+    return this.instances.get(key)!;
   }
 
   /**
    * Clear a specific repository from state cache
    */
-  async dispose(repoPath: string): Promise<void> {
+  async dispose(repoPath: string, contextId: string): Promise<void> {
     const normalizedPath = this.normalizePath(repoPath);
-    const instance = this.instances.get(normalizedPath);
+    const key = this.getKey(normalizedPath, contextId);
+    const instance = this.instances.get(key);
 
     if (instance) {
       await instance.invalidateAll();
-      this.instances.delete(normalizedPath);
-
-      if (this._current?.path === normalizedPath) {
-        this._current = null;
-      }
+      this.instances.delete(key);
     }
   }
 
@@ -83,7 +40,10 @@ class RepositoryManager {
       await instance.invalidateAll();
     }
     this.instances.clear();
-    this._current = null;
+  }
+
+  private getKey(repoPath: string, contextId: string): string {
+    return `${contextId}::${repoPath}`;
   }
 
   /**
@@ -94,13 +54,6 @@ class RepositoryManager {
    */
   private normalizePath(path: string): string {
     return path.replace(/\\/g, "/").replace(/\/+$/, "");
-  }
-
-  destroy() {
-    if (this._unsubscribe) {
-      this._unsubscribe();
-      this._unsubscribe = null;
-    }
   }
 }
 

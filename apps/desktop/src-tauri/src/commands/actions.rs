@@ -8,30 +8,40 @@ use git::{
 };
 
 #[tauri::command]
-pub async fn git_version(state: tauri::State<'_, AppState>) -> Result<String, String> {
-    let services = get_services(state).await?;
+pub async fn git_version(
+    context_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let services = get_services(state, &context_id).await?;
     services.action().git_version().await
 }
 
 #[tauri::command]
-pub async fn get_status(state: tauri::State<'_, AppState>) -> Result<GetStatusResponse, String> {
-    let services = get_services(state).await?;
+pub async fn get_status(
+    context_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<GetStatusResponse, String> {
+    let services = get_services(state, &context_id).await?;
     services.action().get_status().await
 }
 
 #[tauri::command]
-pub async fn git_fetch(state: tauri::State<'_, AppState>) -> Result<String, String> {
-    let services = get_services(state).await?;
+pub async fn git_fetch(
+    context_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let services = get_services(state, &context_id).await?;
     services.action().git_fetch().await
 }
 
 #[tauri::command]
 pub async fn git_add(
+    context_id: String,
     file: Option<String>,
     files: Option<Vec<String>>,
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
-    let services = get_services(state).await?;
+    let services = get_services(state, &context_id).await?;
     services
         .action()
         .git_add(file.as_deref(), files.as_deref())
@@ -40,11 +50,12 @@ pub async fn git_add(
 
 #[tauri::command]
 pub async fn git_remove(
+    context_id: String,
     file: Option<String>,
     files: Option<Vec<String>>,
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
-    let services = get_services(state).await?;
+    let services = get_services(state, &context_id).await?;
     services
         .action()
         .git_remove(file.as_deref(), files.as_deref())
@@ -53,12 +64,13 @@ pub async fn git_remove(
 
 #[tauri::command]
 pub async fn git_discard(
+    context_id: String,
     file: Option<String>,
     files: Option<Vec<String>>,
     all: Option<bool>,
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
-    let services = get_services(state).await?;
+    let services = get_services(state, &context_id).await?;
     services
         .action()
         .git_discard(file.as_deref(), files.as_deref(), all)
@@ -67,6 +79,7 @@ pub async fn git_discard(
 
 #[tauri::command]
 pub async fn git_apply_patch_block(
+    context_id: String,
     file_path: String,
     file_new_path: Option<String>,
     diff_scope: DiffScope,
@@ -75,7 +88,7 @@ pub async fn git_apply_patch_block(
     action: PatchAction,
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
-    let services = get_services(state).await?;
+    let services = get_services(state, &context_id).await?;
     services
         .action()
         .git_apply_patch_block(

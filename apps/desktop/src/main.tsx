@@ -12,8 +12,10 @@ import "./app.css";
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { TabContextProvider } from "./context/TabContextProvider";
 import { appState } from "./state";
 import { initializeQueryFocusBridge } from "./state/core/StateManager";
+import { useAppStore } from "./store/useAppStore";
 
 const router = createRouter({
   routeTree,
@@ -50,6 +52,16 @@ const rootElement = document.getElementById("root");
 if (rootElement && !rootElement.innerHTML) {
   const root = ReactDOM.createRoot(rootElement);
 
+  const AppRouter = () => {
+    const activeTabId = useAppStore((state) => state.activeTabId);
+
+    return (
+      <TabContextProvider scopeId={activeTabId ?? "tab-main"}>
+        <RouterProvider router={router} />
+      </TabContextProvider>
+    );
+  };
+
   root.render(
     <StrictMode>
       <QueryClientProvider client={appState.queryClient}>
@@ -59,7 +71,7 @@ if (rootElement && !rootElement.innerHTML) {
           enableColorScheme
           themes={colorKeyList}
         >
-          <RouterProvider router={router} />
+          <AppRouter />
           <Toaster />
           {import.meta.env.DEV && (
             <ReactQueryDevtools

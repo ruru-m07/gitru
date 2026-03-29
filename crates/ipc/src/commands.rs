@@ -118,25 +118,23 @@ pub async fn clone_repository(
     url: String,
     destination_path: String,
     operation_id: String,
-    state: tauri::State<'_, AppState>,
     manager: tauri::State<'_, Arc<Mutex<RepoManager>>>,
     app: tauri::AppHandle,
 ) -> Result<RepositoryInfo, String> {
     RepositoryService::clone_repository(&url, &destination_path, &operation_id, &app).await?;
 
-    persist_and_select_repository(destination_path, state, manager).await
+    persist_and_select_repository(destination_path, manager).await
 }
 
 #[tauri::command]
 #[logger::logger]
 pub async fn init_repository(
     repo_path: String,
-    state: tauri::State<'_, AppState>,
     manager: tauri::State<'_, Arc<Mutex<RepoManager>>>,
 ) -> Result<RepositoryInfo, String> {
     RepositoryService::init_repository(&repo_path).await?;
 
-    persist_and_select_repository(repo_path, state, manager).await
+    persist_and_select_repository(repo_path, manager).await
 }
 
 #[tauri::command]
@@ -171,7 +169,6 @@ pub async fn cancel_clone_repository(
 
 async fn persist_and_select_repository(
     repo_path: String,
-    state: tauri::State<'_, AppState>,
     manager: tauri::State<'_, Arc<Mutex<RepoManager>>>,
 ) -> Result<RepositoryInfo, String> {
     let basic_info = add_local_git_repo(repo_path)
@@ -186,12 +183,6 @@ async fn persist_and_select_repository(
     let temp_manager = RepoManager::new(app);
     let repo = temp_manager.add_repository(basic_info.into()).await?;
 
-    let services = Arc::new(RepoServices::new(&repo.path)?);
-    {
-        let mut lock = state.services.write().await;
-        *lock = Some(services);
-    }
-
     let manager_guard = manager.lock().map_err(|e| e.to_string())?;
     let store = manager_guard
         .get_store()
@@ -203,11 +194,11 @@ async fn persist_and_select_repository(
 }
 
 #[tauri::command]
-pub async fn select_repository(
+pub async fn create_repo_context(
     repo_id: String,
     state: tauri::State<'_, AppState>,
     manager: tauri::State<'_, Arc<Mutex<RepoManager>>>,
-) -> Result<bool, String> {
+) -> Result<String, String> {
     let repos = {
         let app = {
             let manager_guard = manager.lock().map_err(|e| e.to_string())?;
@@ -223,10 +214,10 @@ pub async fn select_repository(
         .ok_or("Repository not found")?;
 
     let services = Arc::new(RepoServices::new(&repo.path)?);
-
+    let context_id = Uuid::new_v4().to_string();
     {
         let mut lock = state.services.write().await;
-        *lock = Some(services);
+        lock.insert(context_id.clone(), services);
     }
 
     let manager_guard = manager.lock().map_err(|e| e.to_string())?;
@@ -237,7 +228,16 @@ pub async fn select_repository(
     store.set(SELECTED_REPO_KEY, repo_id);
     store.save().map_err(|e| e.to_string())?;
 
-    Ok(true)
+    Ok(context_id)
+}
+
+#[tauri::command]
+pub async fn dispose_repo_context(
+    context_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<bool, String> {
+    let mut lock = state.services.write().await;
+    Ok(lock.remove(&context_id).is_some())
 }
 
 #[tauri::command]

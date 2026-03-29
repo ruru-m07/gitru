@@ -10,6 +10,11 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+html {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
 :root {
   --font-sans: Geist;
   --font-mono: GeistMono;

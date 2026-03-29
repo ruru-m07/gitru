@@ -1,4 +1,5 @@
 use crate::core::RepoServices;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
@@ -12,5 +13,5 @@ pub mod runner;
 pub mod service;
 
 pub struct AppState {
-    pub services: RwLock<Option<Arc<RepoServices>>>,
+    pub services: RwLock<HashMap<String, Arc<RepoServices>>>,
 }

@@ -1,29 +1,242 @@
+import { type RepositoryInfo } from "@gitru/commands";
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@gitru/ui/components/avatar";
 import { Button } from "@gitru/ui/components/button";
-import { useCanGoBack, useRouterState } from "@tanstack/react-router";
+import { cn } from "@gitru/ui/lib/utils";
 import {
-  ArrowLeft,
-  ArrowRight,
-  GitBranch,
-  GitPullRequestArrow,
-  Plus,
-  X,
-} from "lucide-react";
-import { GithubIcon } from "./components/svgs/githubIcon";
+  useCanGoBack,
+  useNavigate,
+  useRouterState,
+} from "@tanstack/react-router";
+import { ArrowLeft, ArrowRight, Plus, X } from "lucide-react";
+import { type MouseEvent, useEffect } from "react";
+import { getAvatarByProvider } from "./lib/getAvatarByGitProvider";
+import { parseOrigin } from "./lib/parseOrigin";
+import { repoContextRegistry } from "./state/core/RepoContextRegistry";
+import { useAppStore } from "./store/useAppStore";
 
 type CustomTitleBarProps = {
   restrictedPaths: string[];
 };
 
+const getTitleFromRoute = (routePath: string) => {
+  const pathname = routePath.split("?")[0];
+
+  if (pathname.startsWith("/app/")) {
+    const segment = pathname.slice("/app/".length).split("/")[0];
+
+    if (segment) {
+      return segment.charAt(0).toUpperCase() + segment.slice(1);
+    }
+  }
+
+  return "Workspace";
+};
+
+const isGitRoute = (routePath: string) =>
+  routePath.split("?")[0].startsWith("/app/git");
+
+const renderTitleForGitPage = ({
+  repository,
+  isActive,
+}: {
+  repository: RepositoryInfo | null;
+  isActive: boolean;
+}) => {
+  if (!repository) {
+    return <span className="truncate font-medium">Git</span>;
+  }
+
+  const origin = parseOrigin(repository.origin);
+
+  if (!origin) {
+    return (
+      <span className="truncate font-medium">
+        {repository.name}
+        {repository.current_branch ? ` > ${repository.current_branch}` : ""}
+      </span>
+    );
+  }
+
+  const providerIcon = getAvatarByProvider(
+    origin.provider,
+    cn("size-2.5 rounded-full", isActive ? "" : "bg-secondary"),
+  );
+  const textClass = isActive ? "text-foreground" : "text-muted-foreground";
+
+  return (
+    <div className="flex min-w-0 items-center">
+      <div className="relative shrink-0">
+        <Avatar className="size-4.5 rounded-sm">
+          <AvatarImage alt={origin.owner} src={origin.avatarUrl} />
+          <AvatarFallback>
+            {origin.owner.charAt(0).toUpperCase()}
+          </AvatarFallback>
+        </Avatar>
+        {providerIcon ? (
+          <span
+            className={cn(
+              "absolute -inset-e-1 -bottom-1 rounded-full p-0.5",
+              isActive ? "bg-background" : "bg-secondary",
+            )}
+          >
+            {providerIcon}
+          </span>
+        ) : null}
+      </div>
+      {/* <div className="relative shrink-0">
+        {providerIcon ? <span className="size-4.5">{providerIcon}</span> : null}
+        <Avatar className="rounded-sm absolute ring ring-background -inset-e-0.5 -bottom-0.5 bg-background p-0.5">
+          <AvatarImage alt={origin.owner} src={origin.avatarUrl} />
+          <AvatarFallback>
+            {origin.owner.charAt(0).toUpperCase()}
+          </AvatarFallback>
+        </Avatar>
+      </div> */}
+
+      <span className="ml-2 flex min-w-0 items-center gap-1 text-sm">
+        <span className="truncate text-muted-foreground">{origin.owner}</span>
+        <span className="text-muted-foreground">/</span>
+        <span className={cn("truncate font-medium", textClass)}>
+          {origin.repo}
+        </span>
+        <span className="text-muted-foreground mx-1">&gt;</span>
+        <span className={cn("flex min-w-0 items-center gap-1", textClass)}>
+          <span className="truncate">
+            {repository.current_branch ?? "detached"}
+          </span>
+        </span>
+      </span>
+    </div>
+  );
+};
+
 const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
   const routerState = useRouterState();
+  const navigate = useNavigate();
   const pathname = routerState.location.pathname;
+  const routePath = routerState.location.href;
 
   const canGoBack = useCanGoBack();
+
+  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const setSelectedRepository = useAppStore(
+    (state) => state.setSelectedRepository,
+  );
+  const repositories = useAppStore((state) => state.repositories);
+
+  const tabs = useAppStore((state) => state.tabs);
+  const activeTabId = useAppStore((state) => state.activeTabId);
+  const ensureActiveTab = useAppStore((state) => state.ensureActiveTab);
+  const createTab = useAppStore((state) => state.createTab);
+  const activateTab = useAppStore((state) => state.activateTab);
+  const closeTab = useAppStore((state) => state.closeTab);
+  const syncActiveTab = useAppStore((state) => state.syncActiveTab);
+
+  useEffect(() => {
+    ensureActiveTab({
+      routePath,
+      repositoryId: selectedRepository?.id ?? null,
+      title: selectedRepository?.name ?? getTitleFromRoute(routePath),
+    });
+  }, [
+    ensureActiveTab,
+    routePath,
+    selectedRepository?.id,
+    selectedRepository?.name,
+  ]);
+
+  useEffect(() => {
+    if (!activeTabId) {
+      return;
+    }
+
+    syncActiveTab({
+      routePath,
+      repositoryId: selectedRepository?.id ?? null,
+      title: selectedRepository?.name ?? getTitleFromRoute(routePath),
+    });
+  }, [
+    activeTabId,
+    routePath,
+    selectedRepository?.id,
+    selectedRepository?.name,
+    syncActiveTab,
+  ]);
+
+  const handleActivateTab = async (tabId: string) => {
+    const tab = tabs.find((item) => item.id === tabId);
+
+    if (!tab) {
+      return;
+    }
+
+    activateTab(tabId);
+
+    const targetRepository = tab.repositoryId
+      ? (repositories.find((repo) => repo.id === tab.repositoryId) ?? null)
+      : null;
+
+    if ((targetRepository?.id ?? null) !== (selectedRepository?.id ?? null)) {
+      await setSelectedRepository(targetRepository);
+    }
+
+    if (tab.routePath !== routePath) {
+      await navigate({ to: tab.routePath });
+    }
+  };
+
+  const handleCreateTab = async () => {
+    const newTab = createTab({
+      routePath,
+      repositoryId: selectedRepository?.id ?? null,
+      title: selectedRepository?.name ?? getTitleFromRoute(routePath),
+    });
+
+    if (newTab.routePath !== routePath) {
+      await navigate({ to: newTab.routePath });
+    }
+  };
+
+  const handleCloseTab = async (
+    tabId: string,
+    event: MouseEvent<HTMLButtonElement>,
+  ) => {
+    event.stopPropagation();
+
+    if (tabs.length <= 1) {
+      return;
+    }
+
+    const wasActive = tabId === activeTabId;
+    closeTab(tabId);
+    void repoContextRegistry.disposeScope(tabId);
+
+    if (!wasActive) {
+      return;
+    }
+
+    const state = useAppStore.getState();
+    const nextTab = state.tabs.find((tab) => tab.id === state.activeTabId);
+
+    if (nextTab) {
+      const nextRepository = nextTab.repositoryId
+        ? (repositories.find((repo) => repo.id === nextTab.repositoryId) ??
+          null)
+        : null;
+
+      if ((nextRepository?.id ?? null) !== (selectedRepository?.id ?? null)) {
+        await setSelectedRepository(nextRepository);
+      }
+    }
+
+    if (nextTab && nextTab.routePath !== routePath) {
+      await navigate({ to: nextTab.routePath });
+    }
+  };
 
   if (restrictedPaths.includes(pathname)) {
     return null;
@@ -31,137 +244,144 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
 
   return (
     <div
-      className="h-(--main-custom-header-height) flex items-center _justify-between relative pl-4 mr-1 select-none _border-b"
+      className="h-(--main-custom-header-height) relative mr-1 flex items-center pl-4 select-none"
       data-tauri-drag-region
       style={{
         // @ts-expect-error - ¯\_(ツ)_/¯
         WebkitAppRegion: "drag",
       }}
     >
-      {restrictedPaths.includes(pathname) ? null : (
-        <>
-          <div
-            className="flex items-center absolute w-fit"
-            style={{
-              // @ts-expect-error - ¯\_(ツ)_/¯
-              WebkitAppRegion: "no-drag",
-              paddingLeft: "70px",
-            }}
+      <div
+        className="absolute flex w-full items-center pr-4"
+        style={{
+          // @ts-expect-error - ¯\_(ツ)_/¯
+          WebkitAppRegion: "no-drag",
+          paddingLeft: "70px",
+        }}
+      >
+        <div className="flex items-center mr-3 translate-y-0.5">
+          <Button
+            onClick={() => window.history.back()}
+            disabled={!canGoBack}
+            size={"icon"}
+            className="size-7"
+            variant="ghost"
           >
-            <Button
-              onClick={() => window.history.back()}
-              disabled={!canGoBack}
-              size={"icon"}
-              className="size-7"
-              variant="ghost"
-            >
-              <ArrowLeft size={16} aria-hidden="true" />
-            </Button>
-            <Button
-              onClick={() => window.history.forward()}
-              disabled={true} // TODO;
-              size={"icon"}
-              className="size-7"
-              variant="ghost"
-            >
-              <ArrowRight size={16} aria-hidden="true" />
-            </Button>
+            <ArrowLeft size={16} aria-hidden="true" />
+          </Button>
+          <Button
+            onClick={() => window.history.forward()}
+            disabled={true}
+            size={"icon"}
+            className="size-7"
+            variant="ghost"
+          >
+            <ArrowRight size={16} aria-hidden="true" />
+          </Button>
+        </div>
+        <div className="-translate-x-2 flex w-fit items-center h-[calc(var(--main-custom-header-height)-0px)]">
+          <div className="ml-2 flex min-w-0 flex-1 items-center gap-1 h-full pt-1">
+            {tabs.map((tab) => {
+              const isActive = tab.id === activeTabId;
+              const tabRepository = tab.repositoryId
+                ? (repositories.find((repo) => repo.id === tab.repositoryId) ??
+                  null)
+                : null;
+              const showGitTitle = isGitRoute(tab.routePath);
 
-            <div className="-translate-x-2 flex w-fit items-center h-[calc(var(--main-custom-header-height)-0px)] pt-1">
-              <div className="flex items-end h-full">
-                <svg
-                  width="15"
-                  height="15"
-                  viewBox="0 0 15 15"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="filter-[drop-shadow(-1px_-1px_1px_#00000011)]"
-                >
-                  <path
-                    d="M15 15H0C8.28427 15 15 8.28427 15 0V15Z"
-                    fill="var(--background)"
-                  />
-                </svg>
-
-                <div className="bg-background flex items-center pl-2.5 pr-1 h-full rounded-t-[16px] [box-shadow:-1px_-1px_1px_0px_#00000011,1px_-1px_1px_0px_#00000011]">
-                  {/* <div className="flex items-center -translate-y-0.5">
-                    <GitPullRequestArrow size={16} className="text-green-600" />
-                    <span className="px-2 space-x-0.5">
-                      <span className="text-sm text-muted-foreground font-normal">
-                        ruru-m07
-                      </span>
-                      <span className="text-sm text-muted-foreground font-normal">
-                        /
-                      </span>
-                      <span className="text-sm font-[450]">gitru</span>
-                      <span className="text-sm font-[450] ml-1">#69</span>
-                    </span>
-                  </div> */}
-                  <div className="flex items-center -translate-y-0.5">
-                    <div className="relative">
-                      <Avatar className="size-5 rounded-sm">
-                        <AvatarImage
-                          alt="User"
-                          src="https://github.com/ruru-m07.png"
-                        />
-                        <AvatarFallback>LT</AvatarFallback>
-                      </Avatar>
-                      <span className="absolute ring ring-background -end-0.5 -bottom-0.5 bg-background rounded-full">
-                        <span className="sr-only">Verified</span>
-                        <GithubIcon className="size-3" />
-                      </span>
-                    </div>
-                    <span className="px-2 space-x-0.5 flex items-center">
-                      <span className="text-sm text-muted-foreground font-normal">
-                        ruru-m07
-                      </span>
-                      <span className="text-sm text-muted-foreground font-normal">
-                        /
-                      </span>
-                      <span className="text-sm font-[450]">gitru</span>
-                      <span className="text-sm mx-2 text-muted-foreground font-normal">
-                        {" > "}
-                      </span>
-                      <span className="text-sm font-[450] flex items-center">
-                        dev
-                      </span>
-                    </span>
-                  </div>
-                  <Button
-                    size={"icon-xs"}
-                    variant={"ghost"}
-                    className="rounded-full -translate-y-0.5"
+              return (
+                <div key={tab.id} className="relative flex items-end h-full">
+                  {isActive && (
+                    <svg
+                      width="15"
+                      height="15"
+                      viewBox="0 0 15 15"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="filter-[drop-shadow(-1px_-1px_1px_#00000011)] absolute -left-3.75 bottom-0"
+                    >
+                      <path
+                        d="M15 15H0C8.28427 15 15 8.28427 15 0V15Z"
+                        fill="var(--background)"
+                      />
+                    </svg>
+                  )}
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      void handleActivateTab(tab.id);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        void handleActivateTab(tab.id);
+                      }
+                    }}
+                    className={cn(
+                      "group flex h-full min-w-44 max-w-72 shrink-0 items-center gap-1 pl-2.5 pr-1 text-sm rounded-t-2xl",
+                      isActive
+                        ? "bg-background flex items-center [box-shadow:-1px_-1px_1px_0px_#00000011,1px_-1px_1px_0px_#00000011]"
+                        : "bg-transparent hover:bg-foreground/10 text-muted-foreground rounded-xl",
+                    )}
                   >
-                    <X />
-                  </Button>
+                    {showGitTitle ? (
+                      renderTitleForGitPage({
+                        repository: tabRepository,
+                        isActive,
+                      })
+                    ) : (
+                      <span className="truncate font-medium">{tab.title}</span>
+                    )}
+                    <Button
+                      size={"icon-xs"}
+                      variant={"ghost"}
+                      className={cn(
+                        "ms-auto h-5 w-5 rounded-full",
+                        isActive
+                          ? "text-muted-foreground hover:text-foreground"
+                          : "text-muted-foreground/70",
+                      )}
+                      onClick={(event) => {
+                        void handleCloseTab(tab.id, event);
+                      }}
+                    >
+                      <X size={12} aria-hidden="true" />
+                    </Button>
+                  </div>
+                  {isActive && (
+                    <svg
+                      width="15"
+                      height="15"
+                      viewBox="0 0 15 15"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="filter-[drop-shadow(1px_-1px_1px_#00000011)] absolute -right-3.75 bottom-0"
+                    >
+                      <path
+                        d="M0 15L6.5568e-07 0C2.93563e-07 8.28427 6.71573 15 15 15L0 15Z"
+                        fill="var(--background)"
+                      />
+                    </svg>
+                  )}
                 </div>
+              );
+            })}
+            <div className="w-0.5 h-4 bg-foreground/10" />
 
-                <svg
-                  width="15"
-                  height="15"
-                  viewBox="0 0 15 15"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="filter-[drop-shadow(1px_-1px_1px_#00000011)]"
-                >
-                  <path
-                    d="M0 15L6.5568e-07 0C2.93563e-07 8.28427 6.71573 15 15 15L0 15Z"
-                    fill="var(--background)"
-                  />
-                </svg>
-              </div>
-
-              <Button
-                size={"icon-sm"}
-                variant={"ghost"}
-                className="-translate-x-1.5 -translate-y-0.5"
-              >
-                <Plus size={16} aria-hidden="true" />
-              </Button>
-            </div>
+            <Button
+              size={"icon-sm"}
+              variant={"ghost"}
+              className="_-translate-y-0.5"
+              onClick={() => {
+                void handleCreateTab();
+              }}
+            >
+              <Plus size={16} aria-hidden="true" />
+            </Button>
           </div>
-        </>
-      )}
+        </div>
+      </div>
     </div>
   );
 };

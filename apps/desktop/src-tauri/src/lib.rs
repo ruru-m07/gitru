@@ -1,9 +1,10 @@
-use git::{core::RepoServices, AppState};
+use git::AppState;
 use ipc::{
     self,
-    repo_manager::{RepoManager, SELECTED_REPO_KEY, STORE_FILE},
+    repo_manager::{RepoManager, STORE_FILE},
 };
 use log::LevelFilter;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tauri::{App, Manager};
 use tauri_plugin_store::StoreExt;
@@ -27,7 +28,7 @@ pub fn run() {
                 .build(),
         )
         .manage(AppState {
-            services: RwLock::new(None),
+            services: RwLock::new(HashMap::new()),
         })
         .setup(|app| {
             setup_managers(app);
@@ -38,7 +39,8 @@ pub fn run() {
             ipc::commands::clone_repository,
             ipc::commands::cancel_clone_repository,
             ipc::commands::init_repository,
-            ipc::commands::select_repository,
+            ipc::commands::create_repo_context,
+            ipc::commands::dispose_repo_context,
             ipc::commands::open_with_app,
             ipc::repo_manager::list_repositories,
             ipc::repo_manager::add_repository,
@@ -94,36 +96,6 @@ fn setup_managers(app: &mut App) {
     app.manage(Arc::new(Mutex::new(repo_manager)));
 
     tauri::async_runtime::spawn(async move {
-        let store = match app_handle.store(STORE_FILE) {
-            Ok(s) => s,
-            Err(_) => return,
-        };
-
-        let selected_id: Option<String> = store
-            .get(SELECTED_REPO_KEY)
-            .and_then(|v| serde_json::from_value(v.clone()).ok());
-
-        if let Some(id) = selected_id {
-            let manager_state = app_handle.state::<Arc<Mutex<RepoManager>>>();
-            let app_state = app_handle.state::<AppState>();
-
-            let repos = {
-                let app = {
-                    let manager = manager_state.lock().unwrap();
-                    manager.app.clone()
-                };
-                let temp = RepoManager::new(app);
-                temp.list_repositories(false).await.ok()
-            };
-
-            if let Some(repos) = repos {
-                if let Some(repo) = repos.into_iter().find(|r| r.id == id) {
-                    if let Ok(services) = RepoServices::new(&repo.path) {
-                        let mut lock = app_state.services.write().await;
-                        *lock = Some(Arc::new(services));
-                    }
-                }
-            }
-        }
+        let _ = app_handle.store(STORE_FILE);
     });
 }
