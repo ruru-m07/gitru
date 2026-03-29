@@ -429,7 +429,12 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
                         ) : tab.routePath === "/app/inbox" ? (
                           <div className="flex items-center gap-1.5 font-medium">
                             <Inbox className={"size-4.5"} />
-                            {tab.title}
+                            <span>
+                              Inbox{" "}
+                              <span className="text-muted-foreground/50">
+                                (5)
+                              </span>
+                            </span>
                           </div>
                         ) : (
                           <span className="truncate font-medium">
@@ -483,10 +488,17 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
               );
             })}
 
+            <div
+              aria-hidden="true"
+              className={cn(
+                "w-0.5 h-4 bg-foreground/5 mb-1 transition-opacity",
+              )}
+            />
+
             <Button
               size={"icon-sm"}
               variant={"ghost"}
-              className="mb-1"
+              className="mb-1 text-muted-foreground/70"
               onClick={() => {
                 void handleCreateTab();
               }}
