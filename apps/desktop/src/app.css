@@ -2,6 +2,10 @@
 
 @custom-variant hover (&:hover);
 
+* {
+  overscroll-behavior: none;
+}
+
 body {
   -webkit-user-select: none;
   user-select: none;

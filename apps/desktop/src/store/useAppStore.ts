@@ -720,6 +720,7 @@ type AppState = {
   disposeSession: (sessionId: string) => void;
   captureActiveSessionSnapshot: () => void;
   closeTab: (tabId: string) => void;
+  reorderTab: (tabId: string, targetIndex: number) => void;
   syncActiveTab: (payload: {
     routePath?: string;
     repositoryId?: string | null;
@@ -912,7 +913,9 @@ const DEFAULT_TAB_ROUTE = "/app/git";
 const getRoutePathname = (routePath: string) => {
   try {
     const origin =
-      typeof window !== "undefined" ? window.location.origin : "http://localhost";
+      typeof window !== "undefined"
+        ? window.location.origin
+        : "http://localhost";
     return new URL(routePath, origin).pathname;
   } catch {
     return routePath.split("?")[0].split("#")[0];
@@ -1551,7 +1554,8 @@ export const useAppStore = create<AppState>()(
             }
 
             const targetSession = state.sessionsById[sessionId] ?? null;
-            const targetTab = state.tabs.find((tab) => tab.id === sessionId) ?? null;
+            const targetTab =
+              state.tabs.find((tab) => tab.id === sessionId) ?? null;
 
             if (!targetSession && !targetTab) {
               return state;
@@ -1560,7 +1564,8 @@ export const useAppStore = create<AppState>()(
             const now = Date.now();
             const resolvedRepositoryId =
               targetSession?.repositoryId ?? targetTab?.repositoryId ?? null;
-            const resolvedRoutePath = targetTab?.routePath ?? targetSession?.routePath;
+            const resolvedRoutePath =
+              targetTab?.routePath ?? targetSession?.routePath;
             const resolvedTitle = targetTab?.title ?? targetSession?.title;
 
             const nextSession: WorkspaceSessionState = targetSession
@@ -1609,10 +1614,10 @@ export const useAppStore = create<AppState>()(
               restoredUiState.selectionByRepo !== state.selectionByRepo ||
               restoredUiState.gitViewByRepo !== state.gitViewByRepo ||
               restoredUiState.mainWindowView !== state.mainWindowView;
-            const hasRepoSelectChange = state.repoSelectIsOpen !== nextRepoSelectIsOpen;
+            const hasRepoSelectChange =
+              state.repoSelectIsOpen !== nextRepoSelectIsOpen;
             const hasSessionWrite =
-              !targetSession ||
-              state.sessionsById[sessionId] !== nextSession;
+              !targetSession || state.sessionsById[sessionId] !== nextSession;
 
             if (
               !hasPointerChange &&
@@ -1807,6 +1812,41 @@ export const useAppStore = create<AppState>()(
             };
           });
         },
+        reorderTab: (tabId, targetIndex) => {
+          set((state) => {
+            if (state.tabs.length <= 1) {
+              return state;
+            }
+
+            const sourceIndex = state.tabs.findIndex((tab) => tab.id === tabId);
+
+            if (sourceIndex === -1) {
+              return state;
+            }
+
+            const clampedTargetIndex = Math.max(
+              0,
+              Math.min(targetIndex, state.tabs.length - 1),
+            );
+
+            if (clampedTargetIndex === sourceIndex) {
+              return state;
+            }
+
+            const nextTabs = [...state.tabs];
+            const [movedTab] = nextTabs.splice(sourceIndex, 1);
+
+            if (!movedTab) {
+              return state;
+            }
+
+            nextTabs.splice(clampedTargetIndex, 0, movedTab);
+
+            return {
+              tabs: nextTabs,
+            };
+          });
+        },
         syncActiveTab: (payload) => {
           const activeTabId = get().activeTabId;
 
@@ -1818,9 +1858,7 @@ export const useAppStore = create<AppState>()(
         },
         syncTabMetadata: (tabId, payload) => {
           set((state) => {
-            const activeIndex = state.tabs.findIndex(
-              (tab) => tab.id === tabId,
-            );
+            const activeIndex = state.tabs.findIndex((tab) => tab.id === tabId);
 
             if (activeIndex === -1) {
               return state;
@@ -1835,10 +1873,9 @@ export const useAppStore = create<AppState>()(
                 ? activeTab.repositoryId
                 : payload.repositoryId;
             const nextTitle = payload.title?.trim() || activeTab.title;
-            const targetRepositoryPath = getRepositoryById(
-              state.repositories,
-              nextRepositoryId,
-            )?.path ?? null;
+            const targetRepositoryPath =
+              getRepositoryById(state.repositories, nextRepositoryId)?.path ??
+              null;
             const hasSnapshotPayload = payload.snapshot !== undefined;
             const normalizedSnapshot = hasSnapshotPayload
               ? normalizeRuntimeSnapshot({
@@ -1860,7 +1897,10 @@ export const useAppStore = create<AppState>()(
               ? normalizedSnapshot
               : (activeSession?.snapshot ?? null);
             const didSnapshotChange = hasSnapshotPayload
-              ? !isSameSessionSnapshot(activeSession?.snapshot ?? null, nextSnapshot)
+              ? !isSameSessionSnapshot(
+                  activeSession?.snapshot ?? null,
+                  nextSnapshot,
+                )
               : false;
 
             if (!didMetadataChange && !didSnapshotChange) {
@@ -1879,7 +1919,8 @@ export const useAppStore = create<AppState>()(
             };
 
             if (activeSession) {
-              const activeRuntimeId = state.activeSessionId ?? state.activeTabId;
+              const activeRuntimeId =
+                state.activeSessionId ?? state.activeTabId;
               const isTargetActiveSession = activeRuntimeId === tabId;
 
               nextSessionsById[tabId] = {
@@ -1890,14 +1931,13 @@ export const useAppStore = create<AppState>()(
                 lifecycle: isTargetActiveSession
                   ? "active"
                   : activeSession.lifecycle,
-                frozenAt: isTargetActiveSession
-                  ? null
-                  : activeSession.frozenAt,
+                frozenAt: isTargetActiveSession ? null : activeSession.frozenAt,
                 snapshot: nextSnapshot,
                 updatedAt: now,
               };
             } else {
-              const activeRuntimeId = state.activeSessionId ?? state.activeTabId;
+              const activeRuntimeId =
+                state.activeSessionId ?? state.activeTabId;
               const isTargetActiveSession = activeRuntimeId === tabId;
 
               nextSessionsById[tabId] = {

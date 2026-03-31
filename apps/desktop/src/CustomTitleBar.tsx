@@ -1,3 +1,25 @@
+import {
+  closestCenter,
+  DndContext,
+  type DragCancelEvent,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  restrictToHorizontalAxis,
+  restrictToParentElement,
+} from "@dnd-kit/modifiers";
+import {
+  arrayMove,
+  horizontalListSortingStrategy,
+  SortableContext,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { type RepositoryInfo } from "@gitru/commands";
 import { Inbox } from "@gitru/icon";
 import {
@@ -9,7 +31,13 @@ import { Button } from "@gitru/ui/components/button";
 import { cn } from "@gitru/ui/lib/utils";
 import { useCanGoBack, useRouterState } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, Plus, X } from "lucide-react";
-import { Fragment, type MouseEvent, useEffect, useState } from "react";
+import {
+  type MouseEvent,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { getAvatarByProvider } from "./lib/getAvatarByGitProvider";
 import { parseOrigin } from "./lib/parseOrigin";
 import { appState } from "./state";
@@ -21,6 +49,55 @@ type CustomTitleBarProps = {
 };
 
 const DEFAULT_TAB_ROUTE = "/app/git";
+const DND_MODIFIERS = [restrictToHorizontalAxis, restrictToParentElement];
+const SORTABLE_TAB_TRANSITION = {
+  duration: 170,
+  easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+};
+
+const areSameTabOrder = (left: string[], right: string[]) =>
+  left.length === right.length &&
+  left.every((value, index) => value === right[index]);
+
+type SortableTabShellProps = {
+  id: string;
+  className?: string;
+  children: ReactNode;
+};
+
+const SortableTabShell = ({
+  id,
+  className,
+  children,
+}: SortableTabShellProps) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id,
+    transition: SORTABLE_TAB_TRANSITION,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 30 : undefined,
+      }}
+      className={className}
+      {...attributes}
+      {...listeners}
+    >
+      {children}
+    </div>
+  );
+};
 
 const isTauriRuntime = () =>
   typeof window !== "undefined" &&
@@ -184,7 +261,19 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
   const createTab = useAppStore((state) => state.createTab);
   const activateTab = useAppStore((state) => state.activateTab);
   const closeTab = useAppStore((state) => state.closeTab);
+  const reorderTab = useAppStore((state) => state.reorderTab);
   const syncActiveTab = useAppStore((state) => state.syncActiveTab);
+  const suppressClickTabIdRef = useRef<string | null>(null);
+  const visualTabOrderRef = useRef<string[] | null>(null);
+  const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
+  const [visualTabOrder, setVisualTabOrder] = useState<string[] | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 6,
+      },
+    }),
+  );
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
   const isRootShellMode = isTauriRuntime() && !isEmbeddedRuntime();
@@ -195,6 +284,12 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
   const effectiveTitle = isGitEffectiveRoute
     ? (selectedRepository?.name ?? getTitleFromRoute(effectiveRoutePath))
     : getTitleFromRoute(effectiveRoutePath);
+  const tabById = new Map(tabs.map((tab) => [tab.id, tab] as const));
+  const orderedTabIds = visualTabOrder ?? tabs.map((tab) => tab.id);
+  const orderedTabs = orderedTabIds
+    .map((tabId) => tabById.get(tabId))
+    .filter((tab): tab is (typeof tabs)[number] => tab !== undefined);
+  const isTabDragInProgress = draggingTabId !== null;
 
   const disposeRuntimeForTab = (tabId: string) => {
     const tab = tabs.find((item) => item.id === tabId);
@@ -309,6 +404,100 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
     }
   };
 
+  useEffect(() => {
+    if (!draggingTabId) {
+      setVisualTabOrder(null);
+      visualTabOrderRef.current = null;
+      return;
+    }
+
+    const currentTabIds = tabs.map((tab) => tab.id);
+
+    if (!currentTabIds.some((tabId) => tabId === draggingTabId)) {
+      setDraggingTabId(null);
+      setVisualTabOrder(null);
+      visualTabOrderRef.current = null;
+      return;
+    }
+
+    setVisualTabOrder((currentOrder) => {
+      const baseOrder = currentOrder ?? currentTabIds;
+      const nextOrder = baseOrder.filter((tabId) =>
+        currentTabIds.includes(tabId),
+      );
+
+      for (const tabId of currentTabIds) {
+        if (!nextOrder.includes(tabId)) {
+          nextOrder.push(tabId);
+        }
+      }
+
+      return areSameTabOrder(baseOrder, nextOrder) ? baseOrder : nextOrder;
+    });
+  }, [draggingTabId, tabs]);
+
+  useEffect(() => {
+    visualTabOrderRef.current = visualTabOrder;
+  }, [visualTabOrder]);
+
+  const finalizeDrag = (activeTab: string | null, shouldCommit: boolean) => {
+    if (shouldCommit && activeTab) {
+      const finalOrder = visualTabOrderRef.current ?? tabs.map((tab) => tab.id);
+      const finalIndex = finalOrder.indexOf(activeTab);
+
+      if (finalIndex !== -1) {
+        reorderTab(activeTab, finalIndex);
+      }
+
+      suppressClickTabIdRef.current = activeTab;
+    }
+
+    setHoveredTabId(null);
+    setDraggingTabId(null);
+    setVisualTabOrder(null);
+    visualTabOrderRef.current = null;
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const activeTab = String(event.active.id);
+
+    setDraggingTabId(activeTab);
+    setHoveredTabId(activeTab);
+    suppressClickTabIdRef.current = null;
+    setVisualTabOrder(
+      (currentOrder) => currentOrder ?? tabs.map((tab) => tab.id),
+    );
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const activeTab = String(event.active.id);
+    const overTab = event.over?.id ? String(event.over.id) : null;
+
+    if (!overTab || activeTab === overTab) {
+      return;
+    }
+
+    setVisualTabOrder((currentOrder) => {
+      const baseOrder = currentOrder ?? tabs.map((tab) => tab.id);
+      const activeIndex = baseOrder.indexOf(activeTab);
+      const overIndex = baseOrder.indexOf(overTab);
+
+      if (activeIndex === -1 || overIndex === -1 || activeIndex === overIndex) {
+        return baseOrder;
+      }
+
+      return arrayMove(baseOrder, activeIndex, overIndex);
+    });
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    finalizeDrag(String(event.active.id), true);
+  };
+
+  const handleDragCancel = (_event: DragCancelEvent) => {
+    finalizeDrag(draggingTabId, false);
+  };
+
   if (restrictedPaths.includes(pathname)) {
     return null;
   }
@@ -352,141 +541,183 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
         </div>
         <div className="-translate-x-2 flex w-fit items-center h-[calc(var(--main-custom-header-height)-0px)]">
           <div className="relative ml-2 flex min-w-0 flex-1 items-center gap-1 h-full pt-1">
-            {tabs.map((tab, index) => {
-              const isActive = tab.id === activeTabId;
-              const isHovered = tab.id === hoveredTabId;
-              const tabRepository = tab.repositoryId
-                ? (repositories.find((repo) => repo.id === tab.repositoryId) ??
-                  null)
-                : null;
-              const showGitTitle = isGitRoute(tab.routePath);
-              const nextTab = tabs[index + 1] ?? null;
-              const shouldHideSeparator =
-                !!nextTab &&
-                (isActive ||
-                  isHovered ||
-                  nextTab.id === activeTabId ||
-                  nextTab.id === hoveredTabId);
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              modifiers={DND_MODIFIERS}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
+            >
+              <SortableContext
+                items={orderedTabIds}
+                strategy={horizontalListSortingStrategy}
+              >
+                {orderedTabs.map((tab, index) => {
+                  const isActive = tab.id === activeTabId;
+                  const isDraggingTab = tab.id === draggingTabId;
+                  const isHovered =
+                    tab.id === hoveredTabId &&
+                    (!isTabDragInProgress || isDraggingTab);
+                  const tabRepository = tab.repositoryId
+                    ? (repositories.find(
+                        (repo) => repo.id === tab.repositoryId,
+                      ) ?? null)
+                    : null;
+                  const showGitTitle = isGitRoute(tab.routePath);
+                  const nextTab = orderedTabs[index + 1] ?? null;
+                  const shouldHideSeparator =
+                    !!nextTab &&
+                    (isActive ||
+                      isHovered ||
+                      nextTab.id === activeTabId ||
+                      nextTab.id === hoveredTabId);
 
-              return (
-                <div key={tab.id} className="relative h-full">
-                  <div className="relative flex items-end h-full">
-                    {isActive && (
-                      <svg
-                        width="15"
-                        height="15"
-                        viewBox="0 0 15 15"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="filter-[drop-shadow(-1px_-1px_1px_#00000011)] absolute -left-3.75 bottom-0"
-                      >
-                        <path
-                          d="M15 15H0C8.28427 15 15 8.28427 15 0V15Z"
-                          fill="var(--background)"
-                        />
-                      </svg>
-                    )}
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => {
-                        void handleActivateTab(tab.id);
-                      }}
-                      onMouseEnter={() => {
-                        setHoveredTabId(tab.id);
-                      }}
-                      onMouseLeave={() => {
-                        setHoveredTabId((currentHoveredTabId) =>
-                          currentHoveredTabId === tab.id
-                            ? null
-                            : currentHoveredTabId,
-                        );
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          void handleActivateTab(tab.id);
-                        }
-                      }}
-                      className={cn(
-                        "group flex h-full min-w-44 max-w-72 shrink-0 items-center gap-1 text-sm rounded-t-2xl pb-1",
-                        isActive
-                          ? "bg-background flex items-center [box-shadow:-1px_-1px_1px_0px_#00000011,1px_-1px_1px_0px_#00000011]"
-                          : "bg-transparent text-muted-foreground",
-                      )}
+                  return (
+                    <SortableTabShell
+                      key={tab.id}
+                      id={tab.id}
+                      className="relative h-full"
                     >
-                      <div
-                        className={cn(
-                          "flex max-w-full w-full items-center gap-1 h-full pl-1.5 pr-1 rounded-[12px]",
-                          !isActive && "hover:bg-foreground/10",
+                      <div className="relative flex items-end h-full">
+                        {isActive && (
+                          <svg
+                            width="15"
+                            height="15"
+                            viewBox="0 0 15 15"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="filter-[drop-shadow(-1px_-1px_1px_#00000011)] absolute -left-3.75 bottom-0"
+                          >
+                            <path
+                              d="M15 15H0C8.28427 15 15 8.28427 15 0V15Z"
+                              fill="var(--background)"
+                            />
+                          </svg>
                         )}
-                      >
-                        {showGitTitle ? (
-                          renderTitleForGitPage({
-                            repository: tabRepository,
-                            isActive,
-                          })
-                        ) : tab.routePath === "/app/inbox" ? (
-                          <div className="flex items-center gap-1.5 font-medium">
-                            <Inbox className={"size-4.5"} />
-                            <span>
-                              Inbox{" "}
-                              <span className="text-muted-foreground/50">
-                                (5)
-                              </span>
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="truncate font-medium">
-                            {tab.title}
-                          </span>
-                        )}
-                        <Button
-                          size={"icon-xs"}
-                          variant={"ghost"}
-                          className={cn(
-                            "ms-auto h-5 w-5 rounded-full",
-                            isActive
-                              ? "text-muted-foreground hover:text-foreground"
-                              : "text-muted-foreground/70",
-                          )}
-                          onClick={(event) => {
-                            void handleCloseTab(tab.id, event);
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => {
+                            if (suppressClickTabIdRef.current === tab.id) {
+                              suppressClickTabIdRef.current = null;
+                              return;
+                            }
+
+                            void handleActivateTab(tab.id);
                           }}
+                          onMouseEnter={() => {
+                            if (isTabDragInProgress && !isDraggingTab) {
+                              return;
+                            }
+
+                            setHoveredTabId(tab.id);
+                          }}
+                          onMouseLeave={() => {
+                            if (isTabDragInProgress && !isDraggingTab) {
+                              return;
+                            }
+
+                            setHoveredTabId((currentHoveredTabId) =>
+                              currentHoveredTabId === tab.id
+                                ? null
+                                : currentHoveredTabId,
+                            );
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              void handleActivateTab(tab.id);
+                            }
+                          }}
+                          className={cn(
+                            "group flex h-full min-w-44 max-w-72 shrink-0 items-center gap-1 text-sm rounded-t-2xl pb-1 touch-none",
+                            isActive
+                              ? "bg-background flex items-center [box-shadow:-1px_-1px_1px_0px_#00000011,1px_-1px_1px_0px_#00000011]"
+                              : "bg-transparent text-muted-foreground",
+                          )}
                         >
-                          <X size={12} aria-hidden="true" />
-                        </Button>
+                          <div
+                            className={cn(
+                              "flex max-w-full w-full items-center gap-1 h-full pl-1.5 pr-1 rounded-[12px]",
+                              !isActive &&
+                                (!isTabDragInProgress || isDraggingTab) &&
+                                "hover:bg-foreground/10",
+                            )}
+                          >
+                            {showGitTitle ? (
+                              renderTitleForGitPage({
+                                repository: tabRepository,
+                                isActive,
+                              })
+                            ) : tab.routePath === "/app/inbox" ? (
+                              <div className="flex items-center gap-1.5 font-medium">
+                                <Inbox className={"size-4.5"} />
+                                <span>
+                                  Inbox{" "}
+                                  <span className="text-muted-foreground/50">
+                                    (5)
+                                  </span>
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="truncate font-medium">
+                                {tab.title}
+                              </span>
+                            )}
+                            <Button
+                              size={"icon-xs"}
+                              variant={"ghost"}
+                              data-tab-close-button="true"
+                              className={cn(
+                                "ms-auto h-5 w-5 rounded-full",
+                                isActive
+                                  ? "text-muted-foreground hover:text-foreground"
+                                  : "text-muted-foreground/70",
+                              )}
+                              onPointerDownCapture={(event) => {
+                                event.stopPropagation();
+                              }}
+                              onClick={(event) => {
+                                void handleCloseTab(tab.id, event);
+                              }}
+                            >
+                              <X size={12} aria-hidden="true" />
+                            </Button>
+                          </div>
+                        </div>
+                        {isActive && (
+                          <svg
+                            width="15"
+                            height="15"
+                            viewBox="0 0 15 15"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="filter-[drop-shadow(1px_-1px_1px_#00000011)] absolute -right-3.75 bottom-0"
+                          >
+                            <path
+                              d="M0 15L6.5568e-07 0C2.93563e-07 8.28427 6.71573 15 15 15L0 15Z"
+                              fill="var(--background)"
+                            />
+                          </svg>
+                        )}
                       </div>
-                    </div>
-                    {isActive && (
-                      <svg
-                        width="15"
-                        height="15"
-                        viewBox="0 0 15 15"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="filter-[drop-shadow(1px_-1px_1px_#00000011)] absolute -right-3.75 bottom-0"
-                      >
-                        <path
-                          d="M0 15L6.5568e-07 0C2.93563e-07 8.28427 6.71573 15 15 15L0 15Z"
-                          fill="var(--background)"
+                      {nextTab ? (
+                        <div
+                          aria-hidden="true"
+                          className={cn(
+                            "absolute -right-px bottom-2",
+                            "w-0.5 h-4 bg-foreground/5 mb-1 transition-opacity",
+                            shouldHideSeparator && "opacity-0",
+                          )}
                         />
-                      </svg>
-                    )}
-                  </div>
-                  {nextTab ? (
-                    <div
-                      aria-hidden="true"
-                      className={cn(
-                        "absolute -right-px bottom-2",
-                        "w-0.5 h-4 bg-foreground/5 mb-1 transition-opacity",
-                        shouldHideSeparator && "opacity-0",
-                      )}
-                    />
-                  ) : null}
-                </div>
-              );
-            })}
+                      ) : null}
+                    </SortableTabShell>
+                  );
+                })}
+              </SortableContext>
+            </DndContext>
 
             <div
               aria-hidden="true"
