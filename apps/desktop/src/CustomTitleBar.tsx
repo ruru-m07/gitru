@@ -30,6 +30,7 @@ import {
 import { Button } from "@gitru/ui/components/button";
 import { cn } from "@gitru/ui/lib/utils";
 import { useCanGoBack, useRouterState } from "@tanstack/react-router";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ArrowLeft, ArrowRight, Plus, X } from "lucide-react";
 import {
   type MouseEvent,
@@ -40,6 +41,11 @@ import {
 } from "react";
 import { getAvatarByProvider } from "./lib/getAvatarByGitProvider";
 import { parseOrigin } from "./lib/parseOrigin";
+import {
+  TAB_SWITCH_CYCLE_MODE,
+  TAB_SWITCH_SHORTCUT_EVENT,
+  type TabSwitchShortcutPayload,
+} from "./lib/tabSwitching";
 import { appState } from "./state";
 import { repoContextRegistry } from "./state/core/RepoContextRegistry";
 import { useAppStore } from "./store/useAppStore";
@@ -54,6 +60,8 @@ const SORTABLE_TAB_TRANSITION = {
   duration: 170,
   easing: "cubic-bezier(0.22, 1, 0.36, 1)",
 };
+const TAB_SWITCHER_HEADER_HEIGHT_PX = 240;
+const MAIN_HEADER_HEIGHT_CSS_VAR = "--main-custom-header-height";
 
 const areSameTabOrder = (left: string[], right: string[]) =>
   left.length === right.length &&
@@ -64,6 +72,8 @@ type SortableTabShellProps = {
   className?: string;
   children: ReactNode;
 };
+
+type TabSwitchModifier = "Control" | "Meta";
 
 const SortableTabShell = ({
   id,
@@ -265,8 +275,22 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
   const syncActiveTab = useAppStore((state) => state.syncActiveTab);
   const suppressClickTabIdRef = useRef<string | null>(null);
   const visualTabOrderRef = useRef<string[] | null>(null);
+  const mruTabIdsRef = useRef<string[]>([]);
+  const tabSwitchModifierRef = useRef<TabSwitchModifier | null>(null);
+  const tabsRef = useRef(tabs);
+  const activeTabIdRef = useRef(activeTabId);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [visualTabOrder, setVisualTabOrder] = useState<string[] | null>(null);
+  const [isTabSwitcherOpen, setIsTabSwitcherOpen] = useState(false);
+  const [tabSwitcherTabIds, setTabSwitcherTabIds] = useState<string[]>([]);
+  const [tabSwitcherIndex, setTabSwitcherIndex] = useState(0);
+  const tabSwitcherOpenRef = useRef(false);
+  const tabSwitcherTabIdsRef = useRef<string[]>([]);
+  const tabSwitcherIndexRef = useRef(0);
+  const handleTabSwitchAdvanceRef = useRef(
+    (_backward: boolean, _modifier: TabSwitchModifier) => {},
+  );
+  const handleTabSwitchCommitRef = useRef(() => {});
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -274,6 +298,9 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
       },
     }),
   );
+
+  tabsRef.current = tabs;
+  activeTabIdRef.current = activeTabId;
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
   const isRootShellMode = isTauriRuntime() && !isEmbeddedRuntime();
@@ -290,6 +317,8 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
     .map((tabId) => tabById.get(tabId))
     .filter((tab): tab is (typeof tabs)[number] => tab !== undefined);
   const isTabDragInProgress = draggingTabId !== null;
+  const shouldReserveTabSwitcherSpace =
+    isRootShellMode && TAB_SWITCH_CYCLE_MODE === "MRU" && isTabSwitcherOpen;
 
   const disposeRuntimeForTab = (tabId: string) => {
     const tab = tabs.find((item) => item.id === tabId);
@@ -362,6 +391,66 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
     syncActiveTab,
   ]);
 
+  useEffect(() => {
+    tabSwitcherOpenRef.current = isTabSwitcherOpen;
+  }, [isTabSwitcherOpen]);
+
+  useEffect(() => {
+    tabSwitcherTabIdsRef.current = tabSwitcherTabIds;
+  }, [tabSwitcherTabIds]);
+
+  useEffect(() => {
+    tabSwitcherIndexRef.current = tabSwitcherIndex;
+  }, [tabSwitcherIndex]);
+
+  useEffect(() => {
+    const validTabIds = new Set(tabs.map((tab) => tab.id));
+    const prunedOrder = mruTabIdsRef.current.filter((tabId) =>
+      validTabIds.has(tabId),
+    );
+
+    if (!activeTabId || !validTabIds.has(activeTabId)) {
+      mruTabIdsRef.current = prunedOrder;
+      return;
+    }
+
+    mruTabIdsRef.current = [
+      activeTabId,
+      ...prunedOrder.filter((tabId) => tabId !== activeTabId),
+    ];
+  }, [activeTabId, tabs]);
+
+  useEffect(() => {
+    if (!isTabSwitcherOpen) {
+      return;
+    }
+
+    const currentTabIds = tabs.map((tab) => tab.id);
+    const nextSwitcherTabIds = tabSwitcherTabIdsRef.current.filter((tabId) =>
+      currentTabIds.includes(tabId),
+    );
+
+    if (nextSwitcherTabIds.length === 0) {
+      closeTabSwitcher();
+      return;
+    }
+
+    if (!areSameTabOrder(nextSwitcherTabIds, tabSwitcherTabIdsRef.current)) {
+      tabSwitcherTabIdsRef.current = nextSwitcherTabIds;
+      setTabSwitcherTabIds(nextSwitcherTabIds);
+    }
+
+    const clampedIndex = Math.min(
+      tabSwitcherIndexRef.current,
+      nextSwitcherTabIds.length - 1,
+    );
+
+    if (clampedIndex !== tabSwitcherIndexRef.current) {
+      tabSwitcherIndexRef.current = clampedIndex;
+      setTabSwitcherIndex(clampedIndex);
+    }
+  }, [isTabSwitcherOpen, tabs]);
+
   const handleActivateTab = async (tabId: string) => {
     if (!tabs.some((item) => item.id === tabId)) {
       return;
@@ -403,6 +492,249 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
       return;
     }
   };
+
+  const getMruCandidateTabIds = () => {
+    const currentTabs = tabsRef.current;
+    const activeId = activeTabIdRef.current;
+    const orderedTabIds = currentTabs.map((tab) => tab.id);
+    const mruTabIds = mruTabIdsRef.current.filter((tabId) =>
+      orderedTabIds.includes(tabId),
+    );
+    const remainingTabIds = orderedTabIds.filter(
+      (tabId) => !mruTabIds.includes(tabId),
+    );
+    const mergedTabIds = [...mruTabIds, ...remainingTabIds];
+
+    if (!activeId) {
+      return mergedTabIds;
+    }
+
+    return mergedTabIds.filter((tabId) => tabId !== activeId);
+  };
+
+  const getSequentialTargetTabId = (backward: boolean) => {
+    const currentTabs = tabsRef.current;
+    const activeId = activeTabIdRef.current;
+
+    if (currentTabs.length <= 1) {
+      return null;
+    }
+
+    if (!activeId) {
+      return currentTabs[0]?.id ?? null;
+    }
+
+    const activeIndex = currentTabs.findIndex((tab) => tab.id === activeId);
+
+    if (activeIndex === -1) {
+      return currentTabs[0]?.id ?? null;
+    }
+
+    const nextIndex = backward
+      ? (activeIndex - 1 + currentTabs.length) % currentTabs.length
+      : (activeIndex + 1) % currentTabs.length;
+
+    return currentTabs[nextIndex]?.id ?? null;
+  };
+
+  const closeTabSwitcher = () => {
+    tabSwitcherOpenRef.current = false;
+    tabSwitcherTabIdsRef.current = [];
+    tabSwitcherIndexRef.current = 0;
+    tabSwitchModifierRef.current = null;
+
+    setIsTabSwitcherOpen(false);
+    setTabSwitcherTabIds([]);
+    setTabSwitcherIndex(0);
+  };
+
+  const commitTabSwitcherSelection = () => {
+    const targetTabId =
+      tabSwitcherTabIdsRef.current[tabSwitcherIndexRef.current] ?? null;
+
+    closeTabSwitcher();
+
+    if (targetTabId && targetTabId !== activeTabIdRef.current) {
+      activateTab(targetTabId);
+    }
+  };
+
+  const advanceMruTabSwitcher = (
+    backward: boolean,
+    modifier: TabSwitchModifier,
+  ) => {
+    const candidates = getMruCandidateTabIds();
+
+    if (candidates.length === 0) {
+      return;
+    }
+
+    const hasSameCandidateSet = areSameTabOrder(
+      candidates,
+      tabSwitcherTabIdsRef.current,
+    );
+    const shouldCycleCurrentList =
+      tabSwitcherOpenRef.current && hasSameCandidateSet;
+
+    const nextIndex = shouldCycleCurrentList
+      ? backward
+        ? (tabSwitcherIndexRef.current - 1 + candidates.length) %
+          candidates.length
+        : (tabSwitcherIndexRef.current + 1) % candidates.length
+      : backward
+        ? candidates.length - 1
+        : 0;
+
+    tabSwitchModifierRef.current = modifier;
+    tabSwitcherOpenRef.current = true;
+    tabSwitcherTabIdsRef.current = candidates;
+    tabSwitcherIndexRef.current = nextIndex;
+
+    setIsTabSwitcherOpen(true);
+    setTabSwitcherTabIds(candidates);
+    setTabSwitcherIndex(nextIndex);
+  };
+
+  const handleTabSwitchAdvance = (
+    backward: boolean,
+    modifier: TabSwitchModifier,
+  ) => {
+    if (TAB_SWITCH_CYCLE_MODE === "Sequential") {
+      closeTabSwitcher();
+
+      const targetTabId = getSequentialTargetTabId(backward);
+
+      if (targetTabId && targetTabId !== activeTabIdRef.current) {
+        activateTab(targetTabId);
+      }
+
+      return;
+    }
+
+    advanceMruTabSwitcher(backward, modifier);
+  };
+
+  const handleTabSwitchCommit = () => {
+    if (TAB_SWITCH_CYCLE_MODE !== "MRU" || !tabSwitcherOpenRef.current) {
+      return;
+    }
+
+    commitTabSwitcherSelection();
+  };
+
+  useEffect(() => {
+    handleTabSwitchAdvanceRef.current = handleTabSwitchAdvance;
+    handleTabSwitchCommitRef.current = handleTabSwitchCommit;
+  }, [handleTabSwitchAdvance, handleTabSwitchCommit]);
+
+  useEffect(() => {
+    if (!isRootShellMode) {
+      return;
+    }
+
+    const rootStyle = document.documentElement.style;
+
+    if (shouldReserveTabSwitcherSpace) {
+      rootStyle.setProperty(
+        MAIN_HEADER_HEIGHT_CSS_VAR,
+        `${TAB_SWITCHER_HEADER_HEIGHT_PX}px`,
+      );
+    } else {
+      rootStyle.removeProperty(MAIN_HEADER_HEIGHT_CSS_VAR);
+    }
+
+    return () => {
+      rootStyle.removeProperty(MAIN_HEADER_HEIGHT_CSS_VAR);
+    };
+  }, [isRootShellMode, shouldReserveTabSwitcherSpace]);
+
+  useEffect(() => {
+    if (!isRootShellMode) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        TAB_SWITCH_CYCLE_MODE === "MRU" &&
+        event.key === "Escape" &&
+        tabSwitcherOpenRef.current
+      ) {
+        event.preventDefault();
+        closeTabSwitcher();
+        return;
+      }
+
+      if (!(event.ctrlKey || event.metaKey) || event.key !== "Tab") {
+        return;
+      }
+
+      event.preventDefault();
+
+      handleTabSwitchAdvanceRef.current(
+        Boolean(event.shiftKey),
+        event.metaKey ? "Meta" : "Control",
+      );
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      const activeModifier = tabSwitchModifierRef.current;
+
+      if (!activeModifier || event.key !== activeModifier) {
+        return;
+      }
+
+      event.preventDefault();
+      handleTabSwitchCommitRef.current();
+    };
+
+    const handleWindowBlur = () => {
+      handleTabSwitchCommitRef.current();
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("keyup", handleKeyUp, true);
+    window.addEventListener("blur", handleWindowBlur);
+
+    let unlistenTabSwitchShortcut: (() => void) | undefined;
+
+    const registerTabSwitchShortcutListener = async () => {
+      if (!isTauriRuntime()) {
+        return;
+      }
+
+      unlistenTabSwitchShortcut =
+        await getCurrentWebview().listen<TabSwitchShortcutPayload>(
+          TAB_SWITCH_SHORTCUT_EVENT,
+          ({ payload }) => {
+            if (!payload) {
+              return;
+            }
+
+            if (payload.phase === "advance") {
+              handleTabSwitchAdvanceRef.current(
+                Boolean(payload.backward),
+                payload.modifier,
+              );
+              return;
+            }
+
+            handleTabSwitchCommitRef.current();
+          },
+        );
+    };
+
+    void registerTabSwitchShortcutListener();
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("keyup", handleKeyUp, true);
+      window.removeEventListener("blur", handleWindowBlur);
+
+      if (unlistenTabSwitchShortcut) {
+        unlistenTabSwitchShortcut();
+      }
+    };
+  }, [isRootShellMode]);
 
   useEffect(() => {
     if (!draggingTabId) {
@@ -599,7 +931,7 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
                         <div
                           role="button"
                           tabIndex={0}
-                          onClick={() => {
+                          onMouseDown={() => {
                             if (suppressClickTabIdRef.current === tab.id) {
                               suppressClickTabIdRef.current = null;
                               return;
@@ -718,6 +1050,57 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
                 })}
               </SortableContext>
             </DndContext>
+
+            {TAB_SWITCH_CYCLE_MODE === "MRU" &&
+            isTabSwitcherOpen &&
+            tabSwitcherTabIds.length > 0 ? (
+              <div className="pointer-events-none absolute left-1/2 top-12 z-50 -translate-x-1/2">
+                <div className="min-w-80 max-w-136 overflow-hidden rounded-xl border border-border/60 bg-background/95 p-1.5 shadow-2xl backdrop-blur">
+                  <div className="border-b border-border/50 px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Recent Tabs
+                  </div>
+                  <div className="flex max-h-44 flex-col gap-0.5 overflow-auto p-1">
+                    {tabSwitcherTabIds.map((tabId, index) => {
+                      const switcherTab = tabById.get(tabId);
+
+                      if (!switcherTab) {
+                        return null;
+                      }
+
+                      const switcherTabRepository = switcherTab.repositoryId
+                        ? (repositories.find(
+                            (repo) => repo.id === switcherTab.repositoryId,
+                          ) ?? null)
+                        : null;
+                      const title = isGitRoute(switcherTab.routePath)
+                        ? (switcherTabRepository?.name ?? "Git")
+                        : switcherTab.title;
+                      const subtitle = getRoutePathname(switcherTab.routePath);
+                      const isSelected = index === tabSwitcherIndex;
+
+                      return (
+                        <div
+                          key={tabId}
+                          className={cn(
+                            "flex min-w-0 items-center gap-3 rounded-md px-2 py-1.5 text-sm",
+                            isSelected
+                              ? "bg-foreground/10 text-foreground"
+                              : "text-muted-foreground",
+                          )}
+                        >
+                          <span className="min-w-0 flex-1 truncate font-medium">
+                            {title}
+                          </span>
+                          <span className="max-w-56 truncate text-xs text-muted-foreground">
+                            {subtitle}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             <div
               aria-hidden="true"

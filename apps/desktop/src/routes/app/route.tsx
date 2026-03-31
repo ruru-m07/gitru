@@ -38,6 +38,7 @@ function RouteComponent() {
 
   const isEmbedded = hasEmbeddedSearchFlag || isEmbeddedWebviewLabel;
 
+  // Embedded tab webviews show actual content with ActionPanel
   if (isEmbedded) {
     return (
       <ActionPannel>
@@ -51,6 +52,7 @@ function RouteComponent() {
     );
   }
 
+  // Non-Tauri (browser) mode with ActionPanel
   if (!isTauriRuntime()) {
     return (
       <ActionPannel>
@@ -67,14 +69,13 @@ function RouteComponent() {
     );
   }
 
+  // Main window with tabs - NO ActionPanel here!
   return (
-    <ActionPannel>
-      <div className="h-screen w-full bg-secondary">
-        <CustomTitleBar restrictedPaths={["/login", "/register", "/welcome"]} />
-        <div className="h-(--main-window-height) w-screen">
-          <WebviewTabHost />
-        </div>
+    <div className="h-screen w-full bg-secondary">
+      <CustomTitleBar restrictedPaths={["/login", "/register", "/welcome"]} />
+      <div className="h-(--main-window-height) w-screen">
+        <WebviewTabHost />
       </div>
-    </ActionPannel>
+    </div>
   );
 }

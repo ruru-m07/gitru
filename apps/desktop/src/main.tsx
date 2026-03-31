@@ -1,11 +1,16 @@
+import { CommandManagerProvider } from "@gitru/ui/components/command";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { ThemeProvider as NextThemesProvider } from "next-themes";
-import { StrictMode, useEffect, useRef } from "react";
+import { StrictMode, useCallback, useEffect, useMemo, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import { scan } from "react-scan";
 import { Toaster } from "sonner";
 
 import { colorKeyList } from "./lib/colors.ts";
+import {
+  TAB_SWITCH_SHORTCUT_EVENT,
+  type TabSwitchShortcutPayload,
+} from "./lib/tabSwitching";
 import { routeTree } from "./routeTree.gen";
 import { useLastPageStore } from "./store/useLastPageStore.ts";
 import "./app.css";
@@ -293,8 +298,11 @@ if (rootElement && !rootElement.innerHTML) {
     const captureActiveSessionSnapshot = useAppStore(
       (state) => state.captureActiveSessionSnapshot,
     );
-    const embeddedRuntime = isEmbeddedRuntime();
-    const embeddedTabId = getEmbeddedTabId();
+
+    // Compute derived values once
+    const embeddedRuntime = useMemo(() => isEmbeddedRuntime(), []);
+    const embeddedTabId = useMemo(() => getEmbeddedTabId(), []);
+
     const embeddedRuntimeSessionExists = useAppStore((state) => {
       if (!embeddedTabId) {
         return false;
@@ -316,6 +324,12 @@ if (rootElement && !rootElement.innerHTML) {
     const emitRuntimeStateRef = useRef<((href: string) => void) | null>(null);
     const snapshotEmitTimerRef = useRef<number | null>(null);
 
+    // Memoize snapshot capture function to prevent recreating on every render
+    const captureSnapshot = useCallback(() => {
+      captureActiveSessionSnapshot();
+    }, [captureActiveSessionSnapshot]);
+
+    // Effect 1: Set embedded runtime session
     useEffect(() => {
       if (
         !embeddedRuntime ||
@@ -335,32 +349,64 @@ if (rootElement && !rootElement.innerHTML) {
       setEmbeddedRuntimeSession,
     ]);
 
+    // Effect 2: Handle keyboard shortcuts in embedded runtime
     useEffect(() => {
-      if (embeddedRuntime) {
+      if (!embeddedRuntime || !isTauriRuntime()) {
         return;
       }
 
-      captureActiveSessionSnapshot();
-    }, [
-      captureActiveSessionSnapshot,
-      embeddedRuntime,
-      activeRuntimeId,
-      activeRepoStateKey,
-      activeRepositoryPath,
-      activeGitViewState,
-      activeSelectionState,
-      mainWindowView,
-    ]);
-
-    useEffect(() => {
-      if (embeddedRuntime) {
-        return;
-      }
-
-      const captureSnapshot = () => {
-        captureActiveSessionSnapshot();
+      const emitTabSwitchShortcut = (payload: TabSwitchShortcutPayload) => {
+        void getCurrentWebview().emit(TAB_SWITCH_SHORTCUT_EVENT, payload);
       };
 
+      const handleKeyDown = (event: KeyboardEvent) => {
+        if (!(event.ctrlKey || event.metaKey) || event.key !== "Tab") {
+          return;
+        }
+
+        event.preventDefault();
+
+        emitTabSwitchShortcut({
+          phase: "advance",
+          backward: event.shiftKey,
+          modifier: event.metaKey ? "Meta" : "Control",
+        });
+      };
+
+      const handleKeyUp = (event: KeyboardEvent) => {
+        if (event.key !== "Control" && event.key !== "Meta") {
+          return;
+        }
+
+        emitTabSwitchShortcut({
+          phase: "commit",
+        });
+      };
+
+      const handleWindowBlur = () => {
+        emitTabSwitchShortcut({
+          phase: "commit",
+        });
+      };
+
+      window.addEventListener("keydown", handleKeyDown, true);
+      window.addEventListener("keyup", handleKeyUp, true);
+      window.addEventListener("blur", handleWindowBlur);
+
+      return () => {
+        window.removeEventListener("keydown", handleKeyDown, true);
+        window.removeEventListener("keyup", handleKeyUp, true);
+        window.removeEventListener("blur", handleWindowBlur);
+      };
+    }, [embeddedRuntime]);
+
+    // Effect 3: Capture state changes only for main window (not embedded)
+    useEffect(() => {
+      if (embeddedRuntime) {
+        return;
+      }
+
+      // Capture on page visibility/unload events
       const handleVisibilityChange = () => {
         if (document.visibilityState === "hidden") {
           captureSnapshot();
@@ -379,8 +425,9 @@ if (rootElement && !rootElement.innerHTML) {
           handleVisibilityChange,
         );
       };
-    }, [captureActiveSessionSnapshot, embeddedRuntime]);
+    }, [captureSnapshot, embeddedRuntime]);
 
+    // Effect 4: Consolidated embedded tab runtime state management and sync
     useEffect(() => {
       if (
         !embeddedTabId ||
@@ -498,6 +545,7 @@ if (rootElement && !rootElement.innerHTML) {
       };
     }, [embeddedTabId, embeddedRuntimeSessionExists]);
 
+    // Effect 5: Debounced snapshot emit for embedded tabs
     useEffect(() => {
       if (
         !embeddedRuntime ||
@@ -541,6 +589,7 @@ if (rootElement && !rootElement.innerHTML) {
       isEmbeddedRuntimeBound,
     ]);
 
+    // Effect 6: Listen for tab runtime events in main window
     useEffect(() => {
       if (isEmbeddedRuntime() || !isTauriRuntime()) {
         return;
@@ -641,14 +690,16 @@ if (rootElement && !rootElement.innerHTML) {
           enableColorScheme
           themes={colorKeyList}
         >
-          <AppRouter />
-          <Toaster />
-          {enableDevDiagnostics && (
-            <ReactQueryDevtools
-              buttonPosition="top-right"
-              initialIsOpen={false}
-            />
-          )}
+          <CommandManagerProvider initialViewId="root">
+            <AppRouter />
+            <Toaster />
+            {enableDevDiagnostics && (
+              <ReactQueryDevtools
+                buttonPosition="top-right"
+                initialIsOpen={false}
+              />
+            )}
+          </CommandManagerProvider>
         </NextThemesProvider>
       </QueryClientProvider>
     </StrictMode>,
