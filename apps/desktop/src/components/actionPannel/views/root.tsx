@@ -146,14 +146,6 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             redirect: "/app/git",
           },
           {
-            id: "tab-switch-stress",
-            label: "Tab Switch Stress Test",
-            shortcut: ["G", "T"],
-            iconKey: "localGit",
-            keywords: ["tab", "stress", "benchmark", "latency"],
-            redirect: "/app/git?tabStress=1",
-          },
-          {
             id: "stash-changes",
             label: "Stashed Changes",
             shortcut: ["G", "S"],

@@ -904,7 +904,7 @@ const ToggelPanelButton = () => {
       variant={"ghost"}
     >
       <div className="flex-col flex items-start">
-        <span className="text-xs text-muted-foreground">
+        <span className="text-xs text-muted-foreground font-[430]">
           Current Repository
         </span>
         <span>{activeRepository?.name || "No repository selected"}</span>

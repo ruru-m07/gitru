@@ -31,14 +31,7 @@ import { Button } from "@gitru/ui/components/button";
 import { cn } from "@gitru/ui/lib/utils";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import {
-  ArrowLeft,
-  ArrowRight,
-  ChevronLeft,
-  ChevronRight,
-  Plus,
-  X,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 import {
   type MouseEvent,
   type ReactNode,
