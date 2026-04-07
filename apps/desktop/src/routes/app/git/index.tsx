@@ -638,7 +638,7 @@ const MainActionBar = () => {
                       strokeWidth={1.5}
                     />
                   ) : (
-                    <ChevronsUp className="size-8" />
+                    <ChevronsUp className="size-8 rotate-180" />
                   )}
                   <div className="flex-col flex items-start">
                     <span className="text-xs text-muted-foreground font-normal">

@@ -14,6 +14,7 @@ use tauri::Emitter;
 use uuid::Uuid;
 
 use crate::repo_manager::{RepoManager, RepositoryInfo, SELECTED_REPO_KEY};
+use crate::session_manager::{SessionManager, SessionNavigationInfo};
 
 #[derive(Serialize)]
 pub struct RepoSitoryStore {
@@ -436,5 +437,71 @@ fn open_on_linux(opener: ExternalOpener, file_path: &str, line: Option<u32>) -> 
         .spawn()
         .map_err(|e| format!("Failed to launch opener on Linux: {}", e))?;
 
+    Ok(())
+}
+
+#[derive(Deserialize)]
+pub struct SessionPushToHistoryRequest {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    #[serde(rename = "routePath")]
+    pub route_path: String,
+}
+
+#[tauri::command]
+#[logger::logger]
+pub async fn session_push_to_history(
+    req: SessionPushToHistoryRequest,
+    session_manager: tauri::State<'_, std::sync::Arc<SessionManager>>,
+) -> Result<SessionNavigationInfo, String> {
+    let info = session_manager
+        .push_to_history(req.session_id, req.route_path)
+        .await;
+    Ok(info)
+}
+
+#[derive(Deserialize)]
+pub struct SessionActionRequest {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+}
+
+#[tauri::command]
+#[logger::logger]
+pub async fn session_go_back(
+    req: SessionActionRequest,
+    session_manager: tauri::State<'_, std::sync::Arc<SessionManager>>,
+) -> Result<Option<SessionNavigationInfo>, String> {
+    let info = session_manager.go_back(&req.session_id).await;
+    Ok(info)
+}
+
+#[tauri::command]
+#[logger::logger]
+pub async fn session_go_forward(
+    req: SessionActionRequest,
+    session_manager: tauri::State<'_, std::sync::Arc<SessionManager>>,
+) -> Result<Option<SessionNavigationInfo>, String> {
+    let info = session_manager.go_forward(&req.session_id).await;
+    Ok(info)
+}
+
+#[tauri::command]
+#[logger::logger]
+pub async fn session_get_navigation_state(
+    req: SessionActionRequest,
+    session_manager: tauri::State<'_, std::sync::Arc<SessionManager>>,
+) -> Result<SessionNavigationInfo, String> {
+    let info = session_manager.get_navigation_state(&req.session_id).await;
+    Ok(info)
+}
+
+#[tauri::command]
+#[logger::logger]
+pub async fn session_clear_history(
+    req: SessionActionRequest,
+    session_manager: tauri::State<'_, std::sync::Arc<SessionManager>>,
+) -> Result<(), String> {
+    session_manager.clear_session_history(&req.session_id).await;
     Ok(())
 }

@@ -9,11 +9,6 @@ import { ActionPannel } from "@/components/actionPannel";
 import Sidebar from "@/components/sidebar";
 import WebviewTabHost from "@/components/WebviewTabHost";
 
-const isTauriRuntime = () =>
-  typeof window !== "undefined" &&
-  typeof (window as Window & { __TAURI_INTERNALS__?: unknown })
-    .__TAURI_INTERNALS__ !== "undefined";
-
 export const Route = createFileRoute("/app")({
   component: RouteComponent,
 });
@@ -27,22 +22,19 @@ function RouteComponent() {
 
   let isEmbeddedWebviewLabel = false;
 
-  if (isTauriRuntime()) {
-    try {
-      const label = getCurrentWebview().label;
-      isEmbeddedWebviewLabel = label.startsWith("tab-webview:");
-    } catch {
-      isEmbeddedWebviewLabel = false;
-    }
+  try {
+    const label = getCurrentWebview().label;
+    isEmbeddedWebviewLabel = label.startsWith("tab-webview:");
+  } catch {
+    isEmbeddedWebviewLabel = false;
   }
 
   const isEmbedded = hasEmbeddedSearchFlag || isEmbeddedWebviewLabel;
 
-  // Embedded tab webviews show actual content with ActionPanel
   if (isEmbedded) {
     return (
       <ActionPannel>
-        <div className="h-screen w-full bg-secondary">
+        <div className="h-screen w-full bg-secondary -z-10">
           <div className="flex h-screen w-screen px-(--main-actual-content-padding) pb-(--main-actual-content-padding) gap-(--main-actual-content-padding)">
             <Sidebar />
             <Outlet />
@@ -52,24 +44,6 @@ function RouteComponent() {
     );
   }
 
-  // Non-Tauri (browser) mode with ActionPanel
-  if (!isTauriRuntime()) {
-    return (
-      <ActionPannel>
-        <div className="h-screen w-full bg-secondary">
-          <CustomTitleBar
-            restrictedPaths={["/login", "/register", "/welcome"]}
-          />
-          <div className="flex h-(--main-window-height) w-screen gap-(--main-actual-content-padding)">
-            <Sidebar />
-            <Outlet />
-          </div>
-        </div>
-      </ActionPannel>
-    );
-  }
-
-  // Main window with tabs - NO ActionPanel here!
   return (
     <div className="h-screen w-full bg-secondary">
       <CustomTitleBar restrictedPaths={["/login", "/register", "/welcome"]} />

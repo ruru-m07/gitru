@@ -2,6 +2,7 @@ use git::AppState;
 use ipc::{
     self,
     repo_manager::{RepoManager, STORE_FILE},
+    session_manager::SessionManager,
 };
 use log::LevelFilter;
 use std::collections::HashMap;
@@ -30,6 +31,7 @@ pub fn run() {
         .manage(AppState {
             services: RwLock::new(HashMap::new()),
         })
+        .manage(Arc::new(SessionManager::new()))
         .setup(|app| {
             setup_managers(app);
             Ok(())
@@ -84,6 +86,12 @@ pub fn run() {
             commands::actions::git_apply_patch_block,
             commands::updater::check_for_update_by_channel,
             commands::updater::download_and_install_update_by_channel,
+            // Session Navigation Commands
+            ipc::commands::session_push_to_history,
+            ipc::commands::session_go_back,
+            ipc::commands::session_go_forward,
+            ipc::commands::session_get_navigation_state,
+            ipc::commands::session_clear_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -94,6 +102,9 @@ fn setup_managers(app: &mut App) {
 
     let repo_manager = RepoManager::new(app_handle.clone());
     app.manage(Arc::new(Mutex::new(repo_manager)));
+
+    let session_manager = SessionManager::new();
+    app.manage(Arc::new(session_manager));
 
     tauri::async_runtime::spawn(async move {
         let _ = app_handle.store(STORE_FILE);

@@ -39,11 +39,6 @@ const router = createRouter({
   defaultPreloadStaleTime: 0,
 });
 
-const isTauriRuntime = () =>
-  typeof window !== "undefined" &&
-  typeof (window as Window & { __TAURI_INTERNALS__?: unknown })
-    .__TAURI_INTERNALS__ !== "undefined";
-
 const isEmbeddedRuntime = () => {
   if (typeof window === "undefined") {
     return false;
@@ -56,10 +51,6 @@ const isEmbeddedRuntime = () => {
 
   if (hasEmbeddedFlag) {
     return true;
-  }
-
-  if (!isTauriRuntime()) {
-    return false;
   }
 
   try {
@@ -115,7 +106,7 @@ const cloneRuntimeGitViewState = (
 const sanitizeTabWebviewLabel = (tabId: string) =>
   `${TAB_WEBVIEW_LABEL_PREFIX}${tabId.replace(/[^a-zA-Z0-9\-/:_]/g, "_")}`;
 
-const isDesktopHostRuntime = () => isTauriRuntime() && !isEmbeddedRuntime();
+const isDesktopHostRuntime = () => !isEmbeddedRuntime();
 
 type TabRuntimeStatePayload = {
   tabId: string;
@@ -351,7 +342,7 @@ if (rootElement && !rootElement.innerHTML) {
 
     // Effect 2: Handle keyboard shortcuts in embedded runtime
     useEffect(() => {
-      if (!embeddedRuntime || !isTauriRuntime()) {
+      if (!embeddedRuntime) {
         return;
       }
 
@@ -400,7 +391,81 @@ if (rootElement && !rootElement.innerHTML) {
       };
     }, [embeddedRuntime]);
 
-    // Effect 3: Capture state changes only for main window (not embedded)
+    // Effect 3: Listen for navigation events from main shell (embedded runtime only)
+    useEffect(() => {
+      if (!embeddedRuntime) {
+        return;
+      }
+
+      let unlistenNavigation: (() => void) | undefined;
+
+      const setupNavigationListener = async () => {
+        try {
+          const { listen } = await import("@tauri-apps/api/event");
+          const { WEBVIEW_NAVIGATION_EVENT } = await import(
+            "@/lib/navigationEvents"
+          );
+
+          unlistenNavigation = await listen<{
+            type: "back" | "forward";
+            path: string;
+            targetTabId: string;
+          }>(WEBVIEW_NAVIGATION_EVENT, (event) => {
+            const { targetTabId, path } = event.payload;
+            console.log("[EmbeddedNav] Received navigation event:", {
+              targetTabId,
+              embeddedTabId,
+              path,
+            });
+
+            // Verify this event is intended for this webview
+            if (targetTabId !== embeddedTabId) {
+              console.log(
+                "[EmbeddedNav] Ignoring event - wrong target. Expected:",
+                embeddedTabId,
+                "Got:",
+                targetTabId,
+              );
+              return;
+            }
+
+            // Verify this tab is currently active
+            const currentActiveTabId = useAppStore.getState().activeTabId;
+            if (embeddedTabId !== currentActiveTabId) {
+              console.log(
+                "[EmbeddedNav] Ignoring event - not active tab. Current:",
+                embeddedTabId,
+                "Active:",
+                currentActiveTabId,
+              );
+              return;
+            }
+
+            if (path) {
+              console.log("[EmbeddedNav] Applying navigation to path:", path);
+              void router.navigate({ to: path });
+            }
+          });
+
+          console.log("[EmbeddedNav] Navigation listener setup complete");
+        } catch (error) {
+          console.error(
+            "[EmbeddedNav] Failed to setup navigation listener:",
+            error,
+          );
+        }
+      };
+
+      void setupNavigationListener();
+
+      return () => {
+        if (unlistenNavigation) {
+          unlistenNavigation();
+        }
+      };
+    }, [embeddedRuntime, embeddedTabId]);
+
+    // Effect 4: Capture state changes only for main window (not embedded)
     useEffect(() => {
       if (embeddedRuntime) {
         return;
@@ -429,11 +494,7 @@ if (rootElement && !rootElement.innerHTML) {
 
     // Effect 4: Consolidated embedded tab runtime state management and sync
     useEffect(() => {
-      if (
-        !embeddedTabId ||
-        !isTauriRuntime() ||
-        !embeddedRuntimeSessionExists
-      ) {
+      if (!embeddedTabId || !embeddedRuntimeSessionExists) {
         emitRuntimeStateRef.current = null;
         return;
       }
@@ -550,7 +611,6 @@ if (rootElement && !rootElement.innerHTML) {
       if (
         !embeddedRuntime ||
         !embeddedTabId ||
-        !isTauriRuntime() ||
         !embeddedRuntimeSessionExists ||
         !isEmbeddedRuntimeBound
       ) {
@@ -591,7 +651,7 @@ if (rootElement && !rootElement.innerHTML) {
 
     // Effect 6: Listen for tab runtime events in main window
     useEffect(() => {
-      if (isEmbeddedRuntime() || !isTauriRuntime()) {
+      if (isEmbeddedRuntime()) {
         return;
       }
 

@@ -29,7 +29,7 @@ import {
 } from "@gitru/ui/components/avatar";
 import { Button } from "@gitru/ui/components/button";
 import { cn } from "@gitru/ui/lib/utils";
-import { useCanGoBack, useRouterState } from "@tanstack/react-router";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ArrowLeft, ArrowRight, Plus, X } from "lucide-react";
 import {
@@ -39,6 +39,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { useSessionNavigation } from "./hooks/useSessionNavigation";
+import { emitWebviewNavigation } from "./lib/emitWebviewNavigation";
 import { getAvatarByProvider } from "./lib/getAvatarByGitProvider";
 import { parseOrigin } from "./lib/parseOrigin";
 import {
@@ -256,16 +258,18 @@ const renderTitleForGitPage = ({
 
 const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
   const routerState = useRouterState();
+  const navigate = useNavigate();
   const pathname = routerState.location.pathname;
   const routePath = routerState.location.href;
 
-  const canGoBack = useCanGoBack();
+  const activeTabId = useAppStore((state) => state.activeTabId);
+  const { navigationState, goBack, goForward, pushToHistory } =
+    useSessionNavigation(activeTabId);
 
   const selectedRepository = useAppStore((state) => state.selectedRepository);
   const repositories = useAppStore((state) => state.repositories);
 
   const tabs = useAppStore((state) => state.tabs);
-  const activeTabId = useAppStore((state) => state.activeTabId);
   const [hoveredTabId, setHoveredTabId] = useState<string | null>(null);
   const ensureActiveTab = useAppStore((state) => state.ensureActiveTab);
   const createTab = useAppStore((state) => state.createTab);
@@ -390,6 +394,27 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
     selectedRepository?.id,
     syncActiveTab,
   ]);
+
+  // Track route changes and push to session history
+  useEffect(() => {
+    if (!activeTabId || !effectiveRoutePath) {
+      console.log(
+        "[RouteTracking] Skipping - activeTabId:",
+        activeTabId,
+        "effectiveRoutePath:",
+        effectiveRoutePath,
+      );
+      return;
+    }
+
+    console.log(
+      "[RouteTracking] Pushing to history. Session:",
+      activeTabId,
+      "Path:",
+      effectiveRoutePath,
+    );
+    void pushToHistory(effectiveRoutePath);
+  }, [activeTabId, effectiveRoutePath, pushToHistory]);
 
   useEffect(() => {
     tabSwitcherOpenRef.current = isTabSwitcherOpen;
@@ -836,7 +861,7 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
 
   return (
     <div
-      className="h-(--main-custom-header-height) relative mr-1 flex items-center pl-4 select-none"
+      className="h-(--main-custom-header-height) relative mr-1 flex items-center pl-4 select-none z-10"
       data-tauri-drag-region
       style={{
         // @ts-expect-error - ¯\_(ツ)_/¯
@@ -853,8 +878,32 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
       >
         <div className="flex items-center mr-3 translate-y-0.5">
           <Button
-            onClick={() => window.history.back()}
-            disabled={!canGoBack}
+            onClick={() => {
+              console.log(
+                "[NavButton] Back clicked. Session:",
+                activeTabId,
+                "canGoBack:",
+                navigationState?.can_go_back,
+              );
+              void goBack().then((state) => {
+                console.log("[NavButton] goBack returned:", state);
+                if (state?.current_path && activeTabId) {
+                  console.log("[NavButton] Navigating to:", state.current_path);
+                  if (isRootShellMode) {
+                    // In root shell mode, emit event to embedded webview
+                    void emitWebviewNavigation(
+                      activeTabId,
+                      state.current_path,
+                      "back",
+                    );
+                  } else {
+                    // In embedded mode, use local router
+                    void navigate({ to: state.current_path });
+                  }
+                }
+              });
+            }}
+            disabled={!navigationState?.can_go_back}
             size={"icon"}
             className="size-7"
             variant="ghost"
@@ -862,8 +911,32 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
             <ArrowLeft size={16} aria-hidden="true" />
           </Button>
           <Button
-            onClick={() => window.history.forward()}
-            disabled={true}
+            onClick={() => {
+              console.log(
+                "[NavButton] Forward clicked. Session:",
+                activeTabId,
+                "canGoForward:",
+                navigationState?.can_go_forward,
+              );
+              void goForward().then((state) => {
+                console.log("[NavButton] goForward returned:", state);
+                if (state?.current_path && activeTabId) {
+                  console.log("[NavButton] Navigating to:", state.current_path);
+                  if (isRootShellMode) {
+                    // In root shell mode, emit event to embedded webview
+                    void emitWebviewNavigation(
+                      activeTabId,
+                      state.current_path,
+                      "forward",
+                    );
+                  } else {
+                    // In embedded mode, use local router
+                    void navigate({ to: state.current_path });
+                  }
+                }
+              });
+            }}
+            disabled={!navigationState?.can_go_forward}
             size={"icon"}
             className="size-7"
             variant="ghost"

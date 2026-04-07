@@ -23,11 +23,6 @@ const WEBVIEW_LABEL_PREFIX = "tab-webview:";
 const managedWebviews = new Map<string, ManagedWebview>();
 const ensureInFlightByTabId = new Map<string, Promise<ManagedWebview | null>>();
 
-const isTauriRuntime = () =>
-  typeof window !== "undefined" &&
-  typeof (window as Window & { __TAURI_INTERNALS__?: unknown })
-    .__TAURI_INTERNALS__ !== "undefined";
-
 const sanitizeWebviewLabel = (tabId: string) =>
   `${WEBVIEW_LABEL_PREFIX}${tabId.replace(/[^a-zA-Z0-9\-/:_]/g, "_")}`;
 
@@ -87,150 +82,152 @@ const ensureTabWebview = async (
   }
 
   const task = (async (): Promise<ManagedWebview | null> => {
-  const normalizedRoutePath = normalizeWorkspaceRoutePath(tab.routePath);
-  const existing = managedWebviews.get(tab.id);
+    const normalizedRoutePath = normalizeWorkspaceRoutePath(tab.routePath);
+    const existing = managedWebviews.get(tab.id);
 
-  if (existing) {
-    if (existing.routePath !== normalizedRoutePath) {
-      existing.routePath = normalizedRoutePath;
+    if (existing) {
+      if (existing.routePath !== normalizedRoutePath) {
+        existing.routePath = normalizedRoutePath;
+      }
+
+      await setWebviewBounds(existing.webview, bounds);
+      return existing;
     }
 
-    await setWebviewBounds(existing.webview, bounds);
-    return existing;
-  }
+    const label = sanitizeWebviewLabel(tab.id);
+    const existingByLabel = await Webview.getByLabel(label);
 
-  const label = sanitizeWebviewLabel(tab.id);
-  const existingByLabel = await Webview.getByLabel(label);
+    if (existingByLabel) {
+      const reused: ManagedWebview = {
+        tabId: tab.id,
+        routePath: normalizedRoutePath,
+        webview: existingByLabel,
+        ready: Promise.resolve(),
+      };
 
-  if (existingByLabel) {
-    const reused: ManagedWebview = {
+      managedWebviews.set(tab.id, reused);
+      await setWebviewBounds(existingByLabel, bounds);
+      return reused;
+    }
+
+    let targetUrl = "";
+
+    try {
+      targetUrl = toChildWebviewPath(normalizedRoutePath);
+    } catch (error) {
+      console.error("Failed to resolve child webview URL", {
+        tabId: tab.id,
+        routePath: normalizedRoutePath,
+        error,
+      });
+      return null;
+    }
+
+    const normalized = normalizeBounds(bounds);
+    const appWindow = getCurrentWindow();
+    let webview: Webview;
+    let alreadyExistsError = false;
+    let createErrorPayload = "";
+
+    try {
+      webview = new Webview(appWindow, label, {
+        url: targetUrl,
+        x: normalized.x,
+        y: normalized.y,
+        width: normalized.width,
+        height: normalized.height,
+        focus: false,
+      });
+    } catch (error) {
+      console.error("Failed to create child webview", {
+        tabId: tab.id,
+        targetUrl,
+        error,
+      });
+      return null;
+    }
+
+    let didFailToCreate = false;
+
+    const ready = new Promise<void>((resolve) => {
+      let settled = false;
+
+      void webview.once("tauri://created", () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      });
+
+      void webview.once("tauri://error", (event) => {
+        didFailToCreate = true;
+        const payload =
+          typeof event.payload === "string"
+            ? event.payload
+            : String(event.payload);
+        createErrorPayload = payload;
+        alreadyExistsError = payload.includes("already exists");
+        console.error("Child webview failed to initialize", {
+          tabId: tab.id,
+          targetUrl,
+          event,
+        });
+        if (settled) return;
+        settled = true;
+        resolve();
+      });
+
+      setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      }, 1200);
+    });
+
+    const created: ManagedWebview = {
       tabId: tab.id,
       routePath: normalizedRoutePath,
-      webview: existingByLabel,
-      ready: Promise.resolve(),
+      webview,
+      ready,
     };
 
-    managedWebviews.set(tab.id, reused);
-    await setWebviewBounds(existingByLabel, bounds);
-    return reused;
-  }
+    managedWebviews.set(tab.id, created);
 
-  let targetUrl = "";
+    await created.ready;
 
-  try {
-    targetUrl = toChildWebviewPath(normalizedRoutePath);
-  } catch (error) {
-    console.error("Failed to resolve child webview URL", {
-      tabId: tab.id,
-      routePath: normalizedRoutePath,
-      error,
-    });
-    return null;
-  }
+    if (didFailToCreate) {
+      if (alreadyExistsError) {
+        const recoveryWebview = await Webview.getByLabel(label);
+        if (recoveryWebview) {
+          const recovered: ManagedWebview = {
+            tabId: tab.id,
+            routePath: tab.routePath,
+            webview: recoveryWebview,
+            ready: Promise.resolve(),
+          };
 
-  const normalized = normalizeBounds(bounds);
-  const appWindow = getCurrentWindow();
-  let webview: Webview;
-  let alreadyExistsError = false;
-  let createErrorPayload = "";
-
-  try {
-    webview = new Webview(appWindow, label, {
-      url: targetUrl,
-      x: normalized.x,
-      y: normalized.y,
-      width: normalized.width,
-      height: normalized.height,
-      focus: false,
-    });
-  } catch (error) {
-    console.error("Failed to create child webview", {
-      tabId: tab.id,
-      targetUrl,
-      error,
-    });
-    return null;
-  }
-
-  let didFailToCreate = false;
-
-  const ready = new Promise<void>((resolve) => {
-    let settled = false;
-
-    void webview.once("tauri://created", () => {
-      if (settled) return;
-      settled = true;
-      resolve();
-    });
-
-    void webview.once("tauri://error", (event) => {
-      didFailToCreate = true;
-      const payload =
-        typeof event.payload === "string" ? event.payload : String(event.payload);
-      createErrorPayload = payload;
-      alreadyExistsError = payload.includes("already exists");
-      console.error("Child webview failed to initialize", {
-        tabId: tab.id,
-        targetUrl,
-        event,
-      });
-      if (settled) return;
-      settled = true;
-      resolve();
-    });
-
-    setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      resolve();
-    }, 1200);
-  });
-
-  const created: ManagedWebview = {
-    tabId: tab.id,
-    routePath: normalizedRoutePath,
-    webview,
-    ready,
-  };
-
-  managedWebviews.set(tab.id, created);
-
-  await created.ready;
-
-  if (didFailToCreate) {
-    if (alreadyExistsError) {
-      const recoveryWebview = await Webview.getByLabel(label);
-      if (recoveryWebview) {
-        const recovered: ManagedWebview = {
-          tabId: tab.id,
-          routePath: tab.routePath,
-          webview: recoveryWebview,
-          ready: Promise.resolve(),
-        };
-
-        managedWebviews.set(tab.id, recovered);
-        await setWebviewBounds(recoveryWebview, normalized);
-        return recovered;
+          managedWebviews.set(tab.id, recovered);
+          await setWebviewBounds(recoveryWebview, normalized);
+          return recovered;
+        }
       }
+
+      if (createErrorPayload) {
+        console.error("Child webview create failure was not recoverable", {
+          tabId: tab.id,
+          label,
+          targetUrl,
+          createErrorPayload,
+        });
+      }
+
+      await closeManagedWebview(created);
+      managedWebviews.delete(tab.id);
+      return null;
     }
 
-    if (createErrorPayload) {
-      console.error("Child webview create failure was not recoverable", {
-        tabId: tab.id,
-        label,
-        targetUrl,
-        createErrorPayload,
-      });
-    }
+    await setWebviewBounds(webview, normalized);
 
-    await closeManagedWebview(created);
-    managedWebviews.delete(tab.id);
-    return null;
-  }
-
-  await setWebviewBounds(webview, normalized);
-
-  return created;
+    return created;
   })();
 
   ensureInFlightByTabId.set(tab.id, task);
@@ -249,10 +246,6 @@ const syncTabWebviews = async (
   activeTabId: string,
   bounds: HostBounds,
 ) => {
-  if (!isTauriRuntime()) {
-    return;
-  }
-
   const activeIds = new Set(tabs.map((tab) => tab.id));
 
   for (const [tabId, entry] of Array.from(managedWebviews.entries())) {
