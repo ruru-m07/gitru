@@ -608,7 +608,7 @@ const MainActionBar = () => {
             <GitBranch className="size-7.5" strokeWidth={1.5} />
 
             <div className="flex flex-col items-start min-w-0 flex-1">
-              <span className="text-xs text-muted-foreground font-normal">
+              <span className="text-xs text-muted-foreground font-[450]">
                 Current Branch
               </span>
               <span className="truncate block w-full text-left">
@@ -641,10 +641,10 @@ const MainActionBar = () => {
                     <ChevronsUp className="size-8 rotate-180" />
                   )}
                   <div className="flex-col flex items-start">
-                    <span className="text-xs text-muted-foreground font-normal">
+                    <span className="text-xs text-muted-foreground font-[450]">
                       {statusAheadBehind.ahead > 0
-                        ? "Push to Remote"
-                        : "Pull from Remote"}
+                        ? "Push to Origin"
+                        : "Pull from Origin"}
                     </span>
                     <span>
                       {statusAheadBehind

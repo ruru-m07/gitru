@@ -31,7 +31,14 @@ import { Button } from "@gitru/ui/components/button";
 import { cn } from "@gitru/ui/lib/utils";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { ArrowLeft, ArrowRight, Plus, X } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  X,
+} from "lucide-react";
 import {
   type MouseEvent,
   type ReactNode,
@@ -876,7 +883,7 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
           paddingLeft: "70px",
         }}
       >
-        <div className="flex items-center mr-3 translate-y-0.5">
+        <div className="flex items-center mr-3 translate-y-px">
           <Button
             onClick={() => {
               console.log(
@@ -904,11 +911,11 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
               });
             }}
             disabled={!navigationState?.can_go_back}
-            size={"icon"}
-            className="size-7"
+            size={"icon-sm"}
+            className="hover:bg-foreground/7! [&_svg]:size-4.75! [&_svg]:stroke-[1.5]"
             variant="ghost"
           >
-            <ArrowLeft size={16} aria-hidden="true" />
+            <ChevronLeft size={16} aria-hidden="true" />
           </Button>
           <Button
             onClick={() => {
@@ -937,14 +944,14 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
               });
             }}
             disabled={!navigationState?.can_go_forward}
-            size={"icon"}
-            className="size-7"
+            size={"icon-sm"}
+            className="hover:bg-foreground/7! [&_svg]:size-4.75! [&_svg]:stroke-[1.5]"
             variant="ghost"
           >
-            <ArrowRight size={16} aria-hidden="true" />
+            <ChevronRight aria-hidden="true" />
           </Button>
         </div>
-        <div className="-translate-x-2 flex w-fit items-center h-[calc(var(--main-custom-header-height)-0px)]">
+        <div className="-translate-x-3 flex w-fit items-center h-[calc(var(--main-custom-header-height)-0px)]">
           <div className="relative ml-2 flex min-w-0 flex-1 items-center gap-1 h-full pt-1">
             <DndContext
               sensors={sensors}
@@ -1057,11 +1064,11 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
                                 isActive,
                               })
                             ) : tab.routePath === "/app/inbox" ? (
-                              <div className="flex items-center gap-1.5 font-medium">
-                                <Inbox className={"size-4.5"} />
+                              <div className="flex items-center gap-1.5">
+                                <Inbox className={"size-4"} />
                                 <span>
                                   Inbox{" "}
-                                  <span className="text-muted-foreground/50">
+                                  <span className="text-muted-foreground/70">
                                     (5)
                                   </span>
                                 </span>

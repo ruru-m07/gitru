@@ -898,7 +898,7 @@ const ToggelPanelButton = () => {
         setRepoSelectIsOpen(!repoSelectIsOpen);
       }}
       className={cn(
-        "rounded-none justify-between min-h-13.75 max-h-13.75",
+        "rounded-none justify-between min-h-13.75 max-h-13.75 pl-2",
         repoSelectIsOpen && "bg-accent",
       )}
       variant={"ghost"}
