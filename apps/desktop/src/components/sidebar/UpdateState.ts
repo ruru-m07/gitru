@@ -5,7 +5,7 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { UpdateChannel } from "@/store/useAppStore";
+import { UpdateChannel } from "@/types/store";
 
 export type UpdateStatus =
   | "idle"

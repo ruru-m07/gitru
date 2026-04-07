@@ -18,16 +18,18 @@ import "./app.css";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import {
+  GitViewState,
+  RepoFileSelectionState,
+  WorkspaceSessionSnapshot,
+} from "@/types/store";
 import { TabContextProvider } from "./context/TabContextProvider";
 import { appState } from "./state";
 import { initializeQueryFocusBridge } from "./state/core/StateManager";
 import {
-  type GitViewState,
-  type RepoFileSelectionState,
   selectActiveRepositoryPath,
   selectActiveSessionRepoKey,
   useAppStore,
-  type WorkspaceSessionSnapshot,
 } from "./store/useAppStore";
 
 const router = createRouter({

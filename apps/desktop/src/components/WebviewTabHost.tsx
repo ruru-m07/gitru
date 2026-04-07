@@ -2,7 +2,8 @@ import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
 import { Webview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useRef, useState } from "react";
-import { useAppStore, type WorkspaceTab } from "@/store/useAppStore";
+import { useAppStore } from "@/store/useAppStore";
+import { WorkspaceTab } from "@/types/store";
 
 type HostBounds = {
   x: number;

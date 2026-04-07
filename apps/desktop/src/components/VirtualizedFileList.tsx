@@ -36,11 +36,8 @@ import {
 import { toast } from "sonner";
 import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
-import {
-  type FileSelectionIdentity,
-  selectActiveRepository,
-  useAppStore,
-} from "@/store/useAppStore";
+import { selectActiveRepository, useAppStore } from "@/store/useAppStore";
+import { FileSelectionIdentity } from "@/types/store";
 
 export interface FileListSection {
   id: string;

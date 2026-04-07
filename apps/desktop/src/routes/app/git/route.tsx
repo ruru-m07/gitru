@@ -128,7 +128,7 @@ import {
   selectActiveSessionRepoKey,
   useAppStore,
 } from "@/store/useAppStore";
-import { GIT_PROVIDERS } from "@/type";
+import { GIT_PROVIDERS } from "@/types/app";
 import { resolveFileSelection } from "../../../lib/gitSelectionResolver";
 
 const CoAuthers = z.array(z.tuple([z.string(), z.string()]));

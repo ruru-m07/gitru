@@ -6,66 +6,27 @@ import {
   persist,
   subscribeWithSelector,
 } from "zustand/middleware";
+import type {
+  ActiveRepositorySelectorState,
+  AppState,
+  ChangesTab,
+  FileSelectionIdentity,
+  GitSidebarView,
+  GitViewState,
+  MainWindowView,
+  RepoFileSelectionState,
+  RepoKey,
+  RepoSelectOpenSelectorState,
+  SelectionSource,
+  SessionLifecycle,
+  StashStatusFilterMap,
+  StashViewMode,
+  WorkspaceSessionSnapshot,
+  WorkspaceSessionState,
+  WorkspaceTab,
+} from "@/types/store";
 import { createTauriStorage } from "./tauriStoreAdapter";
 
-export type SelectionSource = "worktree" | "stash" | "history";
-
-export type FileSelectionIdentity = {
-  filePath: string;
-  fileNewPath?: string;
-  source: SelectionSource;
-  stashReference?: string;
-  historyCommitHash?: string;
-  worktreeScope?: "staged" | "unstaged" | "conflicted";
-  selectedAt: number;
-};
-
-export type RepoFileSelectionState = {
-  worktree: FileSelectionIdentity | null;
-  stashByReference: Record<string, FileSelectionIdentity | null>;
-  historyByCommit: Record<string, FileSelectionIdentity | null>;
-};
-
-export type ExternalOpener =
-  | "vscode"
-  | "cursor"
-  | "finder"
-  | "terminal"
-  | "ghostty";
-
-export type WorkspaceTab = {
-  id: string;
-  title: string;
-  routePath: string;
-  repositoryId: string | null;
-  createdAt: number;
-  updatedAt: number;
-};
-
-export type SessionLifecycle = "active" | "frozen";
-
-export type WorkspaceSessionSnapshot = {
-  repositoryPath: string | null;
-  mainWindowView: MainWindowView;
-  fileSelection: RepoFileSelectionState;
-  gitViewState: GitViewState;
-  capturedAt: number;
-};
-
-export type WorkspaceSessionState = {
-  id: string;
-  repositoryId: string | null;
-  routePath: string;
-  title: string;
-  lifecycle: SessionLifecycle;
-  frozenAt: number | null;
-  createdAt: number;
-  updatedAt: number;
-  snapshot: WorkspaceSessionSnapshot | null;
-  snapshotVersion: number;
-};
-
-type RepoKey = string;
 const SESSION_REPO_KEY_SEPARATOR = "::";
 
 const isSessionScopedRepoKey = (repoKey: RepoKey) =>
@@ -80,27 +41,6 @@ const createSessionScopedRepoKey = (
   }
 
   return `${sessionId}${SESSION_REPO_KEY_SEPARATOR}${repositoryPath}`;
-};
-
-export type UpdateChannel = "stable" | "beta";
-export type GitSidebarView = "changes" | "stash" | "history";
-export type StashViewMode = "branch" | "all";
-export type ChangesTab = "changes" | "history";
-
-export type StashStatusFilterMap = Record<
-  "modified" | "renamed" | "deleted" | "conflicted" | "untracked",
-  boolean
->;
-
-export type MainWindowView = "FileDiff" | "HistoryGraph" | null;
-
-export type GitViewState = {
-  leftPanelView: GitSidebarView;
-  changesTab: ChangesTab;
-  stashViewMode: StashViewMode;
-  selectedStashReference: string | null;
-  selectedHistoryCommitHash: string | null;
-  stashStatusFilters: StashStatusFilterMap;
 };
 
 const DEFAULT_STASH_STATUS_FILTERS: StashStatusFilterMap = {
@@ -415,36 +355,6 @@ const createDefaultSessionSnapshot = (
   capturedAt,
 });
 
-const normalizePersistedSessionSnapshot = (
-  value: unknown,
-): WorkspaceSessionSnapshot | null => {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const snapshot = value as Partial<WorkspaceSessionSnapshot>;
-
-  const mainWindowView: MainWindowView =
-    snapshot.mainWindowView === "FileDiff" ||
-    snapshot.mainWindowView === "HistoryGraph"
-      ? snapshot.mainWindowView
-      : null;
-
-  return {
-    repositoryPath:
-      typeof snapshot.repositoryPath === "string"
-        ? snapshot.repositoryPath
-        : null,
-    mainWindowView,
-    fileSelection: cloneRepoFileSelectionState(snapshot.fileSelection),
-    gitViewState: cloneGitViewState(snapshot.gitViewState),
-    capturedAt:
-      typeof snapshot.capturedAt === "number"
-        ? snapshot.capturedAt
-        : Date.now(),
-  };
-};
-
 const createSessionSnapshot = (params: {
   session: WorkspaceSessionState;
   repositories: RepositoryInfo[];
@@ -695,100 +605,6 @@ const isSameSelectionIdentity = (
   );
 };
 
-type AppState = {
-  selectedRepository: RepositoryInfo | null;
-  setSelectedRepository: (repo: RepositoryInfo | null) => void;
-
-  tabs: WorkspaceTab[];
-  activeTabId: string | null;
-  sessionsById: Record<string, WorkspaceSessionState>;
-  activeSessionId: string | null;
-  ensureActiveTab: (payload?: {
-    routePath?: string;
-    repositoryId?: string | null;
-    title?: string;
-  }) => void;
-  createTab: (payload?: {
-    routePath?: string;
-    repositoryId?: string | null;
-    title?: string;
-  }) => WorkspaceTab;
-  activateTab: (tabId: string) => void;
-  setEmbeddedRuntimeSession: (sessionId: string) => void;
-  activateSession: (sessionId: string) => void;
-  freezeSession: (sessionId?: string) => void;
-  disposeSession: (sessionId: string) => void;
-  captureActiveSessionSnapshot: () => void;
-  closeTab: (tabId: string) => void;
-  reorderTab: (tabId: string, targetIndex: number) => void;
-  syncActiveTab: (payload: {
-    routePath?: string;
-    repositoryId?: string | null;
-    title?: string;
-  }) => void;
-  syncTabMetadata: (
-    tabId: string,
-    payload: {
-      routePath?: string;
-      repositoryId?: string | null;
-      title?: string;
-      snapshot?: WorkspaceSessionSnapshot | null;
-    },
-  ) => void;
-
-  repositories: RepositoryInfo[];
-  setRepositories: (repos: RepositoryInfo[]) => void;
-
-  repoSelectIsOpen: boolean;
-  repoSelectIsOpenBySession: Record<string, boolean>;
-  setRepoSelectIsOpen: (isOpen: boolean, sessionId?: string) => void;
-
-  optimisticRepositoryCard: { name: string; path: string } | null;
-  setOptimisticRepositoryCard: (
-    card: { name: string; path: string } | null,
-  ) => void;
-
-  selectionByRepo: Record<RepoKey, RepoFileSelectionState>;
-
-  setWorktreeSelectionForRepo: (
-    selection: FileSelectionIdentity | null,
-  ) => void;
-  setStashSelectionForRepo: (
-    stashReference: string,
-    selection: FileSelectionIdentity | null,
-  ) => void;
-  setHistorySelectionForRepo: (
-    commitHash: string,
-    selection: FileSelectionIdentity | null,
-  ) => void;
-  clearSelectionForRepo: (repoKey: RepoKey) => void;
-  clearWorktreeSelectionForRepo: (repoKey?: RepoKey) => void;
-  clearStashSelectionForRepo: (
-    stashReference: string,
-    repoKey?: RepoKey,
-  ) => void;
-  clearHistorySelectionForRepo: (commitHash: string, repoKey?: RepoKey) => void;
-  pruneStashSelectionsForRepo: (
-    repoKey: RepoKey,
-    activeStashReferences: string[],
-  ) => void;
-
-  mainWindowView: MainWindowView;
-  setMainWindowView: (view: MainWindowView) => void;
-
-  preferredExternalOpener: ExternalOpener;
-  setPreferredExternalOpener: (opener: ExternalOpener) => void;
-
-  updateChannel: UpdateChannel;
-  setUpdateChannel: (channel: UpdateChannel) => void;
-
-  gitViewByRepo: Record<RepoKey, GitViewState>;
-  setGitViewStateForRepo: (
-    partial: Partial<GitViewState>,
-    repoPath?: string,
-  ) => void;
-};
-
 const getRepositoryById = (
   repositories: RepositoryInfo[],
   repositoryId: string | null,
@@ -826,14 +642,6 @@ const getActiveRuntimeId = (state: {
   activeTabId: string | null;
 }) => state.activeSessionId ?? state.activeTabId;
 
-type ActiveRepositorySelectorState = {
-  selectedRepository: RepositoryInfo | null;
-  activeSessionId: string | null;
-  activeTabId: string | null;
-  sessionsById: Record<string, WorkspaceSessionState>;
-  repositories: RepositoryInfo[];
-};
-
 export const selectActiveRepository = (
   state: ActiveRepositorySelectorState,
 ): RepositoryInfo | null => {
@@ -861,13 +669,6 @@ export const selectActiveSessionRepoKey = (
   const repositoryPath = selectActiveRepositoryPath(state);
 
   return createSessionScopedRepoKey(runtimeId, repositoryPath);
-};
-
-type RepoSelectOpenSelectorState = {
-  repoSelectIsOpen: boolean;
-  repoSelectIsOpenBySession?: Record<string, boolean>;
-  activeSessionId: string | null;
-  activeTabId: string | null;
 };
 
 export const selectActiveRepoSelectIsOpen = (
@@ -1000,188 +801,6 @@ const createSessionFromTab = (
   snapshot: null,
   snapshotVersion: 1,
 });
-
-const normalizePersistedTabs = (value: unknown): WorkspaceTab[] => {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .map((item) => {
-      if (!item || typeof item !== "object") {
-        return null;
-      }
-
-      const tab = item as Partial<WorkspaceTab>;
-
-      if (!tab.id || typeof tab.id !== "string") {
-        return null;
-      }
-
-      const routePath =
-        typeof tab.routePath === "string" && tab.routePath.length > 0
-          ? normalizeWorkspaceRoutePath(tab.routePath)
-          : DEFAULT_TAB_ROUTE;
-
-      const createdAt =
-        typeof tab.createdAt === "number" ? tab.createdAt : Date.now();
-      const updatedAt =
-        typeof tab.updatedAt === "number" ? tab.updatedAt : createdAt;
-
-      return {
-        id: tab.id,
-        title:
-          typeof tab.title === "string" && tab.title.trim().length > 0
-            ? tab.title.trim()
-            : getTabTitleFromRoute(routePath),
-        routePath,
-        repositoryId:
-          typeof tab.repositoryId === "string" ? tab.repositoryId : null,
-        createdAt,
-        updatedAt,
-      } satisfies WorkspaceTab;
-    })
-    .filter((tab): tab is WorkspaceTab => tab !== null);
-};
-
-const normalizePersistedSessions = (
-  value: unknown,
-): Record<string, WorkspaceSessionState> => {
-  if (!value || typeof value !== "object") {
-    return {};
-  }
-
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      .map(([sessionId, rawValue]) => {
-        if (!rawValue || typeof rawValue !== "object") {
-          return null;
-        }
-
-        const session = rawValue as Partial<WorkspaceSessionState>;
-
-        if (!sessionId || typeof sessionId !== "string") {
-          return null;
-        }
-
-        const lifecycle: SessionLifecycle =
-          session.lifecycle === "active" ? "active" : "frozen";
-        const createdAt =
-          typeof session.createdAt === "number"
-            ? session.createdAt
-            : Date.now();
-        const updatedAt =
-          typeof session.updatedAt === "number" ? session.updatedAt : createdAt;
-
-        return [
-          sessionId,
-          {
-            id: sessionId,
-            repositoryId:
-              typeof session.repositoryId === "string"
-                ? session.repositoryId
-                : null,
-            routePath:
-              typeof session.routePath === "string" &&
-              session.routePath.length > 0
-                ? normalizeWorkspaceRoutePath(session.routePath)
-                : DEFAULT_TAB_ROUTE,
-            title:
-              typeof session.title === "string" &&
-              session.title.trim().length > 0
-                ? session.title.trim()
-                : getTabTitleFromRoute(
-                    typeof session.routePath === "string"
-                      ? session.routePath
-                      : DEFAULT_TAB_ROUTE,
-                  ),
-            lifecycle,
-            frozenAt:
-              typeof session.frozenAt === "number"
-                ? session.frozenAt
-                : lifecycle === "frozen"
-                  ? Date.now()
-                  : null,
-            createdAt,
-            updatedAt,
-            snapshot: normalizePersistedSessionSnapshot(session.snapshot),
-            snapshotVersion:
-              typeof session.snapshotVersion === "number"
-                ? session.snapshotVersion
-                : 1,
-          } satisfies WorkspaceSessionState,
-        ];
-      })
-      .filter(
-        (entry): entry is [string, WorkspaceSessionState] => entry !== null,
-      ),
-  );
-};
-
-const ensurePersistedTabState = (
-  state: Record<string, unknown>,
-): Record<string, unknown> => {
-  const parsedTabs = normalizePersistedTabs(state.tabs);
-  const tabs = parsedTabs.length > 0 ? parsedTabs : [createDefaultTab()];
-
-  const persistedActiveTabId =
-    typeof state.activeTabId === "string" ? state.activeTabId : null;
-  const activeTabId =
-    persistedActiveTabId && tabs.some((tab) => tab.id === persistedActiveTabId)
-      ? persistedActiveTabId
-      : (tabs[0]?.id ?? null);
-
-  const persistedSessionsById = normalizePersistedSessions(state.sessionsById);
-  const tabIdSet = new Set(tabs.map((tab) => tab.id));
-
-  const sessionsById = Object.fromEntries(
-    tabs.map((tab) => {
-      const persistedSession = persistedSessionsById[tab.id];
-      const fallbackLifecycle: SessionLifecycle =
-        tab.id === activeTabId ? "active" : "frozen";
-
-      if (!persistedSession) {
-        return [tab.id, createSessionFromTab(tab, fallbackLifecycle)];
-      }
-
-      return [
-        tab.id,
-        {
-          ...persistedSession,
-          id: tab.id,
-          repositoryId: tab.repositoryId,
-          routePath: tab.routePath,
-          title: tab.title,
-          lifecycle: fallbackLifecycle,
-          frozenAt: fallbackLifecycle === "frozen" ? Date.now() : null,
-          createdAt: tab.createdAt,
-          updatedAt: Math.max(tab.updatedAt, persistedSession.updatedAt),
-        } satisfies WorkspaceSessionState,
-      ];
-    }),
-  ) as Record<string, WorkspaceSessionState>;
-
-  for (const sessionId of Object.keys(persistedSessionsById)) {
-    if (!tabIdSet.has(sessionId)) {
-      delete persistedSessionsById[sessionId];
-    }
-  }
-
-  const persistedActiveSessionId =
-    typeof state.activeSessionId === "string" ? state.activeSessionId : null;
-  const activeSessionId =
-    persistedActiveSessionId && sessionsById[persistedActiveSessionId]
-      ? persistedActiveSessionId
-      : activeTabId;
-
-  return {
-    ...state,
-    tabs,
-    activeTabId,
-    sessionsById,
-    activeSessionId,
-  };
-};
 
 export const useAppStore = create<AppState>()(
   subscribeWithSelector(
@@ -2343,7 +1962,7 @@ export const useAppStore = create<AppState>()(
       {
         name: "app-data",
         storage: createJSONStorage(() => createTauriStorage()),
-        version: 7,
+        version: 1,
         partialize: (state) => ({
           selectedRepository: state.selectedRepository,
           tabs: state.tabs,
@@ -2372,173 +1991,6 @@ export const useAppStore = create<AppState>()(
           }
 
           useAppStore.setState(hydrated);
-        },
-        migrate: (persistedState: unknown, version) => {
-          const state = (persistedState ?? {}) as {
-            selectionByRepo?: Record<string, RepoFileSelectionState>;
-            selectedFileByRepo?: Record<
-              string,
-              {
-                filePath?: string;
-                fileNewPath?: string;
-                stashReference?: string;
-              } | null
-            >;
-            repoSelectIsOpenBySession?: Record<string, boolean>;
-            repoSelectIsOpen?: boolean;
-          };
-
-          const finalizePersistedState = (value: Record<string, unknown>) => {
-            const ensured = ensurePersistedTabState(value) as Record<
-              string,
-              unknown
-            >;
-            const activeRuntimeId =
-              typeof ensured.activeSessionId === "string"
-                ? ensured.activeSessionId
-                : typeof ensured.activeTabId === "string"
-                  ? ensured.activeTabId
-                  : null;
-
-            const rawRepoSelectMap =
-              ensured.repoSelectIsOpenBySession &&
-              typeof ensured.repoSelectIsOpenBySession === "object"
-                ? (ensured.repoSelectIsOpenBySession as Record<string, unknown>)
-                : {};
-
-            const normalizedRepoSelectMap = Object.fromEntries(
-              Object.entries(rawRepoSelectMap)
-                .filter(([sessionId]) => sessionId.length > 0)
-                .map(([sessionId, isOpen]) => [sessionId, Boolean(isOpen)]),
-            ) as Record<string, boolean>;
-
-            const legacyRepoSelectIsOpen = Boolean(ensured.repoSelectIsOpen);
-
-            if (
-              activeRuntimeId &&
-              normalizedRepoSelectMap[activeRuntimeId] === undefined &&
-              legacyRepoSelectIsOpen
-            ) {
-              normalizedRepoSelectMap[activeRuntimeId] = true;
-            }
-
-            return {
-              ...ensured,
-              repoSelectIsOpenBySession: normalizedRepoSelectMap,
-              repoSelectIsOpen: activeRuntimeId
-                ? Boolean(normalizedRepoSelectMap[activeRuntimeId])
-                : legacyRepoSelectIsOpen,
-            };
-          };
-
-          if (version >= 7) {
-            return finalizePersistedState(state as Record<string, unknown>);
-          }
-
-          if (version >= 6) {
-            return finalizePersistedState(state as Record<string, unknown>);
-          }
-
-          if (version >= 5) {
-            return finalizePersistedState(state as Record<string, unknown>);
-          }
-
-          if (version >= 4) {
-            return finalizePersistedState(state as Record<string, unknown>);
-          }
-
-          if (version >= 3) {
-            return finalizePersistedState(state as Record<string, unknown>);
-          }
-
-          const normalizeSelectionByRepo = (
-            value: Record<string, RepoFileSelectionState> | undefined,
-          ): Record<string, RepoFileSelectionState> =>
-            Object.fromEntries(
-              Object.entries(value ?? {}).map(([repoKey, repoSelection]) => {
-                const current =
-                  repoSelection ?? createDefaultRepoFileSelectionState();
-                return [
-                  repoKey,
-                  {
-                    ...createDefaultRepoFileSelectionState(),
-                    ...current,
-                    stashByReference: {
-                      ...(current.stashByReference ?? {}),
-                    },
-                    historyByCommit: {
-                      ...(current.historyByCommit ?? {}),
-                    },
-                  },
-                ];
-              }),
-            );
-
-          if (version >= 2) {
-            return finalizePersistedState({
-              ...state,
-              selectionByRepo: normalizeSelectionByRepo(state.selectionByRepo),
-            });
-          }
-
-          if (!state.selectedFileByRepo) {
-            return finalizePersistedState({
-              ...state,
-              selectionByRepo: normalizeSelectionByRepo(state.selectionByRepo),
-            });
-          }
-
-          const migratedSelectionByRepo: Record<
-            string,
-            RepoFileSelectionState
-          > = { ...(state.selectionByRepo ?? {}) };
-
-          for (const [repoKey, legacySelection] of Object.entries(
-            state.selectedFileByRepo,
-          )) {
-            if (!legacySelection?.filePath) {
-              continue;
-            }
-
-            const current =
-              migratedSelectionByRepo[repoKey] ??
-              createDefaultRepoFileSelectionState();
-            const selectedAt = Date.now();
-
-            if (legacySelection.stashReference) {
-              migratedSelectionByRepo[repoKey] = {
-                ...current,
-                stashByReference: {
-                  ...current.stashByReference,
-                  [legacySelection.stashReference]: {
-                    filePath: legacySelection.filePath,
-                    fileNewPath: legacySelection.fileNewPath,
-                    source: "stash",
-                    stashReference: legacySelection.stashReference,
-                    selectedAt,
-                  },
-                },
-              };
-              continue;
-            }
-
-            migratedSelectionByRepo[repoKey] = {
-              ...current,
-              worktree: {
-                filePath: legacySelection.filePath,
-                fileNewPath: legacySelection.fileNewPath,
-                source: "worktree",
-                selectedAt,
-              },
-            };
-          }
-
-          const { selectedFileByRepo: _ignored, ...rest } = state;
-
-          return finalizePersistedState({
-            ...rest,
-            selectionByRepo: normalizeSelectionByRepo(migratedSelectionByRepo),
-          });
         },
       },
     ),

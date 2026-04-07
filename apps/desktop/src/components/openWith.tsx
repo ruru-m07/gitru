@@ -18,11 +18,11 @@ import {
 } from "@/hooks";
 import { resolveFileSelection } from "@/lib/gitSelectionResolver";
 import {
-  ExternalOpener,
   selectActiveRepository,
   selectActiveSessionRepoKey,
   useAppStore,
 } from "@/store/useAppStore";
+import { ExternalOpener } from "@/types/store";
 
 const EXTERNAL_OPENER_OPTIONS: {
   value: ExternalOpener;

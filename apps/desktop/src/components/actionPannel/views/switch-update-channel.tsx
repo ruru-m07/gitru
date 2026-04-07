@@ -5,7 +5,8 @@ import {
 import { Kbd } from "@gitru/ui/components/kbd";
 import { CheckIcon, CornerDownLeftIcon } from "lucide-react";
 import { toast } from "sonner";
-import { type UpdateChannel, useAppStore } from "@/store/useAppStore";
+import { useAppStore } from "@/store/useAppStore";
+import { UpdateChannel } from "@/types/store";
 
 export type UpdateChannelItem = {
   id: UpdateChannel;

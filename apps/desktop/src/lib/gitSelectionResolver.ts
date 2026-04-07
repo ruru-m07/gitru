@@ -1,8 +1,5 @@
 import type { FileStatus } from "@gitru/commands";
-import type {
-  FileSelectionIdentity,
-  SelectionSource,
-} from "@/store/useAppStore";
+import type { FileSelectionIdentity, SelectionSource } from "@/types/store";
 
 export type ResolvedFileSelection =
   | { state: "none" }
