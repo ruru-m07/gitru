@@ -77,8 +77,8 @@ impl SessionManager {
         let mut store: tokio::sync::RwLockWriteGuard<'_, HashMap<String, NavigationState>> =
             self.history_store.write().await;
 
-        if let Some(current) = store.get_mut(session_id) {
-            if current.current_index > 0 {
+        if let Some(current) = store.get_mut(session_id)
+            && current.current_index > 0 {
                 current.current_index -= 1;
 
                 return Some(SessionNavigationInfo {
@@ -88,7 +88,6 @@ impl SessionManager {
                     current_path: current.paths.get(current.current_index).cloned(),
                 });
             }
-        }
 
         None
     }
@@ -98,8 +97,8 @@ impl SessionManager {
         let mut store: tokio::sync::RwLockWriteGuard<'_, HashMap<String, NavigationState>> =
             self.history_store.write().await;
 
-        if let Some(current) = store.get_mut(session_id) {
-            if current.current_index < current.paths.len() - 1 {
+        if let Some(current) = store.get_mut(session_id)
+            && current.current_index < current.paths.len() - 1 {
                 current.current_index += 1;
 
                 return Some(SessionNavigationInfo {
@@ -109,7 +108,6 @@ impl SessionManager {
                     current_path: current.paths.get(current.current_index).cloned(),
                 });
             }
-        }
 
         None
     }
