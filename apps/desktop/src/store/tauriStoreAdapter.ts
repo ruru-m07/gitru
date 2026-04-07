@@ -1,16 +1,7 @@
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { Store } from "@tauri-apps/plugin-store";
 
-const isTauriRuntime = () =>
-  typeof window !== "undefined" &&
-  typeof (window as Window & { __TAURI_INTERNALS__?: unknown })
-    .__TAURI_INTERNALS__ !== "undefined";
-
 const isChildTabWebview = () => {
-  if (!isTauriRuntime()) {
-    return false;
-  }
-
   try {
     return getCurrentWebview().label.startsWith("tab-webview:");
   } catch {

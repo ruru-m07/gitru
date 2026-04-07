@@ -111,16 +111,7 @@ const SortableTabShell = ({
   );
 };
 
-const isTauriRuntime = () =>
-  typeof window !== "undefined" &&
-  typeof (window as Window & { __TAURI_INTERNALS__?: unknown })
-    .__TAURI_INTERNALS__ !== "undefined";
-
 const isEmbeddedRuntime = () => {
-  if (!isTauriRuntime()) {
-    return false;
-  }
-
   try {
     return window.location.search.includes("embedded=1") ||
       window.location.search.includes("embedded=true")
@@ -307,7 +298,7 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
   activeTabIdRef.current = activeTabId;
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
-  const isRootShellMode = isTauriRuntime() && !isEmbeddedRuntime();
+  const isRootShellMode = !isEmbeddedRuntime();
   const effectiveRoutePath = isRootShellMode
     ? normalizeTabRoutePath(activeTab?.routePath)
     : routePath;
@@ -723,10 +714,6 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
     let unlistenTabSwitchShortcut: (() => void) | undefined;
 
     const registerTabSwitchShortcutListener = async () => {
-      if (!isTauriRuntime()) {
-        return;
-      }
-
       unlistenTabSwitchShortcut =
         await getCurrentWebview().listen<TabSwitchShortcutPayload>(
           TAB_SWITCH_SHORTCUT_EVENT,
