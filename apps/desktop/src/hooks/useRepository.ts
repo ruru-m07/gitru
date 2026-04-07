@@ -24,7 +24,7 @@ import {
   useQuery,
 } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { appState } from "@/state";
+import { useActiveRepositoryState } from "@/state/useActiveRepositoryState";
 
 type QueryOptions<T> = Omit<
   UseQueryOptions<T | null, Error>,
@@ -33,10 +33,11 @@ type QueryOptions<T> = Omit<
 
 type DiffScope = "Worktree" | "Staged" | "Unstaged";
 type PatchAction = "Stage" | "Unstage" | "Discard";
+type CreateCommitPayload = Omit<CreateCommitParams, "contextId">;
 
 /* #region // ? Query */
 export function useGetStatus(options?: QueryOptions<GetStatusResponse>) {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   return useQuery({
     queryKey: repo?.status.queryKey ?? ["repository", "none", "status"],
@@ -50,7 +51,7 @@ export function useGetStatus(options?: QueryOptions<GetStatusResponse>) {
 }
 
 export function useGetCurrentBranch(options?: QueryOptions<Branch>) {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
   return useQuery({
     queryKey: repo?.branches.getQueryKey("current") ?? [
       "repository",
@@ -71,7 +72,7 @@ export function useGetBranches(
   kind: BranchKind,
   options?: QueryOptions<BranchInfo[]>,
 ) {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   return useQuery({
     queryKey: [
@@ -103,7 +104,7 @@ export function useGetDiff(
   },
   options?: QueryOptions<FileDiff>,
 ) {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
   const stashReference = params?.stashReference ?? null;
   const commitHash = params?.commitHash ?? null;
   const fileNewPath = params?.fileNewPath ?? null;
@@ -163,7 +164,7 @@ export function useGetDiff(
 }
 
 export function useGetLastCommit(options?: QueryOptions<CommitInfo>) {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   return useQuery({
     queryKey: repo?.commit.getQueryKey("last") ?? [
@@ -182,7 +183,7 @@ export function useGetLastCommit(options?: QueryOptions<CommitInfo>) {
 }
 
 export function useGetCommitHistory(options?: QueryOptions<CommitInfo[]>) {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   return useQuery({
     queryKey: repo?.commit.getQueryKey("history") ?? [
@@ -206,7 +207,7 @@ export function useGitHistoryGraph(
     enabled?: boolean;
   },
 ) {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
   const baseParams: HistoryGraphParams["query"] = {
     limit: params.limit ?? 50,
     cursor: params.cursor,
@@ -269,7 +270,7 @@ export function useGetCommitById(
   hash: string,
   options?: QueryOptions<FullCommitInfo>,
 ) {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   return useQuery({
     queryKey: [
@@ -294,7 +295,7 @@ export function useGetCommitById(
 export function useGetRepositoryOrigin(
   options?: QueryOptions<RepositoryOrigin>,
 ) {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   return useQuery({
     queryKey: repo?.getQueryKey("origin") ?? ["repository", "none", "origin"],
@@ -310,7 +311,7 @@ export function useGetRepositoryOrigin(
 export function useGetStatusAheadBehind(
   options?: QueryOptions<AheadBehindStatus>,
 ) {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   return useQuery({
     queryKey: repo?.branches.getQueryKey("statusAheadBehind") ?? [
@@ -331,10 +332,10 @@ export function useGetStatusAheadBehind(
 
 /* #region // ! Mutations */
 export function useCreateCommit() {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   const mutation = useMutation({
-    mutationFn: async (payload: CreateCommitParams) => {
+    mutationFn: async (payload: CreateCommitPayload) => {
       if (!repo) throw new Error("No repository selected");
       return await repo.commit.createCommit(payload);
     },
@@ -352,7 +353,7 @@ export function useCreateCommit() {
 }
 
 export function useGitDiscard() {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   const mutation = useMutation({
     mutationFn: async ({ filePath }: { filePath: string | string[] }) => {
@@ -371,7 +372,7 @@ export function useGitDiscard() {
 }
 
 export function useGitAdd() {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   const mutation = useMutation({
     mutationFn: async (filePath: string | string[]) => {
@@ -390,7 +391,7 @@ export function useGitAdd() {
 }
 
 export function useGitUnstage() {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   const mutation = useMutation({
     mutationFn: async (filePath: string | string[]) => {
@@ -409,7 +410,7 @@ export function useGitUnstage() {
 }
 
 export function useGitApplyPatchBlock() {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   const mutation = useMutation({
     mutationFn: async (params: {
@@ -443,7 +444,7 @@ export function useGitApplyPatchBlock() {
 }
 
 export function useGitFetch() {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -464,7 +465,7 @@ export function useGitFetch() {
 }
 
 export function useGitPublishBranch() {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -485,7 +486,7 @@ export function useGitPublishBranch() {
 }
 
 export function useGitPush() {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -506,7 +507,7 @@ export function useGitPush() {
 }
 
 export function useGitPull() {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -527,7 +528,7 @@ export function useGitPull() {
 }
 
 export function useInvalidateAll() {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -543,7 +544,7 @@ export function useInvalidateAll() {
 }
 
 export function useHasUncommittedChanges(options?: QueryOptions<boolean>) {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   return useQuery({
     queryKey: repo?.branches.getQueryKey("hasUncommittedChanges") ?? [
@@ -564,7 +565,7 @@ export function useHasUncommittedChanges(options?: QueryOptions<boolean>) {
 export function useGetCurrentBranchStash(
   options?: QueryOptions<BranchStash | null>,
 ) {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   return useQuery({
     queryKey: repo?.branches.getQueryKey("currentBranchStash") ?? [
@@ -583,7 +584,7 @@ export function useGetCurrentBranchStash(
 }
 
 export function useGitSwitchBranch() {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   const mutation = useMutation({
     mutationFn: async ({
@@ -607,7 +608,7 @@ export function useGitSwitchBranch() {
 }
 
 export function useGitCreateBranch() {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   const mutation = useMutation({
     mutationFn: async ({
@@ -631,7 +632,7 @@ export function useGitCreateBranch() {
 }
 
 export function usePopCurrentBranchStash() {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   const mutation = useMutation({
     mutationFn: async (): Promise<string> => {

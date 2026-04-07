@@ -7,6 +7,7 @@ use git::AppState;
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn get_patch_by_file_path(
+    context_id: String,
     file_path: &str,
     file_new_path: Option<String>,
     status: Option<Vec<FileStatusKind>>,
@@ -21,7 +22,7 @@ pub async fn get_patch_by_file_path(
         validate_relative_path(new_path)?;
     }
 
-    let services = get_services(state).await?;
+    let services = get_services(state, &context_id).await?;
 
     services
         .diff()

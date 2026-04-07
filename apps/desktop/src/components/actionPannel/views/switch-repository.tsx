@@ -32,7 +32,7 @@ import {
 import { useRepositories } from "@/hooks/useRepositories";
 import { getAvatarByProvider } from "@/lib/getAvatarByGitProvider";
 import { parseOrigin } from "@/lib/parseOrigin";
-import { useAppStore } from "@/store/useAppStore";
+import { selectActiveRepository, useAppStore } from "@/store/useAppStore";
 
 export function useSwitchRepositoryView(): CommandViewConfig<
   "switch-repository",
@@ -43,7 +43,7 @@ export function useSwitchRepositoryView(): CommandViewConfig<
   const setSelectedRepository = useAppStore(
     (state) => state.setSelectedRepository,
   );
-  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const activeRepository = useAppStore(selectActiveRepository);
 
   return {
     id: "switch-repository",
@@ -83,9 +83,9 @@ export function useSwitchRepositoryView(): CommandViewConfig<
     command: {
       items: () => {
         return repositories.sort((a, b) =>
-          a.id === selectedRepository?.id
+          a.id === activeRepository?.id
             ? -1
-            : b.id === selectedRepository?.id
+            : b.id === activeRepository?.id
               ? 1
               : a.name.localeCompare(b.name),
         );
@@ -167,7 +167,7 @@ export function useSwitchRepositoryView(): CommandViewConfig<
                   </span>
                 </div>
                 <div className="ml-auto flex gap-1">
-                  {selectedRepository?.id === item.id && (
+                  {activeRepository?.id === item.id && (
                     <Badge variant={"success"} className="ml-1">
                       current
                     </Badge>

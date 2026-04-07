@@ -1,9 +1,11 @@
-use git::{core::RepoServices, AppState};
+use git::AppState;
 use ipc::{
     self,
-    repo_manager::{RepoManager, SELECTED_REPO_KEY, STORE_FILE},
+    repo_manager::{RepoManager, STORE_FILE},
+    session_manager::SessionManager,
 };
 use log::LevelFilter;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tauri::{App, Manager};
 use tauri_plugin_store::StoreExt;
@@ -27,8 +29,9 @@ pub fn run() {
                 .build(),
         )
         .manage(AppState {
-            services: RwLock::new(None),
+            services: RwLock::new(HashMap::new()),
         })
+        .manage(Arc::new(SessionManager::new()))
         .setup(|app| {
             setup_managers(app);
             Ok(())
@@ -38,7 +41,8 @@ pub fn run() {
             ipc::commands::clone_repository,
             ipc::commands::cancel_clone_repository,
             ipc::commands::init_repository,
-            ipc::commands::select_repository,
+            ipc::commands::create_repo_context,
+            ipc::commands::dispose_repo_context,
             ipc::commands::open_with_app,
             ipc::repo_manager::list_repositories,
             ipc::repo_manager::add_repository,
@@ -82,6 +86,12 @@ pub fn run() {
             commands::actions::git_apply_patch_block,
             commands::updater::check_for_update_by_channel,
             commands::updater::download_and_install_update_by_channel,
+            // Session Navigation Commands
+            ipc::commands::session_push_to_history,
+            ipc::commands::session_go_back,
+            ipc::commands::session_go_forward,
+            ipc::commands::session_get_navigation_state,
+            ipc::commands::session_clear_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -93,37 +103,10 @@ fn setup_managers(app: &mut App) {
     let repo_manager = RepoManager::new(app_handle.clone());
     app.manage(Arc::new(Mutex::new(repo_manager)));
 
+    let session_manager = SessionManager::new();
+    app.manage(Arc::new(session_manager));
+
     tauri::async_runtime::spawn(async move {
-        let store = match app_handle.store(STORE_FILE) {
-            Ok(s) => s,
-            Err(_) => return,
-        };
-
-        let selected_id: Option<String> = store
-            .get(SELECTED_REPO_KEY)
-            .and_then(|v| serde_json::from_value(v.clone()).ok());
-
-        if let Some(id) = selected_id {
-            let manager_state = app_handle.state::<Arc<Mutex<RepoManager>>>();
-            let app_state = app_handle.state::<AppState>();
-
-            let repos = {
-                let app = {
-                    let manager = manager_state.lock().unwrap();
-                    manager.app.clone()
-                };
-                let temp = RepoManager::new(app);
-                temp.list_repositories(false).await.ok()
-            };
-
-            if let Some(repos) = repos {
-                if let Some(repo) = repos.into_iter().find(|r| r.id == id) {
-                    if let Ok(services) = RepoServices::new(&repo.path) {
-                        let mut lock = app_state.services.write().await;
-                        *lock = Some(Arc::new(services));
-                    }
-                }
-            }
-        }
+        let _ = app_handle.store(STORE_FILE);
     });
 }

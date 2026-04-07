@@ -1,22 +1,55 @@
-import { createFileRoute, Outlet } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Outlet,
+  useRouterState,
+} from "@tanstack/react-router";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import CustomTitleBar from "@/CustomTitleBar";
 import { ActionPannel } from "@/components/actionPannel";
 import Sidebar from "@/components/sidebar";
+import WebviewTabHost from "@/components/WebviewTabHost";
 
 export const Route = createFileRoute("/app")({
   component: RouteComponent,
 });
 
 function RouteComponent() {
-  return (
-    <ActionPannel>
-      <div className="h-screen w-full bg-secondary">
-        <CustomTitleBar restrictedPaths={["/login", "/register", "/welcome"]} />
-        <div className="flex h-(--main-window-height) w-screen px-(--main-actual-content-padding) pb-(--main-actual-content-padding) gap-(--main-actual-content-padding)">
-          <Sidebar />
-          <Outlet />
+  const routerState = useRouterState();
+  const searchParams = new URLSearchParams(routerState.location.search);
+  const hasEmbeddedSearchFlag =
+    searchParams.get("embedded") === "1" ||
+    searchParams.get("embedded") === "true";
+
+  let isEmbeddedWebviewLabel = false;
+
+  try {
+    const label = getCurrentWebview().label;
+    isEmbeddedWebviewLabel = label.startsWith("tab-webview:");
+  } catch {
+    isEmbeddedWebviewLabel = false;
+  }
+
+  const isEmbedded = hasEmbeddedSearchFlag || isEmbeddedWebviewLabel;
+
+  if (isEmbedded) {
+    return (
+      <ActionPannel>
+        <div className="h-screen w-full bg-secondary -z-10">
+          <div className="flex h-screen w-screen px-(--main-actual-content-padding) pb-(--main-actual-content-padding) gap-(--main-actual-content-padding)">
+            <Sidebar />
+            <Outlet />
+          </div>
         </div>
+      </ActionPannel>
+    );
+  }
+
+  return (
+    <div className="h-screen w-full bg-secondary">
+      <CustomTitleBar restrictedPaths={["/login", "/register", "/welcome"]} />
+      <div className="h-(--main-window-height) w-screen">
+        <WebviewTabHost />
       </div>
-    </ActionPannel>
+    </div>
   );
 }

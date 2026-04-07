@@ -33,6 +33,7 @@ import {
   RotateCw,
 } from "lucide-react";
 import React from "react";
+import { useTabContext } from "@/context/TabContextProvider";
 import {
   useGetCommitById,
   useGetCurrentBranch,
@@ -46,8 +47,8 @@ import {
 import { getAvatarByProvider } from "@/lib/getAvatarByGitProvider";
 import { parseOrigin } from "@/lib/parseOrigin";
 import { timeAgoFromUnixSeconds } from "@/lib/time";
-import { appState } from "@/state";
-import { useAppStore } from "@/store/useAppStore";
+import { useActiveRepositoryState } from "@/state/useActiveRepositoryState";
+import { selectActiveRepository, useAppStore } from "@/store/useAppStore";
 
 const StatusBar = () => {
   const { data: statusAheadBehind } = useGetStatusAheadBehind();
@@ -254,11 +255,17 @@ const EnvironmentBadge = () => {
 };
 
 const GitVersion = () => {
+  const { contextId } = useTabContext();
   const [version, setVersion] = React.useState<string>("");
 
   React.useEffect(() => {
-    gitVersion().then((v) => setVersion(v));
-  }, []);
+    if (!contextId) {
+      setVersion("");
+      return;
+    }
+
+    gitVersion({ contextId }).then((v) => setVersion(v));
+  }, [contextId]);
 
   if (!version) {
     return null;
@@ -496,13 +503,13 @@ const BehindBadge = ({
 };
 
 const OriginBadge = () => {
-  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const activeRepository = useAppStore(selectActiveRepository);
 
-  if (!selectedRepository?.origin) {
+  if (!activeRepository?.origin) {
     return null;
   }
 
-  const origin = parseOrigin(selectedRepository?.origin);
+  const origin = parseOrigin(activeRepository?.origin);
   const icon = getAvatarByProvider(origin?.provider);
 
   return (
@@ -564,7 +571,7 @@ const CurrentBranchBadge = () => {
 };
 
 const InvalidateAllBadge = () => {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   return (
     <>

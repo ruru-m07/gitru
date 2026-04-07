@@ -14,16 +14,22 @@ import {
   useQuery,
 } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { appState } from "@/state";
+import { useActiveRepositoryState } from "@/state/useActiveRepositoryState";
 
 type QueryOptions<T> = Omit<
   UseQueryOptions<T | null, Error>,
   "queryKey" | "queryFn" | "enabled"
 >;
 
+type StashPushInput = Omit<StashPushParams, "contextId">;
+type StashPopInput = Omit<StashPopParams, "contextId">;
+type StashApplyInput = Omit<StashApplyParams, "contextId">;
+type StashBranchInput = Omit<StashBranchParams, "contextId">;
+type StashRestoreFileInput = Omit<StashRestoreFileParams, "contextId">;
+
 /* #region // ? Query */
 export function useStashList(options?: QueryOptions<StashEntry[]>) {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   return useQuery({
     queryKey: repo?.stash.getQueryKey("list") ?? [
@@ -45,7 +51,7 @@ export function useStashQuickStat(
   reference: string | null,
   options?: QueryOptions<StashQuickStat>,
 ) {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   return useQuery({
     queryKey: [
@@ -70,7 +76,7 @@ export function useStashShow(
   reference: string | null,
   options?: QueryOptions<StashShowResponse>,
 ) {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   return useQuery({
     queryKey: [
@@ -94,10 +100,10 @@ export function useStashShow(
 
 /* #region // ! Mutations */
 export function useStashPush() {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   return useMutation({
-    mutationFn: async (params?: StashPushParams) => {
+    mutationFn: async (params?: StashPushInput) => {
       if (!repo) throw new Error("No repository selected");
       return await repo.stash.push(params);
     },
@@ -113,7 +119,7 @@ export function useStashPush() {
 }
 
 export function useStashClear() {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   return useMutation({
     mutationFn: async () => {
@@ -131,10 +137,10 @@ export function useStashClear() {
 }
 
 export function useStashPop() {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   return useMutation({
-    mutationFn: async (params?: StashPopParams) => {
+    mutationFn: async (params?: StashPopInput) => {
       if (!repo) throw new Error("No repository selected");
       return await repo.stash.pop(params);
     },
@@ -150,10 +156,10 @@ export function useStashPop() {
 }
 
 export function useStashApply() {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   return useMutation({
-    mutationFn: async (params?: StashApplyParams) => {
+    mutationFn: async (params?: StashApplyInput) => {
       if (!repo) throw new Error("No repository selected");
       return await repo.stash.apply(params);
     },
@@ -167,7 +173,7 @@ export function useStashApply() {
 }
 
 export function useStashDrop() {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   return useMutation({
     mutationFn: async (reference: string) => {
@@ -185,10 +191,10 @@ export function useStashDrop() {
 }
 
 export function useStashBranch() {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   return useMutation({
-    mutationFn: async (params: StashBranchParams) => {
+    mutationFn: async (params: StashBranchInput) => {
       if (!repo) throw new Error("No repository selected");
       return await repo.stash.branch(params);
     },
@@ -204,10 +210,10 @@ export function useStashBranch() {
 }
 
 export function useStashRestoreFile() {
-  const repo = appState.repository;
+  const repo = useActiveRepositoryState();
 
   return useMutation({
-    mutationFn: async (params: StashRestoreFileParams) => {
+    mutationFn: async (params: StashRestoreFileInput) => {
       if (!repo) throw new Error("No repository selected");
       return await repo.stash.restoreFile(params);
     },

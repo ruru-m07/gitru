@@ -17,7 +17,12 @@ import {
   useStashShow,
 } from "@/hooks";
 import { resolveFileSelection } from "@/lib/gitSelectionResolver";
-import { ExternalOpener, useAppStore } from "@/store/useAppStore";
+import {
+  selectActiveRepository,
+  selectActiveSessionRepoKey,
+  useAppStore,
+} from "@/store/useAppStore";
+import { ExternalOpener } from "@/types/store";
 
 const EXTERNAL_OPENER_OPTIONS: {
   value: ExternalOpener;
@@ -55,9 +60,15 @@ function getAppIcon(appName: string) {
 }
 
 const OpenWith = () => {
-  const selectedRepository = useAppStore((state) => state.selectedRepository);
-  const selectionByRepo = useAppStore((state) => state.selectionByRepo);
-  const gitViewByRepo = useAppStore((state) => state.gitViewByRepo);
+  const activeRepository = useAppStore(selectActiveRepository);
+  const repoPath = activeRepository?.path ?? "";
+  const repoStateKey = useAppStore(selectActiveSessionRepoKey);
+  const repoSelectionState = useAppStore((state) =>
+    repoStateKey ? state.selectionByRepo[repoStateKey] : undefined,
+  );
+  const gitViewState = useAppStore((state) =>
+    repoStateKey ? state.gitViewByRepo[repoStateKey] : undefined,
+  );
   const preferredExternalOpener = useAppStore(
     (state) => state.preferredExternalOpener,
   );
@@ -65,8 +76,6 @@ const OpenWith = () => {
     (state) => state.setPreferredExternalOpener,
   );
 
-  const repoPath = selectedRepository?.path ?? "";
-  const gitViewState = gitViewByRepo[repoPath];
   const activeSource =
     gitViewState?.leftPanelView === "stash"
       ? "stash"
@@ -92,13 +101,11 @@ const OpenWith = () => {
   );
   const activeSelection =
     activeSource === "stash" && activeStashReference
-      ? (selectionByRepo[repoPath]?.stashByReference[activeStashReference] ??
-        null)
+      ? (repoSelectionState?.stashByReference[activeStashReference] ?? null)
       : activeSource === "history" && activeHistoryCommitHash
-        ? (selectionByRepo[repoPath]?.historyByCommit?.[
-            activeHistoryCommitHash
-          ] ?? null)
-        : (selectionByRepo[repoPath]?.worktree ?? null);
+        ? (repoSelectionState?.historyByCommit?.[activeHistoryCommitHash] ??
+          null)
+        : (repoSelectionState?.worktree ?? null);
   const resolvedSelection = resolveFileSelection({
     selection: activeSelection,
     files:
@@ -120,12 +127,12 @@ const OpenWith = () => {
   const selectedOpenerOption = getOpenerOption(preferredExternalOpener);
 
   const openSelectedFile = async (opener: ExternalOpener) => {
-    if (!canOpen || !selectedRepository?.path) return;
+    if (!canOpen || !repoPath) return;
     setPreferredExternalOpener(opener);
     const selectedFile = resolvedSelection.identity;
 
     await openWithApp({
-      filePath: `${selectedRepository.path}/${selectedFile.fileNewPath || selectedFile.filePath}`,
+      filePath: `${repoPath}/${selectedFile.fileNewPath || selectedFile.filePath}`,
       app: opener,
     });
   };

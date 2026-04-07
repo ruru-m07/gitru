@@ -6,19 +6,21 @@ use git::AppState;
 
 #[tauri::command]
 pub async fn history(
+    context_id: String,
     skip: usize,
     limit: usize,
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<CommitInfo>, String> {
-    let services = get_services(state).await?;
+    let services = get_services(state, &context_id).await?;
     services.history().history(skip, limit).await
 }
 
 #[tauri::command]
 pub async fn history_graph(
+    context_id: String,
     query: HistoryQuery,
     state: tauri::State<'_, AppState>,
 ) -> Result<HistoryGraphResponse, String> {
-    let services = get_services(state).await?;
+    let services = get_services(state, &context_id).await?;
     services.history().history_graph(query).await
 }

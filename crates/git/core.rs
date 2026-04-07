@@ -53,7 +53,26 @@ impl RepoServices {
     }
 }
 
-pub async fn get_services(state: tauri::State<'_, AppState>) -> Result<Arc<RepoServices>, String> {
+pub async fn get_services(
+    state: tauri::State<'_, AppState>,
+    context_id: &str,
+) -> Result<Arc<RepoServices>, String> {
     let lock = state.services.read().await;
-    Ok(lock.clone().ok_or("Not initialized")?)
+    lock.get(context_id)
+        .cloned()
+        .ok_or_else(|| "Context not initialized".to_string())
+}
+
+pub async fn insert_services(
+    state: tauri::State<'_, AppState>,
+    context_id: String,
+    services: Arc<RepoServices>,
+) {
+    let mut lock = state.services.write().await;
+    lock.insert(context_id, services);
+}
+
+pub async fn remove_services(state: tauri::State<'_, AppState>, context_id: &str) -> bool {
+    let mut lock = state.services.write().await;
+    lock.remove(context_id).is_some()
 }

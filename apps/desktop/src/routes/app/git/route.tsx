@@ -122,8 +122,13 @@ import {
   formatUnixSecondsToDateTime,
   timeAgoFromUnixSeconds,
 } from "@/lib/time";
-import { useAppStore } from "@/store/useAppStore";
-import { GIT_PROVIDERS } from "@/type";
+import {
+  selectActiveRepoSelectIsOpen,
+  selectActiveRepository,
+  selectActiveSessionRepoKey,
+  useAppStore,
+} from "@/store/useAppStore";
+import { GIT_PROVIDERS } from "@/types/app";
 import { resolveFileSelection } from "../../../lib/gitSelectionResolver";
 
 const CoAuthers = z.array(z.tuple([z.string(), z.string()]));
@@ -216,7 +221,7 @@ export const Route = createFileRoute("/app/git")({
 });
 
 function GitPageLayout() {
-  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const activeRepository = useAppStore(selectActiveRepository);
   const setSelectedRepository = useAppStore(
     (state) => state.setSelectedRepository,
   );
@@ -224,7 +229,7 @@ function GitPageLayout() {
   const { repositories, addRepo } = useRepositories();
   const navigation = useCommandNavigation();
 
-  if (!selectedRepository) {
+  if (!activeRepository) {
     return (
       <PageLayout className="flex-col flex justify-center items-center gap-4">
         <div className="flex flex-col gap-4 justify-center">
@@ -436,17 +441,20 @@ function GitPageLayout() {
 }
 
 const ResizableArea = () => {
-  const repoSelectIsOpen = useAppStore((state) => state.repoSelectIsOpen);
+  const repoSelectIsOpen = useAppStore(selectActiveRepoSelectIsOpen);
   const setRepoSelectIsOpen = useAppStore((state) => state.setRepoSelectIsOpen);
-  const selectedRepository = useAppStore((state) => state.selectedRepository);
-  const gitViewByRepo = useAppStore((state) => state.gitViewByRepo);
+  const activeRepository = useAppStore(selectActiveRepository);
+  const repoStateKey = useAppStore(selectActiveSessionRepoKey);
   const setGitViewStateForRepo = useAppStore(
     (state) => state.setGitViewStateForRepo,
   );
 
   const shouldReduceMotion = useReducedMotion();
   const [panelDirection, setPanelDirection] = useState<1 | -1>(1);
-  const repoPath = selectedRepository?.path;
+  const repoPath = activeRepository?.path ?? "";
+  const repoGitViewState = useAppStore((state) =>
+    repoStateKey ? state.gitViewByRepo[repoStateKey] : undefined,
+  );
   const gitViewState: {
     leftPanelView: "changes" | "stash" | "history";
     changesTab: "changes" | "history";
@@ -455,7 +463,7 @@ const ResizableArea = () => {
     selectedHistoryCommitHash: string | null;
     stashStatusFilters: Record<FileStatusFilter, boolean>;
   } = repoPath
-    ? (gitViewByRepo[repoPath] ?? {
+    ? (repoGitViewState ?? {
         leftPanelView: "changes",
         changesTab: "changes",
         stashViewMode: "branch",
@@ -880,9 +888,9 @@ const WriteCommitBox = memo(function WriteCommitBox({
 });
 
 const ToggelPanelButton = () => {
-  const repoSelectIsOpen = useAppStore((state) => state.repoSelectIsOpen);
+  const repoSelectIsOpen = useAppStore(selectActiveRepoSelectIsOpen);
   const setRepoSelectIsOpen = useAppStore((state) => state.setRepoSelectIsOpen);
-  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const activeRepository = useAppStore(selectActiveRepository);
 
   return (
     <Button
@@ -890,16 +898,16 @@ const ToggelPanelButton = () => {
         setRepoSelectIsOpen(!repoSelectIsOpen);
       }}
       className={cn(
-        "rounded-none justify-between min-h-13.75 max-h-13.75",
+        "rounded-none justify-between min-h-13.75 max-h-13.75 pl-2",
         repoSelectIsOpen && "bg-accent",
       )}
       variant={"ghost"}
     >
       <div className="flex-col flex items-start">
-        <span className="text-xs text-muted-foreground">
+        <span className="text-xs text-muted-foreground font-[430]">
           Current Repository
         </span>
-        <span>{selectedRepository?.name || "No repository selected"}</span>
+        <span>{activeRepository?.name || "No repository selected"}</span>
       </div>
       {repoSelectIsOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
     </Button>
@@ -923,14 +931,16 @@ const ListFileChanges = ({
     Record<FileStatusFilter, boolean>
   >(DEFAULT_STATUS_FILTERS);
 
-  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const repoStateKey = useAppStore(selectActiveSessionRepoKey);
   const setWorktreeSelectionForRepo = useAppStore(
     (state) => state.setWorktreeSelectionForRepo,
   );
   const clearWorktreeSelectionForRepo = useAppStore(
     (state) => state.clearWorktreeSelectionForRepo,
   );
-  const selectionByRepo = useAppStore((state) => state.selectionByRepo);
+  const repoSelectionState = useAppStore((state) =>
+    repoStateKey ? state.selectionByRepo[repoStateKey] : undefined,
+  );
   const setMainWindowView = useAppStore((state) => state.setMainWindowView);
 
   const { data: status, isLoading: isStatusLoading } = useGetStatus();
@@ -941,7 +951,9 @@ const ListFileChanges = ({
 
   const { data: currentBranchStash } = useGetCurrentBranchStash();
 
-  const { handleFileClick } = useFileSelectionStore();
+  const handleFileClick = useFileSelectionStore(
+    (state) => state.handleFileClick,
+  );
 
   const historySearch = historySearchInput.trim();
   const historyQuery = useMemo(
@@ -969,8 +981,7 @@ const ListFileChanges = ({
       ),
     [historyData],
   );
-  const repoPath = selectedRepository?.path ?? "";
-  const worktreeSelection = selectionByRepo[repoPath]?.worktree ?? null;
+  const worktreeSelection = repoSelectionState?.worktree ?? null;
   const resolvedWorktreeSelection = resolveFileSelection({
     selection: worktreeSelection,
     files: status?.files ?? [],
@@ -1036,9 +1047,15 @@ const ListFileChanges = ({
   return (
     <Tabs
       value={activeTab === "changes" ? "tab-1" : "tab-2"}
-      onValueChange={(value) =>
-        onTabChange(value === "tab-2" ? "history" : "changes")
-      }
+      onValueChange={(value) => {
+        const nextTab = value === "tab-2" ? "history" : "changes";
+
+        if (nextTab === activeTab) {
+          return;
+        }
+
+        onTabChange(nextTab);
+      }}
       className={"gap-0 h-full flex flex-col"}
     >
       <TabsList
@@ -1548,28 +1565,34 @@ const HistoryCommitInfiniteList = ({
 const HistoryDetailView = ({ onBack }: { onBack: () => void }) => {
   const [query, setQuery] = useState("");
 
-  const selectedRepository = useAppStore((state) => state.selectedRepository);
-  const gitViewByRepo = useAppStore((state) => state.gitViewByRepo);
-  const selectionByRepo = useAppStore((state) => state.selectionByRepo);
+  const activeRepository = useAppStore(selectActiveRepository);
+  const repoStateKey = useAppStore(selectActiveSessionRepoKey);
+  const repoPath = activeRepository?.path ?? "";
+  const repoGitViewState = useAppStore((state) =>
+    repoStateKey ? state.gitViewByRepo[repoStateKey] : undefined,
+  );
+  const repoSelectionState = useAppStore((state) =>
+    repoStateKey ? state.selectionByRepo[repoStateKey] : undefined,
+  );
   const setHistorySelectionForRepo = useAppStore(
     (state) => state.setHistorySelectionForRepo,
   );
   const clearHistorySelectionForRepo = useAppStore(
     (state) => state.clearHistorySelectionForRepo,
   );
-  const { handleFileClick } = useFileSelectionStore();
+  const handleFileClick = useFileSelectionStore(
+    (state) => state.handleFileClick,
+  );
 
-  const repoPath = selectedRepository?.path ?? "";
   const selectedCommitHash =
-    gitViewByRepo[repoPath]?.selectedHistoryCommitHash ?? null;
+    repoGitViewState?.selectedHistoryCommitHash ?? null;
   const { data: commitDetails, isLoading: isCommitLoading } = useGetCommitById(
     selectedCommitHash ?? "",
   );
 
   const selectedFileForCurrentRepo =
     selectedCommitHash && repoPath
-      ? (selectionByRepo[repoPath]?.historyByCommit?.[selectedCommitHash] ??
-        null)
+      ? (repoSelectionState?.historyByCommit?.[selectedCommitHash] ?? null)
       : null;
   const resolvedHistorySelection = resolveFileSelection({
     selection: selectedFileForCurrentRepo,
@@ -1780,7 +1803,7 @@ const HistoryDetailView = ({ onBack }: { onBack: () => void }) => {
 
 const ListRepositories = memo(() => {
   const navigation = useCommandNavigation();
-  const selectedRepository = useAppStore((state) => state.selectedRepository);
+  const activeRepository = useAppStore(selectActiveRepository);
   const setSelectedRepository = useAppStore(
     (state) => state.setSelectedRepository,
   );
@@ -1943,14 +1966,14 @@ const ListRepositories = memo(() => {
                         key={repo.id}
                         repo={repo}
                         dataRepoId={repo.id}
-                        isSelected={selectedRepository?.id === repo.id}
+                        isSelected={activeRepository?.id === repo.id}
                         onSelect={() => {
                           setSelectedRepository(repo);
                           setRepoSelectIsOpen(false);
                         }}
                         onRemove={() => {
                           removeRepo(repo.id);
-                          if (selectedRepository?.id === repo.id) {
+                          if (activeRepository?.id === repo.id) {
                             setSelectedRepository(null);
                           }
                         }}
@@ -1977,8 +2000,12 @@ const StashPocView = memo(function StashPocView({
     Record<FileStatusFilter, boolean>
   >(DEFAULT_STATUS_FILTERS);
 
-  const selectedRepository = useAppStore((state) => state.selectedRepository);
-  const selectionByRepo = useAppStore((state) => state.selectionByRepo);
+  const activeRepository = useAppStore(selectActiveRepository);
+  const repoStateKey = useAppStore(selectActiveSessionRepoKey);
+  const repoPath = activeRepository?.path ?? "";
+  const repoSelectionState = useAppStore((state) =>
+    repoStateKey ? state.selectionByRepo[repoStateKey] : undefined,
+  );
   const setStashSelectionForRepo = useAppStore(
     (state) => state.setStashSelectionForRepo,
   );
@@ -1988,12 +2015,16 @@ const StashPocView = memo(function StashPocView({
   const pruneStashSelectionsForRepo = useAppStore(
     (state) => state.pruneStashSelectionsForRepo,
   );
-  const gitViewByRepo = useAppStore((state) => state.gitViewByRepo);
+  const repoGitViewState = useAppStore((state) =>
+    repoStateKey ? state.gitViewByRepo[repoStateKey] : undefined,
+  );
   const setGitViewStateForRepo = useAppStore(
     (state) => state.setGitViewStateForRepo,
   );
 
-  const { handleFileClick } = useFileSelectionStore();
+  const handleFileClick = useFileSelectionStore(
+    (state) => state.handleFileClick,
+  );
   const { data: currentBranchStash } = useGetCurrentBranchStash();
   const { data: stashes, isLoading: isStashesLoading } = useStashList();
   const { mutateAsync: popStash, isPending: isRestoreAllPending } =
@@ -2002,9 +2033,8 @@ const StashPocView = memo(function StashPocView({
     useStashDrop();
   const { mutateAsync: restoreStashFile } = useStashRestoreFile();
 
-  const repoPath = selectedRepository?.path ?? "";
   const persistedSelectedReference =
-    gitViewByRepo[repoPath]?.selectedStashReference ?? null;
+    repoGitViewState?.selectedStashReference ?? null;
   const selectedReference =
     mode === "branch"
       ? (currentBranchStash?.reference ?? null)
@@ -2016,7 +2046,10 @@ const StashPocView = memo(function StashPocView({
     }
 
     if (!stashes || stashes.length === 0) {
-      setGitViewStateForRepo({ selectedStashReference: null }, repoPath);
+      setGitViewStateForRepo(
+        { selectedStashReference: null },
+        repoStateKey ?? repoPath,
+      );
       return;
     }
 
@@ -2029,18 +2062,26 @@ const StashPocView = memo(function StashPocView({
 
     setGitViewStateForRepo(
       { selectedStashReference: stashes[0]?.reference ?? null },
-      repoPath,
+      repoStateKey ?? repoPath,
     );
-  }, [mode, repoPath, selectedReference, setGitViewStateForRepo, stashes]);
+  }, [
+    mode,
+    repoPath,
+    repoStateKey,
+    selectedReference,
+    setGitViewStateForRepo,
+    stashes,
+  ]);
 
   useEffect(() => {
-    if (!repoPath) {
+    const targetRepoKey = repoStateKey ?? repoPath;
+    if (!targetRepoKey) {
       return;
     }
 
     const references = (stashes ?? []).map((stash) => stash.reference);
-    pruneStashSelectionsForRepo(repoPath, references);
-  }, [pruneStashSelectionsForRepo, repoPath, stashes]);
+    pruneStashSelectionsForRepo(targetRepoKey, references);
+  }, [pruneStashSelectionsForRepo, repoPath, repoStateKey, stashes]);
 
   const { data: stashShow, isLoading: isStashShowLoading } =
     useStashShow(selectedReference);
@@ -2053,7 +2094,7 @@ const StashPocView = memo(function StashPocView({
   );
 
   const selectedFileForCurrentRepo = selectedReference
-    ? (selectionByRepo[repoPath]?.stashByReference[selectedReference] ?? null)
+    ? (repoSelectionState?.stashByReference[selectedReference] ?? null)
     : null;
   const stashReferences = (stashes ?? []).map((stash) => stash.reference);
   const resolvedStashSelection = resolveFileSelection({

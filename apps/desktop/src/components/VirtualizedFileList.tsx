@@ -36,7 +36,8 @@ import {
 import { toast } from "sonner";
 import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
-import { type FileSelectionIdentity, useAppStore } from "@/store/useAppStore";
+import { selectActiveRepository, useAppStore } from "@/store/useAppStore";
+import { FileSelectionIdentity } from "@/types/store";
 
 export interface FileListSection {
   id: string;
@@ -869,7 +870,7 @@ const FileRow = memo(
       [file, getContextActions, sectionId, sectionName, sectionType],
     );
 
-    const selectedRepository = useAppStore((state) => state.selectedRepository);
+    const activeRepository = useAppStore(selectActiveRepository);
     const getSelectionTargets = useCallback(() => {
       const { selectedFiles, allFiles } = useFileSelectionStore.getState();
 
@@ -952,7 +953,7 @@ const FileRow = memo(
             onDoubleClick={async () => {
               if (!file.path) return;
               await openWithApp({
-                filePath: `${selectedRepository?.path}/${file.new_path || file.path}`,
+                filePath: `${activeRepository?.path}/${file.new_path || file.path}`,
               });
             }}
           >

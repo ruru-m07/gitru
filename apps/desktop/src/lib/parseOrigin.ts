@@ -1,4 +1,4 @@
-import { GIT_PROVIDERS } from "@/type";
+import { GIT_PROVIDERS } from "@/types/app";
 
 interface ParseOriginResult {
   host: string;

@@ -14,6 +14,7 @@ use tauri::Emitter;
 use uuid::Uuid;
 
 use crate::repo_manager::{RepoManager, RepositoryInfo, SELECTED_REPO_KEY};
+use crate::session_manager::{SessionManager, SessionNavigationInfo};
 
 #[derive(Serialize)]
 pub struct RepoSitoryStore {
@@ -118,25 +119,23 @@ pub async fn clone_repository(
     url: String,
     destination_path: String,
     operation_id: String,
-    state: tauri::State<'_, AppState>,
     manager: tauri::State<'_, Arc<Mutex<RepoManager>>>,
     app: tauri::AppHandle,
 ) -> Result<RepositoryInfo, String> {
     RepositoryService::clone_repository(&url, &destination_path, &operation_id, &app).await?;
 
-    persist_and_select_repository(destination_path, state, manager).await
+    persist_and_select_repository(destination_path, manager).await
 }
 
 #[tauri::command]
 #[logger::logger]
 pub async fn init_repository(
     repo_path: String,
-    state: tauri::State<'_, AppState>,
     manager: tauri::State<'_, Arc<Mutex<RepoManager>>>,
 ) -> Result<RepositoryInfo, String> {
     RepositoryService::init_repository(&repo_path).await?;
 
-    persist_and_select_repository(repo_path, state, manager).await
+    persist_and_select_repository(repo_path, manager).await
 }
 
 #[tauri::command]
@@ -171,7 +170,6 @@ pub async fn cancel_clone_repository(
 
 async fn persist_and_select_repository(
     repo_path: String,
-    state: tauri::State<'_, AppState>,
     manager: tauri::State<'_, Arc<Mutex<RepoManager>>>,
 ) -> Result<RepositoryInfo, String> {
     let basic_info = add_local_git_repo(repo_path)
@@ -186,12 +184,6 @@ async fn persist_and_select_repository(
     let temp_manager = RepoManager::new(app);
     let repo = temp_manager.add_repository(basic_info.into()).await?;
 
-    let services = Arc::new(RepoServices::new(&repo.path)?);
-    {
-        let mut lock = state.services.write().await;
-        *lock = Some(services);
-    }
-
     let manager_guard = manager.lock().map_err(|e| e.to_string())?;
     let store = manager_guard
         .get_store()
@@ -203,11 +195,11 @@ async fn persist_and_select_repository(
 }
 
 #[tauri::command]
-pub async fn select_repository(
+pub async fn create_repo_context(
     repo_id: String,
     state: tauri::State<'_, AppState>,
     manager: tauri::State<'_, Arc<Mutex<RepoManager>>>,
-) -> Result<bool, String> {
+) -> Result<String, String> {
     let repos = {
         let app = {
             let manager_guard = manager.lock().map_err(|e| e.to_string())?;
@@ -223,10 +215,10 @@ pub async fn select_repository(
         .ok_or("Repository not found")?;
 
     let services = Arc::new(RepoServices::new(&repo.path)?);
-
+    let context_id = Uuid::new_v4().to_string();
     {
         let mut lock = state.services.write().await;
-        *lock = Some(services);
+        lock.insert(context_id.clone(), services);
     }
 
     let manager_guard = manager.lock().map_err(|e| e.to_string())?;
@@ -237,7 +229,16 @@ pub async fn select_repository(
     store.set(SELECTED_REPO_KEY, repo_id);
     store.save().map_err(|e| e.to_string())?;
 
-    Ok(true)
+    Ok(context_id)
+}
+
+#[tauri::command]
+pub async fn dispose_repo_context(
+    context_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<bool, String> {
+    let mut lock = state.services.write().await;
+    Ok(lock.remove(&context_id).is_some())
 }
 
 #[tauri::command]
@@ -436,5 +437,71 @@ fn open_on_linux(opener: ExternalOpener, file_path: &str, line: Option<u32>) -> 
         .spawn()
         .map_err(|e| format!("Failed to launch opener on Linux: {}", e))?;
 
+    Ok(())
+}
+
+#[derive(Deserialize)]
+pub struct SessionPushToHistoryRequest {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    #[serde(rename = "routePath")]
+    pub route_path: String,
+}
+
+#[tauri::command]
+#[logger::logger]
+pub async fn session_push_to_history(
+    req: SessionPushToHistoryRequest,
+    session_manager: tauri::State<'_, std::sync::Arc<SessionManager>>,
+) -> Result<SessionNavigationInfo, String> {
+    let info = session_manager
+        .push_to_history(req.session_id, req.route_path)
+        .await;
+    Ok(info)
+}
+
+#[derive(Deserialize)]
+pub struct SessionActionRequest {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+}
+
+#[tauri::command]
+#[logger::logger]
+pub async fn session_go_back(
+    req: SessionActionRequest,
+    session_manager: tauri::State<'_, std::sync::Arc<SessionManager>>,
+) -> Result<Option<SessionNavigationInfo>, String> {
+    let info = session_manager.go_back(&req.session_id).await;
+    Ok(info)
+}
+
+#[tauri::command]
+#[logger::logger]
+pub async fn session_go_forward(
+    req: SessionActionRequest,
+    session_manager: tauri::State<'_, std::sync::Arc<SessionManager>>,
+) -> Result<Option<SessionNavigationInfo>, String> {
+    let info = session_manager.go_forward(&req.session_id).await;
+    Ok(info)
+}
+
+#[tauri::command]
+#[logger::logger]
+pub async fn session_get_navigation_state(
+    req: SessionActionRequest,
+    session_manager: tauri::State<'_, std::sync::Arc<SessionManager>>,
+) -> Result<SessionNavigationInfo, String> {
+    let info = session_manager.get_navigation_state(&req.session_id).await;
+    Ok(info)
+}
+
+#[tauri::command]
+#[logger::logger]
+pub async fn session_clear_history(
+    req: SessionActionRequest,
+    session_manager: tauri::State<'_, std::sync::Arc<SessionManager>>,
+) -> Result<(), String> {
+    session_manager.clear_session_history(&req.session_id).await;
     Ok(())
 }

@@ -36,7 +36,6 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-// import { useTheme } from "next-themes";
 import { ImageDiffViewer } from "@/components/diff/image/ImageDiffViewer";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
@@ -55,7 +54,7 @@ import {
   useStashList,
   useStashShow,
 } from "@/hooks";
-import { useAppStore } from "@/store/useAppStore";
+import { selectActiveSessionRepoKey, useAppStore } from "@/store/useAppStore";
 import { SplitSVG } from "../../../components/svgs/splitSVG";
 import { UnifiedSVG } from "../../../components/svgs/unifiedSVG";
 import { diffWorkerFactory } from "../../../lib/diffWorkerFactory";
@@ -82,15 +81,17 @@ function App() {
 }
 
 const DiffBoxBody = () => {
-  const selectedRepository = useAppStore((state) => state.selectedRepository);
-  const selectionByRepo = useAppStore((state) => state.selectionByRepo);
-  const gitViewByRepo = useAppStore((state) => state.gitViewByRepo);
+  const repoStateKey = useAppStore(selectActiveSessionRepoKey);
+  const repoSelectionState = useAppStore((state) =>
+    repoStateKey ? state.selectionByRepo[repoStateKey] : undefined,
+  );
+  const gitViewState = useAppStore((state) =>
+    repoStateKey ? state.gitViewByRepo[repoStateKey] : undefined,
+  );
   const { data: status } = useGetStatus();
   const { data: currentBranchStash } = useGetCurrentBranchStash();
   const { data: stashes } = useStashList();
 
-  const repoPath = selectedRepository?.path ?? "";
-  const gitViewState = gitViewByRepo[repoPath];
   const activeSource =
     gitViewState?.leftPanelView === "stash"
       ? "stash"
@@ -116,16 +117,14 @@ const DiffBoxBody = () => {
   const activeSelection =
     activeSource === "stash"
       ? activeStashReference
-        ? (selectionByRepo[repoPath]?.stashByReference[activeStashReference] ??
-          null)
+        ? (repoSelectionState?.stashByReference[activeStashReference] ?? null)
         : null
       : activeSource === "history"
         ? activeHistoryCommitHash
-          ? (selectionByRepo[repoPath]?.historyByCommit?.[
-              activeHistoryCommitHash
-            ] ?? null)
+          ? (repoSelectionState?.historyByCommit?.[activeHistoryCommitHash] ??
+            null)
           : null
-        : (selectionByRepo[repoPath]?.worktree ?? null);
+        : (repoSelectionState?.worktree ?? null);
 
   const resolvedSelection = resolveFileSelection({
     selection: activeSelection,
@@ -193,7 +192,7 @@ const MainActionBar = () => {
             <GitBranch className="size-7.5" strokeWidth={1.5} />
 
             <div className="flex flex-col items-start min-w-0 flex-1">
-              <span className="text-xs text-muted-foreground font-normal">
+              <span className="text-xs text-muted-foreground font-[450]">
                 Current Branch
               </span>
               <span className="truncate block w-full text-left">
@@ -223,13 +222,13 @@ const MainActionBar = () => {
                       strokeWidth={1.5}
                     />
                   ) : (
-                    <ChevronsUp className="size-8" />
+                    <ChevronsUp className="size-8 rotate-180" />
                   )}
                   <div className="flex-col flex items-start">
-                    <span className="text-xs text-muted-foreground font-normal">
+                    <span className="text-xs text-muted-foreground font-[450]">
                       {statusAheadBehind.ahead > 0
-                        ? "Push to Remote"
-                        : "Pull from Remote"}
+                        ? "Push to Origin"
+                        : "Pull from Origin"}
                     </span>
                     <span>
                       {statusAheadBehind

@@ -12,3 +12,4 @@ uuid = { version = "1", features = ["v4"] }
 logger = { path = "../logger" }
 log = "0.4"
 git = { path = "../git" }
+tokio = { version = "1", features = ["sync"] }
