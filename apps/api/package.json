@@ -11,7 +11,7 @@
     "@neondatabase/serverless": "^1.0.2",
     "better-auth": "^1.4.3",
     "dotenv": "^17.2.3",
-    "drizzle-orm": "^0.44.7",
+    "drizzle-orm": "^0.45.2",
     "elysia": "1.4.27",
     "pg": "^8.16.3"
   },
