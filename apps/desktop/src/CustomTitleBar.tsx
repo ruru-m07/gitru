@@ -21,7 +21,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { type RepositoryInfo } from "@gitru/commands";
-import { Inbox } from "@gitru/icon";
+import { Git, Inbox } from "@gitru/icon";
 import {
   Avatar,
   AvatarFallback,
@@ -39,6 +39,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useRepositories } from "./hooks/useRepositories";
 import { useSessionNavigation } from "./hooks/useSessionNavigation";
 import { emitWebviewNavigation } from "./lib/emitWebviewNavigation";
 import { getAvatarByProvider } from "./lib/getAvatarByGitProvider";
@@ -180,7 +181,12 @@ const renderTitleForGitPage = ({
   isActive: boolean;
 }) => {
   if (!repository) {
-    return <span className="truncate font-medium">Git</span>;
+    return (
+      <div className="flex items-center gap-1.5">
+        <Git className={"size-4"} />
+        <span>Git Stuff</span>
+      </div>
+    );
   }
 
   const origin = parseOrigin(repository.origin);
@@ -258,7 +264,7 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
     useSessionNavigation(activeTabId);
 
   const selectedRepository = useAppStore((state) => state.selectedRepository);
-  const repositories = useAppStore((state) => state.repositories);
+  const { repositories } = useRepositories();
 
   const tabs = useAppStore((state) => state.tabs);
   const [hoveredTabId, setHoveredTabId] = useState<string | null>(null);
@@ -970,7 +976,10 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
                     <SortableTabShell
                       key={tab.id}
                       id={tab.id}
-                      className="relative h-full"
+                      className={cn(
+                        "relative h-full",
+                        isDraggingTab ? "" : "transition-all",
+                      )}
                     >
                       <div className="relative flex items-end h-full">
                         {isActive && (
@@ -980,7 +989,7 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
                             viewBox="0 0 15 15"
                             fill="none"
                             xmlns="http://www.w3.org/2000/svg"
-                            className="filter-[drop-shadow(-1px_-1px_1px_#00000011)] absolute -left-3.75 bottom-0"
+                            className="filter-[drop-shadow(-1.2px_-0.5px_1px_#0000001A)] absolute -left-3.75 bottom-0"
                           >
                             <path
                               d="M15 15H0C8.28427 15 15 8.28427 15 0V15Z"
@@ -1026,7 +1035,7 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
                           className={cn(
                             "group flex h-full min-w-44 max-w-72 shrink-0 items-center gap-1 text-sm rounded-t-2xl pb-1 touch-none",
                             isActive
-                              ? "bg-background flex items-center [box-shadow:-1px_-1px_1px_0px_#00000011,1px_-1px_1px_0px_#00000011]"
+                              ? "bg-background flex items-center [box-shadow:-1px_-1px_1px_0.1px_#0000001A,1px_-1px_1px_0.1px_#0000001A]"
                               : "bg-transparent text-muted-foreground",
                           )}
                         >
@@ -1086,7 +1095,7 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
                             viewBox="0 0 15 15"
                             fill="none"
                             xmlns="http://www.w3.org/2000/svg"
-                            className="filter-[drop-shadow(1px_-1px_1px_#00000011)] absolute -right-3.75 bottom-0"
+                            className="filter-[drop-shadow(1.2px_-0.5px_1px_#0000001A)] absolute -right-3.75 bottom-0"
                           >
                             <path
                               d="M0 15L6.5568e-07 0C2.93563e-07 8.28427 6.71573 15 15 15L0 15Z"

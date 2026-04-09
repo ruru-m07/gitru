@@ -6,6 +6,7 @@ import {
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import CustomTitleBar from "@/CustomTitleBar";
 import { ActionPannel } from "@/components/actionPannel";
+import PageLayout from "@/components/pageLayout";
 import Sidebar from "@/components/sidebar";
 import WebviewTabHost from "@/components/WebviewTabHost";
 
@@ -45,8 +46,14 @@ function RouteComponent() {
   }
 
   return (
-    <div className="h-screen w-full bg-secondary">
-      <CustomTitleBar restrictedPaths={["/login", "/register", "/welcome"]} />
+    <div className="max-h-screen overflow-hidden w-full bg-secondary">
+      <div className="max-h-screen overflow-hidden">
+        <CustomTitleBar restrictedPaths={["/login", "/register", "/welcome"]} />
+        <div className="absolute top-(--main-custom-header-height) flex max-h-[calc(100vh-var(--main-custom-header-height))] h-full w-screen px-(--main-actual-content-padding) pb-(--main-actual-content-padding) gap-(--main-actual-content-padding)">
+          <Sidebar />
+          <PageLayout></PageLayout>
+        </div>
+      </div>
       <div className="h-(--main-window-height) w-screen">
         <WebviewTabHost />
       </div>
