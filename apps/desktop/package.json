@@ -18,7 +18,7 @@
     "@img-comparison-slider/react": "^8.0.2",
     "@lucide/lab": "^0.1.2",
     "@monaco-editor/react": "^4.7.0",
-    "@pierre/diffs": "^1.1.3",
+    "@pierre/diffs": "^1.1.12",
     "@shikijs/langs": "^3.21.0",
     "@shikijs/themes": "^3.21.0",
     "@tabler/icons-react": "^3.35.0",

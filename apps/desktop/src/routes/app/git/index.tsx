@@ -35,6 +35,7 @@ import {
   Undo,
   X,
 } from "lucide-react";
+import { useTheme } from "next-themes";
 import { useEffect, useMemo, useState } from "react";
 import { ImageDiffViewer } from "@/components/diff/image/ImageDiffViewer";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
@@ -359,6 +360,7 @@ const DiffArea = ({
   const { diffStyle, overflow } = useDiffViewerSettings();
   const [effectiveDiffStyle, setEffectiveDiffStyle] =
     useState<typeof diffStyle>(diffStyle);
+  const { theme } = useTheme();
 
   const derivedScope =
     worktreeScope ??
@@ -673,6 +675,7 @@ const DiffArea = ({
                       name: diffData?.newFile?.name || "untitled.txt",
                     }}
                     options={{
+                      themeType: theme?.startsWith("dark-") ? "dark" : "light",
                       diffStyle: effectiveDiffStyle,
                       overflow,
                       disableFileHeader: true,
@@ -680,8 +683,8 @@ const DiffArea = ({
                       lineHoverHighlight: "both",
                       unsafeCSS: `
                       [data-background] {
-                        --diffs-light-bg: var(--secondary) !important;
-                        --diffs-dark-bg: var(--secondary) !important;
+                        --diffs-light-bg: ${theme?.startsWith("dark-") ? "#000000" : "var(--secondary)"} !important;
+                        --diffs-dark-bg: ${theme?.startsWith("dark-") ? "#000000" : "var(--secondary)"} !important;
                       }
                       `,
                     }}
@@ -974,7 +977,7 @@ const SettingsPopoverContent = () => {
 
 const EmptyStateScreen = () => {
   return (
-    <div className="w-full flex justify-center max-h-[calc(var(--layout-height)---spacing(14))] h-full bg-background border-r">
+    <div className="w-full flex justify-center max-h-[calc(var(--layout-height)---spacing(14))] h-full bg-background">
       <div className="w-full h-full flex flex-col items-center justify-center -mt-20">
         <GitruBorderedSVG />
         <div className="flex flex-col gap-0.5 w-60 select-none">

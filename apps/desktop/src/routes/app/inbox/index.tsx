@@ -1,13 +1,13 @@
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@gitru/ui/components/avatar";
-import { Button } from "@gitru/ui/components/button";
 import { createFileRoute } from "@tanstack/react-router";
-import { GitPullRequestArrow, ListFilterPlus, Settings2 } from "lucide-react";
 import PageLayout from "@/components/pageLayout";
-import { ResizableLayout } from "@/components/resizableLayout";
+// import {
+//   Avatar,
+//   AvatarFallback,
+//   AvatarImage,
+// } from "@gitru/ui/components/avatar";
+// import { Button } from "@gitru/ui/components/button";
+// import { GitPullRequestArrow, ListFilterPlus, Settings2 } from "lucide-react";
+// import { ResizableLayout } from "@/components/resizableLayout";
 
 export const Route = createFileRoute("/app/inbox/")({
   component: RouteComponent,
@@ -16,7 +16,7 @@ export const Route = createFileRoute("/app/inbox/")({
 function RouteComponent() {
   return (
     <PageLayout className="overflow-y-auto">
-      <ResizableLayout
+      {/* <ResizableLayout
         rightPannelClassName="h-full"
         id="inbox-layout"
         minWidth={350}
@@ -47,7 +47,7 @@ function RouteComponent() {
                 <span className="absolute -end-1.5 -bottom-1.5 bg-muted">
                   <GitPullRequestArrow size={22} className="text-green-600" />
                 </span>
-              </div> */}
+              </div> *\/}
               <div className="relative w-fit">
                 <GitPullRequestArrow size={22} className="text-green-600" />
                 <span className="absolute -inset-e-1.5 -bottom-1.5">
@@ -68,11 +68,10 @@ function RouteComponent() {
                 </span>
               </div>
             </div>
-            {/*  */}
           </div>
         </div>
         <div className="p-2">Right</div>
-      </ResizableLayout>
+      </ResizableLayout> */}
     </PageLayout>
   );
 }

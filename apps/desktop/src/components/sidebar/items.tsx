@@ -23,6 +23,10 @@ type Item = {
 
 const tooltipHandle = TooltipCreateHandle<ComponentType>();
 
+function normalizeLocationPath(path: string) {
+  return path.split("?")[0];
+}
+
 const SideBarItems: React.FC<{
   items: Item[];
 }> = ({ items }) => {
@@ -35,7 +39,7 @@ const SideBarItems: React.FC<{
         <Tabs
           orientation="vertical"
           className="items-center"
-          value={location.href}
+          value={normalizeLocationPath(location.href)}
         >
           <TabsList className="bg-transparent! gap-1 select-none">
             {items.map((item: Item) => (
