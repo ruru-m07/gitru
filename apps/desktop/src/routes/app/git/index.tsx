@@ -622,7 +622,8 @@ const DiffArea = ({
   return (
     <div
       className={cn(
-        "bg-secondary h-full max-h-[calc(var(--layout-height)---spacing(23.25))] w-full relative overflow-y-auto _bg-[color-mix(in_oklab,var(--color-secondary)_70%,var(--color-background))]",
+        "h-full max-h-[calc(var(--layout-height)---spacing(23.25))] w-full relative overflow-y-auto",
+        theme?.startsWith("dark-") ? "#000000" : "var(--secondary)",
       )}
     >
       {isLoading ? (
