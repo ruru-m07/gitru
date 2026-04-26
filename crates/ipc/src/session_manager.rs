@@ -78,16 +78,17 @@ impl SessionManager {
             self.history_store.write().await;
 
         if let Some(current) = store.get_mut(session_id)
-            && current.current_index > 0 {
-                current.current_index -= 1;
+            && current.current_index > 0
+        {
+            current.current_index -= 1;
 
-                return Some(SessionNavigationInfo {
-                    session_id: session_id.to_string(),
-                    can_go_back: current.current_index > 0,
-                    can_go_forward: current.current_index < current.paths.len() - 1,
-                    current_path: current.paths.get(current.current_index).cloned(),
-                });
-            }
+            return Some(SessionNavigationInfo {
+                session_id: session_id.to_string(),
+                can_go_back: current.current_index > 0,
+                can_go_forward: current.current_index < current.paths.len() - 1,
+                current_path: current.paths.get(current.current_index).cloned(),
+            });
+        }
 
         None
     }
@@ -98,16 +99,17 @@ impl SessionManager {
             self.history_store.write().await;
 
         if let Some(current) = store.get_mut(session_id)
-            && current.current_index < current.paths.len() - 1 {
-                current.current_index += 1;
+            && current.current_index < current.paths.len() - 1
+        {
+            current.current_index += 1;
 
-                return Some(SessionNavigationInfo {
-                    session_id: session_id.to_string(),
-                    can_go_back: current.current_index > 0,
-                    can_go_forward: current.current_index < current.paths.len() - 1,
-                    current_path: current.paths.get(current.current_index).cloned(),
-                });
-            }
+            return Some(SessionNavigationInfo {
+                session_id: session_id.to_string(),
+                can_go_back: current.current_index > 0,
+                can_go_forward: current.current_index < current.paths.len() - 1,
+                current_path: current.paths.get(current.current_index).cloned(),
+            });
+        }
 
         None
     }
