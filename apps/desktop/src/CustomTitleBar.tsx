@@ -489,9 +489,9 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
 
     createTab({
       routePath: sourceRoutePath,
-      repositoryId: selectedRepository?.id ?? null,
+      repositoryId: null,
       title: isGitSourceRoute
-        ? (selectedRepository?.name ?? getTitleFromRoute(sourceRoutePath))
+        ? getTitleFromRoute(sourceRoutePath)
         : getTitleFromRoute(sourceRoutePath),
     });
   };
