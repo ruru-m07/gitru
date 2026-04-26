@@ -182,9 +182,9 @@ const renderTitleForGitPage = ({
 }) => {
   if (!repository) {
     return (
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1.5 truncate font-medium">
         <Git className={"size-4"} />
-        <span>Git Stuff</span>
+        <span className="truncate font-medium">Git Repository</span>
       </div>
     );
   }
@@ -1077,10 +1077,16 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
                                   ? "text-muted-foreground hover:text-foreground"
                                   : "text-muted-foreground/70",
                               )}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                              }}
                               onPointerDownCapture={(event) => {
                                 event.stopPropagation();
                               }}
                               onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
                                 void handleCloseTab(tab.id, event);
                               }}
                             >
