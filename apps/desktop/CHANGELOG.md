@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.0.0-beta.5](https://github.com/ruru-m07/gitru/compare/v0.0.0-beta.4...v0.0.0-beta.5) (2026-04-26)
+
+
+### Features
+
+* enhance inbox tab display with item count and visual separator ([c3cbc45](https://github.com/ruru-m07/gitru/commit/c3cbc457e0167e93bb5f158dbac18436fa8f2e2c))
+* implement basic multi tab support ([6ee78d4](https://github.com/ruru-m07/gitru/commit/6ee78d4bfcd53d77c9d0201fe6e9d2a2f98a7f87))
+* implement drag-and-drop tab reordering functionality ([1c91cc6](https://github.com/ruru-m07/gitru/commit/1c91cc6815ce53297400a6dfb8b9e551292dedf5))
+* implement session navigation management ([ed53f72](https://github.com/ruru-m07/gitru/commit/ed53f725a8f3ef08cf20357b6f5d4cad41c5ed68))
+* implement tab switching functionality with keyboard shortcuts and MRU support ([69e1d09](https://github.com/ruru-m07/gitru/commit/69e1d09965916848f4d6579a14ed4d82673a3119))
+* make tabs starter UI in mail layout ([ccb445c](https://github.com/ruru-m07/gitru/commit/ccb445c883993ede9770209b9ce8476727b71d33))
+* make tabs starter UI in mail layout ([baad6f7](https://github.com/ruru-m07/gitru/commit/baad6f7ef72795eb495a783678bbfabf7d0b33cf))
+* update UI components for improved layout and accessibility ([d06dca7](https://github.com/ruru-m07/gitru/commit/d06dca71353a1cc3ff634970612d85fbdf48dac6))
+
+
+### Bug Fixes
+
+* default selected repo when create new tab ([d8a82ff](https://github.com/ruru-m07/gitru/commit/d8a82ff8d4bb89d7fc940ecfe4ea7c832e1ff874))
+* diff view bg color to match theme ([7d9ccda](https://github.com/ruru-m07/gitru/commit/7d9ccda165dff665dcbfea3ca6a13baffe8ad2ea))
+* diff view bg color to match theme ([b068623](https://github.com/ruru-m07/gitru/commit/b0686238b42847290f9f40af93d9e01eabfbe2c6))
+* implement custom resize pannel for fixed size pannel ([5fc46ae](https://github.com/ruru-m07/gitru/commit/5fc46ae9a3e75b7e4e257ec2a7cfdf2c1cbb1a5a))
+* implement custom resize pannel for fixed size pannel ([faeb0a2](https://github.com/ruru-m07/gitru/commit/faeb0a229be5288c69dcc2d01c417dd923092da2))
+* title bar hover state UI fixes ([9a1e349](https://github.com/ruru-m07/gitru/commit/9a1e349cf7009e12a34a625ee3e45ceeeb381853))
+* update title and prevent default actions in CustomTitleBar ([eeca848](https://github.com/ruru-m07/gitru/commit/eeca848e7a9f57012db7b10f442fe9e0c22938fa))
+
+
+### Miscellaneous Chores
+
+* release 0.0.0-beta.5 ([7d97c73](https://github.com/ruru-m07/gitru/commit/7d97c739a9cbd87c1a778be3e626783f22ced12a))
+
 ## [0.0.0-beta.4](https://github.com/ruru-m07/gitru/compare/v0.0.0-beta.3...v0.0.0-beta.4) (2026-03-23)
 
 
