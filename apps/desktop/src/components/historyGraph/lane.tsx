@@ -29,24 +29,35 @@ type GraphLaneProps = {
  * PALETTE - Array of colors for lanes, indexed by lane color value modulo palette length
  */
 const LANE_W = 20 * 1.5;
-const ROW_H = 36 * 1.5;
-const DOT_R = 4.5 * 3;
+const ROW_H = 32;
+const DOT_R = 12;
 const LINE_W = 4;
 const SHIFT_CURVE_R = 2;
-const CURVE_START_Y = 6;
+const CURVE_START_Y = 0;
 const BEZIER_CTRL_FACTOR = 0.25;
 const BEZIER_MID_FACTOR = 0.5;
 
 const PALETTE = [
-  "oklch(0.773 0.118 281.135)",
-  "oklch(0.772 0.130 240.067)",
-  "oklch(0.811 0.146 217.709)",
-  "oklch(0.822 0.152 177.146)",
-  "oklch(0.798 0.193 140.004)",
-  "oklch(0.802 0.166 98.070)",
-  "oklch(0.774 0.174 65.052)",
-  "oklch(0.749 0.152 17.942)",
-  "oklch(0.761 0.164 353.728)",
+  "oklch(0.78 0.14 0)",
+  "oklch(0.80 0.15 137.5)",
+  "oklch(0.77 0.16 275)",
+  "oklch(0.82 0.13 52.5)",
+  "oklch(0.79 0.17 190)",
+  "oklch(0.76 0.14 327.5)",
+
+  "oklch(0.81 0.18 105)",
+  "oklch(0.78 0.15 242.5)",
+  "oklch(0.80 0.16 20)",
+  "oklch(0.77 0.14 157.5)",
+  "oklch(0.82 0.17 295)",
+  "oklch(0.79 0.13 72.5)",
+
+  "oklch(0.76 0.18 210)",
+  "oklch(0.81 0.15 347.5)",
+  "oklch(0.78 0.16 125)",
+  "oklch(0.80 0.14 262.5)",
+  "oklch(0.77 0.17 40)",
+  "oklch(0.82 0.15 177.5)",
 ] as const;
 
 // ? Convert lane index to X coordinate
@@ -118,23 +129,18 @@ const buildMultiLaneCurve = (
       `H ${outX}`,
     ].join(" ");
   } else {
-    // Smooth S-curve with BOTH vertical and horizontal control points
-    const dy = endY - startY;
-    const dx = outX - inX;
-
-    // Control point distances
-    const ctrlDistanceY = Math.abs(dy) * 0.7; // Vertical control
-    const ctrlDistanceX = Math.abs(dx) * 0; // Horizontal control
+    const lastCurveX = outX - dir * LANE_W; // One lane before target
+    const ctrlOffset = (dir * LANE_W) / 2; // Midpoint control offset for smoothness
 
     return [
       `M ${inX} 0`,
       `V ${startY}`,
-      // S-curve with diagonal flow
-      // First control point: extends vertically DOWN and horizontally TOWARD target
-      // Second control point: extends vertically UP and horizontally FROM source
-      `C ${inX + ctrlDistanceX * Math.sign(dx)} ${startY + ctrlDistanceY * Math.sign(dy)},`,
-      `${outX - ctrlDistanceX * Math.sign(dx)} ${endY - ctrlDistanceY * Math.sign(dy)},`,
-      `${outX} ${endY}`,
+      // Box A (first lane): vertical → horizontal curve
+      `C ${inX} ${midY}, ${inX + ctrlOffset} ${midY}, ${firstCurveX} ${midY}`,
+      // Box B (middle lanes): straight horizontal connector
+      `H ${lastCurveX}`,
+      // Box C (last lane): horizontal → vertical curve
+      `C ${outX - ctrlOffset} ${midY}, ${outX} ${midY}, ${outX} ${endY}`,
     ].join(" ");
   }
 };
@@ -329,13 +335,17 @@ const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
     if (parentX === cx) continue;
 
     // *Arc from midY horizontal down to parent's output lane
-    const arcStartX =
-      parentOutIdx > circleIdx ? parentX - LANE_W : parentX + LANE_W;
-    const sweepFlag = parentOutIdx > circleIdx ? 1 : 0;
+    // const arcStartX =
+    //   parentOutIdx > circleIdx ? parentX - LANE_W : parentX + LANE_W;
+    // const sweepFlag = parentOutIdx > circleIdx ? 1 : 0;
+
+    const dir = Math.sign(parentOutIdx - circleIdx);
+    const arcStartX = parentX - dir * LANE_W; // One lane width away from parentX
+    const curveLen = LANE_W * 0.55; // Controls the "roundness" of the corner
 
     const d = [
       `M ${arcStartX} ${cy}`,
-      `A ${LANE_W} ${LANE_W} 0 0 ${sweepFlag} ${parentX} ${ROW_H}`,
+      `C ${arcStartX} ${cy}, ${parentX} ${ROW_H - curveLen}, ${parentX} ${ROW_H}`,
       `M ${arcStartX} ${cy}`,
       `H ${cx}`,
     ].join(" ");
@@ -410,10 +420,10 @@ const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
           <circle
             cx={cx}
             cy={cy}
-            r={DOT_R + 2}
+            r={DOT_R + 1}
             fill="none"
             stroke={circleColor}
-            strokeWidth={1.5}
+            strokeWidth={2}
           />
           <circle
             cx={cx}
@@ -421,7 +431,7 @@ const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
             r={DOT_R - 1}
             fill="none"
             stroke={circleColor}
-            strokeWidth={1.5}
+            strokeWidth={2}
           />
         </g>
       ) : (
@@ -429,17 +439,28 @@ const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
           <circle
             cx={cx}
             cy={cy}
-            r={DOT_R + 2}
+            r={DOT_R + 1}
             fill="var(--color-background, #1e1e1e)"
             shapeRendering="crispEdges"
             stroke={circleColor}
-            strokeWidth={3}
+            strokeWidth={2}
           />
         </g>
       )}
-      <foreignObject x={cx - 12} y={cy - 12.3} width={24} height={24}>
+      <foreignObject
+        x={cx - 12}
+        y={cy - 12.3}
+        width={DOT_R * 2}
+        height={DOT_R * 2}
+      >
         <div className="relative">
-          <Avatar className="rounded-full size-6 overflow-visible">
+          <Avatar
+            style={{
+              width: DOT_R * 2,
+              height: DOT_R * 2,
+            }}
+            className="rounded-full overflow-visible"
+          >
             <AvatarImage
               alt="User"
               className={"rounded-full"}

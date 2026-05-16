@@ -1,5 +1,11 @@
 import type { GraphRef, GraphRow } from "@gitru/commands";
 import { Badge } from "@gitru/ui/components/badge";
+import {
+  ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@gitru/ui/components/chart";
 import { Input } from "@gitru/ui/components/input";
 import {
   ToggleGroup,
@@ -7,6 +13,7 @@ import {
 } from "@gitru/ui/components/toggle-group";
 import { useMemo, useRef, useState } from "react";
 import { useOnInView } from "react-intersection-observer";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer } from "recharts";
 import LoaderIndicator from "@/components/loaderIndicator";
 import { useGitHistoryGraph } from "@/hooks";
 import GraphLane from "./lane";
@@ -43,14 +50,60 @@ const HistoryGraph = () => {
 
   const rows = data?.pages.flatMap((page) => page.rows) ?? [];
 
+  const chartData = rows.slice(0, 100).map((r) => ({
+    oid: r.oid,
+    insertions: r.commit.stats.insertions,
+    deletions: -r.commit.stats.deletions,
+  }));
+
+  const chartConfig = {
+    insertions: {
+      label: "Insertions",
+      color: "var(--color-green-600)",
+    },
+    deletions: {
+      label: "Deletions",
+      color: "var(--color-red-600)",
+    },
+  } satisfies ChartConfig;
+
   return (
-    <div className="flex h-[calc(calc(var(--main-window-height)-calc(var(--spacing)*21))-var(--main-actual-content-padding))] overflow-y-auto flex-col">
-      <GraphHeader
-        filters={filters}
-        searchInput={searchInput}
-        onSearchChange={setSearchInput}
-        onFiltersChange={setFilters}
-      />
+    <div className="flex h-full max-h-[calc(var(--layout-height)---spacing(14))] overflow-y-auto flex-col">
+      {/* <GraphHeader
+          filters={filters}
+          searchInput={searchInput}
+          onSearchChange={setSearchInput}
+          onFiltersChange={setFilters}
+          /> */}
+      <div className="h-19.25 border-b">
+        <ChartContainer config={chartConfig}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData}>
+              <CartesianGrid horizontal={false} />
+              <ChartTooltip
+                cursor={false}
+                content={<ChartTooltipContent hideLabel />}
+              />
+              <Line
+                dataKey="insertions"
+                type="monotone"
+                stroke="var(--color-insertions)"
+                strokeWidth={2}
+                dot={false}
+                animateNewValues={false}
+              />
+              <Line
+                dataKey="deletions"
+                type="monotone"
+                stroke="var(--color-deletions)"
+                strokeWidth={2}
+                dot={false}
+                animateNewValues={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </ChartContainer>
+      </div>
       {isLoading ? (
         <div className="p-3">
           <LoaderIndicator />
@@ -179,8 +232,10 @@ const GraphRowItem = ({ row, maxLane }: GraphRowItemProps) => {
   const refs = useMemo(() => buildRefList(row), [row]);
 
   return (
-    <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 hover:bg-muted/30">
-      <GraphLane row={row} maxLane={maxLane} />
+    <div className="grid grid-cols-[auto_1fr] h-8 items-center gap-3 hover:bg-muted/30 divide-x">
+      <div className="overflow-y-auto">
+        <GraphLane row={row} maxLane={maxLane} />
+      </div>
       <div className="flex min-w-0 flex-col justify-center py-1">
         <div className="flex flex-wrap items-center gap-2">
           {/* <span className="truncate text-sm font-medium text-green-600 tabular-nums font-mono">
