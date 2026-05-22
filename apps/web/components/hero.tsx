@@ -4,6 +4,7 @@ import { Mascot, MascotExpression } from "@gitru/mascot";
 import { Dithering } from "@paper-design/shaders-react";
 import { Clock } from "lucide-react";
 import { delay, motion, useAnimate, useAnimation } from "motion/react";
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
@@ -115,24 +116,6 @@ const Hero = () => {
         </motion.div>
       </div>
       <div className="relative">
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 0.1 }}
-          transition={{ duration: 1, delay: 0.5 }}
-          className="absolute inset-0 top-20 mask-[linear-gradient(0deg,rgba(255,255,255,0)_0%,rgba(255,255,255,1)_30%,rgba(255,255,255,1)_100%)]"
-        >
-          <Dithering
-            width={"100%"}
-            height={"100%"}
-            colorBack="#ffffff"
-            colorFront="#FF2200"
-            shape="warp"
-            type="2x2"
-            size={11}
-            speed={0.005}
-          />
-          <div className="pointer-events-none absolute inset-0 rounded-[12px] inset-ring-1 inset-ring-black/10 dark:inset-ring-white/10" />
-        </motion.div>
         <motion.div className="max-w-(--container-width) relative mx-auto z-10">
           <motion.div
             ref={scope}
@@ -155,14 +138,27 @@ const Hero = () => {
             initial={{ opacity: 0, y: 10, filter: "blur(10px)" }}
             animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
             transition={{ duration: 0.4, delay: 0.3 }}
+            className="relative"
           >
-            <ImageZoom
-              width={2052}
-              height={1212}
-              src={"/preview.png"}
-              alt={`preview image`}
-              className="rounded-[14px]! [&_img]:rounded-[16px] [&_img]:ring! [&_img]:ring-black/12!"
-            />
+            <div className="relative">
+              <Image
+                width={2052}
+                height={1212}
+                src={"/preview-background.png"}
+                alt={`preview background image`}
+                className="rounded-[18px] h-166"
+              />
+              <div className="absolute inset-0 rounded-[18px] ring-1 ring-inset ring-black/12!" />
+            </div>
+            <div className="absolute inset-4">
+              <ImageZoom
+                width={2052}
+                height={1212}
+                src={"/preview.png"}
+                alt={`preview image`}
+                className="rounded-[14px]! [&_img]:rounded-[16px] [&_img]:ring! [&_img]:ring-black/12!"
+              />
+            </div>
           </motion.div>
         </motion.div>
       </div>

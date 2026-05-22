@@ -4,7 +4,7 @@ import { cn } from "@/lib/cn";
 
 const variants = {
   default:
-    "bg-primary text-primary-foreground [a]:hover:bg-primary/80 hover:hover:bg-[color-mix(in_oklab,var(--primary)_96%,#000000)]",
+    "bg-primary text-primary-foreground [a]:hover:bg-primary/80 hover:hover:bg-[color-mix(in_oklab,var(--primary)_96%,#000000)] focus-visible:ring-primary/20!",
   primary:
     "bg-fd-primary text-fd-primary-foreground hover:bg-fd-primary/80 disabled:bg-fd-secondary disabled:text-fd-secondary-foreground",
   outline: "border hover:bg-fd-accent hover:text-fd-accent-foreground",
@@ -14,7 +14,7 @@ const variants = {
 } as const;
 
 export const buttonVariants = cva(
-  "inline-flex items-center justify-center will-change-transform active:scale-99 cursor-pointer  rounded-[12px] p-2 text-sm font-medium transition-colors duration-100 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fd-ring",
+  "inline-flex items-center justify-center will-change-transform active:scale-99 cursor-pointer rounded-[12px] p-2 text-sm font-medium transition-colors duration-100 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fd-ring",
   {
     variants: {
       variant: variants,
