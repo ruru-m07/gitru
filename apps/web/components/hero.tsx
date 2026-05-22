@@ -117,7 +117,7 @@ const Hero = () => {
       <div className="relative">
         <motion.div
           initial={{ opacity: 0 }}
-          animate={{ opacity: 0.2 }}
+          animate={{ opacity: 0.1 }}
           transition={{ duration: 1, delay: 0.5 }}
           className="absolute inset-0 top-20 mask-[linear-gradient(0deg,rgba(255,255,255,0)_0%,rgba(255,255,255,1)_30%,rgba(255,255,255,1)_100%)]"
         >
