@@ -1,14 +1,59 @@
-import { Inter } from "next/font/google";
+import { Instrument_Serif, Inter } from "next/font/google";
 import { Provider } from "@/components/provider";
 import "./global.css";
+import { Metadata } from "next";
+import { cn } from "@/lib/cn";
 
 const inter = Inter({
   subsets: ["latin"],
 });
 
+const instrumentSerif = Instrument_Serif({
+  subsets: ["latin-ext"],
+  weight: "400",
+  display: "swap",
+  variable: "--font-instrument-serif",
+});
+
+export async function generateMetadata({
+  params,
+}: LayoutProps<"/">): Promise<Metadata> {
+  return {
+    title: "Gitru",
+    description: "A modern, lightweight, and powerful Git client.",
+    openGraph: {
+      title: "Gitru",
+      description: "A modern, lightweight, and powerful Git client.",
+      url: "https://gitru.app",
+      locale: "en_US",
+      images: {
+        url: "https://gitru.app/og.png",
+        width: 1200,
+        height: 630,
+        alt: "Gitru",
+      },
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: "Gitru",
+      description: "A modern, lightweight, and powerful Git client.",
+      images: {
+        url: "https://gitru.app/og.png",
+        alt: "Gitru",
+        width: 1200,
+        height: 630,
+      },
+    },
+  };
+}
+
 export default function Layout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={inter.className} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={cn(inter.className, instrumentSerif.variable)}
+      suppressHydrationWarning
+    >
       <head>
         <link
           rel="apple-touch-icon"
@@ -35,7 +80,7 @@ export default function Layout({ children }: LayoutProps<"/">) {
         <meta name="theme-color" content="#ffffff" />
         <meta
           name="description"
-          content="Gitru - A modern Git client for humans."
+          content="A modern, lightweight, and powerful Git client."
         />
 
         <meta property="og:type" content="website" />
@@ -43,7 +88,7 @@ export default function Layout({ children }: LayoutProps<"/">) {
         <meta property="og:title" content="Gitru" />
         <meta
           property="og:description"
-          content="Gitru - A modern git client for humans."
+          content="A modern, lightweight, and powerful Git client."
         />
         <meta property="og:image" content="https://gitru.app/og.png" />
         <meta property="og:image:width" content="1200" />

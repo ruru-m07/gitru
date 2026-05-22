@@ -1,0 +1,21 @@
+{
+  "name": "@gitru/mascot",
+  "module": "src/index.ts",
+  "type": "module",
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "exports": {
+    ".": "./src/index.tsx"
+  },
+  "dependencies": {
+    "flubber": "^0.4.2",
+    "motion": "^12.40.0",
+    "react": "catalog:"
+  },
+  "devDependencies": {
+    "@types/flubber": "^0.4.0",
+    "@types/node": "^22.10.1",
+    "@types/react": "catalog:"
+  }
+}

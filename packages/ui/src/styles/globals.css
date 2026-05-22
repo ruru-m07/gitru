@@ -6,7 +6,7 @@
 @source "../../../../apps/**/*.{ts,tsx}";
 @source "../components/**/*.{ts,tsx}";
 @source "../../../icon/**/*.{ts,tsx}";
-@source "../../../diff/**/*.{ts,tsx}";
+@source "../../../mascot/**/*.{ts,tsx}";
 
 summary {
   @apply cursor-pointer;

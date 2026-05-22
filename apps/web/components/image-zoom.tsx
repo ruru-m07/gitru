@@ -34,6 +34,7 @@ export function ImageZoom({
   zoomInProps,
   children,
   rmiz,
+  className,
   ...props
 }: ImageZoomProps) {
   return (
@@ -46,11 +47,13 @@ export function ImageZoom({
         sizes: undefined,
         ...zoomInProps,
       }}
+      classDialog={className}
     >
       {children ?? (
         <Image
           sizes="(max-width: 768px) 100vw, (max-width: 1200px) 70vw, 900px"
           {...props}
+          className={className}
         />
       )}
     </Zoom>
