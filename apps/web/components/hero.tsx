@@ -146,6 +146,9 @@ const Hero = () => {
                   mouth: "open",
                 },
               }}
+              transition={{
+                duration: 0.3,
+              }}
             />
           </motion.div>
           <motion.div
