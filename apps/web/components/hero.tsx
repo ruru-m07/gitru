@@ -3,15 +3,59 @@
 import { Mascot } from "@gitru/mascot";
 import { Dithering } from "@paper-design/shaders-react";
 import { Clock } from "lucide-react";
-import { motion } from "motion/react";
+import { delay, motion, useAnimate, useAnimation } from "motion/react";
 import Link from "next/link";
+import { useEffect } from "react";
 import { cn } from "@/lib/cn";
 import { GithubIcon } from "./icons";
 import { ImageZoom } from "./image-zoom";
-import Logo from "./logo";
 import { buttonVariants } from "./ui/button";
 
 const Hero = () => {
+  const [scope, animate] = useAnimate();
+
+  useEffect(() => {
+    const sequence = async () => {
+      await animate(
+        scope.current,
+        { opacity: 1 },
+        {
+          delay: 1,
+        },
+      );
+      await animate(
+        scope.current,
+        { top: "-52px" },
+        {
+          type: "spring",
+          mass: 1,
+          stiffness: 400,
+          damping: 19,
+        },
+      );
+      await animate(
+        scope.current,
+        { top: ["-52px", "-120px"] },
+        {
+          delay: 0.5,
+          ease: [0.22, 1, 0.36, 1],
+        },
+      );
+      await animate(
+        scope.current,
+        { top: ["-120px", "-96px"] },
+        {
+          type: "spring",
+          mass: 1,
+          stiffness: 500,
+          damping: 19,
+        },
+      );
+    };
+
+    sequence();
+  }, []);
+
   return (
     <div className="w-full h-full py-2 relative">
       <div className="max-w-(--container-width) mx-auto relative w-full z-10 mt-30 mb-15">
@@ -81,11 +125,12 @@ const Hero = () => {
           <div className="pointer-events-none absolute inset-0 rounded-[12px] inset-ring-1 inset-ring-black/10 dark:inset-ring-white/10" />
         </motion.div>
         <motion.div className="max-w-(--container-width) relative mx-auto z-10">
-          <div className="absolute group right-4 -top-24">
-            <div className="inline-block **:data-[name='mascot-svg']:size-24 **:data-[name='heart-svg']:scale-75">
-              <Mascot />
-            </div>
-          </div>
+          <motion.div
+            ref={scope}
+            className="absolute group opacity-0 right-4 top-0 inline-block **:data-[name='mascot-svg']:size-24 **:data-[name='heart-svg']:scale-75"
+          >
+            <Mascot />
+          </motion.div>
           <motion.div
             initial={{ opacity: 0, y: 10, filter: "blur(10px)" }}
             animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}

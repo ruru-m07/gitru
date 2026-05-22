@@ -2,9 +2,7 @@
 
 import { interpolate } from "flubber";
 import { animate, motion, useMotionValue, useTransform } from "motion/react";
-import type { Dispatch, ReactNode, SetStateAction } from "react";
 import {
-  createContext,
   useCallback,
   useContext,
   useEffect,
@@ -13,50 +11,9 @@ import {
   useState,
 } from "react";
 
-type MascotContextValue = {
-  isHovered: boolean;
-  setIsHovered: Dispatch<SetStateAction<boolean>>;
-};
-
-const MascotContext = createContext<MascotContextValue | null>(null);
-
-type MascotProviderProps = {
-  children: ReactNode;
-};
-
-export const MascotProvider = ({ children }: MascotProviderProps) => {
-  const [isHovered, setIsHovered] = useState(false);
-
-  return (
-    <MascotContext.Provider value={{ isHovered, setIsHovered }}>
-      {children}
-    </MascotContext.Provider>
-  );
-};
-
-export const useMascot = () => {
-  const context = useContext(MascotContext);
-
-  if (!context) {
-    throw new Error("useMascot must be used within MascotProvider");
-  }
-
-  return context;
-};
-
-export const Mascot = ({}: { className?: string }) => {
-  const context = useContext(MascotContext);
-
-  if (context) {
-    return <MascotSvg />;
-  }
-
-  return (
-    <MascotProvider>
-      <MascotSvg />
-    </MascotProvider>
-  );
-};
+import { MascotContext, MascotProvider } from "./context";
+import { useMascot } from "./hook";
+import { HeartSvg } from "./icons";
 
 type HeartParticle = {
   id: number;
@@ -69,25 +26,17 @@ type HeartParticle = {
   delay: number;
 };
 
-const HeartSvg = ({ size }: { size: number }) => {
+export const Mascot = () => {
+  const context = useContext(MascotContext);
+
+  if (context) {
+    return <MascotSvg />;
+  }
+
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 22 20"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      data-name="heart-svg"
-    >
-      <path
-        d="M1.32805 11.4568C0.949046 10.4106 0.896326 9.27394 1.17686 8.19708C1.45738 7.12022 2.05797 6.15379 2.89928 5.42542C3.74059 4.69705 4.78305 4.24102 5.88898 4.11755C6.99491 3.99408 8.11228 4.20899 9.0935 4.73388C9.16184 4.7687 9.23659 4.78912 9.31314 4.79386C9.38969 4.7986 9.46639 4.78757 9.5385 4.76144C9.61061 4.73532 9.67658 4.69467 9.73233 4.642C9.78808 4.58933 9.83242 4.52577 9.86259 4.45527C10.2759 3.41944 10.995 2.53407 11.9239 1.91699C12.8529 1.29991 13.9478 0.980394 15.0629 1.00096C16.1779 1.02153 17.2603 1.38122 18.1659 2.03214C19.0714 2.68306 19.7573 3.59435 20.1322 4.64471C20.9122 6.79779 20.0843 8.91645 19.1849 10.8377L15.8309 17.7036C15.7286 17.9683 15.5712 18.2081 15.369 18.4073C15.1669 18.6064 14.9247 18.7603 14.6585 18.8586C14.3923 18.957 14.1083 18.9975 13.8252 18.9776C13.5422 18.9578 13.2666 18.8779 13.0168 18.7433L6.022 15.6061C4.10078 14.7067 2.11145 13.6193 1.32805 11.4568Z"
-        fill="#FF6200"
-        stroke="#FF6200"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <MascotProvider>
+      <MascotSvg />
+    </MascotProvider>
   );
 };
 

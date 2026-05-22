@@ -161,6 +161,7 @@
     },
     "packages/mascot": {
       "name": "@gitru/mascot",
+      "version": "0.0.0",
       "dependencies": {
         "flubber": "^0.4.2",
         "motion": "^12.40.0",
@@ -170,9 +171,6 @@
         "@types/flubber": "^0.4.0",
         "@types/node": "^22.10.1",
         "@types/react": "catalog:",
-      },
-      "peerDependencies": {
-        "typescript": "^5",
       },
     },
     "packages/ui": {
