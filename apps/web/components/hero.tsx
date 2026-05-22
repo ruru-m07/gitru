@@ -146,9 +146,9 @@ const Hero = () => {
                 height={1212}
                 src={"/preview-background.png"}
                 alt={`preview background image`}
-                className="rounded-[18px] h-166"
+                className="rounded-[28px] h-166"
               />
-              <div className="absolute inset-0 rounded-[18px] ring-1 ring-inset ring-black/12!" />
+              <div className="absolute inset-0 rounded-[28px] ring-1 ring-inset ring-black/12!" />
             </div>
             <div className="absolute inset-4">
               <ImageZoom
@@ -156,7 +156,7 @@ const Hero = () => {
                 height={1212}
                 src={"/preview.png"}
                 alt={`preview image`}
-                className="rounded-[14px]! [&_img]:rounded-[16px] [&_img]:ring! [&_img]:ring-black/12!"
+                className="rounded-[12px]! [&_img]:rounded-[16px] [&_img]:ring! [&_img]:ring-black/12!"
               />
             </div>
           </motion.div>
