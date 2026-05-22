@@ -1,11 +1,11 @@
 "use client";
 
-import { Mascot } from "@gitru/mascot";
+import { Mascot, MascotExpression } from "@gitru/mascot";
 import { Dithering } from "@paper-design/shaders-react";
 import { Clock } from "lucide-react";
 import { delay, motion, useAnimate, useAnimation } from "motion/react";
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
 import { GithubIcon } from "./icons";
 import { ImageZoom } from "./image-zoom";
@@ -13,6 +13,10 @@ import { buttonVariants } from "./ui/button";
 
 const Hero = () => {
   const [scope, animate] = useAnimate();
+
+  const [expression, setExpression] = useState<MascotExpression | undefined>(
+    undefined,
+  );
 
   useEffect(() => {
     const sequence = async () => {
@@ -33,6 +37,10 @@ const Hero = () => {
           damping: 19,
         },
       );
+      setExpression({
+        eyes: "closed",
+        mouth: "open",
+      });
       await animate(
         scope.current,
         { top: ["-52px", "-120px"] },
@@ -51,6 +59,7 @@ const Hero = () => {
           damping: 19,
         },
       );
+      setExpression(undefined);
     };
 
     sequence();
@@ -129,7 +138,15 @@ const Hero = () => {
             ref={scope}
             className="absolute group opacity-0 right-4 top-0 inline-block **:data-[name='mascot-svg']:size-24 **:data-[name='heart-svg']:scale-75"
           >
-            <Mascot />
+            <Mascot
+              expression={expression}
+              expressionMap={{
+                hover: {
+                  eyes: "closed",
+                  mouth: "open",
+                },
+              }}
+            />
           </motion.div>
           <motion.div
             initial={{ opacity: 0, y: 10, filter: "blur(10px)" }}

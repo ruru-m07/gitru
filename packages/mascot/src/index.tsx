@@ -1,7 +1,9 @@
 "use client";
 
 import { interpolate } from "flubber";
+import type { SVGMotionProps } from "motion/react";
 import { animate, motion, useMotionValue, useTransform } from "motion/react";
+import type { FocusEvent, MouseEvent } from "react";
 import {
   useCallback,
   useContext,
@@ -14,6 +16,16 @@ import {
 import { MascotContext, MascotProvider } from "./context";
 import { useMascot } from "./hook";
 import { HeartSvg } from "./icons";
+import type {
+  MascotBehavior,
+  MascotExpression,
+  MascotEyesVariant,
+  MascotInteraction,
+  MascotMouthVariant,
+  MascotParticlesConfig,
+  MascotProps,
+  MascotTransition,
+} from "./types";
 
 type HeartParticle = {
   id: number;
@@ -26,66 +38,313 @@ type HeartParticle = {
   delay: number;
 };
 
-export const Mascot = () => {
+const DEFAULT_TRANSITION: Required<MascotTransition> = {
+  duration: 0.18,
+  ease: [0.22, 1, 0.36, 1],
+};
+
+const DEFAULT_EXPRESSION_MAP: Record<MascotInteraction, MascotExpression> = {
+  idle: { eyes: "open", mouth: "neutral" },
+  hover: { eyes: "closed", mouth: "open" },
+  press: { eyes: "closed", mouth: "open" },
+  focus: { eyes: "open", mouth: "neutral" },
+};
+
+const DEFAULT_BEHAVIOR: Required<MascotBehavior> = {
+  hover: true,
+  press: true,
+  focus: false,
+  click: true,
+};
+
+const DEFAULT_PARTICLES: Required<MascotParticlesConfig> = {
+  enabled: true,
+  count: 6,
+  ttlMs: 900,
+  sizeRange: [30, 42],
+  offset: { x: 0.4, y: 0.12 },
+  drift: { x: 60, y: [90, 170] },
+  rotationRange: [-18, 18],
+  staggerMs: 40,
+};
+
+const buildEllipsePath = (cx: number, cy: number, rx: number, ry: number) =>
+  `M ${cx - rx} ${cy} a ${rx} ${ry} 0 1 0 ${rx * 2} 0 a ${rx} ${ry} 0 1 0 ${-rx * 2} 0`;
+
+const normalizeRange = (range: [number, number]) =>
+  range[0] <= range[1] ? range : ([range[1], range[0]] as [number, number]);
+
+const randomInRange = (range: [number, number]) => {
+  const [min, max] = normalizeRange(range);
+  return min + Math.random() * (max - min);
+};
+
+const resolveTransition = (
+  transition?: MascotTransition,
+): Required<MascotTransition> => ({
+  ...DEFAULT_TRANSITION,
+  ...transition,
+});
+
+const resolveBehavior = (
+  behavior?: MascotBehavior,
+): Required<MascotBehavior> => ({
+  ...DEFAULT_BEHAVIOR,
+  ...behavior,
+});
+
+const resolveParticles = (
+  particles?: MascotParticlesConfig,
+): Required<MascotParticlesConfig> => ({
+  ...DEFAULT_PARTICLES,
+  ...particles,
+  offset: { ...DEFAULT_PARTICLES.offset, ...particles?.offset },
+  drift: { ...DEFAULT_PARTICLES.drift, ...particles?.drift },
+});
+
+export const Mascot = (props: MascotProps) => {
   const context = useContext(MascotContext);
+  const { interaction, defaultInteraction, onInteractionChange, ...svgProps } =
+    props;
 
   if (context) {
-    return <MascotSvg />;
+    return <MascotSvg {...svgProps} />;
   }
 
   return (
-    <MascotProvider>
-      <MascotSvg />
+    <MascotProvider
+      interaction={interaction}
+      defaultInteraction={defaultInteraction}
+      onInteractionChange={onInteractionChange}
+    >
+      <MascotSvg {...svgProps} />
     </MascotProvider>
   );
 };
 
-const MascotSvg = () => {
-  const { setIsHovered } = useMascot();
+type MascotSvgProps = Omit<
+  MascotProps,
+  "interaction" | "defaultInteraction" | "onInteractionChange"
+>;
+
+const MascotSvg = ({
+  expression,
+  expressionMap,
+  behavior,
+  transition,
+  particles,
+  className,
+  svgProps,
+  onClick,
+}: MascotSvgProps) => {
+  const { interaction, setInteraction } = useMascot();
   const svgRef = useRef<SVGSVGElement | null>(null);
   const heartIdRef = useRef(0);
   const [hearts, setHearts] = useState<HeartParticle[]>([]);
+  const [isPointerOver, setIsPointerOver] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
 
-  const spawnHearts = useCallback((x: number, y: number) => {
-    const amount = 6;
-    const ttlMs = 900;
+  const resolvedTransition = useMemo(
+    () => resolveTransition(transition),
+    [transition],
+  );
+  const resolvedBehavior = useMemo(() => resolveBehavior(behavior), [behavior]);
+  const resolvedParticles = useMemo(
+    () => resolveParticles(particles),
+    [particles],
+  );
 
-    setHearts((prev) => {
-      const next = [...prev];
-      for (let i = 0; i < amount; i++) {
-        const id = ++heartIdRef.current;
-        next.push({
-          id,
-          x,
-          y,
-          dx: (Math.random() * 2 - 1) * 60,
-          dy: -90 - Math.random() * 80,
-          rotate: -18 + Math.random() * 36,
-          size: 30 + Math.floor(Math.random() * 12),
-          delay: i * 0.04,
-        });
+  const resolvedExpression = useMemo(() => {
+    if (expression) return expression;
 
-        window.setTimeout(
-          () => {
-            setHearts((items) => items.filter((p) => p.id !== id));
-          },
-          ttlMs + i * 60,
-        );
+    const map: Record<MascotInteraction, MascotExpression> = {
+      ...DEFAULT_EXPRESSION_MAP,
+      ...(expressionMap ?? {}),
+    };
+
+    return map[interaction] ?? DEFAULT_EXPRESSION_MAP.idle;
+  }, [expression, expressionMap, interaction]);
+
+  const svgPropsResolved = svgProps ?? {};
+  const { className: svgClassName, ...restSvgProps } = svgPropsResolved;
+  const motionSvgProps = restSvgProps as Omit<
+    SVGMotionProps<SVGSVGElement>,
+    "children"
+  >;
+  const mergedClassName = [
+    "select-none will-change-transform origin-bottom scale-100 transition-transform",
+    resolvedBehavior.click
+      ? "cursor-pointer active:scale-y-98 active:scale-x-99"
+      : "cursor-default",
+    className,
+    svgClassName,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const spawnHearts = useCallback(
+    (x: number, y: number) => {
+      const { count, ttlMs, sizeRange, drift, rotationRange, staggerMs } =
+        resolvedParticles;
+      const sizeBounds = normalizeRange(sizeRange);
+      const rotationBounds = normalizeRange(rotationRange);
+      const liftBounds = normalizeRange(drift.y);
+
+      setHearts((prev) => {
+        const next = [...prev];
+        for (let i = 0; i < count; i++) {
+          const id = ++heartIdRef.current;
+          next.push({
+            id,
+            x,
+            y,
+            dx: (Math.random() * 2 - 1) * drift.x,
+            dy: -randomInRange(liftBounds),
+            rotate: randomInRange(rotationBounds),
+            size: Math.floor(randomInRange(sizeBounds)),
+            delay: (staggerMs / 1000) * i,
+          });
+
+          window.setTimeout(
+            () => {
+              setHearts((items) => items.filter((p) => p.id !== id));
+            },
+            ttlMs + i * 60,
+          );
+        }
+        return next;
+      });
+    },
+    [resolvedParticles],
+  );
+
+  const handleClick = useCallback(
+    (event: MouseEvent<SVGSVGElement>) => {
+      restSvgProps.onClick?.(event);
+      onClick?.(event);
+      if (event.defaultPrevented) return;
+      if (!resolvedBehavior.click || !resolvedParticles.enabled) return;
+
+      const svg = svgRef.current;
+      if (!svg) return;
+
+      const rect = svg.getBoundingClientRect();
+      const x = rect.left + rect.width * resolvedParticles.offset.x;
+      const y = rect.top + rect.height * resolvedParticles.offset.y;
+
+      spawnHearts(x, y);
+    },
+    [
+      onClick,
+      resolvedBehavior.click,
+      resolvedParticles,
+      restSvgProps,
+      spawnHearts,
+    ],
+  );
+
+  const handleMouseEnter = useCallback(
+    (event: MouseEvent<SVGSVGElement>) => {
+      restSvgProps.onMouseEnter?.(event);
+      setIsPointerOver(true);
+      if (resolvedBehavior.hover) {
+        setInteraction("hover");
       }
-      return next;
-    });
-  }, []);
+    },
+    [resolvedBehavior.hover, restSvgProps, setInteraction],
+  );
 
-  const onClick = useCallback(() => {
-    const svg = svgRef.current;
-    if (!svg) return;
+  const handleMouseLeave = useCallback(
+    (event: MouseEvent<SVGSVGElement>) => {
+      restSvgProps.onMouseLeave?.(event);
+      setIsPointerOver(false);
+      if (resolvedBehavior.hover) {
+        if (isFocused && resolvedBehavior.focus) {
+          setInteraction("focus");
+        } else {
+          setInteraction("idle");
+        }
+      }
+    },
+    [
+      isFocused,
+      resolvedBehavior.focus,
+      resolvedBehavior.hover,
+      restSvgProps,
+      setInteraction,
+    ],
+  );
 
-    const rect = svg.getBoundingClientRect();
-    const x = rect.left + rect.width * 0.4;
-    const y = rect.top + rect.height * 0.12;
+  const handleMouseDown = useCallback(
+    (event: MouseEvent<SVGSVGElement>) => {
+      restSvgProps.onMouseDown?.(event);
+      if (resolvedBehavior.press) {
+        setInteraction("press");
+      }
+    },
+    [resolvedBehavior.press, restSvgProps, setInteraction],
+  );
 
-    spawnHearts(x, y);
-  }, [spawnHearts]);
+  const handleMouseUp = useCallback(
+    (event: MouseEvent<SVGSVGElement>) => {
+      restSvgProps.onMouseUp?.(event);
+      if (!resolvedBehavior.press) return;
+
+      if (isPointerOver && resolvedBehavior.hover) {
+        setInteraction("hover");
+        return;
+      }
+
+      if (isFocused && resolvedBehavior.focus) {
+        setInteraction("focus");
+        return;
+      }
+
+      setInteraction("idle");
+    },
+    [
+      isFocused,
+      isPointerOver,
+      resolvedBehavior.focus,
+      resolvedBehavior.hover,
+      resolvedBehavior.press,
+      restSvgProps,
+      setInteraction,
+    ],
+  );
+
+  const handleFocus = useCallback(
+    (event: FocusEvent<SVGSVGElement>) => {
+      restSvgProps.onFocus?.(event);
+      if (!resolvedBehavior.focus) return;
+      setIsFocused(true);
+      if (!isPointerOver) {
+        setInteraction("focus");
+      }
+    },
+    [isPointerOver, resolvedBehavior.focus, restSvgProps, setInteraction],
+  );
+
+  const handleBlur = useCallback(
+    (event: FocusEvent<SVGSVGElement>) => {
+      restSvgProps.onBlur?.(event);
+      setIsFocused(false);
+      if (resolvedBehavior.hover) {
+        setInteraction(isPointerOver ? "hover" : "idle");
+        return;
+      }
+      if (resolvedBehavior.focus) {
+        setInteraction("idle");
+      }
+    },
+    [
+      isPointerOver,
+      resolvedBehavior.focus,
+      resolvedBehavior.hover,
+      restSvgProps,
+      setInteraction,
+    ],
+  );
 
   return (
     <>
@@ -115,10 +374,15 @@ const MascotSvg = () => {
 
       <motion.svg
         ref={svgRef}
-        onClick={onClick}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        className="cursor-pointer select-none will-change-transform active:scale-y-98 origin-bottom active:scale-x-99 scale-100 transition-transform"
+        {...motionSvgProps}
+        onClick={handleClick}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        className={mergedClassName}
         width="512"
         height="512"
         viewBox="0 0 512 512"
@@ -129,9 +393,15 @@ const MascotSvg = () => {
         <g clipPath="url(#clip0_309_3022)">
           <MascotBody />
           <MascotEar />
-          <MascotEyes />
+          <MascotEyes
+            variant={resolvedExpression.eyes}
+            transition={resolvedTransition}
+          />
           <MascotBlush />
-          <MascotMouth />
+          <MascotMouth
+            variant={resolvedExpression.mouth}
+            transition={resolvedTransition}
+          />
           <MascotLegs />
         </g>
         <defs>
@@ -149,56 +419,89 @@ const MascotSvg = () => {
   );
 };
 
-const MascotEyes = () => {
-  const { isHovered } = useMascot();
+const EYE_VARIANTS: Record<
+  MascotEyesVariant,
+  {
+    leftPath: string;
+    rightPath: string;
+    sparkleOpacity: number;
+    sparkleScale: number;
+  }
+> = {
+  open: {
+    leftPath: buildEllipsePath(188.768, 207.03, 36.7914, 45.5902),
+    rightPath: buildEllipsePath(322.112, 207.03, 36.7914, 45.5902),
+    sparkleOpacity: 1,
+    sparkleScale: 1,
+  },
+  closed: {
+    leftPath:
+      "M179 166C200.539 166 218 184.101 218 206.429C218 208.259 215.433 208.446 214.716 206.762C208.674 192.587 194.961 182.691 179.01 182.691C163.058 182.691 149.344 192.587 143.302 206.762C142.58 208.456 140 208.27 140 206.429C140 184.1 157.461 166 179 166Z",
+    rightPath:
+      "M333.695 166C355.234 166 372.696 184.1 372.696 206.429C372.696 208.26 370.129 208.446 369.412 206.762C363.37 192.587 349.657 182.691 333.706 182.691C317.755 182.691 304.04 192.587 297.998 206.762C297.276 208.456 294.695 208.27 294.695 206.429C294.695 184.101 312.156 166 333.695 166Z",
+    sparkleOpacity: 0,
+    sparkleScale: 0.6,
+  },
+};
 
-  const progress = useMotionValue(0);
+const useMorphVariant = <T,>(
+  variant: T,
+  transition: Required<MascotTransition>,
+) => {
+  const progress = useMotionValue(1);
+  const previousVariant = useRef(variant);
+  const [fromVariant, setFromVariant] = useState(variant);
+  const [toVariant, setToVariant] = useState(variant);
 
   useEffect(() => {
-    const controls = animate(progress, isHovered ? 1 : 0, {
-      duration: 0.18,
-      ease: [0.22, 1, 0.36, 1],
-    });
+    if (variant === previousVariant.current) return;
+    setFromVariant(previousVariant.current);
+    setToVariant(variant);
+    previousVariant.current = variant;
+    progress.set(0);
+    const controls = animate(progress, 1, transition);
 
     return () => controls.stop();
-  }, [isHovered, progress]);
+  }, [progress, transition, variant]);
 
-  const leftOpen = useMemo(() => {
-    const cx = 188.768;
-    const cy = 207.03;
-    const rx = 36.7914;
-    const ry = 45.5902;
-    return `M ${cx - rx} ${cy} a ${rx} ${ry} 0 1 0 ${rx * 2} 0 a ${rx} ${ry} 0 1 0 ${-rx * 2} 0`;
-  }, []);
+  return { progress, fromVariant, toVariant };
+};
 
-  const rightOpen = useMemo(() => {
-    const cx = 322.112;
-    const cy = 207.03;
-    const rx = 36.7914;
-    const ry = 45.5902;
-    return `M ${cx - rx} ${cy} a ${rx} ${ry} 0 1 0 ${rx * 2} 0 a ${rx} ${ry} 0 1 0 ${-rx * 2} 0`;
-  }, []);
+type MascotEyesProps = {
+  variant: MascotEyesVariant;
+  transition: Required<MascotTransition>;
+};
 
-  const leftClosed =
-    "M179 166C200.539 166 218 184.101 218 206.429C218 208.259 215.433 208.446 214.716 206.762C208.674 192.587 194.961 182.691 179.01 182.691C163.058 182.691 149.344 192.587 143.302 206.762C142.58 208.456 140 208.27 140 206.429C140 184.1 157.461 166 179 166Z";
-
-  const rightClosed =
-    "M333.695 166C355.234 166 372.696 184.1 372.696 206.429C372.696 208.26 370.129 208.446 369.412 206.762C363.37 192.587 349.657 182.691 333.706 182.691C317.755 182.691 304.04 192.587 297.998 206.762C297.276 208.456 294.695 208.27 294.695 206.429C294.695 184.101 312.156 166 333.695 166Z";
+const MascotEyes = ({ variant, transition }: MascotEyesProps) => {
+  const { progress, fromVariant, toVariant } = useMorphVariant(
+    variant,
+    transition,
+  );
+  const from = EYE_VARIANTS[fromVariant];
+  const to = EYE_VARIANTS[toVariant];
 
   const leftInterpolator = useMemo(
-    () => interpolate(leftOpen, leftClosed, { maxSegmentLength: 2 }),
-    [leftOpen],
+    () => interpolate(from.leftPath, to.leftPath, { maxSegmentLength: 2 }),
+    [from.leftPath, to.leftPath],
   );
 
   const rightInterpolator = useMemo(
-    () => interpolate(rightOpen, rightClosed, { maxSegmentLength: 2 }),
-    [rightOpen],
+    () => interpolate(from.rightPath, to.rightPath, { maxSegmentLength: 2 }),
+    [from.rightPath, to.rightPath],
   );
 
   const leftD = useTransform(progress, (t) => leftInterpolator(t));
   const rightD = useTransform(progress, (t) => rightInterpolator(t));
-  const sparkleOpacity = useTransform(progress, [0, 1], [1, 0]);
-  const sparkleScale = useTransform(progress, [0, 1], [1, 0.6]);
+  const sparkleOpacity = useTransform(
+    progress,
+    [0, 1],
+    [from.sparkleOpacity, to.sparkleOpacity],
+  );
+  const sparkleScale = useTransform(
+    progress,
+    [0, 1],
+    [from.sparkleScale, to.sparkleScale],
+  );
 
   return (
     <g>
@@ -258,50 +561,67 @@ const MascotBlush = () => {
   );
 };
 
-const MascotMouth = () => {
-  const { isHovered } = useMascot();
+const MOUTH_VARIANTS: Record<
+  MascotMouthVariant,
+  {
+    mouthPath: string;
+    tonguePath: string;
+    outlineStrokeWidth: number;
+    tongueStrokeWidth: number;
+  }
+> = {
+  neutral: {
+    mouthPath:
+      "M254.645 282.896C255.122 282.904 255.495 282.914 255.745 282.922C255.87 282.926 255.964 282.93 256.025 282.933C256.056 282.934 256.078 282.935 256.092 282.936C256.099 282.936 256.104 282.936 256.106 282.937H256.107L256.212 282.941L256.316 282.938H256.333C256.347 282.938 256.37 282.938 256.401 282.938C256.464 282.936 256.561 282.935 256.688 282.934C256.941 282.931 257.319 282.929 257.804 282.933C258.774 282.939 260.167 282.966 261.842 283.046C265.203 283.207 269.643 283.582 274.049 284.427C278.502 285.281 282.682 286.571 285.678 288.438C288.616 290.268 290.051 292.388 290.051 295.001C290.051 305.509 286.016 313.338 279.9 318.581C273.729 323.872 265.257 326.676 256.247 326.676C247.175 326.676 238.832 324.113 232.808 318.986C226.852 313.919 222.887 306.117 222.887 295.001C222.887 292.089 224.382 289.872 227.225 288.045C230.156 286.16 234.255 284.899 238.641 284.102C242.977 283.313 247.351 283.019 250.665 282.925C252.315 282.878 253.689 282.882 254.645 282.896Z",
+    tonguePath: buildEllipsePath(256.259, 314.786, 26.7435, 9.01277),
+    outlineStrokeWidth: 5.77266,
+    tongueStrokeWidth: 0,
+  },
+  open: {
+    mouthPath:
+      "M256 281C267.184 281 277 291.307 277 305C277 318.693 267.184 329 256 329C244.816 329 235 318.693 235 305C235 291.307 244.816 281 256 281Z",
+    tonguePath:
+      "M256 281C267.184 281 277 291.307 277 305C277 318.693 267.184 329 256 329C244.816 329 235 318.693 235 305C235 291.307 244.816 281 256 281Z",
+    outlineStrokeWidth: 8,
+    tongueStrokeWidth: 0,
+  },
+};
 
-  const progress = useMotionValue(0);
+type MascotMouthProps = {
+  variant: MascotMouthVariant;
+  transition: Required<MascotTransition>;
+};
 
-  useEffect(() => {
-    const controls = animate(progress, isHovered ? 1 : 0, {
-      duration: 0.18,
-      ease: [0.22, 1, 0.36, 1],
-    });
-
-    return () => controls.stop();
-  }, [isHovered, progress]);
-
-  const mouthIn =
-    "M254.645 282.896C255.122 282.904 255.495 282.914 255.745 282.922C255.87 282.926 255.964 282.93 256.025 282.933C256.056 282.934 256.078 282.935 256.092 282.936C256.099 282.936 256.104 282.936 256.106 282.937H256.107L256.212 282.941L256.316 282.938H256.333C256.347 282.938 256.37 282.938 256.401 282.938C256.464 282.936 256.561 282.935 256.688 282.934C256.941 282.931 257.319 282.929 257.804 282.933C258.774 282.939 260.167 282.966 261.842 283.046C265.203 283.207 269.643 283.582 274.049 284.427C278.502 285.281 282.682 286.571 285.678 288.438C288.616 290.268 290.051 292.388 290.051 295.001C290.051 305.509 286.016 313.338 279.9 318.581C273.729 323.872 265.257 326.676 256.247 326.676C247.175 326.676 238.832 324.113 232.808 318.986C226.852 313.919 222.887 306.117 222.887 295.001C222.887 292.089 224.382 289.872 227.225 288.045C230.156 286.16 234.255 284.899 238.641 284.102C242.977 283.313 247.351 283.019 250.665 282.925C252.315 282.878 253.689 282.882 254.645 282.896Z";
-
-  const tongueIn = useMemo(() => {
-    // Equivalent of <ellipse cx cy rx ry /> as a path so we can morph it.
-    const cx = 256.259;
-    const cy = 314.786;
-    const rx = 26.7435;
-    const ry = 9.01277;
-
-    return `M ${cx - rx} ${cy} a ${rx} ${ry} 0 1 0 ${rx * 2} 0 a ${rx} ${ry} 0 1 0 ${-rx * 2} 0`;
-  }, []);
-
-  const mouthOut =
-    "M256 281C267.184 281 277 291.307 277 305C277 318.693 267.184 329 256 329C244.816 329 235 318.693 235 305C235 291.307 244.816 281 256 281Z";
+const MascotMouth = ({ variant, transition }: MascotMouthProps) => {
+  const { progress, fromVariant, toVariant } = useMorphVariant(
+    variant,
+    transition,
+  );
+  const from = MOUTH_VARIANTS[fromVariant];
+  const to = MOUTH_VARIANTS[toVariant];
 
   const mouthInterpolator = useMemo(
-    () => interpolate(mouthIn, mouthOut, { maxSegmentLength: 2 }),
-    [mouthIn],
+    () => interpolate(from.mouthPath, to.mouthPath, { maxSegmentLength: 2 }),
+    [from.mouthPath, to.mouthPath],
   );
 
   const tongueInterpolator = useMemo(
-    () => interpolate(tongueIn, mouthOut, { maxSegmentLength: 2 }),
-    [tongueIn, mouthOut],
+    () => interpolate(from.tonguePath, to.tonguePath, { maxSegmentLength: 2 }),
+    [from.tonguePath, to.tonguePath],
   );
 
   const mouthD = useTransform(progress, (t) => mouthInterpolator(t));
   const tongueD = useTransform(progress, (t) => tongueInterpolator(t));
-  const mouthOutlineStrokeWidth = useTransform(progress, [0, 1], [5.77266, 8]);
-  const tongueStrokeWidth = useTransform(progress, [0, 1], [0, 0]);
+  const mouthOutlineStrokeWidth = useTransform(
+    progress,
+    [0, 1],
+    [from.outlineStrokeWidth, to.outlineStrokeWidth],
+  );
+  const tongueStrokeWidth = useTransform(
+    progress,
+    [0, 1],
+    [from.tongueStrokeWidth, to.tongueStrokeWidth],
+  );
 
   return (
     <g>
@@ -384,3 +704,17 @@ const MascotBody = () => {
     </g>
   );
 };
+
+export { MascotProvider } from "./context";
+export { useMascot } from "./hook";
+export type {
+  MascotBehavior,
+  MascotExpression,
+  MascotExpressionMap,
+  MascotEyesVariant,
+  MascotInteraction,
+  MascotMouthVariant,
+  MascotParticlesConfig,
+  MascotProps,
+  MascotTransition,
+} from "./types";
