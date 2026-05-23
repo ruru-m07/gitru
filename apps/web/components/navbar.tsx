@@ -6,7 +6,7 @@ import { buttonVariants } from "./ui/button";
 
 const Navbar = () => {
   return (
-    <div className="max-w-(--container-width) mx-auto w-full py-2 flex items-center justify-between">
+    <div className="max-w-(--container-width) px-(--container-gutter) mx-auto w-full py-2 flex items-center justify-between">
       <Link href="/" className="flex items-center gap-2">
         <Logo className="size-7" />
         <span className="text-2xl font-bold">Gitru</span>
@@ -30,6 +30,7 @@ const Navbar = () => {
             className={cn(buttonVariants({ variant: "ghost", size: "icon" }))}
             href={"https://x.com/ruru_1x"}
             target="_blank"
+            aria-label="Visit Gitru on X"
           >
             <XIcon className="size-3.5" />
           </Link>
@@ -37,6 +38,7 @@ const Navbar = () => {
             className={cn(buttonVariants({ variant: "ghost", size: "icon" }))}
             href={"https://github.com/ruru-m07/gitru"}
             target="_blank"
+            aria-label="View Gitru on GitHub"
           >
             <GithubIcon />
           </Link>

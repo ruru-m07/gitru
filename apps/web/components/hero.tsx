@@ -1,9 +1,8 @@
 "use client";
 
 import { Mascot, MascotExpression } from "@gitru/mascot";
-import { Dithering } from "@paper-design/shaders-react";
 import { Clock } from "lucide-react";
-import { delay, motion, useAnimate, useAnimation } from "motion/react";
+import { motion, useAnimate } from "motion/react";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -68,7 +67,7 @@ const Hero = () => {
 
   return (
     <div className="w-full h-full py-2 relative">
-      <div className="max-w-(--container-width) mx-auto relative w-full z-10 mt-30 mb-15">
+      <div className="max-w-(--container-width) px-(--container-gutter) mx-auto relative w-full z-10 mt-30 mb-15">
         <motion.h1
           initial={{ opacity: 0, y: 10, filter: "blur(10px)" }}
           animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
@@ -116,7 +115,7 @@ const Hero = () => {
         </motion.div>
       </div>
       <div className="relative">
-        <motion.div className="max-w-(--container-width) relative mx-auto z-10">
+        <motion.div className="max-w-(--container-width) px-(--container-gutter) relative mx-auto z-10">
           <motion.div
             ref={scope}
             className="absolute group opacity-0 right-4 top-0 inline-block **:data-[name='mascot-svg']:size-24 **:data-[name='heart-svg']:scale-75"
@@ -138,25 +137,36 @@ const Hero = () => {
             initial={{ opacity: 0, y: 10, filter: "blur(10px)" }}
             animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
             transition={{ duration: 0.4, delay: 0.3 }}
-            className="relative"
+            className={cn(
+              "relative inline-block",
+              "[--outer-border:10px] md:[--outer-border:16px] lg:[--outer-border:28px]",
+              "[--inner-border:4px] md:[--inner-border:10px] lg:[--inner-border:16px]",
+              "[--spaceing-between:6px] md:[--spaceing-between:8px] lg:[--spaceing-between:16px]",
+            )}
           >
-            <div className="relative">
+            {/* Background layer */}
+            <div className="absolute inset-0">
               <Image
-                width={2052}
-                height={1212}
-                src={"/preview-background.png"}
-                alt={`preview background image`}
-                className="rounded-[28px] h-166"
+                fill
+                src="/preview-background.webp"
+                alt="preview background image"
+                className="rounded-(--outer-border) object-cover"
+                fetchPriority="high"
+                priority
               />
-              <div className="absolute inset-0 rounded-[28px] ring-1 ring-inset ring-black/12!" />
+              <div className="absolute inset-0 rounded-(--outer-border) ring-1 ring-inset ring-black/12!" />
             </div>
-            <div className="absolute inset-4">
+
+            {/* Content (drives height) */}
+            <div className="relative p-(--spaceing-between)">
               <ImageZoom
                 width={2052}
                 height={1212}
-                src={"/preview.png"}
-                alt={`preview image`}
-                className="rounded-[12px]! [&_img]:rounded-[16px] [&_img]:ring! [&_img]:ring-black/12!"
+                src="/preview.webp"
+                alt="preview image"
+                className="rounded-(--inner-border) [&_img]:rounded-[16px] [&_img]:ring! [&_img]:ring-black/12!"
+                fetchPriority="high"
+                priority
               />
             </div>
           </motion.div>
