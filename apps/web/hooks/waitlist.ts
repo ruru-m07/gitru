@@ -60,7 +60,6 @@ export function useGetWaitlistCount(options?: WaitlistCountOptions) {
 
 export function useJoinWaitList(options?: JoinWaitlistOptions) {
   const queryClient = useQueryClient();
-  const { onSuccess, ...rest } = options ?? {};
 
   return useMutation<WaitlistResponse, Error, WaitlistValues>({
     mutationFn: async (values: WaitlistValues) => {
@@ -96,7 +95,7 @@ export function useJoinWaitList(options?: JoinWaitlistOptions) {
 
       return data;
     },
-    ...rest,
+    ...options,
     onSuccess: (data, variables, context) => {
       void queryClient.invalidateQueries({
         queryKey: waitlistCountQueryKey,
