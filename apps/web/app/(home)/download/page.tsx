@@ -2,102 +2,32 @@
 
 import { Clock } from "lucide-react";
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { api } from "@/lib/api";
+import { useGetWaitlistCount, useJoinWaitList } from "@/hooks/waitlist";
 import { cn } from "@/lib/cn";
 
 const DownloadPage = () => {
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
-  const [isAlreadyExists, setIsAlreadyExists] = useState(false);
-  const [isError, setIsError] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
   const [mobileForm, setMobileForm] = useState({ username: "", email: "" });
 
-  const [totalJoined, setTotalJoined] = useState<number>(0);
+  const waitlistCount = useGetWaitlistCount();
+  const joinWaitlist = useJoinWaitList();
 
-  const fetched = useRef(false);
+  const totalJoined = waitlistCount.data ?? 0;
+  const alreadyExists =
+    joinWaitlist.data?.message === "You are already on the waitlist";
+  const showSuccess = joinWaitlist.isSuccess && !alreadyExists;
+  const showAlreadyExists = joinWaitlist.isSuccess && alreadyExists;
+  const errorMessage =
+    joinWaitlist.error instanceof Error
+      ? joinWaitlist.error.message
+      : "Something went wrong";
 
-  useEffect(() => {
-    if (fetched.current) return;
-    fetched.current = true;
-    (async () => {
-      const { data } = await api.waitlist.count.get();
-      setTotalJoined(data?.count ?? 0);
-    })();
-  }, []);
-
-  const handleAllInputsSubmit = async (values: Record<string, string>) => {
-    console.log("Form submitted:", values);
-    setIsError(false);
-    setErrorMessage("");
-
-    // Validate name is not empty
-    if (!values["username"] || values["username"].trim() === "") {
-      setIsError(true);
-      setErrorMessage("Name cannot be empty");
-      return;
-    }
-
-    // Validate email is not empty
-    if (!values["email"] || values["email"].trim() === "") {
-      setIsError(true);
-      setErrorMessage("Email cannot be empty");
-      return;
-    }
-
-    // Validate email format on frontend
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(values["email"])) {
-      setIsError(true);
-      setErrorMessage("Invalid email format");
-      return;
-    }
-
-    setIsLoading(true);
-
-    try {
-      const { data, error } = await api.waitlist.post({
-        email: values["email"],
-        name: values["username"],
-      });
-
-      if (error) {
-        console.error("API error:", error);
-        setIsLoading(false);
-        setIsError(true);
-        setErrorMessage("Failed to connect to server");
-        return;
-      }
-
-      if (data?.success) {
-        console.log(data);
-
-        // Check if user already existed
-        const alreadyExisted =
-          data.message === "You are already on the waitlist";
-
-        setTimeout(() => {
-          console.log("Success! User registered:", values);
-          setIsLoading(false);
-          if (alreadyExisted) {
-            setIsAlreadyExists(true);
-          } else {
-            setIsSuccess(true);
-          }
-        }, 1500);
-      } else {
-        setIsLoading(false);
-        setIsError(true);
-        setErrorMessage(data?.message || "Something went wrong");
-      }
-    } catch (err) {
-      console.error("Network error:", err);
-      setIsLoading(false);
-      setIsError(true);
-      setErrorMessage("Network error. Please try again.");
-    }
+  const handleAllInputsSubmit = (values: {
+    username: string;
+    email: string;
+  }) => {
+    joinWaitlist.mutate(values);
   };
 
   return (
@@ -108,7 +38,7 @@ const DownloadPage = () => {
           <div
             className={cn(
               "relative inline-block",
-              "[--outer-border:10px] md:[--outer-border:16px] lg:[--outer-border:28px]",
+              "[--outer-border:10px] md:[--outer-border:16px] lg:[--outer-border:18px]",
               "[--inner-border:4px] md:[--inner-border:10px] lg:[--inner-border:16px]",
               "[--spaceing-between:6px] md:[--spaceing-between:8px] lg:[--spaceing-between:16px]",
             )}
@@ -129,9 +59,9 @@ const DownloadPage = () => {
             {/* Content (drives height) */}
             <div className="relative p-(--spaceing-between) my-30 flex flex-col items-center">
               <form
-                onSubmit={async (event) => {
+                onSubmit={(event) => {
                   event.preventDefault();
-                  await handleAllInputsSubmit({
+                  handleAllInputsSubmit({
                     username: mobileForm.username,
                     email: mobileForm.email,
                   });
@@ -143,6 +73,7 @@ const DownloadPage = () => {
                   name="username"
                   placeholder="nickname"
                   value={mobileForm.username}
+                  disabled={joinWaitlist.isPending}
                   onChange={(event) =>
                     setMobileForm((prev) => ({
                       ...prev,
@@ -157,6 +88,7 @@ const DownloadPage = () => {
                   type="email"
                   placeholder="yo@example.com"
                   value={mobileForm.email}
+                  disabled={joinWaitlist.isPending}
                   onChange={(event) =>
                     setMobileForm((prev) => ({
                       ...prev,
@@ -168,31 +100,31 @@ const DownloadPage = () => {
                 <Button
                   size={"lg"}
                   type="submit"
-                  disabled={isLoading}
+                  disabled={joinWaitlist.isPending}
                   className={cn(
                     "w-full h-10 focus-visible:ring-2",
                     "shadow-[inset_-1px_-1px_2px_1px_rgba(0,0,0,0.1),inset_1px_1px_2px_1px_rgba(255,255,255,0.1),0px_0px_4px_2px_rgba(0,0,0,0.1)]",
                   )}
                 >
                   <Clock className="size-4 text-[color-mix(in_oklab,var(--primary)_40%,#ffffff)]" />
-                  {isLoading ? `Joining...` : "Join waitlist"}
+                  {joinWaitlist.isPending ? `Joining...` : "Join waitlist"}
                 </Button>
 
                 <div className="text-sm font-mono whitespace-pre-wrap">
-                  {isError && (
+                  {joinWaitlist.isError && (
                     <p className="text-red-400">error: {errorMessage}</p>
                   )}
-                  {isAlreadyExists && (
+                  {showAlreadyExists && (
                     <p className="text-yellow-400">
                       You are already on the waitlist
                     </p>
                   )}
-                  {isSuccess && (
+                  {showSuccess && (
                     <p className="text-green-400">
                       Successfully joined the waitlist!
                     </p>
                   )}
-                  {(isAlreadyExists || isSuccess) && (
+                  {(showAlreadyExists || showSuccess) && (
                     <p className="text-white">
                       You will receive an email when you are in.
                     </p>
