@@ -93,7 +93,6 @@ import { toast } from "sonner";
 import z from "zod";
 import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
-import Logo from "@/components/logo";
 import PageLayout from "@/components/pageLayout";
 import { RepositoryListItem } from "@/components/RepositoryListItem";
 import { ResizableLayout } from "@/components/resizableLayout";
