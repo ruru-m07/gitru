@@ -42,23 +42,23 @@ export const GitruBorderedSmallSmileSVG = () => {
           d="M301.549 53.3033L263.409 45.9135C259.196 45.0973 255.12 47.8507 254.303 52.0635L246.913 90.2033C246.097 94.4161 248.851 98.4929 253.063 99.3092L291.203 106.699C295.416 107.515 299.493 104.762 300.309 100.549L307.699 62.4092C308.515 58.1964 305.762 54.1196 301.549 53.3033Z"
           fill="var(--color-c)"
           stroke="var(--color-a)"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
         <path
           d="M279.522 64.8643L275.089 87.7481"
           stroke="var(--color-a)"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
         <path
           d="M265.864 74.0889L288.748 78.5227"
           stroke="var(--color-a)"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
         <rect
           x="168.754"

@@ -1,5 +1,6 @@
 import { GetStatusResponse, GraphRow } from "@gitru/commands";
 import { Stashed } from "@gitru/icon";
+import { Mascot } from "@gitru/mascot";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -92,7 +93,6 @@ import { toast } from "sonner";
 import z from "zod";
 import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
-import Logo from "@/components/logo";
 import PageLayout from "@/components/pageLayout";
 import { RepositoryListItem } from "@/components/RepositoryListItem";
 import { ResizableLayout } from "@/components/resizableLayout";
@@ -234,8 +234,19 @@ function GitPageLayout() {
       <PageLayout className="flex-col flex justify-center items-center gap-4">
         <div className="flex flex-col gap-4 justify-center">
           <span className="flex items-center gap-3 px-[calc(--spacing(3)-1px)]">
-            {/* <GitruBorderedSmallSmileSVG /> */}
-            <Logo size={40} />
+            <div className="relative cursor-pointer **:data-[name='mascot-svg']:size-8 **:data-[name='heart-svg']:scale-50">
+              <Mascot
+                particles={{
+                  offset: {
+                    x: -0.1,
+                    y: -0.5,
+                  },
+                }}
+                transition={{
+                  duration: 0.3,
+                }}
+              />
+            </div>
             {/* <h1 className="text-3xl font-[350]">Add your first repository</h1> */}
             <span className="text-3xl">Gitru</span>
           </span>
