@@ -70,6 +70,7 @@
     "@gitru/icon": "*",
     "@gitru/ui": "*",
     "@gitru/commands": "*",
+    "@gitru/mascot": "*",
     "@tauri-apps/cli": "2.10.0",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",

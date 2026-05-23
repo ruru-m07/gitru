@@ -89,6 +89,7 @@
       "devDependencies": {
         "@gitru/commands": "*",
         "@gitru/icon": "*",
+        "@gitru/mascot": "*",
         "@gitru/ui": "*",
         "@tauri-apps/cli": "2.10.0",
         "@types/react": "catalog:",
