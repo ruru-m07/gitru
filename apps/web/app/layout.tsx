@@ -19,7 +19,6 @@ export async function generateMetadata({
   params,
 }: LayoutProps<"/">): Promise<Metadata> {
   return {
-    metadataBase: new URL("https://gitru.app"),
     title: "Gitru",
     description: "A modern, lightweight, and powerful Git client.",
     openGraph: {
