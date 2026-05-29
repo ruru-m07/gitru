@@ -21,17 +21,6 @@ export async function generateMetadata({
   return {
     title: "Gitru",
     description: "A modern, lightweight, and powerful Git client.",
-    openGraph: {
-      title: "Gitru",
-      description: "A modern, lightweight, and powerful Git client.",
-      url: "https://gitru.app",
-      locale: "en_US",
-    },
-    twitter: {
-      card: "summary_large_image",
-      title: "Gitru",
-      description: "A modern, lightweight, and powerful Git client.",
-    },
   };
 }
 
