@@ -19,6 +19,7 @@ export async function generateMetadata({
   params,
 }: LayoutProps<"/">): Promise<Metadata> {
   return {
+    metadataBase: new URL("https://gitru.com"),
     title: "Gitru",
     description: "A modern, lightweight, and powerful Git client.",
   };
