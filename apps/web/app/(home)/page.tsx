@@ -3,7 +3,7 @@ import HomePage from "@/components/homePage";
 
 export const metadata: Metadata = {
   title: "Gitru",
-  description: "A modern Git client for humans.",
+  description: "Gitru - A Git client",
   icons: new URL("/favicon.ico", "https://gitru.app"),
 };
 

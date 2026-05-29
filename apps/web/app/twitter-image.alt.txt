@@ -1,1 +1,1 @@
-Gitru - A modern, lightweight Git client interface
+Gitru - A Git client
