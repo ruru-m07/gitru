@@ -12,6 +12,7 @@ use crate::models::history::{
     Swimlane as SwimlaneDto,
 };
 use crate::parsers::graph::{LOG_FORMAT, parse_log_entries, parse_search_query};
+use crate::runner::{git_binary_path, git_path_env};
 
 const DEFAULT_CHUNK_SIZE: usize = 200;
 
@@ -505,11 +506,7 @@ fn build_revision_args(repo_path: &str, query: &HistoryQuery) -> Result<Vec<Stri
 }
 
 fn has_ref(repo_path: &str, reference: &str) -> Result<bool, String> {
-    let output = Command::new("git")
-        .current_dir(repo_path)
-        .args(["rev-parse", "--verify", reference])
-        .output()
-        .map_err(|e| e.to_string())?;
+    let output = run_git_command(repo_path, &["rev-parse", "--verify", reference])?;
 
     Ok(output.status.success())
 }
@@ -585,11 +582,8 @@ fn is_commit_id(value: &str) -> bool {
 }
 
 fn run_git(repo_path: &str, args: &mut [String]) -> Result<String, String> {
-    let output = Command::new("git")
-        .current_dir(repo_path)
-        .args(args)
-        .output()
-        .map_err(|e| e.to_string())?;
+    let ref_args = args.iter().map(String::as_str).collect::<Vec<_>>();
+    let output = run_git_command(repo_path, &ref_args)?;
 
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).to_string());
@@ -836,11 +830,7 @@ fn resolve_search_context(repo_path: &str) -> Option<SearchContext> {
 }
 
 fn git_config_value(repo_path: &str, key: &str) -> Option<String> {
-    let output = Command::new("git")
-        .current_dir(repo_path)
-        .args(["config", "--get", key])
-        .output()
-        .ok()?;
+    let output = run_git_command(repo_path, &["config", "--get", key]).ok()?;
 
     if !output.status.success() {
         return None;
@@ -851,11 +841,7 @@ fn git_config_value(repo_path: &str, key: &str) -> Option<String> {
 }
 
 fn list_remote_names(repo_path: &str) -> Result<Vec<String>, String> {
-    let output = Command::new("git")
-        .current_dir(repo_path)
-        .args(["remote"])
-        .output()
-        .map_err(|e| e.to_string())?;
+    let output = run_git_command(repo_path, &["remote"])?;
 
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).to_string());
@@ -867,6 +853,17 @@ fn list_remote_names(repo_path: &str) -> Result<Vec<String>, String> {
         .map(|line| line.trim().to_string())
         .filter(|line| !line.is_empty())
         .collect())
+}
+
+fn run_git_command(repo_path: &str, args: &[&str]) -> Result<std::process::Output, String> {
+    let git_binary = git_binary_path()?;
+    let git_path_env = git_path_env()?;
+    Command::new(git_binary)
+        .current_dir(repo_path)
+        .env("PATH", git_path_env)
+        .args(args)
+        .output()
+        .map_err(|e| e.to_string())
 }
 
 fn normalize_refs(entries: &mut [GraphLogEntry], remote_names: &[String]) {

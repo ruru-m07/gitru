@@ -136,7 +136,8 @@ impl CommitService {
                 &message,
                 GitRunOptions::default_read().allow_exit_codes(&[1]),
             )
-            .await?;
+            .await
+            .map_err(|err| normalize_commit_error(&err))?;
 
         if output.contains("nothing to commit") {
             return Err("Nothing to commit (index matches HEAD)".to_string());
@@ -173,5 +174,66 @@ impl CommitService {
         }
 
         msg
+    }
+}
+
+fn normalize_commit_error(err: &str) -> String {
+    if let Some(helper) = signing_helper_from_error(err) {
+        return format!(
+            "Git commit signing failed because `{helper}` could not be launched. Ensure the helper is installed and discoverable on PATH in the packaged app."
+        );
+    }
+
+    err.trim().to_string()
+}
+
+fn signing_helper_from_error(err: &str) -> Option<String> {
+    let lower = err.to_ascii_lowercase();
+    if !lower.contains("failed to sign the data") {
+        return None;
+    }
+
+    if let Some(helper) = parse_cannot_run_helper(err) {
+        return Some(helper);
+    }
+
+    if lower.contains("gpg failed to sign the data") {
+        return Some("gpg".to_string());
+    }
+
+    None
+}
+
+fn parse_cannot_run_helper(err: &str) -> Option<String> {
+    let prefix = "cannot run ";
+    let start = err.to_ascii_lowercase().find(prefix)?;
+    let helper = &err[start + prefix.len()..];
+    let helper = helper.split(':').next()?.trim();
+    if helper.is_empty() {
+        None
+    } else {
+        Some(helper.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_commit_error_reports_missing_helper() {
+        let err = "error: cannot run gg: No such file or directory\nerror: gg failed to sign the data: (no gpg output)\nfatal: failed to write commit object";
+        let normalized = normalize_commit_error(err);
+
+        assert!(normalized.contains("gg"));
+        assert!(normalized.contains("discoverable on PATH"));
+    }
+
+    #[test]
+    fn normalize_commit_error_keeps_unrelated_errors() {
+        let err = "fatal: not a git repository";
+        let normalized = normalize_commit_error(err);
+
+        assert_eq!(normalized, err);
     }
 }

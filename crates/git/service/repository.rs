@@ -13,6 +13,8 @@ use std::sync::{
 };
 use tauri::Emitter;
 
+use crate::runner::{git_binary_path, git_path_env};
+
 pub const CLONE_PROGRESS_EVENT: &str = "git://clone-progress";
 
 #[derive(Clone, Serialize)]
@@ -180,9 +182,10 @@ impl RepositoryService {
     pub async fn init_repository(repo_path: &str) -> Result<String, String> {
         Self::validate_init_path(repo_path)?;
 
-        let output = tokio::process::Command::new("git")
+        let output = tokio::process::Command::new(git_binary_path()?)
             .arg("init")
             .arg(repo_path)
+            .env("PATH", git_path_env()?)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
