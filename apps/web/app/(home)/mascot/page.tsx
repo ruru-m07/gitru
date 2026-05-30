@@ -22,11 +22,11 @@ const MascotPage = () => {
           <Angru />
           <CriMascot />
         </div>
-        <Flyru className="absolute bottom-10 translate-y-full lg:translate-y-0 lg:top-0 right-40 lg:right-0 rotate-20" />
+        <Flyru className="absolute bottom-10 translate-y-full lg:translate-y-0 lg:top-0 right-40 lg:right-0 rotate-20 lg:block hidden" />
         <div className="flex justify-center w-full">
           <Blueprint className="w-full h-fit" />
         </div>
-        <Wru className="lg:absolute bottom-30 left-0" />
+        <Wru className="lg:absolute bottom-10 md:bottom-0 lg:bottom-30 left-0" />
       </div>
     </div>
   );
