@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Mutex as StdMutex, OnceLock};
@@ -35,6 +36,16 @@ impl GitRunOptions {
 pub struct GitCommandRunner {
     repo_path: PathBuf,
 }
+
+// TODO(ruru-m07): Consider allowing configuration of additional tool directories via environment variable or config file
+const DEFAULT_TOOL_DIRS: &[&str] = &[
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+    "/usr/sbin",
+    "/sbin",
+];
 
 impl GitCommandRunner {
     pub fn new(repo_path: &str) -> Result<Self, String> {
@@ -87,6 +98,15 @@ impl GitCommandRunner {
     ) -> Result<Vec<u8>, String> {
         run_git_command_bytes_async_unlocked(&self.repo_path, args, None, options).await
     }
+}
+
+pub(crate) fn git_binary_path() -> Result<PathBuf, String> {
+    resolve_program_path("git")
+}
+
+pub(crate) fn git_path_env() -> Result<OsString, String> {
+    let search_dirs = preferred_tool_dirs();
+    join_paths(&search_dirs)
 }
 
 async fn run_git_command_async(
@@ -189,8 +209,11 @@ async fn run_git_command_once_output(
     input: Option<&[u8]>,
     options: GitRunOptions,
 ) -> Result<std::process::Output, String> {
-    let mut command = tokio::process::Command::new("git");
+    let git_binary = git_binary_path()?;
+    let git_path_env = git_path_env()?;
+    let mut command = tokio::process::Command::new(git_binary);
     command.current_dir(repo_path);
+    command.env("PATH", git_path_env);
     command.args(args);
     command.stdin(if input.is_some() {
         Stdio::piped()
@@ -237,6 +260,86 @@ fn command_lock_for_repo(repo_path: &Path) -> Result<std::sync::Arc<AsyncMutex<(
         .entry(key)
         .or_insert_with(|| std::sync::Arc::new(AsyncMutex::new(())))
         .clone())
+}
+
+fn preferred_tool_dirs() -> Vec<PathBuf> {
+    preferred_tool_dirs_with_path_dirs(path_dirs_from_env())
+}
+
+fn preferred_tool_dirs_with_path_dirs(
+    path_dirs: impl IntoIterator<Item = PathBuf>,
+) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    for dir in DEFAULT_TOOL_DIRS.iter().map(PathBuf::from).chain(path_dirs) {
+        if seen.insert(dir.clone()) {
+            dirs.push(dir);
+        }
+    }
+
+    dirs
+}
+
+fn path_dirs_from_env() -> Vec<PathBuf> {
+    std::env::var_os("PATH")
+        .map(|value| std::env::split_paths(&value).collect())
+        .unwrap_or_default()
+}
+
+fn resolve_program_path(program: &str) -> Result<PathBuf, String> {
+    resolve_program_path_from_dirs(program, &preferred_tool_dirs())
+        .ok_or_else(|| format!("Unable to locate `{program}` executable"))
+}
+
+fn resolve_program_path_from_dirs(program: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
+    for dir in dirs {
+        for candidate in executable_candidates(dir, program) {
+            if is_executable_file(&candidate) {
+                return Some(candidate);
+            }
+        }
+    }
+
+    None
+}
+
+fn executable_candidates(dir: &Path, program: &str) -> Vec<PathBuf> {
+    #[cfg(target_os = "windows")]
+    let candidate_names = vec![
+        program.to_string(),
+        format!("{program}.exe"),
+        format!("{program}.cmd"),
+        format!("{program}.bat"),
+    ];
+    #[cfg(not(target_os = "windows"))]
+    let candidate_names = [program.to_string()];
+
+    candidate_names.iter().map(|name| dir.join(name)).collect()
+}
+
+#[cfg(target_os = "windows")]
+fn is_executable_file(path: &Path) -> bool {
+    path.is_file()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_executable_file(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+
+    let Ok(metadata) = path.metadata() else {
+        return false;
+    };
+
+    if !metadata.is_file() {
+        return false;
+    }
+
+    metadata.permissions().mode() & 0o111 != 0
+}
+
+fn join_paths(paths: &[PathBuf]) -> Result<OsString, String> {
+    std::env::join_paths(paths).map_err(|e| e.to_string())
 }
 
 fn is_index_lock_error(err: &str) -> bool {
@@ -508,5 +611,59 @@ mod tests {
 
         let result = GitCommandRunner::new(temp_dir.path().to_str().unwrap());
         assert!(result.is_ok());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn resolve_program_path_prefers_earlier_dirs() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+        let first_dir = temp_dir.path().join("first");
+        let second_dir = temp_dir.path().join("second");
+        fs::create_dir_all(&first_dir).expect("failed to create first dir");
+        fs::create_dir_all(&second_dir).expect("failed to create second dir");
+
+        let first_git = first_dir.join("git");
+        let second_git = second_dir.join("git");
+        fs::write(&first_git, "#!/bin/sh\nexit 0\n").expect("failed to write first git");
+        fs::write(&second_git, "#!/bin/sh\nexit 0\n").expect("failed to write second git");
+
+        let mut first_perms = fs::metadata(&first_git)
+            .expect("first metadata")
+            .permissions();
+        first_perms.set_mode(0o755);
+        fs::set_permissions(&first_git, first_perms).expect("first permissions");
+
+        let mut second_perms = fs::metadata(&second_git)
+            .expect("second metadata")
+            .permissions();
+        second_perms.set_mode(0o755);
+        fs::set_permissions(&second_git, second_perms).expect("second permissions");
+
+        let resolved =
+            resolve_program_path_from_dirs("git", &[first_dir.clone(), second_dir.clone()])
+                .expect("expected git to resolve");
+
+        assert_eq!(resolved, first_git);
+    }
+
+    #[test]
+    fn preferred_tool_dirs_include_current_path_dirs_last() {
+        let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+        let custom_dir = temp_dir.path().join("custom");
+        std::fs::create_dir_all(&custom_dir).expect("failed to create custom dir");
+
+        let dirs = preferred_tool_dirs_with_path_dirs(vec![custom_dir.clone()]);
+
+        assert!(dirs.iter().any(|dir| dir == &custom_dir));
+        assert!(!dirs.is_empty());
+        assert!(
+            dirs.iter()
+                .position(|dir| dir == &custom_dir)
+                .expect("custom dir missing")
+                >= DEFAULT_TOOL_DIRS.len()
+        );
     }
 }
