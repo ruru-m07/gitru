@@ -313,7 +313,7 @@ fn executable_candidates(dir: &Path, program: &str) -> Vec<PathBuf> {
         format!("{program}.bat"),
     ];
     #[cfg(not(target_os = "windows"))]
-    let candidate_names = vec![program.to_string()];
+    let candidate_names = [program.to_string()];
 
     candidate_names.iter().map(|name| dir.join(name)).collect()
 }
@@ -658,7 +658,7 @@ mod tests {
         let dirs = preferred_tool_dirs_with_path_dirs(vec![custom_dir.clone()]);
 
         assert!(dirs.iter().any(|dir| dir == &custom_dir));
-        assert!(dirs.first().is_some());
+        assert!(!dirs.is_empty());
         assert!(
             dirs.iter()
                 .position(|dir| dir == &custom_dir)
