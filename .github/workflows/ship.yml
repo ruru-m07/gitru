@@ -85,53 +85,12 @@ jobs:
           includeUpdaterJson: true
           args: ${{ matrix.args }}
 
-      - name: Collect built artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p collected
-
-          if [[ "${{ matrix.platform }}" == "macos-26" ]]; then
-            find target/universal-apple-darwin/release/bundle -type f \
-              \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.app.tar.gz.sig" \) \
-              -exec cp {} collected/ \;
-          elif [[ "${{ matrix.platform }}" == "ubuntu-22.04" ]]; then
-            find target/release/bundle -type f \
-              \( -name "*.AppImage" -o -name "*.AppImage.sig" -o -name "*.deb" -o -name "*.deb.sig" -o -name "*.rpm" -o -name "*.rpm.sig" -o -name "*.AppImage.tar.gz" -o -name "*.AppImage.tar.gz.sig" \) \
-              -exec cp {} collected/ \;
-          else
-            find target/release/bundle -type f \
-              \( -name "*setup.exe" -o -name "*setup.exe.sig" -o -name "*.msi" -o -name "*.msi.sig" -o -name "*.zip" -o -name "*.zip.sig" \) \
-              -exec cp {} collected/ \;
-          fi
-
-          if [[ "${{ matrix.platform }}" == "ubuntu-22.04" ]] && [[ -f latest.json ]]; then
-            cp latest.json collected/latest.json
-          fi
-
-          ls -lah collected
-          test -n "$(find collected -type f -print -quit)"
-
-      - name: Upload workflow artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ship-${{ matrix.platform }}
-          path: collected
-          if-no-files-found: error
-
-  mirror-to-r2:
+  publish-manifest:
     needs: publish-tauri
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Download workflow artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: workflow-artifacts
-
       - name: Resolve release metadata
         id: meta
         shell: bash
@@ -148,86 +107,29 @@ jobs:
           echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "channel=${CHANNEL}" >> "$GITHUB_OUTPUT"
-          echo "release_id=${{ github.event.release.id }}" >> "$GITHUB_OUTPUT"
 
-      - name: Download release assets from GitHub
-        shell: bash
+      - name: Download updater manifest
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_ID: ${{ steps.meta.outputs.release_id }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          TAG_NAME: ${{ steps.meta.outputs.tag_name }}
           REPO: ${{ github.repository }}
+        shell: bash
         run: |
           set -euo pipefail
           mkdir -p release-assets
 
           curl -fsSL \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${REPO}/releases/${RELEASE_ID}/assets?per_page=100" \
-            > assets.json
+            "https://github.com/${REPO}/releases/download/${TAG_NAME}/latest.json" \
+            -o release-assets/latest.json
 
-          jq -e 'length > 0' assets.json >/dev/null
-
-          jq -r '.[] | [.name, .url] | @tsv' assets.json | while IFS=$'\t' read -r name url; do
-            curl -fsSL \
-              -H "Authorization: Bearer ${GH_TOKEN}" \
-              -H "Accept: application/octet-stream" \
-              "$url" \
-              -o "release-assets/${name}"
-          done
+          jq -e --arg v "$VERSION" '.version == $v' release-assets/latest.json >/dev/null
+          jq -e '.platforms | type == "object" and length > 0' release-assets/latest.json >/dev/null
+          jq -e '.platforms | to_entries | all(.value.signature | type == "string" and length > 0)' release-assets/latest.json >/dev/null
+          jq -e '.platforms | to_entries | all(.value.url | test("https://github.com/.+/releases/download/.+/"))' release-assets/latest.json >/dev/null
 
           ls -lah release-assets
 
-      - name: Build channel manifest for R2
-        shell: bash
-        env:
-          BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
-          CHANNEL: ${{ steps.meta.outputs.channel }}
-          VERSION: ${{ steps.meta.outputs.version }}
-        run: |
-          set -euo pipefail
-          BASE_URL="${BASE_URL%/}"
-          mkdir -p out
-
-          MANIFEST_PATH="release-assets/latest.json"
-          if [[ ! -f "${MANIFEST_PATH}" ]]; then
-            ALT_MANIFEST="$(find release-assets -maxdepth 1 -type f -name '*latest*.json' | head -n 1)"
-            if [[ -z "${ALT_MANIFEST}" ]]; then
-              echo "No latest manifest json found in release assets"
-              exit 1
-            fi
-            MANIFEST_PATH="${ALT_MANIFEST}"
-          fi
-
-          jq -e --arg v "$VERSION" '.version == $v' "${MANIFEST_PATH}" >/dev/null
-          jq -e '.platforms | type == "object" and length > 0' "${MANIFEST_PATH}" >/dev/null
-          jq -e '.platforms | to_entries | all(.value.signature | type == "string" and length > 0)' "${MANIFEST_PATH}" >/dev/null
-
-          jq \
-            --arg base "$BASE_URL" \
-            --arg channel "$CHANNEL" \
-            --arg version "$VERSION" \
-            '.platforms |= with_entries(
-              .value.url |= ($base + "/" + $channel + "/downloads/" + $version + "/" + ((split("/") | last)))
-            )' \
-            "${MANIFEST_PATH}" > out/latest.json
-
-          jq -r '.platforms[]?.url | split("/") | last' out/latest.json | sort -u > referenced-assets.txt
-          while IFS= read -r file; do
-            if [[ ! -f "release-assets/${file}" ]]; then
-              echo "Referenced updater asset missing in release assets: ${file}"
-              exit 1
-            fi
-          done < referenced-assets.txt
-
-          mkdir -p "out/${CHANNEL}/downloads/${VERSION}" "out/${CHANNEL}/versions/${VERSION}"
-          cp -R release-assets/. "out/${CHANNEL}/downloads/${VERSION}/"
-          cp out/latest.json "out/${CHANNEL}/versions/${VERSION}/latest.json"
-          cp out/latest.json "out/${CHANNEL}/latest.json"
-
-          find "out/${CHANNEL}" -type f | sort
-
-      - name: Upload mirrored files to R2
+      - name: Upload manifest to R2
         shell: bash
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -241,6 +143,14 @@ jobs:
           set -euo pipefail
           ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 
-          aws s3 sync "out/${CHANNEL}/downloads/${VERSION}" "s3://${R2_BUCKET}/${CHANNEL}/downloads/${VERSION}" --endpoint-url "${ENDPOINT}" --no-progress
-          aws s3 cp "out/${CHANNEL}/versions/${VERSION}/latest.json" "s3://${R2_BUCKET}/${CHANNEL}/versions/${VERSION}/latest.json" --endpoint-url "${ENDPOINT}" --cache-control "public, max-age=300"
-          aws s3 cp "out/${CHANNEL}/latest.json" "s3://${R2_BUCKET}/${CHANNEL}/latest.json" --endpoint-url "${ENDPOINT}" --cache-control "no-store"
+          aws s3 cp \
+            release-assets/latest.json \
+            "s3://${R2_BUCKET}/${CHANNEL}/latest.json" \
+            --endpoint-url "${ENDPOINT}" \
+            --cache-control "no-store"
+
+          aws s3 cp \
+            release-assets/latest.json \
+            "s3://${R2_BUCKET}/${CHANNEL}/versions/${VERSION}/latest.json" \
+            --endpoint-url "${ENDPOINT}" \
+            --cache-control "public, max-age=300"
