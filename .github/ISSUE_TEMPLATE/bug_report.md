@@ -25,7 +25,7 @@ If applicable, add screenshots to help explain your problem.
 
 **Desktop (please complete the following information):**
 
-- OS: [e.g. MacOS, Windows, Linux]
+- OS: [e.g. macOS, Windows, Linux]
 - Version: [e.g. 1.4.0 or 1.4.0-beta.1]
 - Git version: [e.g. 2.34.1]
 
