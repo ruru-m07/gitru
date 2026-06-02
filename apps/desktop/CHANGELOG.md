@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.0.0-beta.6](https://github.com/ruru-m07/gitru/compare/v0.0.0-beta.5...v0.0.0-beta.6) (2026-06-02)
+
+
+### Features
+
+* add mascot dependency and integrate mascot component in GitPageLayout ([2115d07](https://github.com/ruru-m07/gitru/commit/2115d074821772bc14a9de403f04f71c45f86f19))
+* setup new mascot and branding ([b198c35](https://github.com/ruru-m07/gitru/commit/b198c352144478c2e6346589af2235651735f26c))
+* setup new mascot and branding ([8eef23d](https://github.com/ruru-m07/gitru/commit/8eef23d4fabda1f8eccb602bb400f3c45965b900))
+
+
+### Miscellaneous Chores
+
+* release 0.0.0-beta.6 ([d3d185f](https://github.com/ruru-m07/gitru/commit/d3d185f8f41b34df10cd62ba2bf74d745ebe2dab))
+
 ## [0.0.0-beta.5](https://github.com/ruru-m07/gitru/compare/v0.0.0-beta.4...v0.0.0-beta.5) (2026-04-26)
 
 
