@@ -1,10 +1,12 @@
 {
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "packages": {
     "apps/desktop": {
       "release-type": "node",
       "include-component-in-tag": false,
       "prerelease": true,
-      "prerelease-type": "beta"
+      "prerelease-type": "beta",
+      "extra-files": ["crates"]
     }
   }
 }
