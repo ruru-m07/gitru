@@ -433,7 +433,7 @@ fn build_log_args(
 ) -> Result<Vec<String>, String> {
     let mut args = vec![
         "log".to_string(),
-        "--topo-order".to_string(),
+        "--date-order".to_string(),
         "--parents".to_string(),
         "--decorate=full".to_string(),
         "--no-color".to_string(),
@@ -456,7 +456,7 @@ fn build_shortstat_args(
 ) -> Result<Vec<String>, String> {
     let mut args = vec![
         "log".to_string(),
-        "--topo-order".to_string(),
+        "--date-order".to_string(),
         "--no-color".to_string(),
         format!("--pretty=format:%H"),
         "--shortstat".to_string(),

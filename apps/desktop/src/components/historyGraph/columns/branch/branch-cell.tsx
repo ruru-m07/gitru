@@ -12,13 +12,11 @@ type BranchCellProps = {
 const BranchCell = React.memo(({ row, currentBranch }: BranchCellProps) => {
   const isAnyRefs = row.row.refs.length > 0;
   const isCurrentBranch = currentBranch
-    ? row.row.refs.some(
-        (ref) => ref.display_name.replace("origin/", "") === currentBranch.name,
-      )
+    ? row.row.refs.some((ref) => ref.display_name === currentBranch.name)
     : false;
 
   return (
-    <div className="flex items-center gap-2 relative max-w-full min-w-0 pr-2">
+    <div className="flex items-center gap-2 relative max-w-full min-w-0 pl-1 pr-2">
       {row.localBranchRefs.length > 0 && (
         <>
           {row.localBranchRefs.map((ref) => (
@@ -79,7 +77,7 @@ const BranchCell = React.memo(({ row, currentBranch }: BranchCellProps) => {
       )}
       {isAnyRefs && (
         <div
-          className="absolute left-0 -translate-y-1/2 inset-0 mt-0.5 z-0"
+          className="absolute left-1 -translate-y-1/2 inset-0 mt-0.5 z-0"
           style={{
             height: 2,
             top: ROW_H / 2 - 2,

@@ -315,7 +315,7 @@ const LaneGraph = ({ row, maxLane }: GraphLaneProps) => {
 
     const dir = Math.sign(parentOutIdx - circleIdx);
     const arcStartX = parentX - dir * LANE_W; // One lane width away from parentX
-    const curveLen = LANE_W * 0.55; // Controls the "roundness" of the corner
+    const curveLen = LANE_W; // Controls the "roundness" of the corner
 
     const d = [
       `M ${arcStartX} ${cy}`,

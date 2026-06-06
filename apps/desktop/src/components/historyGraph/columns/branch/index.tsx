@@ -8,7 +8,7 @@ const Branch = React.memo(({ rows, ...restProps }: GraphColumnsType) => {
 
   return (
     <div
-      className="overflow-x-hidden text-nowrap pl-1 max-w-full min-w-0"
+      className="overflow-x-hidden text-nowrap max-w-full min-w-0"
       {...restProps}
     >
       {rows.map((row) => {
