@@ -671,6 +671,7 @@ fn build_refs(entry: &GraphLogEntry) -> Vec<GraphRefDto> {
         .iter()
         .map(|reference| GraphRefDto {
             name: reference.name.clone(),
+            display_name: reference.display_name.clone(),
             kind: map_ref_kind(reference.kind),
             is_head: reference.is_head,
         })

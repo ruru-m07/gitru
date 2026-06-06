@@ -356,3 +356,82 @@ fn history_graph_limit_respected() {
         );
     });
 }
+
+#[test]
+#[serial]
+fn history_graph_normalizes_refs_and_marks_current_branch() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("base.txt", "base", "Initial commit");
+        repo.create_branch("feature/foo");
+        repo.commit_file("feature.txt", "feature", "Feature only");
+        repo.switch_branch("main");
+        repo.commit_file("main.txt", "main", "Main only");
+        repo.git(&["merge", "--no-ff", "feature/foo", "-m", "Merge feature"]);
+
+        let svc = setup(&repo);
+        let response = svc.history_graph(default_query(20)).await.unwrap();
+
+        let current_branch_rows: Vec<_> = response
+            .rows
+            .iter()
+            .filter(|row| row.heads.iter().any(|ref_info| ref_info.is_head))
+            .collect();
+
+        assert!(
+            !current_branch_rows.is_empty(),
+            "expected at least one row to be marked as HEAD"
+        );
+        assert!(
+            current_branch_rows.iter().any(|row| row
+                .heads
+                .iter()
+                .any(|ref_info| ref_info.display_name == "main")),
+            "expected the checked-out branch to be labeled as main"
+        );
+        assert!(
+            response.rows.iter().any(|row| row
+                .refs
+                .iter()
+                .any(|ref_info| ref_info.display_name == "feature/foo")),
+            "expected a normalized feature branch label"
+        );
+        assert!(
+            response.rows.iter().flat_map(|row| row.refs.iter()).all(|ref_info| {
+                !ref_info.display_name.starts_with("refs/")
+            }),
+            "display labels should not leak refs/ prefixes"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn history_graph_branch_query_limits_to_selected_branch() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("base.txt", "base", "Initial commit");
+        repo.create_branch("feature/only");
+        repo.commit_file("feature.txt", "feature", "Feature only");
+        repo.switch_branch("main");
+        repo.commit_file("main.txt", "main", "Main only");
+
+        let svc = setup(&repo);
+        let mut query = default_query(20);
+        query.branch = Some("main".to_string());
+
+        let response = svc.history_graph(query).await.unwrap();
+
+        assert!(
+            response.rows.iter().any(|row| row.commit.summary == "Main only"),
+            "expected main branch history to include the local branch tip"
+        );
+        assert!(
+            response
+                .rows
+                .iter()
+                .all(|row| row.commit.summary != "Feature only"),
+            "branch-scoped history should not include commits exclusive to another branch"
+        );
+    });
+}

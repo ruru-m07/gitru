@@ -11,6 +11,8 @@ import {
   TooltipTrigger,
 } from "@gitru/ui/components/tooltip";
 import { Tag, Tags } from "lucide-react";
+import { getRowColor } from "../../helper";
+import { PALETTE } from "./color-palettes";
 
 type GraphLaneProps = {
   row: GraphRow;
@@ -28,40 +30,17 @@ type GraphLaneProps = {
  * BEZIER_MID_FACTOR - Midpoint factor for single-lane curves (0.5 = midpoint at 50% of horizontal distance)
  * PALETTE - Array of colors for lanes, indexed by lane color value modulo palette length
  */
-const LANE_W = 20 * 1.5;
-const ROW_H = 32;
-const DOT_R = 12;
-const LINE_W = 4;
-const SHIFT_CURVE_R = 2;
-const CURVE_START_Y = 0;
-const BEZIER_CTRL_FACTOR = 0.25;
-const BEZIER_MID_FACTOR = 0.5;
-
-const PALETTE = [
-  "oklch(0.78 0.14 0)",
-  "oklch(0.80 0.15 137.5)",
-  "oklch(0.77 0.16 275)",
-  "oklch(0.82 0.13 52.5)",
-  "oklch(0.79 0.17 190)",
-  "oklch(0.76 0.14 327.5)",
-
-  "oklch(0.81 0.18 105)",
-  "oklch(0.78 0.15 242.5)",
-  "oklch(0.80 0.16 20)",
-  "oklch(0.77 0.14 157.5)",
-  "oklch(0.82 0.17 295)",
-  "oklch(0.79 0.13 72.5)",
-
-  "oklch(0.76 0.18 210)",
-  "oklch(0.81 0.15 347.5)",
-  "oklch(0.78 0.16 125)",
-  "oklch(0.80 0.14 262.5)",
-  "oklch(0.77 0.17 40)",
-  "oklch(0.82 0.15 177.5)",
-] as const;
+export const LANE_W = 20;
+export const ROW_H = 32;
+export const DOT_R = 12;
+export const LINE_W = 2;
+export const SHIFT_CURVE_R = 2;
+export const CURVE_START_Y = 0;
+export const BEZIER_CTRL_FACTOR = 0.25;
+export const BEZIER_MID_FACTOR = 0.5;
 
 // ? Convert lane index to X coordinate
-const laneToX = (laneIndex: number): number => LANE_W * (laneIndex + 1);
+export const laneToX = (laneIndex: number): number => LANE_W * (laneIndex + 1);
 
 /**
  * ? Build a smooth single-lane curve path (used for 1-lane shifts and convergences)
@@ -181,7 +160,7 @@ const buildShiftPath = (
   }
 };
 
-const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
+const LaneGraph = ({ row, maxLane }: GraphLaneProps) => {
   const width = Math.max((maxLane + 2) * LANE_W + 8, LANE_W * 3);
   const isStash = row.type === "Stash";
 
@@ -206,12 +185,7 @@ const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
   const cy = ROW_H / 2;
 
   // Determine commit dot color
-  const circleColor =
-    circleIdx < output.length
-      ? PALETTE[output[circleIdx].color % PALETTE.length]
-      : circleIdx < input.length
-        ? PALETTE[input[circleIdx].color % PALETTE.length]
-        : PALETTE[0];
+  const circleColor = getRowColor(row);
 
   /**
    * ? paths will be a array of path/line elements
@@ -410,6 +384,7 @@ const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
       style={{
         transform: "translateZ(0)",
         willChange: "transform",
+        contain: "inherit layout paint size",
       }}
     >
       {paths}
@@ -441,15 +416,14 @@ const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
             cy={cy}
             r={DOT_R + 1}
             fill="var(--color-background, #1e1e1e)"
-            shapeRendering="crispEdges"
             stroke={circleColor}
             strokeWidth={2}
           />
         </g>
       )}
       <foreignObject
-        x={cx - 12}
-        y={cy - 12.3}
+        x={cx - DOT_R}
+        y={cy - DOT_R - 1}
         width={DOT_R * 2}
         height={DOT_R * 2}
       >
@@ -468,38 +442,13 @@ const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
             />
             <AvatarFallback></AvatarFallback>
           </Avatar>
-          {/* // ! Render Tags */}
-          {row.tags.length > 0 && (
-            <Tooltip>
-              <TooltipTrigger>
-                <Badge
-                  className="-end-1.5 -bottom-1.5 absolute size-4.5 rounded-full outline-1 outline-solid bg-background"
-                  style={{
-                    outlineColor: circleColor,
-                  }}
-                  size="sm"
-                  variant={"outline"}
-                >
-                  {row.tags.length === 1 ? <Tag /> : <Tags />}
-                </Badge>
-              </TooltipTrigger>
-              <TooltipPopup>
-                {row.tags.map((tag) => (
-                  <div key={tag.name} className="text-sm">
-                    <span className="text-muted-foreground">Tag:</span>{" "}
-                    {tag.name.replace("refs/tags/", "")}
-                  </div>
-                ))}
-              </TooltipPopup>
-            </Tooltip>
-          )}
 
           {/* // ! Render Stash */}
           {isStash && (
             <Tooltip>
               <TooltipTrigger>
                 <Badge
-                  className="-end-1.5 -bottom-1.5 absolute size-4.5 rounded-full outline-1 outline-solid bg-background"
+                  className="-inset-e-1.5 -bottom-1.5 absolute size-4.5 rounded-full outline-1 outline-solid bg-background"
                   style={{
                     outlineColor: circleColor,
                   }}
@@ -523,4 +472,4 @@ const GraphLane = ({ row, maxLane }: GraphLaneProps) => {
   );
 };
 
-export default GraphLane;
+export default LaneGraph;

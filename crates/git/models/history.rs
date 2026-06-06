@@ -10,6 +10,7 @@ pub enum GraphRowType {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GraphRef {
     pub name: String,
+    pub display_name: String,
     pub kind: GraphRefKind,
     pub is_head: bool,
 }

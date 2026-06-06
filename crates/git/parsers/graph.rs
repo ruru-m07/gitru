@@ -139,16 +139,20 @@ fn parse_refs(raw: &str) -> Vec<GraphRef> {
 
 fn parse_ref(raw: &str) -> GraphRef {
     if let Some(name) = raw.strip_prefix("tag: ") {
+        let name = name.trim();
         return GraphRef {
-            name: name.trim().to_string(),
+            name: name.to_string(),
+            display_name: display_name_for_ref(name),
             kind: GraphRefKind::Tag,
             is_head: false,
         };
     }
 
     if let Some(name) = raw.strip_prefix("HEAD -> ") {
+        let name = name.trim();
         return GraphRef {
-            name: name.trim().to_string(),
+            name: name.to_string(),
+            display_name: display_name_for_ref(name),
             kind: GraphRefKind::Local,
             is_head: true,
         };
@@ -157,6 +161,7 @@ fn parse_ref(raw: &str) -> GraphRef {
     if raw == "refs/stash" || raw.starts_with("stash@{") {
         return GraphRef {
             name: "stash".to_string(),
+            display_name: "stash".to_string(),
             kind: GraphRefKind::Stash,
             is_head: false,
         };
@@ -164,7 +169,51 @@ fn parse_ref(raw: &str) -> GraphRef {
 
     GraphRef {
         name: raw.to_string(),
+        display_name: display_name_for_ref(raw),
         kind: GraphRefKind::Other,
         is_head: false,
+    }
+}
+
+fn display_name_for_ref(name: &str) -> String {
+    for prefix in [
+        "refs/heads/",
+        "refs/remotes/",
+        "refs/tags/",
+        "refs/stash",
+    ] {
+        if let Some(stripped) = name.strip_prefix(prefix) {
+            return stripped.trim_start_matches('/').to_string();
+        }
+    }
+
+    name.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_head_ref_marks_current_branch() {
+        let reference = parse_ref("HEAD -> refs/heads/main");
+
+        assert_eq!(reference.name, "refs/heads/main");
+        assert_eq!(reference.display_name, "main");
+        assert_eq!(reference.kind, GraphRefKind::Local);
+        assert!(reference.is_head);
+    }
+
+    #[test]
+    fn display_names_are_normalized_for_common_refs() {
+        let local = parse_ref("refs/heads/feature/foo");
+        let remote = parse_ref("refs/remotes/origin/main");
+        let tag = parse_ref("refs/tags/v1.2.3");
+        let stash = parse_ref("stash@{0}");
+
+        assert_eq!(local.display_name, "feature/foo");
+        assert_eq!(remote.display_name, "origin/main");
+        assert_eq!(tag.display_name, "v1.2.3");
+        assert_eq!(stash.display_name, "stash");
     }
 }
