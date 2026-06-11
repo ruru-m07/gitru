@@ -407,6 +407,60 @@ fn history_graph_normalizes_refs_and_marks_current_branch() {
 
 #[test]
 #[serial]
+fn history_graph_populates_branch_refs_across_linear_history() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("base.txt", "base", "Initial commit");
+        repo.commit_file("main.txt", "main-1", "Main one");
+        repo.commit_file("main.txt", "main-2", "Main two");
+
+        let svc = setup(&repo);
+        let response = svc.history_graph(default_query(20)).await.unwrap();
+
+        assert!(
+            response
+                .rows
+                .iter()
+                .all(|row| row.branch_refs.iter().any(|ref_info| ref_info.display_name == "main")),
+            "every row in a linear history should carry the current branch label"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn history_graph_marks_remote_tracking_refs_as_remote() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("base.txt", "base", "Initial commit");
+        let _remote_dir = repo.setup_remote();
+
+        repo.create_branch("feature/remote");
+        repo.commit_file("feature.txt", "feature", "Remote feature");
+        repo.push("feature/remote");
+        repo.switch_branch("main");
+        repo.git(&["branch", "-D", "feature/remote"]);
+        repo.fetch();
+
+        let svc = setup(&repo);
+        let mut query = default_query(20);
+        query.include_local = false;
+        query.include_remotes = true;
+
+        let response = svc.history_graph(query).await.unwrap();
+
+        assert!(
+            response.rows.iter().any(|row| row.branch_refs.iter().any(|ref_info| {
+                ref_info.display_name == "origin/feature/remote"
+                    && matches!(ref_info.kind, git::models::graph::GraphRefKind::Remote)
+            })),
+            "expected remote-tracking branch refs to be marked as Remote"
+        );
+    });
+}
+
+#[test]
+#[serial]
 fn history_graph_branch_query_limits_to_selected_branch() {
     run_async(async {
         let repo = TestRepo::new();

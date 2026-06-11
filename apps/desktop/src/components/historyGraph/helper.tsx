@@ -8,6 +8,7 @@ export type GraphLayout = {
 export type ProcessedRow = {
   row: GraphRow;
   color: string;
+  branchRefs: ReturnType<typeof getBranchRefs>;
   tags: ReturnType<typeof getTags>;
   remoteRefs: ReturnType<typeof getRemoteRefs>;
   localBranchRefs: ReturnType<typeof getLocalBranchRefs>;
@@ -30,35 +31,6 @@ function computeGraphLayout(rows: GraphRow[]): GraphLayout {
   }
 
   return { maxLane };
-}
-
-function buildRefList(row: GraphRow): GraphRef[] {
-  const prioritized = [
-    ...row.heads,
-    ...row.tags,
-    ...row.remotes,
-    ...row.stashes,
-  ];
-
-  const seen = new Set<string>();
-  const refs: GraphRef[] = [];
-
-  for (const ref of prioritized) {
-    const key = `${ref.kind}-${ref.name}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      refs.push(ref);
-    }
-  }
-  for (const ref of row.refs) {
-    const key = `${ref.kind}-${ref.name}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      refs.push(ref);
-    }
-  }
-
-  return refs.slice(0, 6);
 }
 
 function refDisplayName(ref: GraphRef) {
@@ -131,6 +103,16 @@ function getTags(refs: GraphRef[]) {
   return refs.filter((ref) => ref.kind === "Tag");
 }
 
+function getBranchRefs(refs: GraphRef[]) {
+  return refs
+    .filter((ref) => ref.kind === "Local" || ref.kind === "Remote")
+    .filter(
+      (ref) =>
+        ref.name !== "refs/heads/HEAD" &&
+        ref.name !== "refs/remotes/origin/HEAD",
+    );
+}
+
 function getRemoteRefs(refs: GraphRef[]) {
   return refs
     .filter((ref) => ref.name !== "refs/remotes/origin/HEAD")
@@ -148,6 +130,7 @@ function processeRows(rows: GraphRow[]): ProcessedRow[] {
     return {
       row,
       color: getRowColor(row),
+      branchRefs: getBranchRefs(row.branch_refs),
       tags: getTags(row.refs),
       remoteRefs: getRemoteRefs(row.refs),
       localBranchRefs: getLocalBranchRefs(row.refs),
@@ -166,13 +149,13 @@ function getColumnStyle(col: number, rows: number): React.CSSProperties {
 
 export {
   badgeVariantForRef,
-  buildRefList,
   buildCurrentBranchPath,
   computeGraphLayout,
   getCurrentBranchRef,
   isCurrentBranchRow,
   refDisplayName,
   getRowColor,
+  getBranchRefs,
   getTags,
   getRemoteRefs,
   getLocalBranchRefs,

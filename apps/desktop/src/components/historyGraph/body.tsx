@@ -12,7 +12,7 @@ import Timestamp from "./columns/timestamp";
 import { computeGraphLayout, getColumnStyle, processeRows } from "./helper";
 
 const columns = [
-  { id: "branchs-col", Component: Branch, colWidth: "300px" },
+  { id: "branchs-col", Component: Branch, colWidth: "400px" },
   { id: "lanes-col", Component: Lanes, colWidth: "300px" },
   { id: "summary-col", Component: Summary, colWidth: "1fr" },
   { id: "commiters-col", Component: Commiters, colWidth: "fit-content(100px)" },
@@ -42,7 +42,7 @@ const GraphBody = ({
 
   const hoverClasses = [
     cn("bg-secondary/70"),
-    cn("[&_[data-branch-hover]]:bg-blue-500/30"),
+    cn("[&_[data-hidden-branch-refs]]:flex"),
   ];
 
   const processedRows = useMemo(() => processeRows(rows), [rows]);

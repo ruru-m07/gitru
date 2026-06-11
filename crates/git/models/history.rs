@@ -37,6 +37,8 @@ pub struct GraphRow {
     #[serde(rename = "type")]
     pub r#type: GraphRowType,
     pub refs: Vec<GraphRef>,
+    #[serde(default)]
+    pub branch_refs: Vec<GraphRef>,
     pub heads: Vec<GraphRef>,
     pub remotes: Vec<GraphRef>,
     pub tags: Vec<GraphRef>,

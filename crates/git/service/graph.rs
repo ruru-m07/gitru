@@ -37,6 +37,8 @@ struct Swimlane {
     color: usize,
     /// Whether this lane carries a stash flow (dashed rendering).
     is_stash: bool,
+    /// Branch refs that should continue to the next commit on this lane.
+    branch_refs: Vec<GraphRefDto>,
 }
 
 const NUM_COLORS: usize = 10;
@@ -63,6 +65,8 @@ struct ProcessResult {
     lane: usize,
     /// Parent edges: (parent_oid, column_in_output_swimlanes).
     parent_edges: Vec<(String, usize)>,
+    /// Branch refs that apply to the current commit row.
+    branch_refs: Vec<GraphRefDto>,
     /// Swimlanes entering this row (snapshot *before* processing).
     input_swimlanes: Vec<Swimlane>,
     /// Swimlanes leaving this row (snapshot *after* processing).
@@ -83,6 +87,32 @@ impl GraphState {
         c
     }
 
+    fn merge_branch_refs(
+        &self,
+        existing: &[GraphRefDto],
+        entry_refs: &[GraphRefDto],
+        keep_head_flags: bool,
+    ) -> Vec<GraphRefDto> {
+        let mut refs = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+
+        for reference in entry_refs.iter().chain(existing.iter()) {
+            let key = (reference.kind, reference.name.as_str());
+            if !seen.insert(key) {
+                continue;
+            }
+
+            refs.push(GraphRefDto {
+                name: reference.name.clone(),
+                display_name: reference.display_name.clone(),
+                kind: reference.kind,
+                is_head: keep_head_flags && reference.is_head,
+            });
+        }
+
+        refs
+    }
+
     /// Process a commit and produce input/output swimlane snapshots.
     ///
     /// This follows the same algorithm as VS Code's
@@ -95,8 +125,20 @@ impl GraphState {
     ///    - Otherwise: pass through.
     /// 3. Append new lanes for any additional (secondary) parents.
     /// 4. `self.lanes = output`
-    fn process_commit(&mut self, oid: &str, parents: &[String], is_stash: bool) -> ProcessResult {
+    fn process_commit(
+        &mut self,
+        oid: &str,
+        parents: &[String],
+        is_stash: bool,
+        entry_branch_refs: &[GraphRefDto],
+    ) -> ProcessResult {
         let input_swimlanes = self.lanes.clone();
+        let current_lane_branch_refs = self
+            .lanes
+            .iter()
+            .find(|lane| lane.id == oid)
+            .map(|lane| lane.branch_refs.clone())
+            .unwrap_or_default();
 
         // Find this commit's position in the input lanes
         let commit_index = self.lanes.iter().position(|l| l.id == oid);
@@ -106,6 +148,16 @@ impl GraphState {
         let mut output: Vec<Swimlane> = Vec::new();
         let mut first_parent_added = false;
         let mut commit_lane_in_output = commit_lane_in_input;
+        let propagated_branch_refs = self.merge_branch_refs(
+            &current_lane_branch_refs,
+            entry_branch_refs,
+            false,
+        );
+        let row_branch_refs = self.merge_branch_refs(
+            &current_lane_branch_refs,
+            entry_branch_refs,
+            true,
+        );
 
         if !parents.is_empty() {
             // Walk existing lanes, building the output
@@ -119,6 +171,7 @@ impl GraphState {
                             id: parents[0].clone(),
                             color: node.color,
                             is_stash: is_stash_carry,
+                            branch_refs: propagated_branch_refs.clone(),
                         });
                         first_parent_added = true;
                     }
@@ -155,6 +208,7 @@ impl GraphState {
                 id: parents[0].clone(),
                 color,
                 is_stash,
+                branch_refs: propagated_branch_refs.clone(),
             });
         }
 
@@ -176,6 +230,7 @@ impl GraphState {
                     id: parent.clone(),
                     color,
                     is_stash: false,
+                    branch_refs: Vec::new(),
                 });
                 parent_edges.push((parent.clone(), lane_idx));
             }
@@ -196,6 +251,7 @@ impl GraphState {
         ProcessResult {
             lane: commit_lane_in_output,
             parent_edges,
+            branch_refs: row_branch_refs,
             input_swimlanes,
             output_swimlanes,
         }
@@ -259,14 +315,14 @@ pub fn history_graph(
     let search_context = search_query
         .as_ref()
         .and_then(|_| resolve_search_context(repo_path));
-    let remote_names = list_remote_names(repo_path)?;
+    let remote_refs = list_remote_refs(repo_path)?;
 
     let mut rows = Vec::with_capacity(query.limit);
     let mut exhausted = false;
 
     while rows.len() < query.limit {
         let batch_limit = DEFAULT_CHUNK_SIZE.min(query.limit * 2).max(50);
-        let entries = fetch_log_entries(repo_path, query, cursor, batch_limit, &remote_names)?;
+        let entries = fetch_log_entries(repo_path, query, cursor, batch_limit, &remote_refs)?;
         let batch_count = entries.len();
 
         if batch_count == 0 {
@@ -284,7 +340,9 @@ pub fn history_graph(
                 .refs
                 .iter()
                 .any(|r| matches!(r.kind, GraphRefKind::Stash));
-            let result = graph_state.process_commit(&entry.id, &entry.parents, is_stash);
+            let branch_refs = build_branch_refs(&entry);
+            let result =
+                graph_state.process_commit(&entry.id, &entry.parents, is_stash, &branch_refs);
 
             if let Some(ref query) = search_query
                 && !matches_search(&entry, query, search_context.as_ref())
@@ -327,6 +385,7 @@ pub fn history_graph(
                     .collect(),
                 r#type: row_type,
                 refs,
+                branch_refs: result.branch_refs,
                 heads,
                 remotes,
                 tags,
@@ -405,12 +464,12 @@ fn fetch_log_entries(
     query: &HistoryQuery,
     skip: usize,
     limit: usize,
-    remote_names: &[String],
+    remote_refs: &[String],
 ) -> Result<Vec<GraphLogEntry>, String> {
     let mut args = build_log_args(repo_path, query, skip, limit)?;
     let output = run_git(repo_path, &mut args)?;
     let mut entries = parse_log_entries(&output);
-    normalize_refs(&mut entries, remote_names);
+    normalize_refs(&mut entries, remote_refs);
     Ok(entries)
 }
 
@@ -612,11 +671,11 @@ fn rebuild_graph_state(
 ) -> Result<GraphState, String> {
     let mut state = GraphState::new();
     let mut skip = 0usize;
-    let remote_names = list_remote_names(repo_path)?;
+    let remote_refs = list_remote_refs(repo_path)?;
 
     while skip < cursor {
         let limit = DEFAULT_CHUNK_SIZE.min(cursor - skip).max(50);
-        let entries = fetch_log_entries(repo_path, query, skip, limit, &remote_names)?;
+        let entries = fetch_log_entries(repo_path, query, skip, limit, &remote_refs)?;
         if entries.is_empty() {
             break;
         }
@@ -626,7 +685,8 @@ fn rebuild_graph_state(
                 .refs
                 .iter()
                 .any(|r| matches!(r.kind, GraphRefKind::Stash));
-            let _ = state.process_commit(&entry.id, &entry.parents, is_stash);
+            let branch_refs = build_branch_refs(entry);
+            let _ = state.process_commit(&entry.id, &entry.parents, is_stash, &branch_refs);
             skip += 1;
             if skip >= cursor {
                 break;
@@ -669,6 +729,22 @@ fn build_refs(entry: &GraphLogEntry) -> Vec<GraphRefDto> {
     entry
         .refs
         .iter()
+        .map(|reference| GraphRefDto {
+            name: reference.name.clone(),
+            display_name: reference.display_name.clone(),
+            kind: map_ref_kind(reference.kind),
+            is_head: reference.is_head,
+        })
+        .collect()
+}
+
+fn build_branch_refs(entry: &GraphLogEntry) -> Vec<GraphRefDto> {
+    entry
+        .refs
+        .iter()
+        .filter(|reference| {
+            matches!(reference.kind, GraphRefKind::Local | GraphRefKind::Remote)
+        })
         .map(|reference| GraphRefDto {
             name: reference.name.clone(),
             display_name: reference.display_name.clone(),
@@ -841,8 +917,11 @@ fn git_config_value(repo_path: &str, key: &str) -> Option<String> {
     if value.is_empty() { None } else { Some(value) }
 }
 
-fn list_remote_names(repo_path: &str) -> Result<Vec<String>, String> {
-    let output = run_git_command(repo_path, &["remote"])?;
+fn list_remote_refs(repo_path: &str) -> Result<Vec<String>, String> {
+    let output = run_git_command(
+        repo_path,
+        &["for-each-ref", "--format=%(refname)", "refs/remotes"],
+    )?;
 
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).to_string());
@@ -867,17 +946,14 @@ fn run_git_command(repo_path: &str, args: &[&str]) -> Result<std::process::Outpu
         .map_err(|e| e.to_string())
 }
 
-fn normalize_refs(entries: &mut [GraphLogEntry], remote_names: &[String]) {
+fn normalize_refs(entries: &mut [GraphLogEntry], remote_refs: &[String]) {
     for entry in entries.iter_mut() {
         for reference in entry.refs.iter_mut() {
             if reference.kind != GraphRefKind::Other {
                 continue;
             }
 
-            let is_remote = remote_names.iter().any(|remote| {
-                let prefix = format!("{remote}/");
-                reference.name.starts_with(&prefix)
-            });
+            let is_remote = remote_refs.iter().any(|remote_ref| reference.name == *remote_ref);
 
             reference.kind = if is_remote {
                 GraphRefKind::Remote
