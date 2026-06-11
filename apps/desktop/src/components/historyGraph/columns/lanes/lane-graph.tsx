@@ -10,7 +10,6 @@ import {
   TooltipPopup,
   TooltipTrigger,
 } from "@gitru/ui/components/tooltip";
-import { Tag, Tags } from "lucide-react";
 import { getRowColor } from "../../helper";
 import { PALETTE } from "./color-palettes";
 

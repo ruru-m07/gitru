@@ -10,7 +10,11 @@ const SummaryCell = React.memo(({ row }: SummaryCellProps) => {
     row: { commit },
   } = row;
   return (
-    <div className="flex items-center gap-2 px-2 min-w-0 relative">
+    <div
+      data-cell
+      data-cell-id={row.row.oid}
+      className="flex items-center gap-2 px-2 min-w-0 relative"
+    >
       <span className="flex items-center min-w-0">
         <span className="min-w-0 truncate text-sm">{commit.summary}</span>
       </span>

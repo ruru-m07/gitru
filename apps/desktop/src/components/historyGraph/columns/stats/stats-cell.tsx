@@ -11,7 +11,11 @@ const StatsCell = React.memo(({ row }: StatsCellProps) => {
   const { row: innerRow } = row;
 
   return (
-    <div className="flex items-center justify-between gap-2 border-l px-2">
+    <div
+      data-cell
+      data-cell-id={innerRow.oid}
+      className="flex items-center justify-between gap-2 border-l px-2"
+    >
       <div className="flex items-center justify-center gap-1 text-muted-foreground">
         <FileDiff className="size-4 opacity-75" />
         <span className="flex text-sm gap-2 font-mono tabular-nums">

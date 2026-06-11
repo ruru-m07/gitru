@@ -1,6 +1,7 @@
 import { Branch, GraphRef } from "@gitru/commands";
 import { cn } from "@gitru/ui/lib/utils";
 import { CircleDotDashed, Cloud, GitBranch, Tag } from "lucide-react";
+import { CSSVars } from "@/types/app";
 import { ProcessedRow } from "../../helper";
 
 type BranchBadgeProps = {
@@ -8,10 +9,6 @@ type BranchBadgeProps = {
   currentBranch: Branch | null;
   ref: GraphRef;
   type?: "local" | "remote" | "tag";
-};
-
-type CSSVars = React.CSSProperties & {
-  [key: `--${string}`]: string | number;
 };
 
 const BranchBadge = ({ row, ref, currentBranch, type }: BranchBadgeProps) => {

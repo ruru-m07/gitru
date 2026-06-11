@@ -32,6 +32,8 @@ const LanesCell = React.memo(({ row, maxLane }: LanesCellProps) => {
         height: ROW_H,
       }}
       className="relative"
+      data-cell
+      data-cell-id={row.row.oid}
     >
       <LaneBackground cx={cx} color={color} disableLeftLine={!isAnyRefs} />
       <LaneGraph row={innerRow} maxLane={maxLane} />

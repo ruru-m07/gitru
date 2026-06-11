@@ -19,7 +19,11 @@ const CommitersCell = React.memo(({ row }: CommitersCellProps) => {
   const { row: commitRow } = row;
 
   return (
-    <div className="flex items-center gap-2 border-l px-2 min-w-0">
+    <div
+      data-cell
+      data-cell-id={commitRow.oid}
+      className="flex items-center gap-2 border-l px-2 min-w-0"
+    >
       <div className="flex group">
         <Tooltip>
           <TooltipTrigger

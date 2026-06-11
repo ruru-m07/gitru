@@ -1,7 +1,7 @@
 import { GraphRow } from "@gitru/commands";
-import { useMemo, useRef } from "react";
+import { cn } from "@gitru/ui/lib/utils";
+import { useEffect, useMemo, useRef } from "react";
 import { useOnInView } from "react-intersection-observer";
-
 import Branch from "./columns/branch";
 import CommitHash from "./columns/commit-hash";
 import Commiters from "./columns/commiters";
@@ -9,7 +9,6 @@ import Lanes from "./columns/lanes";
 import Stats from "./columns/stats";
 import Summary from "./columns/summary";
 import Timestamp from "./columns/timestamp";
-
 import { computeGraphLayout, getColumnStyle, processeRows } from "./helper";
 
 const columns = [
@@ -41,6 +40,11 @@ const GraphBody = ({
 }: GraphBodyProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const hoverClasses = [
+    cn("bg-secondary/70"),
+    cn("[&_[data-branch-hover]]:bg-blue-500/30"),
+  ];
+
   const processedRows = useMemo(() => processeRows(rows), [rows]);
   const layout = useMemo(() => computeGraphLayout(rows), [rows]);
   const TOTAL_ROWS = useMemo(() => rows.length, [rows]);
@@ -58,6 +62,68 @@ const GraphBody = ({
     },
   );
 
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root) return;
+
+    let activeRowId: string | undefined | null = null;
+
+    const map = new Map<string, HTMLElement[]>();
+
+    const getRowEls = (rowId: string) => {
+      let els = map.get(rowId);
+      if (!els) {
+        els = Array.from(
+          root.querySelectorAll(`[data-cell-id="${rowId}"]`),
+        ) as HTMLElement[];
+        map.set(rowId, els);
+      }
+      return els;
+    };
+
+    const apply = (rowId: string | undefined | null) => {
+      if (activeRowId === rowId) return;
+
+      // remove old
+      if (activeRowId) {
+        getRowEls(activeRowId).forEach((el) =>
+          hoverClasses.forEach((c) => el.classList.remove(c)),
+        );
+      }
+
+      // apply new
+      if (rowId) {
+        getRowEls(rowId).forEach((el) =>
+          hoverClasses.forEach((c) => el.classList.add(c)),
+        );
+      }
+
+      activeRowId = rowId;
+    };
+
+    const onMove = (e: PointerEvent) => {
+      const el = (e.target as Element)?.closest?.("[data-cell]");
+      if (!el) {
+        apply(null);
+        return;
+      }
+
+      const rowId = (el as HTMLElement).dataset.cellId;
+      console.log(rowId);
+      apply(rowId);
+    };
+
+    const onLeave = () => apply(null);
+
+    root.addEventListener("pointerover", onMove);
+    root.addEventListener("pointerleave", onLeave);
+
+    return () => {
+      root.removeEventListener("pointerover", onMove);
+      root.removeEventListener("pointerleave", onLeave);
+    };
+  }, []);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div
@@ -73,6 +139,9 @@ const GraphBody = ({
           className="overscroll-y-contain w-full overflow-x-hidden grid"
           style={{
             gridTemplateColumns: `${columns.map((c) => c.colWidth).join(" ")}`,
+            transform: "translateZ(0)",
+            willChange: "transform",
+            contain: "paint",
           }}
         >
           {columns.map(({ Component }, idx) => (

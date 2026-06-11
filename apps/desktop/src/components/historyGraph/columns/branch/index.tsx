@@ -1,10 +1,11 @@
 import React from "react";
-import { useGetCurrentBranch } from "@/hooks";
+import { useGetCurrentBranch, useGetStatusAheadBehind } from "@/hooks";
 import { GraphColumnsType } from "../../helper";
 import BranchCell from "./branch-cell";
 
 const Branch = React.memo(({ rows, ...restProps }: GraphColumnsType) => {
   const { data: currentBranch } = useGetCurrentBranch();
+  const { data: statusAheadBehind } = useGetStatusAheadBehind();
 
   return (
     <div
@@ -17,6 +18,7 @@ const Branch = React.memo(({ rows, ...restProps }: GraphColumnsType) => {
             key={row.row.oid}
             currentBranch={currentBranch ?? null}
             row={row}
+            enablePushButton={(statusAheadBehind?.ahead || 0) > 0}
           />
         );
       })}
