@@ -13,6 +13,7 @@ use std::sync::{
 };
 use tauri::Emitter;
 
+use crate::R;
 use crate::runner::{git_binary_path, git_path_env};
 
 pub const CLONE_PROGRESS_EVENT: &str = "git://clone-progress";
@@ -105,7 +106,7 @@ impl RepositoryService {
         url: &str,
         destination_path: &str,
         operation_id: &str,
-        app: &tauri::AppHandle,
+        app: &tauri::AppHandle<R>,
     ) -> Result<(), String> {
         app.emit(
             CLONE_PROGRESS_EVENT,
@@ -283,7 +284,7 @@ fn run_git2_clone(
     repo_url: &str,
     destination_path: &str,
     operation_id: &str,
-    app: &tauri::AppHandle,
+    app: &tauri::AppHandle<R>,
     cancel_flag: Arc<AtomicBool>,
 ) -> Result<(), String> {
     let destination = Path::new(destination_path).to_path_buf();
@@ -507,7 +508,7 @@ fn run_git2_clone(
     }
 }
 
-fn emit_transfer_event(app: &tauri::AppHandle, operation_id: &str, stats: &Progress<'_>) {
+fn emit_transfer_event(app: &tauri::AppHandle<R>, operation_id: &str, stats: &Progress<'_>) {
     let transfer = CloneTransferStats {
         total_objects: stats.total_objects(),
         received_objects: stats.received_objects(),

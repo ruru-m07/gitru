@@ -4,7 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { git = "https://github.com/tauri-apps/tauri", branch = "feat/cef", features = [
+    "common-controls-v6",
+    "compression",
+], default-features = false }
 tokio = { version = "1", features = ["process", "io-util", "time", "macros"] }
 serde = "1.0.219"
 base64 = "0.22"

@@ -7,6 +7,8 @@ use tauri::Emitter;
 use tauri_plugin_updater::UpdaterExt;
 use url::Url;
 
+use crate::R;
+
 const DEFAULT_UPDATER_BASE_URL: &str = "https://release.gitru.app";
 
 #[derive(Serialize)]
@@ -50,7 +52,7 @@ fn endpoint_for_channel(channel: &str) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn check_for_update_by_channel(
-    app: tauri::AppHandle,
+    app: tauri::AppHandle<R>,
     channel: String,
 ) -> Result<UpdateCheckResponse, String> {
     let channel = normalize_channel(&channel)?.to_string();
@@ -93,7 +95,7 @@ pub async fn check_for_update_by_channel(
 
 #[tauri::command]
 pub async fn download_and_install_update_by_channel(
-    app: tauri::AppHandle,
+    app: tauri::AppHandle<R>,
     channel: String,
 ) -> Result<String, String> {
     let channel = normalize_channel(&channel)?.to_string();

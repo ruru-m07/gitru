@@ -2,5 +2,15 @@
 resolver = "2"
 
 members = [
-  "apps/desktop/src-tauri", "crates/git", "crates/ipc", "crates/logger",
+  "apps/desktop/src-tauri",
+  "crates/git",
+  "crates/ipc",
+  "crates/logger",
 ]
+
+[patch.crates-io]
+tauri = { git = "https://github.com/tauri-apps/tauri", branch = "feat/cef" }
+tauri-plugin = { git = "https://github.com/tauri-apps/tauri", branch = "feat/cef" }
+tauri-runtime = { git = "https://github.com/tauri-apps/tauri", branch = "feat/cef" }
+tauri-utils = { git = "https://github.com/tauri-apps/tauri", branch = "feat/cef" }
+time = { git = "https://github.com/time-rs/time", tag = "v0.3.30" }

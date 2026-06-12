@@ -13,6 +13,7 @@ use std::{
 use tauri::Emitter;
 use uuid::Uuid;
 
+use crate::R;
 use crate::repo_manager::{RepoManager, RepositoryInfo, SELECTED_REPO_KEY};
 use crate::session_manager::{SessionManager, SessionNavigationInfo};
 
@@ -120,7 +121,7 @@ pub async fn clone_repository(
     destination_path: String,
     operation_id: String,
     manager: tauri::State<'_, Arc<Mutex<RepoManager>>>,
-    app: tauri::AppHandle,
+    app: tauri::AppHandle<R>,
 ) -> Result<RepositoryInfo, String> {
     RepositoryService::clone_repository(&url, &destination_path, &operation_id, &app).await?;
 
@@ -142,7 +143,7 @@ pub async fn init_repository(
 #[logger::logger]
 pub async fn cancel_clone_repository(
     operation_id: String,
-    app: tauri::AppHandle,
+    app: tauri::AppHandle<R>,
 ) -> Result<bool, String> {
     let cancelled = RepositoryService::cancel_clone_repository(&operation_id)?;
 

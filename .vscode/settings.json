@@ -59,5 +59,8 @@
   "json.schemaDownload.trustedDomains": {
     "https://schema.tauri.app": true,
     "https://ui.shadcn.com": true
+  },
+  "[toml]": {
+    "editor.defaultFormatter": "tamasfe.even-better-toml"
   }
 }

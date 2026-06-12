@@ -15,27 +15,36 @@ name = "gitru_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { git = "https://github.com/tauri-apps/tauri", branch = "feat/cef", features = [
+] }
 
 [dependencies]
-tauri = { version = "2", features = ["unstable"] }
+# tauri = { version = "2", features = ["unstable"] }
+tauri = { git = "https://github.com/tauri-apps/tauri", branch = "feat/cef", features = [
+    "common-controls-v6",
+    "compression",
+    "unstable",
+], default-features = false }
 serde = { version = "1", features = ["derive"] }
 ipc = { path = "../../../crates/ipc" }
 git = { path = "../../../crates/git" }
 tokio = { version = "1", features = ["full"] }
-tauri-plugin-opener = "2"
-tauri-plugin-process = "2"
-tauri-plugin-typegen = "0.1.1"
-tauri-plugin-store = "2"
-tauri-plugin-dialog = "2"
-tauri-plugin-window-state = "2"
-tauri-plugin-updater = "2.9.0"
-tauri-plugin-notification = "2"
+tauri-plugin-opener = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "feat/cef" }
+tauri-plugin-process = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "feat/cef" }
+tauri-plugin-store = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "feat/cef" }
+tauri-plugin-dialog = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "feat/cef" }
+tauri-plugin-window-state = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "feat/cef" }
+tauri-plugin-updater = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "feat/cef" }
+tauri-plugin-notification = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "feat/cef" }
+tauri-plugin-log = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "feat/cef" }
 serde_json = "1.0.145"
-openssl = { version = "0.10.80", features = ["vendored"] } 
-tauri-plugin-log = "2"
+openssl = { version = "0.10.80", features = ["vendored"] }
 log = "0.4"
 url = "2"
+reqwest = { version = "0.13", default-features = false, features = [
+    "native-tls",
+] }
 
-[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-updater = "2"
+[features]
+default = ["cef"]
+cef = ["tauri/cef"]

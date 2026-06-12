@@ -12,6 +12,8 @@ pub mod parsers;
 pub mod runner;
 pub mod service;
 
+pub type R = tauri::Cef;
+
 pub struct AppState {
     pub services: RwLock<HashMap<String, Arc<RepoServices>>>,
 }

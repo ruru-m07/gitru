@@ -14,8 +14,10 @@ use tokio::sync::RwLock;
 mod commands;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub type R = tauri::Cef;
+
 pub fn run() {
-    tauri::Builder::default()
+    tauri::Builder::<R>::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
@@ -98,7 +100,7 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-fn setup_managers(app: &mut App) {
+fn setup_managers(app: &mut App<R>) {
     let app_handle = app.handle().clone();
 
     let repo_manager = RepoManager::new(app_handle.clone());

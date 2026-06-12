@@ -1,3 +1,4 @@
+use crate::R;
 use crate::commands::RepoSitoryStore;
 use git::core::RepoServices;
 use serde::{Deserialize, Serialize};
@@ -38,15 +39,15 @@ impl From<RepoSitoryStore> for RepositoryInfo {
 }
 
 pub struct RepoManager {
-    pub app: AppHandle,
+    pub app: AppHandle<R>,
 }
 
 impl RepoManager {
-    pub fn new(app: AppHandle) -> Self {
+    pub fn new(app: AppHandle<R>) -> Self {
         Self { app }
     }
 
-    pub fn get_store(&self) -> Result<Arc<tauri_plugin_store::Store<tauri::Wry>>, String> {
+    pub fn get_store(&self) -> Result<Arc<tauri_plugin_store::Store<R>>, String> {
         self.app
             .store(STORE_FILE)
             .map_err(|e| format!("Failed to get store: {e}"))
