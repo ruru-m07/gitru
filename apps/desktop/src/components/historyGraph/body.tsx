@@ -30,6 +30,8 @@ type GraphBodyProps = {
   fetchNextPage: () => void;
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
+  onVisibleRangeChange?: (range: { start: number; end: number }) => void;
+  scrollerRef?: React.RefObject<HTMLDivElement | null>;
 };
 
 const GraphBody = ({
@@ -37,8 +39,11 @@ const GraphBody = ({
   fetchNextPage,
   hasNextPage,
   isFetchingNextPage,
+  onVisibleRangeChange,
+  scrollerRef,
 }: GraphBodyProps) => {
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const internalScrollRef = useRef<HTMLDivElement>(null);
+  const scrollRef = scrollerRef ?? internalScrollRef;
 
   const hoverClasses = [
     cn("bg-secondary/70"),
@@ -61,6 +66,58 @@ const GraphBody = ({
       rootMargin: "500px",
     },
   );
+
+  // Compute visible range from scroll position (index in the rows array = global index for current filter view).
+  const ROW_H = 32;
+
+  // Throttled visible range reporter to reduce parent re-renders / lag.
+  const rafRef = useRef<number | null>(null);
+  const lastReportedRef = useRef<{ start: number; end: number } | null>(null);
+
+  const reportVisibleRange = (root: HTMLDivElement) => {
+    if (!onVisibleRangeChange) return;
+
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+
+    rafRef.current = requestAnimationFrame(() => {
+      const start = Math.max(0, Math.floor(root.scrollTop / ROW_H));
+      const viewportEnd = Math.ceil((root.scrollTop + root.clientHeight) / ROW_H);
+      const end = Math.min(Math.max(start, viewportEnd - 1), rows.length - 1);
+
+      const next = { start, end };
+      const last = lastReportedRef.current;
+
+      // Only notify if the range actually changed (avoids unnecessary updates)
+      if (!last || last.start !== next.start || last.end !== next.end) {
+        lastReportedRef.current = next;
+        onVisibleRangeChange(next);
+      }
+      rafRef.current = null;
+    });
+  };
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    reportVisibleRange(e.currentTarget);
+  };
+
+  // Report initial visible range when rows or scroller is ready
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (root && onVisibleRangeChange) {
+      // small delay to let layout settle
+      const id = window.setTimeout(() => {
+        if (root) reportVisibleRange(root);
+      }, 0);
+      return () => window.clearTimeout(id);
+    }
+  }, [rows.length, onVisibleRangeChange]);
+
+  // Cleanup any pending raf
+  useEffect(() => {
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const root = scrollRef.current;
@@ -109,7 +166,6 @@ const GraphBody = ({
       }
 
       const rowId = (el as HTMLElement).dataset.cellId;
-      console.log(rowId);
       apply(rowId);
     };
 
@@ -134,6 +190,7 @@ const GraphBody = ({
           willChange: "transform",
           contain: "layout paint size",
         }}
+        onScroll={onVisibleRangeChange ? handleScroll : undefined}
       >
         <div
           className="overscroll-y-contain w-full overflow-x-hidden grid"

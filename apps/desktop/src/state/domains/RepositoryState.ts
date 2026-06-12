@@ -15,10 +15,13 @@ import {
   gitDiscard,
   gitFetch,
   gitRemove,
+  CommitOverview,
   HistoryGraphParams,
+  HistoryOverviewParams,
   hasUncommittedChanges,
   history,
   historyGraph,
+  historyOverview,
   lastCommit,
   listBranches,
   PatchRange,
@@ -460,7 +463,15 @@ class Commit extends StateDomain {
     return data;
   }
 
-  getQueryKey(key: "last" | "getCommitById" | "history" | "historyGraph") {
+  async historyOverview(params: HistoryOverviewParams["query"]): Promise<CommitOverview> {
+    const data = await historyOverview({
+      contextId: this.contextId,
+      query: params,
+    });
+    return data;
+  }
+
+  getQueryKey(key: "last" | "getCommitById" | "history" | "historyGraph" | "historyOverview") {
     return [...this.baseKey, key];
   }
 

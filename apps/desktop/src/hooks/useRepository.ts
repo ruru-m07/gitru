@@ -10,8 +10,10 @@ import type {
   FileStatusKind,
   FullCommitInfo,
   GetStatusResponse,
+  CommitOverview,
   HistoryGraphParams,
   HistoryGraphResponse,
+  HistoryOverviewParams,
   PatchRange,
   RepositoryOrigin,
   UncommittedChangesStrategy,
@@ -263,6 +265,50 @@ export function useGitHistoryGraph(
       ]),
       baseParams,
     ],
+  });
+}
+
+export function useGitHistoryOverview(
+  params: Partial<HistoryOverviewParams["query"]> = {},
+  options?: {
+    enabled?: boolean;
+  },
+) {
+  const repo = useActiveRepositoryState();
+  const baseParams: HistoryOverviewParams["query"] = {
+    limit: params.limit ?? 0, // ignored by backend for overview (returns full)
+    cursor: params.cursor,
+    search: params.search,
+    branch: params.branch,
+    graph_state: params.graph_state,
+    include_local: params.include_local ?? true,
+    include_remotes: params.include_remotes ?? false,
+    include_tags: params.include_tags ?? false,
+    include_stash: params.include_stash ?? false,
+  };
+
+  return useQuery<CommitOverview | null, Error>({
+    enabled: (options?.enabled ?? true) && !!repo,
+    queryKey: [
+      ...(repo?.commit.getQueryKey("historyOverview") ?? [
+        "repository",
+        "none",
+        "commit",
+        "historyOverview",
+      ]),
+      baseParams,
+    ],
+    queryFn: async () => {
+      if (!repo) return null;
+      try {
+        const result = await repo.commit.historyOverview(baseParams);
+        return result;
+      } catch (err) {
+        console.error('[useGitHistoryOverview] invoke error', err);
+        throw err;
+      }
+    },
+    staleTime: 30_000,
   });
 }
 

@@ -8,7 +8,7 @@ use crate::models::graph::{
     GraphLogEntry, GraphRefKind, GraphSearchKey, GraphSearchQuery, HistoryQuery,
 };
 use crate::models::history::{
-    GraphPaging, GraphRef as GraphRefDto, GraphRow, GraphRowType, HistoryGraphResponse, ParentEdge,
+    CommitOverview, GraphPaging, GraphRef as GraphRefDto, GraphRow, GraphRowType, HistoryGraphResponse, ParentEdge,
     Swimlane as SwimlaneDto,
 };
 use crate::parsers::graph::{LOG_FORMAT, parse_log_entries, parse_search_query};
@@ -457,6 +457,219 @@ pub fn history_graph(
             has_more,
         },
     })
+}
+
+/// Lightweight overview for the commit activity chart/minimap.
+/// Returns a compact series (parallel arrays) + metadata.
+/// Uses the *same* revision filter as history_graph.
+/// When a search is active we apply the identical post-filter (matches_search) so that
+/// the chart domain + indices line up with what the list will display.
+/// All graph topology / swimlane / heavy per-row work is skipped.
+pub fn history_overview(
+    repo_path: &str,
+    query: &HistoryQuery,
+) -> Result<CommitOverview, String> {
+    let search_query = query.search.as_deref().map(parse_search_query);
+    let search_context = search_query
+        .as_ref()
+        .and_then(|_| resolve_search_context(repo_path));
+    let remote_refs = list_remote_refs(repo_path)?;
+
+    // Fast path when no search: we can use cheap rev-list count + ordered ids.
+    // We cap the series at a few thousand points for responsiveness on large histories.
+    // The returned `total` is the true count (for scaling / future full overview).
+    // The series always covers the most recent commits (index 0..series_len).
+    const MAX_OVERVIEW_SERIES: usize = 8192;
+
+    if search_query.is_none() {
+        let rev_args = build_revision_args(repo_path, query)?;
+        let total = rev_list_count(repo_path, &rev_args)?;
+        if total == 0 {
+            let _head = current_head_oid(repo_path).unwrap_or_default();
+            return Ok(CommitOverview {
+                total: 0,
+                head_index: 0,
+                insertions: Vec::new(),
+                deletions: Vec::new(),
+                timestamps: None,
+                oids: None,
+            });
+        }
+
+        let series_len = total.min(MAX_OVERVIEW_SERIES);
+        let head_oid = current_head_oid(repo_path)?;
+        let ids_in_order = fetch_ordered_ids(repo_path, &rev_args, series_len)?;
+        let head_index = ids_in_order
+            .iter()
+            .position(|id| id == &head_oid)
+            .unwrap_or(0);
+
+        let stats_map = fetch_shortstat_map(repo_path, query, 0, series_len)?;
+
+        let mut insertions = Vec::with_capacity(series_len);
+        let mut deletions = Vec::with_capacity(series_len);
+        for id in &ids_in_order {
+            let st = stats_map.get(id).cloned().unwrap_or(CommitStats {
+                insertions: 0,
+                deletions: 0,
+                files_changed: 0,
+            });
+            insertions.push(st.insertions as u32);
+            deletions.push(st.deletions as u32);
+        }
+
+        return Ok(CommitOverview {
+            total,
+            head_index,
+            insertions,
+            deletions,
+            timestamps: None,
+            oids: None,
+        });
+    }
+
+    // Search path: must apply the same filter the list uses so indices align.
+    // We still avoid GraphState, swimlanes, FullCommitInfo.files, etc.
+    let mut ids_in_order: Vec<String> = Vec::new();
+    let mut stats_map: std::collections::HashMap<String, CommitStats> = std::collections::HashMap::new();
+
+    // Collect in batches (reuse the chunking style from history_graph).
+    let mut cursor: usize = 0;
+    const BATCH: usize = 500;
+
+    loop {
+        let entries = fetch_log_entries(repo_path, query, cursor, BATCH, &remote_refs)?;
+        if entries.is_empty() {
+            break;
+        }
+
+        // Stats for this batch
+        let batch_stats = fetch_shortstat_map(repo_path, query, cursor, entries.len())?;
+
+        for entry in &entries {
+            cursor += 1;
+
+            if let Some(ref sq) = search_query {
+                if !matches_search(entry, sq, search_context.as_ref()) {
+                    continue;
+                }
+            }
+
+            let st = batch_stats
+                .get(&entry.id)
+                .cloned()
+                .unwrap_or(CommitStats {
+                    insertions: 0,
+                    deletions: 0,
+                    files_changed: 0,
+                });
+
+            ids_in_order.push(entry.id.clone());
+            stats_map.insert(entry.id.clone(), st);
+
+            // Hard safety cap for pathological cases (search that matches almost everything).
+            if ids_in_order.len() >= 200_000 {
+                break;
+            }
+        }
+
+        if entries.len() < BATCH {
+            break;
+        }
+        if ids_in_order.len() >= 200_000 {
+            break;
+        }
+    }
+
+    let total = ids_in_order.len();
+    if total == 0 {
+        return Ok(CommitOverview {
+            total: 0,
+            head_index: 0,
+            insertions: Vec::new(),
+            deletions: Vec::new(),
+            timestamps: None,
+            oids: None,
+        });
+    }
+
+    let head_oid = current_head_oid(repo_path).ok();
+    let head_index = if let Some(h) = head_oid {
+        ids_in_order.iter().position(|id| id == &h).unwrap_or(0)
+    } else {
+        0
+    };
+
+    let mut insertions = Vec::with_capacity(total);
+    let mut deletions = Vec::with_capacity(total);
+    for id in &ids_in_order {
+        let st = stats_map.get(id).cloned().unwrap_or(CommitStats {
+            insertions: 0,
+            deletions: 0,
+            files_changed: 0,
+        });
+        insertions.push(st.insertions as u32);
+        deletions.push(st.deletions as u32);
+    }
+
+    Ok(CommitOverview {
+        total,
+        head_index,
+        insertions,
+        deletions,
+        timestamps: None,
+        oids: None,
+    })
+}
+
+fn current_head_oid(repo_path: &str) -> Result<String, String> {
+    let output = run_git_command(repo_path, &["rev-parse", "HEAD"])?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+    let oid = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if oid.len() == 40 && oid.chars().all(|c| c.is_ascii_hexdigit()) {
+        Ok(oid)
+    } else {
+        Err("invalid HEAD oid".to_string())
+    }
+}
+
+fn rev_list_count(repo_path: &str, rev_args: &[String]) -> Result<usize, String> {
+    let mut args = vec!["rev-list".to_string(), "--count".to_string()];
+    args.extend(rev_args.iter().cloned());
+    let output = run_git(repo_path, &mut args)?;
+    let s = output.trim();
+    s.parse::<usize>().map_err(|e| format!("failed to parse rev-list --count: {e}"))
+}
+
+fn fetch_ordered_ids(
+    repo_path: &str,
+    rev_args: &[String],
+    total: usize,
+) -> Result<Vec<String>, String> {
+    if total == 0 {
+        return Ok(Vec::new());
+    }
+    let mut args = vec![
+        "log".to_string(),
+        "--date-order".to_string(),
+        "--no-color".to_string(),
+        "--pretty=format:%H".to_string(),
+    ];
+    // -n total (or omit if we trust rev-args to bound; safer with explicit)
+    args.push(format!("-n{}", total));
+    args.extend(rev_args.iter().cloned());
+
+    let output = run_git(repo_path, &mut args)?;
+    let mut ids = Vec::with_capacity(total);
+    for line in output.lines() {
+        let line = line.trim();
+        if line.len() == 40 && line.chars().all(|c| c.is_ascii_hexdigit()) {
+            ids.push(line.to_string());
+        }
+    }
+    Ok(ids)
 }
 
 fn fetch_log_entries(

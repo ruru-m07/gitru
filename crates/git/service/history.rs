@@ -2,7 +2,7 @@ use crate::cache::{CachePolicy, TTL_HISTORY};
 use crate::context::RepoContext;
 use crate::models::commit::CommitInfo;
 use crate::models::graph::HistoryQuery;
-use crate::models::history::HistoryGraphResponse;
+use crate::models::history::{CommitOverview, HistoryGraphResponse};
 use crate::parsers::commit::COMMIT_STANDARD_FORMAT;
 use crate::parsers::history::parse_history_records;
 use crate::runner::GitRunOptions;
@@ -52,5 +52,12 @@ impl HistoryService {
     #[logger::logger]
     pub async fn history_graph(&self, query: HistoryQuery) -> Result<HistoryGraphResponse, String> {
         graph_service::history_graph(&self.ctx.repo_path, &query)
+    }
+
+    #[logger::logger]
+    pub async fn history_overview(&self, query: HistoryQuery) -> Result<CommitOverview, String> {
+        // Note: overview ignores cursor/limit/graph_state inside the implementation and
+        // returns the full series for the filter (search + include_* + branch).
+        graph_service::history_overview(&self.ctx.repo_path, &query)
     }
 }
