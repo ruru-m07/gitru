@@ -186,7 +186,6 @@ const RenderBadges = ({
             )`,
             transform: "translateZ(0)",
             willChange: "contents",
-            contain: "layout paint size",
           }}
         />
       )}

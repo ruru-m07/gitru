@@ -1,8 +1,7 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import LoaderIndicator from "@/components/loaderIndicator";
-import { useGitHistoryGraph, useGitHistoryOverview } from "@/hooks";
+import { useGitHistoryGraph } from "@/hooks";
 import GraphBody from "./body";
-import OverviewChart from "./OverviewChart";
 
 type FilterKey = "local" | "remotes" | "tags" | "stashes";
 type Filters = Record<FilterKey, boolean>;
@@ -37,11 +36,11 @@ const HistoryGraph = () => {
   const rows = data?.pages.flatMap((page) => page.rows) ?? [];
 
   // Dedicated lightweight overview (full series under same filters, no graph/lens data).
-  const { data: overview, isLoading: isOverviewLoading } =
-    useGitHistoryOverview(query);
+  // const { data: overview, isLoading: isOverviewLoading } =
+  //   useGitHistoryOverview(query);
 
   // Live visible range reported by the list scroller (indices into `rows`, which start at global 0 for the filter).
-  const [visibleRange, setVisibleRange] = useState<
+  const [_visibleRange, setVisibleRange] = useState<
     { start: number; end: number } | undefined
   >(undefined);
 
@@ -51,29 +50,29 @@ const HistoryGraph = () => {
   // Handler for when the chart wants to change the visible range (drag on the highlight band).
   // We optimistically update the chart highlight and scroll the list.
   // If the requested range is beyond currently loaded rows we trigger more pages.
-  const handleRangeRequest = useCallback(
-    (range: { start: number; end: number }) => {
-      setVisibleRange(range);
+  // const handleRangeRequest = useCallback(
+  //   (range: { start: number; end: number }) => {
+  //     setVisibleRange(range);
 
-      const scroller = listScrollerRef.current;
-      if (scroller) {
-        const rowH = 32;
-        const target = Math.max(0, range.start * rowH);
-        // Clamp to current content height; more content may arrive after fetchNextPage.
-        const maxScroll = Math.max(
-          0,
-          scroller.scrollHeight - scroller.clientHeight,
-        );
-        scroller.scrollTop = Math.min(target, maxScroll);
-      }
+  //     const scroller = listScrollerRef.current;
+  //     if (scroller) {
+  //       const rowH = 32;
+  //       const target = Math.max(0, range.start * rowH);
+  //       // Clamp to current content height; more content may arrive after fetchNextPage.
+  //       const maxScroll = Math.max(
+  //         0,
+  //         scroller.scrollHeight - scroller.clientHeight,
+  //       );
+  //       scroller.scrollTop = Math.min(target, maxScroll);
+  //     }
 
-      // Trigger loading more history if the user dragged beyond what we have loaded.
-      if (range.end >= rows.length - 5 && hasNextPage && !isFetchingNextPage) {
-        fetchNextPage();
-      }
-    },
-    [rows.length, hasNextPage, isFetchingNextPage],
-  );
+  //     // Trigger loading more history if the user dragged beyond what we have loaded.
+  //     if (range.end >= rows.length - 5 && hasNextPage && !isFetchingNextPage) {
+  //       fetchNextPage();
+  //     }
+  //   },
+  //   [rows.length, hasNextPage, isFetchingNextPage],
+  // );
 
   return (
     <div className="flex h-full max-h-[calc(var(--layout-height)-(--spacing(14)))] overflow-y-auto flex-col">
@@ -86,14 +85,14 @@ const HistoryGraph = () => {
       {/* Lightweight overview: single activity line + bidirectional thin bars + HEAD indicator.
           Uses a dedicated optimized IPC (no swimlanes/refs/files). Range highlight + interactions
           wired in subsequent phases. */}
-      <div className="h-[78px] border-b">
+      {/* <div className="h-[78px] border-b">
         <OverviewChart
           data={overview}
           isLoading={isOverviewLoading}
           visibleRange={visibleRange}
           onRangeRequest={handleRangeRequest}
         />
-      </div>
+      </div> */}
       {isLoading ? (
         <div className="p-3">
           <LoaderIndicator />

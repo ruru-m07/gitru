@@ -28,7 +28,7 @@ const LanesCell = React.memo(({ row, maxLane }: LanesCellProps) => {
       style={{
         transform: "translateZ(0)",
         willChange: "transform",
-        contain: "layout paint",
+        // contain: "layout paint",
         height: ROW_H,
       }}
       className="relative"

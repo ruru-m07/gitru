@@ -12,8 +12,8 @@ import Timestamp from "./columns/timestamp";
 import { computeGraphLayout, getColumnStyle, processeRows } from "./helper";
 
 const columns = [
-  { id: "branchs-col", Component: Branch, colWidth: "400px" },
-  { id: "lanes-col", Component: Lanes, colWidth: "300px" },
+  { id: "branchs-col", Component: Branch, colWidth: "300px" },
+  { id: "lanes-col", Component: Lanes, colWidth: "400px" },
   { id: "summary-col", Component: Summary, colWidth: "1fr" },
   { id: "commiters-col", Component: Commiters, colWidth: "fit-content(100px)" },
   { id: "timestamp-col", Component: Timestamp, colWidth: "fit-content(100px)" },
@@ -81,7 +81,9 @@ const GraphBody = ({
 
     rafRef.current = requestAnimationFrame(() => {
       const start = Math.max(0, Math.floor(root.scrollTop / ROW_H));
-      const viewportEnd = Math.ceil((root.scrollTop + root.clientHeight) / ROW_H);
+      const viewportEnd = Math.ceil(
+        (root.scrollTop + root.clientHeight) / ROW_H,
+      );
       const end = Math.min(Math.max(start, viewportEnd - 1), rows.length - 1);
 
       const next = { start, end };
@@ -96,9 +98,9 @@ const GraphBody = ({
     });
   };
 
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    reportVisibleRange(e.currentTarget);
-  };
+  // const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+  //   reportVisibleRange(e.currentTarget);
+  // };
 
   // Report initial visible range when rows or scroller is ready
   useEffect(() => {
@@ -181,43 +183,29 @@ const GraphBody = ({
   }, []);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div ref={scrollRef} className="flex-1 flex-col min-h-0 overflow-y-auto">
       <div
-        ref={scrollRef}
-        className="h-full flex-1 overflow-y-auto"
+        className="w-full overflow-x-hidden grid flex-1"
         style={{
-          transform: "translateZ(0)",
-          willChange: "transform",
-          contain: "layout paint size",
+          gridTemplateColumns: `${columns.map((c) => c.colWidth).join(" ")}`,
         }}
-        onScroll={onVisibleRangeChange ? handleScroll : undefined}
       >
-        <div
-          className="overscroll-y-contain w-full overflow-x-hidden grid"
-          style={{
-            gridTemplateColumns: `${columns.map((c) => c.colWidth).join(" ")}`,
-            transform: "translateZ(0)",
-            willChange: "transform",
-            contain: "paint",
-          }}
-        >
-          {columns.map(({ Component }, idx) => (
-            <Component
-              key={idx}
-              rows={processedRows}
-              style={getColumnStyle(idx + 1, TOTAL_ROWS)}
-              layout={layout}
-              scrollRef={scrollRef}
-            />
-          ))}
-        </div>
-
-        <div className="w-full flex justify-center">
-          {isFetchingNextPage && "Loading more..."}
-        </div>
-
-        <div ref={bottomRef} className="h-4" />
+        {columns.map(({ Component }, idx) => (
+          <Component
+            key={idx}
+            rows={processedRows}
+            style={getColumnStyle(idx + 1, TOTAL_ROWS)}
+            layout={layout}
+            scrollRef={scrollRef}
+          />
+        ))}
       </div>
+
+      <div className="w-full flex justify-center">
+        {isFetchingNextPage && "Loading more..."}
+      </div>
+
+      <div ref={bottomRef} className="h-0" />
     </div>
   );
 };
