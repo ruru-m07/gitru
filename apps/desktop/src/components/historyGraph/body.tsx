@@ -1,6 +1,6 @@
 import { GraphRow } from "@gitru/commands";
 import { cn } from "@gitru/ui/lib/utils";
-import { useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import { useOnInView } from "react-intersection-observer";
 import Branch from "./columns/branch";
 import CommitHash from "./columns/commit-hash";
@@ -30,17 +30,21 @@ type GraphBodyProps = {
   fetchNextPage: () => void;
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
-  onVisibleRangeChange?: (range: { start: number; end: number }) => void;
   scrollerRef?: React.RefObject<HTMLDivElement | null>;
+  // Ref to the highlight band div in the overview chart. We update its position/width via direct style mutation on scroll (cheap, no React re-render).
+  highlightBandRef?: React.RefObject<HTMLDivElement | null>;
+  // The total number of commits in the (filtered) history, needed to compute percentages for the highlight band.
+  total?: number;
 };
 
-const GraphBody = ({
+const GraphBodyInner = ({
   rows,
   fetchNextPage,
   hasNextPage,
   isFetchingNextPage,
-  onVisibleRangeChange,
   scrollerRef,
+  highlightBandRef,
+  total = 0,
 }: GraphBodyProps) => {
   const internalScrollRef = useRef<HTMLDivElement>(null);
   const scrollRef = scrollerRef ?? internalScrollRef;
@@ -70,54 +74,48 @@ const GraphBody = ({
   // Compute visible range from scroll position (index in the rows array = global index for current filter view).
   const ROW_H = 32;
 
-  // Throttled visible range reporter to reduce parent re-renders / lag.
-  const rafRef = useRef<number | null>(null);
-  const lastReportedRef = useRef<{ start: number; end: number } | null>(null);
-
+  // On scroll, we update the highlight band in the overview chart via direct DOM style mutation (left/width %).
+  // This is cheap and does *not* cause React re-renders of the chart or parent.
+  // The band position is kept in sync with the list viewport without going through state.
   const reportVisibleRange = (root: HTMLDivElement) => {
-    if (!onVisibleRangeChange) return;
+    const start = Math.max(0, Math.floor(root.scrollTop / ROW_H));
+    const visibleCount = Math.max(1, Math.ceil(root.clientHeight / ROW_H));
+    const end = start + visibleCount - 1;
 
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-
-    rafRef.current = requestAnimationFrame(() => {
-      const start = Math.max(0, Math.floor(root.scrollTop / ROW_H));
-      const viewportEnd = Math.ceil((root.scrollTop + root.clientHeight) / ROW_H);
-      const end = Math.min(Math.max(start, viewportEnd - 1), rows.length - 1);
-
-      const next = { start, end };
-      const last = lastReportedRef.current;
-
-      // Only notify if the range actually changed (avoids unnecessary updates)
-      if (!last || last.start !== next.start || last.end !== next.end) {
-        lastReportedRef.current = next;
-        onVisibleRangeChange(next);
-      }
-      rafRef.current = null;
-    });
+    // Direct DOM update on the highlight band (the "brush" visual in the chart).
+    if (highlightBandRef?.current && total > 0) {
+      const leftPct = (start / total) * 100;
+      const widthPct = (visibleCount / total) * 100;
+      highlightBandRef.current.style.left = `${leftPct}%`;
+      highlightBandRef.current.style.width = `${widthPct}%`;
+    }
   };
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     reportVisibleRange(e.currentTarget);
   };
 
-  // Report initial visible range when rows or scroller is ready
+  // Initial report (so the band is positioned correctly on mount / after data load).
   useEffect(() => {
     const root = scrollRef.current;
-    if (root && onVisibleRangeChange) {
-      // small delay to let layout settle
-      const id = window.setTimeout(() => {
-        if (root) reportVisibleRange(root);
-      }, 0);
+    if (root) {
+      // small delay for layout
+      const id = window.setTimeout(() => reportVisibleRange(root), 0);
       return () => window.clearTimeout(id);
     }
-  }, [rows.length, onVisibleRangeChange]);
+  }, [rows.length, total]);
 
-  // Cleanup any pending raf
+  // Also update on container resize (e.g. user resizes the window/panel).
   useEffect(() => {
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
-  }, []);
+    const root = scrollRef.current;
+    if (!root) return;
+
+    const ro = new ResizeObserver(() => {
+      reportVisibleRange(root);
+    });
+    ro.observe(root);
+    return () => ro.disconnect();
+  }, [total]);
 
   useEffect(() => {
     const root = scrollRef.current;
@@ -190,7 +188,7 @@ const GraphBody = ({
           willChange: "transform",
           contain: "layout paint size",
         }}
-        onScroll={onVisibleRangeChange ? handleScroll : undefined}
+        onScroll={handleScroll}
       >
         <div
           className="overscroll-y-contain w-full overflow-x-hidden grid"
@@ -222,4 +220,5 @@ const GraphBody = ({
   );
 };
 
+const GraphBody = memo(GraphBodyInner);
 export default GraphBody;
