@@ -1,8 +1,8 @@
 use crate::cache::{CachePolicy, TTL_HISTORY};
 use crate::context::RepoContext;
 use crate::models::commit::CommitInfo;
-use crate::models::graph::HistoryQuery;
-use crate::models::history::HistoryGraphResponse;
+use crate::models::graph::{CommitActivityQuery, HistoryQuery};
+use crate::models::history::{CommitActivityResponse, HistoryGraphResponse};
 use crate::parsers::commit::COMMIT_STANDARD_FORMAT;
 use crate::parsers::history::parse_history_records;
 use crate::runner::GitRunOptions;
@@ -52,5 +52,13 @@ impl HistoryService {
     #[logger::logger]
     pub async fn history_graph(&self, query: HistoryQuery) -> Result<HistoryGraphResponse, String> {
         graph_service::history_graph(&self.ctx.repo_path, &query)
+    }
+
+    #[logger::logger]
+    pub async fn commit_activity(
+        &self,
+        query: CommitActivityQuery,
+    ) -> Result<CommitActivityResponse, String> {
+        graph_service::commit_activity(&self.ctx.repo_path, &query)
     }
 }

@@ -4,6 +4,8 @@ import type {
   BranchInfo,
   BranchKind,
   BranchStash,
+  CommitActivityParams,
+  CommitActivityResponse,
   CommitInfo,
   CreateCommitParams,
   FileDiff,
@@ -263,6 +265,38 @@ export function useGitHistoryGraph(
       ]),
       baseParams,
     ],
+  });
+}
+
+export function useCommitActivity(
+  params: Partial<CommitActivityParams["query"]> = {},
+  options?: { enabled?: boolean },
+) {
+  const repo = useActiveRepositoryState();
+  const query: CommitActivityParams["query"] = {
+    limit: params.limit ?? 3000,
+    include_local: params.include_local ?? true,
+    include_remotes: params.include_remotes ?? false,
+    include_tags: params.include_tags ?? false,
+    include_stash: params.include_stash ?? false,
+  };
+
+  return useQuery<CommitActivityResponse | null>({
+    queryKey: [
+      ...(repo?.commit.getQueryKey("commitActivity") ?? [
+        "repository",
+        "none",
+        "commit",
+        "commitActivity",
+      ]),
+      query,
+    ],
+    queryFn: async () => {
+      if (!repo) return null;
+      return await repo.commit.commitActivity(query);
+    },
+    enabled: (options?.enabled ?? true) && !!repo,
+    staleTime: 60_000,
   });
 }
 

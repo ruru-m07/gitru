@@ -1,7 +1,9 @@
 import {
   BranchKind,
   BranchStash,
+  CommitActivityParams,
   CreateCommitParams,
+  commitActivity,
   commitById,
   createBranch,
   createCommit,
@@ -460,7 +462,15 @@ class Commit extends StateDomain {
     return data;
   }
 
-  getQueryKey(key: "last" | "getCommitById" | "history" | "historyGraph") {
+  async commitActivity(query: CommitActivityParams["query"]) {
+    const data = await commitActivity({
+      contextId: this.contextId,
+      query,
+    });
+    return data;
+  }
+
+  getQueryKey(key: "last" | "getCommitById" | "history" | "historyGraph" | "commitActivity") {
     return [...this.baseKey, key];
   }
 

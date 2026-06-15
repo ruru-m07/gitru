@@ -55,6 +55,7 @@ pub fn run() {
             commands::diff::get_patch_by_file_path,
             commands::history::history,
             commands::history::history_graph,
+            commands::history::commit_activity,
             commands::origin::repository_origin,
             commands::commit::last_commit,
             commands::commit::commit_by_id,

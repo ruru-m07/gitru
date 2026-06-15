@@ -48,19 +48,15 @@ function isCurrentBranchRow(row: GraphRow) {
 function buildCurrentBranchPath(rows: GraphRow[]) {
   const path = new Set<string>();
   const tipRow = rows.find((row) => isCurrentBranchRow(row));
+  if (!tipRow) return path;
 
-  if (!tipRow) {
-    return path;
-  }
+  const rowByOid = new Map(rows.map((row) => [row.oid, row]));
 
   let currentOid: string | null = tipRow.oid;
   while (currentOid && !path.has(currentOid)) {
     path.add(currentOid);
-    const currentRow = rows.find((row) => row.oid === currentOid);
-    if (!currentRow || currentRow.parents.length === 0) {
-      break;
-    }
-
+    const currentRow = rowByOid.get(currentOid);
+    if (!currentRow || currentRow.parents.length === 0) break;
     currentOid = currentRow.parents[0]?.oid ?? null;
   }
 

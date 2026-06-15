@@ -61,3 +61,18 @@ pub struct HistoryGraphResponse {
     pub has_more: bool,
     pub paging: GraphPaging,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CommitActivityItem {
+    pub oid: String,
+    pub timestamp: i64,
+    pub insertions: u32,
+    pub deletions: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CommitActivityResponse {
+    pub items: Vec<CommitActivityItem>,
+    pub head_index: Option<usize>,
+    pub total: usize,
+}

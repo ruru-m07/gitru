@@ -569,7 +569,39 @@ export const HistoryGraphParamsSchema = z.object({
   contextId: z.string(),query: HistoryQuerySchema,
 });
 
+export const CommitActivityQuerySchema = z.object({
+  limit: z.coerce.number(),
+  include_local: z.coerce.boolean(),
+  include_remotes: z.coerce.boolean(),
+  include_tags: z.coerce.boolean(),
+  include_stash: z.coerce.boolean(),
+});
 
+export type CommitActivityQuery = z.infer<typeof CommitActivityQuerySchema>;
+
+export const CommitActivityItemSchema = z.object({
+  oid: z.string(),
+  timestamp: z.coerce.number(),
+  insertions: z.coerce.number(),
+  deletions: z.coerce.number(),
+});
+
+export type CommitActivityItem = z.infer<typeof CommitActivityItemSchema>;
+
+export const CommitActivityResponseSchema = z.object({
+  items: z.array(CommitActivityItemSchema),
+  head_index: z.coerce.number().optional(),
+  total: z.coerce.number(),
+});
+
+export type CommitActivityResponse = z.infer<typeof CommitActivityResponseSchema>;
+
+export const CommitActivityParamsSchema = z.object({
+  contextId: z.string(),
+  query: CommitActivityQuerySchema,
+});
+
+export type CommitActivityParams = z.infer<typeof CommitActivityParamsSchema>;
 
 
 export type CurrentBranchParams = z.infer<typeof CurrentBranchParamsSchema>;

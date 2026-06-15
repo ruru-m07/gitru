@@ -1213,3 +1213,25 @@ export async function historyGraph(params: types.HistoryGraphParams, hooks?: Com
 }
 
 
+export async function commitActivity(params: types.CommitActivityParams, hooks?: CommandHooks<types.CommitActivityResponse>): Promise<types.CommitActivityResponse> {
+  try {
+    const result = types.CommitActivityParamsSchema.safeParse(params);
+
+    if (!result.success) {
+      hooks?.onValidationError?.(result.error);
+      throw result.error;
+    }
+    const data = await invoke<types.CommitActivityResponse>('commit_activity', result.data);
+    hooks?.onSuccess?.(data);
+    return data;
+  } catch (error) {
+    if (!(error instanceof ZodError)) {
+      hooks?.onInvokeError?.(error);
+    }
+    throw error;
+  } finally {
+    hooks?.onSettled?.();
+  }
+}
+
+

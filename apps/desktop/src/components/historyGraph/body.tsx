@@ -1,6 +1,6 @@
 import { GraphRow } from "@gitru/commands";
 import { cn } from "@gitru/ui/lib/utils";
-import { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo } from "react";
 import { useOnInView } from "react-intersection-observer";
 import Branch from "./columns/branch";
 import CommitHash from "./columns/commit-hash";
@@ -17,11 +17,7 @@ const columns = [
   { id: "summary-col", Component: Summary, colWidth: "1fr" },
   { id: "commiters-col", Component: Commiters, colWidth: "fit-content(100px)" },
   { id: "timestamp-col", Component: Timestamp, colWidth: "fit-content(100px)" },
-  {
-    id: "commithash-col",
-    Component: CommitHash,
-    colWidth: "fit-content(100px)",
-  },
+  { id: "commithash-col", Component: CommitHash, colWidth: "fit-content(100px)" },
   { id: "stats-col", Component: Stats, colWidth: "fit-content(100px)" },
 ];
 
@@ -30,6 +26,7 @@ type GraphBodyProps = {
   fetchNextPage: () => void;
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
 };
 
 const GraphBody = ({
@@ -37,9 +34,8 @@ const GraphBody = ({
   fetchNextPage,
   hasNextPage,
   isFetchingNextPage,
+  scrollRef,
 }: GraphBodyProps) => {
-  const scrollRef = useRef<HTMLDivElement>(null);
-
   const hoverClasses = [
     cn("bg-secondary/70"),
     cn("[&_[data-hidden-branch-refs]]:flex"),
@@ -84,14 +80,12 @@ const GraphBody = ({
     const apply = (rowId: string | undefined | null) => {
       if (activeRowId === rowId) return;
 
-      // remove old
       if (activeRowId) {
         getRowEls(activeRowId).forEach((el) =>
           hoverClasses.forEach((c) => el.classList.remove(c)),
         );
       }
 
-      // apply new
       if (rowId) {
         getRowEls(rowId).forEach((el) =>
           hoverClasses.forEach((c) => el.classList.add(c)),
@@ -107,10 +101,7 @@ const GraphBody = ({
         apply(null);
         return;
       }
-
-      const rowId = (el as HTMLElement).dataset.cellId;
-      console.log(rowId);
-      apply(rowId);
+      apply((el as HTMLElement).dataset.cellId);
     };
 
     const onLeave = () => apply(null);

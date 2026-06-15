@@ -4,14 +4,12 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::models::commit::{Author, CommitAuthors, CommitStats, FullCommitInfo};
 use crate::models::graph::GraphRefKind as GraphRefType;
-use crate::models::graph::{
-    GraphLogEntry, GraphRefKind, GraphSearchKey, GraphSearchQuery, HistoryQuery,
-};
+use crate::models::graph::{CommitActivityQuery, GraphLogEntry, GraphRefKind, HistoryQuery};
 use crate::models::history::{
-    GraphPaging, GraphRef as GraphRefDto, GraphRow, GraphRowType, HistoryGraphResponse, ParentEdge,
-    Swimlane as SwimlaneDto,
+    CommitActivityItem, CommitActivityResponse, GraphPaging, GraphRef as GraphRefDto, GraphRow,
+    GraphRowType, HistoryGraphResponse, ParentEdge, Swimlane as SwimlaneDto,
 };
-use crate::parsers::graph::{LOG_FORMAT, parse_log_entries, parse_search_query};
+use crate::parsers::graph::{LOG_FORMAT, parse_log_entries};
 use crate::runner::{git_binary_path, git_path_env};
 
 const DEFAULT_CHUNK_SIZE: usize = 200;
@@ -258,12 +256,6 @@ impl GraphState {
     }
 }
 
-#[derive(Debug, Clone)]
-struct SearchContext {
-    name: Option<String>,
-    email: Option<String>,
-}
-
 pub fn history_graph(
     repo_path: &str,
     query: &HistoryQuery,
@@ -311,18 +303,12 @@ pub fn history_graph(
         graph_state = rebuild_graph_state(repo_path, query, cursor)?;
     }
 
-    let search_query = query.search.as_deref().map(parse_search_query);
-    let search_context = search_query
-        .as_ref()
-        .and_then(|_| resolve_search_context(repo_path));
-    let remote_refs = list_remote_refs(repo_path)?;
-
     let mut rows = Vec::with_capacity(query.limit);
     let mut exhausted = false;
 
     while rows.len() < query.limit {
-        let batch_limit = DEFAULT_CHUNK_SIZE.min(query.limit * 2).max(50);
-        let entries = fetch_log_entries(repo_path, query, cursor, batch_limit, &remote_refs)?;
+        let batch_limit = query.limit - rows.len();
+        let entries = fetch_log_entries(repo_path, query, cursor, batch_limit, true)?;
         let batch_count = entries.len();
 
         if batch_count == 0 {
@@ -330,8 +316,6 @@ pub fn history_graph(
         }
 
         let mut reached_limit = false;
-
-        let stats_map = fetch_shortstat_map(repo_path, query, cursor, entries.len())?;
 
         for entry in entries {
             cursor += 1;
@@ -344,22 +328,7 @@ pub fn history_graph(
             let result =
                 graph_state.process_commit(&entry.id, &entry.parents, is_stash, &branch_refs);
 
-            if let Some(ref query) = search_query
-                && !matches_search(&entry, query, search_context.as_ref())
-            {
-                continue;
-            }
-
-            let stats = stats_map
-                .get(entry.id.as_str())
-                .map(copy_stats)
-                .unwrap_or(CommitStats {
-                    insertions: 0,
-                    deletions: 0,
-                    files_changed: 0,
-                });
-
-            let commit_info = build_full_commit_info(&entry, stats);
+            let commit_info = build_full_commit_info(&entry, entry.stats);
             let refs = build_refs(&entry);
             let heads = filter_refs(&refs, GraphRefType::Local, true);
             let remotes = filter_refs(&refs, GraphRefType::Remote, false);
@@ -464,24 +433,11 @@ fn fetch_log_entries(
     query: &HistoryQuery,
     skip: usize,
     limit: usize,
-    remote_refs: &[String],
+    include_stats: bool,
 ) -> Result<Vec<GraphLogEntry>, String> {
-    let mut args = build_log_args(repo_path, query, skip, limit)?;
+    let mut args = build_log_args(repo_path, query, skip, limit, include_stats)?;
     let output = run_git(repo_path, &mut args)?;
-    let mut entries = parse_log_entries(&output);
-    normalize_refs(&mut entries, remote_refs);
-    Ok(entries)
-}
-
-fn fetch_shortstat_map(
-    repo_path: &str,
-    query: &HistoryQuery,
-    skip: usize,
-    limit: usize,
-) -> Result<HashMap<String, CommitStats>, String> {
-    let mut args = build_shortstat_args(repo_path, query, skip, limit)?;
-    let output = run_git(repo_path, &mut args)?;
-    Ok(parse_shortstat_output(&output))
+    Ok(parse_log_entries(&output))
 }
 
 fn build_log_args(
@@ -489,6 +445,7 @@ fn build_log_args(
     query: &HistoryQuery,
     skip: usize,
     limit: usize,
+    include_stats: bool,
 ) -> Result<Vec<String>, String> {
     let mut args = vec![
         "log".to_string(),
@@ -501,27 +458,9 @@ fn build_log_args(
         format!("-n{}", limit),
     ];
 
-    let revs = build_revision_args(repo_path, query)?;
-    args.extend(revs);
-
-    Ok(args)
-}
-
-fn build_shortstat_args(
-    repo_path: &str,
-    query: &HistoryQuery,
-    skip: usize,
-    limit: usize,
-) -> Result<Vec<String>, String> {
-    let mut args = vec![
-        "log".to_string(),
-        "--date-order".to_string(),
-        "--no-color".to_string(),
-        format!("--pretty=format:%H"),
-        "--shortstat".to_string(),
-        format!("--skip={}", skip),
-        format!("-n{}", limit),
-    ];
+    if include_stats {
+        args.push("--shortstat".to_string());
+    }
 
     let revs = build_revision_args(repo_path, query)?;
     args.extend(revs);
@@ -628,14 +567,6 @@ fn parse_shortstat_line(line: &str) -> CommitStats {
     stats
 }
 
-fn copy_stats(stats: &CommitStats) -> CommitStats {
-    CommitStats {
-        insertions: stats.insertions,
-        deletions: stats.deletions,
-        files_changed: stats.files_changed,
-    }
-}
-
 fn is_commit_id(value: &str) -> bool {
     value.len() == 40 && value.chars().all(|ch| ch.is_ascii_hexdigit())
 }
@@ -653,10 +584,9 @@ fn run_git(repo_path: &str, args: &mut [String]) -> Result<String, String> {
 
 fn build_cache_key(repo_path: &str, query: &HistoryQuery) -> String {
     format!(
-        "{}|{}|{}|l:{}|r:{}|t:{}|s:{}",
+        "{}|{}|l:{}|r:{}|t:{}|s:{}",
         repo_path,
         query.branch.as_deref().unwrap_or("all"),
-        query.search.as_deref().unwrap_or(""),
         query.include_local,
         query.include_remotes,
         query.include_tags,
@@ -671,11 +601,10 @@ fn rebuild_graph_state(
 ) -> Result<GraphState, String> {
     let mut state = GraphState::new();
     let mut skip = 0usize;
-    let remote_refs = list_remote_refs(repo_path)?;
 
     while skip < cursor {
         let limit = DEFAULT_CHUNK_SIZE.min(cursor - skip).max(50);
-        let entries = fetch_log_entries(repo_path, query, skip, limit, &remote_refs)?;
+        let entries = fetch_log_entries(repo_path, query, skip, limit, false)?;
         if entries.is_empty() {
             break;
         }
@@ -803,137 +732,6 @@ fn parse_author_line(line: &str) -> Option<Author> {
     })
 }
 
-fn matches_search(
-    entry: &GraphLogEntry,
-    query: &GraphSearchQuery,
-    context: Option<&SearchContext>,
-) -> bool {
-    if query.terms.is_empty() {
-        return true;
-    }
-
-    for term in &query.terms {
-        let matched = matches_term(entry, term, context);
-        if term.negated {
-            if matched {
-                return false;
-            }
-        } else if !matched {
-            return false;
-        }
-    }
-
-    true
-}
-
-fn matches_term(
-    entry: &GraphLogEntry,
-    term: &crate::models::graph::GraphSearchTerm,
-    context: Option<&SearchContext>,
-) -> bool {
-    let value = term.value.to_ascii_lowercase();
-
-    if value == "@me"
-        && let Some(context) = context
-    {
-        return matches_me(entry, context);
-    }
-
-    match term.key {
-        Some(GraphSearchKey::Author) => matches_author(entry, &value),
-        Some(GraphSearchKey::Committer) => matches_committer(entry, &value),
-        Some(GraphSearchKey::Message) => matches_message(entry, &value),
-        Some(GraphSearchKey::Ref) => matches_ref(entry, &value),
-        Some(GraphSearchKey::Id) => entry.id.to_ascii_lowercase().starts_with(&value),
-        None => {
-            matches_message(entry, &value)
-                || matches_author(entry, &value)
-                || matches_committer(entry, &value)
-                || matches_ref(entry, &value)
-                || entry.id.to_ascii_lowercase().starts_with(&value)
-        }
-    }
-}
-
-fn matches_author(entry: &GraphLogEntry, value: &str) -> bool {
-    entry.author_name.to_ascii_lowercase().contains(value)
-        || entry.author_email.to_ascii_lowercase().contains(value)
-}
-
-fn matches_committer(entry: &GraphLogEntry, value: &str) -> bool {
-    entry.committer_name.to_ascii_lowercase().contains(value)
-        || entry.committer_email.to_ascii_lowercase().contains(value)
-}
-
-fn matches_message(entry: &GraphLogEntry, value: &str) -> bool {
-    entry.summary.to_ascii_lowercase().contains(value)
-        || entry.body.to_ascii_lowercase().contains(value)
-}
-
-fn matches_ref(entry: &GraphLogEntry, value: &str) -> bool {
-    entry
-        .refs
-        .iter()
-        .any(|reference| reference.name.to_ascii_lowercase().contains(value))
-}
-
-fn matches_me(entry: &GraphLogEntry, context: &SearchContext) -> bool {
-    if let Some(name) = context.name.as_ref() {
-        let name = name.to_ascii_lowercase();
-        if matches_author(entry, &name) || matches_committer(entry, &name) {
-            return true;
-        }
-    }
-
-    if let Some(email) = context.email.as_ref() {
-        let email = email.to_ascii_lowercase();
-        if matches_author(entry, &email) || matches_committer(entry, &email) {
-            return true;
-        }
-    }
-
-    false
-}
-
-fn resolve_search_context(repo_path: &str) -> Option<SearchContext> {
-    let name = git_config_value(repo_path, "user.name");
-    let email = git_config_value(repo_path, "user.email");
-
-    if name.is_none() && email.is_none() {
-        return None;
-    }
-
-    Some(SearchContext { name, email })
-}
-
-fn git_config_value(repo_path: &str, key: &str) -> Option<String> {
-    let output = run_git_command(repo_path, &["config", "--get", key]).ok()?;
-
-    if !output.status.success() {
-        return None;
-    }
-
-    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if value.is_empty() { None } else { Some(value) }
-}
-
-fn list_remote_refs(repo_path: &str) -> Result<Vec<String>, String> {
-    let output = run_git_command(
-        repo_path,
-        &["for-each-ref", "--format=%(refname)", "refs/remotes"],
-    )?;
-
-    if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).to_string());
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    Ok(stdout
-        .lines()
-        .map(|line| line.trim().to_string())
-        .filter(|line| !line.is_empty())
-        .collect())
-}
 
 fn run_git_command(repo_path: &str, args: &[&str]) -> Result<std::process::Output, String> {
     let git_binary = git_binary_path()?;
@@ -946,20 +744,124 @@ fn run_git_command(repo_path: &str, args: &[&str]) -> Result<std::process::Outpu
         .map_err(|e| e.to_string())
 }
 
-fn normalize_refs(entries: &mut [GraphLogEntry], remote_refs: &[String]) {
-    for entry in entries.iter_mut() {
-        for reference in entry.refs.iter_mut() {
-            if reference.kind != GraphRefKind::Other {
-                continue;
-            }
+pub fn commit_activity(
+    repo_path: &str,
+    query: &CommitActivityQuery,
+) -> Result<CommitActivityResponse, String> {
+    let limit_str = query.limit.to_string();
+    let revs = build_activity_revision_args(repo_path, query)?;
 
-            let is_remote = remote_refs.iter().any(|remote_ref| reference.name == *remote_ref);
+    // Pass 1: hashes + timestamps (no diff, very fast)
+    let mut log_args = vec![
+        "log".to_string(),
+        "--date-order".to_string(),
+        "--no-color".to_string(),
+        "--pretty=format:%H %ct".to_string(),
+        format!("-n{}", limit_str),
+    ];
+    log_args.extend(revs.clone());
+    let log_output = run_git(repo_path, &mut log_args)?;
 
-            reference.kind = if is_remote {
-                GraphRefKind::Remote
-            } else {
-                GraphRefKind::Local
-            };
+    let mut oid_timestamps: Vec<(String, i64)> = Vec::new();
+    for line in log_output.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
         }
+        let mut parts = line.splitn(2, ' ');
+        let oid = parts.next().unwrap_or("").to_string();
+        let ts: i64 = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+        oid_timestamps.push((oid, ts));
     }
+
+    if oid_timestamps.is_empty() {
+        return Ok(CommitActivityResponse {
+            items: Vec::new(),
+            head_index: None,
+            total: 0,
+        });
+    }
+
+    // Pass 2: shortstat for insertions/deletions
+    let mut stat_args = vec![
+        "log".to_string(),
+        "--date-order".to_string(),
+        "--no-color".to_string(),
+        "--pretty=format:%H".to_string(),
+        "--shortstat".to_string(),
+        format!("-n{}", limit_str),
+    ];
+    stat_args.extend(revs);
+    let stat_output = run_git(repo_path, &mut stat_args)?;
+    let stats_map = parse_shortstat_output(&stat_output);
+
+    // Pass 3: HEAD oid for marker
+    let head_oid = get_head_oid(repo_path).ok();
+
+    let mut head_index: Option<usize> = None;
+    let items: Vec<CommitActivityItem> = oid_timestamps
+        .iter()
+        .enumerate()
+        .map(|(i, (oid, ts))| {
+            if head_oid.as_deref() == Some(oid.as_str()) {
+                head_index = Some(i);
+            }
+            let (ins, del) = stats_map
+                .get(oid.as_str())
+                .map(|s| (s.insertions as u32, s.deletions as u32))
+                .unwrap_or((0, 0));
+            CommitActivityItem {
+                oid: oid.clone(),
+                timestamp: *ts,
+                insertions: ins,
+                deletions: del,
+            }
+        })
+        .collect();
+
+    let total = items.len();
+    Ok(CommitActivityResponse {
+        items,
+        head_index,
+        total,
+    })
 }
+
+fn get_head_oid(repo_path: &str) -> Result<String, String> {
+    let output = run_git_command(repo_path, &["rev-parse", "HEAD"])?;
+    if !output.status.success() {
+        return Err("Failed to get HEAD".to_string());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn build_activity_revision_args(
+    repo_path: &str,
+    query: &CommitActivityQuery,
+) -> Result<Vec<String>, String> {
+    let mut args = Vec::new();
+    let mut has_any = false;
+
+    if query.include_local {
+        args.push("--branches".to_string());
+        has_any = true;
+    }
+    if query.include_remotes {
+        args.push("--remotes".to_string());
+        has_any = true;
+    }
+    if query.include_tags {
+        args.push("--tags".to_string());
+        has_any = true;
+    }
+    if query.include_stash && has_ref(repo_path, "refs/stash")? {
+        args.push("refs/stash".to_string());
+        has_any = true;
+    }
+    if !has_any {
+        args.push("HEAD".to_string());
+    }
+
+    Ok(args)
+}
+
