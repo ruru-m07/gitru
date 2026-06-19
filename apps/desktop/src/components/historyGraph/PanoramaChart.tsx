@@ -7,7 +7,6 @@ import {
   Line,
   ReferenceLine,
   ResponsiveContainer,
-  Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
@@ -46,25 +45,6 @@ function computeChartData(items: CommitActivityItem[]): ChartPoint[] {
     };
   });
 }
-
-type TooltipPayload = {
-  active?: boolean;
-  payload?: Array<{ payload: ChartPoint }>;
-};
-
-const PanoramaTooltip = ({ active, payload }: TooltipPayload) => {
-  if (!active || !payload?.length) return null;
-  const d = payload[0].payload;
-  return (
-    <div className="rounded border bg-background/90 px-2 py-1.5 text-xs shadow-md">
-      <p className="text-muted-foreground mb-1">Commit #{d.index + 1}</p>
-      <div className="flex gap-3">
-        <span className="text-green-500">+{d.insertions.toLocaleString()}</span>
-        <span className="text-red-400">−{d.deletions.toLocaleString()}</span>
-      </div>
-    </div>
-  );
-};
 
 const PanoramaChart = ({
   items,
@@ -263,16 +243,13 @@ const PanoramaChart = ({
               hide
               height={0}
             />
-            <YAxis hide width={0} domain={[0, "auto"]} />
-
-            <Tooltip
-              content={<PanoramaTooltip />}
-              cursor={{ stroke: "rgba(255,255,255,0.15)", strokeWidth: 1 }}
-              isAnimationActive={false}
-            />
+            <YAxis yAxisId="bars" hide width={0} domain={[0, "auto"]} />
+            {/* separate axis so activity line scales independently to full height */}
+            <YAxis yAxisId="activity" hide width={0} domain={[0, "auto"]} />
 
             {/* Thin stacked bars in background */}
             <Bar
+              yAxisId="bars"
               dataKey="insertions"
               stackId="c"
               fill="var(--color-green-500)"
@@ -281,6 +258,7 @@ const PanoramaChart = ({
               isAnimationActive={false}
             />
             <Bar
+              yAxisId="bars"
               dataKey="deletions"
               stackId="c"
               fill="var(--color-red-400)"
@@ -289,8 +267,9 @@ const PanoramaChart = ({
               isAnimationActive={false}
             />
 
-            {/* Rolling average area + line */}
+            {/* Rolling average area + line — own axis so it always fills full height */}
             <Area
+              yAxisId="activity"
               type="monotone"
               dataKey="activity"
               stroke="none"
@@ -299,6 +278,7 @@ const PanoramaChart = ({
               activeDot={false}
             />
             <Line
+              yAxisId="activity"
               type="monotone"
               dataKey="activity"
               stroke="var(--color-blue-500)"
