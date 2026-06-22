@@ -12,12 +12,16 @@ import Timestamp from "./columns/timestamp";
 import { computeGraphLayout, getColumnStyle, processeRows } from "./helper";
 
 const columns = [
-  { id: "branchs-col", Component: Branch, colWidth: "400px" },
+  { id: "branchs-col", Component: Branch, colWidth: "300px" },
   { id: "lanes-col", Component: Lanes, colWidth: "300px" },
   { id: "summary-col", Component: Summary, colWidth: "1fr" },
   { id: "commiters-col", Component: Commiters, colWidth: "fit-content(100px)" },
   { id: "timestamp-col", Component: Timestamp, colWidth: "fit-content(100px)" },
-  { id: "commithash-col", Component: CommitHash, colWidth: "fit-content(100px)" },
+  {
+    id: "commithash-col",
+    Component: CommitHash,
+    colWidth: "fit-content(100px)",
+  },
   { id: "stats-col", Component: Stats, colWidth: "fit-content(100px)" },
 ];
 
