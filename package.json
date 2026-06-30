@@ -28,6 +28,7 @@
       "typescript": "^5",
       "@types/react": "^19.0.0",
       "@types/react-dom": "^19.0.0",
+      "recharts": "^3.8.1",
       "@tauri-apps/api": "^2.10.1",
       "react-resizable-panels": "4",
       "lucide-react": "^0.577.0",

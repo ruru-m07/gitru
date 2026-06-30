@@ -10,6 +10,7 @@ pub enum GraphRowType {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GraphRef {
     pub name: String,
+    pub display_name: String,
     pub kind: GraphRefKind,
     pub is_head: bool,
 }
@@ -36,6 +37,8 @@ pub struct GraphRow {
     #[serde(rename = "type")]
     pub r#type: GraphRowType,
     pub refs: Vec<GraphRef>,
+    #[serde(default)]
+    pub branch_refs: Vec<GraphRef>,
     pub heads: Vec<GraphRef>,
     pub remotes: Vec<GraphRef>,
     pub tags: Vec<GraphRef>,
@@ -57,4 +60,19 @@ pub struct HistoryGraphResponse {
     pub graph_state: Option<String>,
     pub has_more: bool,
     pub paging: GraphPaging,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CommitActivityItem {
+    pub oid: String,
+    pub timestamp: i64,
+    pub insertions: u32,
+    pub deletions: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CommitActivityResponse {
+    pub items: Vec<CommitActivityItem>,
+    pub head_index: Option<usize>,
+    pub total: usize,
 }

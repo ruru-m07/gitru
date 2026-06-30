@@ -1,6 +1,7 @@
+use crate::models::commit::CommitStats;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum GraphRefKind {
     Local,
     Remote,
@@ -12,6 +13,7 @@ pub enum GraphRefKind {
 #[derive(Debug, Clone)]
 pub struct GraphRef {
     pub name: String,
+    pub display_name: String,
     pub kind: GraphRefKind,
     pub is_head: bool,
 }
@@ -29,6 +31,7 @@ pub struct GraphLogEntry {
     pub refs: Vec<GraphRef>,
     pub summary: String,
     pub body: String,
+    pub stats: CommitStats,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,4 +75,17 @@ pub struct HistoryQuery {
 
 fn default_true() -> bool {
     true
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CommitActivityQuery {
+    pub limit: usize,
+    #[serde(default = "default_true")]
+    pub include_local: bool,
+    #[serde(default)]
+    pub include_remotes: bool,
+    #[serde(default)]
+    pub include_tags: bool,
+    #[serde(default)]
+    pub include_stash: bool,
 }

@@ -23,7 +23,7 @@ pub struct CommitInfo {
     pub authors: CommitAuthors,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Default)]
 pub struct CommitStats {
     pub insertions: usize,
     pub deletions: usize,

@@ -56,6 +56,7 @@
     "react-intersection-observer": "^10.0.2",
     "react-resizable-panels": "catalog:",
     "react-scan": "^0.4.3",
+    "recharts": "catalog:",
     "shiki": "^3.13.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
