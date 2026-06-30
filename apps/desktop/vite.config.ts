@@ -3,13 +3,14 @@ import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import type { UserConfig } from "vite";
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
-const config = defineConfig(
-  async (): Promise<UserConfig> => ({
+const config = defineConfig(async ({ mode }): Promise<UserConfig> => {
+  const env = loadEnv(mode, process.cwd(), "");
+  return {
     plugins: [
       tanstackRouter({ target: "react", autoCodeSplitting: true }),
       react(),
@@ -33,6 +34,23 @@ const config = defineConfig(
       watch: {
         ignored: ["**/src-tauri/**"],
       },
+      proxy: {
+        "/ingest/static": {
+          target: "https://us-assets.i.posthog.com",
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/ingest/, ""),
+        },
+        "/ingest/array": {
+          target: "https://us-assets.i.posthog.com",
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/ingest/, ""),
+        },
+        "/ingest": {
+          target: env.VITE_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com",
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/ingest/, ""),
+        },
+      },
     },
     resolve: {
       alias: {
@@ -42,7 +60,7 @@ const config = defineConfig(
     worker: {
       format: "es",
     },
-  }),
-);
+  };
+});
 
 export default config;
