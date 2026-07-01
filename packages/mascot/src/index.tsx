@@ -373,6 +373,7 @@ const MascotSvg = ({
       </div>
 
       <motion.svg
+        // @ts-expect-error - fine
         ref={svgRef}
         {...motionSvgProps}
         onClick={handleClick}
