@@ -67,7 +67,7 @@ export type StashStatusFilterMap = Record<
   boolean
 >;
 
-export type MainWindowView = "FileDiff" | "HistoryGraph" | null;
+export type MainWindowView = "FileDiff" | "HistoryGraph" | "TimelineSearch" | null;
 
 export type GitViewState = {
   leftPanelView: GitSidebarView;

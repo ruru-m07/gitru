@@ -1,9 +1,13 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::{Mutex as StdMutex, OnceLock};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+    Mutex as StdMutex, OnceLock,
+};
 use std::time::{Duration, Instant};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::time::{sleep, timeout};
 
@@ -97,6 +101,19 @@ impl GitCommandRunner {
         options: GitRunOptions,
     ) -> Result<Vec<u8>, String> {
         run_git_command_bytes_async_unlocked(&self.repo_path, args, None, options).await
+    }
+
+    pub async fn run_streaming<F>(
+        &self,
+        args: &[&str],
+        options: GitRunOptions,
+        cancel_flag: Arc<AtomicBool>,
+        on_line: F,
+    ) -> Result<i32, String>
+    where
+        F: FnMut(&str) -> bool,
+    {
+        run_git_command_streaming(&self.repo_path, args, options, cancel_flag, on_line).await
     }
 }
 
@@ -449,6 +466,67 @@ fn finalize_output_bytes(
             ))
         }
     }
+}
+
+async fn run_git_command_streaming<F>(
+    repo_path: &Path,
+    args: &[&str],
+    options: GitRunOptions,
+    cancel_flag: Arc<AtomicBool>,
+    mut on_line: F,
+) -> Result<i32, String>
+where
+    F: FnMut(&str) -> bool,
+{
+    let git_binary = git_binary_path()?;
+    let git_path_env = git_path_env()?;
+    let mut command = tokio::process::Command::new(git_binary);
+    command.current_dir(repo_path);
+    command.env("PATH", git_path_env);
+    command.args(args);
+    command.stdin(Stdio::null());
+    command.stdout(Stdio::piped());
+    command.stderr(Stdio::piped());
+
+    let mut child = command
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Failed to capture git stdout".to_string())?;
+
+    let mut reader = BufReader::new(stdout).lines();
+    let start = Instant::now();
+
+    loop {
+        if cancel_flag.load(Ordering::Relaxed) {
+            let _ = child.kill().await;
+            return Ok(-1);
+        }
+
+        if start.elapsed() > options.timeout {
+            let _ = child.kill().await;
+            return Err("Git command timed out".to_string());
+        }
+
+        let next_line = match timeout(Duration::from_millis(250), reader.next_line()).await {
+            Ok(Ok(Some(line))) => line,
+            Ok(Ok(None)) => break,
+            Ok(Err(error)) => return Err(error.to_string()),
+            Err(_) => continue,
+        };
+
+        if !on_line(&next_line) {
+            let _ = child.kill().await;
+            return Ok(0);
+        }
+    }
+
+    let status = child.wait().await.map_err(|e| e.to_string())?;
+    Ok(status.code().unwrap_or(1))
 }
 
 #[cfg(test)]

@@ -9,3 +9,4 @@ pub mod query;
 pub mod repository;
 pub mod request_queue;
 pub mod stash;
+pub mod timeline_search;

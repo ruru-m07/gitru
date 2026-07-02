@@ -60,6 +60,7 @@ const iconMap: Record<string, React.ReactNode> = {
   refreshCcw: <RefreshCcw className="size-4" />,
   theme: <SwatchBook className="size-4" />,
   updates: <Download className="size-4" />,
+  search: <SearchIcon className="size-4" />,
 };
 
 export function useRootView(): CommandViewConfig<"root", ActionItem> {
@@ -72,6 +73,7 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
 
   const tanstackNavigate = useNavigate();
   const activeRepositoryPath = useAppStore(selectActiveRepositoryPath);
+  const setMainWindowView = useAppStore((state) => state.setMainWindowView);
   const setGitViewStateForRepo = useAppStore(
     (state) => state.setGitViewStateForRepo,
   );
@@ -144,6 +146,18 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             iconKey: "localGit",
             keywords: ["git", "version control"],
             redirect: "/app/git",
+          },
+          {
+            id: "timeline-search",
+            label: "Timeline Search",
+            shortcut: ["G", "T"],
+            iconKey: "search",
+            keywords: ["search", "history", "grep", "timeline", "pickaxe"],
+            async onCallBack() {
+              setMainWindowView("TimelineSearch");
+              tanstackNavigate({ to: "/app/git" });
+              ctx.close();
+            },
           },
           {
             id: "stash-changes",

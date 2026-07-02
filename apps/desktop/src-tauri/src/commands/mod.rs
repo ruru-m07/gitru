@@ -5,4 +5,5 @@ pub mod diff;
 pub mod history;
 pub mod origin;
 pub mod stash;
+pub mod timeline_search;
 pub mod updater;

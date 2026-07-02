@@ -43,6 +43,7 @@ import { getStatusIcon } from "@/components/getStatusIcon";
 import HistoryGraph from "@/components/historyGraph";
 import LoaderIndicator from "@/components/loaderIndicator";
 import { GitruBorderedSVG } from "@/components/svgs/gitru-borderd";
+import { TimelineSearchView } from "@/components/timelineSearch/TimelineSearchView";
 import {
   useGetCommitById,
   useGetCurrentBranch,
@@ -63,6 +64,8 @@ import {
   type ResolvedFileSelection,
   resolveFileSelection,
 } from "../../../lib/gitSelectionResolver";
+import { timeAgoFromUnixSeconds } from "../../../lib/time";
+import { inferTimelineHitStatus } from "../../../lib/timelineSearchStatus";
 
 export const Route = createFileRoute("/app/git/")({
   component: App,
@@ -77,6 +80,7 @@ function App() {
       {mainWindowView === null && <EmptyStateScreen />}
       {mainWindowView === "FileDiff" && <DiffBoxBody />}
       {mainWindowView === "HistoryGraph" && <HistoryGraph />}
+      {mainWindowView === "TimelineSearch" && <TimelineSearchView />}
     </>
   );
 }
@@ -315,7 +319,10 @@ const FileLevelStatusBar = ({
           aria-label="Open notifications"
           onClick={() => {
             setMainWindowView(null);
-            if (resolvedSelection.state === "none") {
+            if (
+              resolvedSelection.state === "none" ||
+              resolvedSelection.state === "timeline"
+            ) {
               return;
             }
 
@@ -814,13 +821,49 @@ type ChunkActionMetadata = {
   };
 };
 
-const FileLevelStatusBarLeft = ({
+export const FileLevelStatusBarLeft = ({
   resolvedSelection,
 }: {
   resolvedSelection: ResolvedFileSelection;
 }) => {
   if (resolvedSelection.state === "none") {
     return null;
+  }
+
+  if (resolvedSelection.state === "timeline") {
+    const hit = resolvedSelection.hit;
+
+    return (
+      <div className="w-full space-y-1 border-b px-4 py-3">
+        <div className="text-sm font-medium">
+          {hit.commitSubject || "Untitled commit"}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+          {getStatusIcon(inferTimelineHitStatus(hit), 16)}
+          <span className="group flex items-center">
+            {renderPath(hit.filePath)}
+            <div className="ml-1 opacity-0 transition-opacity group-hover:opacity-100 text-xs text-muted-foreground">
+              <CopyButton size={"xs"} variant="ghost" text={hit.filePath} />
+            </div>
+          </span>
+          {hit.fileNewPath ? (
+            <>
+              <MoveHorizontal
+                className="text-muted-foreground opacity-70"
+                size={16}
+              />
+              <span>{renderPath(hit.fileNewPath)}</span>
+            </>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <span className="font-mono">{hit.commitHash.slice(0, 7)}</span>
+          <span>{hit.authorName}</span>
+          <span>{timeAgoFromUnixSeconds(hit.commitTime)}</span>
+          {hit.matchLine ? <span>line {hit.matchLine}</span> : null}
+        </div>
+      </div>
+    );
   }
 
   const selectedFile =

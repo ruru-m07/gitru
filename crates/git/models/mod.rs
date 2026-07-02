@@ -6,3 +6,4 @@ pub mod history;
 pub mod origin;
 pub mod stash;
 pub mod status;
+pub mod timeline_search;
