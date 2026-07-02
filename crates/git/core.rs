@@ -6,7 +6,7 @@ use crate::{
     service::{
         actions::ActionService, branch::BranchService, commit::CommitService, diff::DiffService,
         history::HistoryService, origin::OriginService, query::QueryService, stash::StashService,
-        timeline_search::TimelineSearchService,
+        pickaxe::PickaxeService,
     },
 };
 
@@ -53,8 +53,8 @@ impl RepoServices {
         StashService::new(self.ctx.clone())
     }
 
-    pub fn timeline_search(&self) -> TimelineSearchService {
-        TimelineSearchService::new(self.ctx.clone())
+    pub fn pickaxe(&self) -> PickaxeService {
+        PickaxeService::new(self.ctx.clone())
     }
 }
 

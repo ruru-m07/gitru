@@ -148,13 +148,13 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             redirect: "/app/git",
           },
           {
-            id: "timeline-search",
-            label: "Timeline Search",
+            id: "pickaxe",
+            label: "Pickaxe",
             shortcut: ["G", "T"],
             iconKey: "search",
-            keywords: ["search", "history", "grep", "timeline", "pickaxe"],
+            keywords: ["search", "history", "grep", "pickaxe", "log -S"],
             async onCallBack() {
-              setMainWindowView("TimelineSearch");
+              setMainWindowView("Pickaxe");
               tanstackNavigate({ to: "/app/git" });
               ctx.close();
             },

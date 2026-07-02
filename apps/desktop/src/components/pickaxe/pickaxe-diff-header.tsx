@@ -1,11 +1,11 @@
 import { CopyButton } from "@gitru/ui/components/copy-button";
 import type { FileDiffMetadata } from "@pierre/diffs";
-import { ChevronDown, MoveHorizontal } from "lucide-react";
-import { useMemo, useState } from "react";
+import { MoveHorizontal } from "lucide-react";
+import { useMemo } from "react";
 import { getStatusIcon } from "@/components/getStatusIcon";
-import { TimelineSearchHit } from "@/hooks";
+import { PickaxeHit } from "@/hooks";
 import { timeAgoFromUnixSeconds } from "@/lib/time";
-import { fileDiffTypeToStatus } from "@/lib/timelineSearchStatus";
+import { fileDiffTypeToStatus } from "@/lib/pickaxe-status";
 import { DiffStat } from "../diffBoxes";
 
 function renderPath(path: string) {
@@ -21,28 +21,12 @@ function renderPath(path: string) {
   );
 }
 
-function countDiffStats(fileDiff: FileDiffMetadata) {
-  let additions = 0;
-  let deletions = 0;
-
-  for (const hunk of fileDiff.hunks) {
-    additions += hunk.additionCount;
-    deletions += hunk.deletionCount;
-  }
-
-  return { additions, deletions };
-}
-
-export function TimelineSearchDiffHeader({
-  collapsed,
+export function PickaxeDiffHeader({
   fileDiff,
-  toggleCollapsed,
   hit,
 }: {
-  collapsed: boolean;
   fileDiff: FileDiffMetadata;
-  toggleCollapsed(): unknown;
-  hit: TimelineSearchHit;
+  hit: PickaxeHit;
 }) {
   // const { additions, deletions } = countDiffStats(fileDiff);
   const displayPath = fileDiff.name || fileDiff.prevName || "untitled";

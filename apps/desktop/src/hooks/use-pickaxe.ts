@@ -1,13 +1,11 @@
-import type { TimelineSearchQuery } from "@gitru/commands";
-import {
-  cancelTimelineSearch,
-  startTimelineSearch,
-} from "@gitru/commands";
+import type { PickaxeQuery } from "@gitru/commands";
+import { cancelPickaxe, startPickaxe } from "@gitru/commands";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { PickaxeSearchOptions } from "@/lib/pickaxe-search-options";
 import { useActiveRepositoryState } from "@/state/useActiveRepositoryState";
 
-export type TimelineSearchHit = {
+export type PickaxeHit = {
   commitHash: string;
   commitSubject: string;
   authorName: string;
@@ -19,7 +17,7 @@ export type TimelineSearchHit = {
   patch?: string | null;
 };
 
-export type TimelineSearchPhase =
+export type PickaxePhase =
   | "started"
   | "hit"
   | "progress"
@@ -27,29 +25,25 @@ export type TimelineSearchPhase =
   | "error"
   | "cancelled";
 
-export type TimelineSearchProgressEvent = {
+export type PickaxeProgressEvent = {
   operationId: string;
-  phase: TimelineSearchPhase;
-  hit?: TimelineSearchHit | null;
+  phase: PickaxePhase;
+  hit?: PickaxeHit | null;
   commitsScanned: number;
   hitsFound: number;
   status?: string | null;
   error?: string | null;
 };
 
-export type TimelineSearchStatus =
+export type PickaxeStatus =
   | "idle"
   | "running"
   | "finished"
   | "error"
   | "cancelled";
 
-export type TimelineSearchMode = "pickaxe" | "fullContent";
-
-export type TimelineSearchFilters = {
+export type PickaxeFilters = PickaxeSearchOptions & {
   query: string;
-  isRegex: boolean;
-  mode: TimelineSearchMode;
   author: string;
   since: string;
   until: string;
@@ -61,7 +55,7 @@ function createOperationId() {
     return crypto.randomUUID();
   }
 
-  return `timeline-search-${Date.now()}`;
+  return `pickaxe-${Date.now()}`;
 }
 
 function parseFilePatterns(input: string) {
@@ -71,16 +65,16 @@ function parseFilePatterns(input: string) {
     .filter(Boolean);
 }
 
-function hitDedupeKey(hit: TimelineSearchHit) {
+function hitDedupeKey(hit: PickaxeHit) {
   return `${hit.commitHash}:${hit.filePath}`;
 }
 
-export function useTimelineSearch() {
+export function usePickaxe() {
   const repo = useActiveRepositoryState();
-  const [hits, setHits] = useState<TimelineSearchHit[]>([]);
+  const [hits, setHits] = useState<PickaxeHit[]>([]);
   const [commitsScanned, setCommitsScanned] = useState(0);
   const [hitsFound, setHitsFound] = useState(0);
-  const [status, setStatus] = useState<TimelineSearchStatus>("idle");
+  const [status, setStatus] = useState<PickaxeStatus>("idle");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const operationIdRef = useRef<string | null>(null);
@@ -88,55 +82,52 @@ export function useTimelineSearch() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
 
-    void listen<TimelineSearchProgressEvent>(
-      "git://timeline-search-progress",
-      (incoming) => {
-        const payload = incoming.payload;
-        const activeOperationId = operationIdRef.current;
-        if (!activeOperationId || payload.operationId !== activeOperationId) {
-          return;
-        }
+    void listen<PickaxeProgressEvent>("git://pickaxe-progress", (incoming) => {
+      const payload = incoming.payload;
+      const activeOperationId = operationIdRef.current;
+      if (!activeOperationId || payload.operationId !== activeOperationId) {
+        return;
+      }
 
-        setCommitsScanned(payload.commitsScanned);
-        setHitsFound(payload.hitsFound);
+      setCommitsScanned(payload.commitsScanned);
+      setHitsFound(payload.hitsFound);
 
-        if (payload.status) {
-          setStatusMessage(payload.status);
-        }
+      if (payload.status) {
+        setStatusMessage(payload.status);
+      }
 
-        switch (payload.phase) {
-          case "started":
-            setStatus("running");
-            setError(null);
-            break;
-          case "hit":
-            if (payload.hit) {
-              setHits((previous) => {
-                const key = hitDedupeKey(payload.hit!);
-                if (previous.some((hit) => hitDedupeKey(hit) === key)) {
-                  return previous;
-                }
+      switch (payload.phase) {
+        case "started":
+          setStatus("running");
+          setError(null);
+          break;
+        case "hit":
+          if (payload.hit) {
+            setHits((previous) => {
+              const key = hitDedupeKey(payload.hit!);
+              if (previous.some((hit) => hitDedupeKey(hit) === key)) {
+                return previous;
+              }
 
-                return [...previous, payload.hit!];
-              });
-            }
-            break;
-          case "progress":
-            setStatus("running");
-            break;
-          case "finished":
-            setStatus("finished");
-            break;
-          case "error":
-            setStatus("error");
-            setError(payload.error ?? "Timeline search failed");
-            break;
-          case "cancelled":
-            setStatus("cancelled");
-            break;
-        }
-      },
-    ).then((dispose) => {
+              return [...previous, payload.hit!];
+            });
+          }
+          break;
+        case "progress":
+          setStatus("running");
+          break;
+        case "finished":
+          setStatus("finished");
+          break;
+        case "error":
+          setStatus("error");
+          setError(payload.error ?? "Pickaxe failed");
+          break;
+        case "cancelled":
+          setStatus("cancelled");
+          break;
+      }
+    }).then((dispose) => {
       unlisten = dispose;
     });
 
@@ -154,14 +145,14 @@ export function useTimelineSearch() {
     }
 
     try {
-      await cancelTimelineSearch({ operationId });
+      await cancelPickaxe({ operationId });
     } catch {
       // Ignore cancellation errors when the backend already finished.
     }
   }, []);
 
   const startSearch = useCallback(
-    async (filters: TimelineSearchFilters) => {
+    async (filters: PickaxeFilters) => {
       if (!repo) {
         return;
       }
@@ -179,13 +170,14 @@ export function useTimelineSearch() {
       setCommitsScanned(0);
       setHitsFound(0);
       setStatus("running");
-      setStatusMessage("Starting search...");
+      setStatusMessage("Starting pickaxe...");
       setError(null);
 
-      const query: TimelineSearchQuery = {
+      const query: PickaxeQuery = {
         query: trimmedQuery,
         isRegex: filters.isRegex,
-        mode: filters.mode,
+        matchCase: filters.matchCase,
+        matchWholeWord: filters.matchWholeWord,
         author: filters.author.trim() || undefined,
         since: filters.since.trim() || undefined,
         until: filters.until.trim() || undefined,
@@ -195,7 +187,7 @@ export function useTimelineSearch() {
       };
 
       try {
-        await startTimelineSearch({
+        await startPickaxe({
           contextId: repo.contextId,
           query,
         });
@@ -204,7 +196,7 @@ export function useTimelineSearch() {
         setError(
           searchError instanceof Error
             ? searchError.message
-            : "Failed to start timeline search",
+            : "Failed to start pickaxe",
         );
       }
     },

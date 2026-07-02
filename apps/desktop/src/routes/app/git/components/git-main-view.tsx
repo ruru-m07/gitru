@@ -1,5 +1,5 @@
 import HistoryGraph from "@/components/historyGraph";
-import { TimelineSearchView } from "@/components/timelineSearch/TimelineSearchView";
+import { PickaxeView } from "@/components/pickaxe/pickaxe-view";
 import { useAppStore } from "@/store/useAppStore";
 import { DiffBoxBody } from "./diff-box-body";
 import { EmptyStateScreen } from "./empty-state-screen";
@@ -14,7 +14,7 @@ export function GitMainView() {
       {mainWindowView === null && <EmptyStateScreen />}
       {mainWindowView === "FileDiff" && <DiffBoxBody />}
       {mainWindowView === "HistoryGraph" && <HistoryGraph />}
-      {mainWindowView === "TimelineSearch" && <TimelineSearchView />}
+      {mainWindowView === "Pickaxe" && <PickaxeView />}
     </>
   );
 }

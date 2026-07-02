@@ -34,7 +34,7 @@ export function FileLevelStatusBar({
             setMainWindowView(null);
             if (
               resolvedSelection.state === "none" ||
-              resolvedSelection.state === "timeline"
+              resolvedSelection.state === "pickaxe"
             ) {
               return;
             }

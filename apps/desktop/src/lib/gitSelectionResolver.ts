@@ -1,5 +1,5 @@
 import type { FileStatus } from "@gitru/commands";
-import type { TimelineSearchHit } from "@/hooks/useTimelineSearch";
+import type { PickaxeHit } from "@/hooks/use-pickaxe";
 import type { FileSelectionIdentity, SelectionSource } from "@/types/store";
 
 export type ResolvedFileSelection =
@@ -15,8 +15,8 @@ export type ResolvedFileSelection =
       reason: "missing" | "stash_removed" | "source_mismatch";
     }
   | {
-      state: "timeline";
-      hit: TimelineSearchHit;
+      state: "pickaxe";
+      hit: PickaxeHit;
     };
 
 type ResolveSelectionParams = {

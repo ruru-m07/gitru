@@ -1,8 +1,10 @@
-const HIGHLIGHT_NAME = "timeline-search";
-const ACTIVE_HIGHLIGHT_NAME = "timeline-search-active";
-const STYLE_ELEMENT_ID = "timeline-search-highlight-style";
-const MARK_CLASS_NAME = "timeline-search-mark";
-const ACTIVE_MARK_CLASS_NAME = "timeline-search-mark-active";
+import type { PickaxeSearchOptions } from "./pickaxe-search-options";
+
+const HIGHLIGHT_NAME = "pickaxe";
+const ACTIVE_HIGHLIGHT_NAME = "pickaxe-active";
+const STYLE_ELEMENT_ID = "pickaxe-highlight-style";
+const MARK_CLASS_NAME = "pickaxe-mark";
+const ACTIVE_MARK_CLASS_NAME = "pickaxe-mark-active";
 
 export type HighlightMatch =
   | {
@@ -29,22 +31,21 @@ type TextPosition = {
 
 const cardHighlights = new Map<string, CardHighlightEntry>();
 
-export const TIMELINE_SEARCH_HIGHLIGHTS_CHANGED_EVENT =
-  "timeline-search-highlights-changed";
+export const PICKAXE_HIGHLIGHTS_CHANGED_EVENT = "pickaxe-highlights-changed";
 
 function notifyHighlightsChanged() {
   if (typeof window === "undefined") {
     return;
   }
 
-  window.dispatchEvent(new Event(TIMELINE_SEARCH_HIGHLIGHTS_CHANGED_EVENT));
+  window.dispatchEvent(new Event(PICKAXE_HIGHLIGHTS_CHANGED_EVENT));
 }
 
 function isDebugEnabled() {
   return (
     import.meta.env.DEV &&
     typeof localStorage !== "undefined" &&
-    localStorage.getItem("timeline-search-debug") === "1"
+    localStorage.getItem("pickaxe-debug") === "1"
   );
 }
 
@@ -53,7 +54,7 @@ function debugLog(message: string, data?: unknown) {
     return;
   }
 
-  console.info(`[timeline-search-highlight] ${message}`, data ?? "");
+  console.info(`[pickaxe-highlight] ${message}`, data ?? "");
 }
 
 function supportsCustomHighlight() {
@@ -64,18 +65,26 @@ function escapeForRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function buildSearchPattern(query: string, isRegex: boolean) {
+function buildSearchPattern(query: string, options: PickaxeSearchOptions) {
   const normalizedQuery = query.trim();
   if (!normalizedQuery) {
     return null;
   }
 
+  const { isRegex, matchCase, matchWholeWord } = options;
+
   if (isRegex) {
     if (normalizedQuery.startsWith("/") && normalizedQuery.length > 1) {
       const lastSlashIndex = normalizedQuery.lastIndexOf("/");
       if (lastSlashIndex > 0) {
-        const pattern = normalizedQuery.slice(1, lastSlashIndex);
-        const flags = normalizedQuery.slice(lastSlashIndex + 1) || "i";
+        let pattern = normalizedQuery.slice(1, lastSlashIndex);
+        let flags = normalizedQuery.slice(lastSlashIndex + 1) || "";
+        if (!matchCase && !flags.includes("i")) {
+          flags = `${flags}i`;
+        }
+        if (matchWholeWord) {
+          pattern = `\\b(?:${pattern})\\b`;
+        }
         try {
           return new RegExp(pattern, flags.includes("g") ? flags : `${flags}g`);
         } catch {
@@ -85,13 +94,25 @@ function buildSearchPattern(query: string, isRegex: boolean) {
     }
 
     try {
-      return new RegExp(normalizedQuery, "gi");
+      let pattern = normalizedQuery;
+      if (!matchCase && !pattern.includes("(?")) {
+        pattern = `(?i)${pattern}`;
+      }
+      if (matchWholeWord) {
+        pattern = `\\b(?:${pattern})\\b`;
+      }
+      return new RegExp(pattern, "g");
     } catch {
       return null;
     }
   }
 
-  return new RegExp(escapeForRegex(normalizedQuery), "gi");
+  let pattern = escapeForRegex(normalizedQuery);
+  if (matchWholeWord) {
+    pattern = `\\b${pattern}\\b`;
+  }
+
+  return new RegExp(pattern, matchCase ? "g" : "gi");
 }
 
 function getHighlightCss() {
@@ -308,9 +329,9 @@ function applyMarkHighlights(root: HTMLElement, pattern: RegExp) {
 export function collectSearchRanges(
   root: HTMLElement,
   query: string,
-  isRegex: boolean,
+  options: PickaxeSearchOptions,
 ) {
-  const pattern = buildSearchPattern(query, isRegex);
+  const pattern = buildSearchPattern(query, options);
   if (!pattern) {
     return { ranges: [] as Range[], shadowRoots: new Set<ShadowRoot>() };
   }
@@ -407,16 +428,16 @@ function compareElementPosition(left: Element, right: Element) {
   return compareRangePosition(leftRange, rightRange);
 }
 
-function getTimelineSearchCardRoots() {
+function getPickaxeCardRoots() {
   return Array.from(
-    document.querySelectorAll(".timeline-search-diff-root"),
+    document.querySelectorAll(".pickaxe-diff-root"),
   ).filter((node): node is HTMLElement => node instanceof HTMLElement);
 }
 
 function collectMarkMatches() {
   const matches: HighlightMatch[] = [];
 
-  for (const cardRoot of getTimelineSearchCardRoots()) {
+  for (const cardRoot of getPickaxeCardRoots()) {
     for (const shadowRoot of collectShadowRoots(cardRoot)) {
       for (const mark of shadowRoot.querySelectorAll(
         `mark.${MARK_CLASS_NAME}`,
@@ -437,8 +458,11 @@ function collectMarkMatches() {
   return sortHighlightMatches(matches);
 }
 
-export function collectAllHighlightMatches(query: string, isRegex: boolean) {
-  const pattern = buildSearchPattern(query, isRegex);
+export function collectAllHighlightMatches(
+  query: string,
+  options: PickaxeSearchOptions,
+) {
+  const pattern = buildSearchPattern(query, options);
   if (!pattern) {
     return [] as HighlightMatch[];
   }
@@ -450,8 +474,8 @@ export function collectAllHighlightMatches(query: string, isRegex: boolean) {
 
   const matches: HighlightMatch[] = [];
 
-  for (const cardRoot of getTimelineSearchCardRoots()) {
-    const { ranges } = collectSearchRanges(cardRoot, query, isRegex);
+  for (const cardRoot of getPickaxeCardRoots()) {
+    const { ranges } = collectSearchRanges(cardRoot, query, options);
     for (const range of ranges) {
       if (!isRangeValid(range)) {
         continue;
@@ -563,25 +587,25 @@ export function setCardSearchHighlight(
   cardId: string,
   root: HTMLElement | null,
   query: string,
-  isRegex: boolean,
+  options: PickaxeSearchOptions,
 ) {
   if (!root || !query.trim()) {
     clearCardSearchHighlight(cardId);
     return;
   }
 
-  const pattern = buildSearchPattern(query, isRegex);
+  const pattern = buildSearchPattern(query, options);
   if (!pattern) {
     clearCardSearchHighlight(cardId);
     return;
   }
 
-  const { ranges, shadowRoots } = collectSearchRanges(root, query, isRegex);
+  const { ranges, shadowRoots } = collectSearchRanges(root, query, options);
 
   debugLog("apply", {
     cardId,
     query,
-    isRegex,
+    options,
     supportsCustomHighlight: supportsCustomHighlight(),
     shadowRootCount: shadowRoots.size,
     rangeCount: ranges.length,
@@ -622,14 +646,18 @@ export function clearAllSearchHighlights() {
     return;
   }
 
-  for (const root of document.querySelectorAll(".timeline-search-diff-root")) {
+  for (const root of document.querySelectorAll(".pickaxe-diff-root")) {
     if (root instanceof HTMLElement) {
       clearMarkHighlights(root);
     }
   }
 }
 
-export function getSearchHighlightDebugInfo(root: HTMLElement | null, query: string, isRegex: boolean) {
+export function getSearchHighlightDebugInfo(
+  root: HTMLElement | null,
+  query: string,
+  options: PickaxeSearchOptions,
+) {
   if (!root || !query.trim()) {
     return {
       supportsCustomHighlight: supportsCustomHighlight(),
@@ -638,7 +666,7 @@ export function getSearchHighlightDebugInfo(root: HTMLElement | null, query: str
     };
   }
 
-  const { ranges, shadowRoots } = collectSearchRanges(root, query, isRegex);
+  const { ranges, shadowRoots } = collectSearchRanges(root, query, options);
   return {
     supportsCustomHighlight: supportsCustomHighlight(),
     shadowRootCount: shadowRoots.size,

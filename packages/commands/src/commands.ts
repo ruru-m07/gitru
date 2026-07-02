@@ -509,15 +509,15 @@ export async function downloadAndInstallUpdateByChannel(params: types.DownloadAn
 }
 
 
-export async function startTimelineSearch(params: types.StartTimelineSearchParams, hooks?: CommandHooks<string>): Promise<string> {
+export async function startPickaxe(params: types.StartPickaxeParams, hooks?: CommandHooks<string>): Promise<string> {
   try {
-    const result = types.StartTimelineSearchParamsSchema.safeParse(params);
+    const result = types.StartPickaxeParamsSchema.safeParse(params);
 
     if (!result.success) {
       hooks?.onValidationError?.(result.error);
       throw result.error;
     }
-    const data = await invoke<string>('start_timeline_search', result.data);
+    const data = await invoke<string>('start_pickaxe', result.data);
     hooks?.onSuccess?.(data);
     return data;
   } catch (error) {
@@ -531,15 +531,15 @@ export async function startTimelineSearch(params: types.StartTimelineSearchParam
 }
 
 
-export async function cancelTimelineSearch(params: types.CancelTimelineSearchParams, hooks?: CommandHooks<boolean>): Promise<boolean> {
+export async function cancelPickaxe(params: types.CancelPickaxeParams, hooks?: CommandHooks<boolean>): Promise<boolean> {
   try {
-    const result = types.CancelTimelineSearchParamsSchema.safeParse(params);
+    const result = types.CancelPickaxeParamsSchema.safeParse(params);
 
     if (!result.success) {
       hooks?.onValidationError?.(result.error);
       throw result.error;
     }
-    const data = await invoke<boolean>('cancel_timeline_search', result.data);
+    const data = await invoke<boolean>('cancel_pickaxe', result.data);
     hooks?.onSuccess?.(data);
     return data;
   } catch (error) {

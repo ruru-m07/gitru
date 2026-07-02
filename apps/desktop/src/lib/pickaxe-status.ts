@@ -1,6 +1,6 @@
 import type { FileStatusKind } from "@gitru/commands";
 import type { FileDiffMetadata } from "@pierre/diffs";
-import type { TimelineSearchHit } from "@/hooks/useTimelineSearch";
+import type { PickaxeHit } from "@/hooks/use-pickaxe";
 
 export function fileDiffTypeToStatus(
   type: FileDiffMetadata["type"],
@@ -19,7 +19,7 @@ export function fileDiffTypeToStatus(
   }
 }
 
-export function inferTimelineHitStatus(hit: TimelineSearchHit): FileStatusKind[] {
+export function inferPickaxeHitStatus(hit: PickaxeHit): FileStatusKind[] {
   const patch = hit.patch ?? "";
 
   if (/^deleted file mode/m.test(patch) || /^\+\+\+ \/dev\/null$/m.test(patch)) {

@@ -354,12 +354,11 @@ export const GetStatusResponseSchema = z.object({
 
 export type GetStatusResponse = z.infer<typeof GetStatusResponseSchema>;
 
-export const TimelineSearchModeSchema = z.enum(["pickaxe", "fullContent"]);
-
-export const TimelineSearchQuerySchema = z.object({
+export const PickaxeQuerySchema = z.object({
   query: z.string(),
   isRegex: z.coerce.boolean(),
-  mode: TimelineSearchModeSchema,
+  matchCase: z.coerce.boolean(),
+  matchWholeWord: z.coerce.boolean(),
   author: z.string().optional(),
   since: z.string().optional(),
   until: z.string().optional(),
@@ -368,7 +367,7 @@ export const TimelineSearchQuerySchema = z.object({
   operationId: z.string(),
 });
 
-export type TimelineSearchQuery = z.infer<typeof TimelineSearchQuerySchema>;
+export type PickaxeQuery = z.infer<typeof PickaxeQuerySchema>;
 
 export const UpdateCheckResponseSchema = z.object({
   available: z.coerce.boolean(),
@@ -484,11 +483,11 @@ export const DownloadAndInstallUpdateByChannelParamsSchema = z.object({
   channel: z.string(),
 });
 
-export const StartTimelineSearchParamsSchema = z.object({
-  contextId: z.string(),query: TimelineSearchQuerySchema,
+export const StartPickaxeParamsSchema = z.object({
+  contextId: z.string(),query: PickaxeQuerySchema,
 });
 
-export const CancelTimelineSearchParamsSchema = z.object({
+export const CancelPickaxeParamsSchema = z.object({
   operationId: z.string(),
 });
 
@@ -671,9 +670,9 @@ export type CheckForUpdateByChannelParams = z.infer<typeof CheckForUpdateByChann
 
 export type DownloadAndInstallUpdateByChannelParams = z.infer<typeof DownloadAndInstallUpdateByChannelParamsSchema>;
 
-export type StartTimelineSearchParams = z.infer<typeof StartTimelineSearchParamsSchema>;
+export type StartPickaxeParams = z.infer<typeof StartPickaxeParamsSchema>;
 
-export type CancelTimelineSearchParams = z.infer<typeof CancelTimelineSearchParamsSchema>;
+export type CancelPickaxeParams = z.infer<typeof CancelPickaxeParamsSchema>;
 
 export type GetPatchByFilePathParams = z.infer<typeof GetPatchByFilePathParamsSchema>;
 

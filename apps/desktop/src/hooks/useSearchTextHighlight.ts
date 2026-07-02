@@ -1,4 +1,5 @@
 import { useEffect, useId } from "react";
+import type { PickaxeSearchOptions } from "@/lib/pickaxe-search-options";
 import {
   clearCardSearchHighlight,
   setCardSearchHighlight,
@@ -7,7 +8,7 @@ import {
 export function useSearchTextHighlight(
   containerRef: React.RefObject<HTMLElement | null>,
   query: string,
-  isRegex: boolean,
+  searchOptions: PickaxeSearchOptions,
   enabled = true,
 ) {
   const cardId = useId();
@@ -54,7 +55,7 @@ export function useSearchTextHighlight(
         cardId,
         containerRef.current,
         query,
-        isRegex,
+        searchOptions,
       );
     };
 
@@ -84,5 +85,5 @@ export function useSearchTextHighlight(
       observer.disconnect();
       clearCardSearchHighlight(cardId);
     };
-  }, [cardId, containerRef, enabled, isRegex, query]);
+  }, [cardId, containerRef, enabled, query, searchOptions]);
 }

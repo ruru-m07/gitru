@@ -1,32 +1,29 @@
 import { cn } from "@gitru/ui/lib/utils";
 import { MultiFileDiff } from "@pierre/diffs/react";
 import { useTheme } from "next-themes";
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { ImageDiffViewer } from "@/components/diff/image/ImageDiffViewer";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
 import LoaderIndicator from "@/components/loaderIndicator";
 import { useGetDiff } from "@/hooks";
 import { useSearchTextHighlight } from "@/hooks/useSearchTextHighlight";
-import type { TimelineSearchHit } from "@/hooks/useTimelineSearch";
-import { TimelineSearchDiffHeader } from "./TimelineSearchDiffHeader";
+import type { PickaxeHit } from "@/hooks/use-pickaxe";
+import type { PickaxeSearchOptions } from "@/lib/pickaxe-search-options";
+import { PickaxeDiffHeader } from "./pickaxe-diff-header";
 
-export function TimelineSearchDiffPreview({
+export function PickaxeDiffPreview({
   hit,
   searchQuery,
-  isRegex,
+  searchOptions,
 }: {
-  hit: TimelineSearchHit;
+  hit: PickaxeHit;
   searchQuery: string;
-  isRegex: boolean;
+  searchOptions: PickaxeSearchOptions;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
   const { diffStyle, overflow } = useDiffViewerSettings();
-  const [collapsed, setCollapsed] = useState(false);
 
-  function toggleCollapsed() {
-    setCollapsed((current) => !current);
-  }
   const {
     data: diffData,
     isLoading,
@@ -50,7 +47,12 @@ export function TimelineSearchDiffPreview({
   const isImageAssetDiff = assetKind === "image";
   const highlightReady = !showLoading && !isImageAssetDiff && !!diffData;
 
-  useSearchTextHighlight(containerRef, searchQuery, isRegex, highlightReady);
+  useSearchTextHighlight(
+    containerRef,
+    searchQuery,
+    searchOptions,
+    highlightReady,
+  );
 
   if (showLoading && !diffData) {
     return (
@@ -72,7 +74,7 @@ export function TimelineSearchDiffPreview({
     <div
       ref={containerRef}
       className={cn(
-        "timeline-search-diff-root w-full overflow-auto",
+        "pickaxe-diff-root w-full overflow-auto",
         theme?.startsWith("dark-") ? "bg-black" : "bg-secondary",
       )}
     >
@@ -91,12 +93,7 @@ export function TimelineSearchDiffPreview({
             name: diffData?.newFile?.name ?? hit.fileNewPath ?? hit.filePath,
           }}
           renderCustomHeader={(fileDiff) => (
-            <TimelineSearchDiffHeader
-              collapsed={collapsed}
-              toggleCollapsed={toggleCollapsed}
-              fileDiff={fileDiff}
-              hit={hit}
-            />
+            <PickaxeDiffHeader fileDiff={fileDiff} hit={hit} />
           )}
           options={{
             themeType: theme?.startsWith("dark-") ? "dark" : "light",
@@ -104,7 +101,6 @@ export function TimelineSearchDiffPreview({
             overflow,
             collapsedContextThreshold: 0,
             lineHoverHighlight: "both",
-            collapsed,
             unsafeCSS: `
               [data-background] {
                 --diffs-light-bg: ${theme?.startsWith("dark-") ? "#000000" : "var(--secondary)"} !important;

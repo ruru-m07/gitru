@@ -1,34 +1,31 @@
 import { Button } from "@gitru/ui/components/button";
 import { Input } from "@gitru/ui/components/input";
-import { Kbd } from "@gitru/ui/components/kbd";
-import { Label } from "@gitru/ui/components/label";
-import { Switch } from "@gitru/ui/components/switch";
 import { cn } from "@gitru/ui/lib/utils";
 import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import { ChevronDown, ChevronUp, Loader2, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import LoaderIndicator from "@/components/loaderIndicator";
 import { useHighlightNavigation } from "@/hooks/useHighlightNavigation";
-import type { TimelineSearchMode } from "@/hooks/useTimelineSearch";
-import {
-  type TimelineSearchHit,
-  useTimelineSearch,
-} from "@/hooks/useTimelineSearch";
+import { type PickaxeHit, usePickaxe } from "@/hooks/use-pickaxe";
 import { diffWorkerFactory } from "@/lib/diffWorkerFactory";
+import {
+  DEFAULT_PICKAXE_SEARCH_OPTIONS,
+  type PickaxeSearchOptions,
+} from "@/lib/pickaxe-search-options";
 import { clearAllSearchHighlights } from "@/lib/searchTextHighlight";
 import { useAppStore } from "@/store/useAppStore";
-import { TimelineSearchDiffPreview } from "./TimelineSearchDiffPreview";
-import { TimelineSearchResultCard } from "./TimelineSearchResultCard";
+import { PickaxeDiffPreview } from "./pickaxe-diff-preview";
+import { PickaxeQueryInput } from "./pickaxe-query-input";
 
 const SEARCH_DEBOUNCE_MS = 350;
 
-function hitDedupeKey(hit: TimelineSearchHit) {
+function hitDedupeKey(hit: PickaxeHit) {
   return `${hit.commitHash}:${hit.filePath}`;
 }
 
-function dedupeHits(hits: TimelineSearchHit[]) {
+function dedupeHits(hits: PickaxeHit[]) {
   const seen = new Set<string>();
-  const unique: TimelineSearchHit[] = [];
+  const unique: PickaxeHit[] = [];
 
   for (const hit of hits) {
     const key = hitDedupeKey(hit);
@@ -43,7 +40,7 @@ function dedupeHits(hits: TimelineSearchHit[]) {
   return unique;
 }
 
-export function TimelineSearchView() {
+export function PickaxeView() {
   const setMainWindowView = useAppStore((state) => state.setMainWindowView);
   const {
     hits,
@@ -53,11 +50,12 @@ export function TimelineSearchView() {
     error,
     startSearch,
     cancelSearch,
-  } = useTimelineSearch();
+  } = usePickaxe();
 
   const [query, setQuery] = useState("");
-  const [isRegex, setIsRegex] = useState(false);
-  const [mode, setMode] = useState<TimelineSearchMode>("pickaxe");
+  const [searchOptions, setSearchOptions] = useState<PickaxeSearchOptions>(
+    DEFAULT_PICKAXE_SEARCH_OPTIONS,
+  );
   const [author, setAuthor] = useState("");
   const [since, setSince] = useState("");
   const [until, setUntil] = useState("");
@@ -69,7 +67,7 @@ export function TimelineSearchView() {
   const { activeIndex, matchCount, goToNext, goToPrevious, hasMatches } =
     useHighlightNavigation(
       query,
-      isRegex,
+      searchOptions,
       resultsScrollRef,
       Boolean(query.trim()),
     );
@@ -91,8 +89,7 @@ export function TimelineSearchView() {
     const timeoutId = window.setTimeout(() => {
       void startSearch({
         query,
-        isRegex,
-        mode,
+        ...searchOptions,
         author,
         since,
         until,
@@ -107,9 +104,8 @@ export function TimelineSearchView() {
     author,
     cancelSearch,
     filePatterns,
-    isRegex,
-    mode,
     query,
+    searchOptions,
     since,
     startSearch,
     until,
@@ -143,12 +139,12 @@ export function TimelineSearchView() {
       <div className="flex h-9.25 shrink-0 items-center justify-between border-b px-3">
         <div className="flex items-center gap-2 text-sm font-medium">
           <Search className="size-4" />
-          Timeline Search
+          Pickaxe
         </div>
         <Button
           size="icon-xs"
           variant="outline"
-          aria-label="Close timeline search"
+          aria-label="Close pickaxe"
           onClick={() => setMainWindowView(null)}
         >
           <X />
@@ -157,13 +153,11 @@ export function TimelineSearchView() {
 
       <div className="shrink-0 space-y-3 border-b p-3">
         <div className="flex items-center gap-2">
-          <Input
-            aria-label="Timeline search query"
-            placeholder="Search across commits and files..."
-            className="flex-1"
-            size="sm"
+          <PickaxeQueryInput
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={setQuery}
+            searchOptions={searchOptions}
+            onSearchOptionsChange={setSearchOptions}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
@@ -226,34 +220,6 @@ export function TimelineSearchView() {
             ) : null}
           </div>
         ) : null}
-
-        <div className="flex flex-wrap items-center gap-4 text-sm">
-          <div className="flex items-center gap-2">
-            <Switch
-              id="timeline-search-regex"
-              checked={isRegex}
-              onCheckedChange={setIsRegex}
-            />
-            <Label htmlFor="timeline-search-regex">Regex</Label>
-          </div>
-
-          <div className="flex items-center gap-1 rounded-md border p-0.5">
-            <Button
-              size="sm"
-              variant={mode === "pickaxe" ? "secondary" : "ghost"}
-              onClick={() => setMode("pickaxe")}
-            >
-              Pickaxe
-            </Button>
-            <Button
-              size="sm"
-              variant={mode === "fullContent" ? "secondary" : "ghost"}
-              onClick={() => setMode("fullContent")}
-            >
-              Full content
-            </Button>
-          </div>
-        </div>
 
         {showFilters ? (
           <div className="grid grid-cols-2 gap-2">
@@ -330,11 +296,11 @@ export function TimelineSearchView() {
           >
             <div className="space-y-4">
               {uniqueHits.map((hit) => (
-                <TimelineSearchDiffPreview
+                <PickaxeDiffPreview
                   key={hitDedupeKey(hit)}
                   hit={hit}
                   searchQuery={query}
-                  isRegex={isRegex}
+                  searchOptions={searchOptions}
                 />
               ))}
               {status === "running" ? (

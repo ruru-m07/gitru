@@ -234,7 +234,7 @@ const normalizeRuntimeSnapshot = (params: {
     mainWindowView:
       params.snapshot.mainWindowView === "FileDiff" ||
       params.snapshot.mainWindowView === "HistoryGraph" ||
-      params.snapshot.mainWindowView === "TimelineSearch"
+      params.snapshot.mainWindowView === "Pickaxe"
         ? params.snapshot.mainWindowView
         : null,
     fileSelection: cloneRepoFileSelectionState(params.snapshot.fileSelection),

@@ -1,4 +1,4 @@
-use crate::models::timeline_search::TimelineSearchHit;
+use crate::models::pickaxe::PickaxeHit;
 
 const COMMIT_HEADER_LINE_COUNT: usize = 5;
 
@@ -44,7 +44,7 @@ impl PickaxeParser {
         self.header.subject = self.header_lines[4].trim().to_string();
     }
 
-    fn flush_patch(&mut self) -> Option<TimelineSearchHit> {
+    fn flush_patch(&mut self) -> Option<PickaxeHit> {
         if self.header.hash.is_empty() || self.current_file_path.is_none() {
             self.patch_lines.clear();
             return None;
@@ -56,7 +56,7 @@ impl PickaxeParser {
             Some(self.patch_lines.join("\n"))
         };
 
-        let hit = TimelineSearchHit {
+        let hit = PickaxeHit {
             commit_hash: self.header.hash.clone(),
             commit_subject: self.header.subject.clone(),
             author_name: self.header.author_name.clone(),
@@ -72,7 +72,7 @@ impl PickaxeParser {
         Some(hit)
     }
 
-    fn handle_diff_header(&mut self, line: &str) -> Option<TimelineSearchHit> {
+    fn handle_diff_header(&mut self, line: &str) -> Option<PickaxeHit> {
         let flushed = self.flush_patch();
         self.in_patch = true;
 
@@ -85,7 +85,7 @@ impl PickaxeParser {
         flushed
     }
 
-    fn push_line(&mut self, line: &str) -> Option<TimelineSearchHit> {
+    fn push_line(&mut self, line: &str) -> Option<PickaxeHit> {
         if is_commit_hash_line(line) && !self.in_patch && self.header.hash != line.trim() {
             self.header_lines.clear();
             self.parse_header_line(line);
@@ -117,7 +117,7 @@ impl PickaxeParser {
         None
     }
 
-    fn finish(&mut self) -> Option<TimelineSearchHit> {
+    fn finish(&mut self) -> Option<PickaxeHit> {
         self.flush_patch()
     }
 }
@@ -164,7 +164,7 @@ impl PickaxeStreamParser {
         }
     }
 
-    pub fn push_line(&mut self, line: &str) -> Vec<TimelineSearchHit> {
+    pub fn push_line(&mut self, line: &str) -> Vec<PickaxeHit> {
         let mut hits = Vec::new();
 
         if let Some(hit) = self.parser.push_line(line) {
@@ -174,7 +174,7 @@ impl PickaxeStreamParser {
         hits
     }
 
-    pub fn finish(&mut self) -> Vec<TimelineSearchHit> {
+    pub fn finish(&mut self) -> Vec<PickaxeHit> {
         let mut hits = Vec::new();
         if let Some(hit) = self.parser.finish() {
             hits.push(hit);
@@ -187,9 +187,9 @@ pub fn parse_grep_hit_line(
     line: &str,
     commit_hash: &str,
     header: &CommitHeader,
-) -> Option<TimelineSearchHit> {
+) -> Option<PickaxeHit> {
     let (file_path, line_number) = parse_grep_output_line(line)?;
-    Some(TimelineSearchHit {
+    Some(PickaxeHit {
         commit_hash: commit_hash.to_string(),
         commit_subject: header.subject.clone(),
         author_name: header.author_name.clone(),

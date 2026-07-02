@@ -3,7 +3,7 @@ import { CircleAlertIcon, MoveHorizontal } from "lucide-react";
 import { getStatusIcon } from "@/components/getStatusIcon";
 import type { ResolvedFileSelection } from "@/lib/gitSelectionResolver";
 import { timeAgoFromUnixSeconds } from "@/lib/time";
-import { inferTimelineHitStatus } from "@/lib/timelineSearchStatus";
+import { inferPickaxeHitStatus } from "@/lib/pickaxe-status";
 import { renderPath } from "./render-path";
 
 export function FileLevelStatusBarLeft({
@@ -15,7 +15,7 @@ export function FileLevelStatusBarLeft({
     return null;
   }
 
-  if (resolvedSelection.state === "timeline") {
+  if (resolvedSelection.state === "pickaxe") {
     const hit = resolvedSelection.hit;
 
     return (
@@ -24,7 +24,7 @@ export function FileLevelStatusBarLeft({
           {hit.commitSubject || "Untitled commit"}
         </div>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-          {getStatusIcon(inferTimelineHitStatus(hit), 16)}
+          {getStatusIcon(inferPickaxeHitStatus(hit), 16)}
           <span className="group flex items-center">
             {renderPath(hit.filePath)}
             <div className="ml-1 opacity-0 transition-opacity group-hover:opacity-100 text-xs text-muted-foreground">

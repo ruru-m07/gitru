@@ -1,18 +1,12 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum TimelineSearchMode {
-    Pickaxe,
-    FullContent,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TimelineSearchQuery {
+pub struct PickaxeQuery {
     pub query: String,
     pub is_regex: bool,
-    pub mode: TimelineSearchMode,
+    pub match_case: bool,
+    pub match_whole_word: bool,
     pub author: Option<String>,
     pub since: Option<String>,
     pub until: Option<String>,
@@ -23,7 +17,7 @@ pub struct TimelineSearchQuery {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TimelineSearchHit {
+pub struct PickaxeHit {
     pub commit_hash: String,
     pub commit_subject: String,
     pub author_name: String,
@@ -37,7 +31,7 @@ pub struct TimelineSearchHit {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum TimelineSearchPhase {
+pub enum PickaxePhase {
     Started,
     Hit,
     Progress,
@@ -48,10 +42,10 @@ pub enum TimelineSearchPhase {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TimelineSearchProgressEvent {
+pub struct PickaxeProgressEvent {
     pub operation_id: String,
-    pub phase: TimelineSearchPhase,
-    pub hit: Option<TimelineSearchHit>,
+    pub phase: PickaxePhase,
+    pub hit: Option<PickaxeHit>,
     pub commits_scanned: u32,
     pub hits_found: u32,
     pub status: Option<String>,

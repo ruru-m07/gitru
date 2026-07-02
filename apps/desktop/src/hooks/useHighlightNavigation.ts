@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { PickaxeSearchOptions } from "@/lib/pickaxe-search-options";
 import {
   clearActiveHighlightMatch,
   collectAllHighlightMatches,
   scrollHighlightMatchIntoView,
   setActiveHighlightMatch,
-  TIMELINE_SEARCH_HIGHLIGHTS_CHANGED_EVENT,
+  PICKAXE_HIGHLIGHTS_CHANGED_EVENT,
 } from "@/lib/searchTextHighlight";
 
 const MATCH_REFRESH_DEBOUNCE_MS = 200;
@@ -12,7 +13,7 @@ const NAVIGATION_SETTLE_MS = 150;
 
 export function useHighlightNavigation(
   query: string,
-  isRegex: boolean,
+  searchOptions: PickaxeSearchOptions,
   scrollContainerRef: React.RefObject<HTMLElement | null>,
   enabled = true,
 ) {
@@ -23,8 +24,8 @@ export function useHighlightNavigation(
   activeIndexRef.current = activeIndex;
 
   const collectMatches = useCallback(() => {
-    return collectAllHighlightMatches(query, isRegex);
-  }, [isRegex, query]);
+    return collectAllHighlightMatches(query, searchOptions);
+  }, [query, searchOptions]);
 
   const refreshMatchCount = useCallback(() => {
     const matches = collectMatches();
@@ -148,7 +149,7 @@ export function useHighlightNavigation(
     };
 
     window.addEventListener(
-      TIMELINE_SEARCH_HIGHLIGHTS_CHANGED_EVENT,
+      PICKAXE_HIGHLIGHTS_CHANGED_EVENT,
       handleHighlightsChanged,
     );
 
@@ -174,15 +175,15 @@ export function useHighlightNavigation(
       }
 
       window.removeEventListener(
-        TIMELINE_SEARCH_HIGHLIGHTS_CHANGED_EVENT,
+        PICKAXE_HIGHLIGHTS_CHANGED_EVENT,
         handleHighlightsChanged,
       );
       observer.disconnect();
     };
   }, [
     enabled,
-    isRegex,
     query,
+    searchOptions,
     refreshMatchCount,
     scheduleRefreshMatchCount,
     scrollContainerRef,
