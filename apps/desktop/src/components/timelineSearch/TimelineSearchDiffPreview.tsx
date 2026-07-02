@@ -1,7 +1,7 @@
 import { cn } from "@gitru/ui/lib/utils";
 import { MultiFileDiff } from "@pierre/diffs/react";
 import { useTheme } from "next-themes";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { ImageDiffViewer } from "@/components/diff/image/ImageDiffViewer";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
 import LoaderIndicator from "@/components/loaderIndicator";
@@ -22,8 +22,17 @@ export function TimelineSearchDiffPreview({
   const containerRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
   const { diffStyle, overflow } = useDiffViewerSettings();
+  const [collapsed, setCollapsed] = useState(false);
 
-  const { data: diffData, isLoading, isFetching, isError } = useGetDiff(
+  function toggleCollapsed() {
+    setCollapsed((current) => !current);
+  }
+  const {
+    data: diffData,
+    isLoading,
+    isFetching,
+    isError,
+  } = useGetDiff(
     hit.filePath,
     {
       fileNewPath: hit.fileNewPath ?? null,
@@ -41,12 +50,7 @@ export function TimelineSearchDiffPreview({
   const isImageAssetDiff = assetKind === "image";
   const highlightReady = !showLoading && !isImageAssetDiff && !!diffData;
 
-  useSearchTextHighlight(
-    containerRef,
-    searchQuery,
-    isRegex,
-    highlightReady,
-  );
+  useSearchTextHighlight(containerRef, searchQuery, isRegex, highlightReady);
 
   if (showLoading && !diffData) {
     return (
@@ -87,7 +91,12 @@ export function TimelineSearchDiffPreview({
             name: diffData?.newFile?.name ?? hit.fileNewPath ?? hit.filePath,
           }}
           renderCustomHeader={(fileDiff) => (
-            <TimelineSearchDiffHeader fileDiff={fileDiff} />
+            <TimelineSearchDiffHeader
+              collapsed={collapsed}
+              toggleCollapsed={toggleCollapsed}
+              fileDiff={fileDiff}
+              hit={hit}
+            />
           )}
           options={{
             themeType: theme?.startsWith("dark-") ? "dark" : "light",
@@ -95,6 +104,7 @@ export function TimelineSearchDiffPreview({
             overflow,
             collapsedContextThreshold: 0,
             lineHoverHighlight: "both",
+            collapsed,
             unsafeCSS: `
               [data-background] {
                 --diffs-light-bg: ${theme?.startsWith("dark-") ? "#000000" : "var(--secondary)"} !important;

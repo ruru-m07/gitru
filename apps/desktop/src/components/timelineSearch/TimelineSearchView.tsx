@@ -17,6 +17,7 @@ import {
 import { diffWorkerFactory } from "@/lib/diffWorkerFactory";
 import { clearAllSearchHighlights } from "@/lib/searchTextHighlight";
 import { useAppStore } from "@/store/useAppStore";
+import { TimelineSearchDiffPreview } from "./TimelineSearchDiffPreview";
 import { TimelineSearchResultCard } from "./TimelineSearchResultCard";
 
 const SEARCH_DEBOUNCE_MS = 350;
@@ -210,16 +211,19 @@ export function TimelineSearchView() {
                 : `${matchCount} matches`}
             </span>
             <span className="text-muted-foreground/60">·</span>
-            <span className="flex items-center gap-1">
-              <Kbd>Enter</Kbd> next
-            </span>
-            <span className="flex items-center gap-1">
-              <Kbd>Shift</Kbd>
-              <Kbd>Enter</Kbd> prev
-            </span>
-            <span className="flex items-center gap-1">
-              <Kbd>⌘G</Kbd> next
-            </span>
+            {statusLabel ? (
+              <div
+                className={cn(
+                  "flex items-center gap-2 text-xs text-muted-foreground",
+                  error && "text-destructive",
+                )}
+              >
+                {status === "running" ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : null}
+                <span>{statusLabel}</span>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -283,23 +287,9 @@ export function TimelineSearchView() {
             />
           </div>
         ) : null}
-
-        {statusLabel ? (
-          <div
-            className={cn(
-              "flex items-center gap-2 text-xs text-muted-foreground",
-              error && "text-destructive",
-            )}
-          >
-            {status === "running" ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : null}
-            <span>{statusLabel}</span>
-          </div>
-        ) : null}
       </div>
 
-      <div ref={resultsScrollRef} className="min-h-0 flex-1 overflow-auto p-3">
+      <div ref={resultsScrollRef} className="min-h-0 flex-1 overflow-auto">
         {!query.trim() ? (
           <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
             Search across all commits and files in this repository.
@@ -340,7 +330,7 @@ export function TimelineSearchView() {
           >
             <div className="space-y-4">
               {uniqueHits.map((hit) => (
-                <TimelineSearchResultCard
+                <TimelineSearchDiffPreview
                   key={hitDedupeKey(hit)}
                   hit={hit}
                   searchQuery={query}

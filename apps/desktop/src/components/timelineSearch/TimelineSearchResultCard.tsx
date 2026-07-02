@@ -1,5 +1,5 @@
 import type { TimelineSearchHit } from "@/hooks/useTimelineSearch";
-import { FileLevelStatusBarLeft } from "@/routes/app/git";
+import { FileLevelStatusBarLeft } from "@/routes/app/git/components/file-level-status-bar-left";
 import { TimelineSearchDiffPreview } from "./TimelineSearchDiffPreview";
 
 export function TimelineSearchResultCard({
@@ -12,14 +12,7 @@ export function TimelineSearchResultCard({
   isRegex: boolean;
 }) {
   return (
-    <article className="overflow-hidden rounded-lg border bg-card">
-      <FileLevelStatusBarLeft
-        resolvedSelection={{
-          state: "timeline",
-          hit,
-        }}
-      />
-
+    <article className="overflow-hidden">
       <TimelineSearchDiffPreview
         hit={hit}
         searchQuery={searchQuery}
