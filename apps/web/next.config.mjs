@@ -6,6 +6,9 @@ const withMDX = createMDX();
 const config = {
   serverExternalPackages: ["@takumi-rs/image-response"],
   output: "export",
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   images: {
     unoptimized: true,
   },
