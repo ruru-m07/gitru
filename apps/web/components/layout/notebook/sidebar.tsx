@@ -50,6 +50,7 @@ export function SidebarViewport(props: ComponentProps<typeof ScrollArea>) {
     <ScrollArea {...props} className={cn("min-h-0 flex-1", props.className)}>
       <ScrollViewport
         className="p-2 overscroll-contain"
+        // @ts-expect-error
         style={
           {
             maskImage:
