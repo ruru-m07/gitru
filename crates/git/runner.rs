@@ -2,9 +2,8 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{
-    Arc,
+    Arc, Mutex as StdMutex, OnceLock,
     atomic::{AtomicBool, Ordering},
-    Mutex as StdMutex, OnceLock,
 };
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};

@@ -1,11 +1,20 @@
-import { CopyButton } from "@gitru/ui/components/copy-button";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@gitru/ui/components/avatar";
+import {
+  Tooltip,
+  TooltipPopup,
+  TooltipTrigger,
+} from "@gitru/ui/components/tooltip";
 import type { FileDiffMetadata } from "@pierre/diffs";
 import { MoveHorizontal } from "lucide-react";
 import { useMemo } from "react";
 import { getStatusIcon } from "@/components/getStatusIcon";
 import { PickaxeHit } from "@/hooks";
-import { timeAgoFromUnixSeconds } from "@/lib/time";
 import { fileDiffTypeToStatus } from "@/lib/pickaxe-status";
+import { timeAgoFromUnixSeconds } from "@/lib/time";
 import { DiffStat } from "../diffBoxes";
 
 function renderPath(path: string) {
@@ -42,44 +51,8 @@ export function PickaxeDiffHeader({
   }, [fileDiff]);
 
   return (
-    <div className="flex min-h-9 items-center justify-between gap-3 mb-1 bg-muted/20 px-3 py-2 text-xs">
-      {/* <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 ml-1">
-        {getStatusIcon(fileDiffTypeToStatus(fileDiff.type), 20)}
-        {fileDiff.prevName && fileDiff.prevName !== fileDiff.name ? (
-          <>
-            <span className="truncate">{renderPath(fileDiff.prevName)}</span>
-            <MoveHorizontal
-              className="shrink-0 text-muted-foreground opacity-70"
-              size={14}
-            />
-            <span className="truncate font-medium">
-              {renderPath(displayPath)}
-            </span>
-          </>
-        ) : (
-          <div className="group flex items-center">
-            <span className="truncate font-normal text-base">
-              {renderPath(displayPath)}
-            </span>
-            <div className="ml-1 opacity-0 transition-opacity group-hover:opacity-100 text-xs text-muted-foreground">
-              <CopyButton size={"xs"} variant="ghost" text={displayPath} />
-            </div>
-          </div>
-        )}
-      </div> */}
-      <div className="flex min-w-0 items-center gap-3">
-        {/* <button
-          type="button"
-          onClick={toggleCollapsed}
-          aria-label={collapsed ? "Expand file" : "Collapse file"}
-          aria-pressed={collapsed}
-          className={`inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-sm text-white/70 transition ${collapsed ? "bg-white/15 hover:bg-white/20" : "bg-[#F05138] hover:bg-[#F05138]/80 "}`}
-        >
-          <ChevronDown
-            className={`transition-transform ${collapsed ? "-rotate-90" : ""}`}
-          />
-        </button> */}
-
+    <div className="flex min-h-9 items-center justify-between gap-3 mb-1 bg-muted/20 px-3 py-2 text-xs border-t">
+      <div className="flex min-w-0 items-center gap-1.5">
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             {getStatusIcon(fileDiffTypeToStatus(fileDiff.type), 20)}
@@ -101,21 +74,79 @@ export function PickaxeDiffHeader({
                 <span className="truncate font-[450] text-sm">
                   {renderPath(displayPath)}
                 </span>
-                <div className="ml-1 opacity-0 transition-opacity group-hover:opacity-100 text-xs text-muted-foreground">
-                  <CopyButton size={"xs"} variant="ghost" text={displayPath} />
-                </div>
               </div>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-            <span className="font-mono">{hit.commitHash.slice(0, 7)}</span>
-            <span>{hit.authorName}</span>
-            <span>{timeAgoFromUnixSeconds(hit.commitTime)}</span>
-            {hit.matchLine ? <span>line {hit.matchLine}</span> : null}
-          </div>
         </div>
+        <span className="text-muted-foreground">•</span>
+        <div className="gap-1 flex items-center">
+          <div className="flex group">
+            <Tooltip>
+              <TooltipTrigger
+                style={{
+                  zIndex: (hit.commit.authors.co_authors.length || 0) + 1,
+                }}
+              >
+                <Avatar className="ring-2 ring-background rounded-sm size-4">
+                  <AvatarImage
+                    alt={hit.commit.authors.author.name}
+                    src={`https://avatars.githubusercontent.com/u/e?email=${hit.commit.authors.author.email}&s=64`}
+                  />
+                  <AvatarFallback>
+                    {hit.commit.authors.author.name
+                      .split(" ")
+                      .map((namePart) => namePart[0])
+                      .join("")
+                      .toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+              </TooltipTrigger>
+              <TooltipPopup side="bottom">
+                {hit.commit.authors.author.name}
+              </TooltipPopup>
+            </Tooltip>
+            {hit.commit.authors.co_authors.map((coAuthor, idx) => (
+              <Tooltip key={`${idx}-tooltip-coauthor`}>
+                <TooltipTrigger
+                  style={{
+                    zIndex: hit.commit.authors.co_authors.length - idx,
+                  }}
+                  key={`${idx}-tooltip-trigger-coauthor`}
+                >
+                  <Avatar className="ring-2 ring-background rounded-sm size-4 ml-[-0.2rem] group-hover:ml-0.5 transition-all duration-100">
+                    <AvatarImage
+                      alt="U1"
+                      src={`https://avatars.githubusercontent.com/u/e?email=${coAuthor.email}&s=64`}
+                    />
+                    <AvatarFallback>
+                      {coAuthor.name
+                        .split(" ")
+                        .map((namePart) => namePart[0])
+                        .join("")
+                        .toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                </TooltipTrigger>
+                <TooltipPopup side="bottom">{coAuthor.name}</TooltipPopup>
+              </Tooltip>
+            ))}
+          </div>
+          <span className="font-normal">{hit.commit.authors.author.name}</span>
+          <span className="text-xs">
+            ( {timeAgoFromUnixSeconds(hit.commit.timestamp)} )
+          </span>
+        </div>
+        <span className="text-muted-foreground">•</span>
+        <span className="font-mono text-xs text-muted-foreground">
+          {hit.commit.summary}
+        </span>
       </div>
       <div className="flex items-center justify-end gap-2">
+        <div className="flex items-center gap-1 mr-1">
+          <span className="font-mono text-xs text-muted-foreground opacity-60">
+            {hit.commitHash.slice(0, 7)}
+          </span>
+        </div>
         <span className="flex text-sm gap-2 font-mono">
           <span className="tabular-nums text-green-600">+{additions}</span>
           <span className="tabular-nums text-red-600">-{deletions}</span>

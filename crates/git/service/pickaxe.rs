@@ -113,7 +113,9 @@ impl PickaxeService {
                     hit: None,
                     commits_scanned,
                     hits_found,
-                    status: Some(format!("Found {hits_found} hits in {commits_scanned} commits")),
+                    status: Some(format!(
+                        "Found {hits_found} hits in {commits_scanned} commits"
+                    )),
                     error: None,
                 });
                 Ok(())
@@ -145,9 +147,8 @@ impl PickaxeService {
         let runner = GitCommandRunner::new(&self.ctx.repo_path)?;
         let args = build_pickaxe_log_args(query)?;
         let hit_limit = query.limit.unwrap_or(DEFAULT_HIT_LIMIT);
-        let options = GitRunOptions::default_read().with_timeout(std::time::Duration::from_secs(
-            SEARCH_TIMEOUT_SECS,
-        ));
+        let options = GitRunOptions::default_read()
+            .with_timeout(std::time::Duration::from_secs(SEARCH_TIMEOUT_SECS));
 
         let mut parser = PickaxeStreamParser::new();
         let mut seen_hits = HashSet::new();
@@ -237,7 +238,6 @@ impl PickaxeService {
 
         Ok((commits_scanned, hits_found))
     }
-
 }
 
 fn escape_regex_literal(value: &str) -> String {
@@ -254,7 +254,22 @@ fn escape_regex_literal(value: &str) -> String {
     out
 }
 
-fn resolve_pickaxe_search_spec(query: &PickaxeQuery) -> Result<(&'static str, String), String> {
+fn wrap_git_regex_as_whole_word(pattern: String) -> String {
+    format!(r"(^|[^[:alnum:]_]){pattern}([^[:alnum:]_]|$)")
+}
+
+enum PickaxeSearchMode {
+    String,
+    Regex,
+}
+
+struct PickaxeSearchSpec {
+    mode: PickaxeSearchMode,
+    ignore_case: bool,
+    pattern: String,
+}
+
+fn resolve_pickaxe_search_spec(query: &PickaxeQuery) -> Result<PickaxeSearchSpec, String> {
     let text = query.query.trim();
     if text.is_empty() {
         return Err("Search query cannot be empty".to_string());
@@ -262,34 +277,40 @@ fn resolve_pickaxe_search_spec(query: &PickaxeQuery) -> Result<(&'static str, St
 
     let can_use_pickaxe_s = !query.is_regex && query.match_case && !query.match_whole_word;
     if can_use_pickaxe_s {
-        return Ok(("-S", text.to_string()));
+        return Ok(PickaxeSearchSpec {
+            mode: PickaxeSearchMode::String,
+            ignore_case: false,
+            pattern: text.to_string(),
+        });
     }
 
     let pattern = if query.is_regex {
         let mut pattern = text.to_string();
-        if !query.match_case && !pattern.contains("(?") {
-            pattern = format!("(?i){pattern}");
-        }
         if query.match_whole_word {
-            pattern = format!(r"\b(?:{pattern})\b");
+            pattern = wrap_git_regex_as_whole_word(pattern);
         }
         pattern
     } else {
         let mut pattern = escape_regex_literal(text);
         if query.match_whole_word {
-            pattern = format!(r"\b{pattern}\b");
-        }
-        if !query.match_case {
-            pattern = format!("(?i){pattern}");
+            pattern = wrap_git_regex_as_whole_word(pattern);
         }
         pattern
     };
 
-    Ok(("-G", pattern))
+    Ok(PickaxeSearchSpec {
+        mode: if query.match_whole_word || query.is_regex {
+            PickaxeSearchMode::Regex
+        } else {
+            PickaxeSearchMode::String
+        },
+        ignore_case: !query.match_case,
+        pattern,
+    })
 }
 
 fn build_pickaxe_log_args(query: &PickaxeQuery) -> Result<Vec<String>, String> {
-    let (flag, pattern) = resolve_pickaxe_search_spec(query)?;
+    let spec = resolve_pickaxe_search_spec(query)?;
 
     let mut args = vec![
         "log".to_string(),
@@ -297,9 +318,21 @@ fn build_pickaxe_log_args(query: &PickaxeQuery) -> Result<Vec<String>, String> {
         "--all".to_string(),
         "--date-order".to_string(),
         "--pretty=format:%H%n%an%n%ae%n%at%n%s".to_string(),
-        flag.to_string(),
-        pattern,
     ];
+
+    if spec.ignore_case {
+        args.push("-i".to_string());
+    }
+
+    args.push(
+        match spec.mode {
+            PickaxeSearchMode::String => "-S",
+            PickaxeSearchMode::Regex => "-G",
+        }
+        .to_string(),
+    );
+
+    args.push(spec.pattern);
 
     append_revision_filters(&mut args, query);
     args.push("--".to_string());
@@ -309,14 +342,28 @@ fn build_pickaxe_log_args(query: &PickaxeQuery) -> Result<Vec<String>, String> {
 }
 
 fn append_revision_filters(args: &mut Vec<String>, query: &PickaxeQuery) {
-    if let Some(author) = query.author.as_ref().map(|value| value.trim()).filter(|v| !v.is_empty())
+    if let Some(author) = query
+        .author
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|v| !v.is_empty())
     {
         args.push(format!("--author={author}"));
     }
-    if let Some(since) = query.since.as_ref().map(|value| value.trim()).filter(|v| !v.is_empty()) {
+    if let Some(since) = query
+        .since
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|v| !v.is_empty())
+    {
         args.push(format!("--since={since}"));
     }
-    if let Some(until) = query.until.as_ref().map(|value| value.trim()).filter(|v| !v.is_empty()) {
+    if let Some(until) = query
+        .until
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|v| !v.is_empty())
+    {
         args.push(format!("--until={until}"));
     }
 }
@@ -340,4 +387,81 @@ fn append_pathspecs(args: &mut Vec<String>, patterns: &[String]) {
     }
 
     args.extend(normalized);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn query(
+        query: &str,
+        is_regex: bool,
+        match_case: bool,
+        match_whole_word: bool,
+    ) -> PickaxeQuery {
+        PickaxeQuery {
+            query: query.to_string(),
+            is_regex,
+            match_case,
+            match_whole_word,
+            author: None,
+            since: None,
+            until: None,
+            file_patterns: vec![],
+            limit: None,
+            operation_id: "op-1".to_string(),
+        }
+    }
+
+    #[test]
+    fn plain_text_case_sensitive_uses_pickaxe_s() {
+        let spec = resolve_pickaxe_search_spec(&query("AssetSuffix::Inferred", false, true, false))
+            .expect("expected spec");
+
+        assert!(matches!(spec.mode, PickaxeSearchMode::String));
+        assert!(!spec.ignore_case);
+        assert_eq!(spec.pattern, "AssetSuffix::Inferred");
+    }
+
+    #[test]
+    fn plain_text_case_insensitive_uses_pickaxe_g_with_ignore_case() {
+        let spec =
+            resolve_pickaxe_search_spec(&query("AssetSuffix::Inferred", false, false, false))
+                .expect("expected spec");
+
+        assert!(matches!(spec.mode, PickaxeSearchMode::String));
+        assert!(spec.ignore_case);
+        assert_eq!(spec.pattern, "AssetSuffix::Inferred");
+
+        let args = build_pickaxe_log_args(&query("AssetSuffix::Inferred", false, false, false))
+            .expect("expected args");
+
+        assert!(
+            args.windows(2).any(|window| window == ["-i", "-S"]),
+            "case-insensitive searches should use git's string pickaxe with -i"
+        );
+    }
+
+    #[test]
+    fn whole_word_search_uses_portable_boundaries() {
+        let spec = resolve_pickaxe_search_spec(&query("AssetSuffix::Inferred", false, false, true))
+            .expect("expected spec");
+
+        assert!(matches!(spec.mode, PickaxeSearchMode::Regex));
+        assert!(spec.ignore_case);
+        assert_eq!(
+            spec.pattern,
+            r"(^|[^[:alnum:]_])AssetSuffix::Inferred([^[:alnum:]_]|$)"
+        );
+    }
+
+    #[test]
+    fn regex_case_insensitive_keeps_pattern_and_uses_ignore_case() {
+        let spec = resolve_pickaxe_search_spec(&query("AssetSuffix::Inferred", true, false, false))
+            .expect("expected spec");
+
+        assert!(matches!(spec.mode, PickaxeSearchMode::Regex));
+        assert!(spec.ignore_case);
+        assert_eq!(spec.pattern, "AssetSuffix::Inferred");
+    }
 }

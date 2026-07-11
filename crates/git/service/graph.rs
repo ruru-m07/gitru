@@ -146,16 +146,10 @@ impl GraphState {
         let mut output: Vec<Swimlane> = Vec::new();
         let mut first_parent_added = false;
         let mut commit_lane_in_output = commit_lane_in_input;
-        let propagated_branch_refs = self.merge_branch_refs(
-            &current_lane_branch_refs,
-            entry_branch_refs,
-            false,
-        );
-        let row_branch_refs = self.merge_branch_refs(
-            &current_lane_branch_refs,
-            entry_branch_refs,
-            true,
-        );
+        let propagated_branch_refs =
+            self.merge_branch_refs(&current_lane_branch_refs, entry_branch_refs, false);
+        let row_branch_refs =
+            self.merge_branch_refs(&current_lane_branch_refs, entry_branch_refs, true);
 
         if !parents.is_empty() {
             // Walk existing lanes, building the output
@@ -671,9 +665,7 @@ fn build_branch_refs(entry: &GraphLogEntry) -> Vec<GraphRefDto> {
     entry
         .refs
         .iter()
-        .filter(|reference| {
-            matches!(reference.kind, GraphRefKind::Local | GraphRefKind::Remote)
-        })
+        .filter(|reference| matches!(reference.kind, GraphRefKind::Local | GraphRefKind::Remote))
         .map(|reference| GraphRefDto {
             name: reference.name.clone(),
             display_name: reference.display_name.clone(),
@@ -731,7 +723,6 @@ fn parse_author_line(line: &str) -> Option<Author> {
         email: String::new(),
     })
 }
-
 
 fn run_git_command(repo_path: &str, args: &[&str]) -> Result<std::process::Output, String> {
     let git_binary = git_binary_path()?;
@@ -864,4 +855,3 @@ fn build_activity_revision_args(
 
     Ok(args)
 }
-

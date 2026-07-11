@@ -1,3 +1,4 @@
+use crate::models::commit::FullCommitInfo;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,6 +19,7 @@ pub struct PickaxeQuery {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PickaxeHit {
+    pub commit: FullCommitInfo,
     pub commit_hash: String,
     pub commit_subject: String,
     pub author_name: String,

@@ -19,6 +19,7 @@ import {
   GitBranchPlus,
   GitPullRequestArrow,
   Inbox,
+  Pickaxe,
   PlusIcon,
   RefreshCcw,
   SearchIcon,
@@ -61,6 +62,7 @@ const iconMap: Record<string, React.ReactNode> = {
   theme: <SwatchBook className="size-4" />,
   updates: <Download className="size-4" />,
   search: <SearchIcon className="size-4" />,
+  pickaxe: <Pickaxe className="size-4" />,
 };
 
 export function useRootView(): CommandViewConfig<"root", ActionItem> {
@@ -151,7 +153,7 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             id: "pickaxe",
             label: "Pickaxe",
             shortcut: ["G", "T"],
-            iconKey: "search",
+            iconKey: "pickaxe",
             keywords: ["search", "history", "grep", "pickaxe", "log -S"],
             async onCallBack() {
               setMainWindowView("Pickaxe");

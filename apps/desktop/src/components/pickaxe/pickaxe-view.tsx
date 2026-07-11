@@ -1,12 +1,18 @@
 import { Button } from "@gitru/ui/components/button";
 import { Input } from "@gitru/ui/components/input";
-import { cn } from "@gitru/ui/lib/utils";
+import { ScrollArea } from "@gitru/ui/components/scroll-area";
 import { WorkerPoolContextProvider } from "@pierre/diffs/react";
-import { ChevronDown, ChevronUp, Loader2, Search, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  ListFilterPlus,
+  Loader2,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import LoaderIndicator from "@/components/loaderIndicator";
-import { useHighlightNavigation } from "@/hooks/useHighlightNavigation";
 import { type PickaxeHit, usePickaxe } from "@/hooks/use-pickaxe";
+import { useHighlightNavigation } from "@/hooks/useHighlightNavigation";
 import { diffWorkerFactory } from "@/lib/diffWorkerFactory";
 import {
   DEFAULT_PICKAXE_SEARCH_OPTIONS,
@@ -42,15 +48,7 @@ function dedupeHits(hits: PickaxeHit[]) {
 
 export function PickaxeView() {
   const setMainWindowView = useAppStore((state) => state.setMainWindowView);
-  const {
-    hits,
-    commitsScanned,
-    status,
-    statusMessage,
-    error,
-    startSearch,
-    cancelSearch,
-  } = usePickaxe();
+  const { hits, status, startSearch, cancelSearch } = usePickaxe();
 
   const [query, setQuery] = useState("");
   const [searchOptions, setSearchOptions] = useState<PickaxeSearchOptions>(
@@ -64,13 +62,12 @@ export function PickaxeView() {
   const resultsScrollRef = useRef<HTMLDivElement>(null);
 
   const uniqueHits = useMemo(() => dedupeHits(hits), [hits]);
-  const { activeIndex, matchCount, goToNext, goToPrevious, hasMatches } =
-    useHighlightNavigation(
-      query,
-      searchOptions,
-      resultsScrollRef,
-      Boolean(query.trim()),
-    );
+  const { goToNext, goToPrevious, hasMatches } = useHighlightNavigation(
+    query,
+    searchOptions,
+    resultsScrollRef,
+    Boolean(query.trim()),
+  );
 
   useEffect(() => {
     return () => {
@@ -111,48 +108,17 @@ export function PickaxeView() {
     until,
   ]);
 
-  const statusLabel = useMemo(() => {
-    if (error) {
-      return error;
-    }
-
-    if (status === "running") {
-      return (
-        statusMessage ??
-        `Searching... ${commitsScanned} commits scanned, ${uniqueHits.length} results`
-      );
-    }
-
-    if (status === "finished") {
-      return `Found ${uniqueHits.length} results across ${commitsScanned} commits`;
-    }
-
-    if (status === "cancelled") {
-      return "Search cancelled";
-    }
-
-    return null;
-  }, [commitsScanned, error, status, statusMessage, uniqueHits.length]);
-
   return (
-    <div className="flex h-[var(--layout-height)] min-h-0 flex-col">
-      <div className="flex h-9.25 shrink-0 items-center justify-between border-b px-3">
-        <div className="flex items-center gap-2 text-sm font-medium">
-          <Search className="size-4" />
-          Pickaxe
-        </div>
-        <Button
-          size="icon-xs"
-          variant="outline"
-          aria-label="Close pickaxe"
-          onClick={() => setMainWindowView(null)}
-        >
-          <X />
-        </Button>
-      </div>
-
-      <div className="shrink-0 space-y-3 border-b p-3">
-        <div className="flex items-center gap-2">
+    <div className="flex max-h-[calc(var(--layout-height)-(--spacing(14)))] min-h-0 flex-col">
+      <div className="shrink-0 space-y-3 p-1 _border-b">
+        <div className="flex items-center gap-1">
+          <Button
+            size="icon-sm"
+            variant="outline"
+            onClick={() => setShowFilters((open) => !open)}
+          >
+            <ListFilterPlus />
+          </Button>
           <PickaxeQueryInput
             value={query}
             onChange={setQuery}
@@ -168,36 +134,35 @@ export function PickaxeView() {
               }
             }}
           />
-          <div className="flex items-center gap-1">
-            <Button
-              size="icon-sm"
-              variant="outline"
-              aria-label="Previous match"
-              disabled={!hasMatches}
-              onClick={goToPrevious}
-            >
-              <ChevronUp className="size-4" />
-            </Button>
-            <Button
-              size="icon-sm"
-              variant="outline"
-              aria-label="Next match"
-              disabled={!hasMatches}
-              onClick={goToNext}
-            >
-              <ChevronDown className="size-4" />
-            </Button>
-          </div>
           <Button
-            size="sm"
+            size="icon-sm"
             variant="outline"
-            onClick={() => setShowFilters((open) => !open)}
+            aria-label="Previous match"
+            disabled={!hasMatches}
+            onClick={goToPrevious}
           >
-            Filters
+            <ChevronUp className="size-4" />
+          </Button>
+          <Button
+            size="icon-sm"
+            variant="outline"
+            aria-label="Next match"
+            disabled={!hasMatches}
+            onClick={goToNext}
+          >
+            <ChevronDown className="size-4" />
+          </Button>
+          <Button
+            size="icon-sm"
+            variant="outline"
+            aria-label="Close pickaxe"
+            onClick={() => setMainWindowView(null)}
+          >
+            <X />
           </Button>
         </div>
 
-        {hasMatches ? (
+        {/* {hasMatches ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>
               {activeIndex >= 0
@@ -219,7 +184,7 @@ export function PickaxeView() {
               </div>
             ) : null}
           </div>
-        ) : null}
+        ) : null} */}
 
         {showFilters ? (
           <div className="grid grid-cols-2 gap-2">
@@ -255,7 +220,11 @@ export function PickaxeView() {
         ) : null}
       </div>
 
-      <div ref={resultsScrollRef} className="min-h-0 flex-1 overflow-auto">
+      <ScrollArea
+        ref={resultsScrollRef}
+        className="min-h-0 max-h-[calc(var(--layout-height)-(--spacing(14)))] flex-1 overflow-auto"
+        scrollFade
+      >
         {!query.trim() ? (
           <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
             Search across all commits and files in this repository.
@@ -312,7 +281,7 @@ export function PickaxeView() {
             </div>
           </WorkerPoolContextProvider>
         )}
-      </div>
+      </ScrollArea>
     </div>
   );
 }

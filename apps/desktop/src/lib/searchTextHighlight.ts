@@ -95,13 +95,14 @@ function buildSearchPattern(query: string, options: PickaxeSearchOptions) {
 
     try {
       let pattern = normalizedQuery;
-      if (!matchCase && !pattern.includes("(?")) {
-        pattern = `(?i)${pattern}`;
+      let flags = "g";
+      if (!matchCase) {
+        flags += "i";
       }
       if (matchWholeWord) {
         pattern = `\\b(?:${pattern})\\b`;
       }
-      return new RegExp(pattern, "g");
+      return new RegExp(pattern, flags);
     } catch {
       return null;
     }

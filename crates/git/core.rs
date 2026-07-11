@@ -5,8 +5,8 @@ use crate::{
     context::RepoContext,
     service::{
         actions::ActionService, branch::BranchService, commit::CommitService, diff::DiffService,
-        history::HistoryService, origin::OriginService, query::QueryService, stash::StashService,
-        pickaxe::PickaxeService,
+        history::HistoryService, origin::OriginService, pickaxe::PickaxeService,
+        query::QueryService, stash::StashService,
     },
 };
 

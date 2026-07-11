@@ -1,4 +1,4 @@
-import type { PickaxeQuery } from "@gitru/commands";
+import type { FullCommitInfo, PickaxeQuery } from "@gitru/commands";
 import { cancelPickaxe, startPickaxe } from "@gitru/commands";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -6,6 +6,7 @@ import type { PickaxeSearchOptions } from "@/lib/pickaxe-search-options";
 import { useActiveRepositoryState } from "@/state/useActiveRepositoryState";
 
 export type PickaxeHit = {
+  commit: FullCommitInfo;
   commitHash: string;
   commitSubject: string;
   authorName: string;

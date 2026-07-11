@@ -5,6 +5,7 @@ import {
   InputGroupInput,
 } from "@gitru/ui/components/input-group";
 import { cn } from "@gitru/ui/lib/utils";
+import { CaseSensitive, Pickaxe, Regex, WholeWord } from "lucide-react";
 import type { PickaxeSearchOptions } from "@/lib/pickaxe-search-options";
 
 type PickaxeQueryInputProps = {
@@ -69,31 +70,24 @@ export function PickaxeQueryInput({
       <InputGroupInput
         aria-label="Pickaxe search query"
         placeholder="Search across commits and files..."
-        size="sm"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={onKeyDown}
+        size={"sm"}
       />
-      <InputGroupAddon align="inline-end" className="gap-0 pr-1">
+      <InputGroupAddon>
+        <Pickaxe className="text-muted-foreground" aria-hidden="true" />
+      </InputGroupAddon>
+
+      <InputGroupAddon align="inline-end" className="gap-0">
         <SearchOptionToggle
-          label="Aa"
+          label={<CaseSensitive />}
           ariaLabel="Match case"
           pressed={searchOptions.matchCase}
-          onToggle={() =>
-            updateOption("matchCase", !searchOptions.matchCase)
-          }
+          onToggle={() => updateOption("matchCase", !searchOptions.matchCase)}
         />
         <SearchOptionToggle
-          label={
-            <span
-              className={cn(
-                searchOptions.matchWholeWord &&
-                  "underline decoration-primary underline-offset-2",
-              )}
-            >
-              ab
-            </span>
-          }
+          label={<WholeWord />}
           ariaLabel="Match whole word"
           pressed={searchOptions.matchWholeWord}
           onToggle={() =>
@@ -101,7 +95,7 @@ export function PickaxeQueryInput({
           }
         />
         <SearchOptionToggle
-          label=".*"
+          label={<Regex />}
           ariaLabel="Use regular expression"
           pressed={searchOptions.isRegex}
           onToggle={() => updateOption("isRegex", !searchOptions.isRegex)}

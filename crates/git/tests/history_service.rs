@@ -397,9 +397,11 @@ fn history_graph_normalizes_refs_and_marks_current_branch() {
             "expected a normalized feature branch label"
         );
         assert!(
-            response.rows.iter().flat_map(|row| row.refs.iter()).all(|ref_info| {
-                !ref_info.display_name.starts_with("refs/")
-            }),
+            response
+                .rows
+                .iter()
+                .flat_map(|row| row.refs.iter())
+                .all(|ref_info| { !ref_info.display_name.starts_with("refs/") }),
             "display labels should not leak refs/ prefixes"
         );
     });
@@ -418,10 +420,10 @@ fn history_graph_populates_branch_refs_across_linear_history() {
         let response = svc.history_graph(default_query(20)).await.unwrap();
 
         assert!(
-            response
-                .rows
+            response.rows.iter().all(|row| row
+                .branch_refs
                 .iter()
-                .all(|row| row.branch_refs.iter().any(|ref_info| ref_info.display_name == "main")),
+                .any(|ref_info| ref_info.display_name == "main")),
             "every row in a linear history should carry the current branch label"
         );
     });
@@ -450,10 +452,13 @@ fn history_graph_marks_remote_tracking_refs_as_remote() {
         let response = svc.history_graph(query).await.unwrap();
 
         assert!(
-            response.rows.iter().any(|row| row.branch_refs.iter().any(|ref_info| {
-                ref_info.display_name == "origin/feature/remote"
-                    && matches!(ref_info.kind, git::models::graph::GraphRefKind::Remote)
-            })),
+            response
+                .rows
+                .iter()
+                .any(|row| row.branch_refs.iter().any(|ref_info| {
+                    ref_info.display_name == "origin/feature/remote"
+                        && matches!(ref_info.kind, git::models::graph::GraphRefKind::Remote)
+                })),
             "expected remote-tracking branch refs to be marked as Remote"
         );
     });
@@ -477,7 +482,10 @@ fn history_graph_branch_query_limits_to_selected_branch() {
         let response = svc.history_graph(query).await.unwrap();
 
         assert!(
-            response.rows.iter().any(|row| row.commit.summary == "Main only"),
+            response
+                .rows
+                .iter()
+                .any(|row| row.commit.summary == "Main only"),
             "expected main branch history to include the local branch tip"
         );
         assert!(

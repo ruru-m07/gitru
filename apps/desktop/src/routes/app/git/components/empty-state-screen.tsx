@@ -3,7 +3,7 @@ import { GitruBorderedSVG } from "@/components/svgs/gitru-borderd";
 
 export function EmptyStateScreen() {
   return (
-    <div className="w-full flex justify-center max-h-[calc(var(--layout-height)---spacing(14))] h-full bg-background">
+    <div className="w-full flex justify-center max-h-[calc(var(--layout-height)-(--spacing(14)))] h-full bg-background">
       <div className="w-full h-full flex flex-col items-center justify-center -mt-20">
         <GitruBorderedSVG />
         <div className="flex flex-col gap-0.5 w-60 select-none">

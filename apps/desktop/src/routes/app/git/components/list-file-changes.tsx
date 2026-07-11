@@ -4,6 +4,11 @@ import { Button } from "@gitru/ui/components/button";
 import { Group, GroupSeparator } from "@gitru/ui/components/group";
 import { Input } from "@gitru/ui/components/input";
 import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@gitru/ui/components/input-group";
+import {
   Menu,
   MenuCheckboxItem,
   MenuGroup,
@@ -12,7 +17,13 @@ import {
   MenuTrigger,
 } from "@gitru/ui/components/menu";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@gitru/ui/components/tabs";
-import { ChevronsRight, GitBranch, History, ListFilterPlus } from "lucide-react";
+import {
+  ChevronsRight,
+  GitBranch,
+  History,
+  ListFilterPlus,
+  SearchIcon,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
 import { getStatusIcon } from "@/components/getStatusIcon";
@@ -28,17 +39,17 @@ import {
 import { formatNumber } from "@/lib/formatNumber";
 import { resolveFileSelection } from "@/lib/gitSelectionResolver";
 import { selectActiveSessionRepoKey, useAppStore } from "@/store/useAppStore";
-import { DiscardChangesDialog } from "./discard-changes-dialog";
-import { HistoryCommitInfiniteList } from "./history-commit-infinite-list";
-import { WriteCommitBox } from "./write-commit-box";
 import {
   DEFAULT_STATUS_FILTERS,
+  type FileStatusFilter,
   hasActiveStatusFilters,
   matchesStatusFilters,
-  type FileStatusFilter,
 } from "../lib/file-status-filters";
 import { matchesSearchQuery } from "../lib/matches-search-query";
 import { getVisibleFilePaths } from "../lib/visible-file-paths";
+import { DiscardChangesDialog } from "./discard-changes-dialog";
+import { HistoryCommitInfiniteList } from "./history-commit-infinite-list";
+import { WriteCommitBox } from "./write-commit-box";
 
 export function ListFileChanges({
   activeTab,
@@ -203,14 +214,23 @@ export function ListFileChanges({
       >
         <div className="p-1.5 max-h-10 min-h-10 border-b">
           <Group aria-label="Subscription actions" className="w-full">
-            <Input
-              aria-label="Filter files"
-              placeholder="Filter files..."
-              className={"rounded-l-md! border-border! w-full"}
-              size={"sm"}
-              value={changesQuery}
-              onChange={(e) => setChangesQuery(e.target.value)}
-            />
+            <InputGroup>
+              <InputGroupInput
+                aria-label="Filter files"
+                placeholder="Filter files..."
+                className={"rounded-l-md! border-border! w-full"}
+                size={"sm"}
+                value={changesQuery}
+                onChange={(e) => setChangesQuery(e.target.value)}
+              />
+              <InputGroupAddon>
+                <SearchIcon
+                  className="opacity-50 -translate-x-0.5"
+                  aria-hidden="true"
+                />
+              </InputGroupAddon>
+            </InputGroup>
+
             <GroupSeparator />
             <Menu>
               <MenuTrigger
@@ -517,4 +537,4 @@ export function ListFileChanges({
       </TabsPanel>
     </Tabs>
   );
-};
+}
