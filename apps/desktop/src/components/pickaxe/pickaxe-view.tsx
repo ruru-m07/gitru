@@ -110,7 +110,7 @@ export function PickaxeView() {
 
   return (
     <div className="flex max-h-[calc(var(--layout-height)-(--spacing(14)))] min-h-0 flex-col">
-      <div className="shrink-0 space-y-3 p-1 _border-b">
+      <div className="shrink-0 p-1">
         <div className="flex items-center gap-1">
           <Button
             size="icon-sm"

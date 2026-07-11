@@ -51,10 +51,10 @@ export function PickaxeDiffHeader({
   }, [fileDiff]);
 
   return (
-    <div className="flex min-h-9 items-center justify-between gap-3 mb-1 bg-muted/20 px-3 py-2 text-xs border-t">
+    <div className="flex min-h-9 items-center justify-between gap-3 mb-1 bg-muted/20 pl-3.5 px-3 py-2 text-xs border-t">
       <div className="flex min-w-0 items-center gap-1.5">
         <div className="min-w-0">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2.5">
             {getStatusIcon(fileDiffTypeToStatus(fileDiff.type), 20)}
             {fileDiff.prevName && fileDiff.prevName !== fileDiff.name ? (
               <>
@@ -78,7 +78,7 @@ export function PickaxeDiffHeader({
             )}
           </div>
         </div>
-        <span className="text-muted-foreground">•</span>
+        <span className="text-muted-foreground/50">•</span>
         <div className="gap-1 flex items-center">
           <div className="flex group">
             <Tooltip>
@@ -136,7 +136,7 @@ export function PickaxeDiffHeader({
             ( {timeAgoFromUnixSeconds(hit.commit.timestamp)} )
           </span>
         </div>
-        <span className="text-muted-foreground">•</span>
+        <span className="text-muted-foreground/50">•</span>
         <span className="font-mono text-xs text-muted-foreground">
           {hit.commit.summary}
         </span>

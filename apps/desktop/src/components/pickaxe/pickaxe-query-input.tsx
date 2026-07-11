@@ -75,8 +75,11 @@ export function PickaxeQueryInput({
         onKeyDown={onKeyDown}
         size={"sm"}
       />
-      <InputGroupAddon>
-        <Pickaxe className="text-muted-foreground" aria-hidden="true" />
+      <InputGroupAddon className="pr-0.75 ml-0.5">
+        <Pickaxe
+          className="text-muted-foreground/85 size-3.5"
+          aria-hidden="true"
+        />
       </InputGroupAddon>
 
       <InputGroupAddon align="inline-end" className="gap-0">
