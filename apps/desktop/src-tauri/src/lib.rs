@@ -56,6 +56,8 @@ pub fn run() {
             commands::history::history,
             commands::history::history_graph,
             commands::history::commit_activity,
+            commands::pickaxe::start_pickaxe,
+            commands::pickaxe::cancel_pickaxe,
             commands::origin::repository_origin,
             commands::commit::last_commit,
             commands::commit::commit_by_id,

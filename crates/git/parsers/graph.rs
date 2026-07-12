@@ -249,12 +249,7 @@ fn parse_ref(raw: &str) -> GraphRef {
 }
 
 fn display_name_for_ref(name: &str) -> String {
-    for prefix in [
-        "refs/heads/",
-        "refs/remotes/",
-        "refs/tags/",
-        "refs/stash",
-    ] {
+    for prefix in ["refs/heads/", "refs/remotes/", "refs/tags/", "refs/stash"] {
         if let Some(stripped) = name.strip_prefix(prefix) {
             return stripped.trim_start_matches('/').to_string();
         }

@@ -5,6 +5,7 @@ pub mod diff;
 pub mod graph;
 pub mod history;
 pub mod origin;
+pub mod pickaxe;
 pub mod query;
 pub mod repository;
 pub mod request_queue;

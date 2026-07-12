@@ -4,5 +4,6 @@ pub mod commit;
 pub mod diff;
 pub mod history;
 pub mod origin;
+pub mod pickaxe;
 pub mod stash;
 pub mod updater;

@@ -1,4 +1,5 @@
 import type { FileStatus } from "@gitru/commands";
+import type { PickaxeHit } from "@/hooks/use-pickaxe";
 import type { FileSelectionIdentity, SelectionSource } from "@/types/store";
 
 export type ResolvedFileSelection =
@@ -12,6 +13,10 @@ export type ResolvedFileSelection =
       state: "stale";
       identity: FileSelectionIdentity;
       reason: "missing" | "stash_removed" | "source_mismatch";
+    }
+  | {
+      state: "pickaxe";
+      hit: PickaxeHit;
     };
 
 type ResolveSelectionParams = {

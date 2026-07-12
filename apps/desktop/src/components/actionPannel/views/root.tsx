@@ -19,6 +19,7 @@ import {
   GitBranchPlus,
   GitPullRequestArrow,
   Inbox,
+  Pickaxe,
   PlusIcon,
   RefreshCcw,
   SearchIcon,
@@ -60,6 +61,8 @@ const iconMap: Record<string, React.ReactNode> = {
   refreshCcw: <RefreshCcw className="size-4" />,
   theme: <SwatchBook className="size-4" />,
   updates: <Download className="size-4" />,
+  search: <SearchIcon className="size-4" />,
+  pickaxe: <Pickaxe className="size-4" />,
 };
 
 export function useRootView(): CommandViewConfig<"root", ActionItem> {
@@ -72,6 +75,7 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
 
   const tanstackNavigate = useNavigate();
   const activeRepositoryPath = useAppStore(selectActiveRepositoryPath);
+  const setMainWindowView = useAppStore((state) => state.setMainWindowView);
   const setGitViewStateForRepo = useAppStore(
     (state) => state.setGitViewStateForRepo,
   );
@@ -144,6 +148,18 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             iconKey: "localGit",
             keywords: ["git", "version control"],
             redirect: "/app/git",
+          },
+          {
+            id: "pickaxe",
+            label: "Pickaxe",
+            shortcut: ["G", "T"],
+            iconKey: "pickaxe",
+            keywords: ["search", "history", "grep", "pickaxe", "log -S"],
+            async onCallBack() {
+              setMainWindowView("Pickaxe");
+              tanstackNavigate({ to: "/app/git" });
+              ctx.close();
+            },
           },
           {
             id: "stash-changes",
