@@ -275,11 +275,13 @@ fn resolve_pickaxe_search_spec(query: &PickaxeQuery) -> Result<PickaxeSearchSpec
         return Err("Search query cannot be empty".to_string());
     }
 
-    let can_use_pickaxe_s = !query.is_regex && query.match_case && !query.match_whole_word;
-    if can_use_pickaxe_s {
+    // Plain text without whole-word always uses -S (literal string pickaxe).
+    // Never regex-escape here: -S matches the pattern literally, so escaping
+    // would search for backslashes (e.g. "file.txt" → "file\.txt").
+    if !query.is_regex && !query.match_whole_word {
         return Ok(PickaxeSearchSpec {
             mode: PickaxeSearchMode::String,
-            ignore_case: false,
+            ignore_case: !query.match_case,
             pattern: text.to_string(),
         });
     }
@@ -291,19 +293,14 @@ fn resolve_pickaxe_search_spec(query: &PickaxeQuery) -> Result<PickaxeSearchSpec
         }
         pattern
     } else {
+        // Plain text + whole-word: escape for -G, then wrap word boundaries.
         let mut pattern = escape_regex_literal(text);
-        if query.match_whole_word {
-            pattern = wrap_git_regex_as_whole_word(pattern);
-        }
+        pattern = wrap_git_regex_as_whole_word(pattern);
         pattern
     };
 
     Ok(PickaxeSearchSpec {
-        mode: if query.match_whole_word || query.is_regex {
-            PickaxeSearchMode::Regex
-        } else {
-            PickaxeSearchMode::String
-        },
+        mode: PickaxeSearchMode::Regex,
         ignore_case: !query.match_case,
         pattern,
     })
@@ -424,7 +421,7 @@ mod tests {
     }
 
     #[test]
-    fn plain_text_case_insensitive_uses_pickaxe_g_with_ignore_case() {
+    fn plain_text_case_insensitive_uses_pickaxe_s_with_ignore_case() {
         let spec =
             resolve_pickaxe_search_spec(&query("AssetSuffix::Inferred", false, false, false))
                 .expect("expected spec");
@@ -443,6 +440,27 @@ mod tests {
     }
 
     #[test]
+    fn plain_text_case_insensitive_does_not_escape_regex_metacharacters() {
+        // Regression: escaping for -S made queries like "file.txt" search for "file\.txt".
+        let spec = resolve_pickaxe_search_spec(&query("file.txt", false, false, false))
+            .expect("expected spec");
+
+        assert!(matches!(spec.mode, PickaxeSearchMode::String));
+        assert!(spec.ignore_case);
+        assert_eq!(spec.pattern, "file.txt");
+
+        let spec = resolve_pickaxe_search_spec(&query("foo()", false, false, false))
+            .expect("expected spec");
+        assert_eq!(spec.pattern, "foo()");
+
+        let args = build_pickaxe_log_args(&query("a+b*c?", false, false, false))
+            .expect("expected args");
+        assert!(args.windows(2).any(|window| window == ["-i", "-S"]));
+        assert!(args.iter().any(|arg| arg == "a+b*c?"));
+        assert!(!args.iter().any(|arg| arg.contains('\\')));
+    }
+
+    #[test]
     fn whole_word_search_uses_portable_boundaries() {
         let spec = resolve_pickaxe_search_spec(&query("AssetSuffix::Inferred", false, false, true))
             .expect("expected spec");
@@ -452,6 +470,19 @@ mod tests {
         assert_eq!(
             spec.pattern,
             r"(^|[^[:alnum:]_])AssetSuffix::Inferred([^[:alnum:]_]|$)"
+        );
+    }
+
+    #[test]
+    fn whole_word_plain_text_escapes_metacharacters_for_regex() {
+        let spec = resolve_pickaxe_search_spec(&query("file.txt", false, true, true))
+            .expect("expected spec");
+
+        assert!(matches!(spec.mode, PickaxeSearchMode::Regex));
+        assert!(!spec.ignore_case);
+        assert_eq!(
+            spec.pattern,
+            r"(^|[^[:alnum:]_])file\.txt([^[:alnum:]_]|$)"
         );
     }
 
