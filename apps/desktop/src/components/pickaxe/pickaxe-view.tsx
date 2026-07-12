@@ -222,7 +222,7 @@ export function PickaxeView() {
 
       <ScrollArea
         ref={resultsScrollRef}
-        className="min-h-0 max-h-[calc(var(--layout-height)-(--spacing(14)))] flex-1 overflow-auto"
+        className="min-h-0 dark:bg-black bg-secondary/20 max-h-[calc(var(--layout-height)-(--spacing(14)))] flex-1 overflow-auto"
         scrollFade
       >
         {!query.trim() ? (

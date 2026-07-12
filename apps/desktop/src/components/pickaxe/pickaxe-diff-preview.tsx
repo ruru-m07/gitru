@@ -6,8 +6,8 @@ import { ImageDiffViewer } from "@/components/diff/image/ImageDiffViewer";
 import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
 import LoaderIndicator from "@/components/loaderIndicator";
 import { useGetDiff } from "@/hooks";
-import { useSearchTextHighlight } from "@/hooks/useSearchTextHighlight";
 import type { PickaxeHit } from "@/hooks/use-pickaxe";
+import { useSearchTextHighlight } from "@/hooks/useSearchTextHighlight";
 import type { PickaxeSearchOptions } from "@/lib/pickaxe-search-options";
 import { PickaxeDiffHeader } from "./pickaxe-diff-header";
 
@@ -102,9 +102,11 @@ export function PickaxeDiffPreview({
             collapsedContextThreshold: 0,
             lineHoverHighlight: "both",
             unsafeCSS: `
-              [data-background] {
-                --diffs-light-bg: ${theme?.startsWith("dark-") ? "#000000" : "var(--secondary)"} !important;
-                --diffs-dark-bg: ${theme?.startsWith("dark-") ? "#000000" : "var(--secondary)"} !important;
+              @layer rendered {
+                :host {
+                  --diffs-light-bg: color-mix(in oklab, var(--color-secondary) 20%, #ffffff);
+                  --diffs-dark-bg: #000000;
+                }
               }
             `,
           }}

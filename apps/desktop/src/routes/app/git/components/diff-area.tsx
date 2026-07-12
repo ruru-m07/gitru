@@ -2,7 +2,11 @@ import type { FileStatusKind } from "@gitru/commands";
 import { Button } from "@gitru/ui/components/button";
 import { cn } from "@gitru/ui/lib/utils";
 import { parseDiffFromFile } from "@pierre/diffs";
-import { MultiFileDiff, Virtualizer, WorkerPoolContextProvider } from "@pierre/diffs/react";
+import {
+  MultiFileDiff,
+  Virtualizer,
+  WorkerPoolContextProvider,
+} from "@pierre/diffs/react";
 import { Minus, Plus, Undo } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useMemo, useState } from "react";
@@ -293,7 +297,7 @@ export function DiffArea({
   return (
     <div
       className={cn(
-        "h-full max-h-[calc(var(--layout-height)---spacing(23.25))] w-full relative overflow-y-auto",
+        "h-full max-h-[calc(var(--layout-height)-(--spacing(23.25)))] dark:bg-black bg-secondary/20 w-full relative overflow-y-auto",
         theme?.startsWith("dark-") ? "#000000" : "var(--secondary)",
       )}
     >
@@ -305,7 +309,7 @@ export function DiffArea({
         <>
           {imageAssetDiff ? <ImageDiffViewer diff={imageAssetDiff} /> : null}
           {!isImageAssetDiff && (
-            <div className="max-h-[calc(var(--layout-height)---spacing(23.25))] h-full w-full flex overflow-auto select-auto">
+            <div className="max-h-[calc(var(--layout-height)-(--spacing(23.25)))] h-full w-full flex overflow-auto select-auto">
               <WorkerPoolContextProvider
                 poolOptions={{
                   workerFactory: diffWorkerFactory,
@@ -332,7 +336,7 @@ export function DiffArea({
                 }}
               >
                 <Virtualizer
-                  className="max-h-[calc(var(--layout-height)---spacing(23.25))] overflow-auto w-full"
+                  className="max-h-[calc(var(--layout-height)-(--spacing(23.25)))] overflow-auto w-full"
                   contentClassName="space-y-4 w-full!"
                 >
                   <MultiFileDiff
@@ -354,9 +358,11 @@ export function DiffArea({
                       collapsedContextThreshold: 0,
                       lineHoverHighlight: "both",
                       unsafeCSS: `
-                      [data-background] {
-                        --diffs-light-bg: ${theme?.startsWith("dark-") ? "#000000" : "var(--secondary)"} !important;
-                        --diffs-dark-bg: ${theme?.startsWith("dark-") ? "#000000" : "var(--secondary)"} !important;
+                        @layer rendered {
+                          :host {
+                              --diffs-light-bg: color-mix(in oklab, var(--color-secondary) 20%, #ffffff);
+                              --diffs-dark-bg: #000000;
+                          }
                       }
                       `,
                     }}
@@ -462,4 +468,4 @@ export function DiffArea({
       )}
     </div>
   );
-};
+}
