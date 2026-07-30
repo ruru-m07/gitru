@@ -12,7 +12,7 @@ import {
 import {
   DEFAULT_STATUS_FILTERS,
   type FileStatusFilter,
-} from "../lib/file-status-filters";
+} from "@/features/git/lib/file-status-filters";
 import { HistoryDetailView } from "./history-detail-view";
 import { ListFileChanges } from "./list-file-changes";
 import { ListRepositories } from "./list-repositories";

@@ -26,7 +26,7 @@ import { getAvatarByProvider } from "@/lib/get-avatar-by-git-provider";
 import { parseOrigin } from "@/lib/parse-origin";
 import { selectActiveRepository, useAppStore } from "@/store/use-app-store";
 import type { GIT_PROVIDERS } from "@/types/app";
-import { matchesSearchQuery } from "../lib/matches-search-query";
+import { matchesSearchQuery } from "@/features/git/lib/matches-search-query";
 
 export const ListRepositories = memo(() => {
   const navigation = useCommandNavigation();

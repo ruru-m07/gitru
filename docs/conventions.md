@@ -20,6 +20,16 @@
 - **Domain state** (`state/domains/*`) — Git data via TanStack Query and Tauri commands.
 - **Hooks** (`hooks/use-*.ts`) — Public API for components and routes. Prefer hooks over importing stores or domain modules directly.
 
+## Routes vs features
+
+TanStack Router treats every file under `src/routes/` as a potential route module.
+
+- **`routes/`** — Route definitions only (`route.tsx`, `index.tsx`, layout shells). No shared components, hooks, or utils here.
+- **`features/<name>/`** — Route-specific UI and helpers (e.g. `features/git/components`, `features/git/lib`).
+- **`components/`** — Shared UI used across multiple routes/features.
+
+Do not put `components/` or `lib/` folders inside `routes/`. That triggers build warnings and couples non-route code to the router file scanner.
+
 ## Tooling
 
 - **Format & lint:** Biome (`bun run lint`, `bun run format`)

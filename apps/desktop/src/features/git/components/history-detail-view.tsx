@@ -24,7 +24,7 @@ import {
   selectActiveSessionRepoKey,
   useAppStore,
 } from "@/store/use-app-store";
-import { matchesSearchQuery } from "../lib/matches-search-query";
+import { matchesSearchQuery } from "@/features/git/lib/matches-search-query";
 
 export const HistoryDetailView = ({ onBack }: { onBack: () => void }) => {
   const [query, setQuery] = useState("");

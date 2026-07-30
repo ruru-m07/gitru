@@ -43,12 +43,12 @@ import {
   type FileStatusFilter,
   hasActiveStatusFilters,
   matchesStatusFilters,
-} from "../lib/file-status-filters";
-import { matchesSearchQuery } from "../lib/matches-search-query";
+} from "@/features/git/lib/file-status-filters";
+import { matchesSearchQuery } from "@/features/git/lib/matches-search-query";
 import {
   getVisibleStagePaths,
   getVisibleUnstagePaths,
-} from "../lib/visible-file-paths";
+} from "@/features/git/lib/visible-file-paths";
 import { DiscardChangesDialog } from "./discard-changes-dialog";
 import { HistoryCommitInfiniteList } from "./history-commit-infinite-list";
 import { WriteCommitBox } from "./write-commit-box";
