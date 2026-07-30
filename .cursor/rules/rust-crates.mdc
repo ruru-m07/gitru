@@ -1,0 +1,25 @@
+---
+description: Rust crate boundaries for git and ipc
+globs: crates/**/*
+alwaysApply: false
+---
+
+# Rust crates
+
+## `crates/git`
+
+- Git CLI runner + parsers + models + services
+- Prefer CLI for data; git2 only when you need control over long-running/stateful ops (clone progress, future rebase UI, etc.)
+- Keep parsers and domain services here — not in the TS app
+
+## `crates/ipc`
+
+- App/IPC concerns **without** embedding git parse logic
+- Repo manager, sessions, clone/init orchestration, persisted store, etc.
+- Stay independent so ipc can evolve without dragging git internals
+
+## `crates/logger`
+
+- Small internal logging helper only
+
+Tauri wires both crates from `apps/desktop/src-tauri`. After public command API changes, run `make typegen`.
