@@ -16,11 +16,11 @@ import {
 import { open } from "@tauri-apps/plugin-dialog";
 import { BookCopy, CircleDashed, CopyPlus, GitBranch } from "lucide-react";
 import { toast } from "sonner";
-import PageLayout from "@/components/pageLayout";
-import { useRepositories } from "@/hooks/useRepositories";
-import { getAvatarByProvider } from "@/lib/getAvatarByGitProvider";
-import { parseOrigin } from "@/lib/parseOrigin";
-import { useAppStore } from "@/store/useAppStore";
+import PageLayout from "@/components/page-layout";
+import { useRepositories } from "@/hooks/use-repositories";
+import { getAvatarByProvider } from "@/lib/get-avatar-by-git-provider";
+import { parseOrigin } from "@/lib/parse-origin";
+import { useAppStore } from "@/store/use-app-store";
 
 export function NoRepositoryScreen() {
   const setSelectedRepository = useAppStore(

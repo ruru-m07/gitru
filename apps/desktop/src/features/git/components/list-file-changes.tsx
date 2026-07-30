@@ -7,6 +7,7 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from "@gitru/ui/components/input-group";
+import { Input } from "@gitru/ui/components/input";
 import {
   Menu,
   MenuCheckboxItem,

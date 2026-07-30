@@ -36,6 +36,11 @@ export const FileLevelStatusBar = ({
               return;
             }
 
+            if (resolvedSelection.state === "pickaxe") {
+              setMainWindowView(null);
+              return;
+            }
+
             const selection = resolvedSelection.identity;
             if (selection.source === "stash" && selection.stashReference) {
               clearStashSelectionForRepo(selection.stashReference);

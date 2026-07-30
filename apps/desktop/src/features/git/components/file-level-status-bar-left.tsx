@@ -13,6 +13,14 @@ export const FileLevelStatusBarLeft = ({
     return null;
   }
 
+  if (resolvedSelection.state === "pickaxe") {
+    return (
+      <div className="items-center h-full px-2 flex gap-2">
+        <span className="text-sm truncate">{resolvedSelection.hit.filePath}</span>
+      </div>
+    );
+  }
+
   const selectedFile =
     resolvedSelection.state === "valid"
       ? {
