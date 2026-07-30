@@ -705,11 +705,22 @@ const getTabTitleFromRoute = (routePath: string) => {
 };
 
 const generateTabId = () => {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return `tab-${crypto.randomUUID()}`;
+  const webCrypto = globalThis.crypto;
+
+  if (typeof webCrypto?.randomUUID === "function") {
+    return `tab-${webCrypto.randomUUID()}`;
   }
 
-  return `tab-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  if (typeof webCrypto?.getRandomValues === "function") {
+    const bytes = new Uint8Array(16);
+    webCrypto.getRandomValues(bytes);
+    const hex = Array.from(bytes, (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
+    return `tab-${hex}`;
+  }
+
+  return `tab-${Date.now()}`;
 };
 
 export const createWorkspaceTab = (payload?: {
