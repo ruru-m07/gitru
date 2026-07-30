@@ -11,11 +11,11 @@ import {
 import type { FileDiffMetadata } from "@pierre/diffs";
 import { MoveHorizontal } from "lucide-react";
 import { useMemo } from "react";
-import { getStatusIcon } from "@/components/getStatusIcon";
+import { getStatusIcon } from "@/components/get-status-icon";
 import { PickaxeHit } from "@/hooks";
 import { fileDiffTypeToStatus } from "@/lib/pickaxe-status";
 import { timeAgoFromUnixSeconds } from "@/lib/time";
-import { DiffStat } from "../diffBoxes";
+import { DiffStat } from "@/components/diff-boxes";
 
 function renderPath(path: string) {
   const parts = path.split("/");

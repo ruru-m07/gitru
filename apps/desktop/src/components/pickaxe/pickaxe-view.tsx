@@ -10,16 +10,16 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import LoaderIndicator from "@/components/loaderIndicator";
+import LoaderIndicator from "@/components/loader-indicator";
 import { type PickaxeHit, usePickaxe } from "@/hooks/use-pickaxe";
 import { useHighlightNavigation } from "@/hooks/useHighlightNavigation";
-import { diffWorkerFactory } from "@/lib/diffWorkerFactory";
+import { diffWorkerFactory } from "@/lib/diff-worker-factory";
 import {
   DEFAULT_PICKAXE_SEARCH_OPTIONS,
   type PickaxeSearchOptions,
 } from "@/lib/pickaxe-search-options";
 import { clearAllSearchHighlights } from "@/lib/searchTextHighlight";
-import { useAppStore } from "@/store/useAppStore";
+import { useAppStore } from "@/store/use-app-store";
 import { PickaxeDiffPreview } from "./pickaxe-diff-preview";
 import { PickaxeQueryInput } from "./pickaxe-query-input";
 

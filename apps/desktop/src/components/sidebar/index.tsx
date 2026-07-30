@@ -13,9 +13,9 @@ import {
   TooltipTrigger,
 } from "@gitru/ui/components/tooltip";
 import { Download, Plus, RotateCcw } from "lucide-react";
-import { useAppStore } from "@/store/useAppStore";
+import { useAppStore } from "@/store/use-app-store";
 import SideBarItems from "./items";
-import { useUpdateState } from "./UpdateState";
+import { useUpdateState } from "./update-state";
 
 const CIRCLE_RADIUS = 12;
 const CIRCLE_CIRCUMFERENCE = 2 * Math.PI * CIRCLE_RADIUS;

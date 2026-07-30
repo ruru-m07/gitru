@@ -7,7 +7,7 @@ export { Inbox } from "./icons/inbox";
 export { Issue } from "./icons/issue";
 export { Modifed } from "./icons/modifed";
 export { New } from "./icons/new";
-export { PullRequest } from "./icons/pullRequest";
+export { PullRequest } from "./icons/pull-request";
 export { Renamed } from "./icons/renamed";
 export { Stashed } from "./icons/stashed";
 export { Unknown } from "./icons/unknown";

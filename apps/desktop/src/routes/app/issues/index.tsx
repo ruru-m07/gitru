@@ -1,8 +1,13 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useRef } from "react";
-import PageLayout from "@/components/pageLayout";
+import PageLayout from "@/components/page-layout";
 
 export const Route = createFileRoute("/app/issues/")({
+  beforeLoad: () => {
+    if (!import.meta.env.DEV) {
+      throw redirect({ to: "/app/git" });
+    }
+  },
   component: RouteComponent,
 });
 
@@ -10,6 +15,7 @@ const ROWS = 100;
 
 const dataSet = Array.from({ length: ROWS });
 
+/** DEV ONLY: CSS subgrid / scroll interaction prototype. */
 function RouteComponent() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -24,7 +30,6 @@ function RouteComponent() {
         }}
         ref={scrollRef}
       >
-        {/* Col 1 - sticky */}
         <div
           style={{
             gridRow: `span ${ROWS}`,
@@ -47,38 +52,13 @@ function RouteComponent() {
           ))}
         </div>
 
-        {/* Col 2 - sticky */}
-        {/* <div
-        style={{
-          gridRow: `span ${ROWS}`,
-          gridColumn: 2,
-          display: "grid",
-          gridTemplateRows: "subgrid",
-          position: "sticky",
-          left: "var(--col1-width, 0px)", // offset by col1 width
-          zIndex: 3,
-          backgroundColor: "lightgreen",
-        }}
-      >
-        {dataSet.map((_, i) => (
-          <div
-            className="min-h-8 px-4 flex items-center justify-end tabular-nums"
-            key={i}
-          >
-            {i}
-          </div>
-        ))}
-      </div> */}
-
-        {/* Col 3 - scrollable */}
         <div
           style={{
             gridRow: `span ${ROWS}`,
-            // gridColumn: 3,
             gridColumn: 2,
             display: "grid",
             gridTemplateRows: "subgrid",
-            overflowX: "auto", // <-- only this scrolls
+            overflowX: "auto",
             minWidth: 0,
             WebkitOverflowScrolling: "touch",
           }}
@@ -92,7 +72,7 @@ function RouteComponent() {
             if (isVerticalIntent) {
               parent.scrollTop += e.deltaY;
               e.preventDefault();
-              e.stopPropagation(); // <-- important in WKWebView
+              e.stopPropagation();
             }
           }}
         >
@@ -124,7 +104,6 @@ function RouteComponent() {
           ))}
         </div>
 
-        {/* col 4 */}
         <div
           style={{
             gridRow: `span ${ROWS}`,
