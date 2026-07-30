@@ -4,11 +4,11 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import CustomTitleBar from "@/CustomTitleBar";
-import { ActionPannel } from "@/components/actionPannel";
-import PageLayout from "@/components/pageLayout";
+import { ActionPanel } from "@/components/action-panel";
+import CustomTitleBar from "@/components/custom-title-bar";
+import PageLayout from "@/components/page-layout";
 import Sidebar from "@/components/sidebar";
-import WebviewTabHost from "@/components/WebviewTabHost";
+import WebviewTabHost from "@/components/webview-tab-host";
 
 export const Route = createFileRoute("/app")({
   component: RouteComponent,
@@ -34,14 +34,14 @@ function RouteComponent() {
 
   if (isEmbedded) {
     return (
-      <ActionPannel>
+      <ActionPanel>
         <div className="h-screen w-full bg-secondary -z-10">
           <div className="flex h-screen w-screen px-(--main-actual-content-padding) pb-(--main-actual-content-padding) gap-(--main-actual-content-padding)">
             <Sidebar />
             <Outlet />
           </div>
         </div>
-      </ActionPannel>
+      </ActionPanel>
     );
   }
 

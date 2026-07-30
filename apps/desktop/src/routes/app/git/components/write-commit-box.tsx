@@ -1,3 +1,4 @@
+import type { CommitMessage } from "@gitru/commands";
 import { Button } from "@gitru/ui/components/button";
 import { Group, GroupSeparator } from "@gitru/ui/components/group";
 import {
@@ -15,8 +16,12 @@ import {
 import { ChevronDownIcon, Loader2, Sparkles, UserPlus } from "lucide-react";
 import { memo, useCallback, useState } from "react";
 import { toast } from "sonner";
-import { useCreateCommit, useGetCurrentBranch, useGetStatus, useGitAdd } from "@/hooks";
-import type { CoAuthers } from "../lib/co-authors";
+import {
+  useCreateCommit,
+  useGetCurrentBranch,
+  useGetStatus,
+  useGitAdd,
+} from "@/hooks";
 
 export const WriteCommitBox = memo(function WriteCommitBox({
   visibleAddablePaths,
@@ -25,7 +30,7 @@ export const WriteCommitBox = memo(function WriteCommitBox({
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [co_authors, setCoAuthors] = useState<CoAuthers>([]);
+  const [co_authors, setCoAuthors] = useState<CommitMessage["co_authors"]>([]);
 
   const { data: currentBranch } = useGetCurrentBranch();
   const { data: status } = useGetStatus();

@@ -1,10 +1,10 @@
-import { Button } from "@gitru/ui/components/button";
-import { CopyButton } from "@gitru/ui/components/copy-button";
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@gitru/ui/components/avatar";
+import { Button } from "@gitru/ui/components/button";
+import { CopyButton } from "@gitru/ui/components/copy-button";
 import { Group } from "@gitru/ui/components/group";
 import { Input } from "@gitru/ui/components/input";
 import {
@@ -14,15 +14,19 @@ import {
 } from "@gitru/ui/components/tooltip";
 import { ChevronLeftIcon, Files } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
-import { VirtualizedFileList } from "@/components/VirtualizedFileList";
+import { useFileSelectionStore } from "@/components/diff/use-file-selection-store";
+import { VirtualizedFileList } from "@/components/virtualized-file-list";
 import { useGetCommitById } from "@/hooks";
-import { resolveFileSelection } from "@/lib/gitSelectionResolver";
+import { resolveFileSelection } from "@/lib/git-selection-resolver";
 import { timeAgoFromUnixSeconds } from "@/lib/time";
-import { selectActiveRepository, selectActiveSessionRepoKey, useAppStore } from "@/store/useAppStore";
+import {
+  selectActiveRepository,
+  selectActiveSessionRepoKey,
+  useAppStore,
+} from "@/store/use-app-store";
 import { matchesSearchQuery } from "../lib/matches-search-query";
 
-export function HistoryDetailView({ onBack }: { onBack: () => void }) {
+export const HistoryDetailView = ({ onBack }: { onBack: () => void }) => {
   const [query, setQuery] = useState("");
 
   const activeRepository = useAppStore(selectActiveRepository);

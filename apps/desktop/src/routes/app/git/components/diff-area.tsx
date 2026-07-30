@@ -10,14 +10,13 @@ import {
 import { Minus, Plus, Undo } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useMemo, useState } from "react";
-import { ImageDiffViewer } from "@/components/diff/image/ImageDiffViewer";
-import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
-import LoaderIndicator from "@/components/loaderIndicator";
+import { ImageDiffViewer } from "@/components/diff/image/image-diff-viewer";
+import { useDiffViewerSettings } from "@/components/diff/use-diff-view-setting-store";
+import LoaderIndicator from "@/components/loader-indicator";
 import { useGetDiff, useGitApplyPatchBlock } from "@/hooks";
-import { diffWorkerFactory } from "@/lib/diffWorkerFactory";
-import type { ChunkActionMetadata } from "../lib/chunk-action-metadata";
+import { diffWorkerFactory } from "@/lib/diff-worker-factory";
 
-export function DiffArea({
+export const DiffArea = ({
   filePath,
   fileNewPath,
   status,
@@ -31,7 +30,7 @@ export function DiffArea({
   stashReference: string | null;
   commitHash: string | null;
   worktreeScope?: "staged" | "unstaged" | "conflicted";
-}) {
+}) => {
   const { diffStyle, overflow } = useDiffViewerSettings();
   const [effectiveDiffStyle, setEffectiveDiffStyle] =
     useState<typeof diffStyle>(diffStyle);
@@ -468,4 +467,25 @@ export function DiffArea({
       )}
     </div>
   );
-}
+};
+
+type ChunkActionMetadata = {
+  source: "worktree" | "stash" | "history";
+  filePath: string;
+  fileNewPath: string | null;
+  stashReference: string | null;
+  commitHash: string | null;
+  hunkIndex: number;
+  changeIndex: number;
+  side: "additions" | "deletions";
+  additions: {
+    start: number | null;
+    end: number | null;
+    count: number;
+  };
+  deletions: {
+    start: number | null;
+    end: number | null;
+    count: number;
+  };
+};

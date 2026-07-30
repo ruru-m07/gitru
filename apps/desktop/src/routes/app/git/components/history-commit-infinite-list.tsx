@@ -15,9 +15,12 @@ import {
 import { Files, Tags } from "lucide-react";
 import { useRef } from "react";
 import { useOnInView } from "react-intersection-observer";
-import { formatUnixSecondsToDateTime, timeAgoFromUnixSeconds } from "@/lib/time";
+import {
+  formatUnixSecondsToDateTime,
+  timeAgoFromUnixSeconds,
+} from "@/lib/time";
 
-export function HistoryCommitInfiniteList({
+export const HistoryCommitInfiniteList = ({
   rows,
   onOpenCommit,
   fetchNextPage,
@@ -31,7 +34,7 @@ export function HistoryCommitInfiniteList({
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
   isLoading: boolean;
-}) {
+}) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useOnInView(
     (inView) => {

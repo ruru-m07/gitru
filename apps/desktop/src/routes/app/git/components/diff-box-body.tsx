@@ -1,11 +1,17 @@
-import { useGetCommitById, useGetCurrentBranchStash, useGetStatus, useStashList, useStashShow } from "@/hooks";
-import { resolveFileSelection } from "@/lib/gitSelectionResolver";
-import { selectActiveSessionRepoKey, useAppStore } from "@/store/useAppStore";
+import {
+  useGetCommitById,
+  useGetCurrentBranchStash,
+  useGetStatus,
+  useStashList,
+  useStashShow,
+} from "@/hooks";
+import { resolveFileSelection } from "@/lib/git-selection-resolver";
+import { selectActiveSessionRepoKey, useAppStore } from "@/store/use-app-store";
 import { DiffArea } from "./diff-area";
 import { EmptyStateScreen } from "./empty-state-screen";
 import { FileLevelStatusBar } from "./file-level-status-bar";
 
-export function DiffBoxBody() {
+export const DiffBoxBody = () => {
   const repoStateKey = useAppStore(selectActiveSessionRepoKey);
   const repoSelectionState = useAppStore((state) =>
     repoStateKey ? state.selectionByRepo[repoStateKey] : undefined,

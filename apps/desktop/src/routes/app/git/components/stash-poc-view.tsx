@@ -1,4 +1,3 @@
-import { Button } from "@gitru/ui/components/button";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -9,6 +8,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@gitru/ui/components/alert-dialog";
+import { Button } from "@gitru/ui/components/button";
 import { Group, GroupSeparator } from "@gitru/ui/components/group";
 import { Input } from "@gitru/ui/components/input";
 import {
@@ -23,12 +23,17 @@ import {
   MenuPopup,
   MenuTrigger,
 } from "@gitru/ui/components/menu";
-import { ChevronDownIcon, ChevronLeftIcon, ListFilterPlus, Undo2 } from "lucide-react";
+import {
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  ListFilterPlus,
+  Undo2,
+} from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
-import { getStatusIcon } from "@/components/getStatusIcon";
-import { VirtualizedFileList } from "@/components/VirtualizedFileList";
+import { useFileSelectionStore } from "@/components/diff/use-file-selection-store";
+import { getStatusIcon } from "@/components/get-status-icon";
+import { VirtualizedFileList } from "@/components/virtualized-file-list";
 import {
   useGetCurrentBranchStash,
   useStashDrop,
@@ -37,13 +42,17 @@ import {
   useStashRestoreFile,
   useStashShow,
 } from "@/hooks";
-import { resolveFileSelection } from "@/lib/gitSelectionResolver";
-import { selectActiveRepository, selectActiveSessionRepoKey, useAppStore } from "@/store/useAppStore";
+import { resolveFileSelection } from "@/lib/git-selection-resolver";
+import {
+  selectActiveRepository,
+  selectActiveSessionRepoKey,
+  useAppStore,
+} from "@/store/use-app-store";
 import {
   DEFAULT_STATUS_FILTERS,
+  type FileStatusFilter,
   hasActiveStatusFilters,
   matchesStatusFilters,
-  type FileStatusFilter,
 } from "../lib/file-status-filters";
 import { matchesSearchQuery } from "../lib/matches-search-query";
 

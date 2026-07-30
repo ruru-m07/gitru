@@ -1,10 +1,12 @@
 import type { GetStatusResponse } from "@gitru/commands";
 
-export const getVisibleFilePaths = (files: GetStatusResponse["files"]) =>
-  Array.from(
-    new Set(
-      files.flatMap((file) =>
-        file.new_path ? [file.path, file.new_path] : [file.path],
-      ),
-    ),
-  );
+import {
+  getGitStagePathspecs,
+  getGitUnstagePathspecsForFiles,
+} from "@/lib/git-pathspec";
+
+export const getVisibleStagePaths = (files: GetStatusResponse["files"]) =>
+  getGitStagePathspecs(files);
+
+export const getVisibleUnstagePaths = (files: GetStatusResponse["files"]) =>
+  getGitUnstagePathspecsForFiles(files);

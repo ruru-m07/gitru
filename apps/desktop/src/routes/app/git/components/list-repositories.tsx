@@ -1,30 +1,30 @@
-import { Button } from "@gitru/ui/components/button";
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@gitru/ui/components/avatar";
+import { Button } from "@gitru/ui/components/button";
+import { useCommandNavigation } from "@gitru/ui/components/command";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@gitru/ui/components/input-group";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@gitru/ui/components/menu";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@gitru/ui/components/input-group";
-import { useCommandNavigation } from "@gitru/ui/components/command";
 import { open } from "@tauri-apps/plugin-dialog";
 import { BadgeQuestionMark, ChevronDownIcon, SearchIcon } from "lucide-react";
 import { memo, useState } from "react";
 import { toast } from "sonner";
-import { RepositoryListItem } from "@/components/RepositoryListItem";
-import { useRepositories } from "@/hooks/useRepositories";
-import { getAvatarByProvider } from "@/lib/getAvatarByGitProvider";
-import { parseOrigin } from "@/lib/parseOrigin";
-import { selectActiveRepository, useAppStore } from "@/store/useAppStore";
+import { RepositoryListItem } from "@/components/repository-list-item";
+import { useRepositories } from "@/hooks/use-repositories";
+import { getAvatarByProvider } from "@/lib/get-avatar-by-git-provider";
+import { parseOrigin } from "@/lib/parse-origin";
+import { selectActiveRepository, useAppStore } from "@/store/use-app-store";
 import type { GIT_PROVIDERS } from "@/types/app";
 import { matchesSearchQuery } from "../lib/matches-search-query";
 

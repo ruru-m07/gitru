@@ -2,19 +2,24 @@ import { cn } from "@gitru/ui/lib/utils";
 import { Outlet } from "@tanstack/react-router";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
-import { ResizableLayout } from "@/components/resizableLayout";
-import { selectActiveRepoSelectIsOpen, selectActiveRepository, selectActiveSessionRepoKey, useAppStore } from "@/store/useAppStore";
+import { ResizableLayout } from "@/components/resizable-layout";
+import {
+  selectActiveRepoSelectIsOpen,
+  selectActiveRepository,
+  selectActiveSessionRepoKey,
+  useAppStore,
+} from "@/store/use-app-store";
+import {
+  DEFAULT_STATUS_FILTERS,
+  type FileStatusFilter,
+} from "../lib/file-status-filters";
 import { HistoryDetailView } from "./history-detail-view";
 import { ListFileChanges } from "./list-file-changes";
 import { ListRepositories } from "./list-repositories";
 import { StashPocView } from "./stash-poc-view";
 import { TogglePanelButton } from "./toggle-panel-button";
-import {
-  DEFAULT_STATUS_FILTERS,
-  type FileStatusFilter,
-} from "../lib/file-status-filters";
 
-export function ResizableArea() {
+export const ResizableArea = () => {
   const repoSelectIsOpen = useAppStore(selectActiveRepoSelectIsOpen);
   const setRepoSelectIsOpen = useAppStore((state) => state.setRepoSelectIsOpen);
   const activeRepository = useAppStore(selectActiveRepository);

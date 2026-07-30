@@ -1,9 +1,13 @@
 import { Button } from "@gitru/ui/components/button";
 import { cn } from "@gitru/ui/lib/utils";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { selectActiveRepoSelectIsOpen, selectActiveRepository, useAppStore } from "@/store/useAppStore";
+import {
+  selectActiveRepoSelectIsOpen,
+  selectActiveRepository,
+  useAppStore,
+} from "@/store/use-app-store";
 
-export function TogglePanelButton() {
+export const TogglePanelButton = () => {
   const repoSelectIsOpen = useAppStore(selectActiveRepoSelectIsOpen);
   const setRepoSelectIsOpen = useAppStore((state) => state.setRepoSelectIsOpen);
   const activeRepository = useAppStore(selectActiveRepository);

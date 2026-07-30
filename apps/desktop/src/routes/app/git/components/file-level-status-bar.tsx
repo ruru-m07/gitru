@@ -1,15 +1,15 @@
 import { Button } from "@gitru/ui/components/button";
 import { X } from "lucide-react";
-import type { ResolvedFileSelection } from "@/lib/gitSelectionResolver";
-import { useAppStore } from "@/store/useAppStore";
-import { DiffSettingsPopover } from "./diff-settings-popover";
+import type { ResolvedFileSelection } from "@/lib/git-selection-resolver";
+import { useAppStore } from "@/store/use-app-store";
+import { SettingsPopover } from "./diff-settings-popover";
 import { FileLevelStatusBarLeft } from "./file-level-status-bar-left";
 
-export function FileLevelStatusBar({
+export const FileLevelStatusBar = ({
   resolvedSelection,
 }: {
   resolvedSelection: ResolvedFileSelection;
-}) {
+}) => {
   const clearWorktreeSelectionForRepo = useAppStore(
     (state) => state.clearWorktreeSelectionForRepo,
   );
@@ -32,10 +32,7 @@ export function FileLevelStatusBar({
           aria-label="Open notifications"
           onClick={() => {
             setMainWindowView(null);
-            if (
-              resolvedSelection.state === "none" ||
-              resolvedSelection.state === "pickaxe"
-            ) {
+            if (resolvedSelection.state === "none") {
               return;
             }
 
@@ -56,8 +53,8 @@ export function FileLevelStatusBar({
           <X />
         </Button>
 
-        <DiffSettingsPopover />
+        <SettingsPopover />
       </div>
     </div>
   );
-}
+};

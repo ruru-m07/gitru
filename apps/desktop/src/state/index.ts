@@ -1,8 +1,8 @@
-import { useAppStore } from "@/store/useAppStore";
-import { getActiveRepoContextId } from "./core/RepoContextRegistry";
-import { queryClient } from "./core/StateManager";
-import { repositories } from "./domains/RepositoryManager";
-import { RepositoryState } from "./domains/RepositoryState";
+import { useAppStore } from "@/store/use-app-store";
+import { getActiveRepoContextId } from "./core/repo-context-registry";
+import { queryClient } from "./core/state-manager";
+import { repositories } from "./domains/repository-manager";
+import { RepositoryState } from "./domains/repository-state";
 
 class AppState {
   readonly repositories = repositories;

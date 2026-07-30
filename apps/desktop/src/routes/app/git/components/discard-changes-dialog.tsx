@@ -112,7 +112,7 @@ export const DiscardChangesDialog = memo(function DiscardChangesDialog({
                 await discardChanges({
                   filePath: isBulkDiscard ? filePaths : (filePaths[0] ?? ""),
                 });
-              } catch (error) {
+              } catch {
                 toast.error("Unable to discard changes");
               } finally {
                 setIsDeleteLoading(false);
@@ -121,9 +121,7 @@ export const DiscardChangesDialog = memo(function DiscardChangesDialog({
             }}
           >
             Discard
-            <Kbd className="bg-background/30 text-background">
-              {/* <CornerDownLeft /> */}↵
-            </Kbd>
+            <Kbd className="bg-background/30 text-background">↵</Kbd>
           </Button>
         </DialogFooter>
       </DialogContent>

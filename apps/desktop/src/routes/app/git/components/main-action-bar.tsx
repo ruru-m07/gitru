@@ -1,9 +1,19 @@
 import { Button } from "@gitru/ui/components/button";
 import { Separator } from "@gitru/ui/components/separator";
-import { ArrowUpFromLine, ChevronDown, ChevronsUp, GitBranch, Loader2 } from "lucide-react";
-import { useGetCurrentBranch, useGetStatusAheadBehind, useGitPush } from "@/hooks";
+import {
+  ArrowUpFromLine,
+  ChevronDown,
+  ChevronsUp,
+  GitBranch,
+  Loader2,
+} from "lucide-react";
+import {
+  useGetCurrentBranch,
+  useGetStatusAheadBehind,
+  useGitPush,
+} from "@/hooks";
 
-export function MainActionBar() {
+export const MainActionBar = () => {
   const { data: currentBranch } = useGetCurrentBranch();
   const { data: statusAheadBehind } = useGetStatusAheadBehind();
 

@@ -10,11 +10,11 @@ import { Separator } from "@gitru/ui/components/separator";
 import { Switch } from "@gitru/ui/components/switch";
 import { cn } from "@gitru/ui/lib/utils";
 import { Diff, Settings, TextWrap } from "lucide-react";
-import { useDiffViewerSettings } from "@/components/diff/useDiffViewSettingStore";
-import { SplitSVG } from "@/components/svgs/splitSVG";
-import { UnifiedSVG } from "@/components/svgs/unifiedSVG";
+import { useDiffViewerSettings } from "@/components/diff/use-diff-view-setting-store";
+import { SplitSVG } from "@/components/svgs/split-svg";
+import { UnifiedSVG } from "@/components/svgs/unified-svg";
 
-export function DiffSettingsPopover() {
+export const SettingsPopover = () => {
   return (
     <Popover>
       <PopoverTrigger
@@ -29,12 +29,12 @@ export function DiffSettingsPopover() {
       >
         <Settings size={16} aria-hidden="true" />
       </PopoverTrigger>
-      <DiffSettingsPopoverContent />
+      <SettingsPopoverContent />
     </Popover>
   );
-}
+};
 
-function DiffSettingsPopoverContent() {
+const SettingsPopoverContent = () => {
   const { setDiffStyle, diffStyle, overflow, setOverflow } =
     useDiffViewerSettings();
 
@@ -97,4 +97,4 @@ function DiffSettingsPopoverContent() {
       </div>
     </PopoverContent>
   );
-}
+};

@@ -2,7 +2,6 @@ import type { GetStatusResponse } from "@gitru/commands";
 import { Stashed } from "@gitru/icon";
 import { Button } from "@gitru/ui/components/button";
 import { Group, GroupSeparator } from "@gitru/ui/components/group";
-import { Input } from "@gitru/ui/components/input";
 import {
   InputGroup,
   InputGroupAddon,
@@ -25,9 +24,9 @@ import {
   SearchIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useFileSelectionStore } from "@/components/diff/useFileSelectionStore";
-import { getStatusIcon } from "@/components/getStatusIcon";
-import { VirtualizedFileList } from "@/components/VirtualizedFileList";
+import { useFileSelectionStore } from "@/components/diff/use-file-selection-store";
+import { getStatusIcon } from "@/components/get-status-icon";
+import { VirtualizedFileList } from "@/components/virtualized-file-list";
 import {
   useGetCurrentBranchStash,
   useGetStatus,
@@ -36,9 +35,9 @@ import {
   useGitHistoryGraph,
   useGitUnstage,
 } from "@/hooks";
-import { formatNumber } from "@/lib/formatNumber";
-import { resolveFileSelection } from "@/lib/gitSelectionResolver";
-import { selectActiveSessionRepoKey, useAppStore } from "@/store/useAppStore";
+import { formatNumber } from "@/lib/format-number";
+import { resolveFileSelection } from "@/lib/git-selection-resolver";
+import { selectActiveSessionRepoKey, useAppStore } from "@/store/use-app-store";
 import {
   DEFAULT_STATUS_FILTERS,
   type FileStatusFilter,
@@ -46,12 +45,15 @@ import {
   matchesStatusFilters,
 } from "../lib/file-status-filters";
 import { matchesSearchQuery } from "../lib/matches-search-query";
-import { getVisibleFilePaths } from "../lib/visible-file-paths";
+import {
+  getVisibleStagePaths,
+  getVisibleUnstagePaths,
+} from "../lib/visible-file-paths";
 import { DiscardChangesDialog } from "./discard-changes-dialog";
 import { HistoryCommitInfiniteList } from "./history-commit-infinite-list";
 import { WriteCommitBox } from "./write-commit-box";
 
-export function ListFileChanges({
+export const ListFileChanges = ({
   activeTab,
   onTabChange,
   onOpenHistoryView,
@@ -61,7 +63,7 @@ export function ListFileChanges({
   onTabChange: (tab: "changes" | "history") => void;
   onOpenHistoryView: (commitHash: string) => void;
   onOpenStashView: (stashReference: string | null) => void;
-}) {
+}) => {
   const [changesQuery, setChangesQuery] = useState("");
   const [historySearchInput, setHistorySearchInput] = useState("");
   const [statusFilters, setStatusFilters] = useState<
@@ -164,15 +166,15 @@ export function ListFileChanges({
       matchesSearchQuery(file.path, changesQuery),
   );
   const visibleConflictPaths = useMemo(
-    () => getVisibleFilePaths(conflictedChanges),
+    () => getVisibleStagePaths(conflictedChanges),
     [conflictedChanges],
   );
   const visibleStagedPaths = useMemo(
-    () => getVisibleFilePaths(stagedChanges),
+    () => getVisibleUnstagePaths(stagedChanges),
     [stagedChanges],
   );
   const visibleUnstagedPaths = useMemo(
-    () => getVisibleFilePaths(unstagedChanges),
+    () => getVisibleStagePaths(unstagedChanges),
     [unstagedChanges],
   );
   const visibleAddablePaths = useMemo(
@@ -537,4 +539,4 @@ export function ListFileChanges({
       </TabsPanel>
     </Tabs>
   );
-}
+};
