@@ -50,6 +50,43 @@ fn get_current_branch_after_switch() {
     });
 }
 
+#[test]
+#[serial]
+fn get_current_branch_when_detached() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("README.md", "# Test", "Initial commit");
+        let head = repo.git(&["rev-parse", "HEAD"]);
+        repo.git(&["checkout", "--detach", &head]);
+
+        let service = setup_branch_service(&repo);
+        let branch = service.get_current_branch().await.unwrap();
+
+        assert!(branch.is_detached);
+        assert!(head.starts_with(&branch.name));
+        assert_eq!(branch.name, branch.display_name);
+    });
+}
+
+#[test]
+#[serial]
+fn ahead_behind_when_detached() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("README.md", "# Test", "Initial commit");
+        let head = repo.git(&["rev-parse", "HEAD"]);
+        repo.git(&["checkout", "--detach", &head]);
+
+        let service = setup_branch_service(&repo);
+        let status = service.status_ahead_behind().await.unwrap();
+
+        assert!(status.is_detached);
+        assert!(!status.is_published);
+        assert_eq!(status.ahead, 0);
+        assert_eq!(status.behind, 0);
+    });
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // LIST BRANCHES TESTS
 // ══════════════════════════════════════════════════════════════════════════════

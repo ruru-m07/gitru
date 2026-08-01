@@ -1,4 +1,8 @@
-import { AheadBehindStatus, gitVersion } from "@gitru/commands";
+import {
+  type AheadBehindStatus,
+  gitVersion,
+  type RepoOperation,
+} from "@gitru/commands";
 import { Git } from "@gitru/icon";
 import {
   Avatar,
@@ -38,6 +42,7 @@ import {
   useGetCommitById,
   useGetCurrentBranch,
   useGetLastCommit,
+  useGetRepoOperation,
   useGetStatus,
   useGetStatusAheadBehind,
   useGitFetch,
@@ -62,6 +67,7 @@ const StatusBar = () => {
         <AheadBadge statusAheadBehind={statusAheadBehind || undefined} />
         <BehindBadge statusAheadBehind={statusAheadBehind || undefined} />
         <LastCommitBox />
+        <RebaseBadge />
       </div>
       <div className="flex">
         {/* <CloneProgressBadge /> */}
@@ -316,6 +322,37 @@ const VersionBadge = () => {
   );
 };
 
+const RebaseBadge = () => {
+  const { data: operation } = useGetRepoOperation();
+  if (!operation?.isRebasing) return null;
+
+  // The branch badge already says "(Rebasing)", so this one carries progress.
+  const label =
+    operation.current != null && operation.total != null
+      ? `${operation.current}/${operation.total}`
+      : "Rebasing";
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Badge
+            variant={"warning"}
+            className="py-2.5 rounded-none border-0 border-r border-warning/30 px-2 flex items-center"
+          />
+        }
+      >
+        <RotateCw className="size-3" />
+        <span className="ml-1 font-normal">{label}</span>
+      </TooltipTrigger>
+      <TooltipPopup side="top">
+        {operation.label || "Repository is rebasing"}
+        {operation.pauseReason ? ` · paused (${operation.pauseReason})` : ""}
+      </TooltipPopup>
+    </Tooltip>
+  );
+};
+
 const FetchBadge = () => {
   const { mutateAsync: fetch, isPending } = useGitFetch();
   const [spinState, setSpinState] = React.useState<
@@ -438,6 +475,10 @@ const AheadBadge = ({
 }) => {
   const { mutateAsync: push, isPending } = useGitPush();
 
+  if (statusAheadBehind?.is_detached) {
+    return null;
+  }
+
   return (
     <>
       {statusAheadBehind ? (
@@ -535,38 +576,69 @@ const OriginBadge = () => {
   );
 };
 
+/** Label for an in-progress operation, matching VS Code's `(Rebasing)` suffix. */
+const operationLabel = (operation: RepoOperation | null | undefined) => {
+  if (!operation) return null;
+  if (operation.isRebasing) return "Rebasing";
+
+  switch (operation.kind) {
+    case "merge":
+      return "Merging";
+    case "cherryPick":
+      return "Cherry Picking";
+    case "revert":
+      return "Reverting";
+    case "bisect":
+      return "Bisecting";
+    default:
+      return null;
+  }
+};
+
 const CurrentBranchBadge = () => {
   const { data: currentBranch } = useGetCurrentBranch();
   const { data: status } = useGetStatus();
+  const { data: operation } = useGetRepoOperation();
   const navigation = useCommandNavigation();
 
   const hasUnstaged = status?.files?.some((f) =>
-    f.status.some((s) => s.startsWith("Worktree") || s === "Conflicted"),
+    f.status.some((s) => s.startsWith("Worktree")),
   );
   const hasStaged = status?.files?.some((f) =>
     f.status.some((s) => s.startsWith("Index")),
   );
-  const statusIndicator = `${hasUnstaged ? "*" : ""}${hasStaged ? "+" : ""}`;
+  const hasConflicts = status?.files?.some((f) =>
+    f.status.some((s) => s === "Conflicted"),
+  );
+  const statusIndicator = `${hasUnstaged ? "*" : ""}${hasStaged ? "+" : ""}${
+    hasConflicts ? "!" : ""
+  }`;
+
+  if (!currentBranch?.display_name) {
+    return null;
+  }
+
+  const detached = currentBranch.is_detached;
+  const label = operationLabel(operation);
 
   return (
-    <>
-      {currentBranch?.display_name ? (
-        <Badge
-          variant={"outline"}
-          className="py-2.5 text-muted-foreground! rounded-none hover:bg-muted! px-2 flex items-center font-normal cursor-pointer border-transparent border-r-border"
-          onClick={() => {
-            navigation.setOpen(true);
-            navigation.push("branch-list");
-          }}
-        >
-          <GitBranch />
-          <span className="ml-1 text-foreground!">
-            {currentBranch?.display_name}
-            {statusIndicator}
-          </span>
-        </Badge>
+    <Badge
+      variant={"outline"}
+      className="py-2.5 text-muted-foreground! rounded-none hover:bg-muted! px-2 flex items-center font-normal cursor-pointer border-transparent border-r-border"
+      onClick={() => {
+        navigation.setOpen(true);
+        navigation.push("branch-list");
+      }}
+    >
+      {detached ? <GitCommitVertical /> : <GitBranch />}
+      <span className="ml-1 text-foreground!">
+        {currentBranch.display_name}
+        {statusIndicator}
+      </span>
+      {label ? (
+        <span className="ml-1 text-muted-foreground!">({label})</span>
       ) : null}
-    </>
+    </Badge>
   );
 };
 

@@ -1,5 +1,33 @@
 ---
 title: Interactive Rebase
-description: Not Documented
+description: Plan and rewrite commits with Gitru’s interactive rebase mode
 icon: Rows3
 ---
+
+# Interactive Rebase
+
+Gitru detects when a repository is rebasing and switches the Git page into **Rebase mode**.
+
+## Start a rebase
+
+Open the command palette and choose **Rebase Onto…**, then:
+
+- **Rebase** — plain replay of all commits onto the target (git2)
+- **Interactive** — plan pick / reword / edit / squash / fixup / drop, then run Gitru’s sequencer
+- **Autostash + rebase** — stash dirty worktree first, then plain rebase
+
+You can also finish a rebase started in the terminal (`git rebase` / `git rebase -i`); Gitru will take over continue / skip / abort.
+
+## Rebase mode UI
+
+While rebasing you get:
+
+- Todo list with progress (done / current / pending)
+- Pause banner when stopped for conflicts, edit, or reword
+- Conflict list with **ours / theirs / union / stage**
+- **Continue**, **Skip**, and **Abort** (with abort preview)
+
+## Engine notes
+
+- Gitru-started interactive rebases use a custom **git2 sequencer** (libgit2 does not support `git rebase -i`).
+- Externally started interactive rebases use the git CLI for continue / skip / abort.

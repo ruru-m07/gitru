@@ -14,29 +14,67 @@ import {
   MenuTrigger,
 } from "@gitru/ui/components/menu";
 import { ChevronDownIcon, Loader2, Sparkles, UserPlus } from "lucide-react";
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   useCreateCommit,
   useGetCurrentBranch,
+  useGetRepoOperation,
   useGetStatus,
   useGitAdd,
 } from "@/hooks";
+import {
+  splitCommitMessage,
+  useCommitDraftStore,
+} from "@/store/use-commit-draft-store";
 
 export const WriteCommitBox = memo(function WriteCommitBox({
   visibleAddablePaths,
 }: {
   visibleAddablePaths: string[];
 }) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
   const [co_authors, setCoAuthors] = useState<CommitMessage["co_authors"]>([]);
+
+  const title = useCommitDraftStore((s) => s.title);
+  const description = useCommitDraftStore((s) => s.description);
+  const setTitle = useCommitDraftStore((s) => s.setTitle);
+  const setDescription = useCommitDraftStore((s) => s.setDescription);
+  const applyAutofill = useCommitDraftStore((s) => s.applyAutofill);
+  const clearDraft = useCommitDraftStore((s) => s.clear);
 
   const { data: currentBranch } = useGetCurrentBranch();
   const { data: status } = useGetStatus();
+  const { data: operation } = useGetRepoOperation();
   const { mutateAsync: gitAdd, isPending: isAdding } = useGitAdd();
   const { mutateAsync: createCommit, isPending: isCreatingCommit } =
     useCreateCommit();
+
+  // Prefill Summary/Description from the paused rebase commit — Continue reads
+  // the same draft store. Keyed so refetch doesn't clobber user edits.
+  const rebaseAutofillKey =
+    operation?.isRebasing && operation.commitMessage?.trim()
+      ? `rebase:${operation.pausedAt ?? ""}:${operation.current ?? ""}:${operation.commitMessage}`
+      : null;
+  const rebaseMessage = operation?.commitMessage;
+  const isRebasing = !!operation?.isRebasing;
+
+  useEffect(() => {
+    if (rebaseAutofillKey && rebaseMessage) {
+      const parts = splitCommitMessage(rebaseMessage);
+      applyAutofill(rebaseAutofillKey, parts.title, parts.description);
+      return;
+    }
+    if (!isRebasing) {
+      const key = useCommitDraftStore.getState().autofillKey;
+      if (key?.startsWith("rebase:")) clearDraft();
+    }
+  }, [
+    applyAutofill,
+    clearDraft,
+    isRebasing,
+    rebaseAutofillKey,
+    rebaseMessage,
+  ]);
 
   const nothingToCommit =
     status?.files.filter((file) =>
@@ -62,12 +100,12 @@ export const WriteCommitBox = memo(function WriteCommitBox({
       allowEmpty: false,
     });
     if (data) {
-      setTitle("");
-      setDescription("");
+      clearDraft();
       setCoAuthors([]);
       toast.success("Commit created successfully");
     }
   }, [
+    clearDraft,
     co_authors,
     createCommit,
     description,

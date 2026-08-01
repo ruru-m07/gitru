@@ -9,19 +9,19 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as AuthRouteRouteImport } from './routes/auth/route'
-import { Route as AppRouteRouteImport } from './routes/app/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppRouteRouteImport } from './routes/app/route'
+import { Route as AuthRouteRouteImport } from './routes/auth/route'
 import { Route as AppGitRouteRouteImport } from './routes/app/git/route'
-import { Route as AuthOnboardingIndexRouteImport } from './routes/auth/onboarding/index'
-import { Route as AppPullsIndexRouteImport } from './routes/app/pulls/index'
-import { Route as AppIssuesIndexRouteImport } from './routes/app/issues/index'
-import { Route as AppInboxIndexRouteImport } from './routes/app/inbox/index'
 import { Route as AppGitIndexRouteImport } from './routes/app/git/index'
+import { Route as AppInboxIndexRouteImport } from './routes/app/inbox/index'
+import { Route as AppIssuesIndexRouteImport } from './routes/app/issues/index'
+import { Route as AppPullsIndexRouteImport } from './routes/app/pulls/index'
+import { Route as AuthOnboardingIndexRouteImport } from './routes/auth/onboarding/index'
 
-const AuthRouteRoute = AuthRouteRouteImport.update({
-  id: '/auth',
-  path: '/auth',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppRouteRoute = AppRouteRouteImport.update({
@@ -29,9 +29,9 @@ const AppRouteRoute = AppRouteRouteImport.update({
   path: '/app',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AuthRouteRoute = AuthRouteRouteImport.update({
+  id: '/auth',
+  path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppGitRouteRoute = AppGitRouteRouteImport.update({
@@ -39,14 +39,14 @@ const AppGitRouteRoute = AppGitRouteRouteImport.update({
   path: '/git',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const AuthOnboardingIndexRoute = AuthOnboardingIndexRouteImport.update({
-  id: '/onboarding/',
-  path: '/onboarding/',
-  getParentRoute: () => AuthRouteRoute,
+const AppGitIndexRoute = AppGitIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppGitRouteRoute,
 } as any)
-const AppPullsIndexRoute = AppPullsIndexRouteImport.update({
-  id: '/pulls/',
-  path: '/pulls/',
+const AppInboxIndexRoute = AppInboxIndexRouteImport.update({
+  id: '/inbox/',
+  path: '/inbox/',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppIssuesIndexRoute = AppIssuesIndexRouteImport.update({
@@ -54,15 +54,15 @@ const AppIssuesIndexRoute = AppIssuesIndexRouteImport.update({
   path: '/issues/',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const AppInboxIndexRoute = AppInboxIndexRouteImport.update({
-  id: '/inbox/',
-  path: '/inbox/',
+const AppPullsIndexRoute = AppPullsIndexRouteImport.update({
+  id: '/pulls/',
+  path: '/pulls/',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const AppGitIndexRoute = AppGitIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => AppGitRouteRoute,
+const AuthOnboardingIndexRoute = AuthOnboardingIndexRouteImport.update({
+  id: '/onboarding/',
+  path: '/onboarding/',
+  getParentRoute: () => AuthRouteRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -141,11 +141,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/auth': {
-      id: '/auth'
-      path: '/auth'
-      fullPath: '/auth'
-      preLoaderRoute: typeof AuthRouteRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app': {
@@ -155,11 +155,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app/git': {
@@ -169,18 +169,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGitRouteRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/auth/onboarding/': {
-      id: '/auth/onboarding/'
-      path: '/onboarding'
-      fullPath: '/auth/onboarding/'
-      preLoaderRoute: typeof AuthOnboardingIndexRouteImport
-      parentRoute: typeof AuthRouteRoute
+    '/app/git/': {
+      id: '/app/git/'
+      path: '/'
+      fullPath: '/app/git/'
+      preLoaderRoute: typeof AppGitIndexRouteImport
+      parentRoute: typeof AppGitRouteRoute
     }
-    '/app/pulls/': {
-      id: '/app/pulls/'
-      path: '/pulls'
-      fullPath: '/app/pulls/'
-      preLoaderRoute: typeof AppPullsIndexRouteImport
+    '/app/inbox/': {
+      id: '/app/inbox/'
+      path: '/inbox'
+      fullPath: '/app/inbox/'
+      preLoaderRoute: typeof AppInboxIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/app/issues/': {
@@ -190,19 +190,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIssuesIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/app/inbox/': {
-      id: '/app/inbox/'
-      path: '/inbox'
-      fullPath: '/app/inbox/'
-      preLoaderRoute: typeof AppInboxIndexRouteImport
+    '/app/pulls/': {
+      id: '/app/pulls/'
+      path: '/pulls'
+      fullPath: '/app/pulls/'
+      preLoaderRoute: typeof AppPullsIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/app/git/': {
-      id: '/app/git/'
-      path: '/'
-      fullPath: '/app/git/'
-      preLoaderRoute: typeof AppGitIndexRouteImport
-      parentRoute: typeof AppGitRouteRoute
+    '/auth/onboarding/': {
+      id: '/auth/onboarding/'
+      path: '/onboarding'
+      fullPath: '/auth/onboarding/'
+      preLoaderRoute: typeof AuthOnboardingIndexRouteImport
+      parentRoute: typeof AuthRouteRoute
     }
   }
 }

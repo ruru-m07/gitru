@@ -31,28 +31,41 @@ impl QueryService {
                 },
                 "head".to_string(),
                 move || async move {
+                    // `symbolic-ref -q` exits 1 on a detached HEAD (rebase, bisect, oid checkout).
                     let branch = runner
                         .run_with_options(
                             &["symbolic-ref", "--short", "-q", "HEAD"],
+                            GitRunOptions::default_read().allow_exit_codes(&[1]),
+                        )
+                        .await
+                        .map_err(|e| format!("Failed to read HEAD: {e}"))?;
+
+                    if !branch.is_empty() && !branch.contains("not a symbolic ref") {
+                        return Ok(Branch {
+                            name: branch.clone(),
+                            display_name: branch,
+                            is_remote: false,
+                            is_detached: false,
+                        });
+                    }
+
+                    let oid = runner
+                        .run_with_options(
+                            &["rev-parse", "--short", "HEAD"],
                             GitRunOptions::default_read(),
                         )
                         .await
-                        .map_err(|e| {
-                            if e.contains("not a symbolic ref") {
-                                "Repository is in detached HEAD state".to_string()
-                            } else {
-                                format!("Failed to read HEAD: {e}")
-                            }
-                        })?;
+                        .map_err(|e| format!("Failed to read detached HEAD: {e}"))?;
 
-                    if branch.is_empty() {
-                        return Err("Repository is in detached HEAD state".to_string());
+                    if oid.is_empty() {
+                        return Err("Repository has an unborn HEAD".to_string());
                     }
 
                     Ok(Branch {
-                        name: branch.clone(),
-                        display_name: branch,
+                        name: oid.clone(),
+                        display_name: oid,
                         is_remote: false,
+                        is_detached: true,
                     })
                 },
             )
