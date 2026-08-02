@@ -2,12 +2,12 @@ import type { GetStatusResponse } from "@gitru/commands";
 import { Stashed } from "@gitru/icon";
 import { Button } from "@gitru/ui/components/button";
 import { Group, GroupSeparator } from "@gitru/ui/components/group";
+import { Input } from "@gitru/ui/components/input";
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
 } from "@gitru/ui/components/input-group";
-import { Input } from "@gitru/ui/components/input";
 import {
   Menu,
   MenuCheckboxItem,
@@ -29,17 +29,6 @@ import { useFileSelectionStore } from "@/components/diff/use-file-selection-stor
 import { getStatusIcon } from "@/components/get-status-icon";
 import { VirtualizedFileList } from "@/components/virtualized-file-list";
 import {
-  useGetCurrentBranchStash,
-  useGetStatus,
-  useGitAdd,
-  useGitDiscard,
-  useGitHistoryGraph,
-  useGitUnstage,
-} from "@/hooks";
-import { formatNumber } from "@/lib/format-number";
-import { resolveFileSelection } from "@/lib/git-selection-resolver";
-import { selectActiveSessionRepoKey, useAppStore } from "@/store/use-app-store";
-import {
   DEFAULT_STATUS_FILTERS,
   type FileStatusFilter,
   hasActiveStatusFilters,
@@ -50,6 +39,17 @@ import {
   getVisibleStagePaths,
   getVisibleUnstagePaths,
 } from "@/features/git/lib/visible-file-paths";
+import {
+  useGetCurrentBranchStash,
+  useGetStatus,
+  useGitAdd,
+  useGitDiscard,
+  useGitHistoryGraph,
+  useGitUnstage,
+} from "@/hooks";
+import { formatNumber } from "@/lib/format-number";
+import { resolveFileSelection } from "@/lib/git-selection-resolver";
+import { selectActiveSessionRepoKey, useAppStore } from "@/store/use-app-store";
 import { DiscardChangesDialog } from "./discard-changes-dialog";
 import { HistoryCommitInfiniteList } from "./history-commit-infinite-list";
 import { WriteCommitBox } from "./write-commit-box";

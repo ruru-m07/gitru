@@ -16,6 +16,8 @@
       "!**/drizzle",
       "!**/tauri",
       "!**/crates",
+      "!**/target",
+      "!**/out",
       "!**/.tanstack",
       "!**/routeTree.gen.ts"
     ]

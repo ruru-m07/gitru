@@ -60,7 +60,8 @@ export const MainActionBar = () => {
           <ChevronDown size={18} />
         </Button>
         <Separator orientation="vertical" className={"border-0"} />
-        {detached ? null : statusAheadBehind && statusAheadBehind.is_published ? (
+        {detached ? null : statusAheadBehind &&
+          statusAheadBehind.is_published ? (
           (statusAheadBehind && statusAheadBehind.ahead > 0) ||
           (statusAheadBehind && statusAheadBehind.behind > 0) ? (
             <>

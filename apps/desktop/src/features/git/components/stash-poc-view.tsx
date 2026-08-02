@@ -35,6 +35,13 @@ import { useFileSelectionStore } from "@/components/diff/use-file-selection-stor
 import { getStatusIcon } from "@/components/get-status-icon";
 import { VirtualizedFileList } from "@/components/virtualized-file-list";
 import {
+  DEFAULT_STATUS_FILTERS,
+  type FileStatusFilter,
+  hasActiveStatusFilters,
+  matchesStatusFilters,
+} from "@/features/git/lib/file-status-filters";
+import { matchesSearchQuery } from "@/features/git/lib/matches-search-query";
+import {
   useGetCurrentBranchStash,
   useStashDrop,
   useStashList,
@@ -48,13 +55,6 @@ import {
   selectActiveSessionRepoKey,
   useAppStore,
 } from "@/store/use-app-store";
-import {
-  DEFAULT_STATUS_FILTERS,
-  type FileStatusFilter,
-  hasActiveStatusFilters,
-  matchesStatusFilters,
-} from "@/features/git/lib/file-status-filters";
-import { matchesSearchQuery } from "@/features/git/lib/matches-search-query";
 
 export const StashPocView = memo(function StashPocView({
   onBack,

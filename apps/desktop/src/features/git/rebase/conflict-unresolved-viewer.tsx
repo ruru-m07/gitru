@@ -3,9 +3,9 @@ import { readWorktreeFile } from "@gitru/commands";
 import { Button } from "@gitru/ui/components/button";
 import { cn } from "@gitru/ui/lib/utils";
 import {
+  type FileContents,
   File as FileVanilla,
   UnresolvedFile as UnresolvedFileVanilla,
-  type FileContents,
 } from "@pierre/diffs";
 import { getOrCreateWorkerPoolSingleton } from "@pierre/diffs/worker";
 import { useQuery } from "@tanstack/react-query";
@@ -116,7 +116,12 @@ export function ConflictUnresolvedViewer({
     return match?.status ?? ["Conflicted"];
   }, [status, filePath]);
 
-  const { data: fetchedContents, isLoading, error, refetch } = useQuery({
+  const {
+    data: fetchedContents,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ["worktree-file", repo?.contextId, filePath, reloadToken],
     queryFn: async () => {
       if (!repo) throw new Error("No repository");
@@ -239,14 +244,7 @@ export function ConflictUnresolvedViewer({
       instanceRef.current = null;
       host.replaceChildren();
     };
-  }, [
-    fetchedContents,
-    filePath,
-    overflow,
-    reloadToken,
-    themeType,
-    writeFile,
-  ]);
+  }, [fetchedContents, filePath, overflow, reloadToken, themeType, writeFile]);
 
   if (isLoading && fetchedContents == null) {
     return (

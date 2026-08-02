@@ -22,7 +22,10 @@ export function fileDiffTypeToStatus(
 export function inferPickaxeHitStatus(hit: PickaxeHit): FileStatusKind[] {
   const patch = hit.patch ?? "";
 
-  if (/^deleted file mode/m.test(patch) || /^\+\+\+ \/dev\/null$/m.test(patch)) {
+  if (
+    /^deleted file mode/m.test(patch) ||
+    /^\+\+\+ \/dev\/null$/m.test(patch)
+  ) {
     return ["IndexDeleted"];
   }
 

@@ -2,10 +2,7 @@ import HistoryGraph from "@/components/history-graph";
 import { RebaseModeView } from "@/features/git/rebase";
 import { ConflictUnresolvedViewer } from "@/features/git/rebase/conflict-unresolved-viewer";
 import { useGetRepoOperation } from "@/hooks";
-import {
-  selectActiveSessionRepoKey,
-  useAppStore,
-} from "@/store/use-app-store";
+import { selectActiveSessionRepoKey, useAppStore } from "@/store/use-app-store";
 import { DiffBoxBody } from "./diff-box-body";
 import { EmptyStateScreen } from "./empty-state-screen";
 import { MainActionBar } from "./main-action-bar";
@@ -15,7 +12,9 @@ export function GitMainView() {
   const { data: operation } = useGetRepoOperation();
   const repoStateKey = useAppStore(selectActiveSessionRepoKey);
   const worktreeSelection = useAppStore((state) =>
-    repoStateKey ? (state.selectionByRepo[repoStateKey]?.worktree ?? null) : null,
+    repoStateKey
+      ? (state.selectionByRepo[repoStateKey]?.worktree ?? null)
+      : null,
   );
 
   const isRebasing = !!operation?.isRebasing;

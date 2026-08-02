@@ -4,15 +4,15 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
 import { ResizableLayout } from "@/components/resizable-layout";
 import {
+  DEFAULT_STATUS_FILTERS,
+  type FileStatusFilter,
+} from "@/features/git/lib/file-status-filters";
+import {
   selectActiveRepoSelectIsOpen,
   selectActiveRepository,
   selectActiveSessionRepoKey,
   useAppStore,
 } from "@/store/use-app-store";
-import {
-  DEFAULT_STATUS_FILTERS,
-  type FileStatusFilter,
-} from "@/features/git/lib/file-status-filters";
 import { HistoryDetailView } from "./history-detail-view";
 import { ListFileChanges } from "./list-file-changes";
 import { ListRepositories } from "./list-repositories";

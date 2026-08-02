@@ -3,9 +3,16 @@ import { CommandPanel, CommandViewConfig } from "@gitru/ui/components/command";
 import { Kbd } from "@gitru/ui/components/kbd";
 import { GitBranchPlus } from "lucide-react";
 import { toast } from "sonner";
-import { useGetStatusAheadBehind, useRebasePlan, useRebaseStart } from "@/hooks";
+import {
+  useGetStatusAheadBehind,
+  useRebasePlan,
+  useRebaseStart,
+} from "@/hooks";
 
-export function useRebaseOntoView(): CommandViewConfig<"rebase-onto", undefined> {
+export function useRebaseOntoView(): CommandViewConfig<
+  "rebase-onto",
+  undefined
+> {
   const { data: aheadBehind } = useGetStatusAheadBehind();
   const { mutateAsync: plan } = useRebasePlan();
   const { mutateAsync: start } = useRebaseStart();
@@ -31,7 +38,9 @@ export function useRebaseOntoView(): CommandViewConfig<"rebase-onto", undefined>
           {
             loading: "Rebasing…",
             success: (op) =>
-              op.isRebasing ? "Rebase paused — resolve to continue" : "Rebase finished",
+              op.isRebasing
+                ? "Rebase paused — resolve to continue"
+                : "Rebase finished",
             error: (e) => e?.message ?? e ?? "Rebase failed",
           },
         );

@@ -16,6 +16,7 @@ import { ChevronLeftIcon, Files } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useFileSelectionStore } from "@/components/diff/use-file-selection-store";
 import { VirtualizedFileList } from "@/components/virtualized-file-list";
+import { matchesSearchQuery } from "@/features/git/lib/matches-search-query";
 import { useGetCommitById } from "@/hooks";
 import { resolveFileSelection } from "@/lib/git-selection-resolver";
 import { timeAgoFromUnixSeconds } from "@/lib/time";
@@ -24,7 +25,6 @@ import {
   selectActiveSessionRepoKey,
   useAppStore,
 } from "@/store/use-app-store";
-import { matchesSearchQuery } from "@/features/git/lib/matches-search-query";
 
 export const HistoryDetailView = ({ onBack }: { onBack: () => void }) => {
   const [query, setQuery] = useState("");

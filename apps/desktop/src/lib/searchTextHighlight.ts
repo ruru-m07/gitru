@@ -430,9 +430,9 @@ function compareElementPosition(left: Element, right: Element) {
 }
 
 function getPickaxeCardRoots() {
-  return Array.from(
-    document.querySelectorAll(".pickaxe-diff-root"),
-  ).filter((node): node is HTMLElement => node instanceof HTMLElement);
+  return Array.from(document.querySelectorAll(".pickaxe-diff-root")).filter(
+    (node): node is HTMLElement => node instanceof HTMLElement,
+  );
 }
 
 function collectMarkMatches() {

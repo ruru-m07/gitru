@@ -76,13 +76,7 @@ export const WriteCommitBox = memo(function WriteCommitBox({
       const key = useCommitDraftStore.getState().autofillKey;
       if (key?.startsWith("rebase:")) clearDraft();
     }
-  }, [
-    applyAutofill,
-    clearDraft,
-    isRebasing,
-    rebaseAutofillKey,
-    rebaseMessage,
-  ]);
+  }, [applyAutofill, clearDraft, isRebasing, rebaseAutofillKey, rebaseMessage]);
 
   const nothingToCommit =
     status?.files.filter((file) =>
