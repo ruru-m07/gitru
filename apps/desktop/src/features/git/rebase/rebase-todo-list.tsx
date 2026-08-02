@@ -136,7 +136,7 @@ export function RebaseTodoList({
                           stroke="var(--indicator-color)"
                           strokeWidth="2"
                           strokeDasharray={
-                            isPending && !isConflict ? "4 4" : "57 0"
+                            isPending && !isConflict ? "2 4" : "57 0"
                           }
                           strokeDashoffset={0}
                           strokeLinecap="round"
