@@ -2,8 +2,11 @@ import type { FileStatusKind } from "@gitru/commands";
 import { readWorktreeFile } from "@gitru/commands";
 import { Button } from "@gitru/ui/components/button";
 import { cn } from "@gitru/ui/lib/utils";
-import type { FileContents } from "@pierre/diffs";
-import { UnresolvedFile as UnresolvedFileVanilla } from "@pierre/diffs";
+import {
+  File as FileVanilla,
+  UnresolvedFile as UnresolvedFileVanilla,
+  type FileContents,
+} from "@pierre/diffs";
 import { getOrCreateWorkerPoolSingleton } from "@pierre/diffs/worker";
 import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
@@ -27,8 +30,8 @@ import { useAppStore } from "@/store/use-app-store";
 
 const CONFLICT_MARKER = /^<<<<<<< /m;
 
-/** Show the entire file around conflicts (Pierre defaults to 6 lines of context). */
-const FULL_PATCH_CONTEXT_LINES = Number.MAX_SAFE_INTEGER;
+/** Plenty of context around conflicts without MAX_SAFE_INTEGER layout blowups. */
+const FULL_PATCH_CONTEXT_LINES = 10_000;
 
 const HIGHLIGHTER_LANGS = [
   "typescript",
@@ -56,6 +59,8 @@ const DIFFS_UNSAFE_CSS = `
 const CONTENT_HEIGHT_CLASS =
   "h-full max-h-[calc(var(--layout-height)-(--spacing(23.25)))]";
 
+type PierreInstance = { cleanUp(): void };
+
 function getConflictWorkerPool() {
   return getOrCreateWorkerPoolSingleton({
     poolOptions: {
@@ -73,9 +78,8 @@ function getConflictWorkerPool() {
 }
 
 /**
- * Conflict viewer for rebase mode — Pierre UnresolvedFile with the full patch
- * (all surrounding context), not a post-resolve File view.
- * @see https://diffs.com/docs
+ * While conflict markers remain: Pierre UnresolvedFile (Accept current / incoming / both).
+ * After resolve: plain File view of the resulting contents.
  */
 export function ConflictUnresolvedViewer({
   filePath,
@@ -85,6 +89,7 @@ export function ConflictUnresolvedViewer({
   className?: string;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const instanceRef = useRef<PierreInstance | null>(null);
   const { theme } = useTheme();
   const { overflow } = useDiffViewerSettings();
   const repo = useActiveRepositoryState();
@@ -129,8 +134,6 @@ export function ConflictUnresolvedViewer({
     }
   }, [fetchedContents]);
 
-  // Mount UnresolvedFile for the full conflict patch. Controlled mode so we can
-  // persist without remounting (React UnresolvedFile can't use onMergeConflictResolve).
   useEffect(() => {
     const host = hostRef.current;
     if (!host || fetchedContents == null) return;
@@ -140,67 +143,100 @@ export function ConflictUnresolvedViewer({
     wrapper.className = "h-full min-h-0 w-full";
     host.appendChild(wrapper);
 
-    let file: FileContents = {
-      name: filePath,
-      contents: fetchedContents,
-      cacheKey: `${filePath}:conflict:${reloadToken}:${fetchedContents.length}`,
+    const workerPool = getConflictWorkerPool();
+    const markersPresent = CONFLICT_MARKER.test(fetchedContents);
+
+    const mountFile = (file: FileContents) => {
+      instanceRef.current?.cleanUp();
+      wrapper.replaceChildren();
+      const resolved = new FileVanilla(
+        {
+          themeType,
+          overflow,
+          disableFileHeader: true,
+          unsafeCSS: DIFFS_UNSAFE_CSS,
+        },
+        workerPool,
+      );
+      resolved.render({ file, containerWrapper: wrapper });
+      instanceRef.current = resolved;
     };
 
-    const workerPool = getConflictWorkerPool();
-    const instance = new UnresolvedFileVanilla(
-      {
-        themeType,
-        overflow,
-        // UnresolvedFile is always a split-style conflict patch; ignore unified pref.
-        disableFileHeader: true,
-        mergeConflictActionsType: "default",
-        lineHoverHighlight: "both",
-        maxContextLines: FULL_PATCH_CONTEXT_LINES,
-        unsafeCSS: DIFFS_UNSAFE_CSS,
-        onMergeConflictAction(payload, inst) {
-          const result = inst.resolveConflict(
-            payload.conflict.conflictIndex,
-            payload.resolution,
-          );
-          if (!result) return;
+    if (markersPresent) {
+      let file: FileContents = {
+        name: filePath,
+        contents: fetchedContents,
+        cacheKey: `${filePath}:conflict:${reloadToken}:${fetchedContents.length}`,
+      };
 
-          file = result.file;
-          const stillConflicted = CONFLICT_MARKER.test(file.contents);
-          setHasMarkers(stillConflicted);
+      const instance = new UnresolvedFileVanilla(
+        {
+          themeType,
+          overflow,
+          disableFileHeader: true,
+          mergeConflictActionsType: "default",
+          lineHoverHighlight: "both",
+          maxContextLines: FULL_PATCH_CONTEXT_LINES,
+          unsafeCSS: DIFFS_UNSAFE_CSS,
+          onMergeConflictAction(payload, inst) {
+            const result = inst.resolveConflict(
+              payload.conflict.conflictIndex,
+              payload.resolution,
+            );
+            if (!result) return;
 
-          void writeFile({ path: filePath, contents: file.contents })
-            .then(() => {
-              if (!stillConflicted) {
-                toast.success(
-                  "Conflicts resolved — stage the file to continue",
+            file = result.file;
+            const stillConflicted = CONFLICT_MARKER.test(file.contents);
+            setHasMarkers(stillConflicted);
+
+            void writeFile({ path: filePath, contents: file.contents })
+              .then(() => {
+                if (!stillConflicted) {
+                  toast.success(
+                    "Conflicts resolved — stage the file to continue",
+                  );
+                }
+              })
+              .catch((e) => {
+                toast.error(
+                  e instanceof Error
+                    ? e.message
+                    : "Failed to write resolved file",
                 );
-              }
-            })
-            .catch((e) => {
-              toast.error(
-                e instanceof Error ? e.message : "Failed to write resolved file",
-              );
-            });
+              });
 
-          inst.render({
-            file,
-            fileDiff: result.fileDiff,
-            actions: result.actions,
-            markerRows: result.markerRows,
-            containerWrapper: wrapper,
-          });
+            if (stillConflicted) {
+              inst.render({
+                file,
+                fileDiff: result.fileDiff,
+                actions: result.actions,
+                markerRows: result.markerRows,
+                containerWrapper: wrapper,
+              });
+            } else {
+              mountFile(file);
+            }
+          },
         },
-      },
-      workerPool,
-    );
+        workerPool,
+      );
 
-    instance.render({
-      file,
-      containerWrapper: wrapper,
-    });
+      instance.render({
+        file,
+        containerWrapper: wrapper,
+      });
+      instanceRef.current = instance;
+    } else {
+      mountFile({
+        name: filePath,
+        contents: fetchedContents,
+        cacheKey: `${filePath}:resolved:${reloadToken}:${fetchedContents.length}`,
+      });
+    }
 
     return () => {
-      instance.cleanUp();
+      instanceRef.current?.cleanUp();
+      instanceRef.current = null;
       host.replaceChildren();
     };
   }, [

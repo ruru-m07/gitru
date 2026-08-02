@@ -83,7 +83,9 @@ export function useRebaseContinue() {
     onSuccess: async () => {
       await repo?.invalidateAll();
     },
-    onError: (error: Error) => {
+    onError: async (error: Error) => {
+      // Recover UI if continue held the repo lock / poisoned query cache.
+      await repo?.invalidateAll();
       toast.error(error.message || "Failed to continue rebase");
     },
   });
@@ -99,7 +101,8 @@ export function useRebaseSkip() {
     onSuccess: async () => {
       await repo?.invalidateAll();
     },
-    onError: (error: Error) => {
+    onError: async (error: Error) => {
+      await repo?.invalidateAll();
       toast.error(error.message || "Failed to skip rebase step");
     },
   });
@@ -116,7 +119,8 @@ export function useRebaseAbort() {
       await repo?.invalidateAll();
       toast.success("Rebase aborted");
     },
-    onError: (error: Error) => {
+    onError: async (error: Error) => {
+      await repo?.invalidateAll();
       toast.error(error.message || "Failed to abort rebase");
     },
   });

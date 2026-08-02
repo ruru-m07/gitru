@@ -13,7 +13,7 @@ use tauri::Emitter;
 use crate::{
     context::RepoContext,
     models::{
-        operation::{RebaseEngine, RepoOperation},
+        operation::{RebaseEngine, RepoOperation, RepoOperationKind},
         rebase::{
             ConflictResolveRequest, ConflictResolveStrategy, RebaseAbortPreview, RebaseAction,
             RebasePauseReason, RebasePlan, RebasePlanEntry, RebaseProgressEvent,
@@ -25,6 +25,16 @@ use crate::{
         conflict_paths_from_index, read_trimmed, OperationService, GITRU_REBASE_DIR,
     },
 };
+
+/// Noninteractive editors so `git rebase --continue` never waits on a TTY editor.
+/// Without these, continue holds the per-repo command lock until timeout and starves
+/// status/branch queries (empty Changes panel / broken status bar until restart).
+const REBASE_NONINTERACTIVE_ENV: &[(&str, &str)] = &[
+    ("GIT_EDITOR", "true"),
+    ("GIT_SEQUENCE_EDITOR", "true"),
+    ("EDITOR", "true"),
+    ("VISUAL", "true"),
+];
 
 pub const REBASE_PROGRESS_EVENT: &str = "git://rebase-progress";
 
@@ -130,24 +140,44 @@ impl RebaseService {
                 result
             }
             Some(RebaseEngine::Git) | None => {
-                // Prefer git2 open_rebase when available (merge-style / plain), else CLI.
-                let path = self.ctx.repo_path.clone();
-                let msg = message.clone();
-                let git2_result = tokio::task::spawn_blocking(move || {
-                    continue_native_git2_blocking(&path, msg)
-                })
-                .await
-                .map_err(|e| format!("Rebase continue join error: {e}"))?;
+                // Interactive rebases (todo / reword / edit) must use the CLI — libgit2's
+                // open_rebase does not drive the interactive sequencer correctly.
+                let use_cli = matches!(op.kind, RepoOperationKind::RebaseInteractive)
+                    || self.is_native_interactive_rebase();
 
-                if git2_result.is_ok() {
-                    self.ctx.cache.invalidate_all();
-                    return git2_result;
+                if !use_cli {
+                    let path = self.ctx.repo_path.clone();
+                    let msg = message.clone();
+                    let git2_result = tokio::task::spawn_blocking(move || {
+                        continue_native_git2_blocking(&path, msg)
+                    })
+                    .await
+                    .map_err(|e| format!("Rebase continue join error: {e}"))?;
+
+                    if git2_result.is_ok() {
+                        self.ctx.cache.invalidate_all();
+                        return git2_result;
+                    }
                 }
 
-                self.cli_rebase_command(&["rebase", "--continue"], message.as_deref())
-                    .await?;
+                // Exit code 1 is normal when continue pauses again on conflicts.
+                let cli_result = self
+                    .cli_rebase_command(&["rebase", "--continue"], message.as_deref())
+                    .await;
                 self.ctx.cache.invalidate_all();
-                self.get_repo_operation()
+                match cli_result {
+                    Ok(_) => self.get_repo_operation(),
+                    Err(e) if e.contains("timed out") => Err(e),
+                    Err(e) => {
+                        // Conflict / editor pause: rebase still in progress — surface state.
+                        let op = self.get_repo_operation()?;
+                        if op.is_rebasing {
+                            Ok(op)
+                        } else {
+                            Err(e)
+                        }
+                    }
+                }
             }
         }
     }
@@ -221,12 +251,30 @@ impl RebaseService {
     }
 
     pub fn update_todo(&self, entries: Vec<RebasePlanEntry>) -> Result<RepoOperation, String> {
-        let dir = self.operation().gitru_rebase_dir()?;
-        if !dir.is_dir() {
-            return Err("No Gitru rebase in progress to update".to_string());
+        let gitru_dir = self.operation().gitru_rebase_dir()?;
+        if gitru_dir.is_dir() {
+            validate_todo(&entries)?;
+            write_gitru_todo(&gitru_dir, &entries)?;
+            return self.get_repo_operation();
         }
-        validate_todo(&entries)?;
-        write_gitru_todo(&dir, &entries)?;
+
+        let git_dir = self.operation().git_dir()?;
+        let merge_dir = git_dir.join("rebase-merge");
+        if !merge_dir.join("interactive").is_file() {
+            return Err("Todo editing requires an interactive rebase".into());
+        }
+
+        // `done` already contains applied commits (including the conflicted current
+        // step). Only rewrite the remaining `git-rebase-todo` suffix.
+        let done_count = count_native_todo_lines(&merge_dir.join("done"));
+        if entries.len() < done_count {
+            return Err("Todo entry count is shorter than applied commits".into());
+        }
+        let remaining = &entries[done_count..];
+        if remaining.is_empty() {
+            return Err("No remaining commits to edit in the rebase todo".into());
+        }
+        write_native_todo(&merge_dir, remaining)?;
         self.get_repo_operation()
     }
 
@@ -275,21 +323,37 @@ impl RebaseService {
         Ok(())
     }
 
+    fn is_native_interactive_rebase(&self) -> bool {
+        self.operation()
+            .git_dir()
+            .map(|git_dir| git_dir.join("rebase-merge").join("interactive").is_file())
+            .unwrap_or(false)
+    }
+
     async fn cli_rebase_command(
         &self,
         args: &[&str],
         message: Option<&str>,
     ) -> Result<String, String> {
-        if let Some(msg) = message {
+        if let Some(msg) = message.filter(|m| !m.trim().is_empty()) {
             let git_dir = self.operation().git_dir()?;
-            let msg_path = git_dir.join("COMMIT_EDITMSG");
-            fs::write(&msg_path, msg).map_err(|e| format!("Failed to write commit message: {e}"))?;
+            fs::write(git_dir.join("COMMIT_EDITMSG"), msg)
+                .map_err(|e| format!("Failed to write commit message: {e}"))?;
+            // Native interactive continue reads `.git/rebase-merge/message`.
+            let rebase_msg = git_dir.join("rebase-merge").join("message");
+            if rebase_msg.parent().is_some_and(|p| p.is_dir()) {
+                fs::write(&rebase_msg, msg)
+                    .map_err(|e| format!("Failed to write rebase message: {e}"))?;
+            }
         }
         self.ctx
             .runner
-            .run_with_options(
+            .run_with_env(
                 args,
-                GitRunOptions::default_read().with_timeout(Duration::from_secs(120)),
+                GitRunOptions::default_read()
+                    .with_timeout(Duration::from_secs(120))
+                    .allow_exit_codes(&[1]),
+                REBASE_NONINTERACTIVE_ENV,
             )
             .await
     }
@@ -582,6 +646,37 @@ fn write_gitru_todo(dir: &Path, entries: &[RebasePlanEntry]) -> Result<(), Strin
         out.push_str(&format!("{} {} {}\n", e.action.as_str(), e.commit, msg));
     }
     fs::write(dir.join("todo"), out).map_err(|e| format!("Failed to write todo: {e}"))
+}
+
+fn count_native_todo_lines(path: &Path) -> usize {
+    let Ok(raw) = fs::read_to_string(path) else {
+        return 0;
+    };
+    raw.lines()
+        .filter(|line| {
+            let line = line.trim();
+            !(line.is_empty() || line.starts_with('#') || line.starts_with("exec"))
+                && line
+                    .split_whitespace()
+                    .next()
+                    .and_then(RebaseAction::parse)
+                    .is_some()
+        })
+        .count()
+}
+
+fn write_native_todo(dir: &Path, entries: &[RebasePlanEntry]) -> Result<(), String> {
+    let mut out = String::new();
+    for e in entries {
+        let msg = e.message.as_deref().unwrap_or("").trim();
+        if msg.is_empty() {
+            out.push_str(&format!("{} {}\n", e.action.as_str(), e.commit));
+        } else {
+            out.push_str(&format!("{} {} # {}\n", e.action.as_str(), e.commit, msg));
+        }
+    }
+    fs::write(dir.join("git-rebase-todo"), out)
+        .map_err(|e| format!("Failed to write git-rebase-todo: {e}"))
 }
 
 fn validate_todo(entries: &[RebasePlanEntry]) -> Result<(), String> {

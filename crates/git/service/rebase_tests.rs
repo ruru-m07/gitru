@@ -224,6 +224,173 @@ fn abort_preview_when_rebasing() {
 
 #[test]
 #[serial]
+fn continue_native_interactive_reword_without_editor_hang() {
+    // Reproduces the GUI hang: `git rebase --continue` after reword must not wait on an editor.
+    let (_dir, path) = init_repo();
+    git(&path, &["checkout", "-b", "feature"]);
+    commit_file(&path, "a.txt", "a\n", "feat a");
+    commit_file(&path, "b.txt", "b\n", "feat b");
+    git(&path, &["checkout", "main"]);
+    commit_file(&path, "m.txt", "m\n", "main tip");
+    git(&path, &["checkout", "feature"]);
+
+    let seq_editor = path.join("rewrite-todo.sh");
+    fs::write(
+        &seq_editor,
+        "#!/bin/sh\nsed -i.bak '1s/^pick/reword/' \"$1\"\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&seq_editor).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&seq_editor, perms).unwrap();
+    }
+
+    // Fail the reword editor on purpose so the rebase stays paused at the reword step.
+    let _ = Command::new("git")
+        .args(["rebase", "-i", "main"])
+        .current_dir(&path)
+        .env("GIT_SEQUENCE_EDITOR", &seq_editor)
+        .env("GIT_EDITOR", "false")
+        .output();
+    assert!(
+        path.join(".git/rebase-merge").is_dir(),
+        "expected rebase-merge dir after reword pause"
+    );
+
+    let rebase = RebaseService::new(Arc::new(RepoContext::new(path.to_str().unwrap()).unwrap()));
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let result = rt.block_on(async {
+        tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            rebase.continue_rebase(Some("feat a reworded\n".into()), None),
+        )
+        .await
+    });
+    assert!(
+        matches!(result, Ok(Ok(_))),
+        "continue should finish quickly without waiting for an editor: {result:?}"
+    );
+}
+
+#[test]
+#[serial]
+fn detects_native_edit_pause_not_reword() {
+    let (_dir, path) = init_repo();
+    git(&path, &["checkout", "-b", "feature"]);
+    commit_file(&path, "a.txt", "a\n", "feat a");
+    commit_file(&path, "b.txt", "b\n", "feat b");
+    git(&path, &["checkout", "main"]);
+    commit_file(&path, "m.txt", "m\n", "main tip");
+    git(&path, &["checkout", "feature"]);
+
+    let seq_editor = path.join("rewrite-todo.sh");
+    fs::write(
+        &seq_editor,
+        "#!/bin/sh\nsed -i.bak '1s/^pick/edit/' \"$1\"\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&seq_editor).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&seq_editor, perms).unwrap();
+    }
+
+    let _ = Command::new("git")
+        .args(["rebase", "-i", "main"])
+        .current_dir(&path)
+        .env("GIT_SEQUENCE_EDITOR", &seq_editor)
+        .env("GIT_EDITOR", "true")
+        .output();
+    assert!(path.join(".git/rebase-merge").is_dir());
+    assert!(
+        path.join(".git/rebase-merge/amend").is_file(),
+        "edit pause should create amend file"
+    );
+
+    let op = OperationService::new(Arc::new(RepoContext::new(path.to_str().unwrap()).unwrap()))
+        .get_repo_operation()
+        .unwrap();
+    assert!(op.is_rebasing);
+    assert_eq!(
+        op.pause_reason,
+        Some(crate::models::rebase::RebasePauseReason::Edit),
+        "edit stop must not be reported as reword: {op:?}"
+    );
+}
+
+#[test]
+#[serial]
+fn update_native_interactive_todo_actions() {
+    let (_dir, path) = init_repo();
+    git(&path, &["checkout", "-b", "feature"]);
+    commit_file(&path, "a.txt", "a\n", "feat a");
+    commit_file(&path, "b.txt", "b\n", "feat b");
+    git(&path, &["checkout", "main"]);
+    commit_file(&path, "m.txt", "m\n", "main tip");
+    git(&path, &["checkout", "feature"]);
+
+    let seq_editor = path.join("rewrite-todo.sh");
+    fs::write(
+        &seq_editor,
+        "#!/bin/sh\nsed -i.bak '1s/^pick/edit/' \"$1\"\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&seq_editor).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&seq_editor, perms).unwrap();
+    }
+
+    let _ = Command::new("git")
+        .args(["rebase", "-i", "main"])
+        .current_dir(&path)
+        .env("GIT_SEQUENCE_EDITOR", &seq_editor)
+        .env("GIT_EDITOR", "true")
+        .output();
+    assert!(path.join(".git/rebase-merge").is_dir());
+
+    let rebase = RebaseService::new(Arc::new(RepoContext::new(path.to_str().unwrap()).unwrap()));
+    let op = rebase.get_repo_operation().unwrap();
+    assert!(op.is_rebasing);
+    let pending: Vec<_> = op
+        .todo
+        .iter()
+        .filter(|e| matches!(e.status, crate::models::rebase::RebaseTodoStatus::Pending))
+        .collect();
+    assert!(!pending.is_empty(), "expected pending todo entries");
+
+    let mut entries: Vec<RebasePlanEntry> = op
+        .todo
+        .iter()
+        .map(|e| RebasePlanEntry {
+            action: e.action.clone(),
+            commit: e.commit.clone(),
+            message: Some(e.message.clone()),
+        })
+        .collect();
+    // Drop the last pending commit via todo edit.
+    if let Some(last) = entries.last_mut() {
+        last.action = RebaseAction::Drop;
+    }
+    let updated = rebase.update_todo(entries).unwrap();
+    assert!(updated
+        .todo
+        .iter()
+        .any(|e| matches!(e.action, RebaseAction::Drop)));
+}
+
+#[test]
+#[serial]
 fn plan_rebase_lists_commits() {
     let (_dir, path) = init_repo();
     git(&path, &["checkout", "-b", "feature"]);

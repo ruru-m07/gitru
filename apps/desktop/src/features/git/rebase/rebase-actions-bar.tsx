@@ -46,11 +46,13 @@ export function RebaseActionsBar({ operation }: { operation: RepoOperation }) {
   const busy = continuing || skipping || aborting;
   const hasConflicts = operation.conflictPaths.length > 0;
   const draftMessage = joinCommitMessage(title, description);
-  // Continue needs a message when rewording / git left one for the step.
-  const needsMessage =
-    operation.pauseReason === "reword" ||
-    operation.pauseReason === "edit" ||
-    !!operation.commitMessage?.trim();
+  // Only reword requires a message. Edit pauses just need `rebase --continue`
+  // (amend is optional). Fall back to the server-provided commit message when
+  // the draft is empty so Continue isn't blocked by a missed autofill.
+  const needsMessage = operation.pauseReason === "reword";
+  const continueMessage =
+    draftMessage.trim() ||
+    (needsMessage ? (operation.commitMessage?.trim() ?? "") : "");
 
   return (
     <div className="shrink-0 flex flex-col gap-2">
@@ -92,12 +94,12 @@ export function RebaseActionsBar({ operation }: { operation: RepoOperation }) {
         <Group aria-label="Rebase continue actions">
           <Button
             disabled={
-              busy || hasConflicts || (needsMessage && !draftMessage.trim())
+              busy || hasConflicts || (needsMessage && !continueMessage)
             }
             size="sm"
             onClick={() => {
               toast.promise(
-                continueRebase(draftMessage.trim() || "").then((op) => {
+                continueRebase(continueMessage).then((op) => {
                   clearDraft();
                   return op;
                 }),

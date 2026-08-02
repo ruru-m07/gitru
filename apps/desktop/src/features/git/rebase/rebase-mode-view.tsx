@@ -15,9 +15,9 @@ type RebaseAction = RebaseTodoEntry["action"];
 export function RebaseModeView({ operation }: { operation: RepoOperation }) {
   const { mutateAsync: updateTodo } = useRebaseUpdateTodo();
 
-  const editable =
-    operation.engine === "gitru" &&
-    operation.todo.some((e) => e.status === "pending");
+  // Pending commits can have their action edited for both Gitru and native
+  // interactive rebases (rewrites `.git/rebase-merge/git-rebase-todo`).
+  const editable = operation.todo.some((e) => e.status === "pending");
 
   const handleActionChange = async (index: number, action: RebaseAction) => {
     const entries: RebasePlanEntry[] = operation.todo.map((e) => ({
@@ -28,39 +28,22 @@ export function RebaseModeView({ operation }: { operation: RepoOperation }) {
     await updateTodo(entries);
   };
 
-  const handleMove = async (index: number, direction: -1 | 1) => {
-    const sorted = [...operation.todo].sort((a, b) => a.index - b.index);
-    const from = sorted.findIndex((e) => e.index === index);
-    const to = from + direction;
-    if (from < 0 || to < 0 || to >= sorted.length) return;
-    if (sorted[from].status !== "pending" || sorted[to].status !== "pending") {
-      return;
-    }
-    const next = [...sorted];
-    const [item] = next.splice(from, 1);
-    next.splice(to, 0, item);
-    const entries: RebasePlanEntry[] = next.map((e) => ({
-      action: e.action,
-      commit: e.commit,
-      message: e.message,
-    }));
-    await updateTodo(entries);
-  };
-
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      <header className="flex gap-2 justify-between px-3 py-2 border-b shrink-0">
+      <header className="flex h-9.25 borde-b gap-2 justify-between px-2 items-center border-b shrink-0">
         <div className="min-w-0 flex items-center gap-2">
           <div className="flex items-center gap-2 font-normal">
             <GitBranch className="size-4" />
-            <span className="truncate">
-              {operation.headName
-                ?.replace(/^refs\/heads\//, "")
-                .replace(/^refs\/remotes\//, "")}
-            </span>
-            <span className="text-muted-foreground">onto</span>
-            <span className="truncate font-mono">
-              {operation.onto?.slice(0, 7)}
+            <span className="flex items-center gap-1">
+              <span className="truncate">
+                {operation.headName
+                  ?.replace(/^refs\/heads\//, "")
+                  .replace(/^refs\/remotes\//, "")}
+              </span>
+              <span className="text-muted-foreground">onto</span>
+              <span className="truncate font-mono">
+                {operation.onto?.slice(0, 7)}
+              </span>
             </span>
           </div>
         </div>
@@ -75,8 +58,9 @@ export function RebaseModeView({ operation }: { operation: RepoOperation }) {
         <RebaseTodoList
           entries={operation.todo}
           editable={editable}
+          pauseReason={operation.pauseReason}
+          pausedAt={operation.pausedAt}
           onActionChange={handleActionChange}
-          onMove={handleMove}
         />
       </div>
     </div>

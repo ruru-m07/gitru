@@ -64,7 +64,7 @@ pub struct RebaseTodoEntry {
     pub short_commit: String,
     pub message: String,
     pub status: RebaseTodoStatus,
-    /// Author relative time string when available (ISO or git-format).
+    /// Author date as unix seconds (string) when resolvable from the commit object.
     pub authored_at: Option<String>,
 }
 

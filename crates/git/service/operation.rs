@@ -78,7 +78,8 @@ impl OperationService {
             .ok()
             .and_then(|s| parse_pause_reason(&s));
 
-        let todo = parse_gitru_todo(dir)?;
+        let mut todo = parse_gitru_todo(dir)?;
+        enrich_todo_entries(repo, &mut todo, paused_at.as_deref());
         let current = todo
             .iter()
             .position(|e| e.status == RebaseTodoStatus::Current)
@@ -164,7 +165,8 @@ impl OperationService {
             .or_else(|| read_trimmed(dir.join("stopped-sha")).ok())
             .or_else(|| read_trimmed(dir.join("current")).ok());
 
-        let todo = parse_native_todo(&dir, msgnum)?;
+        let mut todo = parse_native_todo(&dir, msgnum)?;
+        enrich_todo_entries(repo, &mut todo, paused_at.as_deref());
 
         let remaining = match (msgnum, end) {
             (Some(c), Some(t)) => Some(t.saturating_sub(c)),
@@ -172,12 +174,19 @@ impl OperationService {
         };
 
         let conflict_paths = conflict_paths_from_index(repo)?;
+        let last_done = last_done_rebase_action(&dir);
         let pause_reason = if !conflict_paths.is_empty() {
             Some(RebasePauseReason::Conflict)
-        } else if dir.join("message").is_file() || dir.join("amend").is_file() {
-            Some(RebasePauseReason::Reword)
         } else {
-            Some(RebasePauseReason::Waiting)
+            match last_done {
+                // `edit` stops always leave `amend` (+ often `message`); prefer the
+                // last done command over file heuristics so we don't call it reword.
+                Some(RebaseAction::Edit) => Some(RebasePauseReason::Edit),
+                Some(RebaseAction::Reword) => Some(RebasePauseReason::Reword),
+                _ if dir.join("amend").is_file() => Some(RebasePauseReason::Edit),
+                _ if dir.join("message").is_file() => Some(RebasePauseReason::Reword),
+                _ => Some(RebasePauseReason::Waiting),
+            }
         };
 
         let label = match (&head_name, &onto) {
@@ -424,6 +433,14 @@ fn parse_native_todo(
     Ok(entries)
 }
 
+/// Action of the last applied todo line in `done` (what we paused on).
+fn last_done_rebase_action(dir: &Path) -> Option<RebaseAction> {
+    let raw = fs::read_to_string(dir.join("done")).ok()?;
+    raw.lines().rev().find_map(|line| {
+        parse_todo_line(0, line).map(|entry| entry.action)
+    })
+}
+
 fn parse_todo_line(index: u32, line: &str) -> Option<RebaseTodoEntry> {
     let line = line.trim();
     if line.is_empty() || line.starts_with('#') || line.starts_with("exec") {
@@ -453,6 +470,55 @@ fn parse_todo_line(index: u32, line: &str) -> Option<RebaseTodoEntry> {
     })
 }
 
+/// Fill author timestamps / missing subjects, and ensure the paused commit is
+/// marked `current` (native rebase often leaves it in `done` while conflicted).
+fn enrich_todo_entries(
+    repo: &git2::Repository,
+    todo: &mut [RebaseTodoEntry],
+    paused_at: Option<&str>,
+) {
+    for entry in todo.iter_mut() {
+        let Ok(oid) = git2::Oid::from_str(entry.commit.trim()) else {
+            continue;
+        };
+        let Ok(commit) = repo.find_commit(oid) else {
+            continue;
+        };
+        entry.authored_at = Some(commit.time().seconds().to_string());
+        if entry.message.trim().is_empty() {
+            if let Some(summary) = commit.summary() {
+                entry.message = summary.to_string();
+            }
+        }
+        if entry.short_commit.len() < 7 {
+            entry.short_commit = entry.commit.chars().take(7).collect();
+        }
+    }
+
+    let Some(paused) = paused_at.map(str::trim).filter(|s| !s.is_empty()) else {
+        return;
+    };
+    if todo
+        .iter()
+        .any(|e| e.status == RebaseTodoStatus::Current)
+    {
+        return;
+    }
+    if let Some(entry) = todo.iter_mut().find(|e| commit_ref_matches(&e.commit, paused))
+    {
+        entry.status = RebaseTodoStatus::Current;
+    }
+}
+
+fn commit_ref_matches(commit: &str, paused: &str) -> bool {
+    let a = commit.trim();
+    let b = paused.trim();
+    if a.is_empty() || b.is_empty() {
+        return false;
+    }
+    a == b || a.starts_with(b) || b.starts_with(a)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -473,6 +539,19 @@ mod tests {
         )
         .unwrap();
         assert_eq!(e.message, "feat: friendlier greet on feature");
+    }
+
+    #[test]
+    fn commit_ref_matches_short_and_full() {
+        assert!(commit_ref_matches(
+            "277180dabc123",
+            "277180d"
+        ));
+        assert!(commit_ref_matches(
+            "277180d",
+            "277180dabc123"
+        ));
+        assert!(!commit_ref_matches("aaaaaaa", "bbbbbbb"));
     }
 
     #[test]

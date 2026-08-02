@@ -51,11 +51,19 @@ export const WriteCommitBox = memo(function WriteCommitBox({
 
   // Prefill Summary/Description from the paused rebase commit — Continue reads
   // the same draft store. Keyed so refetch doesn't clobber user edits.
-  const rebaseAutofillKey =
-    operation?.isRebasing && operation.commitMessage?.trim()
-      ? `rebase:${operation.pausedAt ?? ""}:${operation.current ?? ""}:${operation.commitMessage}`
-      : null;
-  const rebaseMessage = operation?.commitMessage;
+  // Autofill for reword and edit (edit is optional to change, but helpful).
+  const shouldAutofillRebaseMessage =
+    !!operation?.isRebasing &&
+    !!operation.commitMessage?.trim() &&
+    (operation.pauseReason === "reword" ||
+      operation.pauseReason === "edit" ||
+      operation.pauseReason === "conflict");
+  const rebaseAutofillKey = shouldAutofillRebaseMessage
+    ? `rebase:${operation.pausedAt ?? ""}:${operation.current ?? ""}:${operation.commitMessage}`
+    : null;
+  const rebaseMessage = shouldAutofillRebaseMessage
+    ? operation?.commitMessage
+    : undefined;
   const isRebasing = !!operation?.isRebasing;
 
   useEffect(() => {
