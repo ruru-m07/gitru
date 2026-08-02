@@ -453,8 +453,8 @@ mod tests {
             .expect("expected spec");
         assert_eq!(spec.pattern, "foo()");
 
-        let args = build_pickaxe_log_args(&query("a+b*c?", false, false, false))
-            .expect("expected args");
+        let args =
+            build_pickaxe_log_args(&query("a+b*c?", false, false, false)).expect("expected args");
         assert!(args.windows(2).any(|window| window == ["-i", "-S"]));
         assert!(args.iter().any(|arg| arg == "a+b*c?"));
         assert!(!args.iter().any(|arg| arg.contains('\\')));
@@ -480,10 +480,7 @@ mod tests {
 
         assert!(matches!(spec.mode, PickaxeSearchMode::Regex));
         assert!(!spec.ignore_case);
-        assert_eq!(
-            spec.pattern,
-            r"(^|[^[:alnum:]_])file\.txt([^[:alnum:]_]|$)"
-        );
+        assert_eq!(spec.pattern, r"(^|[^[:alnum:]_])file\.txt([^[:alnum:]_]|$)");
     }
 
     #[test]

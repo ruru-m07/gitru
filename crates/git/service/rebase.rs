@@ -1,13 +1,6 @@
-use std::{
-    fs,
-    path::Path,
-    sync::Arc,
-    time::Duration,
-};
+use std::{fs, path::Path, sync::Arc, time::Duration};
 
-use git2::{
-    AnnotatedCommit, CherrypickOptions, Oid, Repository, ResetType, Signature,
-};
+use git2::{AnnotatedCommit, CherrypickOptions, Oid, Repository, ResetType, Signature};
 use tauri::Emitter;
 
 use crate::{
@@ -22,7 +15,7 @@ use crate::{
     },
     runner::GitRunOptions,
     service::operation::{
-        conflict_paths_from_index, read_trimmed, OperationService, GITRU_REBASE_DIR,
+        GITRU_REBASE_DIR, OperationService, conflict_paths_from_index, read_trimmed,
     },
 };
 
@@ -64,9 +57,7 @@ impl RebaseService {
         let head = repo
             .head()
             .map_err(|e| format!("Failed to read HEAD: {e}"))?;
-        let head_oid = head
-            .target()
-            .ok_or_else(|| "HEAD is unborn".to_string())?;
+        let head_oid = head.target().ok_or_else(|| "HEAD is unborn".to_string())?;
 
         let mut revwalk = repo
             .revwalk()
@@ -87,10 +78,7 @@ impl RebaseService {
             let commit = repo
                 .find_commit(oid)
                 .map_err(|e| format!("Failed to find commit: {e}"))?;
-            let message = commit
-                .summary()
-                .unwrap_or("")
-                .to_string();
+            let message = commit.summary().unwrap_or("").to_string();
             entries.push(RebasePlanEntry {
                 action: RebaseAction::Pick,
                 commit: oid.to_string(),
@@ -112,11 +100,10 @@ impl RebaseService {
         app: Option<tauri::AppHandle>,
     ) -> Result<RepoOperation, String> {
         let path = self.ctx.repo_path.clone();
-        let result = tokio::task::spawn_blocking(move || {
-            start_rebase_blocking(&path, request, app)
-        })
-        .await
-        .map_err(|e| format!("Rebase task join error: {e}"))?;
+        let result =
+            tokio::task::spawn_blocking(move || start_rebase_blocking(&path, request, app))
+                .await
+                .map_err(|e| format!("Rebase task join error: {e}"))?;
 
         self.ctx.cache.invalidate_all();
         result
@@ -171,11 +158,7 @@ impl RebaseService {
                     Err(e) => {
                         // Conflict / editor pause: rebase still in progress — surface state.
                         let op = self.get_repo_operation()?;
-                        if op.is_rebasing {
-                            Ok(op)
-                        } else {
-                            Err(e)
-                        }
+                        if op.is_rebasing { Ok(op) } else { Err(e) }
                     }
                 }
             }
@@ -213,7 +196,8 @@ impl RebaseService {
                 result
             }
             Some(RebaseEngine::Git) | None => {
-                self.cli_rebase_command(&["rebase", "--abort"], None).await?;
+                self.cli_rebase_command(&["rebase", "--abort"], None)
+                    .await?;
                 self.ctx.cache.invalidate_all();
                 self.get_repo_operation()
             }
@@ -225,10 +209,7 @@ impl RebaseService {
         if !op.is_rebasing {
             return Err("No rebase in progress".to_string());
         }
-        let commits_applied = op
-            .current
-            .map(|c| c.saturating_sub(1))
-            .unwrap_or(0);
+        let commits_applied = op.current.map(|c| c.saturating_sub(1)).unwrap_or(0);
         Ok(RebaseAbortPreview {
             orig_head: op.orig_head.clone(),
             head_name: op.head_name.clone(),
@@ -459,7 +440,11 @@ fn start_rebase_blocking(
 
     if request.autostash {
         let sig = signature_for(&repo)?;
-        let _ = repo.stash_save(&sig, "!!Gitru rebase autostash", Some(git2::StashFlags::DEFAULT));
+        let _ = repo.stash_save(
+            &sig,
+            "!!Gitru rebase autostash",
+            Some(git2::StashFlags::DEFAULT),
+        );
     } else if !is_worktree_clean(&repo)? {
         return Err(
             "You have uncommitted changes. Commit, stash, or enable autostash before rebasing."
@@ -512,16 +497,19 @@ fn start_plain_git2_rebase(
         let head = repo
             .head()
             .map_err(|e| format!("Failed to read HEAD: {e}"))?;
-        let oid = head
-            .target()
-            .ok_or_else(|| "HEAD is unborn".to_string())?;
+        let oid = head.target().ok_or_else(|| "HEAD is unborn".to_string())?;
         repo.find_annotated_commit(oid)
             .map_err(|e| format!("Failed to annotate HEAD: {e}"))?
     };
 
     let mut opts = git2::RebaseOptions::new();
     let mut rebase = repo
-        .rebase(Some(&head_ann), Some(&upstream), Some(&onto), Some(&mut opts))
+        .rebase(
+            Some(&head_ann),
+            Some(&upstream),
+            Some(&onto),
+            Some(&mut opts),
+        )
         .map_err(|e| format!("Failed to start rebase: {e}"))?;
 
     let total = rebase.len() as u32;
@@ -731,8 +719,8 @@ fn run_gitru_until_pause(
                 continue;
             }
             RebaseAction::Pick | RebaseAction::Reword | RebaseAction::Edit => {
-                let oid = Oid::from_str(&entry.commit)
-                    .map_err(|e| format!("Invalid commit oid: {e}"))?;
+                let oid =
+                    Oid::from_str(&entry.commit).map_err(|e| format!("Invalid commit oid: {e}"))?;
                 let commit = repo
                     .find_commit(oid)
                     .map_err(|e| format!("Failed to find commit: {e}"))?;
@@ -772,8 +760,8 @@ fn run_gitru_until_pause(
                 }
             }
             RebaseAction::Squash | RebaseAction::Fixup => {
-                let oid = Oid::from_str(&entry.commit)
-                    .map_err(|e| format!("Invalid commit oid: {e}"))?;
+                let oid =
+                    Oid::from_str(&entry.commit).map_err(|e| format!("Invalid commit oid: {e}"))?;
                 let commit = repo
                     .find_commit(oid)
                     .map_err(|e| format!("Failed to find commit: {e}"))?;
@@ -815,15 +803,8 @@ fn run_gitru_until_pause(
                 };
 
                 // Replace HEAD commit (amend)
-                repo.commit(
-                    Some("HEAD"),
-                    &sig,
-                    &sig,
-                    &message,
-                    &tree,
-                    &parent_refs,
-                )
-                .map_err(|e| format!("Failed to squash commit: {e}"))?;
+                repo.commit(Some("HEAD"), &sig, &sig, &message, &tree, &parent_refs)
+                    .map_err(|e| format!("Failed to squash commit: {e}"))?;
 
                 // Clear cherry-pick state
                 let _ = repo.cleanup_state();
@@ -875,7 +856,10 @@ fn continue_gitru_blocking(
                 // Need to create the commit for pick/reword/conflict resolution
                 if matches!(
                     entry.action,
-                    RebaseAction::Pick | RebaseAction::Reword | RebaseAction::Squash | RebaseAction::Fixup
+                    RebaseAction::Pick
+                        | RebaseAction::Reword
+                        | RebaseAction::Squash
+                        | RebaseAction::Fixup
                 ) || pause.as_deref() == Some("conflict")
                 {
                     let msg = message
@@ -967,9 +951,7 @@ fn abort_gitru_blocking(
             // Move branch ref back and checkout
             repo.reference(&name, oid, true, "gitru rebase abort")
                 .map_err(|e| format!("Failed to restore branch ref: {e}"))?;
-            let obj = repo
-                .revparse_single(&name)
-                .map_err(|e| e.to_string())?;
+            let obj = repo.revparse_single(&name).map_err(|e| e.to_string())?;
             repo.checkout_tree(&obj, None)
                 .map_err(|e| format!("Failed to checkout branch: {e}"))?;
             repo.set_head(&name)
@@ -1000,10 +982,7 @@ fn finish_gitru(
     app: &Option<tauri::AppHandle>,
 ) -> Result<(), String> {
     let head_name = read_trimmed(dir.join("head-name")).ok();
-    let head_oid = repo
-        .head()
-        .ok()
-        .and_then(|h| h.target());
+    let head_oid = repo.head().ok().and_then(|h| h.target());
 
     if let (Some(name), Some(oid)) = (head_name, head_oid) {
         if name.starts_with("refs/heads/") {
@@ -1069,13 +1048,7 @@ fn clear_pause(dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn emit_paused(
-    app: &Option<tauri::AppHandle>,
-    idx: usize,
-    total: u32,
-    commit: &str,
-    reason: &str,
-) {
+fn emit_paused(app: &Option<tauri::AppHandle>, idx: usize, total: u32, commit: &str, reason: &str) {
     emit_progress(
         app,
         RebaseProgressEvent {
@@ -1110,10 +1083,7 @@ fn commit_from_index(
     let tree_id = index.write_tree().map_err(|e| e.to_string())?;
     index.write().map_err(|e| e.to_string())?;
     let tree = repo.find_tree(tree_id).map_err(|e| e.to_string())?;
-    let parent = repo
-        .head()
-        .ok()
-        .and_then(|h| h.peel_to_commit().ok());
+    let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
     let parents: Vec<&git2::Commit> = match &parent {
         Some(p) => vec![p],
         None => vec![],
@@ -1121,14 +1091,7 @@ fn commit_from_index(
     let msg = message.unwrap_or_else(|| original.message().unwrap_or(""));
     let author = original.author();
     let oid = repo
-        .commit(
-            Some("HEAD"),
-            &author,
-            sig,
-            msg,
-            &tree,
-            &parents,
-        )
+        .commit(Some("HEAD"), &author, sig, msg, &tree, &parents)
         .map_err(|e| format!("Failed to create commit: {e}"))?;
     let _ = repo.cleanup_state();
     Ok(oid)
@@ -1143,10 +1106,7 @@ fn commit_from_index_simple(
     let tree_id = index.write_tree().map_err(|e| e.to_string())?;
     index.write().map_err(|e| e.to_string())?;
     let tree = repo.find_tree(tree_id).map_err(|e| e.to_string())?;
-    let parent = repo
-        .head()
-        .ok()
-        .and_then(|h| h.peel_to_commit().ok());
+    let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
     let parents: Vec<&git2::Commit> = match &parent {
         Some(p) => vec![p],
         None => vec![],

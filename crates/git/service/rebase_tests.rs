@@ -1,12 +1,7 @@
 //! Integration tests for rebase operation detection and the Gitru sequencer.
 #![cfg(test)]
 
-use std::{
-    fs,
-    path::PathBuf,
-    process::Command,
-    sync::Arc,
-};
+use std::{fs, path::PathBuf, process::Command, sync::Arc};
 
 use serial_test::serial;
 use tempfile::TempDir;
@@ -103,9 +98,7 @@ fn detects_external_rebase_merge() {
         .enable_all()
         .build()
         .unwrap();
-    let after = rt
-        .block_on(async { rebase.abort(None).await })
-        .unwrap();
+    let after = rt.block_on(async { rebase.abort(None).await }).unwrap();
     assert!(!after.is_rebasing);
 }
 
@@ -196,7 +189,10 @@ fn interactive_gitru_sequencer_with_drop() {
     });
     assert!(result.is_ok(), "{result:?}");
     assert!(!result.unwrap().is_rebasing);
-    assert!(!path.join("b.txt").exists(), "dropped commit file should be gone");
+    assert!(
+        !path.join("b.txt").exists(),
+        "dropped commit file should be gone"
+    );
     assert!(path.join("a.txt").exists());
     assert!(path.join("c.txt").exists());
 }
@@ -383,10 +379,12 @@ fn update_native_interactive_todo_actions() {
         last.action = RebaseAction::Drop;
     }
     let updated = rebase.update_todo(entries).unwrap();
-    assert!(updated
-        .todo
-        .iter()
-        .any(|e| matches!(e.action, RebaseAction::Drop)));
+    assert!(
+        updated
+            .todo
+            .iter()
+            .any(|e| matches!(e.action, RebaseAction::Drop))
+    );
 }
 
 #[test]

@@ -10,9 +10,7 @@ use crate::{
     context::RepoContext,
     models::{
         operation::{RebaseEngine, RepoOperation, RepoOperationKind},
-        rebase::{
-            RebaseAction, RebasePauseReason, RebaseTodoEntry, RebaseTodoStatus,
-        },
+        rebase::{RebaseAction, RebasePauseReason, RebaseTodoEntry, RebaseTodoStatus},
     },
 };
 
@@ -101,11 +99,7 @@ impl OperationService {
         let remaining = current.map(|c| total.unwrap_or(0).saturating_sub(c));
 
         let label = match (&head_name, &onto) {
-            (Some(h), Some(o)) => Some(format!(
-                "{} onto {}",
-                shorten_ref(h),
-                short_oid(o)
-            )),
+            (Some(h), Some(o)) => Some(format!("{} onto {}", shorten_ref(h), short_oid(o))),
             _ => None,
         };
 
@@ -190,11 +184,7 @@ impl OperationService {
         };
 
         let label = match (&head_name, &onto) {
-            (Some(h), Some(o)) => Some(format!(
-                "{} onto {}",
-                shorten_ref(h),
-                short_oid(o)
-            )),
+            (Some(h), Some(o)) => Some(format!("{} onto {}", shorten_ref(h), short_oid(o))),
             _ => None,
         };
 
@@ -291,9 +281,7 @@ fn map_repository_state(state: RepositoryState) -> RepoOperationKind {
     match state {
         RepositoryState::Clean => RepoOperationKind::Clean,
         RepositoryState::Merge => RepoOperationKind::Merge,
-        RepositoryState::Revert | RepositoryState::RevertSequence => {
-            RepoOperationKind::Revert
-        }
+        RepositoryState::Revert | RepositoryState::RevertSequence => RepoOperationKind::Revert,
         RepositoryState::CherryPick | RepositoryState::CherryPickSequence => {
             RepoOperationKind::CherryPick
         }
@@ -334,8 +322,8 @@ pub fn conflict_paths_from_index(repo: &git2::Repository) -> Result<Vec<String>,
 }
 
 pub fn read_trimmed(path: PathBuf) -> Result<String, String> {
-    let raw = fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
+    let raw =
+        fs::read_to_string(&path).map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
     Ok(raw.trim().to_string())
 }
 
@@ -386,18 +374,12 @@ fn parse_gitru_todo(dir: &Path) -> Result<Vec<RebaseTodoEntry>, String> {
         } else {
             RebaseTodoStatus::Pending
         };
-        entries.push(RebaseTodoEntry {
-            status,
-            ..entry
-        });
+        entries.push(RebaseTodoEntry { status, ..entry });
     }
     Ok(entries)
 }
 
-fn parse_native_todo(
-    dir: &Path,
-    msgnum: Option<u32>,
-) -> Result<Vec<RebaseTodoEntry>, String> {
+fn parse_native_todo(dir: &Path, msgnum: Option<u32>) -> Result<Vec<RebaseTodoEntry>, String> {
     let mut entries = Vec::new();
     let mut index = 0u32;
 
@@ -436,9 +418,9 @@ fn parse_native_todo(
 /// Action of the last applied todo line in `done` (what we paused on).
 fn last_done_rebase_action(dir: &Path) -> Option<RebaseAction> {
     let raw = fs::read_to_string(dir.join("done")).ok()?;
-    raw.lines().rev().find_map(|line| {
-        parse_todo_line(0, line).map(|entry| entry.action)
-    })
+    raw.lines()
+        .rev()
+        .find_map(|line| parse_todo_line(0, line).map(|entry| entry.action))
 }
 
 fn parse_todo_line(index: u32, line: &str) -> Option<RebaseTodoEntry> {
@@ -498,13 +480,12 @@ fn enrich_todo_entries(
     let Some(paused) = paused_at.map(str::trim).filter(|s| !s.is_empty()) else {
         return;
     };
-    if todo
-        .iter()
-        .any(|e| e.status == RebaseTodoStatus::Current)
-    {
+    if todo.iter().any(|e| e.status == RebaseTodoStatus::Current) {
         return;
     }
-    if let Some(entry) = todo.iter_mut().find(|e| commit_ref_matches(&e.commit, paused))
+    if let Some(entry) = todo
+        .iter_mut()
+        .find(|e| commit_ref_matches(&e.commit, paused))
     {
         entry.status = RebaseTodoStatus::Current;
     }
@@ -533,33 +514,20 @@ mod tests {
 
     #[test]
     fn parse_todo_line_strips_hash_comment() {
-        let e = parse_todo_line(
-            0,
-            "pick abcdef1 # feat: friendlier greet on feature",
-        )
-        .unwrap();
+        let e = parse_todo_line(0, "pick abcdef1 # feat: friendlier greet on feature").unwrap();
         assert_eq!(e.message, "feat: friendlier greet on feature");
     }
 
     #[test]
     fn commit_ref_matches_short_and_full() {
-        assert!(commit_ref_matches(
-            "277180dabc123",
-            "277180d"
-        ));
-        assert!(commit_ref_matches(
-            "277180d",
-            "277180dabc123"
-        ));
+        assert!(commit_ref_matches("277180dabc123", "277180d"));
+        assert!(commit_ref_matches("277180d", "277180dabc123"));
         assert!(!commit_ref_matches("aaaaaaa", "bbbbbbb"));
     }
 
     #[test]
     fn read_message_file_strips_conflict_comments() {
-        let dir = std::env::temp_dir().join(format!(
-            "gitru-msg-test-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("gitru-msg-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("message");

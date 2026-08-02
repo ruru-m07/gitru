@@ -93,14 +93,7 @@ impl GitCommandRunner {
         input: &str,
         options: GitRunOptions,
     ) -> Result<String, String> {
-        run_git_command_async(
-            &self.repo_path,
-            args,
-            Some(input.as_bytes()),
-            options,
-            &[],
-        )
-        .await
+        run_git_command_async(&self.repo_path, args, Some(input.as_bytes()), options, &[]).await
     }
 
     pub async fn run_with_options_bytes(

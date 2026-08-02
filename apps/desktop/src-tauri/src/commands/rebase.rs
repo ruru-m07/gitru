@@ -27,9 +27,7 @@ pub async fn rebase_plan(
     state: tauri::State<'_, AppState>,
 ) -> Result<RebasePlan, String> {
     let services = get_services(state, &context_id).await?;
-    services
-        .rebase()
-        .plan_rebase(&onto, upstream.as_deref())
+    services.rebase().plan_rebase(&onto, upstream.as_deref())
 }
 
 #[tauri::command]
@@ -51,10 +49,7 @@ pub async fn rebase_continue(
     state: tauri::State<'_, AppState>,
 ) -> Result<RepoOperation, String> {
     let services = get_services(state, &context_id).await?;
-    services
-        .rebase()
-        .continue_rebase(message, Some(app))
-        .await
+    services.rebase().continue_rebase(message, Some(app)).await
 }
 
 #[tauri::command]
