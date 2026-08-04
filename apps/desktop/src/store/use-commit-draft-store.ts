@@ -1,6 +1,8 @@
 import { create } from "zustand";
 
 type CommitDraftState = {
+  /** Active repo/context key — draft clears when this changes. */
+  repoKey: string | null;
   title: string;
   description: string;
   /** Last autofill identity — skip re-applying the same rebase step. */
@@ -8,6 +10,7 @@ type CommitDraftState = {
   setTitle: (title: string) => void;
   setDescription: (description: string) => void;
   applyAutofill: (key: string, title: string, description: string) => void;
+  switchRepo: (repoKey: string | null) => void;
   clear: () => void;
 };
 
@@ -38,6 +41,7 @@ export function joinCommitMessage(title: string, description: string): string {
 }
 
 export const useCommitDraftStore = create<CommitDraftState>((set, get) => ({
+  repoKey: null,
   title: "",
   description: "",
   autofillKey: null,
@@ -46,6 +50,10 @@ export const useCommitDraftStore = create<CommitDraftState>((set, get) => ({
   applyAutofill: (key, title, description) => {
     if (get().autofillKey === key) return;
     set({ autofillKey: key, title, description });
+  },
+  switchRepo: (repoKey) => {
+    if (get().repoKey === repoKey) return;
+    set({ repoKey, title: "", description: "", autofillKey: null });
   },
   clear: () => set({ title: "", description: "", autofillKey: null }),
 }));

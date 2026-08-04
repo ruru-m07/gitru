@@ -55,6 +55,27 @@ pub enum RebasePauseReason {
     Waiting,
 }
 
+impl RebasePauseReason {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Conflict => "conflict",
+            Self::Edit => "edit",
+            Self::Reword => "reword",
+            Self::Waiting => "waiting",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "conflict" => Some(Self::Conflict),
+            "edit" => Some(Self::Edit),
+            "reword" => Some(Self::Reword),
+            "waiting" => Some(Self::Waiting),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct RebaseTodoEntry {

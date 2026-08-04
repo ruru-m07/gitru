@@ -192,11 +192,20 @@ export function ConflictUnresolvedViewer({
 
             file = result.file;
             const stillConflicted = CONFLICT_MARKER.test(file.contents);
-            setHasMarkers(stillConflicted);
 
             void writeFile({ path: filePath, contents: file.contents })
               .then(() => {
-                if (!stillConflicted) {
+                setHasMarkers(stillConflicted);
+                if (stillConflicted) {
+                  inst.render({
+                    file,
+                    fileDiff: result.fileDiff,
+                    actions: result.actions,
+                    markerRows: result.markerRows,
+                    containerWrapper: wrapper,
+                  });
+                } else {
+                  mountFile(file);
                   toast.success(
                     "Conflicts resolved — stage the file to continue",
                   );
@@ -209,18 +218,6 @@ export function ConflictUnresolvedViewer({
                     : "Failed to write resolved file",
                 );
               });
-
-            if (stillConflicted) {
-              inst.render({
-                file,
-                fileDiff: result.fileDiff,
-                actions: result.actions,
-                markerRows: result.markerRows,
-                containerWrapper: wrapper,
-              });
-            } else {
-              mountFile(file);
-            }
           },
         },
         workerPool,

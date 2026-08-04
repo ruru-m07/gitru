@@ -386,8 +386,14 @@ pub fn validate_relative_path(path: &str) -> Result<(), String> {
         return Err("Absolute paths are not allowed".to_string());
     }
     for component in path.components() {
-        if matches!(component, std::path::Component::ParentDir) {
-            return Err("Path traversal is not allowed".to_string());
+        match component {
+            std::path::Component::ParentDir => {
+                return Err("Path traversal is not allowed".to_string());
+            }
+            std::path::Component::Normal(name) if name == ".git" => {
+                return Err("Access to .git is not allowed".to_string());
+            }
+            _ => {}
         }
     }
     Ok(())
@@ -568,6 +574,13 @@ mod tests {
         assert!(validate_relative_path("file.test.rs").is_ok());
         assert!(validate_relative_path(".gitignore").is_ok());
         assert!(validate_relative_path("src/.hidden").is_ok());
+    }
+
+    #[test]
+    fn reject_git_directory_paths() {
+        assert!(validate_relative_path(".git").is_err());
+        assert!(validate_relative_path(".git/config").is_err());
+        assert!(validate_relative_path("foo/.git/hooks").is_err());
     }
 
     #[test]

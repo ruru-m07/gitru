@@ -23,6 +23,7 @@ import {
   useGetStatus,
   useGitAdd,
 } from "@/hooks";
+import { useActiveRepositoryState } from "@/state/use-active-repository-state";
 import {
   splitCommitMessage,
   useCommitDraftStore,
@@ -35,11 +36,13 @@ export const WriteCommitBox = memo(function WriteCommitBox({
 }) {
   const [co_authors, setCoAuthors] = useState<CommitMessage["co_authors"]>([]);
 
+  const repo = useActiveRepositoryState();
   const title = useCommitDraftStore((s) => s.title);
   const description = useCommitDraftStore((s) => s.description);
   const setTitle = useCommitDraftStore((s) => s.setTitle);
   const setDescription = useCommitDraftStore((s) => s.setDescription);
   const applyAutofill = useCommitDraftStore((s) => s.applyAutofill);
+  const switchRepo = useCommitDraftStore((s) => s.switchRepo);
   const clearDraft = useCommitDraftStore((s) => s.clear);
 
   const { data: currentBranch } = useGetCurrentBranch();
@@ -48,6 +51,10 @@ export const WriteCommitBox = memo(function WriteCommitBox({
   const { mutateAsync: gitAdd, isPending: isAdding } = useGitAdd();
   const { mutateAsync: createCommit, isPending: isCreatingCommit } =
     useCreateCommit();
+
+  useEffect(() => {
+    switchRepo(repo?.contextId ?? null);
+  }, [repo?.contextId, switchRepo]);
 
   // Prefill Summary/Description from the paused rebase commit — Continue reads
   // the same draft store. Keyed so refetch doesn't clobber user edits.
@@ -59,7 +66,7 @@ export const WriteCommitBox = memo(function WriteCommitBox({
       operation.pauseReason === "edit" ||
       operation.pauseReason === "conflict");
   const rebaseAutofillKey = shouldAutofillRebaseMessage
-    ? `rebase:${operation.pausedAt ?? ""}:${operation.current ?? ""}:${operation.commitMessage}`
+    ? `rebase:${operation?.pausedAt ?? ""}:${operation?.current ?? ""}:${operation?.commitMessage}`
     : null;
   const rebaseMessage = shouldAutofillRebaseMessage
     ? operation?.commitMessage

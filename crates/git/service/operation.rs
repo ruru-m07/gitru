@@ -339,13 +339,7 @@ fn shorten_ref(name: &str) -> String {
 }
 
 fn parse_pause_reason(s: &str) -> Option<RebasePauseReason> {
-    match s.trim().to_ascii_lowercase().as_str() {
-        "conflict" => Some(RebasePauseReason::Conflict),
-        "edit" => Some(RebasePauseReason::Edit),
-        "reword" => Some(RebasePauseReason::Reword),
-        "waiting" => Some(RebasePauseReason::Waiting),
-        _ => None,
-    }
+    RebasePauseReason::parse(s)
 }
 
 fn parse_gitru_todo(dir: &Path) -> Result<Vec<RebaseTodoEntry>, String> {
@@ -359,22 +353,24 @@ fn parse_gitru_todo(dir: &Path) -> Result<Vec<RebaseTodoEntry>, String> {
         .and_then(|s| s.parse::<u32>().ok());
 
     let mut entries = Vec::new();
-    for (i, line) in raw.lines().enumerate() {
+    let mut entry_idx = 0u32;
+    for line in raw.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        let Some(entry) = parse_todo_line(i as u32, line) else {
+        let Some(entry) = parse_todo_line(entry_idx, line) else {
             continue;
         };
-        let status = if current_idx == Some(i as u32) {
+        let status = if current_idx == Some(entry_idx) {
             RebaseTodoStatus::Current
-        } else if current_idx.is_some_and(|c| (i as u32) < c) {
+        } else if current_idx.is_some_and(|c| entry_idx < c) {
             RebaseTodoStatus::Done
         } else {
             RebaseTodoStatus::Pending
         };
         entries.push(RebaseTodoEntry { status, ..entry });
+        entry_idx += 1;
     }
     Ok(entries)
 }

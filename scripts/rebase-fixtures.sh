@@ -2,9 +2,25 @@
 # Create temporary git repos that exercise rebase scenarios for manual / CI testing.
 set -euo pipefail
 
-ROOT="${1:-/tmp/gitru-rebase-fixtures}"
-rm -rf "$ROOT"
-mkdir -p "$ROOT"
+MARKER_FILE=".gitru-rebase-fixtures"
+
+if [[ $# -gt 0 ]]; then
+  ROOT="$1"
+  if [[ -z "$ROOT" || "$ROOT" == "/" ]]; then
+    echo "Refusing to use empty or root path as fixture root" >&2
+    exit 1
+  fi
+  if [[ -e "$ROOT" && ! -f "$ROOT/$MARKER_FILE" ]]; then
+    echo "Refusing to delete '$ROOT' (missing $MARKER_FILE marker). Pass a fresh path or an existing fixture root." >&2
+    exit 1
+  fi
+  rm -rf -- "$ROOT"
+else
+  ROOT="$(mktemp -d "${TMPDIR:-/tmp}/gitru-rebase-fixtures.XXXXXX")"
+fi
+
+mkdir -p -- "$ROOT"
+touch -- "$ROOT/$MARKER_FILE"
 
 make_base() {
   local dir="$1"
@@ -16,6 +32,15 @@ make_base() {
   echo "base" >"$dir/file.txt"
   git -C "$dir" add .
   git -C "$dir" commit -q -m "base"
+}
+
+expect_rebase_paused() {
+  local dir="$1"
+  local label="$2"
+  if [[ ! -d "$dir/.git/rebase-merge" && ! -d "$dir/.git/rebase-apply" ]]; then
+    echo "Expected paused rebase in $label ($dir), but no rebase state found" >&2
+    exit 1
+  fi
 }
 
 # 1) Clean rebase (feature ahead of diverged main)
@@ -39,7 +64,10 @@ git -C "$CONFLICT" checkout -q main
 echo main >"$CONFLICT/conflict.txt"
 git -C "$CONFLICT" add . && git -C "$CONFLICT" commit -q -m "main conflict"
 git -C "$CONFLICT" checkout -q feature
-git -C "$CONFLICT" rebase main || true
+set +e
+git -C "$CONFLICT" rebase main
+set -e
+expect_rebase_paused "$CONFLICT" "conflict-rebase"
 echo "Fixture ready (paused): $CONFLICT"
 
 # 3) Interactive pause via sequence editor
@@ -53,8 +81,11 @@ echo m >"$INTERACTIVE/m.txt" && git -C "$INTERACTIVE" add . && git -C "$INTERACT
 git -C "$INTERACTIVE" checkout -q feature
 # Break after first commit by editing todo to 'edit'
 export GIT_SEQUENCE_EDITOR="sed -i.bak '1s/^pick/edit/'"
-git -C "$INTERACTIVE" rebase -i main || true
+set +e
+git -C "$INTERACTIVE" rebase -i main
+set -e
 unset GIT_SEQUENCE_EDITOR
+expect_rebase_paused "$INTERACTIVE" "interactive-pause"
 echo "Fixture ready (interactive edit pause): $INTERACTIVE"
 
 echo ""

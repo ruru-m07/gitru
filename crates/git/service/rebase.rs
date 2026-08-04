@@ -29,6 +29,10 @@ const REBASE_NONINTERACTIVE_ENV: &[(&str, &str)] = &[
     ("VISUAL", "true"),
 ];
 
+/// Marker inside `.git` recording that we created an autostash for this rebase.
+const AUTOSTASH_MARKER: &str = "gitru-autostash";
+const AUTOSTASH_MESSAGE: &str = "!!Gitru rebase autostash";
+
 pub const REBASE_PROGRESS_EVENT: &str = "git://rebase-progress";
 
 pub struct RebaseService {
@@ -153,7 +157,13 @@ impl RebaseService {
                     .await;
                 self.ctx.cache.invalidate_all();
                 match cli_result {
-                    Ok(_) => self.get_repo_operation(),
+                    Ok(_) => {
+                        let op = self.get_repo_operation()?;
+                        if !op.is_rebasing {
+                            let _ = restore_autostash_at(&self.ctx.repo_path);
+                        }
+                        Ok(op)
+                    }
                     Err(e) if e.contains("timed out") => Err(e),
                     Err(e) => {
                         // Conflict / editor pause: rebase still in progress — surface state.
@@ -179,7 +189,11 @@ impl RebaseService {
             Some(RebaseEngine::Git) | None => {
                 self.cli_rebase_command(&["rebase", "--skip"], None).await?;
                 self.ctx.cache.invalidate_all();
-                self.get_repo_operation()
+                let op = self.get_repo_operation()?;
+                if !op.is_rebasing {
+                    let _ = restore_autostash_at(&self.ctx.repo_path);
+                }
+                Ok(op)
             }
         }
     }
@@ -199,6 +213,7 @@ impl RebaseService {
                 self.cli_rebase_command(&["rebase", "--abort"], None)
                     .await?;
                 self.ctx.cache.invalidate_all();
+                let _ = restore_autostash_at(&self.ctx.repo_path);
                 self.get_repo_operation()
             }
         }
@@ -255,6 +270,7 @@ impl RebaseService {
         if remaining.is_empty() {
             return Err("No remaining commits to edit in the rebase todo".into());
         }
+        assert_native_todo_editable(&merge_dir.join("git-rebase-todo"))?;
         write_native_todo(&merge_dir, remaining)?;
         self.get_repo_operation()
     }
@@ -278,6 +294,7 @@ impl RebaseService {
     }
 
     pub fn resolve_conflict(&self, request: ConflictResolveRequest) -> Result<(), String> {
+        crate::runner::validate_relative_path(&request.path)?;
         let repo = open_repo(&self.ctx.repo_path)?;
         let path = request.path.as_str();
         match request.strategy {
@@ -292,10 +309,11 @@ impl RebaseService {
             ConflictResolveStrategy::Union => {
                 let ours = stage_blob_content(&repo, path, 2)?;
                 let theirs = stage_blob_content(&repo, path, 3)?;
-                let combined = format!("{ours}\n<<<<<<< union >>>>>>>\n{theirs}");
+                let combined = format!("{ours}\n======= union ======\n{theirs}");
                 let abs = Path::new(&self.ctx.repo_path).join(path);
                 if let Some(parent) = abs.parent() {
-                    fs::create_dir_all(parent).ok();
+                    fs::create_dir_all(parent)
+                        .map_err(|e| format!("Failed to create parent for {path}: {e}"))?;
                 }
                 fs::write(&abs, combined).map_err(|e| format!("Failed to write union: {e}"))?;
                 add_path(&repo, path)?;
@@ -367,7 +385,7 @@ fn continue_native_git2_blocking(
     repo_path: &str,
     message: Option<String>,
 ) -> Result<RepoOperation, String> {
-    let repo = open_repo(repo_path)?;
+    let mut repo = open_repo(repo_path)?;
     let mut rebase = repo
         .open_rebase(None)
         .map_err(|e| format!("open_rebase: {e}"))?;
@@ -408,6 +426,8 @@ fn continue_native_git2_blocking(
     rebase
         .finish(None)
         .map_err(|e| format!("Failed to finish rebase: {e}"))?;
+    drop(rebase);
+    restore_autostash(&mut repo)?;
 
     OperationService::new(Arc::new(RepoContext::new(repo_path)?)).get_repo_operation()
 }
@@ -439,12 +459,7 @@ fn start_rebase_blocking(
     }
 
     if request.autostash {
-        let sig = signature_for(&repo)?;
-        let _ = repo.stash_save(
-            &sig,
-            "!!Gitru rebase autostash",
-            Some(git2::StashFlags::DEFAULT),
-        );
+        save_autostash(&mut repo)?;
     } else if !is_worktree_clean(&repo)? {
         return Err(
             "You have uncommitted changes. Commit, stash, or enable autostash before rebasing."
@@ -578,6 +593,9 @@ fn start_plain_git2_rebase(
     rebase
         .finish(None)
         .map_err(|e| format!("Failed to finish rebase: {e}"))?;
+    drop(rebase);
+    // Annotated commits above borrow `repo`; reopen for stash restore.
+    restore_autostash_at(repo_path)?;
 
     emit_progress(
         &app,
@@ -616,11 +634,13 @@ fn init_gitru_state(repo: &Repository, plan: &RebasePlan) -> Result<(), String> 
     fs::write(dir.join("current-index"), "0").map_err(|e| e.to_string())?;
     write_gitru_todo(&dir, &plan.entries)?;
 
-    // Detach and reset onto base
+    // Detach HEAD first so the hard reset does not move the branch tip.
     let onto_oid = Oid::from_str(&plan.onto).map_err(|e| format!("Invalid onto oid: {e}"))?;
     let onto_commit = repo
         .find_commit(onto_oid)
         .map_err(|e| format!("Failed to find onto commit: {e}"))?;
+    repo.set_head_detached(onto_oid)
+        .map_err(|e| format!("Failed to detach HEAD: {e}"))?;
     repo.reset(onto_commit.as_object(), ResetType::Hard, None)
         .map_err(|e| format!("Failed to reset onto base: {e}"))?;
 
@@ -653,6 +673,25 @@ fn count_native_todo_lines(path: &Path) -> usize {
         .count()
 }
 
+fn assert_native_todo_editable(path: &Path) -> Result<(), String> {
+    let Ok(raw) = fs::read_to_string(path) else {
+        return Ok(());
+    };
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let action = line.split_whitespace().next().unwrap_or("");
+        if RebaseAction::parse(action).is_none() {
+            return Err(format!(
+                "Cannot edit todo: unsupported command `{action}`. Abort and restart without advanced rebase options."
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn write_native_todo(dir: &Path, entries: &[RebasePlanEntry]) -> Result<(), String> {
     let mut out = String::new();
     for e in entries {
@@ -671,9 +710,15 @@ fn validate_todo(entries: &[RebasePlanEntry]) -> Result<(), String> {
     if entries.is_empty() {
         return Err("Rebase plan has no commits".into());
     }
-    let first = &entries[0].action;
-    if matches!(first, RebaseAction::Squash | RebaseAction::Fixup) {
-        return Err("First commit cannot be squash or fixup".into());
+    let first_applied = entries
+        .iter()
+        .find(|e| !matches!(e.action, RebaseAction::Drop))
+        .ok_or_else(|| "Rebase plan drops every commit".to_string())?;
+    if matches!(
+        first_applied.action,
+        RebaseAction::Squash | RebaseAction::Fixup
+    ) {
+        return Err("The first applied commit cannot be squash or fixup".into());
     }
     Ok(())
 }
@@ -682,7 +727,7 @@ fn run_gitru_until_pause(
     repo_path: &str,
     app: Option<tauri::AppHandle>,
 ) -> Result<RepoOperation, String> {
-    let repo = open_repo(repo_path)?;
+    let mut repo = open_repo(repo_path)?;
     let dir = repo.path().join(GITRU_REBASE_DIR);
     let entries = read_plan_entries(&dir)?;
     let mut idx = read_trimmed(dir.join("current-index"))
@@ -692,11 +737,16 @@ fn run_gitru_until_pause(
 
     let total = entries.len() as u32;
     let sig = signature_for(&repo)?;
+    let onto_oid = read_trimmed(dir.join("onto"))
+        .ok()
+        .and_then(|s| Oid::from_str(&s).ok());
 
     while idx < entries.len() {
         let entry = &entries[idx];
-        fs::write(dir.join("current-index"), idx.to_string()).ok();
-        fs::write(dir.join("paused-at"), &entry.commit).ok();
+        fs::write(dir.join("current-index"), idx.to_string())
+            .map_err(|e| format!("Failed to write current-index: {e}"))?;
+        fs::write(dir.join("paused-at"), &entry.commit)
+            .map_err(|e| format!("Failed to write paused-at: {e}"))?;
 
         emit_progress(
             &app,
@@ -741,7 +791,8 @@ fn run_gitru_until_pause(
                 match entry.action {
                     RebaseAction::Reword => {
                         let msg = commit.message().unwrap_or("").to_string();
-                        fs::write(dir.join("message"), &msg).ok();
+                        fs::write(dir.join("message"), &msg)
+                            .map_err(|e| format!("Failed to write message: {e}"))?;
                         set_pause(&dir, RebasePauseReason::Reword)?;
                         emit_paused(&app, idx, total, &entry.commit, "Reword");
                         return OperationService::new(Arc::new(RepoContext::new(repo_path)?))
@@ -783,6 +834,12 @@ fn run_gitru_until_pause(
                     .map_err(|e| format!("Failed to read HEAD: {e}"))?
                     .peel_to_commit()
                     .map_err(|e| format!("Failed to peel HEAD: {e}"))?;
+                if onto_oid == Some(head.id()) {
+                    return Err(
+                        "Cannot squash/fixup onto the rebase base; the first applied commit cannot be squash or fixup"
+                            .into(),
+                    );
+                }
                 // After cherry-pick without commit, HEAD is still previous; index has new tree.
                 // Create amended commit: reuse parent message for fixup, combine for squash.
                 let tree_id = {
@@ -812,10 +869,11 @@ fn run_gitru_until_pause(
         }
 
         idx += 1;
-        fs::write(dir.join("current-index"), idx.to_string()).ok();
+        fs::write(dir.join("current-index"), idx.to_string())
+            .map_err(|e| format!("Failed to write current-index: {e}"))?;
     }
 
-    finish_gitru(&repo, &dir, &app)?;
+    finish_gitru(&mut repo, &dir, &app)?;
     OperationService::new(Arc::new(RepoContext::new(repo_path)?)).get_repo_operation()
 }
 
@@ -843,7 +901,9 @@ fn continue_gitru_blocking(
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(0);
-    let pause = read_trimmed(dir.join("pause-reason")).ok();
+    let pause = read_trimmed(dir.join("pause-reason"))
+        .ok()
+        .and_then(|s| RebasePauseReason::parse(&s));
     let sig = signature_for(&repo)?;
 
     if idx < entries.len() {
@@ -851,8 +911,8 @@ fn continue_gitru_blocking(
         let oid = Oid::from_str(&entry.commit).ok();
         let original = oid.and_then(|o| repo.find_commit(o).ok());
 
-        match pause.as_deref() {
-            Some("conflict") | Some("reword") | None => {
+        match pause {
+            Some(RebasePauseReason::Conflict) | Some(RebasePauseReason::Reword) | None => {
                 // Need to create the commit for pick/reword/conflict resolution
                 if matches!(
                     entry.action,
@@ -860,7 +920,7 @@ fn continue_gitru_blocking(
                         | RebaseAction::Reword
                         | RebaseAction::Squash
                         | RebaseAction::Fixup
-                ) || pause.as_deref() == Some("conflict")
+                ) || pause == Some(RebasePauseReason::Conflict)
                 {
                     let msg = message
                         .or_else(|| read_trimmed(dir.join("message")).ok())
@@ -872,24 +932,24 @@ fn continue_gitru_blocking(
                         .unwrap_or_else(|| entry.message.clone().unwrap_or_default());
 
                     if let Some(commit) = original.as_ref() {
-                        // If cherry-pick state exists or index dirty relative to HEAD
-                        let _ = commit_from_index(&repo, commit, &sig, Some(&msg));
+                        commit_from_index(&repo, commit, &sig, Some(&msg))?;
                     } else {
                         commit_from_index_simple(&repo, &sig, &msg)?;
                     }
                 }
             }
-            Some("edit") => {
+            Some(RebasePauseReason::Edit) => {
                 // User already has a commit; just continue
             }
-            _ => {}
+            Some(RebasePauseReason::Waiting) => {}
         }
     }
 
     let _ = repo.cleanup_state();
     clear_pause(&dir)?;
     let next = idx + 1;
-    fs::write(dir.join("current-index"), next.to_string()).ok();
+    fs::write(dir.join("current-index"), next.to_string())
+        .map_err(|e| format!("Failed to write current-index: {e}"))?;
     run_gitru_until_pause(repo_path, app)
 }
 
@@ -918,7 +978,8 @@ fn skip_gitru_blocking(
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(0);
     clear_pause(&dir)?;
-    fs::write(dir.join("current-index"), (idx + 1).to_string()).ok();
+    fs::write(dir.join("current-index"), (idx + 1).to_string())
+        .map_err(|e| format!("Failed to write current-index: {e}"))?;
     run_gitru_until_pause(repo_path, app)
 }
 
@@ -926,25 +987,27 @@ fn abort_gitru_blocking(
     repo_path: &str,
     app: Option<tauri::AppHandle>,
 ) -> Result<RepoOperation, String> {
-    let repo = open_repo(repo_path)?;
+    let mut repo = open_repo(repo_path)?;
     let dir = repo.path().join(GITRU_REBASE_DIR);
     if !dir.is_dir() {
         // Try native abort via open_rebase
         if let Ok(mut rebase) = repo.open_rebase(None) {
             rebase.abort().map_err(|e| format!("Abort failed: {e}"))?;
         }
+        restore_autostash(&mut repo)?;
         return OperationService::new(Arc::new(RepoContext::new(repo_path)?)).get_repo_operation();
     }
 
     let orig = read_trimmed(dir.join("orig-head"))?;
     let head_name = read_trimmed(dir.join("head-name")).ok();
     let oid = Oid::from_str(&orig).map_err(|e| format!("Invalid orig-head: {e}"))?;
-    let commit = repo
-        .find_commit(oid)
-        .map_err(|e| format!("Failed to find orig-head: {e}"))?;
-
-    repo.reset(commit.as_object(), ResetType::Hard, None)
-        .map_err(|e| format!("Failed to reset to orig-head: {e}"))?;
+    {
+        let commit = repo
+            .find_commit(oid)
+            .map_err(|e| format!("Failed to find orig-head: {e}"))?;
+        repo.reset(commit.as_object(), ResetType::Hard, None)
+            .map_err(|e| format!("Failed to reset to orig-head: {e}"))?;
+    }
 
     if let Some(name) = head_name {
         if name.starts_with("refs/heads/") {
@@ -961,6 +1024,7 @@ fn abort_gitru_blocking(
 
     let _ = repo.cleanup_state();
     let _ = fs::remove_dir_all(&dir);
+    restore_autostash(&mut repo)?;
 
     emit_progress(
         &app,
@@ -977,7 +1041,7 @@ fn abort_gitru_blocking(
 }
 
 fn finish_gitru(
-    repo: &Repository,
+    repo: &mut Repository,
     dir: &Path,
     app: &Option<tauri::AppHandle>,
 ) -> Result<(), String> {
@@ -994,6 +1058,7 @@ fn finish_gitru(
     }
 
     let _ = fs::remove_dir_all(dir);
+    restore_autostash(repo)?;
     emit_progress(
         app,
         RebaseProgressEvent {
@@ -1033,13 +1098,7 @@ fn read_plan_entries(dir: &Path) -> Result<Vec<RebasePlanEntry>, String> {
 }
 
 fn set_pause(dir: &Path, reason: RebasePauseReason) -> Result<(), String> {
-    let s = match reason {
-        RebasePauseReason::Conflict => "conflict",
-        RebasePauseReason::Edit => "edit",
-        RebasePauseReason::Reword => "reword",
-        RebasePauseReason::Waiting => "waiting",
-    };
-    fs::write(dir.join("pause-reason"), s).map_err(|e| e.to_string())
+    fs::write(dir.join("pause-reason"), reason.as_str()).map_err(|e| e.to_string())
 }
 
 fn clear_pause(dir: &Path) -> Result<(), String> {
@@ -1136,6 +1195,51 @@ fn is_worktree_clean(repo: &Repository) -> Result<bool, String> {
         .statuses(None)
         .map_err(|e| format!("Failed to get status: {e}"))?;
     Ok(statuses.is_empty())
+}
+
+fn save_autostash(repo: &mut Repository) -> Result<(), String> {
+    if is_worktree_clean(repo)? {
+        return Ok(());
+    }
+    let sig = signature_for(repo)?;
+    let oid = repo
+        .stash_save(&sig, AUTOSTASH_MESSAGE, Some(git2::StashFlags::DEFAULT))
+        .map_err(|e| format!("Autostash failed: {e}"))?;
+    fs::write(repo.path().join(AUTOSTASH_MARKER), oid.to_string())
+        .map_err(|e| format!("Failed to write autostash marker: {e}"))?;
+    Ok(())
+}
+
+fn restore_autostash(repo: &mut Repository) -> Result<(), String> {
+    let marker = repo.path().join(AUTOSTASH_MARKER);
+    if !marker.is_file() {
+        return Ok(());
+    }
+    let target =
+        fs::read_to_string(&marker).map_err(|e| format!("Failed to read autostash marker: {e}"))?;
+    let target = target.trim().to_string();
+
+    let mut found_index: Option<usize> = None;
+    let _ = repo.stash_foreach(|index, _msg, oid| {
+        if oid.to_string() == target {
+            found_index = Some(index);
+            false
+        } else {
+            true
+        }
+    });
+
+    if let Some(index) = found_index {
+        repo.stash_pop(index, None)
+            .map_err(|e| format!("Failed to restore autostash: {e}"))?;
+    }
+    let _ = fs::remove_file(&marker);
+    Ok(())
+}
+
+fn restore_autostash_at(repo_path: &str) -> Result<(), String> {
+    let mut repo = open_repo(repo_path)?;
+    restore_autostash(&mut repo)
 }
 
 fn checkout_stage(repo: &Repository, path: &str, stage: i32) -> Result<(), String> {
