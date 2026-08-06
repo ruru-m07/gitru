@@ -1,4 +1,5 @@
 import HistoryGraph from "@/components/history-graph";
+import { PickaxeView } from "@/components/pickaxe/pickaxe-view";
 import { RebaseModeView } from "@/features/git/rebase";
 import { ConflictUnresolvedViewer } from "@/features/git/rebase/conflict-unresolved-viewer";
 import { useGetRepoOperation } from "@/hooks";
@@ -51,6 +52,7 @@ export function GitMainView() {
           {mainWindowView === null && <EmptyStateScreen />}
           {mainWindowView === "FileDiff" && <DiffBoxBody />}
           {mainWindowView === "HistoryGraph" && <HistoryGraph />}
+          {mainWindowView === "Pickaxe" && <PickaxeView />}
         </>
       )}
     </div>
