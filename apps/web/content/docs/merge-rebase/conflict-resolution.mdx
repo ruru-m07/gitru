@@ -1,5 +1,20 @@
 ---
 title: Conflict Resolution
-description: Not Documented
+description: Resolve merge and rebase conflicts in Gitru
 icon: ShieldAlert
 ---
+
+# Conflict Resolution
+
+When a rebase (or merge) stops with conflicts, Gitru lists conflicted files and highlights them in status.
+
+## During rebase
+
+1. Open a conflicted file from the rebase conflict list.
+2. Resolve manually in the editor, or use **Take ours**, **Take theirs**, or **Union**.
+3. Stage the file (or use “Mark resolved”).
+4. Click **Continue**.
+
+## Abort safely
+
+**Abort** shows a preview of where HEAD will return before discarding applied rebase commits.

@@ -5,10 +5,12 @@ import {
   ChevronDown,
   ChevronsUp,
   GitBranch,
+  GitCommitVertical,
   Loader2,
 } from "lucide-react";
 import {
   useGetCurrentBranch,
+  useGetRepoOperation,
   useGetStatusAheadBehind,
   useGitPush,
 } from "@/hooks";
@@ -16,8 +18,14 @@ import {
 export const MainActionBar = () => {
   const { data: currentBranch } = useGetCurrentBranch();
   const { data: statusAheadBehind } = useGetStatusAheadBehind();
+  const { data: operation } = useGetRepoOperation();
 
   const { mutateAsync: push, isPending } = useGitPush();
+
+  const detached = currentBranch?.is_detached ?? false;
+  const rebasing = operation?.isRebasing ?? false;
+  // While rebasing HEAD is detached, so the rebased branch name lives on the operation.
+  const rebaseBranch = operation?.headName?.replace(/^refs\/heads\//, "");
 
   return (
     <div className="w-full justify-between min-h-14 max-h-14 h-14 border-b flex">
@@ -27,14 +35,24 @@ export const MainActionBar = () => {
           variant="ghost"
         >
           <div className="flex items-center gap-4 min-w-0 flex-1">
-            <GitBranch className="size-7.5" strokeWidth={1.5} />
+            {detached ? (
+              <GitCommitVertical className="size-7.5" strokeWidth={1.5} />
+            ) : (
+              <GitBranch className="size-7.5" strokeWidth={1.5} />
+            )}
 
             <div className="flex flex-col items-start min-w-0 flex-1">
               <span className="text-xs text-muted-foreground font-[450]">
-                Current Branch
+                {rebasing
+                  ? "Rebasing"
+                  : detached
+                    ? "Detached HEAD"
+                    : "Current Branch"}
               </span>
               <span className="truncate block w-full text-left">
-                {currentBranch?.display_name}
+                {rebasing
+                  ? (rebaseBranch ?? currentBranch?.display_name)
+                  : currentBranch?.display_name}
               </span>
             </div>
           </div>
@@ -42,7 +60,8 @@ export const MainActionBar = () => {
           <ChevronDown size={18} />
         </Button>
         <Separator orientation="vertical" className={"border-0"} />
-        {statusAheadBehind && statusAheadBehind.is_published ? (
+        {detached ? null : statusAheadBehind &&
+          statusAheadBehind.is_published ? (
           (statusAheadBehind && statusAheadBehind.ahead > 0) ||
           (statusAheadBehind && statusAheadBehind.behind > 0) ? (
             <>

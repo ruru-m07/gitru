@@ -64,6 +64,21 @@ pub fn parse_porcelain_v2(buf: &[u8]) -> Result<Vec<FileStatus>, String> {
                 });
             }
 
+            Some('u') => {
+                // u <xy> <sub> <m1> <m2> <m3> <mW> <h1> <h2> <h3> <path>
+                let parts: Vec<&str> = line.splitn(11, ' ').collect();
+                if parts.len() < 11 {
+                    return Err("invalid type u (unmerged) entry".to_string());
+                }
+
+                let path = parts[10].to_string();
+                result.push(FileStatus {
+                    path,
+                    new_path: None,
+                    status: vec![FileStatusKind::Conflicted],
+                });
+            }
+
             Some('?') => {
                 // ? <path>  (untracked)
                 let path = line[2..].to_string();
@@ -268,5 +283,22 @@ mod tests {
         assert!(parsed[0].new_path.is_none());
         assert_eq!(parsed[1].path, "old.rs");
         assert_eq!(parsed[1].new_path.as_deref(), Some("new.rs"));
+    }
+
+    #[test]
+    fn parse_porcelain_v2_unmerged_conflict() {
+        // Realistic unmerged entry (fields abbreviated with zeros where unused).
+        let line = b"u UU N... 100644 100644 100644 100644 \
+1111111111111111111111111111111111111111 \
+2222222222222222222222222222222222222222 \
+3333333333333333333333333333333333333333 \
+src/conflict.rs\0";
+        let parsed = parse_porcelain_v2(line).unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].path, "src/conflict.rs");
+        assert!(matches!(
+            parsed[0].status.as_slice(),
+            [FileStatusKind::Conflicted]
+        ));
     }
 }

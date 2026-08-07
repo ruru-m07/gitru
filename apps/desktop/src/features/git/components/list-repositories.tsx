@@ -21,12 +21,12 @@ import { BadgeQuestionMark, ChevronDownIcon, SearchIcon } from "lucide-react";
 import { memo, useState } from "react";
 import { toast } from "sonner";
 import { RepositoryListItem } from "@/components/repository-list-item";
+import { matchesSearchQuery } from "@/features/git/lib/matches-search-query";
 import { useRepositories } from "@/hooks/use-repositories";
 import { getAvatarByProvider } from "@/lib/get-avatar-by-git-provider";
 import { parseOrigin } from "@/lib/parse-origin";
 import { selectActiveRepository, useAppStore } from "@/store/use-app-store";
 import type { GIT_PROVIDERS } from "@/types/app";
-import { matchesSearchQuery } from "@/features/git/lib/matches-search-query";
 
 export const ListRepositories = memo(() => {
   const navigation = useCommandNavigation();

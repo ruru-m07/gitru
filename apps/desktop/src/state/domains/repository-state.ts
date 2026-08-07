@@ -2,6 +2,7 @@ import {
   BranchKind,
   BranchStash,
   CommitActivityParams,
+  type ConflictResolveRequest,
   CreateCommitParams,
   commitActivity,
   commitById,
@@ -11,6 +12,7 @@ import {
   currentBranchStash,
   FileStatusKind,
   getPatchByFilePath,
+  getRepoOperation,
   getStatus,
   gitAdd,
   gitApplyPatchBlock,
@@ -28,6 +30,19 @@ import {
   publishBranch,
   pull,
   push,
+  type RebasePlanEntry,
+  type RebaseStartRequest,
+  type RebaseUpdateTodoRequest,
+  type RepoOperation,
+  rebaseAbort,
+  rebaseAbortPreview,
+  rebaseContinue,
+  rebasePlan,
+  rebaseResolveConflict,
+  rebaseSetCommitMessage,
+  rebaseSkip,
+  rebaseStart,
+  rebaseUpdateTodo,
   repositoryOrigin,
   statusAheadBehind,
   switchBranch,
@@ -486,6 +501,107 @@ class Commit extends StateDomain {
   }
 }
 
+class OperationState extends StateDomain {
+  private readonly baseKey: readonly string[];
+  private readonly contextId: string;
+
+  constructor(
+    protected queryClient: QueryClient,
+    repositoryBaseKey: readonly string[],
+    contextId: string,
+  ) {
+    super(queryClient);
+    this.baseKey = [...repositoryBaseKey, "operation"] as const;
+    this.contextId = contextId;
+  }
+
+  async get(): Promise<RepoOperation> {
+    await this.queryClient.cancelQueries({ queryKey: [...this.baseKey] });
+    const data = await getRepoOperation({ contextId: this.contextId });
+    this.queryClient.setQueryData([...this.baseKey], data);
+    return data;
+  }
+
+  get queryKey() {
+    return [...this.baseKey];
+  }
+
+  getCached(): RepoOperation | undefined {
+    return this.queryClient.getQueryData([...this.baseKey]);
+  }
+
+  async invalidate() {
+    await this.queryClient.invalidateQueries({ queryKey: [...this.baseKey] });
+  }
+
+  async plan(onto: string, upstream?: string) {
+    return rebasePlan({
+      contextId: this.contextId,
+      onto,
+      upstream,
+    });
+  }
+
+  async start(request: RebaseStartRequest) {
+    const data = await rebaseStart({
+      contextId: this.contextId,
+      request,
+    });
+    await this.invalidate();
+    return data;
+  }
+
+  async continue(message?: string) {
+    const data = await rebaseContinue({
+      contextId: this.contextId,
+      message,
+    });
+    await this.invalidate();
+    return data;
+  }
+
+  async skip() {
+    const data = await rebaseSkip({ contextId: this.contextId });
+    await this.invalidate();
+    return data;
+  }
+
+  async abort() {
+    const data = await rebaseAbort({ contextId: this.contextId });
+    await this.invalidate();
+    return data;
+  }
+
+  async abortPreview() {
+    return rebaseAbortPreview({ contextId: this.contextId });
+  }
+
+  async updateTodo(entries: RebasePlanEntry[]) {
+    const request: RebaseUpdateTodoRequest = { entries };
+    const data = await rebaseUpdateTodo({
+      contextId: this.contextId,
+      request,
+    });
+    await this.invalidate();
+    return data;
+  }
+
+  async setCommitMessage(message: string) {
+    await rebaseSetCommitMessage({
+      contextId: this.contextId,
+      message,
+    });
+  }
+
+  async resolveConflict(request: ConflictResolveRequest) {
+    await rebaseResolveConflict({
+      contextId: this.contextId,
+      request,
+    });
+    await this.invalidate();
+  }
+}
+
 class RepositoryState extends StateDomain {
   readonly diff: DiffState;
   readonly status: StatusState;
@@ -493,6 +609,7 @@ class RepositoryState extends StateDomain {
   readonly file: FilesActionsState;
   readonly commit: Commit;
   readonly stash: StashState;
+  readonly operation: OperationState;
   private readonly baseKey: readonly string[];
   readonly contextId: string;
 
@@ -527,6 +644,11 @@ class RepositoryState extends StateDomain {
     this.file = new FilesActionsState(this.queryClient, this.contextId);
     this.commit = new Commit(this.queryClient, this.baseKey, this.contextId);
     this.stash = new StashState(this.queryClient, this.baseKey, this.contextId);
+    this.operation = new OperationState(
+      this.queryClient,
+      this.baseKey,
+      this.contextId,
+    );
   }
 
   async getRepositoryOrigin() {

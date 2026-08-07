@@ -25,9 +25,9 @@ import { selectActiveRepository, useAppStore } from "@/store/use-app-store";
 import { FileRowProps } from "./types";
 import {
   EMPTY_CONTEXT_ACTIONS,
+  getMatchRanges,
   getStageFileTargets,
   getUnstageFileTargets,
-  getMatchRanges,
   getWorktreeScope,
   renderHighlightedSlice,
 } from "./utils";

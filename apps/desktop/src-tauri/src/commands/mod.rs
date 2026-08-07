@@ -5,5 +5,6 @@ pub mod diff;
 pub mod history;
 pub mod origin;
 pub mod pickaxe;
+pub mod rebase;
 pub mod stash;
 pub mod updater;

@@ -197,6 +197,13 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             iconKey: "gitBranch",
           },
           {
+            id: "rebase-onto",
+            label: "Rebase Onto…",
+            shortcut: ["⌘", "⇧", "R"],
+            keywords: ["rebase", "interactive", "onto", "squash"],
+            iconKey: "gitBranch",
+          },
+          {
             id: "fetch-changes",
             label: "Fetch Changes",
             shortcut: ["⌘", "⇧", "F"],
@@ -350,6 +357,8 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
               navigate.push("init-repository");
             } else if (item.id === "checkout-branch") {
               navigate.push("branch-list");
+            } else if (item.id === "rebase-onto") {
+              navigate.push("rebase-onto");
             } else if (item.id === "switch-theme") {
               navigate.push("switch-theme");
             } else if (item.id === "switch-update-channel") {
