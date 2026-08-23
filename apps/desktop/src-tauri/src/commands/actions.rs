@@ -103,3 +103,24 @@ pub async fn git_apply_patch_block(
         )
         .await
 }
+
+#[tauri::command]
+pub async fn read_worktree_file(
+    context_id: String,
+    path: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let services = get_services(state, &context_id).await?;
+    services.action().read_worktree_file(&path)
+}
+
+#[tauri::command]
+pub async fn write_worktree_file(
+    context_id: String,
+    path: String,
+    contents: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let services = get_services(state, &context_id).await?;
+    services.action().write_worktree_file(&path, &contents)
+}

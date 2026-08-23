@@ -1,0 +1,18 @@
+---
+description: packages/commands is generated — do not edit by hand
+globs: packages/commands/**
+alwaysApply: false
+---
+
+# `@gitru/commands`
+
+This package is **auto-generated** Tauri command bindings (Zod types + wrappers).
+
+- Do **not** manually edit files under `packages/commands/`.
+- After changing Rust Tauri command signatures or types, run:
+
+```bash
+make typegen
+```
+
+- Frontend should import from `@gitru/commands` for invokes and shared command types.

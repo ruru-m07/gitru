@@ -1,0 +1,16 @@
+---
+description: Design system and coss/ui conventions for @gitru/ui
+globs: packages/ui/**/*
+alwaysApply: false
+---
+
+# `@gitru/ui`
+
+Design system on **coss/ui** (Base UI), shadcn-like DX.
+
+- Prefer existing components in `packages/ui/src/components/` before inventing new primitives
+- Compose coss patterns correctly (triggers, portals, accessibility)
+- Agent skill: `.agents/skills/coss/`
+- External docs map: https://coss.com/ui/llms.txt
+
+Consumers import like `@gitru/ui/components/button` and `@gitru/ui/lib/utils` (`cn`).

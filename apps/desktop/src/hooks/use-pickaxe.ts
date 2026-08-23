@@ -3,7 +3,7 @@ import { cancelPickaxe, startPickaxe } from "@gitru/commands";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PickaxeSearchOptions } from "@/lib/pickaxe-search-options";
-import { useActiveRepositoryState } from "@/state/useActiveRepositoryState";
+import { useActiveRepositoryState } from "@/state/use-active-repository-state";
 
 export type PickaxeHit = {
   commit: FullCommitInfo;

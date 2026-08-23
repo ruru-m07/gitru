@@ -328,6 +328,24 @@ impl ActionService {
             .run_with_options(&args, GitRunOptions::default_read())
             .await
     }
+
+    /// Read a worktree file relative to the repo root (for conflict editors).
+    pub fn read_worktree_file(&self, path: &str) -> Result<String, String> {
+        validate_relative_path(path)?;
+        let abs = std::path::Path::new(&self.ctx.repo_path).join(path);
+        std::fs::read_to_string(&abs).map_err(|e| format!("Failed to read {path}: {e}"))
+    }
+
+    /// Write a worktree file relative to the repo root (after conflict resolution).
+    pub fn write_worktree_file(&self, path: &str, contents: &str) -> Result<(), String> {
+        validate_relative_path(path)?;
+        let abs = std::path::Path::new(&self.ctx.repo_path).join(path);
+        if let Some(parent) = abs.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create parent for {path}: {e}"))?;
+        }
+        std::fs::write(&abs, contents).map_err(|e| format!("Failed to write {path}: {e}"))
+    }
 }
 
 #[derive(Clone)]

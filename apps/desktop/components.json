@@ -13,9 +13,9 @@
   "iconLibrary": "lucide",
   "aliases": {
     "components": "@/components",
-    "utils": "@/lib/utils",
-    "ui": "@/components/ui",
-    "lib": "@/lib",
+    "utils": "@gitru/ui/lib/utils",
+    "ui": "@gitru/ui/components",
+    "lib": "@gitru/ui/lib/utils",
     "hooks": "@/hooks"
   },
   "registries": {

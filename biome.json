@@ -16,6 +16,8 @@
       "!**/drizzle",
       "!**/tauri",
       "!**/crates",
+      "!**/target",
+      "!**/out",
       "!**/.tanstack",
       "!**/routeTree.gen.ts"
     ]
@@ -46,8 +48,40 @@
       },
       "style": {
         "noMagicNumbers": "off",
-        "useFilenamingConvention": "off"
+        "useFilenamingConvention": {
+          "level": "error",
+          "options": {
+            "filenameCases": ["kebab-case"]
+          }
+        }
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": [
+        "**/route.tsx",
+        "**/index.tsx",
+        "**/__root.tsx",
+        "**/main.tsx",
+        "**/body.tsx",
+        "**/helper.tsx",
+        "**/logo.tsx",
+        "**/items.tsx",
+        "**/root.tsx",
+        "**/colors.ts",
+        "**/time.ts",
+        "**/types.ts",
+        "**/app.ts",
+        "**/bitbucket.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "useFilenamingConvention": "off"
+          }
+        }
+      }
+    }
+  ]
 }

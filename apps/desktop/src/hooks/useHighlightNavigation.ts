@@ -3,9 +3,9 @@ import type { PickaxeSearchOptions } from "@/lib/pickaxe-search-options";
 import {
   clearActiveHighlightMatch,
   collectAllHighlightMatches,
+  PICKAXE_HIGHLIGHTS_CHANGED_EVENT,
   scrollHighlightMatchIntoView,
   setActiveHighlightMatch,
-  PICKAXE_HIGHLIGHTS_CHANGED_EVENT,
 } from "@/lib/searchTextHighlight";
 
 const MATCH_REFRESH_DEBOUNCE_MS = 200;
@@ -89,15 +89,15 @@ export function useHighlightNavigation(
           return;
         }
 
-        const resolvedIndex = Math.min(normalizedIndex, freshMatches.length - 1);
+        const resolvedIndex = Math.min(
+          normalizedIndex,
+          freshMatches.length - 1,
+        );
         const resolvedMatch = freshMatches[resolvedIndex];
 
         setActiveIndex(resolvedIndex);
         setActiveHighlightMatch(resolvedMatch);
-        scrollHighlightMatchIntoView(
-          resolvedMatch,
-          scrollContainerRef.current,
-        );
+        scrollHighlightMatchIntoView(resolvedMatch, scrollContainerRef.current);
       }, NAVIGATION_SETTLE_MS);
     },
     [collectMatches, scrollContainerRef],
@@ -195,7 +195,10 @@ export function useHighlightNavigation(
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "g") {
+      if (
+        !(event.metaKey || event.ctrlKey) ||
+        event.key.toLowerCase() !== "g"
+      ) {
         return;
       }
 

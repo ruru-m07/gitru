@@ -1,0 +1,17 @@
+---
+description: Desktop app conventions (Tauri React frontend + src-tauri)
+globs: apps/desktop/**
+alwaysApply: false
+---
+
+# Desktop app
+
+- **Frontend:** React 19, TanStack Router / Query / Virtual, Vite
+- **Backend:** Tauri 2 in `src-tauri/`; commands in `src-tauri/src/commands/` plus `crates/ipc`
+- **Shared UI:** `@gitru/ui` (coss). Icons: Lucide + `@gitru/icon`. Mascot: `@gitru/mascot`
+- **Repo state:** `src/state/` — `RepositoryManager` → per-repo `RepositoryState` (Query-backed)
+- **Main surfaces:** `historyGraph`, `diff`, `actionPannel`, `sidebar`, routes under `src/routes/app/`
+
+When adding or changing Tauri commands: implement/register in Rust, then `make typegen`, then use `@gitru/commands` in TS.
+
+For coss component usage, follow `.agents/skills/coss/`.

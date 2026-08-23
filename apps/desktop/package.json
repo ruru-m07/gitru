@@ -8,6 +8,7 @@
     "build": "NODE_ENV=production && tsc && vite build",
     "preview": "vite preview",
     "lint": "biome check .",
+    "check-types": "tsc --noEmit",
     "tauri": "tauri"
   },
   "dependencies": {

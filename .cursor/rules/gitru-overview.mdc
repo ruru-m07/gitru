@@ -1,0 +1,28 @@
+---
+description: Gitru monorepo orientation — architecture, boundaries, and hard rules
+alwaysApply: true
+---
+
+# Gitru overview
+
+Desktop Git client monorepo. Full map: root `AGENTS.md`.
+
+## Layout
+
+- `apps/desktop` — Tauri + React product (main focus)
+- `apps/web` — Next.js marketing site
+- `apps/api` — Elysia API (auth, waitlist, etc.)
+- `packages/*` — shared TS (`commands`, `ui`, `icon`, `mascot`)
+- `crates/*` — shared Rust (`git`, `ipc`, `logger`)
+
+## Hard rules
+
+1. **Never hand-edit** `packages/commands/` — regenerate with `make typegen` after Tauri command changes.
+2. **Git parsing/logic lives in Rust** (`crates/git`). Prefer git CLI + parsers; use git2 only for stateful/progress-heavy flows.
+3. **`crates/ipc` stays independent of git logic** — repos/sessions/store/clone orchestration, not status/history parsers.
+4. Desktop UI calls backend via **`@gitru/commands`**, not raw string `invoke`s.
+5. UI primitives from **`@gitru/ui`** (coss). See `.agents/skills/coss/` and https://coss.com/ui/llms.txt.
+
+## Dev
+
+`make setup` · `make dev` · `make typegen` · `make test` · `make format`

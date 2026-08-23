@@ -96,6 +96,21 @@ impl BranchService {
                 "head_upstream".to_string(),
                 move || async move {
                     let local_branch = self.query().current_branch().await?;
+
+                    // Detached HEAD (rebase / bisect / oid checkout) has no upstream.
+                    if local_branch.is_detached {
+                        return Ok(AheadBehindStatus {
+                            ahead: 0,
+                            behind: 0,
+                            local_branch: local_branch.name.clone(),
+                            local_branch_id: local_branch.name,
+                            upstream_branch: None,
+                            upstream_branch_id: None,
+                            is_published: false,
+                            is_detached: true,
+                        });
+                    }
+
                     let local_branch_info = self.query().branch_info(&local_branch.name).await?;
 
                     let Some(upstream_branch) = local_branch_info.upstream.clone() else {
@@ -107,6 +122,7 @@ impl BranchService {
                             upstream_branch: None,
                             upstream_branch_id: None,
                             is_published: false,
+                            is_detached: false,
                         });
                     };
 
@@ -143,6 +159,7 @@ impl BranchService {
                         upstream_branch: Some(upstream_branch),
                         upstream_branch_id,
                         is_published: true,
+                        is_detached: false,
                     })
                 },
             )
@@ -289,6 +306,13 @@ impl BranchService {
     #[logger::logger]
     pub async fn publish_branch(&self) -> Result<String, String> {
         let branch = self.get_current_branch().await?;
+
+        if branch.is_detached {
+            return Err(
+                "HEAD is detached — finish or abort the current operation before publishing"
+                    .to_string(),
+            );
+        }
 
         self.ctx
             .runner
