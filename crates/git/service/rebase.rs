@@ -844,8 +844,7 @@ fn run_gitru_until_pause(
                 // Create amended commit: reuse parent message for fixup, combine for squash.
                 let tree_id = {
                     let mut index = repo.index().map_err(|e| e.to_string())?;
-                    let tid = index.write_tree().map_err(|e| e.to_string())?;
-                    tid
+                    index.write_tree().map_err(|e| e.to_string())?
                 };
                 let tree = repo.find_tree(tree_id).map_err(|e| e.to_string())?;
                 let parents: Vec<_> = head.parents().collect();
@@ -1009,17 +1008,17 @@ fn abort_gitru_blocking(
             .map_err(|e| format!("Failed to reset to orig-head: {e}"))?;
     }
 
-    if let Some(name) = head_name {
-        if name.starts_with("refs/heads/") {
-            // Move branch ref back and checkout
-            repo.reference(&name, oid, true, "gitru rebase abort")
-                .map_err(|e| format!("Failed to restore branch ref: {e}"))?;
-            let obj = repo.revparse_single(&name).map_err(|e| e.to_string())?;
-            repo.checkout_tree(&obj, None)
-                .map_err(|e| format!("Failed to checkout branch: {e}"))?;
-            repo.set_head(&name)
-                .map_err(|e| format!("Failed to set HEAD: {e}"))?;
-        }
+    if let Some(name) = head_name
+        && name.starts_with("refs/heads/")
+    {
+        // Move branch ref back and checkout
+        repo.reference(&name, oid, true, "gitru rebase abort")
+            .map_err(|e| format!("Failed to restore branch ref: {e}"))?;
+        let obj = repo.revparse_single(&name).map_err(|e| e.to_string())?;
+        repo.checkout_tree(&obj, None)
+            .map_err(|e| format!("Failed to checkout branch: {e}"))?;
+        repo.set_head(&name)
+            .map_err(|e| format!("Failed to set HEAD: {e}"))?;
     }
 
     let _ = repo.cleanup_state();
@@ -1048,13 +1047,13 @@ fn finish_gitru(
     let head_name = read_trimmed(dir.join("head-name")).ok();
     let head_oid = repo.head().ok().and_then(|h| h.target());
 
-    if let (Some(name), Some(oid)) = (head_name, head_oid) {
-        if name.starts_with("refs/heads/") {
-            repo.reference(&name, oid, true, "gitru rebase finish")
-                .map_err(|e| format!("Failed to update branch: {e}"))?;
-            repo.set_head(&name)
-                .map_err(|e| format!("Failed to set HEAD: {e}"))?;
-        }
+    if let (Some(name), Some(oid)) = (head_name, head_oid)
+        && name.starts_with("refs/heads/")
+    {
+        repo.reference(&name, oid, true, "gitru rebase finish")
+            .map_err(|e| format!("Failed to update branch: {e}"))?;
+        repo.set_head(&name)
+            .map_err(|e| format!("Failed to set HEAD: {e}"))?;
     }
 
     let _ = fs::remove_dir_all(dir);

@@ -15,6 +15,7 @@
       "!**/*.css",
       "!**/drizzle",
       "!**/tauri",
+      "!**/src-tauri/gen/**",
       "!**/crates",
       "!**/target",
       "!**/out",

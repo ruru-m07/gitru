@@ -71,17 +71,5 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen
       
-      - name: Build frontend
-        run: bun run build --filter gitru
-
-      - name: Run frontend lint
-        run: bun run lint --filter gitru
-
-      - name: Run frontend typecheck
-        run: bun run check-types --filter gitru
-
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-      - name: Run clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Run verification suite
+        run: make verify

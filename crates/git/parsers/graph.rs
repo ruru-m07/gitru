@@ -70,14 +70,13 @@ fn split_body_and_stats(raw: &str) -> (String, CommitStats) {
     {
         let body = lines[..idx]
             .join("\n")
-            .trim_end_matches(|c: char| matches!(c, '\n' | '\r' | ' '))
+            .trim_end_matches(['\n', '\r', ' '])
             .to_string();
         let stats = parse_stat_line(lines[idx].trim());
         (body, stats)
     } else {
         (
-            raw.trim_end_matches(|c: char| matches!(c, '\n' | '\r' | ' '))
-                .to_string(),
+            raw.trim_end_matches(['\n', '\r', ' ']).to_string(),
             CommitStats::default(),
         )
     }
