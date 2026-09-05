@@ -10,4 +10,4 @@ After installing the workspace dependencies, run the same verification suite use
 make verify
 ```
 
-This checks frontend linting and types, builds the desktop frontend, checks Rust formatting and Clippy warnings, and runs the Rust workspace tests.
+This runs the desktop frontend tests, checks frontend linting and types, builds the desktop frontend, checks Rust formatting and Clippy warnings, and runs the Rust workspace tests.

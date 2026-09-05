@@ -80,7 +80,8 @@ clippy: ## Run Clippy linter
 	cargo clippy --workspace --all-targets -- -D warnings
 
 verify: ## Run the complete local and CI verification suite
-	@echo "$(YELLOW)Running frontend lint, type checks, and desktop build...$(NC)"
+	@echo "$(YELLOW)Running frontend tests, lint, type checks, and desktop build...$(NC)"
+	bun test apps/desktop/tests
 	bun run lint
 	bun run check-types
 	bun run build --filter gitru
