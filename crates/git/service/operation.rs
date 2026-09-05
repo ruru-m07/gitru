@@ -95,8 +95,9 @@ impl OperationService {
                     None
                 }
             });
-        let total = Some(todo.len() as u32);
-        let remaining = current.map(|c| total.unwrap_or(0).saturating_sub(c));
+        let total_count = todo.len() as u32;
+        let total = Some(total_count);
+        let remaining = current.map(|c| total_count.saturating_sub(c));
 
         let label = match (&head_name, &onto) {
             (Some(h), Some(o)) => Some(format!("{} onto {}", shorten_ref(h), short_oid(o))),
@@ -239,10 +240,10 @@ fn resolve_commit_message(
         }
     }
 
-    if let Some(oid) = paused_at {
-        if let Some(full) = commit_message_for_oid(repo, oid) {
-            return Some(full);
-        }
+    if let Some(oid) = paused_at
+        && let Some(full) = commit_message_for_oid(repo, oid)
+    {
+        return Some(full);
     }
 
     None
@@ -312,10 +313,11 @@ pub fn conflict_paths_from_index(repo: &git2::Repository) -> Result<Vec<String>,
             .or(conflict.ancestor.as_ref())
             .map(|e| e.path.as_slice())
             .unwrap_or(b"");
-        if let Ok(path) = std::str::from_utf8(path_bytes) {
-            if !path.is_empty() && !paths.iter().any(|p| p == path) {
-                paths.push(path.to_string());
-            }
+        if let Ok(path) = std::str::from_utf8(path_bytes)
+            && !path.is_empty()
+            && !paths.iter().any(|p| p == path)
+        {
+            paths.push(path.to_string());
         }
     }
     Ok(paths)
@@ -463,10 +465,10 @@ fn enrich_todo_entries(
             continue;
         };
         entry.authored_at = Some(commit.time().seconds().to_string());
-        if entry.message.trim().is_empty() {
-            if let Some(summary) = commit.summary() {
-                entry.message = summary.to_string();
-            }
+        if entry.message.trim().is_empty()
+            && let Some(summary) = commit.summary()
+        {
+            entry.message = summary.to_string();
         }
         if entry.short_commit.len() < 7 {
             entry.short_commit = entry.commit.chars().take(7).collect();

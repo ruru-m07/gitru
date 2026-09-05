@@ -1,4 +1,4 @@
-.PHONY: help setup clean dev dev-vite build-vite build-tauri build format typegen test format-check clippy
+.PHONY: help setup clean dev dev-vite build-vite build-tauri build format typegen test format-check clippy verify
 
 .DEFAULT_GOAL := help
 
@@ -78,3 +78,13 @@ format-check: ## Check code formatting
 clippy: ## Run Clippy linter
 	@echo "$(YELLOW)Running Clippy linter...$(NC)"
 	cargo clippy --workspace --all-targets -- -D warnings
+
+verify: ## Run the complete local and CI verification suite
+	@echo "$(YELLOW)Running frontend lint, type checks, and desktop build...$(NC)"
+	bun run lint
+	bun run check-types
+	bun run build --filter gitru
+	@echo "$(YELLOW)Running Rust formatting, lint, and tests...$(NC)"
+	cargo fmt --all -- --check
+	cargo clippy --workspace --all-targets -- -D warnings
+	cargo test --workspace

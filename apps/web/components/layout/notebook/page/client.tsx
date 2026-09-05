@@ -191,7 +191,6 @@ function ProgressCircle({
   };
 
   return (
-    // @ts-expect-error
     <svg
       role="progressbar"
       viewBox={`0 0 ${size} ${size}`}

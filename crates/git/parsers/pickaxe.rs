@@ -183,6 +183,12 @@ pub struct PickaxeStreamParser {
     parser: PickaxeParser,
 }
 
+impl Default for PickaxeStreamParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PickaxeStreamParser {
     pub fn new() -> Self {
         Self {

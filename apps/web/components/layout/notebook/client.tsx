@@ -105,7 +105,6 @@ export function LayoutBody({
         "grid overflow-x-clip min-h-(--fd-docs-height) transition-[grid-template-columns] auto-cols-auto auto-rows-auto [--fd-docs-height:100dvh] [--fd-header-height:0px] [--fd-toc-popover-height:0px] [--fd-sidebar-width:0px] [--fd-toc-width:0px]",
         className,
       )}
-      // @ts-expect-error
       style={
         {
           gridTemplate:
