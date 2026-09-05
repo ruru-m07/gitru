@@ -70,6 +70,7 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@gitru/dom-virtual": "*",
     "@gitru/icon": "*",
     "@gitru/ui": "*",
     "@gitru/commands": "*",

@@ -42,6 +42,18 @@ html {
   scrollbar-color: var(--color-muted) transparent;
 }
 
+[data-row-hovered] {
+  background-color: color-mix(
+    in oklab,
+    var(--color-secondary) 70%,
+    transparent
+  );
+}
+
+[data-row-hovered] [data-hidden-branch-refs] {
+  display: flex;
+}
+
 input::-webkit-credentials-auto-fill-button {
   visibility: hidden;
   display: none !important;

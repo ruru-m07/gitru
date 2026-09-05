@@ -90,6 +90,7 @@
       },
       "devDependencies": {
         "@gitru/commands": "*",
+        "@gitru/dom-virtual": "*",
         "@gitru/icon": "*",
         "@gitru/mascot": "*",
         "@gitru/ui": "*",
@@ -150,6 +151,13 @@
         "@tauri-apps/api": "catalog:",
         "@types/bun": "^1.3.6",
         "zod": "catalog:",
+      },
+    },
+    "packages/dom-virtual": {
+      "name": "@gitru/dom-virtual",
+      "version": "0.0.0",
+      "devDependencies": {
+        "typescript": "catalog:",
       },
     },
     "packages/icon": {
@@ -433,6 +441,8 @@
     "@fumadocs/tailwind": ["@fumadocs/tailwind@0.0.3", "", { "dependencies": { "postcss-selector-parser": "^7.1.1" }, "peerDependencies": { "tailwindcss": "^4.0.0" }, "optionalPeers": ["tailwindcss"] }, "sha512-/FWcggMz9BhoX+13xBoZLX+XX9mYvJ50dkTqy3IfocJqua65ExcsKfxwKH8hgTO3vA5KnWv4+4jU7LaW2AjAmQ=="],
 
     "@gitru/commands": ["@gitru/commands@workspace:packages/commands"],
+
+    "@gitru/dom-virtual": ["@gitru/dom-virtual@workspace:packages/dom-virtual"],
 
     "@gitru/icon": ["@gitru/icon@workspace:packages/icon"],
 
