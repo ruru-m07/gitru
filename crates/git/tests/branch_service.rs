@@ -87,6 +87,30 @@ fn ahead_behind_when_detached() {
     });
 }
 
+#[test]
+#[serial]
+fn publish_branch_pushes_current_branch_and_sets_upstream() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("README.md", "# Test", "Initial commit");
+        let _remote = repo.setup_remote();
+        repo.create_branch("feature/publish-me");
+
+        let service = setup_branch_service(&repo);
+        let message = service.publish_branch().await.unwrap();
+
+        assert_eq!(message, "Published `feature/publish-me` to origin");
+        assert_eq!(
+            repo.git(&["rev-parse", "--abbrev-ref", "@{upstream}"]),
+            "origin/feature/publish-me"
+        );
+        assert_eq!(
+            repo.git(&["rev-parse", "HEAD"]),
+            repo.git(&["rev-parse", "refs/remotes/origin/feature/publish-me"])
+        );
+    });
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // LIST BRANCHES TESTS
 // ══════════════════════════════════════════════════════════════════════════════

@@ -317,7 +317,7 @@ impl BranchService {
         self.ctx
             .runner
             .run_with_options(
-                &["push", "-u", "origin", format!("@{}", branch.name).as_str()],
+                &["push", "-u", "origin", branch.name.as_str()],
                 GitRunOptions::default_read().with_timeout(Duration::from_secs(60)),
             )
             .await?;
