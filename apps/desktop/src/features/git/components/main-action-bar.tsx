@@ -15,22 +15,29 @@ import {
   GitCommitVertical,
   GitCompareArrows,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   useGetCurrentBranch,
   useGetRepoOperation,
   useGetStatusAheadBehind,
+  useGitFetch,
   useGitPublishBranch,
   useGitPull,
   useGitPush,
 } from "@/hooks";
-import { resolveSyncState, type SyncAction } from "./sync-state";
+import {
+  isSyncControlVisible,
+  resolveSyncState,
+  type SyncAction,
+} from "./sync-state";
 
 const successMessages: Record<SyncAction, string> = {
   publish: "Branch published",
   push: "Changes pushed",
   pull: "Changes pulled",
+  fetch: "Remote changes fetched",
 };
 
 export const MainActionBar = () => {
@@ -42,6 +49,7 @@ export const MainActionBar = () => {
   const publishMutation = useGitPublishBranch();
   const pushMutation = useGitPush();
   const pullMutation = useGitPull();
+  const fetchMutation = useGitFetch();
 
   const detached =
     currentBranch?.is_detached ?? statusAheadBehind?.is_detached ?? false;
@@ -65,13 +73,15 @@ export const MainActionBar = () => {
   const isPending =
     publishMutation.isPending ||
     pushMutation.isPending ||
-    pullMutation.isPending;
+    pullMutation.isPending ||
+    fetchMutation.isPending;
 
   const runSyncAction = async (action: SyncAction) => {
     try {
       if (action === "publish") await publishMutation.mutateAsync();
       if (action === "push") await pushMutation.mutateAsync();
       if (action === "pull") await pullMutation.mutateAsync();
+      if (action === "fetch") await fetchMutation.mutateAsync();
       toast.success(successMessages[action]);
     } catch {
       // Mutation hooks surface the command's actionable error message.
@@ -84,6 +94,8 @@ export const MainActionBar = () => {
     <ArrowDownToLine className="size-7.5" strokeWidth={1.5} />
   ) : syncState.kind === "diverged" ? (
     <GitCompareArrows className="size-7.5" strokeWidth={1.5} />
+  ) : syncState.kind === "synced" ? (
+    <RefreshCw className="size-7.5" strokeWidth={1.5} />
   ) : (
     <ArrowUpFromLine className="size-7.5" strokeWidth={1.5} />
   );
@@ -141,7 +153,7 @@ export const MainActionBar = () => {
         </Button>
         <Separator orientation="vertical" className="border-0" />
 
-        {syncState.kind === "detached" ? null : syncState.kind ===
+        {!isSyncControlVisible(syncState) ? null : syncState.kind ===
           "diverged" ? (
           <>
             <Menu>

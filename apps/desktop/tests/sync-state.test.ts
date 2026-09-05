@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { resolveSyncState } from "../src/features/git/components/sync-state";
+import {
+  isSyncControlVisible,
+  resolveSyncState,
+} from "../src/features/git/components/sync-state";
 
 const published = {
   ahead: 0,
@@ -12,10 +15,12 @@ const published = {
 
 describe("resolveSyncState", () => {
   test("models the loading state", () => {
-    expect(resolveSyncState({})).toMatchObject({
+    const state = resolveSyncState({});
+    expect(state).toMatchObject({
       kind: "loading",
       primaryAction: null,
     });
+    expect(isSyncControlVisible(state)).toBe(false);
   });
 
   test("models an unpublished branch as publish", () => {
@@ -44,11 +49,14 @@ describe("resolveSyncState", () => {
     ).toMatchObject({ kind: "diverged", primaryAction: null });
   });
 
-  test("models a synced branch without an action", () => {
-    expect(resolveSyncState({ status: published })).toMatchObject({
+  test("models a synced branch as fetch", () => {
+    const state = resolveSyncState({ status: published });
+    expect(state).toMatchObject({
       kind: "synced",
-      primaryAction: null,
+      label: "Fetch",
+      primaryAction: "fetch",
     });
+    expect(isSyncControlVisible(state)).toBe(true);
   });
 
   test("models detached HEAD without a publish action", () => {

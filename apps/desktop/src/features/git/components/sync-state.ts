@@ -1,4 +1,4 @@
-export type SyncAction = "publish" | "push" | "pull";
+export type SyncAction = "publish" | "push" | "pull" | "fetch";
 
 export type SyncStateKind =
   | "loading"
@@ -16,6 +16,9 @@ export interface SyncState {
   detail: string;
   primaryAction: SyncAction | null;
 }
+
+export const isSyncControlVisible = (state: SyncState) =>
+  state.kind !== "loading" && state.kind !== "detached";
 
 interface SyncStatus {
   ahead: number;
@@ -114,8 +117,8 @@ export function resolveSyncState({
 
   return {
     kind: "synced",
-    label: "Up to Date",
-    detail: status.upstreamBranch ?? "Remote branch is synced",
-    primaryAction: null,
+    label: "Fetch",
+    detail: status.upstreamBranch ?? "Check for remote changes",
+    primaryAction: "fetch",
   };
 }
