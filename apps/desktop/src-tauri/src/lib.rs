@@ -18,7 +18,6 @@ mod commands;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
-        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -68,6 +67,7 @@ pub fn run() {
             commands::pickaxe::start_pickaxe,
             commands::pickaxe::cancel_pickaxe,
             commands::origin::repository_origin,
+            commands::security::open_external_url,
             commands::commit::last_commit,
             commands::commit::commit_by_id,
             commands::commit::create_commit,

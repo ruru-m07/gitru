@@ -18,6 +18,7 @@ import { useFileSelectionStore } from "@/components/diff/use-file-selection-stor
 import { VirtualizedFileList } from "@/components/virtualized-file-list";
 import { matchesSearchQuery } from "@/features/git/lib/matches-search-query";
 import { useGetCommitById } from "@/hooks";
+import { githubCommitterAvatarUrl } from "@/lib/external-content";
 import { resolveFileSelection } from "@/lib/git-selection-resolver";
 import { timeAgoFromUnixSeconds } from "@/lib/time";
 import {
@@ -132,7 +133,9 @@ export const HistoryDetailView = ({ onBack }: { onBack: () => void }) => {
                   <Avatar className="ring-2 ring-background rounded-sm size-4">
                     <AvatarImage
                       alt={commitDetails?.authors.author.name}
-                      src={`https://avatars.githubusercontent.com/u/e?email=${commitDetails?.authors.author.email}&s=64`}
+                      src={githubCommitterAvatarUrl(
+                        commitDetails?.authors.author.email,
+                      )}
                     />
                     <AvatarFallback>
                       {commitDetails?.authors.author.name
@@ -158,7 +161,7 @@ export const HistoryDetailView = ({ onBack }: { onBack: () => void }) => {
                     <Avatar className="ring-2 ring-background rounded-sm size-4 -ml-[0.2rem] group-hover:ml-0.5 transition-all duration-100">
                       <AvatarImage
                         alt="U1"
-                        src={`https://avatars.githubusercontent.com/u/e?email=${coAuthor.email}&s=64`}
+                        src={githubCommitterAvatarUrl(coAuthor.email)}
                       />
                       <AvatarFallback>
                         {coAuthor.name

@@ -117,19 +117,19 @@ impl RepoCache {
                 && entry.is_fresh(now)
             {
                 if let Some(value) = self.clone_typed::<T>(&entry.value) {
-                    log::debug!("cache hit key='{storage_key}'");
+                    log::debug!("cache hit");
                     return Ok(value);
                 }
                 state.entries.remove(&storage_key);
             }
 
             if let Some(inflight) = state.inflight.get(&storage_key) {
-                log::debug!("cache wait-inflight key='{storage_key}'");
+                log::debug!("cache wait-inflight");
                 (inflight.clone(), false, stale)
             } else {
                 let inflight = Arc::new(InFlight::new());
                 state.inflight.insert(storage_key.clone(), inflight.clone());
-                log::debug!("cache miss key='{storage_key}'");
+                log::debug!("cache miss");
                 (inflight, true, stale)
             }
         };
@@ -177,7 +177,7 @@ impl RepoCache {
                 }
 
                 inflight.notify.notify_waiters();
-                log::debug!("cache refresh-success key='{storage_key}'");
+                log::debug!("cache refresh-success");
                 Ok(value)
             }
             Err(err) => {
@@ -200,13 +200,11 @@ impl RepoCache {
                 inflight.notify.notify_waiters();
 
                 if let Some(stale_value) = stale {
-                    log::warn!(
-                        "cache refresh failed for key '{storage_key}': {err}; serving stale value"
-                    );
+                    log::warn!("cache refresh failed; serving stale value");
                     return Ok(stale_value);
                 }
 
-                log::warn!("cache refresh-failed key='{storage_key}': {err}");
+                log::warn!("cache refresh-failed");
                 Err(err)
             }
         }
@@ -227,9 +225,7 @@ impl RepoCache {
                 .ok_or_else(|| format!("Cached value type mismatch for key '{storage_key}'")),
             Err(err) => {
                 if let Some(stale_value) = stale {
-                    log::warn!(
-                        "cache refresh failed for key '{storage_key}': {err}; serving stale value"
-                    );
+                    log::warn!("cache refresh failed; serving stale value");
                     Ok(stale_value)
                 } else {
                     Err(err)

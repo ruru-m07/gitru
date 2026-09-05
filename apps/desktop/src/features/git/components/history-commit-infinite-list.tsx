@@ -15,6 +15,7 @@ import {
 import { Files, Tags } from "lucide-react";
 import { useRef } from "react";
 import { useOnInView } from "react-intersection-observer";
+import { githubCommitterAvatarUrl } from "@/lib/external-content";
 import {
   formatUnixSecondsToDateTime,
   timeAgoFromUnixSeconds,
@@ -79,7 +80,9 @@ export const HistoryCommitInfiniteList = ({
                       <Avatar className="ring-2 ring-background rounded-sm size-4">
                         <AvatarImage
                           alt={row.commit.authors.author.name}
-                          src={`https://avatars.githubusercontent.com/u/e?email=${row.commit.authors.author.email}&s=64`}
+                          src={githubCommitterAvatarUrl(
+                            row.commit.authors.author.email,
+                          )}
                         />
                         <AvatarFallback>
                           {row.commit.authors.author.name
@@ -105,7 +108,7 @@ export const HistoryCommitInfiniteList = ({
                         <Avatar className="ring-2 ring-background rounded-sm size-4 -ml-[0.2rem] group-hover:ml-0.5 transition-all duration-100">
                           <AvatarImage
                             alt={coAuthor.name}
-                            src={`https://avatars.githubusercontent.com/u/e?email=${coAuthor.email}&s=64`}
+                            src={githubCommitterAvatarUrl(coAuthor.email)}
                           />
                           <AvatarFallback>
                             {coAuthor.name

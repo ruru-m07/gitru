@@ -9,6 +9,7 @@ import {
   TooltipTrigger,
 } from "@gitru/ui/components/tooltip";
 import React from "react";
+import { githubCommitterAvatarUrl } from "@/lib/external-content";
 import { ProcessedRow } from "../../helper";
 
 type CommittersCellProps = {
@@ -34,7 +35,9 @@ const CommittersCell = React.memo(({ row }: CommittersCellProps) => {
             <Avatar className="ring-2 ring-background rounded-sm size-4.5">
               <AvatarImage
                 alt={commitRow.commit?.authors.author.name}
-                src={`https://avatars.githubusercontent.com/u/e?email=${commitRow.commit?.authors.author.email}&s=64`}
+                src={githubCommitterAvatarUrl(
+                  commitRow.commit?.authors.author.email,
+                )}
               />
               <AvatarFallback>
                 {commitRow.commit?.authors.author.name
@@ -62,7 +65,7 @@ const CommittersCell = React.memo(({ row }: CommittersCellProps) => {
                 <Avatar className="will-change-auto ring-2 ring-background rounded-sm size-4.5 ml-[-0.2rem] group-hover:ml-0.5 transition-all duration-100">
                   <AvatarImage
                     alt="U1"
-                    src={`https://avatars.githubusercontent.com/u/e?email=${coAuthor.email}&s=64`}
+                    src={githubCommitterAvatarUrl(coAuthor.email)}
                   />
                   <AvatarFallback>
                     {coAuthor.name
@@ -94,7 +97,7 @@ const CommittersCell = React.memo(({ row }: CommittersCellProps) => {
                       <Avatar className="will-change-auto ring-2 ring-background rounded-sm size-4.5 ml-[-0.2rem] group-hover:ml-0.5 transition-all duration-100">
                         <AvatarImage
                           alt="U1"
-                          src={`https://avatars.githubusercontent.com/u/e?email=${coAuthor.email}&s=64`}
+                          src={githubCommitterAvatarUrl(coAuthor.email)}
                         />
                         <AvatarFallback>
                           {coAuthor.name

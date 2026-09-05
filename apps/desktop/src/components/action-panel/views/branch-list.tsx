@@ -24,6 +24,7 @@ import {
   GitBranchPlus,
 } from "lucide-react";
 import { useGetBranches, useGetCurrentBranch } from "@/hooks";
+import { githubCommitterAvatarUrl } from "@/lib/external-content";
 import { timeAgoFromUnixSeconds } from "@/lib/time";
 import { simplifyBranchName } from "./create-branch";
 
@@ -161,7 +162,9 @@ export function useBranchListView(): CommandViewConfig<
                           <Avatar className="ring-2 ring-background rounded-sm size-4">
                             <AvatarImage
                               alt={item.commit?.authors.author.name}
-                              src={`https://avatars.githubusercontent.com/u/e?email=${item?.commit?.authors.author.email}&s=64`}
+                              src={githubCommitterAvatarUrl(
+                                item?.commit?.authors.author.email,
+                              )}
                             />
                             <AvatarFallback>
                               {item.commit?.authors.author.name
@@ -189,7 +192,7 @@ export function useBranchListView(): CommandViewConfig<
                             <Avatar className="ring-2 ring-background rounded-sm size-4 -ml-[0.2rem] group-hover:ml-0.5 transition-all duration-100">
                               <AvatarImage
                                 alt="U1"
-                                src={`https://avatars.githubusercontent.com/u/e?email=${coAuthor.email}&s=64`}
+                                src={githubCommitterAvatarUrl(coAuthor.email)}
                               />
                               <AvatarFallback>
                                 {coAuthor.name

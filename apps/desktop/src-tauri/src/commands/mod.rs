@@ -6,5 +6,6 @@ pub mod history;
 pub mod origin;
 pub mod pickaxe;
 pub mod rebase;
+pub mod security;
 pub mod stash;
 pub mod updater;

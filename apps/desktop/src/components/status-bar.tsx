@@ -49,7 +49,9 @@ import {
   useGitPull,
   useGitPush,
 } from "@/hooks";
+import { githubCommitterAvatarUrl } from "@/lib/external-content";
 import { getAvatarByProvider } from "@/lib/get-avatar-by-git-provider";
+import { openExternalUrlSafely } from "@/lib/open-external-url";
 import { parseOrigin } from "@/lib/parse-origin";
 import { timeAgoFromUnixSeconds } from "@/lib/time";
 import { useActiveRepositoryState } from "@/state/use-active-repository-state";
@@ -105,7 +107,9 @@ const LastCommitBox = () => {
                   <Avatar className="ring-2 ring-background rounded-sm size-4">
                     <AvatarImage
                       alt={lastCommit?.authors.author.name}
-                      src={`https://avatars.githubusercontent.com/u/e?email=${lastCommit?.authors.author.email}&s=64`}
+                      src={githubCommitterAvatarUrl(
+                        lastCommit?.authors.author.email,
+                      )}
                     />
                     <AvatarFallback>
                       {lastCommit?.authors.author.name
@@ -131,7 +135,7 @@ const LastCommitBox = () => {
                     <Avatar className="ring-2 ring-background rounded-sm size-4 -ml-[0.2rem] group-hover:ml-0.5 transition-all duration-100">
                       <AvatarImage
                         alt="U1"
-                        src={`https://avatars.githubusercontent.com/u/e?email=${coAuthor.email}&s=64`}
+                        src={githubCommitterAvatarUrl(coAuthor.email)}
                       />
                       <AvatarFallback>
                         {coAuthor.name
@@ -167,7 +171,9 @@ const LastCommitBox = () => {
                 <Avatar className="ring-2 ring-background rounded-sm size-6">
                   <AvatarImage
                     alt={lastCommit?.authors.author.name}
-                    src={`https://avatars.githubusercontent.com/u/e?email=${lastCommit?.authors.author.email}&s=64`}
+                    src={githubCommitterAvatarUrl(
+                      lastCommit?.authors.author.email,
+                    )}
                   />
                   <AvatarFallback>
                     {lastCommit?.authors.author.name
@@ -193,7 +199,7 @@ const LastCommitBox = () => {
                   <Avatar className="ring-2 ring-background rounded-sm size-6 -ml-[0.2rem] group-hover:ml-0.5 transition-all duration-100">
                     <AvatarImage
                       alt="U1"
-                      src={`https://avatars.githubusercontent.com/u/e?email=${coAuthor.email}&s=64`}
+                      src={githubCommitterAvatarUrl(coAuthor.email)}
                     />
                     <AvatarFallback>
                       {coAuthor.name
@@ -556,7 +562,12 @@ const OriginBadge = () => {
   return (
     <>
       {origin ? (
-        <a target="_blank" href={origin.href} rel="noreferrer">
+        <button
+          type="button"
+          onClick={() => {
+            if (origin.href) void openExternalUrlSafely(origin.href);
+          }}
+        >
           <Badge
             variant={"outline"}
             className="rounded-none py-2.5 px-2 flex items-center cursor-pointer hover:bg-muted! border-transparent border-r-border"
@@ -570,7 +581,7 @@ const OriginBadge = () => {
               <span className="text-foreground">{origin.repo}</span>
             </span>
           </Badge>
-        </a>
+        </button>
       ) : null}
     </>
   );

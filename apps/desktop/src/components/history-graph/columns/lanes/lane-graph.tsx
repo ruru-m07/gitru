@@ -10,6 +10,7 @@ import {
   TooltipPopup,
   TooltipTrigger,
 } from "@gitru/ui/components/tooltip";
+import { githubCommitterAvatarUrl } from "@/lib/external-content";
 import { getRowColor } from "../../helper";
 import { PALETTE } from "./color-palettes";
 
@@ -437,7 +438,7 @@ const LaneGraph = ({ row, maxLane }: GraphLaneProps) => {
             <AvatarImage
               alt="User"
               className={"rounded-full"}
-              src={`https://avatars.githubusercontent.com/u/e?email=${row.commit.authors.author.email}&s=24`}
+              src={githubCommitterAvatarUrl(row.commit.authors.author.email)}
             />
             <AvatarFallback></AvatarFallback>
           </Avatar>
