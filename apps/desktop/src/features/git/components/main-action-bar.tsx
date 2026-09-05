@@ -107,7 +107,7 @@ export const MainActionBar = () => {
         <span className="text-xs text-muted-foreground font-normal">
           {isPending ? "Syncing…" : syncState.label}
         </span>
-        <span className="truncate block w-full text-left">
+        <span className="truncate block w-full text-left text-sm">
           {syncState.detail}
         </span>
       </div>
