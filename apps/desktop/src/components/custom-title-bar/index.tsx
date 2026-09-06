@@ -49,7 +49,7 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
     >
       <div
         className="absolute inset-x-0 flex min-w-0 items-center"
-        data-tauri-drag-region
+        data-tauri-drag-region="deep"
         style={{
           // @ts-expect-error - ¯\_(ツ)_/¯
           WebkitAppRegion: "drag",
