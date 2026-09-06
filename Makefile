@@ -1,4 +1,4 @@
-.PHONY: help setup clean dev dev-vite build-vite build-tauri build format typegen test format-check clippy verify
+.PHONY: help setup clean dev dev-vite build-vite build-tauri build format typegen test test-frontend test-rust format-check clippy verify
 
 .DEFAULT_GOAL := help
 
@@ -67,7 +67,13 @@ clean: ## Clean build artifacts and dependencies
 
 ##@ Testing
 
-test: ## Run all Rust tests
+test: test-frontend test-rust ## Run all frontend and Rust tests
+
+test-frontend: ## Run frontend tests headlessly
+	@echo "$(GREEN)Running frontend tests...$(NC)"
+	bun run test
+
+test-rust: ## Run all Rust tests
 	@echo "$(GREEN)Running Rust tests...$(NC)"
 	cargo test --workspace --verbose
 
@@ -81,7 +87,7 @@ clippy: ## Run Clippy linter
 
 verify: ## Run the complete local and CI verification suite
 	@echo "$(YELLOW)Running frontend tests, lint, type checks, and desktop build...$(NC)"
-	bun test apps/desktop/tests
+	bun run test
 	bun run lint
 	bun run check-types
 	bun run build --filter gitru

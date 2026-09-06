@@ -9,6 +9,8 @@
     "preview": "vite preview",
     "lint": "biome check .",
     "check-types": "tsc --noEmit",
+    "test": "vitest run --config ../../vitest.config.ts --project desktop",
+    "test:watch": "vitest --config ../../vitest.config.ts --project desktop",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -70,15 +72,20 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
-    "@gitru/icon": "*",
-    "@gitru/ui": "*",
     "@gitru/commands": "*",
+    "@gitru/icon": "*",
     "@gitru/mascot": "*",
+    "@gitru/ui": "*",
     "@tauri-apps/cli": "2.10.0",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "^4.6.0",
+    "jsdom": "^26.1.0",
     "typescript": "catalog:",
-    "vite": "^7.0.4"
+    "vite": "^7.0.4",
+    "vitest": "^3.2.4"
   }
 }

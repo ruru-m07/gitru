@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import {
   isSyncControlVisible,
   resolveSyncState,
@@ -13,14 +13,13 @@ const published = {
   upstreamBranch: "origin/main",
 };
 
-describe("resolveSyncState", () => {
+describe("sync decisions", () => {
   test("models the loading state", () => {
     const state = resolveSyncState({});
     expect(state).toMatchObject({
       kind: "loading",
       primaryAction: null,
     });
-    expect(isSyncControlVisible(state)).toBe(false);
   });
 
   test("models an unpublished branch as publish", () => {
@@ -56,7 +55,6 @@ describe("resolveSyncState", () => {
       label: "Fetch",
       primaryAction: "fetch",
     });
-    expect(isSyncControlVisible(state)).toBe(true);
   });
 
   test("models detached HEAD without a publish action", () => {
@@ -70,5 +68,93 @@ describe("resolveSyncState", () => {
     expect(
       resolveSyncState({ status: published, operationKind: "merge" }),
     ).toMatchObject({ kind: "inProgress", primaryAction: null });
+  });
+
+  test("prioritizes an in-progress operation over detached and remote state", () => {
+    expect(
+      resolveSyncState({
+        status: {
+          ...published,
+          ahead: 2,
+          behind: 1,
+          isDetached: true,
+        },
+        operationKind: "rebaseInteractive",
+        isDetached: true,
+      }),
+    ).toEqual({
+      kind: "inProgress",
+      label: "Rebase in progress",
+      detail: "Finish or abort it before syncing",
+      primaryAction: null,
+    });
+  });
+
+  test("treats a clean operation as idle", () => {
+    expect(
+      resolveSyncState({
+        status: { ...published, ahead: 1 },
+        operationKind: "clean",
+      }),
+    ).toMatchObject({ kind: "ahead", primaryAction: "push" });
+  });
+
+  test("prioritizes publishing before ahead and behind counts", () => {
+    expect(
+      resolveSyncState({
+        status: {
+          ...published,
+          ahead: 4,
+          behind: 2,
+          isPublished: false,
+        },
+      }),
+    ).toMatchObject({ kind: "unpublished", primaryAction: "publish" });
+  });
+
+  test("uses singular and plural commit details deterministically", () => {
+    expect(
+      resolveSyncState({ status: { ...published, ahead: 1 } }).detail,
+    ).toBe("1 commit ahead");
+    expect(
+      resolveSyncState({ status: { ...published, behind: 2 } }).detail,
+    ).toBe("2 commits behind");
+  });
+
+  test("falls back safely for an unknown git operation", () => {
+    expect(
+      resolveSyncState({ status: published, operationKind: "futureOperation" }),
+    ).toMatchObject({
+      kind: "inProgress",
+      label: "Git operation in progress",
+      primaryAction: null,
+    });
+  });
+});
+
+describe("sync action predicates", () => {
+  test.each([
+    ["loading", resolveSyncState({}), false],
+    ["detached", resolveSyncState({ isDetached: true }), false],
+    [
+      "operation in progress",
+      resolveSyncState({ status: published, operationKind: "merge" }),
+      true,
+    ],
+    [
+      "unpublished",
+      resolveSyncState({ status: { ...published, isPublished: false } }),
+      true,
+    ],
+    ["ahead", resolveSyncState({ status: { ...published, ahead: 1 } }), true],
+    ["behind", resolveSyncState({ status: { ...published, behind: 1 } }), true],
+    [
+      "diverged",
+      resolveSyncState({ status: { ...published, ahead: 1, behind: 1 } }),
+      true,
+    ],
+    ["synced", resolveSyncState({ status: published }), true],
+  ])("shows the control for %s state: %s", (_name, state, expected) => {
+    expect(isSyncControlVisible(state)).toBe(expected);
   });
 });

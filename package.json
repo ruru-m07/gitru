@@ -4,14 +4,28 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "lint": "turbo run lint",
+    "lint": "bun run lint:testing && turbo run lint",
+    "lint:testing": "biome check vitest.config.ts tests tsconfig.testing.json",
     "format": "biome check --write",
-    "check-types": "turbo run check-types"
+    "check-types": "bun run check-types:testing && turbo run check-types",
+    "check-types:testing": "tsc --noEmit --project tsconfig.testing.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.4",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
+    "@types/node": "^22.10.1",
+    "@vitejs/plugin-react": "^4.6.0",
+    "jsdom": "^26.1.0",
+    "react": "catalog:",
+    "react-dom": "catalog:",
     "turbo": "^2.8.10",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vite": "^7.0.4",
+    "vitest": "^3.2.4"
   },
   "engines": {
     "node": ">=18"

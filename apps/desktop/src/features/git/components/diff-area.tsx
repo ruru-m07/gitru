@@ -15,6 +15,7 @@ import { useDiffViewerSettings } from "@/components/diff/use-diff-view-setting-s
 import LoaderIndicator from "@/components/loader-indicator";
 import { useGetDiff, useGitApplyPatchBlock } from "@/hooks";
 import { diffWorkerFactory } from "@/lib/diff-worker-factory";
+import { resolveDiffActionAvailability } from "../lib/diff-action-availability";
 
 export const DiffArea = ({
   filePath,
@@ -121,9 +122,10 @@ export const DiffArea = ({
 
   const source = stashReference ? "stash" : commitHash ? "history" : "worktree";
 
-  const canStageOrDiscard =
-    source === "worktree" && derivedScope === "unstaged";
-  const canUnstage = source === "worktree" && derivedScope === "staged";
+  const { canStageOrDiscard, canUnstage } = resolveDiffActionAvailability({
+    source,
+    worktreeScope: derivedScope,
+  });
   const patchDiffScope =
     derivedScope === "staged"
       ? "Staged"
