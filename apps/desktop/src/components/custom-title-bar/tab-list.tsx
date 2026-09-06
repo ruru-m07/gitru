@@ -85,7 +85,10 @@ export const TabList = ({
   tabSwitcherTabIds,
   tabSwitcherIndex,
 }: TabListProps) => (
-  <div className="relative ml-2 flex min-w-0 flex-1 items-center gap-1 h-full pt-1">
+  <div
+    data-tab-list="true"
+    className="relative ml-2 flex h-full min-w-0 flex-1 items-center gap-1 pt-1"
+  >
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
@@ -121,12 +124,9 @@ export const TabList = ({
             <SortableTabShell
               key={tab.id}
               id={tab.id}
-              className={cn(
-                "relative h-full",
-                isDraggingTab ? "" : "transition-all",
-              )}
+              className="workspace-tab-shell title-bar-no-drag relative h-full min-w-0 max-w-72 flex-[1_1_18rem]"
             >
-              <div className="relative flex items-end h-full">
+              <div className="relative flex h-full min-w-0 items-end">
                 {isActive && (
                   <svg
                     width="15"
@@ -178,7 +178,7 @@ export const TabList = ({
                     }
                   }}
                   className={cn(
-                    "group flex h-full min-w-44 max-w-72 shrink-0 items-center gap-1 text-sm rounded-t-2xl pb-1 touch-none",
+                    "workspace-tab group flex h-full w-full min-w-0 items-center gap-1 rounded-t-2xl pb-1 text-sm touch-none",
                     isActive
                       ? "bg-background flex items-center [box-shadow:-1px_-1px_1px_0.1px_#0000001A,1px_-1px_1px_0.1px_#0000001A]"
                       : "bg-transparent text-muted-foreground",
@@ -186,7 +186,7 @@ export const TabList = ({
                 >
                   <div
                     className={cn(
-                      "flex max-w-full w-full items-center gap-1 h-full pl-1.5 pr-1 rounded-[12px]",
+                      "flex h-full w-full min-w-0 max-w-full items-center gap-1 rounded-[12px] pr-1 pl-1.5",
                       !isActive &&
                         (!isTabDragInProgress || isDraggingTab) &&
                         "hover:bg-foreground/10",
@@ -198,9 +198,9 @@ export const TabList = ({
                         isActive={isActive}
                       />
                     ) : tab.routePath === "/app/inbox" ? (
-                      <div className="flex items-center gap-1.5">
-                        <Inbox className={"size-4"} />
-                        <span>
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <Inbox className="size-4 shrink-0" />
+                        <span className="truncate">
                           Inbox{" "}
                           <span className="text-muted-foreground/70">(5)</span>
                         </span>
@@ -212,8 +212,10 @@ export const TabList = ({
                       size={"icon-xs"}
                       variant={"ghost"}
                       data-tab-close-button="true"
+                      data-active={isActive}
+                      aria-label={`Close ${tab.title}`}
                       className={cn(
-                        "ms-auto h-5 w-5 rounded-full",
+                        "workspace-tab-close ms-auto h-5 w-5 shrink-0 rounded-full",
                         isActive
                           ? "text-muted-foreground hover:text-foreground"
                           : "text-muted-foreground/70",
@@ -320,13 +322,16 @@ export const TabList = ({
 
     <div
       aria-hidden="true"
-      className={cn("w-0.5 h-4 bg-foreground/5 mb-1 transition-opacity")}
+      className={cn(
+        "mb-1 h-4 w-0.5 shrink-0 bg-foreground/5 transition-opacity",
+      )}
     />
 
     <Button
       size={"icon-sm"}
       variant={"ghost"}
-      className="mb-1 text-muted-foreground/70"
+      aria-label="New tab"
+      className="title-bar-no-drag mb-1 shrink-0 text-muted-foreground/70"
       onClick={() => {
         void handleCreateTab();
       }}

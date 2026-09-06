@@ -22,7 +22,7 @@ export const NavigationButtons = ({
   goForward,
   navigate,
 }: NavigationButtonsProps) => (
-  <div className="flex items-center mr-3 translate-y-px">
+  <div className="title-bar-no-drag mr-3 flex shrink-0 translate-y-px items-center">
     <Button
       onClick={() => {
         console.log(

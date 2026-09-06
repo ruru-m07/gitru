@@ -30,6 +30,7 @@ export const SortableTabShell = ({
   return (
     <div
       ref={setNodeRef}
+      data-tab-id={id}
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
