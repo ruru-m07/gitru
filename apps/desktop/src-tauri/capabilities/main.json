@@ -1,16 +1,15 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "default",
-  "description": "Capability for the main window",
+  "identifier": "main",
+  "description": "Host-shell permissions for the primary Gitru webview",
   "remote": {
     "urls": ["http://localhost:1420/*", "http://127.0.0.1:1420/*"]
   },
-  "windows": ["*"],
+  "webviews": ["main"],
   "permissions": [
-    "core:default",
-    "opener:default",
-    "core:window:default",
+    "core:event:default",
     "core:window:allow-start-dragging",
+    "core:webview:allow-get-all-webviews",
     "core:webview:allow-create-webview",
     "core:webview:allow-webview-show",
     "core:webview:allow-webview-hide",
@@ -19,12 +18,13 @@
     "core:webview:allow-set-webview-size",
     "core:webview:allow-set-webview-focus",
     "core:webview:allow-set-webview-zoom",
-    "store:default",
+    "store:allow-load",
+    "store:allow-get-store",
+    "store:allow-get",
+    "store:allow-set",
+    "store:allow-delete",
+    "store:allow-save",
     "process:allow-restart",
-    "process:allow-exit",
-    "dialog:default",
-    "updater:default",
-    "notification:default",
-    "log:allow-log"
+    "dialog:allow-open"
   ]
 }

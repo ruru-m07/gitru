@@ -1,4 +1,9 @@
 import { GIT_PROVIDERS } from "@/types/app";
+import {
+  bitbucketWorkspaceAvatarUrl,
+  githubAccountAvatarUrl,
+  normalizeExternalHttpsUrl,
+} from "./external-content";
 
 interface ParseOriginResult {
   host: string;
@@ -42,7 +47,17 @@ export function parseOrigin(
     }
   } else {
     // ? HTTPS format
-    const url = new URL(origin);
+    let url: URL;
+    try {
+      url = new URL(origin);
+    } catch {
+      return undefined;
+    }
+
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      return undefined;
+    }
+
     host = url.hostname;
     protocol = url.protocol.replace(":", "");
     const pathParts = url.pathname
@@ -57,23 +72,21 @@ export function parseOrigin(
   }
 
   // ? Determine provider
-  if (host.includes("github.com")) {
+  if (host === "github.com") {
     provider = "github";
-    avatarUrl = owner ? `https://github.com/${owner}.png` : undefined;
-  } else if (host.includes("gitlab.com")) {
+    avatarUrl = githubAccountAvatarUrl(owner);
+  } else if (host === "gitlab.com") {
     provider = "gitlab";
-    // TODO: GitLab avatar URL pattern
-    avatarUrl = owner ? `https://github.com/${owner}.png` : undefined;
-  } else if (host.includes("bitbucket.org")) {
+  } else if (host === "bitbucket.org") {
     provider = "bitbucket";
-    avatarUrl = owner
-      ? `https://bitbucket.org/workspaces/${owner}/avatar/64`
-      : undefined;
+    avatarUrl = bitbucketWorkspaceAvatarUrl(owner);
   }
 
   if (host && owner && repo) {
     const hrefProtocol = protocol && protocol !== "ssh" ? protocol : "https";
-    href = `${hrefProtocol}://${host}/${owner}/${repo}`;
+    href =
+      normalizeExternalHttpsUrl(`${hrefProtocol}://${host}/${owner}/${repo}`) ??
+      undefined;
   }
 
   return { host, owner, repo, protocol, provider, avatarUrl, href };

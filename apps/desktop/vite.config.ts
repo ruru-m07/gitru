@@ -11,6 +11,9 @@ const host = process.env.TAURI_DEV_HOST;
 const config = defineConfig(async ({ mode }): Promise<UserConfig> => {
   const env = loadEnv(mode, process.cwd(), "");
   return {
+    esbuild: {
+      drop: mode === "production" ? ["console", "debugger"] : [],
+    },
     plugins: [
       tanstackRouter({ target: "react", autoCodeSplitting: true }),
       react(),

@@ -20,6 +20,7 @@ import PageLayout from "@/components/page-layout";
 import StatusBar from "@/components/status-bar";
 import { useRepositories } from "@/hooks/use-repositories";
 import { getAvatarByProvider } from "@/lib/get-avatar-by-git-provider";
+import { openExternalUrlSafely } from "@/lib/open-external-url";
 import { parseOrigin } from "@/lib/parse-origin";
 import { selectActiveRepository, useAppStore } from "@/store/use-app-store";
 import { ResizableArea } from "./resizable-area";
@@ -58,13 +59,15 @@ export function GitPageLayout() {
               {repositories?.length === 0 ? "Add" : "Select"} repositorys to get
               start!
             </h1>
-            <a
-              href="https://gitru.app/docs"
+            <button
+              type="button"
               className="text-sm font-normal text-muted-foreground hover:underline opacity-70 hover:opacity-100 transition-opacity"
-              target="_blank"
+              onClick={() =>
+                void openExternalUrlSafely("https://gitru.app/docs")
+              }
             >
               Learn more ↗
-            </a>
+            </button>
           </div>
           <div className="grid grid-cols-3 gap-4 px-[calc(--spacing(3)-1px)]">
             <Button

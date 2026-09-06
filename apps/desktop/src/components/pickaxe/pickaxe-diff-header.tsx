@@ -14,6 +14,7 @@ import { useMemo } from "react";
 import { DiffStat } from "@/components/diff-boxes";
 import { getStatusIcon } from "@/components/get-status-icon";
 import { PickaxeHit } from "@/hooks";
+import { githubCommitterAvatarUrl } from "@/lib/external-content";
 import { fileDiffTypeToStatus } from "@/lib/pickaxe-status";
 import { timeAgoFromUnixSeconds } from "@/lib/time";
 
@@ -90,7 +91,9 @@ export function PickaxeDiffHeader({
                 <Avatar className="ring-2 ring-background rounded-sm size-4">
                   <AvatarImage
                     alt={hit.commit.authors.author.name}
-                    src={`https://avatars.githubusercontent.com/u/e?email=${hit.commit.authors.author.email}&s=64`}
+                    src={githubCommitterAvatarUrl(
+                      hit.commit.authors.author.email,
+                    )}
                   />
                   <AvatarFallback>
                     {hit.commit.authors.author.name
@@ -116,7 +119,7 @@ export function PickaxeDiffHeader({
                   <Avatar className="ring-2 ring-background rounded-sm size-4 ml-[-0.2rem] group-hover:ml-0.5 transition-all duration-100">
                     <AvatarImage
                       alt="U1"
-                      src={`https://avatars.githubusercontent.com/u/e?email=${coAuthor.email}&s=64`}
+                      src={githubCommitterAvatarUrl(coAuthor.email)}
                     />
                     <AvatarFallback>
                       {coAuthor.name

@@ -12,7 +12,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@gitru/ui/components/tooltip";
-import { Download, Plus, RotateCcw } from "lucide-react";
+import { ChartNoAxesCombined, Download, Plus, RotateCcw } from "lucide-react";
+import { toast } from "sonner";
+import { isEmbeddedRuntime } from "@/bootstrap/runtime-utils";
+import { githubAccountAvatarUrl } from "@/lib/external-content";
+import {
+  setTelemetryConsent,
+  useTelemetryConsent,
+} from "@/lib/telemetry-preference";
 import { useAppStore } from "@/store/use-app-store";
 import SideBarItems from "./items";
 import { useUpdateState } from "./update-state";
@@ -21,6 +28,7 @@ const CIRCLE_RADIUS = 12;
 const CIRCLE_CIRCUMFERENCE = 2 * Math.PI * CIRCLE_RADIUS;
 
 const Sidebar = () => {
+  const telemetryEnabled = useTelemetryConsent();
   const updateChannel = useAppStore((s) => s.updateChannel);
   const {
     updateStatus,
@@ -31,9 +39,10 @@ const Sidebar = () => {
   } = useUpdateState(updateChannel);
 
   const showUpdateAction =
-    updateStatus === "available" ||
-    updateStatus === "downloading" ||
-    updateStatus === "downloaded";
+    !isEmbeddedRuntime() &&
+    (updateStatus === "available" ||
+      updateStatus === "downloading" ||
+      updateStatus === "downloaded");
 
   const progressPercent = downloadProgress?.percent ?? 0;
   const versionLabel = availableUpdate?.version ?? "latest";
@@ -111,10 +120,7 @@ const Sidebar = () => {
                     size="icon"
                   >
                     <Avatar className="rounded-md size-7">
-                      <AvatarImage
-                        src={`https://github.com/${v}.png`}
-                        alt={v}
-                      />
+                      <AvatarImage src={githubAccountAvatarUrl(v)} alt={v} />
                       <AvatarFallback></AvatarFallback>
                     </Avatar>
                   </Button>
@@ -155,6 +161,41 @@ const Sidebar = () => {
       </div>
 
       <div className="flex flex-col items-center gap-1 pb-1">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant={telemetryEnabled ? "secondary" : "ghost"}
+                  size="icon-sm"
+                  className="p-0"
+                  aria-pressed={telemetryEnabled}
+                  aria-label={`Anonymous usage analytics: ${telemetryEnabled ? "on" : "off"}`}
+                  onClick={() => {
+                    const nextEnabled = !telemetryEnabled;
+                    setTelemetryConsent(nextEnabled);
+                    toast.success(
+                      nextEnabled
+                        ? "Anonymous usage analytics enabled"
+                        : "Anonymous usage analytics disabled",
+                      {
+                        description:
+                          "Gitru never includes repository paths, code, diffs, remotes, or commit data.",
+                      },
+                    );
+                  }}
+                />
+              }
+            >
+              <ChartNoAxesCombined aria-hidden="true" />
+            </TooltipTrigger>
+            <TooltipPopup side="right">
+              Anonymous usage analytics: {telemetryEnabled ? "On" : "Off"}. No
+              repository content is collected.
+            </TooltipPopup>
+          </Tooltip>
+        </TooltipProvider>
+
         {showUpdateAction ? (
           <TooltipProvider>
             <Tooltip>
@@ -189,7 +230,7 @@ const Sidebar = () => {
         ) : null}
 
         <Avatar className="rounded-md size-7">
-          <AvatarImage alt="User" src="https://github.com/ruru-m07.png" />
+          <AvatarImage alt="User" src={githubAccountAvatarUrl("ruru-m07")} />
           <AvatarFallback>AV</AvatarFallback>
         </Avatar>
         {/* <AvatarDropdown rateLimit={rateLimit} user={session?.user} /> */}

@@ -7,6 +7,7 @@ import { ChevronRightIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import * as T from "@/components/typography";
+import { normalizeRemoteImageUrl } from "@/lib/external-content";
 import { Colors, type ColorsType } from "../../../lib/colors";
 
 export const Route = createFileRoute("/auth/onboarding/")({
@@ -44,7 +45,10 @@ const OnboardingPage = () => {
         <span className="capitalize relative">
           {" "}
           <img
-            src={session?.user?.image || "/default-avatar.png"}
+            src={
+              normalizeRemoteImageUrl(session?.user?.image) ||
+              "/default-avatar.png"
+            }
             alt="User Avatar"
             width={40}
             height={40}

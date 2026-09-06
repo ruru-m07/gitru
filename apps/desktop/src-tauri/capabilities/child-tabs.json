@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "child-tabs",
+  "description": "Read-only app-state and repository-picker access for embedded Git tab webviews",
+  "remote": {
+    "urls": ["http://localhost:1420/*", "http://127.0.0.1:1420/*"]
+  },
+  "webviews": ["tab-webview:*"],
+  "permissions": [
+    "core:event:default",
+    "store:allow-load",
+    "store:allow-get-store",
+    "store:allow-get",
+    "dialog:allow-open"
+  ]
+}
