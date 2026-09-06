@@ -48,12 +48,12 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
       }}
     >
       <div
-        className="absolute inset-x-0 flex min-w-0 items-center pr-4"
+        className="absolute inset-x-0 flex min-w-0 items-center"
         data-tauri-drag-region
         style={{
           // @ts-expect-error - ¯\_(ツ)_/¯
           WebkitAppRegion: "drag",
-          paddingLeft: "70px",
+          paddingLeft: "90px",
         }}
       >
         <NavigationButtons
