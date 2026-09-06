@@ -11,11 +11,13 @@ use tauri::{App, Manager};
 use tauri_plugin_store::StoreExt;
 use tokio::sync::RwLock;
 
+#[cfg(target_os = "macos")]
+mod app_menu;
 mod commands;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
@@ -31,7 +33,14 @@ pub fn run() {
         .manage(AppState {
             services: RwLock::new(HashMap::new()),
         })
-        .manage(Arc::new(SessionManager::new()))
+        .manage(Arc::new(SessionManager::new()));
+
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .menu(app_menu::build)
+        .on_menu_event(app_menu::handle_event);
+
+    builder
         .setup(|app| {
             setup_managers(app);
             Ok(())

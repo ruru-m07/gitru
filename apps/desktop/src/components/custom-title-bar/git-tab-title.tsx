@@ -19,8 +19,8 @@ export const GitTabTitle = ({
 }) => {
   if (!repository) {
     return (
-      <div className="flex items-center gap-1.5 truncate font-medium">
-        <Git className={"size-4"} />
+      <div className="flex min-w-0 items-center gap-1.5 truncate font-medium">
+        <Git className="size-4 shrink-0" />
         <span className="truncate font-medium">Git Repository</span>
       </div>
     );

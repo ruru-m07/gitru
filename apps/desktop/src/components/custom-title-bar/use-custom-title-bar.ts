@@ -11,11 +11,12 @@ import { arrayMove } from "@dnd-kit/sortable";
 import { type RepositoryInfo } from "@gitru/commands";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { type MouseEvent, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useRepositories } from "@/hooks/use-repositories";
 import { useSessionNavigation } from "@/hooks/use-session-navigation";
 import {
+  resolveTabManagementShortcut,
   TAB_SWITCH_CYCLE_MODE,
   TAB_SWITCH_SHORTCUT_EVENT,
   type TabSwitchShortcutPayload,
@@ -57,7 +58,6 @@ export function useCustomTitleBar() {
   const ensureActiveTab = useAppStore((state) => state.ensureActiveTab);
   const createTab = useAppStore((state) => state.createTab);
   const activateTab = useAppStore((state) => state.activateTab);
-  const closeTab = useAppStore((state) => state.closeTab);
   const reorderTab = useAppStore((state) => state.reorderTab);
   const syncActiveTab = useAppStore((state) => state.syncActiveTab);
   const suppressClickTabIdRef = useRef<string | null>(null);
@@ -78,6 +78,8 @@ export function useCustomTitleBar() {
     (_backward: boolean, _modifier: TabSwitchModifier) => {},
   );
   const handleTabSwitchCommitRef = useRef(() => {});
+  const handleCreateTabRef = useRef(() => {});
+  const handleCloseActiveTabRef = useRef(() => {});
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -107,13 +109,17 @@ export function useCustomTitleBar() {
   const shouldReserveTabSwitcherSpace =
     isRootShellMode && TAB_SWITCH_CYCLE_MODE === "MRU" && isTabSwitcherOpen;
 
-  const disposeRuntimeForTab = (tabId: string) => {
-    const tab = tabs.find((item) => item.id === tabId);
+  const disposeRuntimeForTab = (
+    tabId: string,
+    repositoryId: string | null | undefined,
+  ) => {
     const contextEntry = repoContextRegistry.getScopeContext(tabId);
 
-    if (tab?.repositoryId && contextEntry?.contextId) {
+    if (repositoryId && contextEntry?.contextId) {
       const repository =
-        repositories.find((repo) => repo.id === tab.repositoryId) ?? null;
+        useAppStore
+          .getState()
+          .repositories.find((repo) => repo.id === repositoryId) ?? null;
 
       if (repository?.path) {
         void appState.repositories.dispose(
@@ -287,23 +293,16 @@ export function useCustomTitleBar() {
     });
   };
 
-  const handleCloseTab = async (
-    tabId: string,
-    event: MouseEvent<HTMLButtonElement>,
-  ) => {
-    event.stopPropagation();
+  const handleCloseTab = async (tabId: string) => {
+    const currentState = useAppStore.getState();
+    const tab = currentState.tabs.find((item) => item.id === tabId);
 
-    if (tabs.length <= 1) {
+    if (currentState.tabs.length <= 1 || !tab) {
       return;
     }
 
-    const wasActive = tabId === activeTabId;
-    closeTab(tabId);
-    disposeRuntimeForTab(tabId);
-
-    if (!wasActive) {
-      return;
-    }
+    currentState.closeTab(tabId);
+    disposeRuntimeForTab(tabId, tab.repositoryId);
   };
 
   const getMruCandidateTabIds = () => {
@@ -427,6 +426,16 @@ export function useCustomTitleBar() {
   useEffect(() => {
     handleTabSwitchAdvanceRef.current = handleTabSwitchAdvance;
     handleTabSwitchCommitRef.current = handleTabSwitchCommit;
+    handleCreateTabRef.current = () => {
+      void handleCreateTab();
+    };
+    handleCloseActiveTabRef.current = () => {
+      const currentActiveTabId = useAppStore.getState().activeTabId;
+
+      if (currentActiveTabId) {
+        void handleCloseTab(currentActiveTabId);
+      }
+    };
   });
 
   useEffect(() => {
@@ -456,6 +465,21 @@ export function useCustomTitleBar() {
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      const managementShortcut = resolveTabManagementShortcut(event);
+
+      if (managementShortcut) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (managementShortcut === "create") {
+          handleCreateTabRef.current();
+        } else {
+          handleCloseActiveTabRef.current();
+        }
+
+        return;
+      }
+
       if (
         TAB_SWITCH_CYCLE_MODE === "MRU" &&
         event.key === "Escape" &&
@@ -497,10 +521,11 @@ export function useCustomTitleBar() {
     window.addEventListener("keyup", handleKeyUp, true);
     window.addEventListener("blur", handleWindowBlur);
 
+    let disposed = false;
     let unlistenTabSwitchShortcut: (() => void) | undefined;
 
     const registerTabSwitchShortcutListener = async () => {
-      unlistenTabSwitchShortcut =
+      const unlisten =
         await getCurrentWebview().listen<TabSwitchShortcutPayload>(
           TAB_SWITCH_SHORTCUT_EVENT,
           ({ payload }) => {
@@ -516,14 +541,34 @@ export function useCustomTitleBar() {
               return;
             }
 
-            handleTabSwitchCommitRef.current();
+            if (payload.phase === "commit") {
+              handleTabSwitchCommitRef.current();
+              return;
+            }
+
+            if (payload.phase === "create") {
+              handleCreateTabRef.current();
+              return;
+            }
+
+            if (payload.phase === "close") {
+              handleCloseActiveTabRef.current();
+            }
           },
         );
+
+      if (disposed) {
+        unlisten();
+        return;
+      }
+
+      unlistenTabSwitchShortcut = unlisten;
     };
 
     void registerTabSwitchShortcutListener();
 
     return () => {
+      disposed = true;
       window.removeEventListener("keydown", handleKeyDown, true);
       window.removeEventListener("keyup", handleKeyUp, true);
       window.removeEventListener("blur", handleWindowBlur);

@@ -37,6 +37,26 @@ html {
   app-region: drag;
 }
 
+.title-bar-no-drag {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.workspace-tab-shell {
+  container-type: inline-size;
+}
+
+@container (max-width: 96px) {
+  .workspace-tab-close[data-active="false"] {
+    display: none;
+  }
+
+  .workspace-tab:hover .workspace-tab-close[data-active="false"],
+  .workspace-tab:focus-within .workspace-tab-close[data-active="false"] {
+    display: inline-flex;
+  }
+}
+
 .custom-scroll {
   scrollbar-width: thin;
   scrollbar-color: var(--color-muted) transparent;

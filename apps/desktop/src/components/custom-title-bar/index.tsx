@@ -48,11 +48,12 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
       }}
     >
       <div
-        className="absolute flex w-fit items-center pr-4"
+        className="absolute inset-x-0 flex min-w-0 items-center"
+        data-tauri-drag-region="deep"
         style={{
           // @ts-expect-error - ¯\_(ツ)_/¯
-          WebkitAppRegion: "no-drag",
-          paddingLeft: "70px",
+          WebkitAppRegion: "drag",
+          paddingLeft: "90px",
         }}
       >
         <NavigationButtons
@@ -64,7 +65,7 @@ const CustomTitleBar = ({ restrictedPaths = [] }: CustomTitleBarProps) => {
           goForward={goForward}
           navigate={navigate}
         />
-        <div className="-translate-x-3 flex w-fit items-center h-[calc(var(--main-custom-header-height)-0px)]">
+        <div className="-translate-x-3 flex h-[calc(var(--main-custom-header-height)-0px)] min-w-0 flex-1 items-center">
           <TabList
             sensors={sensors}
             orderedTabIds={orderedTabIds}
