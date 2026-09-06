@@ -1,5 +1,64 @@
 # Changelog
 
+## [0.0.0-beta.7](https://github.com/ruru-m07/gitru/compare/v0.0.0-beta.6...v0.0.0-beta.7) (2026-09-06)
+
+
+### Features
+
+* add diff viewer components and functionality for improved Git interaction ([9b826db](https://github.com/ruru-m07/gitru/commit/9b826db7b29cf0db0361cc560a15fa6e90d8e66d))
+* add no repository screen and repository management features ([4aa12e9](https://github.com/ruru-m07/gitru/commit/4aa12e94e9d4c027e5ea855c94916c3e475da521))
+* add PickaxeView to GitMainView for enhanced file exploration ([f4933ec](https://github.com/ruru-m07/gitru/commit/f4933ec2395fefaadfea640038fc0961218fc76d))
+* **desktop:** add browser-style tab controls ([57e9e71](https://github.com/ruru-m07/gitru/commit/57e9e71e8d7f21b4c88f0dc7d44f01190629a054))
+* **desktop:** animate tab width changes ([95bfe1a](https://github.com/ruru-m07/gitru/commit/95bfe1a0c6fb146719d6e5e0c742acbc4daf18e9))
+* enhance commit draft management and rebase functionality ([533521f](https://github.com/ruru-m07/gitru/commit/533521f74b0d6e1f0b68d35bf37a0787682db450))
+* enhance PostHog integration with analytics tracking and presence pings ([6662a49](https://github.com/ruru-m07/gitru/commit/6662a49a0de1e617ecc5d7e1db94b9bf3f4ee634))
+* enhance rebase functionality with improved conflict handling and UI updates ([b73bf60](https://github.com/ruru-m07/gitru/commit/b73bf60f2989dcc517c40dd3bfa86bf498677ce2))
+* **git:** pickaxe ([b0d3bd7](https://github.com/ruru-m07/gitru/commit/b0d3bd7ac42b45d615e94d052a4b2ab96206524c))
+* implement graph layout and hover dom mutation stuff ([1687000](https://github.com/ruru-m07/gitru/commit/16870009107808d199836f6f1a032cef76302ac9))
+* implement rebase functionality with UI integration for conflict resolution and operation management ([8759c16](https://github.com/ruru-m07/gitru/commit/8759c16de174f64ae9b7b8fa8af45e407c821925))
+* Implement timeline search functionality with highlights and status tracking ([7a814e6](https://github.com/ruru-m07/gitru/commit/7a814e61031889d2ea845cad0998f5af6b7532bd))
+* improved git graph data loading ([98cbd06](https://github.com/ruru-m07/gitru/commit/98cbd063a641c24eb90149fd23de4525a3d62bba))
+* integrate PostHog for analytics tracking and update dependencies ([46bea86](https://github.com/ruru-m07/gitru/commit/46bea86ddff9238c20e9dc766ac5dfbe24bed402))
+* integrate PostHog for analytics tracking and update dependencies ([92c3648](https://github.com/ruru-m07/gitru/commit/92c36488da06e0a0d942c1c13a830fd7b7c2777d))
+* optiized graph data loading ([9a6b4ff](https://github.com/ruru-m07/gitru/commit/9a6b4ff48c5ea755c115e4dbd825a3b8e382f6fc))
+* **pickaxe:** implement search functionality with customizable options ([9b774da](https://github.com/ruru-m07/gitru/commit/9b774da0a5ae7890f61bd21874ef8d41c2c7923b))
+* rebase visualization ([2fee6a6](https://github.com/ruru-m07/gitru/commit/2fee6a64796f1ec5a77c2c7603713b72b9872882))
+* Refactor pickaxe functionality and improve search capabilities ([0502aa7](https://github.com/ruru-m07/gitru/commit/0502aa7b1714cafd0f60480cbfa143417552d8fb))
+* **security:** harden desktop trust boundaries ([f824a83](https://github.com/ruru-m07/gitru/commit/f824a8313c661eb498a2048306193d10101fb4da))
+* **security:** harden desktop trust boundaries (RURU-82) ([66fe8f6](https://github.com/ruru-m07/gitru/commit/66fe8f6f967ee4b2c0df99c05d040daeb82bf0d1))
+* setup git graph initial ui blocks ([740ed86](https://github.com/ruru-m07/gitru/commit/740ed8661f41f322b38a63f0547f307da9847a9e))
+
+
+### Bug Fixes
+
+* adjust stroke dasharray for improved visual indication in rebase todo list ([1c74939](https://github.com/ruru-m07/gitru/commit/1c749393af2c7ac917d1f5cbb253e3975e788b14))
+* align minor UI alignments ([e388fda](https://github.com/ruru-m07/gitru/commit/e388fdaea02c151ca983526d8f346b97358851c9))
+* **desktop:** adjust padding in custom title bar for better layout ([f6fa45a](https://github.com/ruru-m07/gitru/commit/f6fa45a88003aa0d75b3d1321ff94e6039d79728))
+* **desktop:** adjust text size for sync state detail in action bar ([aa9aa25](https://github.com/ruru-m07/gitru/commit/aa9aa25fd64846bba8af602a9c286c9f432b9fb7))
+* **desktop:** correct sync toolbar actions ([815b3a2](https://github.com/ruru-m07/gitru/commit/815b3a23bcf7b6a27297bba66ecba8971ab7c166))
+* **desktop:** correct sync toolbar actions (RURU-55) ([3e952a6](https://github.com/ruru-m07/gitru/commit/3e952a6802e45009e2c9f9a9b195f105ad4b33da))
+* **desktop:** keep workspace tabs within title bar ([fad88f2](https://github.com/ruru-m07/gitru/commit/fad88f2a752c7df2427357a5694b0cef3c7c1704))
+* **desktop:** make full title bar draggable ([5a5b2fe](https://github.com/ruru-m07/gitru/commit/5a5b2fe57ab8e936bbef03dbf7a1b5d454986e4e))
+* **desktop:** show fetch for synced branches (RURU-55) ([b2de5b5](https://github.com/ruru-m07/gitru/commit/b2de5b5cb57c15b5d7b6287ddd126b6d0d2c0658))
+* **desktop:** tighten default workspace tab width ([b11c2e1](https://github.com/ruru-m07/gitru/commit/b11c2e1a1cf9a144ad018abaf09538fbc0983ef9))
+* minor branch data on non tip commits ([e51b293](https://github.com/ruru-m07/gitru/commit/e51b293e96c1ea2500c880ce2eec2ab41d7aac6f))
+* minor UI improvements ([ea1c95a](https://github.com/ruru-m07/gitru/commit/ea1c95a9bd9d234c8cb77009aef6ae544136ddd3))
+* reorder imports and improve layout in NoRepositoryScreen component ([96904a9](https://github.com/ruru-m07/gitru/commit/96904a9b8f23dab7a46f5c975513ecf5e00e54ac))
+* update background styles and improve layout in DiffArea and Pickaxe components ([67c47dd](https://github.com/ruru-m07/gitru/commit/67c47dd284d4c0039016aeb9f62365edb96e9787))
+* update graph gen args to have date order instant of topo ([51343bd](https://github.com/ruru-m07/gitru/commit/51343bd6b15f1cdfb59bf06feb1034024d7bcdf3))
+
+
+### Performance Improvements
+
+* **desktop:** prioritize persistent tab activation ([9d5d09f](https://github.com/ruru-m07/gitru/commit/9d5d09fadd4a92dd92debbae0ee9a164afbaf7a3))
+* **desktop:** prioritize persistent tab activation ([e2770b5](https://github.com/ruru-m07/gitru/commit/e2770b5b50968327c7b02940dbd61434f62496be))
+* **desktop:** prioritize persistent tab activation ([dba283b](https://github.com/ruru-m07/gitru/commit/dba283b9fce0130cc025c6dd961b6114837037c4))
+
+
+### Miscellaneous Chores
+
+* release 0.0.0-beta.7 ([cdce4d9](https://github.com/ruru-m07/gitru/commit/cdce4d987668e28d8148b8596ffa550670a36450))
+
 ## [0.0.0-beta.6](https://github.com/ruru-m07/gitru/compare/v0.0.0-beta.5...v0.0.0-beta.6) (2026-06-02)
 
 
