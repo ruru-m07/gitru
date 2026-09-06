@@ -34,6 +34,8 @@ Do not put `components/` or `lib/` folders inside `routes/`. That triggers build
 
 - **Format & lint:** Biome (`bun run lint`, `bun run format`)
 - **Typecheck:** `tsc --noEmit` per package
+- **Frontend tests:** Vitest from the root (`bun run test`); see
+  [frontend testing](./testing.md)
 - **UI components:** Import from `@gitru/ui/components/*`, utilities from `@gitru/ui/lib/utils`
 
 ## Rust (Tauri)
