@@ -17,7 +17,7 @@ import { Inbox } from "@gitru/icon";
 import { Button } from "@gitru/ui/components/button";
 import { cn } from "@gitru/ui/lib/utils";
 import { Plus, X } from "lucide-react";
-import { type MouseEvent, type RefObject } from "react";
+import { type RefObject } from "react";
 
 import { TAB_SWITCH_CYCLE_MODE } from "@/lib/tab-switching";
 
@@ -49,10 +49,7 @@ type TabListProps = {
   repositories: RepositoryInfo[];
   handleActivateTab: (tabId: string) => Promise<void>;
   handleCreateTab: () => Promise<void>;
-  handleCloseTab: (
-    tabId: string,
-    event: MouseEvent<HTMLButtonElement>,
-  ) => Promise<void>;
+  handleCloseTab: (tabId: string) => Promise<void>;
   handleDragStart: (event: DragStartEvent) => void;
   handleDragOver: (event: DragOverEvent) => void;
   handleDragEnd: (event: DragEndEvent) => void;
@@ -145,13 +142,36 @@ export const TabList = ({
                 <div
                   role="button"
                   tabIndex={0}
-                  onMouseDown={() => {
+                  onPointerDownCapture={(event) => {
+                    if (event.button === 1) {
+                      event.stopPropagation();
+                    }
+                  }}
+                  onMouseDown={(event) => {
+                    if (event.button !== 0) {
+                      if (event.button === 1) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                      }
+
+                      return;
+                    }
+
                     if (suppressClickTabIdRef.current === tab.id) {
                       suppressClickTabIdRef.current = null;
                       return;
                     }
 
                     void handleActivateTab(tab.id);
+                  }}
+                  onAuxClick={(event) => {
+                    if (event.button !== 1) {
+                      return;
+                    }
+
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void handleCloseTab(tab.id);
                   }}
                   onMouseEnter={() => {
                     if (isTabDragInProgress && !isDraggingTab) {
@@ -230,7 +250,7 @@ export const TabList = ({
                       onClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
-                        void handleCloseTab(tab.id, event);
+                        void handleCloseTab(tab.id);
                       }}
                     >
                       <X size={12} aria-hidden="true" />

@@ -10,6 +10,7 @@ import { WorkspaceSessionSnapshot } from "@/types/store";
 import { TabContextProvider } from "../context/tab-context-provider";
 import { colorKeyList } from "../lib/colors";
 import {
+  resolveTabManagementShortcut,
   TAB_SWITCH_SHORTCUT_EVENT,
   type TabSwitchShortcutPayload,
 } from "../lib/tab-switching";
@@ -119,6 +120,15 @@ const AppRouter = () => {
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      const managementShortcut = resolveTabManagementShortcut(event);
+
+      if (managementShortcut) {
+        event.preventDefault();
+        event.stopPropagation();
+        emitTabSwitchShortcut({ phase: managementShortcut });
+        return;
+      }
+
       if (!(event.ctrlKey || event.metaKey) || event.key !== "Tab") {
         return;
       }
