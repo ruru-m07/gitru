@@ -121,7 +121,7 @@ export const TabList = ({
             <SortableTabShell
               key={tab.id}
               id={tab.id}
-              className="workspace-tab-shell title-bar-no-drag relative h-full min-w-0 max-w-72 flex-[1_1_18rem]"
+              className="workspace-tab-shell title-bar-no-drag relative h-full min-w-0 max-w-60 flex-[1_1_15rem]"
             >
               <div className="relative flex h-full min-w-0 items-end">
                 {isActive && (
