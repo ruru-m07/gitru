@@ -5,7 +5,6 @@ import {
   normalizeExternalHttpsUrl,
   normalizeRemoteImageUrl,
 } from "../src/lib/external-content";
-import { telemetryConsentFromValue } from "../src/lib/telemetry-preference";
 
 describe("external URL validation", () => {
   test("accepts HTTPS links and normalizes them", () => {
@@ -52,13 +51,5 @@ describe("remote image validation", () => {
     expect(githubCommitterAvatarUrl("a+b@example.com&size=huge")).toContain(
       "email=a%2Bb%40example.com%26size%3Dhuge",
     );
-  });
-});
-
-describe("telemetry consent", () => {
-  test("defaults to disabled and requires an explicit grant", () => {
-    expect(telemetryConsentFromValue(null)).toBe(false);
-    expect(telemetryConsentFromValue("denied")).toBe(false);
-    expect(telemetryConsentFromValue("granted")).toBe(true);
   });
 });

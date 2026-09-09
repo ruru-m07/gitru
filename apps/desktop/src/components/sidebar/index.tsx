@@ -12,14 +12,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@gitru/ui/components/tooltip";
-import { ChartNoAxesCombined, Download, Plus, RotateCcw } from "lucide-react";
-import { toast } from "sonner";
+import { Download, Plus, RotateCcw } from "lucide-react";
 import { isEmbeddedRuntime } from "@/bootstrap/runtime-utils";
 import { githubAccountAvatarUrl } from "@/lib/external-content";
-import {
-  setTelemetryConsent,
-  useTelemetryConsent,
-} from "@/lib/telemetry-preference";
 import { useAppStore } from "@/store/use-app-store";
 import SideBarItems from "./items";
 import { useUpdateState } from "./update-state";
@@ -28,7 +23,6 @@ const CIRCLE_RADIUS = 12;
 const CIRCLE_CIRCUMFERENCE = 2 * Math.PI * CIRCLE_RADIUS;
 
 const Sidebar = () => {
-  const telemetryEnabled = useTelemetryConsent();
   const updateChannel = useAppStore((s) => s.updateChannel);
   const {
     updateStatus,
@@ -161,41 +155,6 @@ const Sidebar = () => {
       </div>
 
       <div className="flex flex-col items-center gap-1 pb-1">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant={telemetryEnabled ? "secondary" : "ghost"}
-                  size="icon-sm"
-                  className="p-0"
-                  aria-pressed={telemetryEnabled}
-                  aria-label={`Anonymous usage analytics: ${telemetryEnabled ? "on" : "off"}`}
-                  onClick={() => {
-                    const nextEnabled = !telemetryEnabled;
-                    setTelemetryConsent(nextEnabled);
-                    toast.success(
-                      nextEnabled
-                        ? "Anonymous usage analytics enabled"
-                        : "Anonymous usage analytics disabled",
-                      {
-                        description:
-                          "Gitru never includes repository paths, code, diffs, remotes, or commit data.",
-                      },
-                    );
-                  }}
-                />
-              }
-            >
-              <ChartNoAxesCombined aria-hidden="true" />
-            </TooltipTrigger>
-            <TooltipPopup side="right">
-              Anonymous usage analytics: {telemetryEnabled ? "On" : "Off"}. No
-              repository content is collected.
-            </TooltipPopup>
-          </Tooltip>
-        </TooltipProvider>
-
         {showUpdateAction ? (
           <TooltipProvider>
             <Tooltip>

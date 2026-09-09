@@ -1,7 +1,13 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { StateFlags, saveWindowState } from "@tauri-apps/plugin-window-state";
 import { PostHogProvider, usePostHog } from "posthog-js/react";
 import { useEffect } from "react";
-import { useTelemetryConsent } from "@/lib/telemetry-preference";
+
+const WINDOW_STATE_FLAGS =
+  StateFlags.SIZE | StateFlags.POSITION | StateFlags.MAXIMIZED;
+const WINDOW_STATE_SAVE_DELAY_MS = 400;
+const WINDOW_STATE_STARTUP_DELAY_MS = 1_000;
 
 const isEmbeddedRuntime = () => {
   if (typeof window === "undefined") {
@@ -15,15 +21,10 @@ const isEmbeddedRuntime = () => {
   );
 };
 
-function AnalyticsBootstrap({ enabled }: { enabled: boolean }) {
+function AnalyticsBootstrap() {
   const posthog = usePostHog();
 
   useEffect(() => {
-    if (!enabled) {
-      posthog.opt_out_capturing();
-      return;
-    }
-
     posthog.opt_in_capturing();
     posthog.capture("desktop_app_open");
 
@@ -45,14 +46,65 @@ function AnalyticsBootstrap({ enabled }: { enabled: boolean }) {
       document.removeEventListener("visibilitychange", sendPresencePing);
       window.removeEventListener("focus", sendPresencePing);
     };
-  }, [enabled, posthog]);
+  }, [posthog]);
+
+  return null;
+}
+
+function WindowStatePersistence() {
+  useEffect(() => {
+    let disposed = false;
+    let saveTimer: number | undefined;
+    let removeMoveListener: (() => void) | undefined;
+    let removeResizeListener: (() => void) | undefined;
+
+    const save = () => {
+      saveTimer = undefined;
+      void saveWindowState(WINDOW_STATE_FLAGS).catch((error) => {
+        console.error("failed to persist window state", error);
+      });
+    };
+
+    const scheduleSave = () => {
+      window.clearTimeout(saveTimer);
+      saveTimer = window.setTimeout(save, WINDOW_STATE_SAVE_DELAY_MS);
+    };
+
+    const registerListeners = async () => {
+      const appWindow = getCurrentWindow();
+      const listeners = await Promise.all([
+        appWindow.onMoved(scheduleSave),
+        appWindow.onResized(scheduleSave),
+      ]);
+
+      if (disposed) {
+        for (const removeListener of listeners) removeListener();
+        return;
+      }
+
+      [removeMoveListener, removeResizeListener] = listeners;
+    };
+
+    const startupTimer = window.setTimeout(() => {
+      void registerListeners().catch((error) => {
+        console.error("failed to monitor window state", error);
+      });
+    }, WINDOW_STATE_STARTUP_DELAY_MS);
+
+    return () => {
+      disposed = true;
+      window.clearTimeout(startupTimer);
+      window.clearTimeout(saveTimer);
+      removeMoveListener?.();
+      removeResizeListener?.();
+    };
+  }, []);
 
   return null;
 }
 
 export const Route = createRootRoute({
   component: () => {
-    const telemetryEnabled = useTelemetryConsent();
     const content = (
       <div className="h-screen w-full">
         <Outlet />
@@ -78,7 +130,7 @@ export const Route = createRootRoute({
           disable_surveys: true,
           advanced_disable_flags: true,
           autocapture: false,
-          opt_out_capturing_by_default: true,
+          opt_out_capturing_by_default: false,
           persistence: "memory",
           person_profiles: "never",
           sanitize_properties: (properties) => {
@@ -101,7 +153,8 @@ export const Route = createRootRoute({
           },
         }}
       >
-        <AnalyticsBootstrap enabled={telemetryEnabled} />
+        <WindowStatePersistence />
+        <AnalyticsBootstrap />
         {content}
       </PostHogProvider>
     );
