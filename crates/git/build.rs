@@ -1,23 +1,13 @@
 use std::{env, path::PathBuf};
 
 fn main() {
-    let windows_msvc = is_windows_msvc();
-    let mut attributes = tauri_build::Attributes::new();
+    println!("cargo:rerun-if-changed=build.rs");
 
-    if windows_msvc {
-        // The manifest is linked below for every executable target, including
-        // the library unit-test harness that tauri-build does not cover.
-        attributes = attributes
-            .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest());
-    }
-
-    tauri_build::try_build(attributes).expect("failed to run Tauri build script");
-
-    if windows_msvc {
+    if is_windows_msvc() {
         let manifest = PathBuf::from(
             env::var_os("CARGO_MANIFEST_DIR").expect("Cargo must set CARGO_MANIFEST_DIR"),
         )
-        .join("windows-app-manifest.xml");
+        .join("../../apps/desktop/src-tauri/windows-app-manifest.xml");
 
         embed_windows_manifest(&manifest);
     }

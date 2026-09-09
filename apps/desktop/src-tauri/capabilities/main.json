@@ -8,7 +8,9 @@
   "webviews": ["main"],
   "permissions": [
     "core:event:default",
+    "core:window:allow-internal-toggle-maximize",
     "core:window:allow-start-dragging",
+    "window-state:allow-save-window-state",
     "core:webview:allow-get-all-webviews",
     "core:webview:allow-create-webview",
     "core:webview:allow-webview-show",
