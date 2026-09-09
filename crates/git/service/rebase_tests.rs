@@ -1,7 +1,12 @@
 //! Integration tests for rebase operation detection and the Gitru sequencer.
 #![cfg(test)]
 
-use std::{fs, path::PathBuf, process::Command, sync::Arc};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+    sync::Arc,
+};
 
 use serial_test::serial;
 use tempfile::TempDir;
@@ -45,6 +50,19 @@ fn commit_file(path: &PathBuf, name: &str, content: &str, message: &str) -> Stri
     git(path, &["add", "."]);
     git(path, &["commit", "-m", message]);
     git(path, &["rev-parse", "HEAD"])
+}
+
+fn sequence_editor_command(path: &Path, action: &str) -> String {
+    let script = path.join("rewrite-todo.sh");
+    fs::write(
+        &script,
+        format!("#!/bin/sh\nsed -i.bak '1s/^pick/{action}/' \"$1\"\n"),
+    )
+    .unwrap();
+
+    // Git interprets GIT_SEQUENCE_EDITOR as a shell command. Use the shell
+    // explicitly and normalize separators so the command also works on Windows.
+    format!("sh \"{}\"", script.to_string_lossy().replace('\\', "/"))
 }
 
 #[test]
@@ -230,30 +248,21 @@ fn continue_native_interactive_reword_without_editor_hang() {
     commit_file(&path, "m.txt", "m\n", "main tip");
     git(&path, &["checkout", "feature"]);
 
-    let seq_editor = path.join("rewrite-todo.sh");
-    fs::write(
-        &seq_editor,
-        "#!/bin/sh\nsed -i.bak '1s/^pick/reword/' \"$1\"\n",
-    )
-    .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&seq_editor).unwrap().permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&seq_editor, perms).unwrap();
-    }
+    let seq_editor = sequence_editor_command(&path, "reword");
 
     // Fail the reword editor on purpose so the rebase stays paused at the reword step.
-    let _ = Command::new("git")
+    let output = Command::new("git")
         .args(["rebase", "-i", "main"])
         .current_dir(&path)
         .env("GIT_SEQUENCE_EDITOR", &seq_editor)
         .env("GIT_EDITOR", "false")
-        .output();
+        .output()
+        .unwrap();
     assert!(
         path.join(".git/rebase-merge").is_dir(),
-        "expected rebase-merge dir after reword pause"
+        "expected rebase-merge dir after reword pause; status: {}; stderr: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
     );
 
     let rebase = RebaseService::new(Arc::new(RepoContext::new(path.to_str().unwrap()).unwrap()));
@@ -285,27 +294,21 @@ fn detects_native_edit_pause_not_reword() {
     commit_file(&path, "m.txt", "m\n", "main tip");
     git(&path, &["checkout", "feature"]);
 
-    let seq_editor = path.join("rewrite-todo.sh");
-    fs::write(
-        &seq_editor,
-        "#!/bin/sh\nsed -i.bak '1s/^pick/edit/' \"$1\"\n",
-    )
-    .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&seq_editor).unwrap().permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&seq_editor, perms).unwrap();
-    }
+    let seq_editor = sequence_editor_command(&path, "edit");
 
-    let _ = Command::new("git")
+    let output = Command::new("git")
         .args(["rebase", "-i", "main"])
         .current_dir(&path)
         .env("GIT_SEQUENCE_EDITOR", &seq_editor)
         .env("GIT_EDITOR", "true")
-        .output();
-    assert!(path.join(".git/rebase-merge").is_dir());
+        .output()
+        .unwrap();
+    assert!(
+        path.join(".git/rebase-merge").is_dir(),
+        "expected rebase-merge dir after edit pause; status: {}; stderr: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert!(
         path.join(".git/rebase-merge/amend").is_file(),
         "edit pause should create amend file"
@@ -333,27 +336,21 @@ fn update_native_interactive_todo_actions() {
     commit_file(&path, "m.txt", "m\n", "main tip");
     git(&path, &["checkout", "feature"]);
 
-    let seq_editor = path.join("rewrite-todo.sh");
-    fs::write(
-        &seq_editor,
-        "#!/bin/sh\nsed -i.bak '1s/^pick/edit/' \"$1\"\n",
-    )
-    .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&seq_editor).unwrap().permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&seq_editor, perms).unwrap();
-    }
+    let seq_editor = sequence_editor_command(&path, "edit");
 
-    let _ = Command::new("git")
+    let output = Command::new("git")
         .args(["rebase", "-i", "main"])
         .current_dir(&path)
         .env("GIT_SEQUENCE_EDITOR", &seq_editor)
         .env("GIT_EDITOR", "true")
-        .output();
-    assert!(path.join(".git/rebase-merge").is_dir());
+        .output()
+        .unwrap();
+    assert!(
+        path.join(".git/rebase-merge").is_dir(),
+        "expected rebase-merge dir after edit pause; status: {}; stderr: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     let rebase = RebaseService::new(Arc::new(RepoContext::new(path.to_str().unwrap()).unwrap()));
     let op = rebase.get_repo_operation().unwrap();
