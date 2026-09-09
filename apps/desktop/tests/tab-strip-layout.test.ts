@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { resolveTabStripLayout } from "../src/components/custom-title-bar/tab-strip-layout";
 
 describe("resolveTabStripLayout", () => {
