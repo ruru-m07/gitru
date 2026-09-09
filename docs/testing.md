@@ -20,6 +20,25 @@ the frontend suite and the Rust workspace tests, while `make verify` mirrors the
 broader CI verification path. That path also lints and type-checks the shared
 test configuration itself.
 
+## Continuous integration
+
+Every pull request, every push to `dev`, and every manual CI dispatch runs
+three independent checks:
+
+- frontend tests, lint, type checks, and the desktop frontend build on Linux;
+- Rust formatting and Clippy on Linux;
+- Rust workspace tests on Linux, macOS, and Windows with matrix fail-fast
+  disabled so one platform failure does not hide the others.
+
+CI installs Bun from the version in the root `packageManager` field and Rust
+from `rust-toolchain.toml`, installs Bun dependencies with
+`--frozen-lockfile`, and caches the root Bun and Cargo workspaces. Superseded
+runs for the same pull request or branch are canceled.
+
+The release workflow checks out the published tag and runs `make verify`
+before any Tauri artifact is built or uploaded. A failing revision therefore
+cannot publish application artifacts or the updater manifest.
+
 React workspace tests use Vitest, jsdom, and React Testing Library. Put desktop
 cross-cutting suites in `apps/desktop/tests` and small, feature-specific suites
 beside their source. Import test APIs from `vitest`. The shared setup provides
