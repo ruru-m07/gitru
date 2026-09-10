@@ -84,6 +84,21 @@ async function visible(selector: string, timeout = 30_000) {
   return browser.$(selector);
 }
 
+async function absent(selector: string, timeout = 30_000): Promise<void> {
+  await browser.waitUntil(
+    () =>
+      browser.execute(
+        (candidate) => document.querySelector(candidate) === null,
+        selector,
+      ),
+    {
+      timeout,
+      interval: 200,
+      timeoutMsg: `${selector} was still present after ${timeout}ms`,
+    },
+  );
+}
+
 async function buttonWithText(text: string) {
   return visible(
     `//button[contains(normalize-space(.), ${JSON.stringify(text)})]`,
@@ -280,9 +295,7 @@ describe("packaged Gitru desktop smoke", () => {
       (value) => value === publishedHead,
       `published remote branch ${smokeBranch} to match local HEAD`,
     );
-    await (
-      await browser.$('button[aria-label="Publish Branch"]')
-    ).waitForDisplayed({ reverse: true, timeout: 30_000 });
+    await absent('button[aria-label="Publish Branch"]');
     await visible('button[aria-label="Fetch"]');
     await capture("05-published-branch");
 
