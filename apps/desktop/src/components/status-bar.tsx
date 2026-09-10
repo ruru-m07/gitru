@@ -660,13 +660,16 @@ const InvalidateAllBadge = () => {
     <>
       {repo ? (
         <Badge
+          render={
+            <button aria-label="Refresh repository state" type="button" />
+          }
           variant={"outline"}
           className="py-2.5 text-muted-foreground! rounded-none border-0 border-l px-2 flex items-center font-normal cursor-pointer hover:bg-muted! border-b border-b-transparent hover:border-b-border"
           onClick={async () => {
             await repo.invalidateAll();
           }}
         >
-          <RotateCw />
+          <RotateCw aria-hidden="true" />
         </Badge>
       ) : null}
     </>

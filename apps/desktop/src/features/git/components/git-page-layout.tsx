@@ -13,7 +13,6 @@ import {
   TooltipPopup,
   TooltipTrigger,
 } from "@gitru/ui/components/tooltip";
-import { open } from "@tauri-apps/plugin-dialog";
 import { BookCopy, CircleDashed, CopyPlus, GitBranch } from "lucide-react";
 import { toast } from "sonner";
 import PageLayout from "@/components/page-layout";
@@ -23,6 +22,7 @@ import { getAvatarByProvider } from "@/lib/get-avatar-by-git-provider";
 import { openExternalUrlSafely } from "@/lib/open-external-url";
 import { parseOrigin } from "@/lib/parse-origin";
 import { selectActiveRepository, useAppStore } from "@/store/use-app-store";
+import { openRepositoryDirectory } from "../lib/open-repository-directory";
 import { ResizableArea } from "./resizable-area";
 export function GitPageLayout() {
   const activeRepository = useAppStore(selectActiveRepository);
@@ -72,10 +72,7 @@ export function GitPageLayout() {
           <div className="grid grid-cols-3 gap-4 px-[calc(--spacing(3)-1px)]">
             <Button
               onClick={async () => {
-                const folder = await open({
-                  directory: true,
-                  multiple: false,
-                });
+                const folder = await openRepositoryDirectory();
 
                 if (folder) {
                   if (repositories.find((r) => r.path === folder)) {

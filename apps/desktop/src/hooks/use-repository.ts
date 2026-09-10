@@ -377,6 +377,7 @@ export function useCreateCommit() {
       await repo?.status.invalidate();
       await repo?.commit.invalidate();
       await repo?.branches.invalidate("statusAheadBehind");
+      await repo?.branches.invalidate("hasUncommittedChanges");
     },
     onError: (error: string) => {
       toast.error(error);

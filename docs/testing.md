@@ -23,12 +23,13 @@ test configuration itself.
 ## Continuous integration
 
 Every pull request, every push to `dev`, and every manual CI dispatch runs
-three independent checks:
+four independent checks:
 
 - frontend tests, lint, type checks, and the desktop frontend build on Linux;
 - Rust formatting and Clippy on Linux;
 - Rust workspace tests on Linux, macOS, and Windows with matrix fail-fast
-  disabled so one platform failure does not hide the others.
+  disabled so one platform failure does not hide the others;
+- packaged desktop end-to-end smoke tests on Linux, macOS, and Windows.
 
 CI installs Bun from the version in the root `packageManager` field. A local
 setup action reads and installs the pinned Rust version from
@@ -39,6 +40,39 @@ runs for the same pull request or branch are canceled.
 The release workflow checks out the published tag and runs `make verify`
 before any Tauri artifact is built or uploaded. A failing revision therefore
 cannot publish application artifacts or the updater manifest.
+
+## Packaged desktop end-to-end tests
+
+Run the same production-equivalent desktop smoke suite used by CI from the
+repository root:
+
+```bash
+make test-e2e
+```
+
+This delegates to `bun --cwd=apps/desktop run e2e`, builds the E2E-enabled
+Tauri application, and drives critical workflows across the UI, Tauri, Rust,
+and Git boundaries. Every scenario creates its repository fixture beneath the
+operating system's temporary directory. Application state uses the separate
+`com.ruru.gitru.e2e` Tauri identifier; the harness resets only that namespace's
+`repositories.json` and `app-state.json` before launch. Tests never reuse or
+mutate repositories registered in the developer's Gitru data. Destructive Git
+operations are scoped to the disposable fixtures, which are cleaned up after
+the run. The fixture uses a local bare origin and local avatar fallbacks, so the
+workflow does not depend on credentials or public network access.
+
+The suite opens `/app/git?embedded=1` in the packaged main webview. This covers
+the real Git UI, Tauri commands, Rust services, and Git subprocesses, but
+intentionally excludes host-tab and child-Webview lifecycle behavior because
+the embedded WebDriver cannot target child webviews. The native folder picker
+is replaced with the disposable fixture path; the repository-import commands
+that follow it remain real.
+
+Milestone screenshots and frontend, backend, driver, and Git-state logs are
+written beneath `artifacts/e2e/` for diagnosis. The directory is ignored by Git,
+and CI always attempts to upload its contents as a per-platform artifact. The
+suite runs on Ubuntu, macOS, and Windows; Linux runs it inside a 16-bit Xvfb
+display for WebKitGTK compatibility.
 
 React workspace tests use Vitest, jsdom, and React Testing Library. Put desktop
 cross-cutting suites in `apps/desktop/tests` and small, feature-specific suites

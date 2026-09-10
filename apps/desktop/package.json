@@ -6,11 +6,15 @@
   "scripts": {
     "dev": "vite",
     "build": "NODE_ENV=production && tsc && vite build",
+    "build:e2e": "tsc && vite build --mode e2e",
     "preview": "vite preview",
     "lint": "biome check .",
-    "check-types": "tsc --noEmit",
+    "check-types": "tsc --noEmit && tsc --noEmit --project e2e/tsconfig.json",
     "test": "vitest run --config ../../vitest.config.ts --project desktop",
     "test:watch": "vitest --config ../../vitest.config.ts --project desktop",
+    "e2e:build": "tauri build --no-bundle --features e2e --config src-tauri/tauri.e2e.conf.json",
+    "e2e:test": "bun run e2e/run.ts",
+    "e2e": "bun run e2e:build && bun run e2e:test",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -80,12 +84,22 @@
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
+    "@types/mocha": "10.0.10",
+    "@wdio/cli": "9.31.7",
+    "@wdio/globals": "9.31.3",
+    "@wdio/local-runner": "9.31.7",
+    "@wdio/mocha-framework": "9.31.7",
+    "@wdio/spec-reporter": "9.31.2",
+    "@wdio/tauri-plugin": "1.4.0",
+    "@wdio/tauri-service": "1.4.0",
+    "@wdio/types": "9.31.2",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "^4.6.0",
     "jsdom": "^26.1.0",
     "typescript": "catalog:",
     "vite": "^7.0.4",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.0",
+    "webdriverio": "9.31.7"
   }
 }

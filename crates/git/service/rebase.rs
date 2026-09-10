@@ -512,9 +512,14 @@ fn start_plain_git2_rebase(
         let head = repo
             .head()
             .map_err(|e| format!("Failed to read HEAD: {e}"))?;
-        let oid = head.target().ok_or_else(|| "HEAD is unborn".to_string())?;
-        repo.find_annotated_commit(oid)
-            .map_err(|e| format!("Failed to annotate HEAD: {e}"))?
+        if head.is_branch() {
+            repo.reference_to_annotated_commit(&head)
+                .map_err(|e| format!("Failed to annotate HEAD reference: {e}"))?
+        } else {
+            let oid = head.target().ok_or_else(|| "HEAD is unborn".to_string())?;
+            repo.find_annotated_commit(oid)
+                .map_err(|e| format!("Failed to annotate HEAD: {e}"))?
+        }
     };
 
     let mut opts = git2::RebaseOptions::new();

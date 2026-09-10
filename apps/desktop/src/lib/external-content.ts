@@ -35,6 +35,10 @@ export const normalizeExternalHttpsUrl = (value: string) => {
 export const normalizeRemoteImageUrl = (value: string | undefined) => {
   if (!value) return undefined;
 
+  // Packaged E2E runs must stay deterministic and offline. Vite removes this
+  // branch from production builds because MODE is fixed at build time.
+  if (import.meta.env.MODE === "e2e") return undefined;
+
   const normalized = normalizeExternalHttpsUrl(value);
   if (!normalized) return undefined;
 
