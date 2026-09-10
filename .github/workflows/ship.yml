@@ -11,7 +11,6 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  RUST_TOOLCHAIN: 1.94.1
 
 jobs:
   validate-release:
@@ -25,6 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
           ref: ${{ github.event.release.tag_name }}
 
       - name: Resolve release revision
@@ -40,9 +40,8 @@ jobs:
         uses: oven-sh/setup-bun@v2
 
       - name: Install pinned Rust toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: ./.github/actions/setup-rust
         with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: clippy, rustfmt
 
       - name: Cache Bun dependencies
@@ -87,15 +86,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
           ref: ${{ needs.validate-release.outputs.commit }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
       - name: Install pinned Rust toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: ./.github/actions/setup-rust
         with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: ${{ matrix.platform == 'macos-26' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Cache Rust dependencies

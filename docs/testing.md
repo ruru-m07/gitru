@@ -30,8 +30,9 @@ three independent checks:
 - Rust workspace tests on Linux, macOS, and Windows with matrix fail-fast
   disabled so one platform failure does not hide the others.
 
-CI installs Bun from the version in the root `packageManager` field and Rust
-from `rust-toolchain.toml`, installs Bun dependencies with
+CI installs Bun from the version in the root `packageManager` field. A local
+setup action reads and installs the pinned Rust version from
+`rust-toolchain.toml`. CI installs Bun dependencies with
 `--frozen-lockfile`, and caches the root Bun and Cargo workspaces. Superseded
 runs for the same pull request or branch are canceled.
 
