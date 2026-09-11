@@ -256,7 +256,12 @@ class BranchState extends StateDomain {
   }
 
   async invalidate(
-    key?: "list" | "current" | "statusAheadBehind" | "currentBranchStash",
+    key?:
+      | "list"
+      | "current"
+      | "statusAheadBehind"
+      | "hasUncommittedChanges"
+      | "currentBranchStash",
   ) {
     const queryKey = key ? [...this.baseKey, key] : [...this.baseKey];
     await this.queryClient.invalidateQueries({ queryKey });

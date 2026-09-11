@@ -1,4 +1,4 @@
-.PHONY: help setup clean dev dev-vite build-vite build-tauri build format typegen test test-frontend test-rust format-check clippy verify
+.PHONY: help setup clean dev dev-vite build-vite build-tauri build format typegen test test-frontend test-rust test-e2e format-check clippy verify
 
 .DEFAULT_GOAL := help
 
@@ -76,6 +76,10 @@ test-frontend: ## Run frontend tests headlessly
 test-rust: ## Run all Rust tests
 	@echo "$(GREEN)Running Rust tests...$(NC)"
 	cargo test --workspace --verbose
+
+test-e2e: ## Run packaged desktop end-to-end smoke tests
+	@echo "$(GREEN)Running packaged desktop end-to-end smoke tests...$(NC)"
+	bun --cwd=apps/desktop run e2e
 
 format-check: ## Check code formatting
 	@echo "$(YELLOW)Checking code formatting...$(NC)"

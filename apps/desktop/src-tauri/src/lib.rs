@@ -11,6 +11,11 @@ use tauri::{App, Manager};
 use tauri_plugin_store::StoreExt;
 use tokio::sync::RwLock;
 
+#[cfg(feature = "e2e")]
+const E2E_RESET_ENV: &str = "GITRU_E2E_RESET";
+#[cfg(feature = "e2e")]
+const E2E_IDENTIFIER: &str = "com.ruru.gitru.e2e";
+
 #[cfg(target_os = "macos")]
 mod app_menu;
 mod commands;
@@ -39,8 +44,15 @@ pub fn run() {
         .menu(app_menu::build)
         .on_menu_event(app_menu::handle_event);
 
+    #[cfg(feature = "e2e")]
+    let builder = builder
+        .plugin(tauri_plugin_wdio::init())
+        .plugin(tauri_plugin_wdio_webdriver::init());
+
     builder
         .setup(|app| {
+            #[cfg(feature = "e2e")]
+            reset_e2e_state(app)?;
             setup_managers(app);
             Ok(())
         })
@@ -119,6 +131,33 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(feature = "e2e")]
+fn reset_e2e_state(app: &App) -> Result<(), Box<dyn std::error::Error>> {
+    if std::env::var(E2E_RESET_ENV).as_deref() != Ok("1") {
+        return Ok(());
+    }
+
+    if app.config().identifier != E2E_IDENTIFIER {
+        return Err(format!(
+            "refusing to reset app state for identifier {}; expected {E2E_IDENTIFIER}",
+            app.config().identifier
+        )
+        .into());
+    }
+
+    let data_dir = app.path().app_data_dir()?;
+    for file_name in [STORE_FILE, "app-state.json"] {
+        let path = data_dir.join(file_name);
+        match std::fs::remove_file(path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+
+    Ok(())
 }
 
 fn setup_managers(app: &mut App) {

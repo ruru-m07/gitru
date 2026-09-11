@@ -264,6 +264,7 @@ export const FileRow = memo(
                         </Button>
                       )}
                   <Button
+                    aria-label={`Stage ${file.path}`}
                     onClick={async (e) => {
                       e.stopPropagation();
                       const success = await onAdd(stageTargets);
@@ -283,6 +284,7 @@ export const FileRow = memo(
               {onUnstage && (
                 <div className="flex ml-2 shrink-0">
                   <Button
+                    aria-label={`Unstage ${file.path}`}
                     onClick={async (e) => {
                       e.stopPropagation();
                       const success = await onUnstage(unstageTargets);

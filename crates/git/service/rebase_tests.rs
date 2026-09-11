@@ -38,6 +38,7 @@ fn init_repo() -> (TempDir, PathBuf) {
     git(&path, &["init"]);
     git(&path, &["config", "user.name", "Gitru Test"]);
     git(&path, &["config", "user.email", "test@gitru.local"]);
+    git(&path, &["config", "core.autocrlf", "false"]);
     git(&path, &["checkout", "-b", "main"]);
     fs::write(path.join("file.txt"), "base\n").unwrap();
     git(&path, &["add", "."]);
@@ -80,8 +81,9 @@ fn detects_clean_repo() {
 
 #[test]
 #[serial]
-fn detects_external_rebase_merge() {
+fn aborts_external_rebase_and_restores_git_autostash() {
     let (_dir, path) = init_repo();
+    commit_file(&path, "dirty.txt", "clean\n", "add tracked worktree file");
     // Create a branch with a commit, then rebase onto a divergent main tip.
     git(&path, &["checkout", "-b", "feature"]);
     commit_file(&path, "a.txt", "a\n", "feat a");
@@ -96,9 +98,10 @@ fn detects_external_rebase_merge() {
     commit_file(&path, "conflict.txt", "main side\n", "main conflict");
     git(&path, &["checkout", "feature"]);
     commit_file(&path, "conflict.txt", "feature side\n", "feature conflict");
+    fs::write(path.join("dirty.txt"), "uncommitted work\n").unwrap();
 
     let status = Command::new("git")
-        .args(["rebase", "main"])
+        .args(["rebase", "--autostash", "main"])
         .current_dir(&path)
         .output()
         .unwrap();
@@ -118,6 +121,14 @@ fn detects_external_rebase_merge() {
         .unwrap();
     let after = rt.block_on(async { rebase.abort(None).await }).unwrap();
     assert!(!after.is_rebasing);
+    assert_eq!(git(&path, &["branch", "--show-current"]), "feature");
+    assert_eq!(
+        fs::read_to_string(path.join("dirty.txt"))
+            .unwrap()
+            .replace("\r\n", "\n"),
+        "uncommitted work\n"
+    );
+    assert_eq!(git(&path, &["status", "--porcelain"]), "M dirty.txt");
 }
 
 #[test]
@@ -154,6 +165,55 @@ fn plain_git2_rebase_succeeds() {
     assert!(result.is_ok(), "{result:?}");
     let op = result.unwrap();
     assert!(!op.is_rebasing, "expected finished rebase, got {op:?}");
+    assert_eq!(git(&path, &["branch", "--show-current"]), "feature");
+}
+
+#[test]
+#[serial]
+fn abort_plain_git2_rebase_restores_the_original_branch() {
+    let (_dir, path) = init_repo();
+    git(&path, &["checkout", "-b", "feature"]);
+    commit_file(&path, "file.txt", "feature side\n", "feature conflict");
+
+    git(&path, &["checkout", "main"]);
+    commit_file(&path, "file.txt", "main side\n", "main conflict");
+    git(&path, &["checkout", "feature"]);
+
+    let rebase = RebaseService::new(Arc::new(RepoContext::new(path.to_str().unwrap()).unwrap()));
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let paused = rt
+        .block_on(async {
+            rebase
+                .start(
+                    RebaseStartRequest {
+                        onto: "main".into(),
+                        upstream: None,
+                        entries: None,
+                        autostash: false,
+                    },
+                    None,
+                )
+                .await
+        })
+        .unwrap();
+    assert!(
+        paused.is_rebasing,
+        "expected a paused rebase, got {paused:?}"
+    );
+    assert!(!paused.conflict_paths.is_empty());
+
+    let after = rt.block_on(async { rebase.abort(None).await }).unwrap();
+    assert!(!after.is_rebasing);
+    assert_eq!(git(&path, &["branch", "--show-current"]), "feature");
+    assert_eq!(
+        fs::read_to_string(path.join("file.txt"))
+            .unwrap()
+            .replace("\r\n", "\n"),
+        "feature side\n"
+    );
 }
 
 #[test]

@@ -14,6 +14,10 @@ edition = "2021"
 name = "gitru_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+default = []
+e2e = ["dep:tauri-plugin-wdio", "dep:tauri-plugin-wdio-webdriver"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -35,6 +39,8 @@ openssl = { version = "0.10.80", features = ["vendored"] }
 tauri-plugin-log = "2"
 log = "0.4"
 url = "2"
+tauri-plugin-wdio = { version = "=1.4.0", optional = true }
+tauri-plugin-wdio-webdriver = { version = "=1.4.0", optional = true }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
