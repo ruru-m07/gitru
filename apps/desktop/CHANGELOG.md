@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.0.1-beta.7](https://github.com/ruru-m07/gitru/compare/v0.0.0-beta.7...v0.0.1-beta.7) (2026-09-11)
+
+
+### Bug Fixes
+
+* **ci:** embed Windows manifest in Rust test binaries ([7e0e7d1](https://github.com/ruru-m07/gitru/commit/7e0e7d15d38efc9f2dd44a9433a5c69a2abafade))
+* **desktop:** restore native window preferences ([7d86296](https://github.com/ruru-m07/gitru/commit/7d862964484fc1f00b0e6710510ddd3c436d9fb7))
+* **desktop:** restore window state and Windows test startup ([fc8f8ea](https://github.com/ruru-m07/gitru/commit/fc8f8ea9a4d1fcb46b6daf428efbe998330ab999))
+
 ## [0.0.0-beta.7](https://github.com/ruru-m07/gitru/compare/v0.0.0-beta.6...v0.0.0-beta.7) (2026-09-09)
 
 
