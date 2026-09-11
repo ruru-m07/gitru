@@ -1,26 +1,47 @@
-import { RepositoryInfo } from "@gitru/commands";
+import type { RepositoryInfo } from "@gitru/commands";
 import {
   CommandPanelRoot,
   CommandViewConfig,
   createCommandViewRegistry,
 } from "@gitru/ui/components/command";
-import { BranchItem, useBranchListView } from "./views/branch-list";
+import {
+  type BranchTarget,
+  useBranchActionsView,
+} from "./views/branch-actions";
+import { type BranchListProps, useBranchListView } from "./views/branch-list";
 import { useCloneRepositoryView } from "./views/clone-repository";
 import { useConfirmCheckoutView } from "./views/confirm-checkout";
-import { CreateBranchProps, useCreateBranchView } from "./views/create-branch";
+import {
+  type CreateBranchProps,
+  useCreateBranchView,
+} from "./views/create-branch";
 import { useInitRepositoryView } from "./views/init-repository";
 import { useRebaseOntoView } from "./views/rebase-onto";
-import { ActionItem, useRootView } from "./views/root";
+import {
+  type RenameBranchProps,
+  useRenameBranchView,
+} from "./views/rename-branch";
+import { type ActionItem, useRootView } from "./views/root";
+import {
+  type SelectUpstreamProps,
+  useSelectUpstreamView,
+} from "./views/select-upstream";
 import { useSwitchRepositoryView } from "./views/switch-repository";
-import { ThemeItem, useSwitchThemeView } from "./views/switch-theme";
+import { type ThemeItem, useSwitchThemeView } from "./views/switch-theme";
 import {
   type UpdateChannelItem,
   useSwitchUpdateChannelView,
 } from "./views/switch-update-channel";
 
 type RootAction = CommandViewConfig<"root", ActionItem>;
-type BranchListAction = CommandViewConfig<"branch-list", BranchItem>;
+type BranchListAction = CommandViewConfig<"branch-list", BranchListProps>;
+type BranchActionsAction = CommandViewConfig<"branch-actions", BranchTarget>;
 type CreateBranchAction = CommandViewConfig<"create-branch", CreateBranchProps>;
+type RenameBranchAction = CommandViewConfig<"rename-branch", RenameBranchProps>;
+type SelectUpstreamAction = CommandViewConfig<
+  "select-upstream",
+  SelectUpstreamProps
+>;
 type ConfirmCheckoutAction = CommandViewConfig<"confirm-checkout", undefined>;
 type CloneRepositoryAction = CommandViewConfig<"clone-repository", undefined>;
 type InitRepositoryAction = CommandViewConfig<"init-repository", undefined>;
@@ -38,7 +59,10 @@ type SwitchUpdateChannelAction = CommandViewConfig<
 type Action =
   | RootAction
   | BranchListAction
+  | BranchActionsAction
   | CreateBranchAction
+  | RenameBranchAction
+  | SelectUpstreamAction
   | ConfirmCheckoutAction
   | CloneRepositoryAction
   | InitRepositoryAction
@@ -51,7 +75,10 @@ export const ActionPanel = ({ children }: { children: React.ReactNode }) => {
   const views = [
     useRootView(),
     useBranchListView(),
+    useBranchActionsView(),
     useCreateBranchView(),
+    useRenameBranchView(),
+    useSelectUpstreamView(),
     useConfirmCheckoutView(),
     useCloneRepositoryView(),
     useInitRepositoryView(),

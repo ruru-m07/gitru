@@ -9,11 +9,23 @@ use git::context::RepoContext;
 use git::models::branch::{BranchKind, UncommittedChangesStrategy};
 use git::service::branch::BranchService;
 use serial_test::serial;
+use std::process::Command;
 use std::sync::Arc;
 
 fn setup_branch_service(repo: &TestRepo) -> BranchService {
     let ctx = Arc::new(RepoContext::new(repo.path_str()).expect("failed to create repo context"));
     BranchService::new(ctx)
+}
+
+fn set_remote_default(repo: &TestRepo, remote: &tempfile::TempDir, branch: &str) {
+    let output = Command::new("git")
+        .args(["--git-dir"])
+        .arg(remote.path())
+        .args(["symbolic-ref", "HEAD", &format!("refs/heads/{branch}")])
+        .output()
+        .expect("failed to set bare remote HEAD");
+    assert!(output.status.success());
+    repo.git(&["remote", "set-head", "origin", "-a"]);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -447,6 +459,222 @@ fn switch_branch_stash_rollback_on_failure() {
         // The stash should be rolled back (popped), so changes should still be present
         // This tests the rollback logic in the switch method
         assert!(repo.has_changes());
+    });
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BRANCH LIFECYCLE TESTS
+// ══════════════════════════════════════════════════════════════════════════════
+
+#[test]
+#[serial]
+fn rename_branch_supports_slashes_and_unicode() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("README.md", "# Test", "Initial commit");
+        let _remote = repo.setup_remote();
+        repo.create_branch("feature/old-name");
+        repo.git(&["push", "-u", "origin", "feature/old-name"]);
+
+        let service = setup_branch_service(&repo);
+        service
+            .rename("feature/old-name", "feature/日本語/new-name")
+            .await
+            .unwrap();
+
+        assert_eq!(repo.current_branch(), "feature/日本語/new-name");
+        assert!(
+            repo.list_branches()
+                .contains(&"feature/日本語/new-name".to_string())
+        );
+        assert_eq!(
+            repo.git(&["rev-parse", "--abbrev-ref", "@{upstream}"]),
+            "origin/feature/old-name"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn checkout_remote_branch_tracks_non_origin_remote() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("README.md", "# Test", "Initial commit");
+        let _remote = repo.setup_remote();
+        repo.git(&["remote", "rename", "origin", "team"]);
+        repo.git(&["push", "-u", "team", "main"]);
+        repo.create_branch("feature/日本語/topic");
+        repo.commit_file("topic.txt", "topic", "Add topic");
+        repo.git(&["push", "-u", "team", "feature/日本語/topic"]);
+        repo.switch_branch("main");
+        repo.git(&["branch", "-D", "feature/日本語/topic"]);
+
+        let service = setup_branch_service(&repo);
+        service
+            .switch("team/feature/日本語/topic", None)
+            .await
+            .unwrap();
+
+        assert_eq!(repo.current_branch(), "feature/日本語/topic");
+        assert_eq!(
+            repo.git(&["rev-parse", "--abbrev-ref", "@{upstream}"]),
+            "team/feature/日本語/topic"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn delete_local_branch_guards_current_unmerged_and_protected_refs() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("README.md", "# Test", "Initial commit");
+        let remote = repo.setup_remote();
+        repo.push("main");
+        set_remote_default(&repo, &remote, "main");
+
+        repo.create_branch("feature/unmerged");
+        repo.commit_file("feature.txt", "work", "Unmerged work");
+        let service = setup_branch_service(&repo);
+
+        let current_error = service
+            .delete_local("feature/unmerged", true)
+            .await
+            .unwrap_err();
+        assert!(current_error.contains("current branch"));
+
+        repo.switch_branch("main");
+        let service = setup_branch_service(&repo);
+        let unmerged_error = service
+            .delete_local("feature/unmerged", false)
+            .await
+            .unwrap_err();
+        assert!(unmerged_error.contains("not merged"));
+        service
+            .delete_local("feature/unmerged", true)
+            .await
+            .unwrap();
+
+        repo.create_branch("maintenance");
+        let protected_error = service.delete_local("main", true).await.unwrap_err();
+        assert!(protected_error.contains("protected branch"));
+        assert!(repo.list_branches().contains(&"main".to_string()));
+    });
+}
+
+#[test]
+#[serial]
+fn delete_merged_local_branch_without_force() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("README.md", "# Test", "Initial commit");
+        repo.create_branch("feature/already-merged");
+        repo.switch_branch("main");
+
+        let service = setup_branch_service(&repo);
+        service
+            .delete_local("feature/already-merged", false)
+            .await
+            .unwrap();
+
+        assert!(
+            !repo
+                .list_branches()
+                .contains(&"feature/already-merged".to_string())
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn set_and_unset_branch_upstream_round_trips() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("README.md", "# Test", "Initial commit");
+        let _remote = repo.setup_remote();
+        repo.create_branch("remote/topic");
+        repo.git(&["push", "-u", "origin", "remote/topic"]);
+        repo.switch_branch("main");
+        repo.create_branch("local/topic");
+
+        let service = setup_branch_service(&repo);
+        service
+            .set_upstream("local/topic", "origin/remote/topic")
+            .await
+            .unwrap();
+        assert_eq!(
+            repo.git(&["rev-parse", "--abbrev-ref", "local/topic@{upstream}",]),
+            "origin/remote/topic"
+        );
+
+        service.unset_upstream("local/topic").await.unwrap();
+        let has_upstream = Command::new("git")
+            .current_dir(repo.path())
+            .args(["rev-parse", "--verify", "local/topic@{upstream}"])
+            .output()
+            .unwrap()
+            .status
+            .success();
+        assert!(!has_upstream);
+    });
+}
+
+#[test]
+#[serial]
+fn delete_remote_branch_requires_force_for_unmerged_work() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("README.md", "# Test", "Initial commit");
+        let _remote = repo.setup_remote();
+        repo.push("main");
+        repo.create_branch("feature/remote-only");
+        repo.commit_file("remote.txt", "work", "Remote work");
+        repo.git(&["push", "origin", "feature/remote-only"]);
+        repo.switch_branch("main");
+
+        let service = setup_branch_service(&repo);
+        let error = service
+            .delete_remote("origin/feature/remote-only", false)
+            .await
+            .unwrap_err();
+        assert!(error.contains("not merged"));
+
+        service
+            .delete_remote("origin/feature/remote-only", true)
+            .await
+            .unwrap();
+        assert!(
+            repo.git(&["ls-remote", "--heads", "origin", "feature/remote-only",])
+                .is_empty()
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn delete_remote_branch_guards_default_and_current_upstream() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("README.md", "# Test", "Initial commit");
+        let remote = repo.setup_remote();
+        repo.push("main");
+        set_remote_default(&repo, &remote, "main");
+
+        let service = setup_branch_service(&repo);
+        let protected_error = service
+            .delete_remote("origin/main", true)
+            .await
+            .unwrap_err();
+        assert!(protected_error.contains("protected remote branch"));
+
+        repo.create_branch("feature/tracked");
+        repo.git(&["push", "-u", "origin", "feature/tracked"]);
+        let service = setup_branch_service(&repo);
+        let upstream_error = service
+            .delete_remote("origin/feature/tracked", true)
+            .await
+            .unwrap_err();
+        assert!(upstream_error.contains("upstream of current branch"));
     });
 }
 

@@ -197,6 +197,19 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
             iconKey: "gitBranch",
           },
           {
+            id: "manage-branches",
+            label: "Manage Branches",
+            keywords: [
+              "branch",
+              "rename",
+              "delete",
+              "upstream",
+              "track",
+              "prune",
+            ],
+            iconKey: "gitBranch",
+          },
+          {
             id: "rebase-onto",
             label: "Rebase Onto…",
             shortcut: ["⌘", "⇧", "R"],
@@ -357,6 +370,8 @@ export function useRootView(): CommandViewConfig<"root", ActionItem> {
               navigate.push("init-repository");
             } else if (item.id === "checkout-branch") {
               navigate.push("branch-list");
+            } else if (item.id === "manage-branches") {
+              navigate.push("branch-list", { manage: true });
             } else if (item.id === "rebase-onto") {
               navigate.push("rebase-onto");
             } else if (item.id === "switch-theme") {

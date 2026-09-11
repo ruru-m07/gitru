@@ -46,7 +46,7 @@ pub fn parse_branch_records(output: &str, is_remote: bool) -> Result<Vec<BranchI
         let name = parts[0].to_string();
         let _oid = parts[1];
         let upstream = parts[2].to_string();
-        let is_head = !parts[3].is_empty();
+        let is_head = parts[3].trim() == "*";
 
         // Build CommitInfo from parts
         let body = parts.get(11).copied().unwrap_or("");
@@ -71,6 +71,8 @@ pub fn parse_branch_records(output: &str, is_remote: bool) -> Result<Vec<BranchI
             },
             ahead: None,
             behind: None,
+            is_protected: false,
+            is_merged: false,
         });
     }
 
@@ -101,5 +103,48 @@ mod tests {
         let malformed = "main\u{001f}abc123";
         let branches = parse_branch_records(malformed, false).unwrap();
         assert!(branches.is_empty());
+    }
+
+    #[test]
+    fn trims_head_marker_without_marking_other_branches_current() {
+        let separator = '\u{001f}';
+        let record_separator = '\u{001e}';
+        let current = [
+            "main",
+            "abc123",
+            "origin/main",
+            " *",
+            "Ruru",
+            "<ruru@example.com>",
+            "1",
+            "Ruru",
+            "<ruru@example.com>",
+            "1",
+            "Current",
+            "",
+        ]
+        .join(&separator.to_string());
+        let other = [
+            "feature/test",
+            "def456",
+            "",
+            "  ",
+            "Ruru",
+            "<ruru@example.com>",
+            "1",
+            "Ruru",
+            "<ruru@example.com>",
+            "1",
+            "Other",
+            "",
+        ]
+        .join(&separator.to_string());
+        let output = format!("{current}{record_separator}{other}{record_separator}");
+
+        let branches = parse_branch_records(&output, false).unwrap();
+
+        assert_eq!(branches.len(), 2);
+        assert!(branches[0].is_head);
+        assert!(!branches[1].is_head);
     }
 }
