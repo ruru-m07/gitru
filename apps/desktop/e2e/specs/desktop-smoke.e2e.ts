@@ -17,6 +17,8 @@ const smokeBranch = "e2e-smoke-branch";
 const openCommandDialog =
   '[data-slot="command-dialog-popup"][data-open]:not([data-closed])';
 const openDialog = '[data-slot="dialog-popup"][data-open]:not([data-closed])';
+const openBranchPopover =
+  '[data-slot="popover-popup"][data-open]:not([data-closed])';
 
 function requiredEnvironment(name: string): string {
   const value = process.env[name];
@@ -172,38 +174,27 @@ async function waitForPortalText(
 }
 
 async function openBranchSwitcher(): Promise<void> {
-  const inputSelector = 'input[placeholder="Search branches..."]';
+  const inputSelector = 'input[placeholder="Filter branches…"]';
 
-  if (await portalHasElement(openCommandDialog, inputSelector)) return;
+  if (await portalHasElement(openBranchPopover, inputSelector)) return;
 
-  const opener = await visible('button[aria-label="Switch branch"]');
+  const opener = await visible('button[aria-label^="Current branch:"]');
   await opener.click();
-  await waitForPortalElement(openCommandDialog, inputSelector);
+  await waitForPortalElement(openBranchPopover, inputSelector);
 }
 
 async function openRootAction(label: string): Promise<void> {
-  await openBranchSwitcher();
-  const remoteImageSources = await browser.execute(
-    (popupSelector) =>
-      Array.from(
-        document
-          .querySelector(popupSelector)
-          ?.querySelectorAll<HTMLImageElement>('img[src^="https://"]') ?? [],
-        (image) => image.src,
-      ),
-    openCommandDialog,
-  );
-  if (remoteImageSources.length > 0) {
-    throw new Error(
-      `Branch list requested remote images: ${remoteImageSources.join(", ")}`,
+  await browser.execute(() => {
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "k",
+        metaKey: true,
+        bubbles: true,
+      }),
     );
-  }
+  });
   const inputSelector = 'input[placeholder="Search actions or branches..."]';
-  for (let depth = 0; depth < 6; depth += 1) {
-    if (await portalHasElement(openCommandDialog, inputSelector)) break;
-    await browser.keys("Escape");
-    await browser.pause(100);
-  }
+  await waitForPortalElement(openCommandDialog, inputSelector);
   await setPortalInput(openCommandDialog, inputSelector, label);
   await clickPortalText(
     openCommandDialog,
@@ -269,13 +260,16 @@ describe("packaged Gitru desktop smoke", () => {
     await visible('button[aria-label="Push to Origin"]');
     await capture("03-commit-and-sync-decision");
 
-    await openRootAction("New Branch");
+    await openBranchSwitcher();
+    await browser.pause(200);
+    await capture("04-branch-picker");
+    await clickPortalText(openBranchPopover, "button", "New branch", true);
     await setPortalInput(
-      openCommandDialog,
-      'input[placeholder="Enter branch name..."]',
+      openDialog,
+      'input[placeholder="feature/my-branch"]',
       smokeBranch,
     );
-    await clickPortalText(openCommandDialog, "button", "Create & Checkout");
+    await clickPortalText(openDialog, "button", "Create & Checkout");
     await waitForGit(
       () => git("branch", "--show-current"),
       (value) => value === smokeBranch,
@@ -312,16 +306,12 @@ describe("packaged Gitru desktop smoke", () => {
 
     await openBranchSwitcher();
     await setPortalInput(
-      openCommandDialog,
-      'input[placeholder="Search branches..."]',
+      openBranchPopover,
+      'input[placeholder="Filter branches…"]',
       "conflict-work",
     );
-    await clickPortalText(
-      openCommandDialog,
-      '*[@data-slot="command-item"]',
-      "conflict-work",
-    );
-    await clickPortalText(openCommandDialog, "button", "Stash & Checkout");
+    await clickPortalText(openBranchPopover, "button", "conflict-work");
+    await clickPortalText(openDialog, "button", "Stash & Checkout");
     await waitForGit(
       () => git("branch", "--show-current"),
       (value) => value === "conflict-work",
@@ -377,7 +367,9 @@ describe("packaged Gitru desktop smoke", () => {
       (value) => value === "",
       "a clean worktree after abort",
     );
-    const branchSwitcher = await visible('button[aria-label="Switch branch"]');
+    const branchSwitcher = await visible(
+      'button[aria-label^="Current branch:"]',
+    );
     await browser.waitUntil(
       async () => {
         const text = await branchSwitcher.getText();

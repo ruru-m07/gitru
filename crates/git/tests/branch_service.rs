@@ -18,6 +18,11 @@ fn setup_branch_service(repo: &TestRepo) -> BranchService {
 }
 
 fn set_remote_default(repo: &TestRepo, remote: &tempfile::TempDir, branch: &str) {
+    set_bare_remote_default(remote, branch);
+    repo.git(&["remote", "set-head", "origin", "-a"]);
+}
+
+fn set_bare_remote_default(remote: &tempfile::TempDir, branch: &str) {
     let output = Command::new("git")
         .args(["--git-dir"])
         .arg(remote.path())
@@ -25,7 +30,6 @@ fn set_remote_default(repo: &TestRepo, remote: &tempfile::TempDir, branch: &str)
         .output()
         .expect("failed to set bare remote HEAD");
     assert!(output.status.success());
-    repo.git(&["remote", "set-head", "origin", "-a"]);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -675,6 +679,120 @@ fn delete_remote_branch_guards_default_and_current_upstream() {
             .await
             .unwrap_err();
         assert!(upstream_error.contains("upstream of current branch"));
+    });
+}
+
+#[test]
+#[serial]
+fn delete_remote_branch_checks_live_default_when_tracking_ref_is_stale() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("README.md", "# Test", "Initial commit");
+        let remote = repo.setup_remote();
+        repo.push("main");
+        set_remote_default(&repo, &remote, "main");
+
+        repo.create_branch("feature/new-default");
+        repo.git(&["push", "origin", "feature/new-default"]);
+        repo.switch_branch("main");
+
+        // Change only the remote HEAD, leaving origin/HEAD stale on purpose.
+        set_bare_remote_default(&remote, "feature/new-default");
+        assert_eq!(
+            repo.git(&["symbolic-ref", "refs/remotes/origin/HEAD"]),
+            "refs/remotes/origin/main"
+        );
+
+        let service = setup_branch_service(&repo);
+        let error = service
+            .delete_remote("origin/feature/new-default", true)
+            .await
+            .unwrap_err();
+        assert!(error.contains("protected remote branch"));
+        assert!(
+            !repo
+                .git(&["ls-remote", "--heads", "origin", "feature/new-default"])
+                .is_empty()
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn delete_remote_branch_checks_unseen_remote_commits_before_deleting() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("README.md", "# Test", "Initial commit");
+        let remote = repo.setup_remote();
+        repo.push("main");
+        set_remote_default(&repo, &remote, "main");
+        repo.git(&[
+            "push",
+            "origin",
+            "main:refs/heads/feature/advanced-remotely",
+        ]);
+
+        let local_tracking_tip =
+            repo.git(&["rev-parse", "refs/remotes/origin/feature/advanced-remotely"]);
+        assert_eq!(local_tracking_tip, repo.get_head_hash());
+
+        let other = tempfile::TempDir::new().expect("failed to create second checkout");
+        let clone = Command::new("git")
+            .args(["clone"])
+            .arg(remote.path())
+            .arg(other.path())
+            .output()
+            .expect("failed to clone remote");
+        assert!(clone.status.success());
+        for args in [
+            vec!["config", "user.email", "other@example.com"],
+            vec!["config", "user.name", "Other User"],
+            vec!["switch", "--track", "origin/feature/advanced-remotely"],
+        ] {
+            let output = Command::new("git")
+                .current_dir(other.path())
+                .args(args)
+                .output()
+                .expect("failed to configure second checkout");
+            assert!(output.status.success());
+        }
+        std::fs::write(other.path().join("remote.txt"), "remote work")
+            .expect("failed to write remote commit");
+        for args in [
+            vec!["add", "remote.txt"],
+            vec!["commit", "-m", "Advance only on remote"],
+            vec!["push", "origin", "HEAD:feature/advanced-remotely"],
+        ] {
+            let output = Command::new("git")
+                .current_dir(other.path())
+                .args(args)
+                .output()
+                .expect("failed to advance remote branch");
+            assert!(output.status.success());
+        }
+
+        // The cached tracking ref still looks merged, while the live remote tip is not.
+        assert_eq!(
+            repo.git(&["rev-parse", "refs/remotes/origin/feature/advanced-remotely",]),
+            local_tracking_tip
+        );
+
+        let service = setup_branch_service(&repo);
+        let error = service
+            .delete_remote("origin/feature/advanced-remotely", false)
+            .await
+            .unwrap_err();
+        assert!(error.contains("not merged"));
+        assert!(
+            !repo
+                .git(&[
+                    "ls-remote",
+                    "--heads",
+                    "origin",
+                    "feature/advanced-remotely",
+                ])
+                .is_empty()
+        );
     });
 }
 

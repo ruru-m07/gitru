@@ -37,6 +37,12 @@ type DiffScope = "Worktree" | "Staged" | "Unstaged";
 type PatchAction = "Stage" | "Unstage" | "Discard";
 type CreateCommitPayload = Omit<CreateCommitParams, "contextId">;
 
+function mutationErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error) return error.message || fallback;
+  if (typeof error === "string") return error || fallback;
+  return fallback;
+}
+
 /* #region // ? Query */
 export function useGetStatus(options?: QueryOptions<GetStatusResponse>) {
   const repo = useActiveRepositoryState();
@@ -688,7 +694,8 @@ export function useGitRenameBranch() {
       return await repo.branches.renameBranch(branch, newName);
     },
     onSuccess: async () => invalidateBranchMutation(repo),
-    onError: (error: string) => toast.error(error || "Failed to rename branch"),
+    onError: (error) =>
+      toast.error(mutationErrorMessage(error, "Failed to rename branch")),
   });
 }
 
@@ -710,7 +717,8 @@ export function useGitDeleteBranch() {
         : await repo.branches.deleteLocalBranch(branch, force);
     },
     onSuccess: async () => invalidateBranchMutation(repo),
-    onError: (error: string) => toast.error(error || "Failed to delete branch"),
+    onError: (error) =>
+      toast.error(mutationErrorMessage(error, "Failed to delete branch")),
   });
 }
 
@@ -728,7 +736,8 @@ export function useGitSetBranchUpstream() {
       return await repo.branches.setUpstream(branch, upstream);
     },
     onSuccess: async () => invalidateBranchMutation(repo),
-    onError: (error: string) => toast.error(error || "Failed to set upstream"),
+    onError: (error) =>
+      toast.error(mutationErrorMessage(error, "Failed to set upstream")),
   });
 }
 
@@ -740,8 +749,8 @@ export function useGitUnsetBranchUpstream() {
       return await repo.branches.unsetUpstream(branch);
     },
     onSuccess: async () => invalidateBranchMutation(repo),
-    onError: (error: string) =>
-      toast.error(error || "Failed to unset upstream"),
+    onError: (error) =>
+      toast.error(mutationErrorMessage(error, "Failed to unset upstream")),
   });
 }
 

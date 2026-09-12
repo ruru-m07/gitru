@@ -1,11 +1,10 @@
-import type { BranchInfo } from "@gitru/commands";
+import { BranchInfo } from "@gitru/commands";
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@gitru/ui/components/avatar";
 import { Badge } from "@gitru/ui/components/badge";
-import { Button } from "@gitru/ui/components/button";
 import {
   CommandListView,
   CommandViewConfig,
@@ -23,7 +22,6 @@ import {
   CornerDownLeftIcon,
   GitBranch,
   GitBranchPlus,
-  Settings2,
 } from "lucide-react";
 import { useGetBranches, useGetCurrentBranch } from "@/hooks";
 import { githubCommitterAvatarUrl } from "@/lib/external-content";
@@ -36,13 +34,9 @@ export interface BranchItem extends Partial<BranchInfo> {
   isActive?: boolean;
 }
 
-export interface BranchListProps extends Partial<BranchInfo> {
-  manage?: boolean;
-}
-
 export function useBranchListView(): CommandViewConfig<
   "branch-list",
-  BranchListProps
+  BranchItem
 > {
   const { data: localBranches } = useGetBranches("Local");
   const { data: remoteBranches } = useGetBranches("Remote");
@@ -106,7 +100,7 @@ export function useBranchListView(): CommandViewConfig<
       },
     },
     render: (context) => {
-      const { props, query, navigate } = context;
+      const { query, navigate } = context;
       const action = createNewBranchAction(query);
 
       const allItems = action ? [action, ...(branches || [])] : branches || [];
@@ -154,22 +148,6 @@ export function useBranchListView(): CommandViewConfig<
                           {item.behind}
                         </Badge>
                       ) : null}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-xs"
-                        aria-label={`Manage ${item.is_remote ? "remote" : "local"} branch ${item.display_name}`}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          navigate.push("branch-actions", {
-                            branchName: item.name,
-                            isRemote: Boolean(item.is_remote),
-                          });
-                        }}
-                      >
-                        <Settings2 />
-                      </Button>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -250,11 +228,6 @@ export function useBranchListView(): CommandViewConfig<
               navigate.push("create-branch", {
                 quickAction: true,
                 branchName: simplifyBranchName(query),
-              });
-            } else if (props?.manage) {
-              navigate.push("branch-actions", {
-                branchName: item.name,
-                isRemote: Boolean(item.is_remote),
               });
             } else {
               navigate.push("confirm-checkout", { branch: item.name });

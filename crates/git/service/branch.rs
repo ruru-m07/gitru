@@ -16,6 +16,12 @@ pub struct BranchService {
     ctx: Arc<RepoContext>,
 }
 
+struct RemoteBranchSnapshot {
+    oid: String,
+    default_ref: Option<String>,
+    head_oid: Option<String>,
+}
+
 impl BranchService {
     pub fn new(ctx: Arc<RepoContext>) -> Self {
         Self { ctx }
@@ -395,37 +401,74 @@ impl BranchService {
 
     #[logger::logger]
     pub async fn delete_remote(&self, branch: &str, force: bool) -> Result<String, String> {
-        let info = self.remote_branch_info(branch).await?;
-        if info.is_protected {
-            return Err(format!(
-                "Cannot delete protected remote branch `{branch}`. Change the remote default branch first."
-            ));
-        }
-        if !info.is_merged && !force {
-            return Err(format!(
-                "Remote branch `{branch}` contains commits not merged into HEAD. Review them before force deleting."
-            ));
-        }
+        let (remote, remote_branch) = self.split_remote_branch(branch).await?;
+        self.validate_branch_name(remote_branch).await?;
+        let remote_ref = format!("refs/heads/{remote_branch}");
+        let snapshot = self.remote_branch_snapshot(&remote, remote_branch).await?;
+        self.ensure_remote_branch_is_not_default(branch, &remote_ref, &snapshot)?;
 
-        let current = self.get_current_branch().await?;
-        if !current.is_detached {
-            let current_info = self.get_branch_info(&current.name).await?;
-            if current_info.upstream.as_deref() == Some(branch) {
+        if !force {
+            self.ensure_remote_commit_available(&remote, &remote_ref, &snapshot.oid)
+                .await?;
+            let unmerged_count = self
+                .ctx
+                .runner
+                .run_with_options(
+                    &["rev-list", "--count", &snapshot.oid, "--not", "HEAD"],
+                    GitRunOptions::default_read(),
+                )
+                .await?
+                .parse::<usize>()
+                .map_err(|_| format!("Failed to inspect remote branch `{branch}`"))?;
+            if unmerged_count > 0 {
                 return Err(format!(
-                    "Cannot delete `{branch}` while it is the upstream of current branch `{}`. Unset or change the upstream first.",
-                    current.name
+                    "Remote branch `{branch}` contains commits not merged into HEAD. Review them before force deleting."
                 ));
             }
         }
 
-        let (remote, remote_branch) = self.split_remote_branch(branch).await?;
+        if let Some((current, upstream)) = self.current_branch_upstream().await?
+            && upstream == branch
+        {
+            return Err(format!(
+                "Cannot delete `{branch}` while it is the upstream of current branch `{current}`. Unset or change the upstream first."
+            ));
+        }
+
+        // Re-read the remote immediately before deletion. The explicit lease
+        // below then rejects any commit that lands after this safety check.
+        let latest = self.remote_branch_snapshot(&remote, remote_branch).await?;
+        self.ensure_remote_branch_is_not_default(branch, &remote_ref, &latest)?;
+        if latest.oid != snapshot.oid {
+            return Err(format!(
+                "Remote branch `{branch}` changed while preparing deletion. Refresh and try again."
+            ));
+        }
+
+        let lease = format!("--force-with-lease={remote_ref}:{}", snapshot.oid);
+        let delete_refspec = format!(":{remote_ref}");
         self.ctx
             .runner
             .run_with_options(
-                &["push", remote.as_str(), "--delete", remote_branch],
+                &[
+                    "push",
+                    lease.as_str(),
+                    "--",
+                    remote.as_str(),
+                    delete_refspec.as_str(),
+                ],
                 GitRunOptions::default_read().with_timeout(Duration::from_secs(60)),
             )
-            .await?;
+            .await
+            .map_err(|error| {
+                if error.contains("stale info") {
+                    format!(
+                        "Remote branch `{branch}` changed while it was being deleted. Refresh and try again."
+                    )
+                } else {
+                    error
+                }
+            })?;
         self.ctx.cache.invalidate_all();
         Ok(format!("Deleted remote branch `{branch}`"))
     }
@@ -578,6 +621,149 @@ impl BranchService {
             .into_iter()
             .find(|candidate| candidate.name == branch)
             .ok_or_else(|| format!("Remote branch `{branch}` does not exist"))
+    }
+
+    async fn remote_branch_snapshot(
+        &self,
+        remote: &str,
+        remote_branch: &str,
+    ) -> Result<RemoteBranchSnapshot, String> {
+        let remote_ref = format!("refs/heads/{remote_branch}");
+        let output = self
+            .ctx
+            .runner
+            .run_with_options(
+                &[
+                    "ls-remote",
+                    "--symref",
+                    "--",
+                    remote,
+                    "HEAD",
+                    remote_ref.as_str(),
+                ],
+                GitRunOptions::default_read().with_timeout(Duration::from_secs(60)),
+            )
+            .await?;
+
+        let mut oid = None;
+        let mut default_ref = None;
+        let mut head_oid = None;
+        for line in output.lines() {
+            if let Some(symbolic) = line.strip_prefix("ref: ") {
+                let mut fields = symbolic.split_whitespace();
+                if let (Some(target), Some("HEAD")) = (fields.next(), fields.next()) {
+                    default_ref = Some(target.to_string());
+                }
+                continue;
+            }
+
+            let mut fields = line.split_whitespace();
+            let (Some(object), Some(reference)) = (fields.next(), fields.next()) else {
+                continue;
+            };
+            if reference == remote_ref {
+                oid = Some(object.to_string());
+            } else if reference == "HEAD" {
+                head_oid = Some(object.to_string());
+            }
+        }
+
+        Ok(RemoteBranchSnapshot {
+            oid: oid.ok_or_else(|| {
+                format!("Remote branch `{remote}/{remote_branch}` does not exist")
+            })?,
+            default_ref,
+            head_oid,
+        })
+    }
+
+    fn ensure_remote_branch_is_not_default(
+        &self,
+        branch: &str,
+        remote_ref: &str,
+        snapshot: &RemoteBranchSnapshot,
+    ) -> Result<(), String> {
+        if snapshot.default_ref.as_deref() == Some(remote_ref) {
+            return Err(format!(
+                "Cannot delete protected remote branch `{branch}`. Change the remote default branch first."
+            ));
+        }
+        if snapshot.default_ref.is_none() && snapshot.head_oid.is_some() {
+            return Err(format!(
+                "Cannot verify the default branch for this remote, so `{branch}` was not deleted."
+            ));
+        }
+        Ok(())
+    }
+
+    async fn ensure_remote_commit_available(
+        &self,
+        remote: &str,
+        remote_ref: &str,
+        oid: &str,
+    ) -> Result<(), String> {
+        let commit = format!("{oid}^{{commit}}");
+        if self
+            .ctx
+            .runner
+            .run_with_options(
+                &["cat-file", "-e", commit.as_str()],
+                GitRunOptions::default_read(),
+            )
+            .await
+            .is_err()
+        {
+            self.ctx
+                .runner
+                .run_with_options(
+                    &["fetch", "--no-tags", "--", remote, remote_ref],
+                    GitRunOptions::default_read().with_timeout(Duration::from_secs(60)),
+                )
+                .await?;
+        }
+
+        self.ctx
+            .runner
+            .run_with_options(
+                &["cat-file", "-e", commit.as_str()],
+                GitRunOptions::default_read(),
+            )
+            .await
+            .map(|_| ())
+            .map_err(|_| "Failed to inspect the current remote branch tip".to_string())
+    }
+
+    async fn current_branch_upstream(&self) -> Result<Option<(String, String)>, String> {
+        let current = self
+            .ctx
+            .runner
+            .run_with_options(
+                &["symbolic-ref", "--short", "-q", "HEAD"],
+                GitRunOptions::default_read().allow_exit_codes(&[1]),
+            )
+            .await?;
+        if current.is_empty() {
+            return Ok(None);
+        }
+
+        let current_ref = format!("refs/heads/{current}");
+        let upstream = self
+            .ctx
+            .runner
+            .run_with_options(
+                &[
+                    "for-each-ref",
+                    "--format=%(upstream:short)",
+                    current_ref.as_str(),
+                ],
+                GitRunOptions::default_read(),
+            )
+            .await?;
+        if upstream.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some((current, upstream)))
+        }
     }
 
     async fn split_remote_branch<'a>(&self, branch: &'a str) -> Result<(String, &'a str), String> {
