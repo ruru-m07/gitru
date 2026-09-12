@@ -21,6 +21,11 @@ pub struct BranchInfo {
     pub upstream: Option<String>,
     pub ahead: Option<usize>,
     pub behind: Option<usize>,
+    /// True when the ref is a remote default branch, or a local branch that
+    /// tracks one. Destructive branch operations must reject protected refs.
+    pub is_protected: bool,
+    /// Whether the branch tip is reachable from the current `HEAD`.
+    pub is_merged: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

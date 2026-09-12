@@ -37,6 +37,12 @@ type DiffScope = "Worktree" | "Staged" | "Unstaged";
 type PatchAction = "Stage" | "Unstage" | "Discard";
 type CreateCommitPayload = Omit<CreateCommitParams, "contextId">;
 
+function mutationErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error) return error.message || fallback;
+  if (typeof error === "string") return error || fallback;
+  return fallback;
+}
+
 /* #region // ? Query */
 export function useGetStatus(options?: QueryOptions<GetStatusResponse>) {
   const repo = useActiveRepositoryState();
@@ -664,6 +670,88 @@ export function useGitCreateBranch() {
   });
 
   return mutation;
+}
+
+async function invalidateBranchMutation(
+  repo: ReturnType<typeof useActiveRepositoryState>,
+) {
+  await repo?.branches.invalidateAll();
+  await repo?.commit.invalidate();
+  await repo?.status.invalidate();
+}
+
+export function useGitRenameBranch() {
+  const repo = useActiveRepositoryState();
+  return useMutation({
+    mutationFn: async ({
+      branch,
+      newName,
+    }: {
+      branch: string;
+      newName: string;
+    }) => {
+      if (!repo) throw new Error("No repository selected");
+      return await repo.branches.renameBranch(branch, newName);
+    },
+    onSuccess: async () => invalidateBranchMutation(repo),
+    onError: (error) =>
+      toast.error(mutationErrorMessage(error, "Failed to rename branch")),
+  });
+}
+
+export function useGitDeleteBranch() {
+  const repo = useActiveRepositoryState();
+  return useMutation({
+    mutationFn: async ({
+      branch,
+      isRemote,
+      force,
+    }: {
+      branch: string;
+      isRemote: boolean;
+      force: boolean;
+    }) => {
+      if (!repo) throw new Error("No repository selected");
+      return isRemote
+        ? await repo.branches.deleteRemoteBranch(branch, force)
+        : await repo.branches.deleteLocalBranch(branch, force);
+    },
+    onSuccess: async () => invalidateBranchMutation(repo),
+    onError: (error) =>
+      toast.error(mutationErrorMessage(error, "Failed to delete branch")),
+  });
+}
+
+export function useGitSetBranchUpstream() {
+  const repo = useActiveRepositoryState();
+  return useMutation({
+    mutationFn: async ({
+      branch,
+      upstream,
+    }: {
+      branch: string;
+      upstream: string;
+    }) => {
+      if (!repo) throw new Error("No repository selected");
+      return await repo.branches.setUpstream(branch, upstream);
+    },
+    onSuccess: async () => invalidateBranchMutation(repo),
+    onError: (error) =>
+      toast.error(mutationErrorMessage(error, "Failed to set upstream")),
+  });
+}
+
+export function useGitUnsetBranchUpstream() {
+  const repo = useActiveRepositoryState();
+  return useMutation({
+    mutationFn: async ({ branch }: { branch: string }) => {
+      if (!repo) throw new Error("No repository selected");
+      return await repo.branches.unsetUpstream(branch);
+    },
+    onSuccess: async () => invalidateBranchMutation(repo),
+    onError: (error) =>
+      toast.error(mutationErrorMessage(error, "Failed to unset upstream")),
+  });
 }
 
 export function usePopCurrentBranchStash() {
