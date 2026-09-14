@@ -134,7 +134,8 @@ downloaded helper against a pinned upstream commit and SHA-256, adds a file
 guard to its shell-script scan, and resumes packaging from Tauri's prepared
 AppDir. Any other initial failure, changed helper, failed extraction, or failed
 notice audit remains red. This is a qualification workaround, not a permanent
-fork of the Tauri bundler.
+fork of the Tauri bundler. Recovery keeps Tauri's partially prepared AppDir and
+supplies its CEF and shared-library directories to the helper's linker scan.
 
 ## Evidence as of 2026-09-14
 

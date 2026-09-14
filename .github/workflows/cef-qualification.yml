@@ -303,6 +303,7 @@ jobs:
               cd "${appimage_directory}"
               APPDIR="${app_dir}" \
                 MAIN_BIN="${app_dir}/bin/gitru" \
+                LD_LIBRARY_PATH="${app_dir}/bin:${app_dir}/lib:${app_dir}/shared/lib" \
                 OUTPUT_APPIMAGE=1 \
                 OUTNAME="${appimage_name}" \
                 HOOKSRC="https://raw.githubusercontent.com/FabianLars/Anylinux-AppImages/refs/heads/main/useful-tools/hooks" \
