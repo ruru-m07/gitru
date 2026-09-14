@@ -4,7 +4,8 @@
   "version": "0.0.0-beta.7",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --mode qualification",
+    "dev:qualification": "vite --mode qualification",
     "build": "NODE_ENV=production && tsc && vite build",
     "build:qualification": "tsc && vite build --mode qualification",
     "build:e2e": "tsc && vite build --mode e2e",

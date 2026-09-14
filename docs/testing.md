@@ -37,9 +37,11 @@ setup action reads and installs the pinned Rust version from
 `--frozen-lockfile`, and caches the root Bun and Cargo workspaces. Superseded
 runs for the same pull request or branch are canceled.
 
-The release workflow checks out the published tag and runs `make verify`
-before any Tauri artifact is built or uploaded. A failing revision therefore
-cannot publish application artifacts or the updater manifest.
+The release workflow checks out the published tag, rejects any base Tauri
+configuration whose identifier is not exactly `com.ruru.gitru`, and then runs
+`make verify` before any Tauri artifact is built or uploaded. A qualification
+revision or failing production revision therefore cannot publish application
+artifacts or the updater manifest.
 
 On the disposable RURU-93 spike branch only, the cross-platform release-mode E2E
 job is a required CEF/CDP parity gate. The `dev` branch and production remain on

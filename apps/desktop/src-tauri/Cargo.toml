@@ -15,7 +15,10 @@ name = "gitru_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
-default = ["wry"]
+# This disposable branch must never compile a production-profile application by
+# default. Explicit qualification builds still disable defaults so each runtime
+# graph remains independently auditable.
+default = ["qualification", "wry"]
 wry = [
   "dep:tauri-runtime-wry",
   "tauri-runtime-wry/unstable",

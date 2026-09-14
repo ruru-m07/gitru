@@ -39,7 +39,7 @@ jobs:
             .packages[]
             | select(.name == "gitru")
             | .features as $features
-            | ($features.default == ["wry"])
+            | (($features.default | sort) == ["qualification", "wry"])
               and ($features.wry | index("dep:tauri-runtime-wry") != null)
               and ($features.cef | index("dep:tauri-runtime-cef") != null)
               and ($features.qualification == [])
@@ -76,10 +76,21 @@ jobs:
           ' apps/desktop/src-tauri/tauri.wry-qualification.conf.json >/dev/null
 
           jq -e '
-            .identifier == "com.ruru.gitru"
-            and .bundle.createUpdaterArtifacts == true
-            and .plugins.updater.active == true
+            .productName == "Gitru Runtime Qualification"
+            and .identifier == "com.ruru.gitru.cef-qualification"
+            and .build.beforeDevCommand == "bun run dev:qualification"
+            and .build.beforeBuildCommand == "bun run build:qualification"
+            and .bundle.createUpdaterArtifacts == false
+            and .bundle.macOS.minimumSystemVersion == "11.0"
+            and ((.plugins | has("updater")) | not)
+            and ((.app.security.csp | contains("posthog.com")) | not)
           ' apps/desktop/src-tauri/tauri.conf.json >/dev/null
+
+          identifier="$(jq -er '.identifier' apps/desktop/src-tauri/tauri.conf.json)"
+          if [[ "${identifier}" == "com.ruru.gitru" ]]; then
+            echo "::error::The disposable branch unexpectedly has the production application identity."
+            exit 1
+          fi
 
       - name: Make the known mixed Tauri JavaScript API graph explicit
         shell: bash
@@ -177,7 +188,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw 'The selected Perl runtime is missing Locale::Maketext::Simple'
           }
-          $perlDirectory | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "GITRU_PERL_DIR=$perlDirectory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -268,7 +279,17 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
-            command -v perl
+            perl_dir="$(cygpath -u "${GITRU_PERL_DIR}")"
+            export PATH="${perl_dir}:${PATH}"
+            hash -r
+            selected_perl="$(command -v perl)"
+            case "${selected_perl}" in
+              "${perl_dir}/perl"|"${perl_dir}/perl.exe") ;;
+              *)
+                echo "::error::Expected Strawberry Perl at ${perl_dir}, selected ${selected_perl}."
+                exit 1
+                ;;
+            esac
             perl -MLocale::Maketext::Simple -e 1
           fi
           cef_target_dir="${GITHUB_WORKSPACE}/target/qualification-cef"
@@ -286,6 +307,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            perl_dir="$(cygpath -u "${GITRU_PERL_DIR}")"
+            export PATH="${perl_dir}:${PATH}"
+            hash -r
+            selected_perl="$(command -v perl)"
+            case "${selected_perl}" in
+              "${perl_dir}/perl"|"${perl_dir}/perl.exe") ;;
+              *)
+                echo "::error::Expected Strawberry Perl at ${perl_dir}, selected ${selected_perl}."
+                exit 1
+                ;;
+            esac
+            perl -MLocale::Maketext::Simple -e 1
+          fi
           wry_target_dir="${GITHUB_WORKSPACE}/target/qualification-wry"
           started_at=$(date +%s)
           CARGO_TARGET_DIR="${wry_target_dir}" bun --cwd=apps/desktop run tauri build --ci --no-sign --config src-tauri/tauri.wry-qualification.conf.json --target "${{ matrix.target }}" --bundles "${{ matrix.bundles }}" --features qualification,wry -- --no-default-features
@@ -315,7 +350,7 @@ jobs:
           rpm -qplv "${cef_rpm}" | tee "${rpm_report}"
           cat "${deb_report}" "${rpm_report}" > "${report}"
 
-          if ! grep -Eq '^-rwsr-xr-x[[:space:]]+root/root[[:space:]].*chrome-sandbox$' "${deb_report}"; then
+          if ! grep -Eq '^-rwsr-xr-x[[:space:]]+(root/root|0/0)[[:space:]].*chrome-sandbox$' "${deb_report}"; then
             echo "::error::The CEF deb must carry chrome-sandbox owned by root:root with mode 4755."
             exit 1
           fi

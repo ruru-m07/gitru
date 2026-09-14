@@ -17,8 +17,8 @@ compile_error!("the `wry` and `cef` runtime features are mutually exclusive");
 #[cfg(not(any(feature = "wry", feature = "cef")))]
 compile_error!("enable exactly one runtime feature: `wry` or `cef`");
 
-#[cfg(all(feature = "cef", not(feature = "qualification")))]
-compile_error!("the alpha CEF runtime is restricted to `qualification` builds");
+#[cfg(not(feature = "qualification"))]
+compile_error!("this disposable Tauri 3 branch only supports `qualification` builds");
 
 #[cfg(feature = "e2e")]
 const E2E_RESET_ENV: &str = "GITRU_E2E_RESET";

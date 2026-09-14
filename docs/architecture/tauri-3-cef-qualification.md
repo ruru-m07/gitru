@@ -26,11 +26,14 @@ plugin-nested `@tauri-apps/api@2.11.1` copies alongside the root
 v3-compatible plugin metadata, after which the bridge and plugin calls need to
 be requalified.
 
-Both qualification overlays use the separate
+The base configuration and both qualification overlays use the separate
 `com.ruru.gitru.cef-qualification` identifier, disable updater checks and
 updater artifact creation, and raise only the experimental macOS bundle minimum
-to 11.0. They therefore cannot replace or mutate a user's production Gitru
-profile. Both overlays select the Cargo
+to 11.0. The default Cargo feature set is also `qualification,wry`, the base
+development command uses Vite's `qualification` mode, and `make dev` and
+`make build-tauri` pass the Wry qualification overlay explicitly. A bare Tauri
+command in this branch therefore cannot replace or mutate a user's production
+Gitru profile. Both runtime-specific overlays select the Cargo
 `qualification` feature and the compile-time `qualification` frontend mode. The
 feature rejects non-qualification identities and updater commands; the frontend
 mode suppresses sidebar update checks and does not mount the PostHog provider.
@@ -43,9 +46,11 @@ Bitbucket image hosts needed for product-parity avatar rendering. Do not use
 production signing, notarization, updater, analytics, or release-upload
 credentials in a qualification build.
 
-The production release workflow is deliberately unchanged from `dev` and must
-not run from this branch. The spike's manifest and toolchain are not a release
-migration plan.
+The production release workflow now fails before verification or signing unless
+the checked-out base configuration has the exact `com.ruru.gitru` production
+identifier. This branch deliberately does not, so even an accidentally
+published tag cannot upload its qualification artifacts. The spike's manifest
+and toolchain are not a release migration plan.
 
 ## Outcome: NOT YET
 
@@ -236,45 +241,48 @@ not change the pending cost table below.
 
 ### Hosted branch evidence — 2026-09-14
 
-The final runtime-code revision, `a214bba5`, ran in normal CI
-[34838510507](https://github.com/ruru-m07/gitru/actions/runs/34838510507):
+The pre-isolation revision, `69053ed6`, ran in normal CI
+[34841415287](https://github.com/ruru-m07/gitru/actions/runs/34841415287):
 
-- Ubuntu 24.04 passed the complete ten-milestone CEF/CDP flow using CEF/Chromium
-  151.0.7922.174. The raw release binary ran beneath a 24-bit Xvfb display only
-  after CI verified a regular `chrome-sandbox` file and assigned it
-  `root:root` ownership with mode 4755. This is raw-runtime evidence, not proof
-  of installed deb, RPM, or AppImage behavior.
-- Windows passed the same ten milestones with exit code 0 and no live-target
-  frontend errors. The alpha still runs unsandboxed on Windows, so a functional
-  pass does not satisfy the production security gate or prove the NSIS package.
-- macOS arm64 failed before repository import: the host remained on onboarding,
-  the fixture stayed untouched, and the managed child rendered blank while CEF
-  continued to advertise its target ID. A prior hosted run on `2846a72d` passed
-  the complete flow, matching the locally observed nondeterminism rather than a
-  deterministic harness assertion failure.
+- Ubuntu 24.04, Windows, and macOS arm64 each passed the complete ten-milestone
+  CEF/CDP flow using CEF/Chromium 151.0.7922.174. The Linux raw release binary
+  ran beneath a 24-bit Xvfb display only after CI verified a regular
+  `chrome-sandbox` file and assigned it `root:root` ownership with mode 4755.
+  This remains raw-runtime evidence, not proof of installed package behavior.
+- The fresh macOS pass followed both a hosted failure and two local failures in
+  which the managed child target became unusable at different milestones. It
+  therefore confirms nondeterminism; it does not close the macOS stability gate.
+- The alpha still runs unsandboxed on Windows, so the functional pass does not
+  satisfy the production security gate or prove the NSIS package.
 
 The packaging workflow
-[34838507471](https://github.com/ruru-m07/gitru/actions/runs/34838507471)
+[34841411387](https://github.com/ruru-m07/gitru/actions/runs/34841411387)
 produced these additional observations:
 
 - macOS arm64 passed both isolated runtime builds and both notice audits. With
-  a warm CEF cache, Wry took 127 seconds and 51,803,728 bundle-tree bytes; CEF
-  took 214 seconds and 553,880,041 bytes. The CEF cache occupied 488,435,385
-  bytes. These artifacts were unsigned and uninstalled, and no cost limit was
-  approved in advance.
-- Linux emitted deb and RPM files, then the combined build failed when Tauri's
-  AppImage `quick-sharun` path treated CEF's `locales` directory like a file.
-  The workflow now separates deb/RPM and AppImage cells so the AppImage blocker
-  cannot erase independent package, sandbox, and notice evidence.
-- The Windows build selected Git Bash's incomplete Perl and stopped in vendored
-  OpenSSL before linking Gitru. The workflow now selects and validates the
-  hosted runner's complete Perl runtime before the shared Bash build step.
-- The macOS x64 CEF app and DMG built, but the cross-built Wry DMG encountered
-  `hdiutil: Resource busy`. The x64 cell now uses the architecture-native
-  `macos-26-intel` runner, removing that cross-host variable from the rerun.
+  a warm CEF cache, Wry took 125 seconds and 51,803,726 bundle-tree bytes; CEF
+  took 178 seconds and 553,880,009 bytes. The CEF cache occupied 488,435,385
+  bytes. The unsigned Wry and CEF DMGs were 18,784,933 and 165,056,163 bytes,
+  respectively. These artifacts were not installed or signed, and no cost
+  limit was approved in advance.
+- The isolated Linux deb/RPM cell built both CEF packages. Their extracted
+  metadata shows `chrome-sandbox` with mode 4755 and root ownership: RPM emits
+  `root root`, while `dpkg-deb --contents` represents root numerically as `0/0`.
+  The initial gate accepted only `root/root` and produced a false negative; the
+  corrected gate accepts both valid dpkg representations without weakening the
+  mode or ownership requirement.
+- The independent Linux AppImage cell still fails when Tauri's
+  `quick-sharun` path treats CEF's `locales` directory like a file. This remains
+  a real distribution blocker and is not bypassed by the workflow.
+- The Windows setup validated Strawberry Perl and its required module in
+  PowerShell, but the subsequent Git Bash build selected `/usr/bin/perl` and
+  stopped in vendored OpenSSL. The corrected workflow records the validated
+  directory and forces each isolated build shell to select that exact runtime.
+- The architecture-native `macos-26-intel` cell and corrected Windows package
+  cell still require fresh evidence after these harness changes.
 
-The workflow corrections after these observations require a fresh run; none of
-them weakens a product or security gate. The AppImage packaging failure and the
+The fail-closed identity changes and workflow corrections require a fresh run;
+none weakens a product or security gate. The AppImage packaging failure and the
 macOS managed-child instability remain migration blockers even if the corrected
 infrastructure lanes turn green.
 
