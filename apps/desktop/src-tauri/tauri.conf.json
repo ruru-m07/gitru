@@ -7,6 +7,7 @@
     "beforeDevCommand": "bun run dev:qualification",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "bun run build:qualification",
+    "beforeBundleCommand": "bun run scripts/prepare-cef-notices.ts",
     "frontendDist": "../dist"
   },
   "app": {
@@ -30,6 +31,9 @@
   },
   "bundle": {
     "createUpdaterArtifacts": false,
+    "resources": {
+      "resources/cef/*": "licenses/cef/"
+    },
     "macOS": {
       "dmg": {
         "background": "assets/dmg-background.png",

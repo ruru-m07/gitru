@@ -24,9 +24,9 @@ setup: ## Install dependencies and build Rust crates
 
 ##@ Development
 
-dev: ## Start the isolated Tauri 3/Wry qualification server
-	@echo "$(GREEN)Starting isolated Tauri 3/Wry qualification server...$(NC)"
-	bun --cwd="./apps/desktop" run tauri dev --config src-tauri/tauri.wry-qualification.conf.json --features qualification,wry -- --no-default-features
+dev: ## Start the macOS Tauri 3/CEF application
+	@echo "$(GREEN)Starting macOS Tauri 3/CEF application...$(NC)"
+	bun --cwd="./apps/desktop" run tauri dev
 
 dev-vite: ## Start Vite development server only (no Tauri)
 	@echo "$(GREEN)Starting Vite development server...$(NC)"
@@ -40,10 +40,10 @@ build-vite: ## Build Vite application only (no Tauri)
 	  bun --cwd="./apps/desktop" run build
 	@echo "$(GREEN)Vite build complete!$(NC)"
 
-build-tauri: ## Build the isolated Tauri 3/Wry qualification application
-	@echo "$(GREEN)Building isolated Tauri 3/Wry qualification application...$(NC)"
+build-tauri: ## Build the macOS Tauri 3/CEF application
+	@echo "$(GREEN)Building macOS Tauri 3/CEF application...$(NC)"
 	@. ./scripts/load-env.sh && \
-	  bun --cwd="./apps/desktop" run tauri build --config src-tauri/tauri.wry-qualification.conf.json --features qualification,wry -- --no-default-features
+	  bun --cwd="./apps/desktop" run tauri build
 	@echo "$(GREEN)Tauri build complete!$(NC)"
 
 build: ## Build both Vite and Tauri applications

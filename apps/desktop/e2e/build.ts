@@ -17,10 +17,6 @@ if (process.platform === "darwin") {
   args.push("--no-bundle");
 }
 
-// Tauri forwards arguments after `--` to Cargo. The normal desktop default is
-// Wry, so disable it while the test-only `e2e` feature selects CEF.
-args.push("--", "--no-default-features");
-
 const result = spawnSync(process.execPath, args, {
   cwd: new URL("..", import.meta.url),
   encoding: "utf8",

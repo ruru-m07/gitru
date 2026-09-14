@@ -11,12 +11,6 @@ use tauri::{App, Manager};
 use tauri_plugin_store::StoreExt;
 use tokio::sync::RwLock;
 
-#[cfg(all(feature = "wry", feature = "cef"))]
-compile_error!("the `wry` and `cef` runtime features are mutually exclusive");
-
-#[cfg(not(any(feature = "wry", feature = "cef")))]
-compile_error!("enable exactly one runtime feature: `wry` or `cef`");
-
 #[cfg(not(feature = "qualification"))]
 compile_error!("this disposable Tauri 3 branch only supports `qualification` builds");
 
@@ -43,15 +37,8 @@ pub fn run() {
     validate_qualification_identity(context.config().identifier.as_str())
         .expect("qualification identity validation failed before runtime initialization");
 
-    let builder = tauri::Builder::default();
-
-    #[cfg(feature = "wry")]
-    let builder = builder.runtime(tauri_runtime_wry::Wry::default());
-
-    #[cfg(feature = "cef")]
-    let builder = builder.runtime(cef_runtime());
-
-    let builder = builder
+    let builder = tauri::Builder::default()
+        .runtime(cef_runtime())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -174,7 +161,6 @@ fn validate_qualification_identity(identifier: &str) -> Result<(), String> {
     ))
 }
 
-#[cfg(feature = "cef")]
 fn cef_runtime() -> tauri_runtime_cef::Cef {
     let runtime = tauri_runtime_cef::Cef::default();
 
