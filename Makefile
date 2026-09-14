@@ -24,8 +24,8 @@ setup: ## Install dependencies and build Rust crates
 
 ##@ Development
 
-dev: ## Start development server with Tauri
-	@echo "$(GREEN)Starting Tauri development server...$(NC)"
+dev: ## Start the macOS Tauri 3/CEF application
+	@echo "$(GREEN)Starting macOS Tauri 3/CEF application...$(NC)"
 	bun --cwd="./apps/desktop" run tauri dev
 
 dev-vite: ## Start Vite development server only (no Tauri)
@@ -40,8 +40,8 @@ build-vite: ## Build Vite application only (no Tauri)
 	  bun --cwd="./apps/desktop" run build
 	@echo "$(GREEN)Vite build complete!$(NC)"
 
-build-tauri: ## Build Tauri application
-	@echo "$(GREEN)Building Tauri application...$(NC)"
+build-tauri: ## Build the macOS Tauri 3/CEF application
+	@echo "$(GREEN)Building macOS Tauri 3/CEF application...$(NC)"
 	@. ./scripts/load-env.sh && \
 	  bun --cwd="./apps/desktop" run tauri build
 	@echo "$(GREEN)Tauri build complete!$(NC)"

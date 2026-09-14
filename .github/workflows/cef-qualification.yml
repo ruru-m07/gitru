@@ -1,0 +1,599 @@
+name: CEF qualification
+
+on:
+  push:
+    branches:
+      - ruru/ruru-93-tauri-3-cef-qualification
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cef-qualification-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  safety-gate:
+    name: Verify qualification isolation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain
+        uses: ./.github/actions/setup-rust
+
+      - name: Verify CEF is the only desktop runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cargo metadata --no-deps --format-version 1 > "${RUNNER_TEMP}/metadata.json"
+          jq -e '
+            .packages[]
+            | select(.name == "gitru")
+            | .features as $features
+            | .dependencies as $dependencies
+            | (($features.default | sort) == ["qualification"])
+              and (($features | has("wry")) | not)
+              and (($features | has("cef")) | not)
+              and ($features.qualification == [])
+              and ($features.e2e | index("qualification") != null)
+              and ([$dependencies[].name] | index("tauri-runtime-cef") != null)
+              and ([$dependencies[].name] | index("tauri-runtime-wry") == null)
+          ' "${RUNNER_TEMP}/metadata.json" >/dev/null
+
+      - name: Verify overlay identity and updater isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          jq -e '
+            .productName == "Gitru Runtime Qualification"
+            and .identifier == "com.ruru.gitru.cef-qualification"
+            and .build.beforeDevCommand == "bun run dev:qualification"
+            and .build.beforeBuildCommand == "bun run build:qualification"
+            and .build.beforeBundleCommand == "bun run scripts/prepare-cef-notices.ts"
+            and .bundle.createUpdaterArtifacts == false
+            and .bundle.resources["resources/cef/*"] == "licenses/cef/"
+            and .bundle.macOS.minimumSystemVersion == "11.0"
+            and ((.plugins.updater | keys) == ["endpoints", "pubkey"])
+            and .plugins.updater.endpoints == []
+            and .plugins.updater.pubkey == ""
+            and ((.app.security.csp | contains("posthog.com")) | not)
+            and (.app.security.csp | contains("https://avatars.githubusercontent.com"))
+            and (.app.security.csp | contains("https://github.com"))
+          ' apps/desktop/src-tauri/tauri.conf.json >/dev/null
+
+          identifier="$(jq -er '.identifier' apps/desktop/src-tauri/tauri.conf.json)"
+          if [[ "${identifier}" == "com.ruru.gitru" ]]; then
+            echo "::error::The disposable branch unexpectedly has the production application identity."
+            exit 1
+          fi
+
+      - name: Make the known mixed Tauri JavaScript API graph explicit
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          grep -Fq '"@tauri-apps/api": ["@tauri-apps/api@3.0.0-alpha.0"' bun.lock
+          nested_api_count=$(grep -Ec '"@tauri-apps/plugin-[^"]+/@tauri-apps/api": \["@tauri-apps/api@2\.11\.1"' bun.lock || true)
+          if [[ "${nested_api_count}" -ne 8 ]]; then
+            echo "::error::Expected eight known plugin-nested @tauri-apps/api 2.11.1 entries; review upstream plugin metadata and update the qualification decision."
+            exit 1
+          fi
+          echo "::warning::Tauri plugin 3.0.0-alpha.0 packages still resolve eight nested @tauri-apps/api 2.11.1 copies. This is a documented upstream blocker, not a pure-v3 JavaScript graph."
+
+  build:
+    name: ${{ matrix.label }}
+    needs: safety-gate
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - label: Linux x64 (deb/RPM)
+            slug: linux-x64-deb-rpm
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            bundles: deb,rpm
+            linux_bundle_class: packages
+          - label: Linux x64 (AppImage)
+            slug: linux-x64-appimage
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            bundles: appimage
+            linux_bundle_class: appimage
+          - label: macOS arm64
+            slug: macos-arm64
+            os: macos-26
+            target: aarch64-apple-darwin
+            bundles: app,dmg
+          - label: macOS x64
+            slug: macos-x64
+            os: macos-26-intel
+            target: x86_64-apple-darwin
+            bundles: app,dmg
+          - label: Windows x64
+            slug: windows-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install Linux build and bundle prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake cpio libgtk-4-dev libxdo-dev librsvg2-dev ninja-build patchelf rpm
+
+      - name: Install CEF build prerequisites (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          command -v cmake >/dev/null || brew install cmake
+          command -v ninja >/dev/null || brew install ninja
+          cmake --version
+          ninja --version
+
+      - name: Install CEF build prerequisites (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
+            choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' --yes
+          }
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
+            choco install ninja --yes
+          }
+          cmake --version
+          ninja --version
+
+      - name: Select the complete Windows Perl runtime
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $perlDirectory = 'C:\Strawberry\perl\bin'
+          $perl = Join-Path $perlDirectory 'perl.exe'
+          if (-not (Test-Path -LiteralPath $perl -PathType Leaf)) {
+            throw "The hosted runner's complete Perl runtime is missing at $perl"
+          }
+          & $perl -MLocale::Maketext::Simple -e 1
+          if ($LASTEXITCODE -ne 0) {
+            throw 'The selected Perl runtime is missing Locale::Maketext::Simple'
+          }
+          "GITRU_PERL_DIR=$perlDirectory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - name: Install pinned Rust toolchain
+        uses: ./.github/actions/setup-rust
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Resolve the platform CEF cache
+        id: cef-cache-path
+        shell: bash
+        run: |
+          case "${RUNNER_OS}" in
+            Linux) cache_path="${HOME}/.cache/tauri-cef" ;;
+            macOS) cache_path="${HOME}/Library/Caches/tauri-cef" ;;
+            Windows) cache_path="${LOCALAPPDATA}/tauri-cef" ;;
+            *) echo "Unsupported runner OS: ${RUNNER_OS}" >&2; exit 1 ;;
+          esac
+          printf 'path=%s\n' "${cache_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Cache CEF distribution
+        id: cef-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ steps.cef-cache-path.outputs.path }}
+          key: cef-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('package.json', 'bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+        with:
+          workspaces: . -> target
+          shared-key: cef-qualification-${{ matrix.target }}
+          cache-on-failure: true
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Assert the build links only Tauri 3 and CEF
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cargo tree --manifest-path apps/desktop/src-tauri/Cargo.toml \
+            --target "${{ matrix.target }}" --edges normal --prefix none \
+            --no-default-features --features qualification > "${RUNNER_TEMP}/cef-tree.txt"
+          grep -Eq '^tauri-runtime-cef v' "${RUNNER_TEMP}/cef-tree.txt"
+          if grep -Eq '^tauri[^ ]* v2\.' "${RUNNER_TEMP}/cef-tree.txt"; then
+            echo "::error::The CEF graph still contains a Tauri 2 crate."
+            grep -E '^tauri[^ ]* v2\.' "${RUNNER_TEMP}/cef-tree.txt"
+            exit 1
+          fi
+          if grep -Eq '^tauri-runtime-wry v' "${RUNNER_TEMP}/cef-tree.txt"; then
+            echo "::error::The CEF-only desktop unexpectedly links tauri-runtime-wry."
+            exit 1
+          fi
+          if grep -Eq '^(gdk|gdk-sys|gtk|gtk-sys|webkit2gtk|webkit2gtk-sys) v' "${RUNNER_TEMP}/cef-tree.txt"; then
+            echo "::error::The CEF graph unexpectedly contains a GTK3 or WebKitGTK crate."
+            grep -E '^(gdk|gdk-sys|gtk|gtk-sys|webkit2gtk|webkit2gtk-sys) v' "${RUNNER_TEMP}/cef-tree.txt"
+            exit 1
+          fi
+
+      - name: Build the isolated CEF qualification bundle
+        id: cef-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            perl_dir="$(cygpath -u "${GITRU_PERL_DIR}")"
+            export PATH="${perl_dir}:${PATH}"
+            hash -r
+            selected_perl="$(command -v perl)"
+            case "${selected_perl}" in
+              "${perl_dir}/perl"|"${perl_dir}/perl.exe") ;;
+              *)
+                echo "::error::Expected Strawberry Perl at ${perl_dir}, selected ${selected_perl}."
+                exit 1
+                ;;
+            esac
+            perl -MLocale::Maketext::Simple -e 1
+          fi
+          cef_target_dir="${GITHUB_WORKSPACE}/target/qualification-cef"
+          started_at=$(date +%s)
+          build_log="${RUNNER_TEMP}/cef-bundle-build.log"
+          set +e
+          CARGO_TARGET_DIR="${cef_target_dir}" bun --cwd=apps/desktop run tauri build --ci --no-sign --target "${{ matrix.target }}" --bundles "${{ matrix.bundles }}" --features qualification -- --no-default-features 2>&1 | tee "${build_log}"
+          tauri_status="${PIPESTATUS[0]}"
+          set -e
+
+          if [[ "${tauri_status}" -ne 0 ]]; then
+            if [[ "${RUNNER_OS}" != "Linux" || "${{ matrix.linux_bundle_class }}" != "appimage" ]] \
+              || ! grep -Fq "head: error reading" "${build_log}" \
+              || ! grep -Fq "/bin/locales': Is a directory" "${build_log}"; then
+              exit "${tauri_status}"
+            fi
+
+            echo "::warning::Applying the reviewed CEF locales compatibility patch to Tauri's pinned quick-sharun helper."
+            bun --cwd=apps/desktop run scripts/prepare-quick-sharun.ts
+
+            appimage_directory="${cef_target_dir}/${{ matrix.target }}/release/bundle/appimage"
+            app_dir=$(find "${appimage_directory}" -maxdepth 1 -type d -name '*.AppDir' -print -quit)
+            test -n "${app_dir}"
+            test -x "${app_dir}/bin/gitru"
+
+            elfs=()
+            while IFS= read -r -d '' candidate; do
+              magic=$(od -An -tx1 -N4 "${candidate}" | tr -d '[:space:]')
+              if [[ "${magic}" == "7f454c46" ]]; then
+                elfs+=("${candidate}")
+              fi
+            done < <(find "${app_dir}" -type f -print0)
+            [[ "${#elfs[@]}" -gt 0 ]]
+
+            product_name=$(jq -er '.productName' apps/desktop/src-tauri/tauri.conf.json)
+            version=$(jq -er '.version' apps/desktop/package.json)
+            appimage_name="${product_name}_${version}_amd64.AppImage"
+            cache_root="${XDG_CACHE_HOME:-${HOME}/.cache}"
+            (
+              cd "${appimage_directory}"
+              APPDIR="${app_dir}" \
+                MAIN_BIN="${app_dir}/bin/gitru" \
+                LD_LIBRARY_PATH="${app_dir}/bin:${app_dir}/lib:${app_dir}/shared/lib" \
+                ANYLINUX_LIB_SOURCE="https://raw.githubusercontent.com/pkgforge-dev/Anylinux-AppImages/3e280d1b2270fecfcb2c2c823b490c782ecf1277/useful-tools/lib/anylinux.c" \
+                OUTPUT_APPIMAGE=1 \
+                OUTNAME="${appimage_name}" \
+                HOOKSRC="https://raw.githubusercontent.com/FabianLars/Anylinux-AppImages/refs/heads/main/useful-tools/hooks" \
+                DEPLOY_CHROMIUM=1 \
+                ADD_HOOKS="fix-namespaces.hook" \
+                /bin/sh "${cache_root}/tauri/quick-sharun.sh" "${elfs[@]}"
+            )
+            test -f "${appimage_directory}/${appimage_name}"
+          fi
+          elapsed_seconds=$(( $(date +%s) - started_at ))
+          printf 'seconds=%s\n' "${elapsed_seconds}" >> "${GITHUB_OUTPUT}"
+
+          destination="artifacts/cef-qualification/${{ matrix.slug }}/cef"
+          mkdir -p "${destination}"
+          mv "${cef_target_dir}/${{ matrix.target }}/release/bundle" "${destination}/bundle"
+
+      - name: Verify Linux package sandbox metadata
+        if: runner.os == 'Linux' && matrix.linux_bundle_class == 'packages'
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_root="artifacts/cef-qualification/${{ matrix.slug }}"
+          report="${artifact_root}/sandbox-metadata.txt"
+          deb_report="${artifact_root}/sandbox-deb.txt"
+          rpm_report="${artifact_root}/sandbox-rpm.txt"
+
+          cef_deb=$(find "${artifact_root}/cef/bundle" -type f -name '*.deb' -print -quit)
+          cef_rpm=$(find "${artifact_root}/cef/bundle" -type f -name '*.rpm' -print -quit)
+          test -n "${cef_deb}"
+          test -n "${cef_rpm}"
+
+          dpkg-deb --contents "${cef_deb}" | tee "${deb_report}"
+          rpm -qplv "${cef_rpm}" | tee "${rpm_report}"
+          cat "${deb_report}" "${rpm_report}" > "${report}"
+
+          if ! grep -Eq '^-rwsr-xr-x[[:space:]]+(root/root|0/0)[[:space:]].*chrome-sandbox$' "${deb_report}"; then
+            echo "::error::The CEF deb must carry chrome-sandbox owned by root:root with mode 4755."
+            exit 1
+          fi
+          if ! grep -Eq '^-rwsr-xr-x[[:space:]]+[0-9]+[[:space:]]+root[[:space:]]+root[[:space:]].*chrome-sandbox$' "${rpm_report}"; then
+            echo "::error::The CEF RPM must carry chrome-sandbox owned by root:root with mode 4755."
+            exit 1
+          fi
+
+      - name: Record CEF build and bundle metrics
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_root="artifacts/cef-qualification/${{ matrix.slug }}"
+          report="${artifact_root}/metrics.tsv"
+
+          bytes_for_path() {
+            local measured_path="$1"
+            local total=0
+            local bytes
+
+            if [[ -f "${measured_path}" ]]; then
+              wc -c < "${measured_path}" | tr -d ' '
+              return
+            fi
+
+            while IFS= read -r -d '' measured_file; do
+              bytes=$(wc -c < "${measured_file}" | tr -d ' ')
+              total=$((total + bytes))
+            done < <(find "${measured_path}" -type f -print0)
+            printf '%s\n' "${total}"
+          }
+
+          runtime_root="${artifact_root}/cef/bundle"
+          build_seconds="${{ steps.cef-build.outputs.seconds }}"
+          printf 'runtime\tplatform\ttarget\tcef_cache_hit\tbuild_seconds\tscope\tbytes\n' > "${report}"
+
+          total_bytes=$(bytes_for_path "${runtime_root}")
+          printf 'cef\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "${{ matrix.label }}" "${{ matrix.target }}" \
+            "${{ steps.cef-cache.outputs.cache-hit }}" "${build_seconds}" all \
+            "${total_bytes}" >> "${report}"
+
+          for format_path in "${runtime_root}"/*; do
+            [[ -e "${format_path}" ]] || continue
+            format_name=${format_path##*/}
+            format_bytes=$(bytes_for_path "${format_path}")
+            printf 'cef\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+              "${{ matrix.label }}" "${{ matrix.target }}" \
+              "${{ steps.cef-cache.outputs.cache-hit }}" "${build_seconds}" \
+              "${format_name}" "${format_bytes}" >> "${report}"
+          done
+
+          case "${RUNNER_OS}" in
+            Linux) cef_cache="${HOME}/.cache/tauri-cef" ;;
+            macOS) cef_cache="${HOME}/Library/Caches/tauri-cef" ;;
+            Windows) cef_cache=$(cygpath -u "${LOCALAPPDATA}")/tauri-cef ;;
+          esac
+          cache_bytes=$(bytes_for_path "${cef_cache}")
+
+          {
+            echo "## ${{ matrix.label }} CEF package"
+            echo
+            echo '| Runtime | Build seconds | Bundle tree bytes |'
+            echo '| --- | ---: | ---: |'
+            awk -F '\t' '$6 == "all" { printf "| %s | %s | %s |\n", $1, $5, $7 }' "${report}"
+            echo
+            echo "CEF cache bytes: ${cache_bytes}"
+            echo
+            echo 'These bundles use the qualification identity, have updates disabled, and are unsigned. Passing this build is not production approval.'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          {
+            rustc -Vv
+            cargo -V
+            bun --version
+            cmake --version 2>/dev/null || true
+            ninja --version 2>/dev/null || true
+            printf 'cef_cache_bytes=%s\n' "${cache_bytes}"
+          } > "${artifact_root}/environment.txt"
+
+      - name: Audit CEF and Chromium redistribution notices
+        id: notice-audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_root="artifacts/cef-qualification/${{ matrix.slug }}"
+          bundle_root="${artifact_root}/cef/bundle"
+          audit_root="${RUNNER_TEMP}/cef-notice-audit"
+          report="${artifact_root}/notice-audit.tsv"
+          failures=0
+          printf 'redistributable=false\n' >> "${GITHUB_OUTPUT}"
+
+          rm -rf "${audit_root}"
+          mkdir -p "${audit_root}"
+          printf 'artifact\tcef_license\tchromium_credits\tresult\n' > "${report}"
+
+          audit_artifact() {
+            local artifact_name="$1"
+            local extracted_root="$2"
+            local cef_license=''
+            local chromium_credits=''
+            local candidate
+            local result=pass
+
+            while IFS= read -r candidate; do
+              if grep -Fq 'Marshall A. Greenblatt' "${candidate}" \
+                && grep -Fq 'Redistribution and use in source and binary forms' "${candidate}"; then
+                cef_license="${candidate}"
+                break
+              fi
+            done < <(find "${extracted_root}" -type f \
+              \( -iname 'LICENSE.txt' -o -iname 'CEF-LICENSE.txt' \) -print)
+
+            chromium_credits=$(find "${extracted_root}" -type f \
+              -iname 'LICENSES.chromium.html' -size +1024c -print -quit)
+
+            if [[ -z "${cef_license}" || -z "${chromium_credits}" ]]; then
+              result=fail
+              failures=$((failures + 1))
+            fi
+
+            printf '%s\t%s\t%s\t%s\n' "${artifact_name}" \
+              "${cef_license:-missing}" "${chromium_credits:-missing}" \
+              "${result}" >> "${report}"
+          }
+
+          record_extraction_failure() {
+            local artifact_name="$1"
+            printf '%s\t%s\t%s\t%s\n' "${artifact_name}" unavailable unavailable \
+              extraction-failed >> "${report}"
+            failures=$((failures + 1))
+          }
+
+          case "${RUNNER_OS}" in
+            Linux)
+              case "${{ matrix.linux_bundle_class }}" in
+                packages)
+                  cef_deb=$(find "${bundle_root}" -type f -name '*.deb' -print -quit)
+                  cef_rpm=$(find "${bundle_root}" -type f -name '*.rpm' -print -quit)
+                  test -n "${cef_deb}"
+                  test -n "${cef_rpm}"
+
+                  mkdir -p "${audit_root}/deb" "${audit_root}/rpm"
+                  set +e
+                  dpkg-deb --fsys-tarfile "${cef_deb}" \
+                    | (cd "${audit_root}/deb" \
+                      && tar -xm --wildcards --no-anchored '*LICENSE*')
+                  deb_status=("${PIPESTATUS[@]}")
+                  set -e
+                  if [[ "${deb_status[0]}" -eq 0 && "${deb_status[1]}" -eq 0 ]]; then
+                    audit_artifact deb "${audit_root}/deb"
+                  else
+                    echo "::error::Could not extract CEF deb notices (dpkg-deb=${deb_status[0]}, tar=${deb_status[1]})."
+                    record_extraction_failure deb
+                  fi
+
+                  set +e
+                  rpm2cpio "${cef_rpm}" \
+                    | (cd "${audit_root}/rpm" && cpio -idm --quiet '*LICENSE*')
+                  rpm_status=("${PIPESTATUS[@]}")
+                  set -e
+                  if [[ "${rpm_status[1]}" -eq 0 ]]; then
+                    if [[ "${rpm_status[0]}" -ne 0 ]]; then
+                      echo "::warning::rpm2cpio returned ${rpm_status[0]} after cpio consumed the payload; validating the extracted notice contents directly."
+                    fi
+                    audit_artifact rpm "${audit_root}/rpm"
+                  else
+                    echo "::error::Could not extract CEF RPM notices (rpm2cpio=${rpm_status[0]}, cpio=${rpm_status[1]})."
+                    record_extraction_failure rpm
+                  fi
+                  ;;
+                appimage)
+                  cef_appimage=$(find "${bundle_root}" -type f -name '*.AppImage' -print -quit)
+                  test -n "${cef_appimage}"
+                  cef_appimage="${GITHUB_WORKSPACE}/${cef_appimage}"
+
+                  mkdir -p "${audit_root}/appimage"
+                  chmod +x "${cef_appimage}"
+                  (cd "${audit_root}/appimage" && "${cef_appimage}" --appimage-extract >/dev/null)
+
+                  audit_artifact appimage "${audit_root}/appimage/squashfs-root"
+                  ;;
+                *)
+                  echo "::error::Unknown Linux bundle class: ${{ matrix.linux_bundle_class }}"
+                  exit 1
+                  ;;
+              esac
+              ;;
+            macOS)
+              cef_app=$(find "${bundle_root}" -type d -name '*.app' -print -quit)
+              cef_dmg=$(find "${bundle_root}" -type f -name '*.dmg' -print -quit)
+              test -n "${cef_app}"
+              test -n "${cef_dmg}"
+
+              audit_artifact app "${cef_app}"
+              mkdir -p "${audit_root}/dmg"
+              hdiutil attach "${cef_dmg}" -readonly -nobrowse -mountpoint "${audit_root}/dmg"
+              audit_artifact dmg "${audit_root}/dmg"
+              hdiutil detach "${audit_root}/dmg"
+              ;;
+            Windows)
+              cef_nsis=$(find "${bundle_root}" -type f -name '*setup.exe' -print -quit)
+              test -n "${cef_nsis}"
+
+              mkdir -p "${audit_root}/nsis"
+              7z x -y -o"${audit_root}/nsis" "${cef_nsis}" >/dev/null
+              audit_artifact nsis "${audit_root}/nsis"
+              ;;
+          esac
+
+          cat "${report}"
+          if [[ "${failures}" -ne 0 ]]; then
+            echo "::error::One or more CEF bundles omit the CEF license or LICENSES.chromium.html, or could not be extracted for auditing. They are not redistributable qualification artifacts."
+            exit 1
+          fi
+          printf 'redistributable=true\n' >> "${GITHUB_OUTPUT}"
+
+      - name: Archive unsigned CEF bundles for diagnostics
+        if: ${{ !cancelled() && steps.notice-audit.outputs.redistributable == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_root="artifacts/cef-qualification/${{ matrix.slug }}"
+          [[ -d "${artifact_root}/cef" ]] || exit 0
+          archive_path="${GITHUB_WORKSPACE}/artifacts/cef-qualification/${{ matrix.slug }}-unsigned-bundles.tar.gz"
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            archive_path=$(cygpath -u "${archive_path}")
+          fi
+          tar -czf "${archive_path}" \
+            -C "${artifact_root}" cef
+
+      - name: Upload qualification metrics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cef-qualification-metrics-${{ matrix.slug }}
+          path: |
+            artifacts/cef-qualification/${{ matrix.slug }}/metrics.tsv
+            artifacts/cef-qualification/${{ matrix.slug }}/environment.txt
+            artifacts/cef-qualification/${{ matrix.slug }}/sandbox-metadata.txt
+            artifacts/cef-qualification/${{ matrix.slug }}/sandbox-deb.txt
+            artifacts/cef-qualification/${{ matrix.slug }}/sandbox-rpm.txt
+            artifacts/cef-qualification/${{ matrix.slug }}/notice-audit.tsv
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload unsigned qualification bundles
+        if: ${{ !cancelled() && steps.notice-audit.outputs.redistributable == 'true' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cef-qualification-unsigned-${{ matrix.slug }}
+          path: artifacts/cef-qualification/${{ matrix.slug }}-unsigned-bundles.tar.gz
+          if-no-files-found: warn
+          retention-days: 7
+          compression-level: 0

@@ -5,6 +5,7 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { IS_QUALIFICATION_BUILD } from "@/lib/build-profile";
 import { UpdateChannel } from "@/types/store";
 
 export type UpdateStatus =
@@ -50,6 +51,10 @@ export function useUpdateState(channel: UpdateChannel) {
   const lastChannelRef = useRef<UpdateChannel | null>(null);
 
   const checkForUpdates = useCallback(async () => {
+    if (IS_QUALIFICATION_BUILD) {
+      return;
+    }
+
     if (isCheckingRef.current || updateStatus === "downloading") {
       return;
     }
@@ -85,6 +90,10 @@ export function useUpdateState(channel: UpdateChannel) {
   }, [channel, updateStatus]);
 
   const startDownloadAndInstall = useCallback(async () => {
+    if (IS_QUALIFICATION_BUILD) {
+      throw new Error("Updates are disabled in qualification builds");
+    }
+
     if (updateStatus === "downloading" || updateStatus === "downloaded") {
       return;
     }
@@ -115,6 +124,10 @@ export function useUpdateState(channel: UpdateChannel) {
   }, []);
 
   useEffect(() => {
+    if (IS_QUALIFICATION_BUILD) {
+      return;
+    }
+
     let unlisten: (() => void) | undefined;
 
     void listen<UpdaterDownloadProgressEvent>(
@@ -165,6 +178,10 @@ export function useUpdateState(channel: UpdateChannel) {
   }, []);
 
   useEffect(() => {
+    if (IS_QUALIFICATION_BUILD) {
+      return;
+    }
+
     if (mountedRef.current) {
       return;
     }
@@ -175,6 +192,10 @@ export function useUpdateState(channel: UpdateChannel) {
   }, [channel, checkForUpdates]);
 
   useEffect(() => {
+    if (IS_QUALIFICATION_BUILD) {
+      return;
+    }
+
     if (!mountedRef.current) {
       return;
     }

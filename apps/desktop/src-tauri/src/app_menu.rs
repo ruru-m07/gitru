@@ -3,7 +3,7 @@ use tauri::{
         AboutMetadata, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID,
         WINDOW_SUBMENU_ID,
     },
-    AppHandle, Emitter, EventTarget, Manager,
+    AppHandle, Emitter, EventTarget, Manager, Runtime,
 };
 
 const MAIN_WEBVIEW_LABEL: &str = "main";
@@ -13,7 +13,7 @@ const NEW_TAB_MENU_ID: &str = "gitru.new-tab";
 const CLOSE_TAB_MENU_ID: &str = "gitru.close-tab";
 const CLOSE_WINDOW_MENU_ID: &str = "gitru.close-window";
 
-pub fn build(app_handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+pub fn build<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let package_info = app_handle.package_info();
     let config = app_handle.config();
     let about_metadata = AboutMetadata {
@@ -124,7 +124,7 @@ pub fn build(app_handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     )
 }
 
-pub fn handle_event(app_handle: &AppHandle, event: MenuEvent) {
+pub fn handle_event<R: Runtime>(app_handle: &AppHandle<R>, event: MenuEvent) {
     if event.id() == NEW_TAB_MENU_ID {
         emit_tab_shortcut(app_handle, "create");
     } else if event.id() == CLOSE_TAB_MENU_ID {
@@ -138,7 +138,7 @@ pub fn handle_event(app_handle: &AppHandle, event: MenuEvent) {
     }
 }
 
-fn emit_tab_shortcut(app_handle: &AppHandle, phase: &str) {
+fn emit_tab_shortcut<R: Runtime>(app_handle: &AppHandle<R>, phase: &str) {
     if let Err(error) = app_handle.emit_to(
         EventTarget::webview(MAIN_WEBVIEW_LABEL),
         TAB_SHORTCUT_EVENT,

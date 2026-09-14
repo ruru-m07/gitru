@@ -31,6 +31,16 @@ jobs:
         id: revision
         run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      - name: Reject non-production application identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          identifier="$(jq -er '.identifier | select(type == "string" and length > 0)' apps/desktop/src-tauri/tauri.conf.json)"
+          if [[ "${identifier}" != "com.ruru.gitru" ]]; then
+            echo "::error title=Release identity rejected::Refusing to publish ${identifier}; production releases must use com.ruru.gitru."
+            exit 1
+          fi
+
       - name: Install system dependencies
         run: |
           sudo apt-get update

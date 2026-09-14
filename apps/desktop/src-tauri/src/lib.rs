@@ -11,10 +11,19 @@ use tauri::{App, Manager};
 use tauri_plugin_store::StoreExt;
 use tokio::sync::RwLock;
 
+#[cfg(not(feature = "qualification"))]
+compile_error!("this disposable Tauri 3 branch only supports `qualification` builds");
+
 #[cfg(feature = "e2e")]
 const E2E_RESET_ENV: &str = "GITRU_E2E_RESET";
-#[cfg(feature = "e2e")]
+#[cfg(feature = "qualification")]
 const E2E_IDENTIFIER: &str = "com.ruru.gitru.e2e";
+#[cfg(feature = "qualification")]
+const QUALIFICATION_IDENTIFIER: &str = "com.ruru.gitru.cef-qualification";
+#[cfg(feature = "e2e")]
+const E2E_CDP_PORT_ENV: &str = "GITRU_E2E_CDP_PORT";
+#[cfg(feature = "e2e")]
+const E2E_TEMP_ROOT_ENV: &str = "GITRU_E2E_TEMP_ROOT";
 
 #[cfg(target_os = "macos")]
 mod app_menu;
@@ -22,7 +31,14 @@ mod commands;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let context = tauri::generate_context!();
+
+    #[cfg(feature = "qualification")]
+    validate_qualification_identity(context.config().identifier.as_str())
+        .expect("qualification identity validation failed before runtime initialization");
+
     let builder = tauri::Builder::default()
+        .runtime(cef_runtime())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -43,11 +59,6 @@ pub fn run() {
     let builder = builder
         .menu(app_menu::build)
         .on_menu_event(app_menu::handle_event);
-
-    #[cfg(feature = "e2e")]
-    let builder = builder
-        .plugin(tauri_plugin_wdio::init())
-        .plugin(tauri_plugin_wdio_webdriver::init());
 
     builder
         .setup(|app| {
@@ -129,8 +140,60 @@ pub fn run() {
             ipc::commands::session_get_navigation_state,
             ipc::commands::session_clear_history,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running tauri application");
+}
+
+#[cfg(feature = "qualification")]
+fn validate_qualification_identity(identifier: &str) -> Result<(), String> {
+    let expected = if cfg!(feature = "e2e") {
+        E2E_IDENTIFIER
+    } else {
+        QUALIFICATION_IDENTIFIER
+    };
+
+    if identifier == expected {
+        return Ok(());
+    }
+
+    Err(format!(
+        "refusing to launch a qualification runtime with application identifier {identifier}; expected {expected}"
+    ))
+}
+
+fn cef_runtime() -> tauri_runtime_cef::Cef {
+    let runtime = tauri_runtime_cef::Cef::default();
+
+    #[cfg(feature = "e2e")]
+    {
+        use tauri_runtime_cef::{RemoteDebugging, SecretStorage};
+
+        let raw_port = std::env::var(E2E_CDP_PORT_ENV)
+            .unwrap_or_else(|_| panic!("{E2E_CDP_PORT_ENV} must be set for a CEF E2E build"));
+        let port = raw_port
+            .parse::<u16>()
+            .unwrap_or_else(|error| panic!("{E2E_CDP_PORT_ENV} must be a valid u16 port: {error}"));
+        assert!(
+            port >= 1024,
+            "{E2E_CDP_PORT_ENV} must be between 1024 and 65535"
+        );
+
+        let temp_root = std::env::var_os(E2E_TEMP_ROOT_ENV)
+            .filter(|value| !value.is_empty())
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| panic!("{E2E_TEMP_ROOT_ENV} must be set for a CEF E2E build"));
+
+        runtime
+            .root_cache_path(temp_root.join("cef-profile"))
+            .secret_storage(SecretStorage::Mock)
+            .remote_debugging(RemoteDebugging::Port {
+                port,
+                allowed_origins: Vec::new(),
+            })
+    }
+
+    #[cfg(not(feature = "e2e"))]
+    runtime
 }
 
 #[cfg(feature = "e2e")]
