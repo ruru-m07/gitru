@@ -43,15 +43,14 @@ configuration whose identifier is not exactly `com.ruru.gitru`, and then runs
 revision or failing production revision therefore cannot publish application
 artifacts or the updater manifest.
 
-On the disposable RURU-93 spike branch only, the cross-platform release-mode E2E
-job is a required CEF/CDP parity gate. The `dev` branch and production remain on
-Tauri 2/Wry; **do not merge this spike wholesale**. The much larger
-Wry-versus-CEF packaging and measurement matrix is scoped to pushes on the
-disposable spike branch, outside the release workflow. Its `CEF qualification`
-workflow builds isolated comparison bundles without signing or updater
-credentials. See the
-[Tauri 3 and CEF qualification runbook](./architecture/tauri-3-cef-qualification.md)
-for its safety boundary and evidence requirements.
+On the RURU-93 migration branch, CEF is the only desktop runtime. The
+cross-platform release-mode E2E job is therefore a required CEF/CDP gate, and
+the Rust quality and test jobs install the same CEF/GTK4 prerequisites. The
+branch-scoped `CEF qualification` workflow builds native CEF installers without
+signing or updater credentials and audits their sandbox metadata and
+redistribution notices. See the
+[Tauri 3 and CEF migration runbook](./architecture/tauri-3-cef-qualification.md)
+for the remaining production gates and promotion sequence.
 
 ## Release-mode desktop end-to-end tests
 
@@ -62,8 +61,9 @@ root:
 make test-e2e
 ```
 
-This delegates to `bun --cwd=apps/desktop run e2e`, builds the test-only CEF
-runtime, and connects directly to Chromium's DevTools Protocol (CDP). macOS
+This delegates to `bun --cwd=apps/desktop run e2e`, enables the CEF runtime's
+test-only reset and debugging hooks, and connects directly to Chromium's
+DevTools Protocol (CDP). macOS
 launches an `.app` bundle because CEF resolves its framework and helpers through
 that layout; Linux and Windows launch the raw release binary. No Chrome
 installation or version-matched WebDriver is required. The CEF runtime exposes

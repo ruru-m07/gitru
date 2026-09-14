@@ -29,7 +29,7 @@ jobs:
       - name: Install pinned Rust toolchain
         uses: ./.github/actions/setup-rust
 
-      - name: Verify runtime feature isolation
+      - name: Verify CEF is the only desktop runtime
         shell: bash
         run: |
           set -euo pipefail
@@ -39,11 +39,14 @@ jobs:
             .packages[]
             | select(.name == "gitru")
             | .features as $features
-            | (($features.default | sort) == ["qualification", "wry"])
-              and ($features.wry | index("dep:tauri-runtime-wry") != null)
-              and ($features.cef | index("dep:tauri-runtime-cef") != null)
+            | .dependencies as $dependencies
+            | (($features.default | sort) == ["qualification"])
+              and (($features | has("wry")) | not)
+              and (($features | has("cef")) | not)
               and ($features.qualification == [])
               and ($features.e2e | index("qualification") != null)
+              and ([$dependencies[].name] | index("tauri-runtime-cef") != null)
+              and ([$dependencies[].name] | index("tauri-runtime-wry") == null)
           ' "${RUNNER_TEMP}/metadata.json" >/dev/null
 
       - name: Verify overlay identity and updater isolation
@@ -52,40 +55,20 @@ jobs:
           set -euo pipefail
 
           jq -e '
-            .identifier == "com.ruru.gitru.cef-qualification"
-            and .build.beforeBuildCommand == "bun run build:qualification"
-            and .build.beforeBundleCommand == "bun run scripts/prepare-cef-notices.ts"
-            and .bundle.createUpdaterArtifacts == false
-            and .bundle.resources["resources/cef/*"] == "licenses/cef/"
-            and .bundle.macOS.minimumSystemVersion == "11.0"
-            and ((.app.security.csp | contains("posthog.com")) | not)
-            and (.app.security.csp | contains("https://avatars.githubusercontent.com"))
-            and (.app.security.csp | contains("https://github.com"))
-          ' apps/desktop/src-tauri/tauri.cef.conf.json >/dev/null
-
-          jq -e '
-            .identifier == "com.ruru.gitru.cef-qualification"
-            and .build.beforeBuildCommand == "bun run build:qualification"
-            and ((.build | has("beforeBundleCommand")) | not)
-            and .bundle.createUpdaterArtifacts == false
-            and ((.bundle | has("resources")) | not)
-            and .bundle.macOS.minimumSystemVersion == "11.0"
-            and ((.app.security.csp | contains("posthog.com")) | not)
-            and (.app.security.csp | contains("https://avatars.githubusercontent.com"))
-            and (.app.security.csp | contains("https://github.com"))
-          ' apps/desktop/src-tauri/tauri.wry-qualification.conf.json >/dev/null
-
-          jq -e '
             .productName == "Gitru Runtime Qualification"
             and .identifier == "com.ruru.gitru.cef-qualification"
             and .build.beforeDevCommand == "bun run dev:qualification"
             and .build.beforeBuildCommand == "bun run build:qualification"
+            and .build.beforeBundleCommand == "bun run scripts/prepare-cef-notices.ts && bun run scripts/prepare-quick-sharun.ts"
             and .bundle.createUpdaterArtifacts == false
+            and .bundle.resources["resources/cef/*"] == "licenses/cef/"
             and .bundle.macOS.minimumSystemVersion == "11.0"
             and ((.plugins.updater | keys) == ["endpoints", "pubkey"])
             and .plugins.updater.endpoints == []
             and .plugins.updater.pubkey == ""
             and ((.app.security.csp | contains("posthog.com")) | not)
+            and (.app.security.csp | contains("https://avatars.githubusercontent.com"))
+            and (.app.security.csp | contains("https://github.com"))
           ' apps/desktop/src-tauri/tauri.conf.json >/dev/null
 
           identifier="$(jq -er '.identifier' apps/desktop/src-tauri/tauri.conf.json)"
@@ -153,7 +136,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake cpio libgtk-3-dev libgtk-4-dev libwebkit2gtk-4.1-dev libxdo-dev librsvg2-dev ninja-build patchelf rpm
+          sudo apt-get install -y cmake cpio libgtk-4-dev libxdo-dev librsvg2-dev ninja-build patchelf rpm
 
       - name: Install CEF build prerequisites (macOS)
         if: runner.os == 'macOS'
@@ -237,28 +220,14 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      - name: Assert each build links exactly one runtime
+      - name: Assert the build links only Tauri 3 and CEF
         shell: bash
         run: |
           set -euo pipefail
 
           cargo tree --manifest-path apps/desktop/src-tauri/Cargo.toml \
             --target "${{ matrix.target }}" --edges normal --prefix none \
-            --no-default-features --features qualification,wry > "${RUNNER_TEMP}/wry-tree.txt"
-          grep -Eq '^tauri-runtime-wry v' "${RUNNER_TEMP}/wry-tree.txt"
-          if grep -Eq '^tauri[^ ]* v2\.' "${RUNNER_TEMP}/wry-tree.txt"; then
-            echo "::error::The Wry graph still contains a Tauri 2 crate."
-            grep -E '^tauri[^ ]* v2\.' "${RUNNER_TEMP}/wry-tree.txt"
-            exit 1
-          fi
-          if grep -Eq '^tauri-runtime-cef v' "${RUNNER_TEMP}/wry-tree.txt"; then
-            echo "::error::The Wry baseline unexpectedly links tauri-runtime-cef."
-            exit 1
-          fi
-
-          cargo tree --manifest-path apps/desktop/src-tauri/Cargo.toml \
-            --target "${{ matrix.target }}" --edges normal --prefix none \
-            --no-default-features --features qualification,cef > "${RUNNER_TEMP}/cef-tree.txt"
+            --no-default-features --features qualification > "${RUNNER_TEMP}/cef-tree.txt"
           grep -Eq '^tauri-runtime-cef v' "${RUNNER_TEMP}/cef-tree.txt"
           if grep -Eq '^tauri[^ ]* v2\.' "${RUNNER_TEMP}/cef-tree.txt"; then
             echo "::error::The CEF graph still contains a Tauri 2 crate."
@@ -266,7 +235,7 @@ jobs:
             exit 1
           fi
           if grep -Eq '^tauri-runtime-wry v' "${RUNNER_TEMP}/cef-tree.txt"; then
-            echo "::error::The CEF qualification unexpectedly links tauri-runtime-wry."
+            echo "::error::The CEF-only desktop unexpectedly links tauri-runtime-wry."
             exit 1
           fi
           if grep -Eq '^(gdk|gdk-sys|gtk|gtk-sys|webkit2gtk|webkit2gtk-sys) v' "${RUNNER_TEMP}/cef-tree.txt"; then
@@ -296,42 +265,13 @@ jobs:
           fi
           cef_target_dir="${GITHUB_WORKSPACE}/target/qualification-cef"
           started_at=$(date +%s)
-          CARGO_TARGET_DIR="${cef_target_dir}" bun --cwd=apps/desktop run tauri build --ci --no-sign --config src-tauri/tauri.cef.conf.json --target "${{ matrix.target }}" --bundles "${{ matrix.bundles }}" --features qualification,cef -- --no-default-features
+          CARGO_TARGET_DIR="${cef_target_dir}" bun --cwd=apps/desktop run tauri build --ci --no-sign --target "${{ matrix.target }}" --bundles "${{ matrix.bundles }}" --features qualification -- --no-default-features
           elapsed_seconds=$(( $(date +%s) - started_at ))
           printf 'seconds=%s\n' "${elapsed_seconds}" >> "${GITHUB_OUTPUT}"
 
           destination="artifacts/cef-qualification/${{ matrix.slug }}/cef"
           mkdir -p "${destination}"
           mv "${cef_target_dir}/${{ matrix.target }}/release/bundle" "${destination}/bundle"
-
-      - name: Build the isolated Wry comparison bundle
-        id: wry-build
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "${RUNNER_OS}" == "Windows" ]]; then
-            perl_dir="$(cygpath -u "${GITRU_PERL_DIR}")"
-            export PATH="${perl_dir}:${PATH}"
-            hash -r
-            selected_perl="$(command -v perl)"
-            case "${selected_perl}" in
-              "${perl_dir}/perl"|"${perl_dir}/perl.exe") ;;
-              *)
-                echo "::error::Expected Strawberry Perl at ${perl_dir}, selected ${selected_perl}."
-                exit 1
-                ;;
-            esac
-            perl -MLocale::Maketext::Simple -e 1
-          fi
-          wry_target_dir="${GITHUB_WORKSPACE}/target/qualification-wry"
-          started_at=$(date +%s)
-          CARGO_TARGET_DIR="${wry_target_dir}" bun --cwd=apps/desktop run tauri build --ci --no-sign --config src-tauri/tauri.wry-qualification.conf.json --target "${{ matrix.target }}" --bundles "${{ matrix.bundles }}" --features qualification,wry -- --no-default-features
-          elapsed_seconds=$(( $(date +%s) - started_at ))
-          printf 'seconds=%s\n' "${elapsed_seconds}" >> "${GITHUB_OUTPUT}"
-
-          destination="artifacts/cef-qualification/${{ matrix.slug }}/wry"
-          mkdir -p "${destination}"
-          mv "${wry_target_dir}/${{ matrix.target }}/release/bundle" "${destination}/bundle"
 
       - name: Verify Linux package sandbox metadata
         if: runner.os == 'Linux' && matrix.linux_bundle_class == 'packages'
@@ -361,7 +301,7 @@ jobs:
             exit 1
           fi
 
-      - name: Record comparable build and bundle metrics
+      - name: Record CEF build and bundle metrics
         if: success()
         shell: bash
         run: |
@@ -386,30 +326,24 @@ jobs:
             printf '%s\n' "${total}"
           }
 
+          runtime_root="${artifact_root}/cef/bundle"
+          build_seconds="${{ steps.cef-build.outputs.seconds }}"
           printf 'runtime\tplatform\ttarget\tcef_cache_hit\tbuild_seconds\tscope\tbytes\n' > "${report}"
-          for runtime in wry cef; do
-            runtime_root="${artifact_root}/${runtime}/bundle"
-            if [[ "${runtime}" == "wry" ]]; then
-              build_seconds="${{ steps.wry-build.outputs.seconds }}"
-            else
-              build_seconds="${{ steps.cef-build.outputs.seconds }}"
-            fi
 
-            total_bytes=$(bytes_for_path "${runtime_root}")
-            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-              "${runtime}" "${{ matrix.label }}" "${{ matrix.target }}" \
-              "${{ steps.cef-cache.outputs.cache-hit }}" "${build_seconds}" all \
-              "${total_bytes}" >> "${report}"
+          total_bytes=$(bytes_for_path "${runtime_root}")
+          printf 'cef\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "${{ matrix.label }}" "${{ matrix.target }}" \
+            "${{ steps.cef-cache.outputs.cache-hit }}" "${build_seconds}" all \
+            "${total_bytes}" >> "${report}"
 
-            for format_path in "${runtime_root}"/*; do
-              [[ -e "${format_path}" ]] || continue
-              format_name=${format_path##*/}
-              format_bytes=$(bytes_for_path "${format_path}")
-              printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-                "${runtime}" "${{ matrix.label }}" "${{ matrix.target }}" \
-                "${{ steps.cef-cache.outputs.cache-hit }}" "${build_seconds}" \
-                "${format_name}" "${format_bytes}" >> "${report}"
-            done
+          for format_path in "${runtime_root}"/*; do
+            [[ -e "${format_path}" ]] || continue
+            format_name=${format_path##*/}
+            format_bytes=$(bytes_for_path "${format_path}")
+            printf 'cef\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+              "${{ matrix.label }}" "${{ matrix.target }}" \
+              "${{ steps.cef-cache.outputs.cache-hit }}" "${build_seconds}" \
+              "${format_name}" "${format_bytes}" >> "${report}"
           done
 
           case "${RUNNER_OS}" in
@@ -420,7 +354,7 @@ jobs:
           cache_bytes=$(bytes_for_path "${cef_cache}")
 
           {
-            echo "## ${{ matrix.label }} runtime comparison"
+            echo "## ${{ matrix.label }} CEF package"
             echo
             echo '| Runtime | Build seconds | Bundle tree bytes |'
             echo '| --- | ---: | ---: |'
@@ -574,15 +508,15 @@ jobs:
           fi
           printf 'redistributable=true\n' >> "${GITHUB_OUTPUT}"
 
-      - name: Archive unsigned bundles for diagnostics
+      - name: Archive unsigned CEF bundles for diagnostics
         if: ${{ !cancelled() && steps.notice-audit.outputs.redistributable == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
           artifact_root="artifacts/cef-qualification/${{ matrix.slug }}"
-          [[ -d "${artifact_root}/wry" && -d "${artifact_root}/cef" ]] || exit 0
+          [[ -d "${artifact_root}/cef" ]] || exit 0
           tar -czf "${GITHUB_WORKSPACE}/artifacts/cef-qualification/${{ matrix.slug }}-unsigned-bundles.tar.gz" \
-            -C "${artifact_root}" wry cef
+            -C "${artifact_root}" cef
 
       - name: Upload qualification metrics
         if: always()

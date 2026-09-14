@@ -71,12 +71,18 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get install -y cmake libgtk-4-dev libxdo-dev librsvg2-dev ninja-build
 
       - name: Install pinned Rust toolchain
         uses: ./.github/actions/setup-rust
         with:
           components: clippy, rustfmt
+
+      - name: Cache CEF distribution
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/tauri-cef
+          key: cef-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
@@ -97,7 +103,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, macos-26, windows-latest]
+        os: [ubuntu-24.04, macos-26, windows-latest]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -107,10 +113,49 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get install -y cmake libgtk-4-dev libxdo-dev librsvg2-dev ninja-build
+
+      - name: Install CEF build prerequisites (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          command -v cmake >/dev/null || brew install cmake
+          command -v ninja >/dev/null || brew install ninja
+          cmake --version
+          ninja --version
+
+      - name: Install CEF build prerequisites (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
+            choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' --yes
+          }
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
+            choco install ninja --yes
+          }
+          cmake --version
+          ninja --version
 
       - name: Install pinned Rust toolchain
         uses: ./.github/actions/setup-rust
+
+      - name: Resolve the platform CEF cache
+        id: platform-cef-cache-path
+        shell: bash
+        run: |
+          case "${RUNNER_OS}" in
+            Linux) cache_path="${HOME}/.cache/tauri-cef" ;;
+            macOS) cache_path="${HOME}/Library/Caches/tauri-cef" ;;
+            Windows) cache_path="${LOCALAPPDATA}/tauri-cef" ;;
+            *) echo "Unsupported runner OS: ${RUNNER_OS}" >&2; exit 1 ;;
+          esac
+          printf 'path=%s\n' "${cache_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Cache CEF distribution
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ steps.platform-cef-cache-path.outputs.path }}
+          key: cef-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
@@ -202,7 +247,7 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      - name: Assert the E2E build links only Tauri 3 and CEF
+      - name: Assert the desktop links only Tauri 3 and CEF
         shell: bash
         run: |
           set -euo pipefail
