@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
+import { cefBinaryVersionFromCargoLock } from "./cef-lockfile";
 
 const desktopDirectory = resolve(import.meta.dirname, "..");
 const repositoryRoot = resolve(desktopDirectory, "../..");
@@ -59,14 +60,13 @@ function defaultCefCache(platform: string): string {
 
 function cefBinaryVersion(): string {
   const cargoLock = readFileSync(resolve(repositoryRoot, "Cargo.lock"), "utf8");
-  const cefPackage = cargoLock
-    .split("[[package]]")
-    .find((block) => /\nname = "cef"\n/.test(`\n${block}`));
-  if (!cefPackage) return fail("Cargo.lock has no cef package");
-
-  const version = cefPackage.match(/\nversion = "[^"]+\+([^"]+)"/)?.[1];
-  if (!version) return fail("Cargo.lock cef version has no binary version");
-  return version;
+  try {
+    return cefBinaryVersionFromCargoLock(cargoLock);
+  } catch (error) {
+    return fail(
+      error instanceof Error ? error.message : "cannot parse Cargo.lock",
+    );
+  }
 }
 
 function resolveCreditsSource(): string {

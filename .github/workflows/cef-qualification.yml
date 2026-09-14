@@ -486,6 +486,13 @@ jobs:
               "${result}" >> "${report}"
           }
 
+          record_extraction_failure() {
+            local artifact_name="$1"
+            printf '%s\t%s\t%s\t%s\n' "${artifact_name}" unavailable unavailable \
+              extraction-failed >> "${report}"
+            failures=$((failures + 1))
+          }
+
           case "${RUNNER_OS}" in
             Linux)
               case "${{ matrix.linux_bundle_class }}" in
@@ -496,11 +503,30 @@ jobs:
                   test -n "${cef_rpm}"
 
                   mkdir -p "${audit_root}/deb" "${audit_root}/rpm"
-                  dpkg-deb --extract "${cef_deb}" "${audit_root}/deb"
-                  rpm2cpio "${cef_rpm}" | (cd "${audit_root}/rpm" && cpio -idm --quiet)
+                  set +e
+                  dpkg-deb --fsys-tarfile "${cef_deb}" \
+                    | (cd "${audit_root}/deb" \
+                      && tar -xm --wildcards --no-anchored '*LICENSE*')
+                  deb_status=("${PIPESTATUS[@]}")
+                  set -e
+                  if [[ "${deb_status[0]}" -eq 0 && "${deb_status[1]}" -eq 0 ]]; then
+                    audit_artifact deb "${audit_root}/deb"
+                  else
+                    echo "::error::Could not extract CEF deb notices (dpkg-deb=${deb_status[0]}, tar=${deb_status[1]})."
+                    record_extraction_failure deb
+                  fi
 
-                  audit_artifact deb "${audit_root}/deb"
-                  audit_artifact rpm "${audit_root}/rpm"
+                  set +e
+                  rpm2cpio "${cef_rpm}" \
+                    | (cd "${audit_root}/rpm" && cpio -idm --quiet '*LICENSE*')
+                  rpm_status=("${PIPESTATUS[@]}")
+                  set -e
+                  if [[ "${rpm_status[0]}" -eq 0 && "${rpm_status[1]}" -eq 0 ]]; then
+                    audit_artifact rpm "${audit_root}/rpm"
+                  else
+                    echo "::error::Could not extract CEF RPM notices (rpm2cpio=${rpm_status[0]}, cpio=${rpm_status[1]})."
+                    record_extraction_failure rpm
+                  fi
                   ;;
                 appimage)
                   cef_appimage=$(find "${bundle_root}" -type f -name '*.AppImage' -print -quit)
@@ -543,7 +569,7 @@ jobs:
 
           cat "${report}"
           if [[ "${failures}" -ne 0 ]]; then
-            echo "::error::One or more CEF bundles omit the CEF license or LICENSES.chromium.html. They are not redistributable qualification artifacts."
+            echo "::error::One or more CEF bundles omit the CEF license or LICENSES.chromium.html, or could not be extracted for auditing. They are not redistributable qualification artifacts."
             exit 1
           fi
           printf 'redistributable=true\n' >> "${GITHUB_OUTPUT}"
