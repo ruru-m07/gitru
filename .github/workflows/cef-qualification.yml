@@ -566,7 +566,11 @@ jobs:
           set -euo pipefail
           artifact_root="artifacts/cef-qualification/${{ matrix.slug }}"
           [[ -d "${artifact_root}/cef" ]] || exit 0
-          tar -czf "${GITHUB_WORKSPACE}/artifacts/cef-qualification/${{ matrix.slug }}-unsigned-bundles.tar.gz" \
+          archive_path="${GITHUB_WORKSPACE}/artifacts/cef-qualification/${{ matrix.slug }}-unsigned-bundles.tar.gz"
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            archive_path=$(cygpath -u "${archive_path}")
+          fi
+          tar -czf "${archive_path}" \
             -C "${artifact_root}" cef
 
       - name: Upload qualification metrics
