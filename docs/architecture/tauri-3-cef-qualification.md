@@ -117,10 +117,14 @@ uploaded for seven days only after the redistribution notice audit passes.
 Each job first proves that its Cargo graph contains exactly one runtime. It then
 builds Wry and CEF from the same revision with parallel isolated overlays on:
 
-- Linux x64 (`deb`, RPM, and AppImage)
+- Linux x64 deb/RPM and Linux x64 AppImage as independent cells
 - macOS arm64 (`.app` and DMG)
 - macOS x64 (`.app` and DMG)
 - Windows x64 (NSIS)
+
+The macOS targets use architecture-native hosted runners: `macos-26` for arm64
+and `macos-26-intel` for x64. This keeps the bundle and DMG comparison from
+silently becoming a cross-compilation test.
 
 The jobs cache the platform-specific CEF distribution, record cold/warm cache
 state indirectly through the Actions cache result, and attach build duration,
@@ -177,7 +181,7 @@ Wry is not evidence that it works on CEF.
 | Scenario | Linux deb/RPM | Linux AppImage | macOS arm64 | macOS x64 | Windows x64 |
 | --- | --- | --- | --- | --- | --- |
 | Install, first launch, quit, and relaunch | Unknown | Unknown | Unknown | Unknown | Unknown |
-| Repository import and complete Git critical flow | Unknown | Unknown | **Fail (2026-09-14)** | Unknown | Unknown |
+| Repository import and complete Git critical flow | **Pass (raw CEF only; package Unknown)** | **Pass (raw CEF only; package Unknown)** | **Fail (2026-09-14)** | Unknown | **Pass (raw CEF only; package Unknown)** |
 | Concurrent child-tab prewarm/show/hide/focus/resize/close | Unknown | Unknown | Unknown | Unknown | Unknown |
 | Child-tab failure recovery and repository switching | Unknown | Unknown | **Fail (2026-09-14)** | Unknown | Unknown |
 | CSP, IPC, asset URLs, external navigation, and capability scope | Unknown | Unknown | Unknown | Unknown | Unknown |
@@ -187,7 +191,7 @@ Wry is not evidence that it works on CEF.
 | Existing-user state/profile migration and Wry rollback | Unknown | Unknown | Unknown | Unknown | Unknown |
 | Signed update, relaunch, failed-update recovery, and rollback | Unknown | Unknown | Unknown | Unknown | Unknown |
 | Sandbox active under the approved policy | Unknown | Unknown | Unknown | Unknown | Fail in alpha.0 |
-| Required CEF/Chromium notices present | Unknown | Unknown | Unknown | Unknown | Unknown |
+| Required CEF/Chromium notices present | Unknown | Unknown | **Pass (unsigned app/DMG only)** | Unknown | Unknown |
 
 ### Local macOS arm64 evidence — 2026-09-14
 
@@ -219,8 +223,9 @@ The app contains the committed 1,662-byte CEF license and a byte-identical
 19,655,009-byte Chromium credits file (SHA-256
 `2e3fdc646f012691a01ac49f07a3e8649f4c852ce22d99a8cf13a96d6e733dc8`).
 Because the build intentionally used `--no-sign`, `codesign --verify --deep
---strict` fails; no DMG or signed/notarized artifact was proven, so the matrix's
-macOS notices and signing-related cells remain Unknown.
+--strict` fails; no local DMG or signed/notarized artifact was proven. The
+hosted evidence below later covers notices in an unsigned app and DMG, but all
+signing-related cells remain Unknown.
 
 A fresh Wry qualification `app` also completed in a separate cold Cargo target
 directory. Summing regular file bytes gives 33,014,429 bytes (31.49 MiB) for
@@ -228,6 +233,50 @@ Wry and 388,820,746 bytes (370.81 MiB) for CEF, including the 19,656,671 bytes
 of bundled CEF and Chromium notices. These unsigned app-tree observations are
 not installer, installed-size, updater, or threshold results and therefore do
 not change the pending cost table below.
+
+### Hosted branch evidence — 2026-09-14
+
+The final runtime-code revision, `a214bba5`, ran in normal CI
+[34838510507](https://github.com/ruru-m07/gitru/actions/runs/34838510507):
+
+- Ubuntu 24.04 passed the complete ten-milestone CEF/CDP flow using CEF/Chromium
+  151.0.7922.174. The raw release binary ran beneath a 24-bit Xvfb display only
+  after CI verified a regular `chrome-sandbox` file and assigned it
+  `root:root` ownership with mode 4755. This is raw-runtime evidence, not proof
+  of installed deb, RPM, or AppImage behavior.
+- Windows passed the same ten milestones with exit code 0 and no live-target
+  frontend errors. The alpha still runs unsandboxed on Windows, so a functional
+  pass does not satisfy the production security gate or prove the NSIS package.
+- macOS arm64 failed before repository import: the host remained on onboarding,
+  the fixture stayed untouched, and the managed child rendered blank while CEF
+  continued to advertise its target ID. A prior hosted run on `2846a72d` passed
+  the complete flow, matching the locally observed nondeterminism rather than a
+  deterministic harness assertion failure.
+
+The packaging workflow
+[34838507471](https://github.com/ruru-m07/gitru/actions/runs/34838507471)
+produced these additional observations:
+
+- macOS arm64 passed both isolated runtime builds and both notice audits. With
+  a warm CEF cache, Wry took 127 seconds and 51,803,728 bundle-tree bytes; CEF
+  took 214 seconds and 553,880,041 bytes. The CEF cache occupied 488,435,385
+  bytes. These artifacts were unsigned and uninstalled, and no cost limit was
+  approved in advance.
+- Linux emitted deb and RPM files, then the combined build failed when Tauri's
+  AppImage `quick-sharun` path treated CEF's `locales` directory like a file.
+  The workflow now separates deb/RPM and AppImage cells so the AppImage blocker
+  cannot erase independent package, sandbox, and notice evidence.
+- The Windows build selected Git Bash's incomplete Perl and stopped in vendored
+  OpenSSL before linking Gitru. The workflow now selects and validates the
+  hosted runner's complete Perl runtime before the shared Bash build step.
+- The macOS x64 CEF app and DMG built, but the cross-built Wry DMG encountered
+  `hdiutil: Resource busy`. The x64 cell now uses the architecture-native
+  `macos-26-intel` runner, removing that cross-host variable from the rerun.
+
+The workflow corrections after these observations require a fresh run; none of
+them weakens a product or security gate. The AppImage packaging failure and the
+macOS managed-child instability remain migration blockers even if the corrected
+infrastructure lanes turn green.
 
 ## Cost measurement record
 

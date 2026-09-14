@@ -88,13 +88,14 @@ cleaned up after the run. The fixture uses a local bare origin and local avatar
 fallbacks, so the workflow does not depend on credentials or public network
 access.
 
-The suite opens the real `/app/git` host shell and requires CEF to expose one
-separate CDP page target for each managed child webview. It performs the critical
-repository import, stage, commit, publish, stash-and-switch, and conflicting
-rebase/abort flows in the active child target, crossing the UI, Tauri, Rust, and
-Git boundaries. It also creates and closes a second workspace tab and asserts
-that its CEF target appears and disappears. This guards the child-webview
-topology that the previous embedded WebDriver suite could not observe.
+The suite opens the real `/app` host shell, which creates the `/app/git` child,
+and requires CEF to expose one separate CDP page target for each managed child
+webview. It performs the critical repository import, stage, commit, publish,
+stash-and-switch, and conflicting rebase/abort flows in the active child target,
+crossing the UI, Tauri, Rust, and Git boundaries. It also creates and closes a
+second workspace tab and asserts that its CEF target appears and disappears.
+This guards the child-webview topology that the previous embedded WebDriver
+suite could not observe.
 
 On Linux, the E2E job builds first and then verifies the raw CEF
 `chrome-sandbox` helper as a regular file before assigning the required

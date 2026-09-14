@@ -104,11 +104,18 @@ jobs:
       max-parallel: 2
       matrix:
         include:
-          - label: Linux x64
-            slug: linux-x64
+          - label: Linux x64 (deb/RPM)
+            slug: linux-x64-deb-rpm
             os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
-            bundles: deb,rpm,appimage
+            bundles: deb,rpm
+            linux_bundle_class: packages
+          - label: Linux x64 (AppImage)
+            slug: linux-x64-appimage
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            bundles: appimage
+            linux_bundle_class: appimage
           - label: macOS arm64
             slug: macos-arm64
             os: macos-26
@@ -116,7 +123,7 @@ jobs:
             bundles: app,dmg
           - label: macOS x64
             slug: macos-x64
-            os: macos-26
+            os: macos-26-intel
             target: x86_64-apple-darwin
             bundles: app,dmg
           - label: Windows x64
@@ -156,6 +163,21 @@ jobs:
           }
           cmake --version
           ninja --version
+
+      - name: Select the complete Windows Perl runtime
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $perlDirectory = 'C:\Strawberry\perl\bin'
+          $perl = Join-Path $perlDirectory 'perl.exe'
+          if (-not (Test-Path -LiteralPath $perl -PathType Leaf)) {
+            throw "The hosted runner's complete Perl runtime is missing at $perl"
+          }
+          & $perl -MLocale::Maketext::Simple -e 1
+          if ($LASTEXITCODE -ne 0) {
+            throw 'The selected Perl runtime is missing Locale::Maketext::Simple'
+          }
+          $perlDirectory | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -245,6 +267,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            command -v perl
+            perl -MLocale::Maketext::Simple -e 1
+          fi
           cef_target_dir="${GITHUB_WORKSPACE}/target/qualification-cef"
           started_at=$(date +%s)
           CARGO_TARGET_DIR="${cef_target_dir}" bun --cwd=apps/desktop run tauri build --ci --no-sign --config src-tauri/tauri.cef.conf.json --target "${{ matrix.target }}" --bundles "${{ matrix.bundles }}" --features qualification,cef -- --no-default-features
@@ -271,7 +297,7 @@ jobs:
           mv "${wry_target_dir}/${{ matrix.target }}/release/bundle" "${destination}/bundle"
 
       - name: Verify Linux package sandbox metadata
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.linux_bundle_class == 'packages'
         shell: bash
         run: |
           set -euo pipefail
@@ -425,23 +451,36 @@ jobs:
 
           case "${RUNNER_OS}" in
             Linux)
-              cef_deb=$(find "${bundle_root}" -type f -name '*.deb' -print -quit)
-              cef_rpm=$(find "${bundle_root}" -type f -name '*.rpm' -print -quit)
-              cef_appimage=$(find "${bundle_root}" -type f -name '*.AppImage' -print -quit)
-              test -n "${cef_deb}"
-              test -n "${cef_rpm}"
-              test -n "${cef_appimage}"
-              cef_appimage="${GITHUB_WORKSPACE}/${cef_appimage}"
+              case "${{ matrix.linux_bundle_class }}" in
+                packages)
+                  cef_deb=$(find "${bundle_root}" -type f -name '*.deb' -print -quit)
+                  cef_rpm=$(find "${bundle_root}" -type f -name '*.rpm' -print -quit)
+                  test -n "${cef_deb}"
+                  test -n "${cef_rpm}"
 
-              mkdir -p "${audit_root}/deb" "${audit_root}/rpm" "${audit_root}/appimage"
-              dpkg-deb --extract "${cef_deb}" "${audit_root}/deb"
-              rpm2cpio "${cef_rpm}" | (cd "${audit_root}/rpm" && cpio -idm --quiet)
-              chmod +x "${cef_appimage}"
-              (cd "${audit_root}/appimage" && "${cef_appimage}" --appimage-extract >/dev/null)
+                  mkdir -p "${audit_root}/deb" "${audit_root}/rpm"
+                  dpkg-deb --extract "${cef_deb}" "${audit_root}/deb"
+                  rpm2cpio "${cef_rpm}" | (cd "${audit_root}/rpm" && cpio -idm --quiet)
 
-              audit_artifact deb "${audit_root}/deb"
-              audit_artifact rpm "${audit_root}/rpm"
-              audit_artifact appimage "${audit_root}/appimage/squashfs-root"
+                  audit_artifact deb "${audit_root}/deb"
+                  audit_artifact rpm "${audit_root}/rpm"
+                  ;;
+                appimage)
+                  cef_appimage=$(find "${bundle_root}" -type f -name '*.AppImage' -print -quit)
+                  test -n "${cef_appimage}"
+                  cef_appimage="${GITHUB_WORKSPACE}/${cef_appimage}"
+
+                  mkdir -p "${audit_root}/appimage"
+                  chmod +x "${cef_appimage}"
+                  (cd "${audit_root}/appimage" && "${cef_appimage}" --appimage-extract >/dev/null)
+
+                  audit_artifact appimage "${audit_root}/appimage/squashfs-root"
+                  ;;
+                *)
+                  echo "::error::Unknown Linux bundle class: ${{ matrix.linux_bundle_class }}"
+                  exit 1
+                  ;;
+              esac
               ;;
             macOS)
               cef_app=$(find "${bundle_root}" -type d -name '*.app' -print -quit)
