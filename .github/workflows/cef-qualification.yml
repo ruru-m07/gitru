@@ -304,6 +304,7 @@ jobs:
               APPDIR="${app_dir}" \
                 MAIN_BIN="${app_dir}/bin/gitru" \
                 LD_LIBRARY_PATH="${app_dir}/bin:${app_dir}/lib:${app_dir}/shared/lib" \
+                ANYLINUX_LIB_SOURCE="https://raw.githubusercontent.com/pkgforge-dev/Anylinux-AppImages/3e280d1b2270fecfcb2c2c823b490c782ecf1277/useful-tools/lib/anylinux.c" \
                 OUTPUT_APPIMAGE=1 \
                 OUTNAME="${appimage_name}" \
                 HOOKSRC="https://raw.githubusercontent.com/FabianLars/Anylinux-AppImages/refs/heads/main/useful-tools/hooks" \
@@ -502,7 +503,10 @@ jobs:
                     | (cd "${audit_root}/rpm" && cpio -idm --quiet '*LICENSE*')
                   rpm_status=("${PIPESTATUS[@]}")
                   set -e
-                  if [[ "${rpm_status[0]}" -eq 0 && "${rpm_status[1]}" -eq 0 ]]; then
+                  if [[ "${rpm_status[1]}" -eq 0 ]]; then
+                    if [[ "${rpm_status[0]}" -ne 0 ]]; then
+                      echo "::warning::rpm2cpio returned ${rpm_status[0]} after cpio consumed the payload; validating the extracted notice contents directly."
+                    fi
                     audit_artifact rpm "${audit_root}/rpm"
                   else
                     echo "::error::Could not extract CEF RPM notices (rpm2cpio=${rpm_status[0]}, cpio=${rpm_status[1]})."

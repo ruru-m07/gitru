@@ -131,7 +131,8 @@ Tauri alpha.0 downloads `quick-sharun` unconditionally immediately before
 running it, so a normal pre-bundle cache override is ineffective. The AppImage
 cell accepts only the exact known `locales/` directory failure, verifies the
 downloaded helper against a pinned upstream commit and SHA-256, adds a file
-guard to its shell-script scan, and resumes packaging from Tauri's prepared
+guard to its shell-script scan, pins the helper's moved `anylinux.c` dependency
+to the same upstream commit, and resumes packaging from Tauri's prepared
 AppDir. Any other initial failure, changed helper, failed extraction, or failed
 notice audit remains red. This is a qualification workaround, not a permanent
 fork of the Tauri bundler. Recovery keeps Tauri's partially prepared AppDir and
