@@ -127,6 +127,9 @@ state indirectly through the Actions cache result, and attach build duration,
 bundle-tree byte counts, tool versions, and CEF cache size. Linux also rejects
 deb or RPM output unless each package carries `chrome-sandbox` owned by
 `root:root` with mode 4755.
+The CEF lanes use Ubuntu 24.04 because its GTK 4.14 packages satisfy the
+`gdk4-sys` requirement. Ubuntu 22.04 supplies GTK 4.6 and fails before the
+application can compile, so it is not a valid CEF qualification runner.
 Wry and CEF compile into separate Cargo target directories so one runtime cannot
 reuse the other's compiled artifacts and distort the build-time comparison.
 Every CEF installer is unpacked and audited for the CEF license text and the

@@ -106,7 +106,7 @@ jobs:
         include:
           - label: Linux x64
             slug: linux-x64
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             bundles: deb,rpm,appimage
           - label: macOS arm64
