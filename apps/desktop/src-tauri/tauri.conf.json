@@ -59,6 +59,10 @@
   "plugins": {
     "fs": {
       "requireLiteralLeadingDot": false
+    },
+    "updater": {
+      "endpoints": [],
+      "pubkey": ""
     }
   }
 }

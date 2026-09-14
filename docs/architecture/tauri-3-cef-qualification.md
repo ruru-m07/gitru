@@ -39,7 +39,11 @@ feature rejects non-qualification identities and updater commands; the frontend
 mode suppresses sidebar update checks and does not mount the PostHog provider.
 The v3 alpha updater schema no longer recognizes Tauri 2's
 `plugins.updater.active` switch, so the overlays deliberately do not present
-that obsolete field as a safety control.
+that obsolete field as a safety control. The alpha plugin nevertheless requires
+a non-null configuration object when it initializes. The base therefore gives
+it an empty endpoint list and empty public key; a Rust regression test
+deserializes that exact object, checks every dangerous transport option, and
+proves it remains inert.
 The static frontend bundle can still contain PostHog package strings, so both
 overlays also remove PostHog from `connect-src` while preserving the GitHub and
 Bitbucket image hosts needed for product-parity avatar rendering. Do not use
@@ -214,6 +218,11 @@ above are **Fail**, not Unknown:
   disconnected while the same target ID
   (`C29AB04737F736523E6A799D5BCAFEDA`) remained in the target inventory as a
   stale blank target.
+- Run `2026-09-14T13-04-26-487Z-28949`, rebuilt after restoring the alpha
+  updater's required inert configuration object, launched without a plugin
+  initialization error, reached the ninth rebase-conflict milestone, and
+  invoked rebase abort. The active child then disconnected and the harness
+  again timed out waiting to leave detached-rebase state.
 
 The local evidence directories under `artifacts/e2e/<run-id>/` contain each
 `runner-error.txt`, `targets-on-failure.json`, `failure-1.png`, frontend
@@ -280,6 +289,13 @@ produced these additional observations:
   directory and forces each isolated build shell to select that exact runtime.
 - The architecture-native `macos-26-intel` cell and corrected Windows package
   cell still require fresh evidence after these harness changes.
+
+The first fresh E2E run after the fail-closed base changes exposed another alpha
+contract: omitting `plugins.updater` makes plugin initialization deserialize a
+`null` value and panic before the host is usable. The base now retains the
+minimal inert updater object described above, and the focused regression test
+catches a missing, null, malformed, or network-enabled replacement before an
+expensive packaged run.
 
 The fail-closed identity changes and workflow corrections require a fresh run;
 none weakens a product or security gate. The AppImage packaging failure and the

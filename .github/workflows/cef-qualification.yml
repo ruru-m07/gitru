@@ -82,7 +82,9 @@ jobs:
             and .build.beforeBuildCommand == "bun run build:qualification"
             and .bundle.createUpdaterArtifacts == false
             and .bundle.macOS.minimumSystemVersion == "11.0"
-            and ((.plugins | has("updater")) | not)
+            and ((.plugins.updater | keys) == ["endpoints", "pubkey"])
+            and .plugins.updater.endpoints == []
+            and .plugins.updater.pubkey == ""
             and ((.app.security.csp | contains("posthog.com")) | not)
           ' apps/desktop/src-tauri/tauri.conf.json >/dev/null
 

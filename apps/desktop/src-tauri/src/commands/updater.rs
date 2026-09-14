@@ -228,4 +228,24 @@ mod tests {
         assert!(ensure_production_identity("com.ruru.gitru.cef-qualification").is_err());
         assert!(ensure_production_identity("com.ruru.gitru.e2e").is_err());
     }
+
+    #[cfg(feature = "qualification")]
+    #[test]
+    fn qualification_updater_config_is_valid_and_inert() {
+        let root: serde_json::Value = serde_json::from_str(include_str!("../../tauri.conf.json"))
+            .expect("base Tauri configuration must be valid JSON");
+        let raw_config = root
+            .pointer("/plugins/updater")
+            .cloned()
+            .expect("the updater alpha requires a non-null configuration object");
+        let config: tauri_plugin_updater::Config = serde_json::from_value(raw_config)
+            .expect("qualification updater configuration must deserialize");
+
+        assert!(config.endpoints.is_empty());
+        assert!(config.pubkey.is_empty());
+        assert!(!config.dangerous_insecure_transport_protocol);
+        assert!(!config.dangerous_accept_invalid_certs);
+        assert!(!config.dangerous_accept_invalid_hostnames);
+        assert!(config.windows.is_none());
+    }
 }
