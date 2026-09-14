@@ -7,7 +7,7 @@
     "beforeDevCommand": "bun run dev:qualification",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "bun run build:qualification",
-    "beforeBundleCommand": "bun run scripts/prepare-cef-notices.ts && bun run scripts/prepare-quick-sharun.ts",
+    "beforeBundleCommand": "bun run scripts/prepare-cef-notices.ts",
     "frontendDist": "../dist"
   },
   "app": {

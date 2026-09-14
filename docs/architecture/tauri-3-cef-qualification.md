@@ -127,12 +127,14 @@ cell additionally verifies that the packaged sandbox helper is owned by root
 with mode 4755. Unsigned bundles are uploaded only after the notice audit
 passes; qualification metrics are retained even when a later audit fails.
 
-The AppImage bundle hook pins and checksum-verifies upstream `quick-sharun`,
-then adds a file guard to the helper's shell-script scan. CEF places its
-`locales/` directory in `AppDir/bin`; without the guard, the upstream helper
-passes that directory to `head` and incorrectly enters its download-retry
-failure path. The AppImage lane remains a hard gate until the patched package
-passes extraction, notices, launch, and sandbox validation.
+Tauri alpha.0 downloads `quick-sharun` unconditionally immediately before
+running it, so a normal pre-bundle cache override is ineffective. The AppImage
+cell accepts only the exact known `locales/` directory failure, verifies the
+downloaded helper against a pinned upstream commit and SHA-256, adds a file
+guard to its shell-script scan, and resumes packaging from Tauri's prepared
+AppDir. Any other initial failure, changed helper, failed extraction, or failed
+notice audit remains red. This is a qualification workaround, not a permanent
+fork of the Tauri bundler.
 
 ## Evidence as of 2026-09-14
 

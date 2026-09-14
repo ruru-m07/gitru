@@ -59,7 +59,7 @@ jobs:
             and .identifier == "com.ruru.gitru.cef-qualification"
             and .build.beforeDevCommand == "bun run dev:qualification"
             and .build.beforeBuildCommand == "bun run build:qualification"
-            and .build.beforeBundleCommand == "bun run scripts/prepare-cef-notices.ts && bun run scripts/prepare-quick-sharun.ts"
+            and .build.beforeBundleCommand == "bun run scripts/prepare-cef-notices.ts"
             and .bundle.createUpdaterArtifacts == false
             and .bundle.resources["resources/cef/*"] == "licenses/cef/"
             and .bundle.macOS.minimumSystemVersion == "11.0"
@@ -265,7 +265,53 @@ jobs:
           fi
           cef_target_dir="${GITHUB_WORKSPACE}/target/qualification-cef"
           started_at=$(date +%s)
-          CARGO_TARGET_DIR="${cef_target_dir}" bun --cwd=apps/desktop run tauri build --ci --no-sign --target "${{ matrix.target }}" --bundles "${{ matrix.bundles }}" --features qualification -- --no-default-features
+          build_log="${RUNNER_TEMP}/cef-bundle-build.log"
+          set +e
+          CARGO_TARGET_DIR="${cef_target_dir}" bun --cwd=apps/desktop run tauri build --ci --no-sign --target "${{ matrix.target }}" --bundles "${{ matrix.bundles }}" --features qualification -- --no-default-features 2>&1 | tee "${build_log}"
+          tauri_status="${PIPESTATUS[0]}"
+          set -e
+
+          if [[ "${tauri_status}" -ne 0 ]]; then
+            if [[ "${RUNNER_OS}" != "Linux" || "${{ matrix.linux_bundle_class }}" != "appimage" ]] \
+              || ! grep -Fq "head: error reading" "${build_log}" \
+              || ! grep -Fq "/bin/locales': Is a directory" "${build_log}"; then
+              exit "${tauri_status}"
+            fi
+
+            echo "::warning::Applying the reviewed CEF locales compatibility patch to Tauri's pinned quick-sharun helper."
+            bun --cwd=apps/desktop run scripts/prepare-quick-sharun.ts
+
+            appimage_directory="${cef_target_dir}/${{ matrix.target }}/release/bundle/appimage"
+            app_dir=$(find "${appimage_directory}" -maxdepth 1 -type d -name '*.AppDir' -print -quit)
+            test -n "${app_dir}"
+            test -x "${app_dir}/bin/gitru"
+
+            elfs=()
+            while IFS= read -r -d '' candidate; do
+              magic=$(od -An -tx1 -N4 "${candidate}" | tr -d '[:space:]')
+              if [[ "${magic}" == "7f454c46" ]]; then
+                elfs+=("${candidate}")
+              fi
+            done < <(find "${app_dir}" -type f -print0)
+            [[ "${#elfs[@]}" -gt 0 ]]
+
+            product_name=$(jq -er '.productName' apps/desktop/src-tauri/tauri.conf.json)
+            version=$(jq -er '.version' apps/desktop/package.json)
+            appimage_name="${product_name}_${version}_amd64.AppImage"
+            cache_root="${XDG_CACHE_HOME:-${HOME}/.cache}"
+            (
+              cd "${appimage_directory}"
+              APPDIR="${app_dir}" \
+                MAIN_BIN="${app_dir}/bin/gitru" \
+                OUTPUT_APPIMAGE=1 \
+                OUTNAME="${appimage_name}" \
+                HOOKSRC="https://raw.githubusercontent.com/FabianLars/Anylinux-AppImages/refs/heads/main/useful-tools/hooks" \
+                DEPLOY_CHROMIUM=1 \
+                ADD_HOOKS="fix-namespaces.hook" \
+                /bin/sh "${cache_root}/tauri/quick-sharun.sh" "${elfs[@]}"
+            )
+            test -f "${appimage_directory}/${appimage_name}"
+          fi
           elapsed_seconds=$(( $(date +%s) - started_at ))
           printf 'seconds=%s\n' "${elapsed_seconds}" >> "${GITHUB_OUTPUT}"
 
