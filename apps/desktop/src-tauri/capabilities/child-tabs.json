@@ -7,6 +7,7 @@
   },
   "webviews": ["tab-webview:*"],
   "permissions": [
+    "core:app:allow-version",
     "core:event:default",
     "store:allow-load",
     "store:allow-get-store",

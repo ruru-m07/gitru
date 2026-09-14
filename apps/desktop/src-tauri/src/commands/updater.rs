@@ -8,6 +8,7 @@ use tauri_plugin_updater::UpdaterExt;
 use url::Url;
 
 const DEFAULT_UPDATER_BASE_URL: &str = "https://release.gitru.app";
+const PRODUCTION_IDENTIFIER: &str = "com.ruru.gitru";
 
 #[derive(Serialize)]
 pub struct UpdateCheckResponse {
@@ -48,11 +49,22 @@ fn endpoint_for_channel(channel: &str) -> Result<String, String> {
     Ok(format!("{base}/{channel}/latest.json"))
 }
 
+fn ensure_production_identity(identifier: &str) -> Result<(), String> {
+    if cfg!(feature = "qualification") {
+        Err("Updates are disabled in qualification builds".to_string())
+    } else if identifier == PRODUCTION_IDENTIFIER {
+        Ok(())
+    } else {
+        Err("Updates are disabled outside the production application identity".to_string())
+    }
+}
+
 #[tauri::command]
 pub async fn check_for_update_by_channel(
     app: tauri::AppHandle,
     channel: String,
 ) -> Result<UpdateCheckResponse, String> {
+    ensure_production_identity(&app.config().identifier)?;
     let channel = normalize_channel(&channel)?.to_string();
     let endpoint = endpoint_for_channel(&channel)?;
     let endpoint =
@@ -96,6 +108,7 @@ pub async fn download_and_install_update_by_channel(
     app: tauri::AppHandle,
     channel: String,
 ) -> Result<String, String> {
+    ensure_production_identity(&app.config().identifier)?;
     let channel = normalize_channel(&channel)?.to_string();
     let endpoint = endpoint_for_channel(&channel)?;
     let endpoint =
@@ -199,4 +212,20 @@ pub async fn download_and_install_update_by_channel(
     Ok(format!(
         "Installed update {next_version} from {channel} channel"
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ensure_production_identity, PRODUCTION_IDENTIFIER};
+
+    #[test]
+    fn updater_accepts_only_the_production_identity() {
+        if cfg!(feature = "qualification") {
+            assert!(ensure_production_identity(PRODUCTION_IDENTIFIER).is_err());
+        } else {
+            assert!(ensure_production_identity(PRODUCTION_IDENTIFIER).is_ok());
+        }
+        assert!(ensure_production_identity("com.ruru.gitru.cef-qualification").is_err());
+        assert!(ensure_production_identity("com.ruru.gitru.e2e").is_err());
+    }
 }

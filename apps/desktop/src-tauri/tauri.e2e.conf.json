@@ -11,7 +11,7 @@
       {
         "label": "main",
         "title": "Gitru",
-        "url": "/app/git?embedded=1",
+        "url": "/app",
         "width": 1280,
         "height": 800,
         "hiddenTitle": true,
@@ -20,20 +20,15 @@
       }
     ],
     "security": {
-      "capabilities": [
-        "main",
-        "child-tabs",
-        {
-          "identifier": "e2e-wdio",
-          "description": "WebDriver access compiled only into the isolated E2E build",
-          "webviews": ["main"],
-          "permissions": ["wdio:default", "wdio-webdriver:default"]
-        }
-      ]
+      "capabilities": ["main", "child-tabs"]
     }
   },
   "bundle": {
-    "active": false,
-    "createUpdaterArtifacts": false
+    "active": true,
+    "createUpdaterArtifacts": false,
+    "targets": ["app"],
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    }
   }
 }

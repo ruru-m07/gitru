@@ -46,7 +46,7 @@ impl RepoManager {
         Self { app }
     }
 
-    pub fn get_store(&self) -> Result<Arc<tauri_plugin_store::Store<tauri::Wry>>, String> {
+    pub fn get_store(&self) -> Result<Arc<tauri_plugin_store::Store<tauri::DynRuntime>>, String> {
         self.app
             .store(STORE_FILE)
             .map_err(|e| format!("Failed to get store: {e}"))

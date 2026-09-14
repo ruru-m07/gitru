@@ -11,6 +11,7 @@ node_modules
 # Testing
 coverage
 /artifacts/
+/apps/desktop/src-tauri/resources/cef/LICENSES.chromium.html
 
 # Turbo
 .turbo

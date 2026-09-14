@@ -24,15 +24,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
       - name: Cache Bun dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('package.json', 'bun.lock') }}
@@ -64,7 +64,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
@@ -79,7 +79,7 @@ jobs:
           components: clippy, rustfmt
 
       - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           workspaces: . -> target
 
@@ -99,7 +99,7 @@ jobs:
       matrix:
         os: [ubuntu-22.04, macos-26, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
@@ -113,7 +113,7 @@ jobs:
         uses: ./.github/actions/setup-rust
 
       - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           workspaces: . -> target
 
@@ -123,13 +123,13 @@ jobs:
   desktop-e2e:
     name: Desktop E2E (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-22.04, macos-26, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
@@ -137,16 +137,55 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev xvfb
+          sudo apt-get install -y cmake dbus-x11 libgtk-4-dev libxdo-dev librsvg2-dev ninja-build xdg-desktop-portal xdg-desktop-portal-gtk xvfb
+
+      - name: Install CEF build prerequisites (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          command -v cmake >/dev/null || brew install cmake
+          command -v ninja >/dev/null || brew install ninja
+          cmake --version
+          ninja --version
+
+      - name: Install CEF build prerequisites (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
+            choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' --yes
+          }
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
+            choco install ninja --yes
+          }
+          cmake --version
+          ninja --version
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
       - name: Install pinned Rust toolchain
         uses: ./.github/actions/setup-rust
 
+      - name: Resolve the platform CEF cache
+        id: cef-cache-path
+        shell: bash
+        run: |
+          case "${RUNNER_OS}" in
+            Linux) cache_path="${HOME}/.cache/tauri-cef" ;;
+            macOS) cache_path="${HOME}/Library/Caches/tauri-cef" ;;
+            Windows) cache_path="${LOCALAPPDATA}/tauri-cef" ;;
+            *) echo "Unsupported runner OS: ${RUNNER_OS}" >&2; exit 1 ;;
+          esac
+          printf 'path=%s\n' "${cache_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Cache CEF distribution
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ steps.cef-cache-path.outputs.path }}
+          key: cef-e2e-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+
       - name: Cache Bun dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('package.json', 'bun.lock') }}
@@ -154,24 +193,50 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           workspaces: . -> target
+          shared-key: cef-e2e-${{ runner.os }}
+          cache-on-failure: true
 
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      - name: Run packaged desktop end-to-end tests (Linux)
+      - name: Assert the E2E build links only Tauri 3 and CEF
+        shell: bash
+        run: |
+          set -euo pipefail
+          tree_file="${RUNNER_TEMP}/cef-e2e-tree.txt"
+          cargo tree --manifest-path apps/desktop/src-tauri/Cargo.toml \
+            --edges normal --prefix none --no-default-features --features e2e \
+            > "${tree_file}"
+          grep -Eq '^tauri-runtime-cef v' "${tree_file}"
+          if grep -Eq '^tauri[^ ]* v2\.' "${tree_file}"; then
+            echo "::error::The CEF E2E graph contains a Tauri 2 crate."
+            grep -E '^tauri[^ ]* v2\.' "${tree_file}"
+            exit 1
+          fi
+          if grep -Eq '^tauri-runtime-wry v' "${tree_file}"; then
+            echo "::error::The CEF E2E graph unexpectedly links tauri-runtime-wry."
+            exit 1
+          fi
+          if grep -Eq '^(gdk|gdk-sys|gtk|gtk-sys|webkit2gtk|webkit2gtk-sys) v' "${tree_file}"; then
+            echo "::error::The CEF E2E graph unexpectedly contains a GTK3 or WebKitGTK crate."
+            grep -E '^(gdk|gdk-sys|gtk|gtk-sys|webkit2gtk|webkit2gtk-sys) v' "${tree_file}"
+            exit 1
+          fi
+
+      - name: Run release-mode desktop end-to-end tests (Linux binary)
         if: runner.os == 'Linux'
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x16" bun --cwd=apps/desktop run e2e
 
-      - name: Run packaged desktop end-to-end tests
+      - name: Run release-mode desktop end-to-end tests (macOS app or Windows binary)
         if: runner.os != 'Linux'
         run: bun --cwd=apps/desktop run e2e
 
       - name: Upload desktop end-to-end artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: desktop-e2e-${{ runner.os }}
           path: artifacts/e2e/**
