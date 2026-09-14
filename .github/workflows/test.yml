@@ -242,7 +242,7 @@ jobs:
           sudo chmod 4755 "${sandbox_helper}"
           test "$(stat -c '%U:%G %a' "${sandbox_helper}")" = 'root:root 4755'
 
-          xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x16" \
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" \
             bun --cwd=apps/desktop run e2e:test
 
       - name: Run release-mode desktop end-to-end tests (macOS app or Windows binary)

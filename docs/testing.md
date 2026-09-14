@@ -113,8 +113,9 @@ Milestone screenshots, target inventories, Chromium version metadata,
 frontend diagnostics, application/CEF logs, and Git-state logs are written
 beneath `artifacts/e2e/` for diagnosis. The directory is ignored by Git, and CI
 always attempts to upload its contents as a per-platform artifact. The suite
-runs on Ubuntu, macOS, and Windows; Linux still runs inside Xvfb because CEF
-requires a display server. Native window-manager behaviors such as title-bar
+runs on Ubuntu, macOS, and Windows; Linux uses a 24-bit TrueColor Xvfb display
+because the alpha CEF X11 host requires that visual depth when it creates its
+child container. Native window-manager behaviors such as title-bar
 dragging, maximize gestures, system menus, focus transfer, and installer/update
 replacement remain outside CDP's scope and require the platform-specific
 packaged/manual checks described by their owning release work.
