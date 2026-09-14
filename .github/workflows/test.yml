@@ -228,7 +228,22 @@ jobs:
 
       - name: Run release-mode desktop end-to-end tests (Linux binary)
         if: runner.os == 'Linux'
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x16" bun --cwd=apps/desktop run e2e
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun --cwd=apps/desktop run e2e:build
+
+          sandbox_helper="target/release/chrome-sandbox"
+          if [[ ! -f "${sandbox_helper}" || -L "${sandbox_helper}" ]]; then
+            echo "::error::CEF sandbox helper is missing or is a symlink: ${sandbox_helper}"
+            exit 1
+          fi
+          sudo chown root:root "${sandbox_helper}"
+          sudo chmod 4755 "${sandbox_helper}"
+          test "$(stat -c '%U:%G %a' "${sandbox_helper}")" = 'root:root 4755'
+
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x16" \
+            bun --cwd=apps/desktop run e2e:test
 
       - name: Run release-mode desktop end-to-end tests (macOS app or Windows binary)
         if: runner.os != 'Linux'

@@ -96,6 +96,19 @@ Git boundaries. It also creates and closes a second workspace tab and asserts
 that its CEF target appears and disappears. This guards the child-webview
 topology that the previous embedded WebDriver suite could not observe.
 
+On Linux, the E2E job builds first and then verifies the raw CEF
+`chrome-sandbox` helper as a regular file before assigning the required
+`root:root` ownership and mode 4755 on the ephemeral runner. Running the raw
+binary without this preparation correctly aborts instead of silently disabling
+the sandbox. Installer sandbox ownership and activation remain separate package
+qualification gates.
+
+The harness fails on errors or uncaught exceptions from every live target. It
+checks the temporary second child before closing it, then records teardown-time
+messages from that deliberately destroyed target separately in
+`closed-target-diagnostics.json`; requests canceled during destruction are not
+attributed to the surviving application target.
+
 Milestone screenshots, target inventories, Chromium version metadata,
 frontend diagnostics, application/CEF logs, and Git-state logs are written
 beneath `artifacts/e2e/` for diagnosis. The directory is ignored by Git, and CI

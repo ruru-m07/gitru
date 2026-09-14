@@ -54,7 +54,25 @@ export async function runCefSmoke(options: SmokeOptions): Promise<{
     { GIT_OPTIONAL_LOCKS: "0" },
   );
   const connectedClients = [host];
-  const closedTargetDiagnostics: FrontendDiagnostic[] = [];
+
+  const frontendFailures = (diagnostics: FrontendDiagnostic[]) =>
+    diagnostics.filter(
+      (diagnostic) =>
+        diagnostic.level === "error" || diagnostic.level === "exception",
+    );
+
+  const assertNoFrontendFailures = (
+    diagnostics: FrontendDiagnostic[],
+    context: string,
+  ): void => {
+    const failures = frontendFailures(diagnostics);
+    if (failures.length === 0) return;
+    throw new Error(
+      `CEF reported frontend errors or uncaught exceptions ${context}:\n${failures
+        .map((entry) => `${entry.source}: ${entry.message}`)
+        .join("\n")}`,
+    );
+  };
 
   const git = (...args: string[]): string =>
     execFileSync("git", args, {
@@ -327,6 +345,10 @@ export async function runCefSmoke(options: SmokeOptions): Promise<{
     connectedClients.push(newChild);
     await newChild.waitForVisibleCss("body");
     await capture(newChild, "04-cef-second-child-webview");
+    assertNoFrontendFailures(
+      newChild.diagnostics,
+      "before closing the temporary child target",
+    );
 
     await host.waitForVisibleCss(
       'button[data-tab-close-button="true"][data-active="true"]',
@@ -345,7 +367,10 @@ export async function runCefSmoke(options: SmokeOptions): Promise<{
       resolve(artifactsDirectory, "targets-after-tab-close.json"),
       `${JSON.stringify(targetsAfterClose, null, 2)}\n`,
     );
-    closedTargetDiagnostics.push(...newChild.diagnostics);
+    writeFileSync(
+      resolve(artifactsDirectory, "closed-target-diagnostics.json"),
+      `${JSON.stringify(newChild.diagnostics, null, 2)}\n`,
+    );
     await newChild.close();
     connectedClients.splice(connectedClients.indexOf(newChild), 1);
     await initialChild.waitForVisibleCss('button[aria-label="Switch branch"]');
@@ -521,21 +546,10 @@ export async function runCefSmoke(options: SmokeOptions): Promise<{
     );
     await capture(initialChild, "10-cef-rebase-aborted");
 
-    const diagnostics = [
-      ...closedTargetDiagnostics,
-      ...connectedClients.flatMap((client) => client.diagnostics),
-    ];
-    const failures = diagnostics.filter(
-      (diagnostic) =>
-        diagnostic.level === "error" || diagnostic.level === "exception",
+    const diagnostics = connectedClients.flatMap(
+      (client) => client.diagnostics,
     );
-    if (failures.length > 0) {
-      throw new Error(
-        `CEF reported frontend errors or uncaught exceptions:\n${failures
-          .map((entry) => `${entry.source}: ${entry.message}`)
-          .join("\n")}`,
-      );
-    }
+    assertNoFrontendFailures(diagnostics, "in a live target");
     return { diagnostics };
   } catch (error) {
     try {
@@ -557,10 +571,7 @@ export async function runCefSmoke(options: SmokeOptions): Promise<{
     writeFileSync(
       resolve(artifactsDirectory, "frontend-diagnostics-failure.json"),
       `${JSON.stringify(
-        [
-          ...closedTargetDiagnostics,
-          ...connectedClients.flatMap((client) => client.diagnostics),
-        ],
+        connectedClients.flatMap((client) => client.diagnostics),
         null,
         2,
       )}\n`,
