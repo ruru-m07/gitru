@@ -660,7 +660,7 @@ export function CurrentBranchPicker({
           sideOffset={0}
           style={{
             height:
-              "calc(var(--available-height) - var(--main-actual-content-padding))",
+              "calc(var(--available-height) - var(--main-actual-content-padding) - var(--main-status-bar-height))",
           }}
           viewport={false}
           className="w-[365px] max-w-[calc(100vw-var(--main-actual-content-padding))] rounded-none! border-y-0 border-l-0 bg-background shadow-none! transition-none before:hidden data-starting-style:scale-100 data-starting-style:opacity-100"

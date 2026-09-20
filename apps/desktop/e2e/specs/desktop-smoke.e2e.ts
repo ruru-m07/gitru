@@ -228,28 +228,22 @@ async function assertBranchPanelLayout(): Promise<void> {
     (triggerSelector, panelSelector) => {
       const trigger = document.querySelector<HTMLElement>(triggerSelector);
       const panel = document.querySelector<HTMLElement>(panelSelector);
+      const statusBar =
+        document.querySelector<HTMLElement>("[data-status-bar]");
       const scrollViewport = panel?.querySelector<HTMLElement>(
         '[data-current-branch-scroll] [data-slot="scroll-area-viewport"]',
       );
 
-      if (!trigger || !panel || !scrollViewport) return null;
+      if (!trigger || !panel || !statusBar || !scrollViewport) return null;
 
       const triggerRect = trigger.getBoundingClientRect();
       const panelRect = panel.getBoundingClientRect();
+      const statusBarRect = statusBar.getBoundingClientRect();
       const scrollRect = scrollViewport.getBoundingClientRect();
       const panelStyle = getComputedStyle(panel);
       const shadowColors = panelStyle.boxShadow.match(/rgba?\([^)]+\)/g) ?? [];
-      const contentPadding =
-        Number.parseFloat(
-          getComputedStyle(document.documentElement).getPropertyValue(
-            "--main-actual-content-padding",
-          ),
-        ) || 0;
-
       return {
-        contentPadding,
         hasFooter: panel.querySelector("[data-current-branch-footer]") !== null,
-        innerHeight: window.innerHeight,
         innerWidth: window.innerWidth,
         panelBottom: panelRect.bottom,
         panelLeft: panelRect.left,
@@ -264,6 +258,7 @@ async function assertBranchPanelLayout(): Promise<void> {
         scrollBottom: scrollRect.bottom,
         scrollClientHeight: scrollViewport.clientHeight,
         scrollHeight: scrollViewport.scrollHeight,
+        statusBarTop: statusBarRect.top,
         triggerBottom: triggerRect.bottom,
         triggerLeft: triggerRect.left,
         triggerRight: triggerRect.right,
@@ -278,7 +273,7 @@ async function assertBranchPanelLayout(): Promise<void> {
   }
 
   const tolerance = 2;
-  const expectedBottom = geometry.innerHeight - geometry.contentPadding;
+  const expectedBottom = geometry.statusBarTop;
   const failures: string[] = [];
 
   if (Math.abs(geometry.panelLeft - geometry.triggerLeft) > tolerance) {
@@ -290,7 +285,7 @@ async function assertBranchPanelLayout(): Promise<void> {
     );
   }
   if (Math.abs(geometry.panelBottom - expectedBottom) > tolerance) {
-    failures.push("panel does not extend to the bottom content edge");
+    failures.push("panel does not stop at the top of the bottom status bar");
   }
   if (Math.abs(geometry.panelWidth - 365) > tolerance) {
     failures.push("panel width is not 365px");

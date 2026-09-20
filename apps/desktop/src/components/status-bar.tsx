@@ -60,7 +60,10 @@ const StatusBar = () => {
   const { data: statusAheadBehind } = useGetStatusAheadBehind();
 
   return (
-    <div className="border-t overflow-hidden h-6 flex justify-between items-center">
+    <div
+      className="flex h-(--main-status-bar-height) shrink-0 items-center justify-between overflow-hidden border-t"
+      data-status-bar
+    >
       <div className="flex">
         <OriginBadge />
         <CurrentBranchBadge />

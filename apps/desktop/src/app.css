@@ -31,6 +31,7 @@ html {
   --main-actual-content-width: calc(100vw - var(--main-left-sidebar-width));
 
   --main-actual-content-padding: 8px;
+  --main-status-bar-height: 24px;
 }
 
 *[data-tauri-drag-region] {

@@ -295,6 +295,10 @@ describe("CurrentBranchPicker", () => {
 
     expect(popup).toBeInTheDocument();
     expect(popup).toHaveAttribute("data-current-branch-panel");
+    expect(popup).toHaveStyle({
+      height:
+        "calc(var(--available-height) - var(--main-actual-content-padding) - var(--main-status-bar-height))",
+    });
     expect(
       screen.getByRole("searchbox", { name: "Filter branches" }),
     ).toHaveFocus();
