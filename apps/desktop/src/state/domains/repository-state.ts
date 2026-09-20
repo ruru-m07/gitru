@@ -5,6 +5,7 @@ import {
   type ConflictResolveRequest,
   CreateCommitParams,
   commitActivity,
+  commitAuthors,
   commitById,
   createBranch,
   createCommit,
@@ -501,6 +502,19 @@ class Commit extends StateDomain {
     return data;
   }
 
+  async authors() {
+    await this.queryClient.cancelQueries({
+      queryKey: [...this.baseKey, "authors"],
+    });
+
+    const data = await commitAuthors({
+      contextId: this.contextId,
+    });
+
+    this.queryClient.setQueryData([...this.baseKey, "authors"], data);
+    return data;
+  }
+
   async history() {
     await this.queryClient.cancelQueries({
       queryKey: [...this.baseKey, "history"],
@@ -538,6 +552,7 @@ class Commit extends StateDomain {
     key:
       | "last"
       | "getCommitById"
+      | "authors"
       | "history"
       | "historyGraph"
       | "commitActivity",

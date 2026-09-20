@@ -65,6 +65,7 @@ export function useRebaseStart() {
     onSuccess: async () => {
       await repo?.status.invalidate();
       await repo?.branches.invalidate();
+      await repo?.commit.invalidate();
       await repo?.operation.invalidate();
     },
     onError: (error: Error) => {

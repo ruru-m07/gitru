@@ -81,6 +81,40 @@ fn detects_clean_repo() {
 
 #[test]
 #[serial]
+fn detects_conflicted_index_even_when_repository_state_is_clean() {
+    let (_dir, path) = init_repo();
+
+    fs::write(path.join("file.txt"), "stashed side\n").unwrap();
+    git(&path, &["stash", "push", "-m", "conflicting stash"]);
+    fs::write(path.join("file.txt"), "committed side\n").unwrap();
+    git(&path, &["add", "file.txt"]);
+    git(&path, &["commit", "-m", "diverge from stash"]);
+
+    let apply = Command::new("git")
+        .args(["stash", "apply"])
+        .current_dir(&path)
+        .output()
+        .expect("git stash apply failed to start");
+    assert!(
+        !apply.status.success(),
+        "stash apply should leave an unmerged index"
+    );
+
+    let repo = git2::Repository::open(&path).unwrap();
+    assert_eq!(repo.state(), git2::RepositoryState::Clean);
+    drop(repo);
+
+    let ctx = Arc::new(RepoContext::new(path.to_str().unwrap()).unwrap());
+    let op = OperationService::new(ctx).get_repo_operation().unwrap();
+    assert!(matches!(
+        op.kind,
+        crate::models::operation::RepoOperationKind::Clean
+    ));
+    assert_eq!(op.conflict_paths, vec!["file.txt"]);
+}
+
+#[test]
+#[serial]
 fn aborts_external_rebase_and_restores_git_autostash() {
     let (_dir, path) = init_repo();
     commit_file(&path, "dirty.txt", "clean\n", "add tracked worktree file");
@@ -166,6 +200,59 @@ fn plain_git2_rebase_succeeds() {
     let op = result.unwrap();
     assert!(!op.is_rebasing, "expected finished rebase, got {op:?}");
     assert_eq!(git(&path, &["branch", "--show-current"]), "feature");
+}
+
+#[test]
+#[serial]
+fn direct_rebase_start_waits_for_runner_transaction() {
+    let (_dir, path) = init_repo();
+    git(&path, &["checkout", "-b", "feature"]);
+    let feature_commit = commit_file(&path, "a.txt", "a\n", "feat a");
+    let original_head = git(&path, &["rev-parse", "HEAD"]);
+    let onto = git(&path, &["rev-parse", "main"]);
+
+    let ctx = Arc::new(RepoContext::new(path.to_str().unwrap()).unwrap());
+    let runner = ctx.runner.clone();
+    let rebase = RebaseService::new(ctx);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    rt.block_on(async {
+        let transaction = runner.transaction().await.unwrap();
+        let request = RebaseStartRequest {
+            onto,
+            upstream: None,
+            entries: Some(vec![RebasePlanEntry {
+                action: RebaseAction::Edit,
+                commit: feature_commit,
+                message: Some("feat a".into()),
+            }]),
+            autostash: false,
+        };
+
+        let mut start = Box::pin(rebase.start(request, None));
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), start.as_mut())
+                .await
+                .is_err(),
+            "direct libgit2 rebase should wait for the runner transaction"
+        );
+        assert_eq!(git(&path, &["rev-parse", "HEAD"]), original_head);
+        assert!(!path.join(".git/gitru-rebase").exists());
+
+        drop(transaction);
+        let operation = tokio::time::timeout(std::time::Duration::from_secs(10), start)
+            .await
+            .expect("rebase start did not resume")
+            .expect("rebase start failed");
+        assert!(operation.is_rebasing);
+        assert_eq!(
+            operation.pause_reason,
+            Some(crate::models::rebase::RebasePauseReason::Edit)
+        );
+    });
 }
 
 #[test]
@@ -435,7 +522,11 @@ fn update_native_interactive_todo_actions() {
     if let Some(last) = entries.last_mut() {
         last.action = RebaseAction::Drop;
     }
-    let updated = rebase.update_todo(entries).unwrap();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let updated = rt.block_on(rebase.update_todo(entries)).unwrap();
     assert!(
         updated
             .todo

@@ -1,6 +1,6 @@
 use git::{
     core::get_services,
-    models::commit::{CommitInfo, CommitMessage, FullCommitInfo},
+    models::commit::{Author, CommitInfo, CommitMessage, FullCommitInfo},
     AppState,
 };
 
@@ -28,11 +28,22 @@ pub async fn create_commit(
     context_id: String,
     commit_meta: CommitMessage,
     allow_empty: bool,
+    amend: bool,
+    expected_head: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
     let services = get_services(state, &context_id).await?;
     services
         .commit()
-        .create_commit(&commit_meta, allow_empty)
+        .create_commit(&commit_meta, allow_empty, amend, expected_head.as_deref())
         .await
+}
+
+#[tauri::command]
+pub async fn commit_authors(
+    context_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<Author>, String> {
+    let services = get_services(state, &context_id).await?;
+    services.commit().commit_authors().await
 }

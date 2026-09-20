@@ -9,6 +9,7 @@ use crate::models::history::{
     CommitActivityItem, CommitActivityResponse, GraphPaging, GraphRef as GraphRefDto, GraphRow,
     GraphRowType, HistoryGraphResponse, ParentEdge, Swimlane as SwimlaneDto,
 };
+use crate::parsers::commit::extract_co_authors;
 use crate::parsers::graph::{LOG_FORMAT, parse_log_entries};
 use crate::runner::{git_binary_path, git_path_env};
 
@@ -690,38 +691,6 @@ fn filter_refs(refs: &[GraphRefDto], kind: GraphRefType, only_head: bool) -> Vec
         .filter(|reference| reference.kind == kind && (!only_head || reference.is_head))
         .cloned()
         .collect()
-}
-
-fn extract_co_authors(body: &str) -> Vec<Author> {
-    let mut co_authors = Vec::new();
-
-    for line in body.lines() {
-        let line = line.trim();
-        if (line.starts_with("Co-authored-by:") || line.starts_with("Co-Authored-By:"))
-            && let Some(author) = parse_author_line(line)
-        {
-            co_authors.push(author);
-        }
-    }
-
-    co_authors
-}
-
-fn parse_author_line(line: &str) -> Option<Author> {
-    let line = line.split(':').nth(1)?.trim();
-
-    if let Some(email_start) = line.rfind('<')
-        && let Some(email_end) = line.rfind('>')
-    {
-        let name = line[..email_start].trim().to_string();
-        let email = line[email_start + 1..email_end].trim().to_string();
-        return Some(Author { name, email });
-    }
-
-    Some(Author {
-        name: line.to_string(),
-        email: String::new(),
-    })
 }
 
 fn run_git_command(repo_path: &str, args: &[&str]) -> Result<std::process::Output, String> {
