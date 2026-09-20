@@ -13,6 +13,7 @@ import { isolatedGitEnvironment } from "./git-environment";
 type GitOptions = {
   allowFailure?: boolean;
   cwd?: string;
+  input?: string;
 };
 
 const desktopDirectory = resolve(import.meta.dirname, "..");
@@ -39,6 +40,7 @@ function git(args: string[], options: GitOptions = {}): string {
     cwd: options.cwd ?? fixtureRepository,
     encoding: "utf8",
     env: isolatedGitEnvironment(fixtureGitConfig),
+    input: options.input,
   });
 
   const output = `${result.stdout ?? ""}${result.stderr ?? ""}`.trim();
@@ -73,6 +75,17 @@ function createFixture(): void {
   git(["push", "-u", "origin", "main"]);
 
   const baseCommit = git(["rev-parse", "HEAD"]);
+  const remoteBranchUpdates = Array.from(
+    { length: 2_000 },
+    (_, index) =>
+      `create refs/heads/fixture/remote-${String(index + 1).padStart(4, "0")} ${baseCommit}`,
+  );
+  git(["--git-dir", fixtureRemote, "update-ref", "--stdin"], {
+    cwd: fixtureRoot,
+    input: `${remoteBranchUpdates.join("\n")}\n`,
+  });
+  git(["fetch", "origin"]);
+
   for (let index = 1; index <= 60; index += 1) {
     git([
       "branch",

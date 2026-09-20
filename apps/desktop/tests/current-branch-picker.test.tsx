@@ -190,11 +190,17 @@ vi.mock("@gitru/ui/components/scroll-area", () => ({
     children,
     scrollFade: _scrollFade,
     scrollbarGutter: _scrollbarGutter,
+    viewportRef,
     ...props
   }: ComponentProps<"div"> & {
     scrollFade?: boolean;
     scrollbarGutter?: boolean;
-  }) => <div {...props}>{children}</div>,
+    viewportRef?: ComponentProps<"div">["ref"];
+  }) => (
+    <div ref={viewportRef} {...props}>
+      {children}
+    </div>
+  ),
 }));
 
 const author = {
@@ -384,6 +390,42 @@ describe("CurrentBranchPicker", () => {
     expect(props.onSwitchBranch).toHaveBeenCalledWith(
       "upstream/feature/日本語",
     );
+  });
+
+  test("virtualizes thousands of branches and still filters to a deep match", async () => {
+    const user = userEvent.setup();
+    const remoteBranches = Array.from({ length: 2_000 }, (_, index) =>
+      branch(`origin/fixture/remote-${String(index + 1).padStart(4, "0")}`, {
+        is_remote: true,
+      }),
+    );
+    render(
+      <CurrentBranchPicker
+        {...createProps({
+          remoteBranches,
+        })}
+      />,
+    );
+    await openPicker();
+
+    await user.click(screen.getByRole("tab", { name: /Remote/ }));
+
+    const list = screen.getByRole("list", { name: "Remote branches" });
+    expect(list).toHaveAttribute("data-virtualized", "true");
+    expect(Number.parseFloat(list.style.height)).toBeGreaterThan(70_000);
+    expect(list.querySelectorAll("[data-branch-row]").length).toBeLessThan(100);
+
+    await user.type(
+      screen.getByRole("searchbox", { name: "Filter branches" }),
+      "remote-2000",
+    );
+
+    expect(list).toHaveAttribute("data-virtualized", "false");
+    expect(
+      screen.getByRole("button", {
+        name: "Checkout and track origin/fixture/remote-2000",
+      }),
+    ).toBeInTheDocument();
   });
 
   test("right-click opens branch actions without reserving an action button", async () => {

@@ -14,6 +14,7 @@ const gitEnvironment = isolatedGitEnvironment(
 );
 const commitSubject = "e2e: stage and commit";
 const smokeBranch = "e2e-smoke-branch";
+const remoteFixtureBranchCount = 2_000;
 const openCommandDialog =
   '[data-slot="command-dialog-popup"][data-open]:not([data-closed])';
 const openDialog = '[data-slot="dialog-popup"][data-open]:not([data-closed])';
@@ -195,11 +196,8 @@ async function assertBranchPanelLayout(): Promise<void> {
             '[data-current-branch-scroll] [data-slot="scroll-area-viewport"]',
           );
           const footer = panel?.querySelector("[data-current-branch-footer]");
-          const lastFixtureBranch = panel?.querySelector(
-            'button[aria-label^="Checkout fixture/branch-60"]',
-          );
 
-          if (!trigger || !panel || !scrollViewport || !lastFixtureBranch) {
+          if (!trigger || !panel || !scrollViewport) {
             return false;
           }
 
@@ -398,6 +396,233 @@ async function assertBranchContextMenu(): Promise<void> {
   );
 }
 
+async function assertLargeRemoteBranchListVirtualized(): Promise<void> {
+  const branchBefore = git("branch", "--show-current");
+  const expectedRemoteBranches = remoteFixtureBranchCount + 1;
+
+  await clickPortalText(openBranchPanel, "button", "Remote");
+  await waitForPortalElement(
+    openBranchPanel,
+    'button[aria-label^="Checkout and track origin/fixture/remote-0001"]',
+  );
+
+  const initialState = await browser.execute(
+    (panelSelector, expectedCount) => {
+      const panel = document.querySelector<HTMLElement>(panelSelector);
+      const viewport = panel?.querySelector<HTMLElement>(
+        '[data-current-branch-scroll] [data-slot="scroll-area-viewport"]',
+      );
+      const remoteTab = Array.from(
+        panel?.querySelectorAll<HTMLElement>('[data-slot="tabs-tab"]') ?? [],
+      ).find((tab) => tab.textContent?.trim().startsWith("Remote"));
+      const list = panel?.querySelector<HTMLElement>("[data-branch-list]");
+      const renderedRows = list?.querySelectorAll("[data-branch-row]");
+      const firstRow = renderedRows?.item(0);
+
+      if (
+        !panel ||
+        !viewport ||
+        !remoteTab ||
+        !list ||
+        !renderedRows ||
+        !firstRow
+      ) {
+        return null;
+      }
+
+      return {
+        deepBranchInitiallyMounted: Boolean(
+          panel.querySelector(
+            `button[aria-label^="Checkout and track origin/fixture/remote-${String(expectedCount - 1).padStart(4, "0")}"]`,
+          ),
+        ),
+        firstRowPosition: firstRow.getAttribute("aria-posinset"),
+        firstRowSetSize: firstRow.getAttribute("aria-setsize"),
+        renderedRowCount: renderedRows.length,
+        scrollClientHeight: viewport.clientHeight,
+        scrollHeight: viewport.scrollHeight,
+        tabText: remoteTab.textContent?.replace(/\s+/g, "").trim(),
+        virtualized: list.dataset.virtualized,
+      };
+    },
+    openBranchPanel,
+    expectedRemoteBranches,
+  );
+
+  if (!initialState) {
+    throw new Error("Remote branch virtualization state could not be read");
+  }
+  if (initialState.tabText !== `Remote${expectedRemoteBranches}`) {
+    throw new Error(
+      `Remote branch count mismatch: ${JSON.stringify(initialState.tabText)}`,
+    );
+  }
+  if (
+    initialState.firstRowPosition !== "1" ||
+    initialState.firstRowSetSize !== String(expectedRemoteBranches)
+  ) {
+    throw new Error(
+      `Virtualized branch accessibility position is incorrect: ${JSON.stringify(initialState)}`,
+    );
+  }
+  if (initialState.virtualized !== "true") {
+    throw new Error(
+      `Large remote branch list was not virtualized: ${JSON.stringify(initialState)}`,
+    );
+  }
+  if (
+    initialState.renderedRowCount < 1 ||
+    initialState.renderedRowCount > 100
+  ) {
+    throw new Error(
+      `Expected a bounded virtualized DOM, got ${initialState.renderedRowCount} mounted remote branch rows`,
+    );
+  }
+  if (initialState.deepBranchInitiallyMounted) {
+    throw new Error(
+      "A deep remote branch was mounted before scrolling or filtering",
+    );
+  }
+  if (
+    initialState.scrollHeight <= initialState.scrollClientHeight ||
+    initialState.scrollHeight < remoteFixtureBranchCount * 30
+  ) {
+    throw new Error(
+      `Remote branch virtual scroll extent is too small: ${JSON.stringify(initialState)}`,
+    );
+  }
+  await capture("04-branch-virtualized-remote-list");
+
+  const search = await waitForPortalElement(
+    openBranchPanel,
+    'input[placeholder="Filter branches…"]',
+  );
+  await search.click();
+  await browser.keys("ArrowDown");
+  await browser.waitUntil(
+    () =>
+      browser.execute(
+        () =>
+          document.activeElement
+            ?.getAttribute("aria-label")
+            ?.startsWith("Checkout and track origin/fixture/remote-0001") ??
+          false,
+      ),
+    {
+      timeout: 10_000,
+      interval: 100,
+      timeoutMsg: "ArrowDown did not focus the first virtualized remote branch",
+    },
+  );
+  // WebKitDriver does not dispatch its End action to the focused Tauri webview
+  // button, so exercise the same native keydown path in the packaged DOM.
+  await browser.execute(() => {
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key: "End",
+      }),
+    );
+  });
+  await browser.waitUntil(
+    () =>
+      browser.execute(
+        () =>
+          document.activeElement
+            ?.getAttribute("aria-label")
+            ?.startsWith("Checkout and track origin/main") ?? false,
+      ),
+    {
+      timeout: 10_000,
+      interval: 100,
+      timeoutMsg: "End did not focus the final virtualized remote branch",
+    },
+  );
+
+  await setPortalInput(
+    openBranchPanel,
+    'input[placeholder="Filter branches…"]',
+    "origin/fixture/remote-2000",
+  );
+  const deepBranchSelector =
+    'button[aria-label^="Checkout and track origin/fixture/remote-2000"]';
+  await waitForPortalElement(openBranchPanel, deepBranchSelector);
+  await browser.waitUntil(
+    () =>
+      browser.execute((panelSelector) => {
+        const viewport = document
+          .querySelector(panelSelector)
+          ?.querySelector<HTMLElement>(
+            '[data-current-branch-scroll] [data-slot="scroll-area-viewport"]',
+          );
+        if (!viewport) return false;
+        return (
+          viewport.scrollHeight <= viewport.clientHeight &&
+          !viewport.hasAttribute("data-has-overflow-y")
+        );
+      }, openBranchPanel),
+    {
+      timeout: 10_000,
+      interval: 100,
+      timeoutMsg:
+        "Filtering the virtual list did not clear the scroll area's overflow state",
+    },
+  );
+
+  const contextMenuDispatched = await browser.execute(
+    (panelSelector, branchSelector) => {
+      const branchRow = document
+        .querySelector(panelSelector)
+        ?.querySelector<HTMLElement>(branchSelector);
+      if (!branchRow) return false;
+
+      const rect = branchRow.getBoundingClientRect();
+      branchRow.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          button: 2,
+          buttons: 2,
+          cancelable: true,
+          clientX: rect.left + Math.min(40, rect.width / 2),
+          clientY: rect.top + rect.height / 2,
+          view: window,
+        }),
+      );
+      return true;
+    },
+    openBranchPanel,
+    deepBranchSelector,
+  );
+  if (!contextMenuDispatched) {
+    throw new Error("Filtered deep remote branch was unavailable for actions");
+  }
+  await waitForPortalText(openBranchContextMenu, "*", "Delete remote branch");
+  assertEqual(
+    git("branch", "--show-current"),
+    branchBefore,
+    "filtering and right-clicking a deep remote branch must not check it out",
+  );
+  await browser.keys("Escape");
+  await absent("[data-branch-context-menu]");
+
+  await setPortalInput(
+    openBranchPanel,
+    'input[placeholder="Filter branches…"]',
+    "",
+  );
+  await clickPortalText(openBranchPanel, "button", "Local");
+  const currentBranch = await waitForPortalElement(
+    openBranchPanel,
+    'button[aria-label^="Current branch main"]',
+  );
+  assertEqual(
+    String(await currentBranch.getAttribute("aria-current")),
+    "true",
+    "the local current branch remains identified after virtualized remote navigation",
+  );
+}
+
 async function openRootAction(label: string): Promise<void> {
   await browser.execute(() => {
     document.dispatchEvent(
@@ -478,6 +703,7 @@ describe("packaged Gitru desktop smoke", () => {
     await openBranchSwitcher();
     await assertBranchPanelLayout();
     await assertBranchContextMenu();
+    await assertLargeRemoteBranchListVirtualized();
     await capture("04-branch-panel-full-height");
     await clickPortalText(openBranchPanel, "button", "New Branch", true);
     await setPortalInput(

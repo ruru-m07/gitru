@@ -51,6 +51,7 @@ import {
 import { ScrollArea } from "@gitru/ui/components/scroll-area";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@gitru/ui/components/tabs";
 import { cn } from "@gitru/ui/lib/utils";
+import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
 import {
   Check,
   ChevronDown,
@@ -68,8 +69,8 @@ import {
   Unlink,
 } from "lucide-react";
 import {
+  type CSSProperties,
   type FormEvent,
-  Fragment,
   type KeyboardEvent,
   useMemo,
   useRef,
@@ -92,6 +93,22 @@ import { timeAgoFromUnixSeconds } from "@/lib/time";
 type BranchTab = "local" | "remote";
 type RepoOperationKind = RepoOperation["kind"];
 const EMPTY_BRANCHES: BranchInfo[] = [];
+const BRANCH_ROW_HEIGHT = 36;
+const BRANCH_SECTION_HEIGHT = 28;
+const BRANCH_VIRTUALIZATION_THRESHOLD = 50;
+
+type BranchListItem =
+  | {
+      type: "heading";
+      key: string;
+      label: "Current Branch" | "Other Branches" | "Remote Branches";
+    }
+  | {
+      type: "branch";
+      key: string;
+      branch: BranchInfo;
+      branchIndex: number;
+    };
 
 type BranchDialog =
   | { kind: "create" }
@@ -269,25 +286,22 @@ export function CurrentBranchPicker({
   const [tab, setTab] = useState<BranchTab>("local");
   const [query, setQuery] = useState("");
   const [dialog, setDialog] = useState<BranchDialog>(null);
+  const [activeBranchIndex, setActiveBranchIndex] = useState(0);
+  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(
+    null,
+  );
   const rowRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const pendingFocusIndex = useRef<number | null>(null);
 
   const operationLocked = Boolean(operationKind && operationKind !== "clean");
   const branchChangesLocked = operationLocked || worktreeStateLoading;
   const currentInfo = localBranches.find(
     (branch) => branch.name === currentBranchName || branch.is_head,
   );
-  const visibleBranches = useMemo(() => {
+  const sortedBranches = useMemo(() => {
     const source = tab === "local" ? localBranches : remoteBranches;
-    const search = query.trim().toLocaleLowerCase();
-    const filtered = search
-      ? source.filter((branch) =>
-          `${branch.name} ${branch.display_name}`
-            .toLocaleLowerCase()
-            .includes(search),
-        )
-      : source;
 
-    return [...filtered].sort((a, b) => {
+    return [...source].sort((a, b) => {
       if (tab === "local") {
         const aCurrent = a.name === currentBranchName || a.is_head;
         const bCurrent = b.name === currentBranchName || b.is_head;
@@ -296,14 +310,117 @@ export function CurrentBranchPicker({
       }
       return a.display_name.localeCompare(b.display_name);
     });
-  }, [currentBranchName, localBranches, query, remoteBranches, tab]);
+  }, [currentBranchName, localBranches, remoteBranches, tab]);
+  const visibleBranches = useMemo(() => {
+    const search = query.trim().toLocaleLowerCase();
+    if (!search) return sortedBranches;
+
+    return sortedBranches.filter((branch) =>
+      `${branch.name} ${branch.display_name}`
+        .toLocaleLowerCase()
+        .includes(search),
+    );
+  }, [query, sortedBranches]);
   const hasVisibleCurrent =
     tab === "local" &&
     visibleBranches.some(
       (branch) => branch.name === currentBranchName || branch.is_head,
     );
+  const branchListItems = useMemo<BranchListItem[]>(() => {
+    const items: BranchListItem[] = [];
+
+    visibleBranches.forEach((branch, branchIndex) => {
+      const isCurrent = branch.name === currentBranchName || branch.is_head;
+      const showCurrentHeading =
+        tab === "local" && branchIndex === 0 && isCurrent;
+      const showOtherHeading =
+        tab === "local" && branchIndex === (hasVisibleCurrent ? 1 : 0);
+      const showRemoteHeading = tab === "remote" && branchIndex === 0;
+
+      if (showCurrentHeading || showOtherHeading || showRemoteHeading) {
+        const label = showCurrentHeading
+          ? "Current Branch"
+          : showOtherHeading
+            ? "Other Branches"
+            : "Remote Branches";
+        items.push({
+          type: "heading",
+          key: `heading:${tab}:${label}`,
+          label,
+        });
+      }
+
+      items.push({
+        type: "branch",
+        key: `${branch.is_remote ? "remote" : "local"}:${branch.name}`,
+        branch,
+        branchIndex,
+      });
+    });
+
+    return items;
+  }, [currentBranchName, hasVisibleCurrent, tab, visibleBranches]);
+  const branchItemIndexByBranchIndex = useMemo(() => {
+    const indexes: number[] = [];
+    branchListItems.forEach((item, itemIndex) => {
+      if (item.type === "branch") indexes[item.branchIndex] = itemIndex;
+    });
+    return indexes;
+  }, [branchListItems]);
+  const shouldVirtualize =
+    branchListItems.length > BRANCH_VIRTUALIZATION_THRESHOLD;
+  const getBranchScrollElement = () => scrollElement;
+  const branchVirtualizer = useVirtualizer({
+    count: branchListItems.length,
+    enabled: open && shouldVirtualize && Boolean(scrollElement),
+    estimateSize: (index) =>
+      branchListItems[index]?.type === "heading"
+        ? BRANCH_SECTION_HEIGHT
+        : BRANCH_ROW_HEIGHT,
+    getItemKey: (index) => branchListItems[index]?.key ?? index,
+    getScrollElement: getBranchScrollElement,
+    overscan: 12,
+    paddingEnd: 4,
+    paddingStart: 4,
+    rangeExtractor: (range) => {
+      const indexes = defaultRangeExtractor(range);
+      const activeItemIndex = branchItemIndexByBranchIndex[activeBranchIndex];
+      if (activeItemIndex === undefined || indexes.includes(activeItemIndex)) {
+        return indexes;
+      }
+      return [...indexes, activeItemIndex].sort((a, b) => a - b);
+    },
+  });
+
+  const resetBranchScroll = () => {
+    setActiveBranchIndex(0);
+    pendingFocusIndex.current = null;
+    rowRefs.current = [];
+    const scrollElement = getBranchScrollElement();
+    if (scrollElement) scrollElement.scrollTop = 0;
+  };
+
+  const focusBranchAtIndex = (branchIndex: number) => {
+    if (branchIndex < 0 || branchIndex >= visibleBranches.length) return;
+
+    setActiveBranchIndex(branchIndex);
+    pendingFocusIndex.current = branchIndex;
+    if (shouldVirtualize) {
+      const itemIndex = branchItemIndexByBranchIndex[branchIndex];
+      if (itemIndex !== undefined) {
+        branchVirtualizer.scrollToIndex(itemIndex, { align: "auto" });
+      }
+    }
+
+    const row = rowRefs.current[branchIndex];
+    if (row) {
+      row.focus();
+      pendingFocusIndex.current = null;
+    }
+  };
 
   const closePopover = () => {
+    resetBranchScroll();
     setOpen(false);
     setQuery("");
   };
@@ -360,7 +477,7 @@ export function CurrentBranchPicker({
               (event.key === "ArrowDown" ? 1 : -1) +
               visibleBranches.length) %
             visibleBranches.length;
-    rowRefs.current[nextIndex]?.focus();
+    focusBranchAtIndex(nextIndex);
   };
 
   const displayLabel = rebasing
@@ -372,12 +489,65 @@ export function CurrentBranchPicker({
     ? (rebaseBranch ?? currentBranchDisplayName)
     : currentBranchDisplayName;
 
+  const renderBranchListItem = (
+    item: BranchListItem,
+    style?: CSSProperties,
+    virtualIndex?: number,
+  ) => {
+    if (item.type === "heading") {
+      return (
+        <li
+          key={item.key}
+          aria-level={2}
+          className="flex h-7 items-end px-3 pb-1 text-xs font-medium text-muted-foreground"
+          data-index={virtualIndex}
+          role="heading"
+          style={style}
+        >
+          {item.label}
+        </li>
+      );
+    }
+
+    const { branch, branchIndex } = item;
+    return (
+      <BranchRow
+        key={item.key}
+        branch={branch}
+        branchIndex={branchIndex}
+        branchCount={visibleBranches.length}
+        currentBranchName={currentBranchName}
+        currentUpstream={currentInfo?.upstream}
+        disabled={branchChangesLocked || isMutating}
+        tabIndex={branchIndex === activeBranchIndex ? 0 : -1}
+        ref={(node) => {
+          rowRefs.current[branchIndex] = node;
+          if (node && pendingFocusIndex.current === branchIndex) {
+            node.focus();
+            pendingFocusIndex.current = null;
+          }
+        }}
+        style={style}
+        virtualIndex={virtualIndex}
+        onCheckout={() => void checkout(branch)}
+        onFocus={() => setActiveBranchIndex(branchIndex)}
+        onKeyDown={(event) => focusAdjacentRow(event, branchIndex)}
+        onOpenDialog={openDialog}
+        onUnsetUpstream={async () => {
+          const succeeded = await onUnsetUpstream(branch.name);
+          if (succeeded) closePopover();
+        }}
+      />
+    );
+  };
+
   const branchListContent = (
     <ScrollArea
       data-current-branch-scroll
       className="h-full w-full"
       scrollFade
       scrollbarGutter
+      viewportRef={setScrollElement}
     >
       {branchesLoading ? (
         <div
@@ -398,54 +568,38 @@ export function CurrentBranchPicker({
       ) : (
         <ul
           aria-label={`${tab === "local" ? "Local" : "Remote"} branches`}
-          className="py-1"
+          className={cn(!shouldVirtualize && "py-1")}
+          data-branch-list
+          data-virtualized={shouldVirtualize ? "true" : "false"}
+          style={
+            shouldVirtualize
+              ? {
+                  height: `${branchVirtualizer.getTotalSize()}px`,
+                  position: "relative",
+                  width: "100%",
+                }
+              : undefined
+          }
         >
-          {visibleBranches.map((branch, index) => {
-            const isCurrent =
-              branch.name === currentBranchName || branch.is_head;
-            const showCurrentHeading =
-              tab === "local" && index === 0 && isCurrent;
-            const showOtherHeading =
-              tab === "local" && index === (hasVisibleCurrent ? 1 : 0);
-            const showRemoteHeading = tab === "remote" && index === 0;
+          {shouldVirtualize
+            ? branchVirtualizer.getVirtualItems().map((virtualRow) => {
+                const item = branchListItems[virtualRow.index];
+                if (!item) return null;
 
-            return (
-              <Fragment
-                key={`${branch.is_remote ? "remote" : "local"}:${branch.name}`}
-              >
-                {showCurrentHeading || showOtherHeading || showRemoteHeading ? (
-                  <li
-                    className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground"
-                    role="presentation"
-                  >
-                    <div aria-level={2} role="heading">
-                      {showCurrentHeading
-                        ? "Current Branch"
-                        : showOtherHeading
-                          ? "Other Branches"
-                          : "Remote Branches"}
-                    </div>
-                  </li>
-                ) : null}
-                <BranchRow
-                  branch={branch}
-                  currentBranchName={currentBranchName}
-                  currentUpstream={currentInfo?.upstream}
-                  disabled={branchChangesLocked || isMutating}
-                  ref={(node) => {
-                    rowRefs.current[index] = node;
-                  }}
-                  onCheckout={() => void checkout(branch)}
-                  onKeyDown={(event) => focusAdjacentRow(event, index)}
-                  onOpenDialog={openDialog}
-                  onUnsetUpstream={async () => {
-                    const succeeded = await onUnsetUpstream(branch.name);
-                    if (succeeded) closePopover();
-                  }}
-                />
-              </Fragment>
-            );
-          })}
+                return renderBranchListItem(
+                  item,
+                  {
+                    height: `${virtualRow.size}px`,
+                    left: 0,
+                    position: "absolute",
+                    top: 0,
+                    transform: `translateY(${virtualRow.start}px)`,
+                    width: "100%",
+                  },
+                  virtualRow.index,
+                );
+              })
+            : branchListItems.map((item) => renderBranchListItem(item))}
         </ul>
       )}
     </ScrollArea>
@@ -456,6 +610,7 @@ export function CurrentBranchPicker({
       <Popover
         open={open}
         onOpenChange={(nextOpen) => {
+          if (!nextOpen) resetBranchScroll();
           setOpen(nextOpen);
           if (!nextOpen) setQuery("");
         }}
@@ -518,7 +673,10 @@ export function CurrentBranchPicker({
             <Tabs
               className="min-h-0 flex-1 gap-0"
               value={tab}
-              onValueChange={(value) => setTab(value as BranchTab)}
+              onValueChange={(value) => {
+                resetBranchScroll();
+                setTab(value as BranchTab);
+              }}
             >
               <div className="flex-none border-b px-2">
                 <TabsList variant="underline" className="w-full">
@@ -546,11 +704,14 @@ export function CurrentBranchPicker({
                     placeholder="Filter branches…"
                     spellCheck={false}
                     value={query}
-                    onChange={(event) => setQuery(event.target.value)}
+                    onChange={(event) => {
+                      resetBranchScroll();
+                      setQuery(event.target.value);
+                    }}
                     onKeyDown={(event) => {
                       if (event.key === "ArrowDown") {
                         event.preventDefault();
-                        rowRefs.current[0]?.focus();
+                        focusBranchAtIndex(0);
                       }
                     }}
                   />
@@ -652,11 +813,17 @@ export function CurrentBranchPicker({
 
 interface BranchRowProps {
   branch: BranchInfo;
+  branchIndex: number;
+  branchCount: number;
   currentBranchName?: string;
   currentUpstream?: string;
   disabled: boolean;
   ref: (node: HTMLButtonElement | null) => void;
+  style?: CSSProperties;
+  tabIndex: number;
+  virtualIndex?: number;
   onCheckout: () => void;
+  onFocus: () => void;
   onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
   onOpenDialog: (dialog: Exclude<BranchDialog, null>) => void;
   onUnsetUpstream: () => Promise<void>;
@@ -664,11 +831,17 @@ interface BranchRowProps {
 
 function BranchRow({
   branch,
+  branchIndex,
+  branchCount,
   currentBranchName,
   currentUpstream,
   disabled,
   ref,
+  style,
+  tabIndex,
+  virtualIndex,
   onCheckout,
+  onFocus,
   onKeyDown,
   onOpenDialog,
   onUnsetUpstream,
@@ -694,10 +867,15 @@ function BranchRow({
 
   return (
     <li
+      aria-posinset={branchIndex + 1}
+      aria-setsize={branchCount}
       className={cn(
         "flex h-9 items-center px-1 hover:bg-accent/64 focus-within:bg-accent/64",
         isCurrent && "bg-accent",
       )}
+      data-branch-row
+      data-index={virtualIndex}
+      style={style}
     >
       <ContextMenu>
         <ContextMenuTrigger asChild>
@@ -710,7 +888,9 @@ function BranchRow({
             aria-label={rowLabel}
             className="flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-sm px-2 text-left outline-none aria-disabled:cursor-default aria-disabled:opacity-64 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             onClick={onCheckout}
+            onFocus={onFocus}
             onKeyDown={onKeyDown}
+            tabIndex={tabIndex}
           >
             <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">
               {isCurrent ? (

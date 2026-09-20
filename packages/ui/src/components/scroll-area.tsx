@@ -9,10 +9,12 @@ function ScrollArea({
   children,
   scrollFade = false,
   scrollbarGutter = false,
+  viewportRef,
   ...props
 }: ScrollAreaPrimitive.Root.Props & {
   scrollFade?: boolean;
   scrollbarGutter?: boolean;
+  viewportRef?: ScrollAreaPrimitive.Viewport.Props["ref"];
 }) {
   return (
     <ScrollAreaPrimitive.Root
@@ -20,6 +22,7 @@ function ScrollArea({
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
+        ref={viewportRef}
         className={cn(
           "h-full rounded-[inherit] outline-none transition-shadows focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background data-has-overflow-x:overscroll-x-contain",
           scrollFade &&
@@ -29,7 +32,12 @@ function ScrollArea({
         )}
         data-slot="scroll-area-viewport"
       >
-        {children}
+        <ScrollAreaPrimitive.Content
+          className="min-h-full min-w-full"
+          data-slot="scroll-area-content"
+        >
+          {children}
+        </ScrollAreaPrimitive.Content>
       </ScrollAreaPrimitive.Viewport>
       <ScrollBar orientation="vertical" />
       <ScrollBar orientation="horizontal" />
