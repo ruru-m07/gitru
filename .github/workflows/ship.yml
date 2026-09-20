@@ -4,10 +4,6 @@ on:
   release:
     types: [published]
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
@@ -22,7 +18,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
           ref: ${{ github.event.release.tag_name }}
@@ -47,7 +43,7 @@ jobs:
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
       - name: Install pinned Rust toolchain
         uses: ./.github/actions/setup-rust
@@ -55,7 +51,7 @@ jobs:
           components: clippy, rustfmt
 
       - name: Cache Bun dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('package.json', 'bun.lock') }}
@@ -63,12 +59,22 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: . -> target
 
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
+
+      - name: Validate release tag and channel
+        env:
+          CHANNEL: ${{ github.event.release.prerelease && 'beta' || 'stable' }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: |
+          cargo run --quiet -p updater-release -- validate-event \
+            --package-json apps/desktop/package.json \
+            --tag "${TAG_NAME}" \
+            --channel "${CHANNEL}"
 
       - name: Run release verification gate
         run: make verify
@@ -80,6 +86,9 @@ jobs:
 
     strategy:
       fail-fast: false
+      # tauri-action merges each platform into the same GitHub latest.json asset.
+      # Serialize those mutations until the manifest is aggregated in one job.
+      max-parallel: 1
       matrix:
         include:
           - platform: 'macos-26'
@@ -93,14 +102,15 @@ jobs:
             target: ''
 
     runs-on: ${{ matrix.platform }}
+    timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
           ref: ${{ needs.validate-release.outputs.commit }}
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
       - name: Install pinned Rust toolchain
         uses: ./.github/actions/setup-rust
@@ -108,12 +118,12 @@ jobs:
           targets: ${{ matrix.platform == 'macos-26' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: . -> target
 
       - name: Cache Bun dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('package.json', 'bun.lock') }}
@@ -131,7 +141,7 @@ jobs:
 
       - name: Build and upload release artifacts
         id: tauri_build
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -145,12 +155,42 @@ jobs:
           includeUpdaterJson: true
           args: ${{ matrix.args }}
 
-  publish-manifest:
-    needs: publish-tauri
+  prepare-manifest:
+    needs: [validate-release, publish-tauri]
     runs-on: ubuntu-latest
+    timeout-minutes: 90
+    outputs:
+      evidence-artifact: ${{ steps.evidence-name.outputs.artifact }}
     permissions:
       contents: read
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          ref: ${{ needs.validate-release.outputs.commit }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - name: Install pinned Rust toolchain
+        uses: ./.github/actions/setup-rust
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: . -> target
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('package.json', 'bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
       - name: Resolve release metadata
         id: meta
         shell: bash
@@ -163,34 +203,117 @@ jobs:
           else
             CHANNEL="stable"
           fi
-
           echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "channel=${CHANNEL}" >> "$GITHUB_OUTPUT"
 
       - name: Download updater manifest
         env:
-          VERSION: ${{ steps.meta.outputs.version }}
           TAG_NAME: ${{ steps.meta.outputs.tag_name }}
           REPO: ${{ github.repository }}
-        shell: bash
         run: |
           set -euo pipefail
           mkdir -p release-assets
-
           curl -fsSL \
+            --proto '=https' \
+            --proto-redir '=https' \
+            --retry 3 \
             "https://github.com/${REPO}/releases/download/${TAG_NAME}/latest.json" \
             -o release-assets/latest.json
 
-          jq -e --arg v "$VERSION" '.version == $v' release-assets/latest.json >/dev/null
-          jq -e '.platforms | type == "object" and length > 0' release-assets/latest.json >/dev/null
-          jq -e '.platforms | to_entries | all(.value.signature | type == "string" and length > 0)' release-assets/latest.json >/dev/null
-          jq -e '.platforms | to_entries | all(.value.url | test("https://github.com/.+/releases/download/.+/"))' release-assets/latest.json >/dev/null
+      - name: Validate manifest and signed artifacts
+        env:
+          CHANNEL: ${{ steps.meta.outputs.channel }}
+          TAG_NAME: ${{ steps.meta.outputs.tag_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          : > release-assets/empty-history.txt
+          : > release-assets/empty-revocations.txt
+          cargo run --quiet -p updater-release -- validate-release \
+            --manifest release-assets/latest.json \
+            --config apps/desktop/src-tauri/tauri.conf.json \
+            --package-json apps/desktop/package.json \
+            --repository "${REPO}" \
+            --tag "${TAG_NAME}" \
+            --channel "${CHANNEL}" \
+            --history release-assets/empty-history.txt \
+            --revocations release-assets/empty-revocations.txt \
+            --download-directory release-assets/artifacts \
+            --report release-assets/validation-report.json
 
-          ls -lah release-assets
+      - name: Sign candidate manifest
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          bun --cwd=apps/desktop run tauri signer sign ../../release-assets/latest.json
+          cargo run --quiet -p updater-release -- verify-signature \
+            --file release-assets/latest.json \
+            --signature release-assets/latest.json.sig \
+            --config apps/desktop/src-tauri/tauri.conf.json
 
-      - name: Upload manifest to R2
+          cp target/debug/updater-release release-assets/updater-release
+          cp apps/desktop/src-tauri/tauri.conf.json release-assets/tauri.conf.json
+          cp apps/desktop/package.json release-assets/package.json
+
+      - name: Name validated manifest evidence
+        id: evidence-name
+        run: echo "artifact=updater-manifest-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
+      - name: Transfer validated manifest evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ steps.evidence-name.outputs.artifact }}
+          path: |
+            release-assets/latest.json
+            release-assets/latest.json.sig
+            release-assets/validation-report.json
+            release-assets/updater-release
+            release-assets/tauri.conf.json
+            release-assets/package.json
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-manifest:
+    needs: [validate-release, prepare-manifest]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: updater-feed-${{ github.event.release.prerelease && 'beta' || 'stable' }}
+      queue: max
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - name: Download validated manifest evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ needs.prepare-manifest.outputs.evidence-artifact }}
+          path: release-assets
+
+      - name: Restore validator executable permission
+        run: chmod 0700 release-assets/updater-release
+
+      - name: Resolve release metadata
+        id: meta
         shell: bash
+        run: |
+          set -euo pipefail
+          TAG_NAME="${{ github.event.release.tag_name }}"
+          VERSION="${TAG_NAME#v}"
+          if [[ "${{ github.event.release.prerelease }}" == "true" ]]; then
+            CHANNEL="beta"
+          else
+            CHANNEL="stable"
+          fi
+          echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "channel=${CHANNEL}" >> "$GITHUB_OUTPUT"
+
+      - name: Snapshot updater feed state
+        id: state
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -202,15 +325,222 @@ jobs:
         run: |
           set -euo pipefail
           ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          VERSION_KEY="${CHANNEL}/versions/${VERSION}/latest.json"
+          SIGNATURE_KEY="${VERSION_KEY}.sig"
+          LATEST_KEY="${CHANNEL}/latest.json"
 
-          aws s3 cp \
-            release-assets/latest.json \
-            "s3://${R2_BUCKET}/${CHANNEL}/latest.json" \
+          aws s3api list-objects-v2 \
+            --bucket "${R2_BUCKET}" \
+            --prefix "${CHANNEL}/" \
             --endpoint-url "${ENDPOINT}" \
-            --cache-control "no-store"
+            > release-assets/r2-objects.json
 
-          aws s3 cp \
-            release-assets/latest.json \
-            "s3://${R2_BUCKET}/${CHANNEL}/versions/${VERSION}/latest.json" \
+          : > release-assets/history.txt
+          : > release-assets/revocations.txt
+          jq -r '.Contents[]?.Key' release-assets/r2-objects.json |
+            while IFS= read -r key; do
+              case "${key}" in
+                "${CHANNEL}"/versions/*/latest.json)
+                  historical="${key#${CHANNEL}/versions/}"
+                  historical="${historical%/latest.json}"
+                  if [[ "${historical}" == */* || -z "${historical}" ]]; then
+                    echo "::error title=Invalid updater history key::${key}"
+                    exit 1
+                  fi
+                  printf '%s\n' "${historical}" >> release-assets/history.txt
+                  ;;
+                "${CHANNEL}"/revocations/*.json)
+                  revoked="${key#${CHANNEL}/revocations/}"
+                  revoked="${revoked%.json}"
+                  if [[ "${revoked}" == */* || -z "${revoked}" ]]; then
+                    echo "::error title=Invalid updater revocation key::${key}"
+                    exit 1
+                  fi
+                  printf '%s\n' "${revoked}" >> release-assets/revocations.txt
+                  ;;
+              esac
+            done
+          LC_ALL=C sort -u -o release-assets/history.txt release-assets/history.txt
+          LC_ALL=C sort -u -o release-assets/revocations.txt release-assets/revocations.txt
+
+          if jq -e --arg key "${VERSION_KEY}" '.Contents[]?.Key | select(. == $key)' release-assets/r2-objects.json >/dev/null; then
+            aws s3api get-object \
+              --bucket "${R2_BUCKET}" \
+              --key "${VERSION_KEY}" \
+              --endpoint-url "${ENDPOINT}" \
+              release-assets/existing-version.json >/dev/null
+            cmp --silent release-assets/latest.json release-assets/existing-version.json || {
+              echo "::error title=Immutable updater version conflict::${VERSION_KEY} already contains different bytes."
+              exit 1
+            }
+            grep -Fvx "${VERSION}" release-assets/history.txt > release-assets/history.next || true
+            mv release-assets/history.next release-assets/history.txt
+            echo "version_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "version_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if jq -e --arg key "${SIGNATURE_KEY}" '.Contents[]?.Key | select(. == $key)' release-assets/r2-objects.json >/dev/null; then
+            if [[ ! -f release-assets/existing-version.json ]]; then
+              echo "::error title=Orphaned updater signature::${SIGNATURE_KEY} exists without ${VERSION_KEY}."
+              exit 1
+            fi
+            aws s3api get-object \
+              --bucket "${R2_BUCKET}" \
+              --key "${SIGNATURE_KEY}" \
+              --endpoint-url "${ENDPOINT}" \
+              release-assets/latest.json.sig >/dev/null
+            echo "signature_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signature_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if jq -e --arg key "${LATEST_KEY}" '.Contents[]?.Key | select(. == $key)' release-assets/r2-objects.json >/dev/null; then
+            current_metadata="$(aws s3api get-object \
+              --bucket "${R2_BUCKET}" \
+              --key "${LATEST_KEY}" \
+              --endpoint-url "${ENDPOINT}" \
+              release-assets/current-latest.json)"
+            current_etag="$(jq -er '.ETag | select(type == "string" and length > 0)' <<<"${current_metadata}")"
+            echo "latest_exists=true" >> "$GITHUB_OUTPUT"
+            echo "latest_etag=${current_etag}" >> "$GITHUB_OUTPUT"
+          else
+            echo "latest_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Revalidate promotion state and manifest sidecar
+        env:
+          CHANNEL: ${{ steps.meta.outputs.channel }}
+          TAG_NAME: ${{ steps.meta.outputs.tag_name }}
+          REPO: ${{ github.repository }}
+          LATEST_EXISTS: ${{ steps.state.outputs.latest_exists }}
+        run: |
+          set -euo pipefail
+          current_args=()
+          if [[ "${LATEST_EXISTS}" == "true" ]]; then
+            current_args+=(--current-manifest release-assets/current-latest.json)
+          fi
+          release-assets/updater-release validate-promotion \
+            --manifest release-assets/latest.json \
+            --manifest-signature release-assets/latest.json.sig \
+            --config release-assets/tauri.conf.json \
+            --package-json release-assets/package.json \
+            --repository "${REPO}" \
+            --tag "${TAG_NAME}" \
+            --channel "${CHANNEL}" \
+            --history release-assets/history.txt \
+            --revocations release-assets/revocations.txt \
+            "${current_args[@]}"
+
+      - name: Publish immutable history before the channel pointer
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          CHANNEL: ${{ steps.meta.outputs.channel }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          VERSION_EXISTS: ${{ steps.state.outputs.version_exists }}
+          SIGNATURE_EXISTS: ${{ steps.state.outputs.signature_exists }}
+          LATEST_EXISTS: ${{ steps.state.outputs.latest_exists }}
+          LATEST_ETAG: ${{ steps.state.outputs.latest_etag }}
+        run: |
+          set -euo pipefail
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          VERSION_KEY="${CHANNEL}/versions/${VERSION}/latest.json"
+          SIGNATURE_KEY="${VERSION_KEY}.sig"
+          LATEST_KEY="${CHANNEL}/latest.json"
+          REVOCATION_KEY="${CHANNEL}/revocations/${VERSION}.json"
+
+          aws s3api list-objects-v2 \
+            --bucket "${R2_BUCKET}" \
+            --prefix "${REVOCATION_KEY}" \
             --endpoint-url "${ENDPOINT}" \
-            --cache-control "public, max-age=300"
+            > release-assets/pre-promotion-objects.json
+          if jq -e --arg key "${REVOCATION_KEY}" '.Contents[]?.Key | select(. == $key)' release-assets/pre-promotion-objects.json >/dev/null; then
+            echo "::error title=Revoked updater release::${VERSION} has a durable rollout revocation marker and cannot be promoted again."
+            exit 1
+          fi
+
+          if [[ "${VERSION_EXISTS}" != "true" ]]; then
+            aws s3api put-object \
+              --bucket "${R2_BUCKET}" \
+              --key "${VERSION_KEY}" \
+              --body release-assets/latest.json \
+              --content-type application/json \
+              --cache-control 'public,max-age=31536000,immutable' \
+              --if-none-match '*' \
+              --endpoint-url "${ENDPOINT}" >/dev/null
+          fi
+          if [[ "${SIGNATURE_EXISTS}" != "true" ]]; then
+            aws s3api put-object \
+              --bucket "${R2_BUCKET}" \
+              --key "${SIGNATURE_KEY}" \
+              --body release-assets/latest.json.sig \
+              --content-type text/plain \
+              --cache-control 'public,max-age=31536000,immutable' \
+              --if-none-match '*' \
+              --endpoint-url "${ENDPOINT}" >/dev/null
+          fi
+
+          aws s3api get-object --bucket "${R2_BUCKET}" --key "${VERSION_KEY}" --endpoint-url "${ENDPOINT}" release-assets/readback-version.json >/dev/null
+          aws s3api get-object --bucket "${R2_BUCKET}" --key "${SIGNATURE_KEY}" --endpoint-url "${ENDPOINT}" release-assets/readback-version.json.sig >/dev/null
+          cmp --silent release-assets/latest.json release-assets/readback-version.json
+          release-assets/updater-release verify-signature \
+            --file release-assets/readback-version.json \
+            --signature release-assets/readback-version.json.sig \
+            --config release-assets/tauri.conf.json
+          readback_headers="$(aws s3api head-object --bucket "${R2_BUCKET}" --key "${VERSION_KEY}" --endpoint-url "${ENDPOINT}")"
+          signature_headers="$(aws s3api head-object --bucket "${R2_BUCKET}" --key "${SIGNATURE_KEY}" --endpoint-url "${ENDPOINT}")"
+          jq -e '.ContentType == "application/json" and .CacheControl == "public,max-age=31536000,immutable"' <<<"${readback_headers}" >/dev/null
+          jq -e '.ContentType == "text/plain" and .CacheControl == "public,max-age=31536000,immutable"' <<<"${signature_headers}" >/dev/null
+
+          latest_args=(--bucket "${R2_BUCKET}" --key "${LATEST_KEY}" --body release-assets/latest.json --content-type application/json --cache-control 'no-store,must-revalidate' --endpoint-url "${ENDPOINT}")
+          if [[ "${LATEST_EXISTS}" == "true" ]]; then
+            latest_args+=(--if-match "${LATEST_ETAG}")
+          else
+            latest_args+=(--if-none-match '*')
+          fi
+          aws s3api put-object "${latest_args[@]}" >/dev/null
+          aws s3api get-object --bucket "${R2_BUCKET}" --key "${LATEST_KEY}" --endpoint-url "${ENDPOINT}" release-assets/readback-latest.json >/dev/null
+          cmp --silent release-assets/latest.json release-assets/readback-latest.json
+          latest_headers="$(aws s3api head-object --bucket "${R2_BUCKET}" --key "${LATEST_KEY}" --endpoint-url "${ENDPOINT}")"
+          jq -e '.ContentType == "application/json" and .CacheControl == "no-store,must-revalidate"' <<<"${latest_headers}" >/dev/null
+
+          client_url="https://release.gitru.app/${CHANNEL}/latest.json"
+          client_converged=false
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time 30 \
+              --dump-header release-assets/client-headers.txt --output release-assets/client-latest.json "${client_url}"; then
+              content_type="$(awk 'BEGIN { IGNORECASE=1 } /^content-type:/ { sub(/^[^:]*:[[:space:]]*/, ""); sub(/\r$/, ""); value=$0 } END { print value }' release-assets/client-headers.txt)"
+              cache_control="$(awk 'BEGIN { IGNORECASE=1 } /^cache-control:/ { sub(/^[^:]*:[[:space:]]*/, ""); sub(/\r$/, ""); value=$0 } END { print value }' release-assets/client-headers.txt)"
+              normalized_cache="${cache_control//[[:space:]]/}"
+              normalized_cache="${normalized_cache,,}"
+              if cmp --silent release-assets/latest.json release-assets/client-latest.json \
+                && [[ "${content_type,,}" == application/json* ]] \
+                && [[ ",${normalized_cache}," == *,no-store,* ]] \
+                && [[ ",${normalized_cache}," == *,must-revalidate,* ]]; then
+                client_converged=true
+                break
+              fi
+            fi
+            echo "Waiting for ${client_url} to converge (attempt ${attempt}/12)..."
+            sleep 5
+          done
+          if [[ "${client_converged}" != "true" ]]; then
+            echo "::error title=Updater client endpoint did not converge::${client_url} did not serve the promoted bytes and no-store policy."
+            exit 1
+          fi
+
+      - name: Record updater integrity evidence
+        run: |
+          {
+            echo '## Updater integrity verification'
+            echo
+            jq -r '"- Channel: `\(.channel)`\n- Version: `\(.version)`\n- Manifest SHA-256: `\(.manifest_sha256)`\n- Unique signed artifacts: `\(.artifacts | length)`"' release-assets/validation-report.json
+            echo
+            echo '| Targets | Bytes | SHA-256 |'
+            echo '| --- | ---: | --- |'
+            jq -r '.artifacts[] | "| \(.targets | join(", ")) | \(.bytes) | `\(.sha256)` |"' release-assets/validation-report.json
+          } >> "$GITHUB_STEP_SUMMARY"

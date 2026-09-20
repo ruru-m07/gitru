@@ -43,6 +43,28 @@ configuration whose identifier is not exactly `com.ruru.gitru`, and then runs
 revision or failing production revision therefore cannot publish application
 artifacts or the updater manifest.
 
+After all platform builds finish, publication also validates the release
+channel and historical version high-water mark, downloads every expected
+updater artifact, verifies its embedded Minisign signature, creates signed
+create-only manifest history, and compare-and-swaps the mutable channel pointer
+last. Expensive artifact verification/signing runs outside the channel lock;
+pinned artifact actions hand a compact evidence bundle to the bounded,
+metadata-only promotion job, whose full pending queue prevents a later run from
+displacing an already-queued publish or emergency stop. Rollout stops write
+permanent per-version revocation markers and support pre-sidecar historical
+manifests only with explicit legacy opt-in, full artifact-signature
+verification, and a verified create-only sidecar backfill.
+Normal publication validates the actual current pointer and folds its version
+into the high-water mark even when versioned history is missing. Emergency
+control has a separately confirmed corrupt-pointer recovery path that preserves
+the replaced bytes under a create-only hash-addressed evidence key, and revoked
+versions are rejected as fallbacks. Both flows verify that the exact public
+client URL converges to the R2 write. The platform release matrix is serialized
+because the current Tauri action mutates one shared GitHub `latest.json` asset.
+See the [updater integrity and recovery runbook](./releasing/updater-integrity.md).
+These feed controls do not replace native install/relaunch qualification or
+Apple and Windows publisher trust checks.
+
 On the RURU-93 migration branch, CEF is the only desktop runtime. The
 cross-platform release-mode E2E job is therefore a required CEF/CDP gate, and
 the Rust quality and test jobs install the same CEF/GTK4 prerequisites. The
