@@ -312,6 +312,9 @@ describe("CurrentBranchPicker", () => {
       screen.getByRole("list", { name: "Local branches" }),
     ).toBeInTheDocument();
     expect(
+      screen.getByRole("button", { name: "New branch" }),
+    ).toBeInTheDocument();
+    expect(
       within(popup).getByRole("heading", { name: "Default Branch" }),
     ).toBeInTheDocument();
     expect(

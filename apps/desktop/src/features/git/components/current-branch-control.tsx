@@ -738,13 +738,14 @@ export function CurrentBranchPicker({
                   <GroupSeparator />
 
                   <Button
+                    aria-label="New branch"
                     type="button"
                     size="icon-sm"
                     variant="outline"
                     disabled={branchChangesLocked || isMutating}
                     onClick={() => openDialog({ kind: "create" })}
                   >
-                    <GitBranchPlus />
+                    <GitBranchPlus aria-hidden="true" />
                   </Button>
                 </Group>
               </div>

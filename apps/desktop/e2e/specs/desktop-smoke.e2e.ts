@@ -852,7 +852,12 @@ describe("packaged Gitru desktop smoke", () => {
     await assertBranchContextMenu();
     await assertLargeRemoteBranchListVirtualized();
     await capture("04-branch-panel-full-height");
-    await clickPortalText(openBranchPanel, "button", "New Branch", true);
+    await (
+      await waitForPortalElement(
+        openBranchPanel,
+        'button[aria-label="New branch"]',
+      )
+    ).click();
     await setPortalInput(
       openDialog,
       'input[placeholder="feature/my-branch"]',
