@@ -14,9 +14,14 @@ const gitEnvironment = isolatedGitEnvironment(
 );
 const commitSubject = "e2e: stage and commit";
 const smokeBranch = "e2e-smoke-branch";
+const remoteFixtureBranchCount = 2_000;
 const openCommandDialog =
   '[data-slot="command-dialog-popup"][data-open]:not([data-closed])';
 const openDialog = '[data-slot="dialog-popup"][data-open]:not([data-closed])';
+const openTooltip = '[data-slot="tooltip-popup"][data-open]:not([data-closed])';
+const openBranchPanel =
+  "[data-current-branch-panel][data-open]:not([data-closed])";
+const openBranchContextMenu = '[data-branch-context-menu][data-state="open"]';
 
 function requiredEnvironment(name: string): string {
   const value = process.env[name];
@@ -172,38 +177,610 @@ async function waitForPortalText(
 }
 
 async function openBranchSwitcher(): Promise<void> {
-  const inputSelector = 'input[placeholder="Search branches..."]';
+  const inputSelector = 'input[placeholder="Filter branches…"]';
 
-  if (await portalHasElement(openCommandDialog, inputSelector)) return;
+  if (await portalHasElement(openBranchPanel, inputSelector)) return;
 
-  const opener = await visible('button[aria-label="Switch branch"]');
+  const opener = await visible('button[aria-label^="Current branch:"]');
   await opener.click();
-  await waitForPortalElement(openCommandDialog, inputSelector);
+  await waitForPortalElement(openBranchPanel, inputSelector);
+}
+
+async function assertBranchPanelLayout(): Promise<void> {
+  await browser.waitUntil(
+    () =>
+      browser.execute(
+        (triggerSelector, panelSelector) => {
+          const trigger = document.querySelector<HTMLElement>(triggerSelector);
+          const panel = document.querySelector<HTMLElement>(panelSelector);
+          const scrollViewport = panel?.querySelector<HTMLElement>(
+            '[data-current-branch-scroll] [data-slot="scroll-area-viewport"]',
+          );
+          const footer = panel?.querySelector("[data-current-branch-footer]");
+
+          if (!trigger || !panel || !scrollViewport) {
+            return false;
+          }
+
+          const triggerRect = trigger.getBoundingClientRect();
+          const panelRect = panel.getBoundingClientRect();
+          const scrollRect = scrollViewport.getBoundingClientRect();
+
+          return (
+            Math.abs(panelRect.left - triggerRect.left) <= 2 &&
+            Math.abs(panelRect.top - triggerRect.bottom) <= 2 &&
+            scrollViewport.scrollHeight > scrollViewport.clientHeight &&
+            Math.abs(scrollRect.bottom - panelRect.bottom) <= 2 &&
+            footer === null
+          );
+        },
+        "[data-current-branch-trigger]",
+        openBranchPanel,
+      ),
+    {
+      timeout: 20_000,
+      interval: 100,
+      timeoutMsg:
+        "Branch panel did not settle below its trigger with a scrollable long list",
+    },
+  );
+
+  const geometry = await browser.execute(
+    (triggerSelector, panelSelector) => {
+      const trigger = document.querySelector<HTMLElement>(triggerSelector);
+      const panel = document.querySelector<HTMLElement>(panelSelector);
+      const statusBar =
+        document.querySelector<HTMLElement>("[data-status-bar]");
+      const scrollViewport = panel?.querySelector<HTMLElement>(
+        '[data-current-branch-scroll] [data-slot="scroll-area-viewport"]',
+      );
+
+      if (!trigger || !panel || !statusBar || !scrollViewport) return null;
+
+      const triggerRect = trigger.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const statusBarRect = statusBar.getBoundingClientRect();
+      const scrollRect = scrollViewport.getBoundingClientRect();
+      const panelStyle = getComputedStyle(panel);
+      const shadowColors = panelStyle.boxShadow.match(/rgba?\([^)]+\)/g) ?? [];
+      return {
+        hasFooter: panel.querySelector("[data-current-branch-footer]") !== null,
+        innerWidth: window.innerWidth,
+        panelBottom: panelRect.bottom,
+        panelLeft: panelRect.left,
+        panelRight: panelRect.right,
+        panelTop: panelRect.top,
+        panelWidth: panelRect.width,
+        borderRadius: panelStyle.borderRadius,
+        boxShadow: panelStyle.boxShadow,
+        hasVisibleBoxShadow:
+          panelStyle.boxShadow !== "none" &&
+          shadowColors.some((color) => !color.endsWith(", 0)")),
+        scrollBottom: scrollRect.bottom,
+        scrollClientHeight: scrollViewport.clientHeight,
+        scrollHeight: scrollViewport.scrollHeight,
+        statusBarTop: statusBarRect.top,
+        triggerBottom: triggerRect.bottom,
+        triggerLeft: triggerRect.left,
+        triggerRight: triggerRect.right,
+      };
+    },
+    "[data-current-branch-trigger]",
+    openBranchPanel,
+  );
+
+  if (!geometry) {
+    throw new Error("Branch panel geometry could not be measured");
+  }
+
+  const tolerance = 2;
+  const expectedBottom = geometry.statusBarTop;
+  const failures: string[] = [];
+
+  if (Math.abs(geometry.panelLeft - geometry.triggerLeft) > tolerance) {
+    failures.push("panel is not left-aligned to the Current Branch trigger");
+  }
+  if (Math.abs(geometry.panelTop - geometry.triggerBottom) > tolerance) {
+    failures.push(
+      "panel does not start directly below the Current Branch trigger",
+    );
+  }
+  if (Math.abs(geometry.panelBottom - expectedBottom) > tolerance) {
+    failures.push("panel does not stop at the top of the bottom status bar");
+  }
+  if (Math.abs(geometry.panelWidth - 365) > tolerance) {
+    failures.push("panel width is not 365px");
+  }
+  if (geometry.panelRight > geometry.innerWidth + tolerance) {
+    failures.push("panel overflows the viewport horizontally");
+  }
+  if (geometry.hasFooter) {
+    failures.push("removed branch panel footer is still rendered");
+  }
+  if (Math.abs(geometry.scrollBottom - geometry.panelBottom) > tolerance) {
+    failures.push("branch list does not fill the panel to the bottom edge");
+  }
+  if (geometry.scrollHeight <= geometry.scrollClientHeight) {
+    failures.push("long branch fixture does not scroll inside the panel");
+  }
+  if (geometry.borderRadius !== "0px") {
+    failures.push("panel still has floating-card rounded corners");
+  }
+  if (geometry.hasVisibleBoxShadow) {
+    failures.push("panel still has a floating-card shadow");
+  }
+
+  if (failures.length > 0) {
+    throw new Error(
+      `Branch panel layout failed: ${failures.join("; ")}\n${JSON.stringify(geometry, null, 2)}`,
+    );
+  }
+}
+
+async function assertLocalBranchGrouping(
+  currentBranchName: string,
+): Promise<void> {
+  await waitForPortalText(
+    openBranchPanel,
+    '*[@role="heading"]',
+    "Default Branch",
+  );
+  await waitForPortalText(
+    openBranchPanel,
+    '*[@role="heading"]',
+    "Other Branches",
+  );
+  await waitForPortalElement(
+    openBranchPanel,
+    `button[aria-label^="Current branch ${currentBranchName}"]`,
+  );
+
+  const grouping = await browser.execute((panelSelector) => {
+    const panel = document.querySelector<HTMLElement>(panelSelector);
+    if (!panel) return null;
+    const list = panel.querySelector<HTMLElement>(
+      '[data-branch-list][aria-label="Local branches"]',
+    );
+    if (!list) return null;
+
+    return [0, 1, 2, 3].map((index) => {
+      const item = list.querySelector<HTMLElement>(`[data-index="${index}"]`);
+      const button = item?.querySelector<HTMLElement>("button[aria-label]");
+      return {
+        ariaCurrent: button?.getAttribute("aria-current") ?? null,
+        label:
+          item?.getAttribute("role") === "heading"
+            ? (item.textContent?.trim() ?? null)
+            : (button?.getAttribute("aria-label") ?? null),
+        type: item?.getAttribute("role") === "heading" ? "heading" : "branch",
+      };
+    });
+  }, openBranchPanel);
+
+  if (!grouping) {
+    throw new Error("Local default/current branch grouping was unavailable");
+  }
+  const expectedGrouping = [
+    { ariaCurrent: null, label: "Default Branch", type: "heading" },
+    {
+      ariaCurrent: null,
+      label: "Checkout main, default or protected, tracks origin/main",
+      type: "branch",
+    },
+    { ariaCurrent: null, label: "Other Branches", type: "heading" },
+    {
+      ariaCurrent: "true",
+      label: `Current branch ${currentBranchName}, tracks origin/${currentBranchName}`,
+      type: "branch",
+    },
+  ];
+  if (JSON.stringify(grouping) !== JSON.stringify(expectedGrouping)) {
+    throw new Error(
+      `Local branch sections are out of order: expected ${JSON.stringify(expectedGrouping)}, got ${JSON.stringify(grouping)}`,
+    );
+  }
+}
+
+async function assertBranchTimestampTooltip(): Promise<void> {
+  const timestamp = await waitForPortalElement(
+    openBranchPanel,
+    "time[data-branch-commit-time]",
+  );
+  const compactTime = (await timestamp.getText()).trim();
+  if (!/^(?:now|\d+[mhdwy]|in \d+[mhdwy])$/.test(compactTime)) {
+    throw new Error(
+      `Branch age is not compact: ${JSON.stringify(compactTime)}`,
+    );
+  }
+
+  const dateTime = String(await timestamp.getAttribute("datetime"));
+  if (Number.isNaN(Date.parse(dateTime))) {
+    throw new Error(`Branch timestamp is invalid: ${JSON.stringify(dateTime)}`);
+  }
+
+  // WebKitDriver does not route moveTo hover events into the packaged Tauri
+  // webview. Base UI listens for native mouseenter/mouseleave events, so send
+  // those directly after establishing a mouse pointer type for React.
+  const hoverDispatched = await browser.execute((element) => {
+    if (!(element instanceof HTMLElement)) return false;
+    const rect = element.getBoundingClientRect();
+    const clientX = rect.left + rect.width / 2;
+    const clientY = rect.top + rect.height / 2;
+    element.dispatchEvent(
+      new PointerEvent("pointerover", {
+        bubbles: true,
+        clientX,
+        clientY,
+        pointerType: "mouse",
+      }),
+    );
+    element.dispatchEvent(
+      new MouseEvent("mouseenter", {
+        bubbles: false,
+        clientX,
+        clientY,
+        relatedTarget: document.body,
+        view: window,
+      }),
+    );
+    element.dispatchEvent(
+      new MouseEvent("mousemove", {
+        bubbles: true,
+        clientX,
+        clientY,
+        movementX: 1,
+        movementY: 1,
+        view: window,
+      }),
+    );
+    return true;
+  }, timestamp);
+  if (!hoverDispatched) {
+    throw new Error("Compact branch timestamp was unavailable for hover");
+  }
+  const tooltip = await waitForPortalElement("body", openTooltip);
+  const expectedExactTime = await browser.execute(
+    (value) => new Date(value).toLocaleString(),
+    dateTime,
+  );
+  assertEqual(
+    (await tooltip.getText()).trim(),
+    expectedExactTime,
+    "hovering a compact branch age shows its exact local timestamp",
+  );
+  await capture("04-branch-timestamp-tooltip");
+
+  await browser.execute((element) => {
+    if (!(element instanceof HTMLElement)) return;
+    element.dispatchEvent(
+      new PointerEvent("pointerout", {
+        bubbles: true,
+        pointerType: "mouse",
+      }),
+    );
+    element.dispatchEvent(
+      new MouseEvent("mouseleave", {
+        bubbles: false,
+        relatedTarget: document.body,
+      }),
+    );
+  }, timestamp);
+  await absent(openTooltip);
+}
+
+async function assertBranchContextMenu(): Promise<void> {
+  const branchBefore = git("branch", "--show-current");
+  await waitForPortalElement(
+    openBranchPanel,
+    'button[aria-label^="Checkout fixture/branch-01"]',
+  );
+
+  const contextMenuDispatched = await browser.execute(
+    (panelSelector, branchSelector) => {
+      const branchRow = document
+        .querySelector(panelSelector)
+        ?.querySelector<HTMLElement>(branchSelector);
+      if (!branchRow) return false;
+
+      const rect = branchRow.getBoundingClientRect();
+      branchRow.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          button: 2,
+          buttons: 2,
+          cancelable: true,
+          clientX: rect.left + Math.min(40, rect.width / 2),
+          clientY: rect.top + rect.height / 2,
+          view: window,
+        }),
+      );
+      return true;
+    },
+    openBranchPanel,
+    'button[aria-label^="Checkout fixture/branch-01"]',
+  );
+  if (!contextMenuDispatched) {
+    throw new Error("fixture branch row was unavailable for a context menu");
+  }
+
+  await waitForPortalText(openBranchContextMenu, "*", "Rename branch");
+  const contextMenuVisibility = await browser.execute((selector) => {
+    const menu = document.querySelector<HTMLElement>(selector);
+    if (!menu) return null;
+    const style = getComputedStyle(menu);
+    return {
+      display: style.display,
+      opacity: Number.parseFloat(style.opacity),
+      visibility: style.visibility,
+    };
+  }, openBranchContextMenu);
+  if (
+    !contextMenuVisibility ||
+    contextMenuVisibility.display === "none" ||
+    contextMenuVisibility.visibility === "hidden" ||
+    contextMenuVisibility.opacity < 0.99
+  ) {
+    throw new Error(
+      `branch context menu is not visibly rendered: ${JSON.stringify(contextMenuVisibility)}`,
+    );
+  }
+  await waitForPortalElement(
+    openBranchPanel,
+    'input[placeholder="Filter branches…"]',
+  );
+  assertEqual(
+    git("branch", "--show-current"),
+    branchBefore,
+    "right-clicking a branch row must not check it out",
+  );
+  await capture("04-branch-context-menu");
+
+  await browser.keys("Escape");
+  await absent("[data-branch-context-menu]");
+  await waitForPortalElement(
+    openBranchPanel,
+    'input[placeholder="Filter branches…"]',
+  );
+}
+
+async function assertLargeRemoteBranchListVirtualized(): Promise<void> {
+  const branchBefore = git("branch", "--show-current");
+  // The list includes origin/main plus Git's shortened origin/HEAD alias.
+  const expectedRemoteBranches = remoteFixtureBranchCount + 2;
+
+  await clickPortalText(openBranchPanel, "button", "Remote");
+  await waitForPortalElement(
+    openBranchPanel,
+    'button[aria-label^="Checkout and track origin/fixture/remote-0001"]',
+  );
+
+  const initialState = await browser.execute(
+    (panelSelector, deepestBranchNumber) => {
+      const panel = document.querySelector<HTMLElement>(panelSelector);
+      const viewport = panel?.querySelector<HTMLElement>(
+        '[data-current-branch-scroll] [data-slot="scroll-area-viewport"]',
+      );
+      const remoteTab = Array.from(
+        panel?.querySelectorAll<HTMLElement>('[data-slot="tabs-tab"]') ?? [],
+      ).find((tab) => tab.textContent?.trim().startsWith("Remote"));
+      const list = panel?.querySelector<HTMLElement>("[data-branch-list]");
+      const renderedRows = list?.querySelectorAll("[data-branch-row]");
+      const firstRow = renderedRows?.item(0);
+
+      if (
+        !panel ||
+        !viewport ||
+        !remoteTab ||
+        !list ||
+        !renderedRows ||
+        !firstRow
+      ) {
+        return null;
+      }
+
+      return {
+        deepBranchInitiallyMounted: Boolean(
+          panel.querySelector(
+            `button[aria-label^="Checkout and track origin/fixture/remote-${String(deepestBranchNumber).padStart(4, "0")}"]`,
+          ),
+        ),
+        firstRowPosition: firstRow.getAttribute("aria-posinset"),
+        firstRowSetSize: firstRow.getAttribute("aria-setsize"),
+        renderedRowCount: renderedRows.length,
+        scrollClientHeight: viewport.clientHeight,
+        scrollHeight: viewport.scrollHeight,
+        tabText: remoteTab.textContent?.replace(/\s+/g, "").trim(),
+        virtualized: list.dataset.virtualized,
+      };
+    },
+    openBranchPanel,
+    remoteFixtureBranchCount,
+  );
+
+  if (!initialState) {
+    throw new Error("Remote branch virtualization state could not be read");
+  }
+  if (initialState.tabText !== `Remote${expectedRemoteBranches}`) {
+    throw new Error(
+      `Remote branch count mismatch: ${JSON.stringify(initialState.tabText)}`,
+    );
+  }
+  if (
+    initialState.firstRowPosition !== "1" ||
+    initialState.firstRowSetSize !== String(expectedRemoteBranches)
+  ) {
+    throw new Error(
+      `Virtualized branch accessibility position is incorrect: ${JSON.stringify(initialState)}`,
+    );
+  }
+  if (initialState.virtualized !== "true") {
+    throw new Error(
+      `Large remote branch list was not virtualized: ${JSON.stringify(initialState)}`,
+    );
+  }
+  if (
+    initialState.renderedRowCount < 1 ||
+    initialState.renderedRowCount > 100
+  ) {
+    throw new Error(
+      `Expected a bounded virtualized DOM, got ${initialState.renderedRowCount} mounted remote branch rows`,
+    );
+  }
+  if (initialState.deepBranchInitiallyMounted) {
+    throw new Error(
+      "A deep remote branch was mounted before scrolling or filtering",
+    );
+  }
+  if (
+    initialState.scrollHeight <= initialState.scrollClientHeight ||
+    initialState.scrollHeight < remoteFixtureBranchCount * 30
+  ) {
+    throw new Error(
+      `Remote branch virtual scroll extent is too small: ${JSON.stringify(initialState)}`,
+    );
+  }
+  await capture("04-branch-virtualized-remote-list");
+
+  const search = await waitForPortalElement(
+    openBranchPanel,
+    'input[placeholder="Filter branches…"]',
+  );
+  await search.click();
+  await browser.keys("ArrowDown");
+  await browser.waitUntil(
+    () =>
+      browser.execute(
+        () =>
+          document.activeElement?.getAttribute("aria-label") ===
+          "Checkout and track origin",
+      ),
+    {
+      timeout: 10_000,
+      interval: 100,
+      timeoutMsg: "ArrowDown did not focus the first virtualized remote branch",
+    },
+  );
+  // WebKitDriver does not dispatch its End action to the focused Tauri webview
+  // button, so exercise the same native keydown path in the packaged DOM.
+  await browser.execute(() => {
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key: "End",
+      }),
+    );
+  });
+  await browser.waitUntil(
+    () =>
+      browser.execute(
+        () =>
+          document.activeElement
+            ?.getAttribute("aria-label")
+            ?.startsWith("Checkout and track origin/main") ?? false,
+      ),
+    {
+      timeout: 10_000,
+      interval: 100,
+      timeoutMsg: "End did not focus the final virtualized remote branch",
+    },
+  );
+
+  await setPortalInput(
+    openBranchPanel,
+    'input[placeholder="Filter branches…"]',
+    "origin/fixture/remote-2000",
+  );
+  const deepBranchSelector =
+    'button[aria-label^="Checkout and track origin/fixture/remote-2000"]';
+  await waitForPortalElement(openBranchPanel, deepBranchSelector);
+  await browser.waitUntil(
+    () =>
+      browser.execute((panelSelector) => {
+        const viewport = document
+          .querySelector(panelSelector)
+          ?.querySelector<HTMLElement>(
+            '[data-current-branch-scroll] [data-slot="scroll-area-viewport"]',
+          );
+        if (!viewport) return false;
+        return (
+          viewport.scrollHeight <= viewport.clientHeight &&
+          !viewport.hasAttribute("data-has-overflow-y")
+        );
+      }, openBranchPanel),
+    {
+      timeout: 10_000,
+      interval: 100,
+      timeoutMsg:
+        "Filtering the virtual list did not clear the scroll area's overflow state",
+    },
+  );
+
+  const contextMenuDispatched = await browser.execute(
+    (panelSelector, branchSelector) => {
+      const branchRow = document
+        .querySelector(panelSelector)
+        ?.querySelector<HTMLElement>(branchSelector);
+      if (!branchRow) return false;
+
+      const rect = branchRow.getBoundingClientRect();
+      branchRow.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          button: 2,
+          buttons: 2,
+          cancelable: true,
+          clientX: rect.left + Math.min(40, rect.width / 2),
+          clientY: rect.top + rect.height / 2,
+          view: window,
+        }),
+      );
+      return true;
+    },
+    openBranchPanel,
+    deepBranchSelector,
+  );
+  if (!contextMenuDispatched) {
+    throw new Error("Filtered deep remote branch was unavailable for actions");
+  }
+  await waitForPortalText(openBranchContextMenu, "*", "Delete remote branch");
+  assertEqual(
+    git("branch", "--show-current"),
+    branchBefore,
+    "filtering and right-clicking a deep remote branch must not check it out",
+  );
+  await browser.keys("Escape");
+  await absent("[data-branch-context-menu]");
+
+  await setPortalInput(
+    openBranchPanel,
+    'input[placeholder="Filter branches…"]',
+    "",
+  );
+  await clickPortalText(openBranchPanel, "button", "Local");
+  const currentBranch = await waitForPortalElement(
+    openBranchPanel,
+    'button[aria-label^="Current branch main"]',
+  );
+  assertEqual(
+    String(await currentBranch.getAttribute("aria-current")),
+    "true",
+    "the local current branch remains identified after virtualized remote navigation",
+  );
 }
 
 async function openRootAction(label: string): Promise<void> {
-  await openBranchSwitcher();
-  const remoteImageSources = await browser.execute(
-    (popupSelector) =>
-      Array.from(
-        document
-          .querySelector(popupSelector)
-          ?.querySelectorAll<HTMLImageElement>('img[src^="https://"]') ?? [],
-        (image) => image.src,
-      ),
-    openCommandDialog,
-  );
-  if (remoteImageSources.length > 0) {
-    throw new Error(
-      `Branch list requested remote images: ${remoteImageSources.join(", ")}`,
+  await browser.execute(() => {
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "k",
+        metaKey: true,
+        bubbles: true,
+      }),
     );
-  }
+  });
   const inputSelector = 'input[placeholder="Search actions or branches..."]';
-  for (let depth = 0; depth < 6; depth += 1) {
-    if (await portalHasElement(openCommandDialog, inputSelector)) break;
-    await browser.keys("Escape");
-    await browser.pause(100);
-  }
+  await waitForPortalElement(openCommandDialog, inputSelector);
   await setPortalInput(openCommandDialog, inputSelector, label);
   await clickPortalText(
     openCommandDialog,
@@ -269,13 +846,24 @@ describe("packaged Gitru desktop smoke", () => {
     await visible('button[aria-label="Push to Origin"]');
     await capture("03-commit-and-sync-decision");
 
-    await openRootAction("New Branch");
+    await openBranchSwitcher();
+    await assertBranchPanelLayout();
+    await assertBranchTimestampTooltip();
+    await assertBranchContextMenu();
+    await assertLargeRemoteBranchListVirtualized();
+    await capture("04-branch-panel-full-height");
+    await (
+      await waitForPortalElement(
+        openBranchPanel,
+        'button[aria-label="New branch"]',
+      )
+    ).click();
     await setPortalInput(
-      openCommandDialog,
-      'input[placeholder="Enter branch name..."]',
+      openDialog,
+      'input[placeholder="feature/my-branch"]',
       smokeBranch,
     );
-    await clickPortalText(openCommandDialog, "button", "Create & Checkout");
+    await clickPortalText(openDialog, "button", "Create & Checkout");
     await waitForGit(
       () => git("branch", "--show-current"),
       (value) => value === smokeBranch,
@@ -311,17 +899,15 @@ describe("packaged Gitru desktop smoke", () => {
     await visible('button[aria-label="Stage stash-note.txt"]');
 
     await openBranchSwitcher();
+    await assertLocalBranchGrouping(smokeBranch);
+    await capture("05-branch-default-current-grouping");
     await setPortalInput(
-      openCommandDialog,
-      'input[placeholder="Search branches..."]',
+      openBranchPanel,
+      'input[placeholder="Filter branches…"]',
       "conflict-work",
     );
-    await clickPortalText(
-      openCommandDialog,
-      '*[@data-slot="command-item"]',
-      "conflict-work",
-    );
-    await clickPortalText(openCommandDialog, "button", "Stash & Checkout");
+    await clickPortalText(openBranchPanel, "button", "conflict-work");
+    await clickPortalText(openDialog, "button", "Stash & Checkout");
     await waitForGit(
       () => git("branch", "--show-current"),
       (value) => value === "conflict-work",
@@ -377,7 +963,9 @@ describe("packaged Gitru desktop smoke", () => {
       (value) => value === "",
       "a clean worktree after abort",
     );
-    const branchSwitcher = await visible('button[aria-label="Switch branch"]');
+    const branchSwitcher = await visible(
+      'button[aria-label^="Current branch:"]',
+    );
     await browser.waitUntil(
       async () => {
         const text = await branchSwitcher.getText();

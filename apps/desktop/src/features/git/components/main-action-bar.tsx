@@ -1,5 +1,4 @@
 import { Button } from "@gitru/ui/components/button";
-import { useCommandNavigation } from "@gitru/ui/components/command";
 import {
   Menu,
   MenuItem,
@@ -11,8 +10,6 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   ChevronDown,
-  GitBranch,
-  GitCommitVertical,
   GitCompareArrows,
   Loader2,
   RefreshCw,
@@ -27,6 +24,7 @@ import {
   useGitPull,
   useGitPush,
 } from "@/hooks";
+import { CurrentBranchControl } from "./current-branch-control";
 import {
   isSyncControlVisible,
   resolveSyncState,
@@ -44,7 +42,6 @@ export const MainActionBar = () => {
   const { data: currentBranch } = useGetCurrentBranch();
   const { data: statusAheadBehind } = useGetStatusAheadBehind();
   const { data: operation } = useGetRepoOperation();
-  const branchNavigation = useCommandNavigation();
 
   const publishMutation = useGitPublishBranch();
   const pushMutation = useGitPush();
@@ -117,40 +114,14 @@ export const MainActionBar = () => {
   return (
     <div className="w-full justify-between min-h-14 max-h-14 h-14 border-b flex">
       <div className="min-h-14 max-h-14 h-14 flex w-full">
-        <Button
-          aria-label="Switch branch"
-          className="flex justify-between items-center min-h-full rounded-none border-x-0 max-w-72 w-full"
-          variant="ghost"
-          onClick={() => {
-            branchNavigation.setOpen(true);
-            branchNavigation.push("branch-list");
-          }}
-        >
-          <div className="flex items-center gap-4 min-w-0 flex-1">
-            {detached ? (
-              <GitCommitVertical className="size-7.5" strokeWidth={1.5} />
-            ) : (
-              <GitBranch className="size-7.5" strokeWidth={1.5} />
-            )}
-
-            <div className="flex flex-col items-start min-w-0 flex-1">
-              <span className="text-xs text-muted-foreground font-[450]">
-                {rebasing
-                  ? "Rebasing"
-                  : detached
-                    ? "Detached HEAD"
-                    : "Current Branch"}
-              </span>
-              <span className="truncate block w-full text-left">
-                {rebasing
-                  ? (rebaseBranch ?? currentBranch?.display_name)
-                  : currentBranch?.display_name}
-              </span>
-            </div>
-          </div>
-
-          <ChevronDown aria-hidden="true" size={18} />
-        </Button>
+        <CurrentBranchControl
+          currentBranchName={currentBranch?.name}
+          currentBranchDisplayName={currentBranch?.display_name}
+          detached={detached}
+          rebasing={rebasing}
+          rebaseBranch={rebaseBranch}
+          operationKind={operation?.kind}
+        />
         <Separator orientation="vertical" className="border-0" />
 
         {!isSyncControlVisible(syncState) ? null : syncState.kind ===

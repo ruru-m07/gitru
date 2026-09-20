@@ -10,6 +10,8 @@ import {
   createCommit,
   currentBranch,
   currentBranchStash,
+  deleteLocalBranch,
+  deleteRemoteBranch,
   FileStatusKind,
   getPatchByFilePath,
   getRepoOperation,
@@ -43,10 +45,13 @@ import {
   rebaseSkip,
   rebaseStart,
   rebaseUpdateTodo,
+  renameBranch,
   repositoryOrigin,
+  setBranchUpstream,
   statusAheadBehind,
   switchBranch,
   UncommittedChangesStrategy,
+  unsetBranchUpstream,
 } from "@gitru/commands";
 import { QueryClient } from "@tanstack/react-query";
 import { StateDomain } from "../core/state-manager";
@@ -313,6 +318,45 @@ class BranchState extends StateDomain {
       strategy,
     });
     return result;
+  }
+
+  async renameBranch(branch: string, newName: string) {
+    return await renameBranch({
+      contextId: this.contextId,
+      branch,
+      newName,
+    });
+  }
+
+  async deleteLocalBranch(branch: string, force: boolean) {
+    return await deleteLocalBranch({
+      contextId: this.contextId,
+      branch,
+      force,
+    });
+  }
+
+  async deleteRemoteBranch(branch: string, force: boolean) {
+    return await deleteRemoteBranch({
+      contextId: this.contextId,
+      branch,
+      force,
+    });
+  }
+
+  async setUpstream(branch: string, upstream: string) {
+    return await setBranchUpstream({
+      contextId: this.contextId,
+      branch,
+      upstream,
+    });
+  }
+
+  async unsetUpstream(branch: string) {
+    return await unsetBranchUpstream({
+      contextId: this.contextId,
+      branch,
+    });
   }
 }
 
