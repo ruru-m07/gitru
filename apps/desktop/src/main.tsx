@@ -34,7 +34,11 @@ if (import.meta.env.MODE === "e2e") {
   await import("@wdio/tauri-plugin");
 }
 
-await redirectToLastPage();
+try {
+  redirectToLastPage();
+} catch (error) {
+  console.error("Failed to restore the last page", error);
+}
 initializeQueryBridge();
 
 const rootElement = document.getElementById("root");

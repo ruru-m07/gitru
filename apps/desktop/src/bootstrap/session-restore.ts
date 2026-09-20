@@ -7,7 +7,14 @@ import {
   isEmbeddedRuntime,
 } from "./runtime-utils";
 
-export async function redirectToLastPage() {
+const replaceStartupLocation = (href: string) => {
+  router.history.replace(href, router.history.location.state, {
+    ignoreBlocker: true,
+  });
+  router.history.flush();
+};
+
+export function redirectToLastPage(): void {
   if (isEmbeddedRuntime()) return;
 
   if (isDesktopHostRuntime()) {
@@ -18,7 +25,7 @@ export async function redirectToLastPage() {
       window.location.hash.length === 0;
 
     if (currentPathIsApp && !alreadyAtHostShell) {
-      await router.navigate({ to: HOST_SHELL_ROUTE });
+      replaceStartupLocation(HOST_SHELL_ROUTE);
       return;
     }
   }
@@ -49,12 +56,12 @@ export async function redirectToLastPage() {
       window.location.search.length > 0 ||
       window.location.hash.length > 0
     ) {
-      await router.navigate({ to: HOST_SHELL_ROUTE });
+      replaceStartupLocation(HOST_SHELL_ROUTE);
     }
     return;
   }
 
   if (window.location.pathname + window.location.search !== lastPage) {
-    await router.navigate({ to: lastPage });
+    replaceStartupLocation(lastPage);
   }
 }
