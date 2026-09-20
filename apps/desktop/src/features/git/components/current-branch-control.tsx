@@ -15,6 +15,13 @@ import {
 import { Badge } from "@gitru/ui/components/badge";
 import { Button } from "@gitru/ui/components/button";
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@gitru/ui/components/context-menu";
+import {
   Dialog,
   DialogClose,
   DialogDescription,
@@ -35,13 +42,6 @@ import {
   InputGroupInput,
 } from "@gitru/ui/components/input-group";
 import {
-  Menu,
-  MenuItem,
-  MenuPopup,
-  MenuSeparator,
-  MenuTrigger,
-} from "@gitru/ui/components/menu";
-import {
   Popover,
   PopoverDescription,
   PopoverPopup,
@@ -60,9 +60,7 @@ import {
   GitCommitVertical,
   Link2,
   Loader2,
-  MoreHorizontal,
   Pencil,
-  RefreshCw,
   Search,
   ShieldCheck,
   Trash2,
@@ -83,7 +81,6 @@ import {
   useGetBranches,
   useGitCreateBranch,
   useGitDeleteBranch,
-  useGitFetch,
   useGitRenameBranch,
   useGitSetBranchUpstream,
   useGitSwitchBranch,
@@ -117,7 +114,6 @@ export interface CurrentBranchPickerProps {
   hasUncommittedChanges?: boolean;
   worktreeStateLoading?: boolean;
   isMutating?: boolean;
-  isFetching?: boolean;
   onSwitchBranch: (
     branchName: string,
     strategy?: UncommittedChangesStrategy,
@@ -134,7 +130,6 @@ export interface CurrentBranchPickerProps {
   ) => Promise<boolean>;
   onSetUpstream: (branch: string, upstream: string) => Promise<boolean>;
   onUnsetUpstream: (branch: string) => Promise<boolean>;
-  onFetch: () => Promise<boolean>;
 }
 
 export interface CurrentBranchControlProps {
@@ -182,7 +177,6 @@ export function CurrentBranchControl(props: CurrentBranchControlProps) {
   const deleteBranch = useGitDeleteBranch();
   const setUpstream = useGitSetBranchUpstream();
   const unsetUpstream = useGitUnsetBranchUpstream();
-  const fetch = useGitFetch();
 
   const isMutating =
     switchBranch.isPending ||
@@ -201,7 +195,6 @@ export function CurrentBranchControl(props: CurrentBranchControlProps) {
       hasUncommittedChanges={dirtyWorktree.data ?? undefined}
       worktreeStateLoading={dirtyWorktree.isLoading}
       isMutating={isMutating}
-      isFetching={fetch.isPending}
       onSwitchBranch={(branchName, strategy) =>
         runAction(
           () => switchBranch.mutateAsync({ branchName, strategy }),
@@ -248,14 +241,6 @@ export function CurrentBranchControl(props: CurrentBranchControlProps) {
           true,
         )
       }
-      onFetch={() =>
-        runAction(
-          () => fetch.mutateAsync(),
-          "Remote branches refreshed",
-          "Unable to fetch remote branches",
-          true,
-        )
-      }
     />
   );
 }
@@ -273,14 +258,12 @@ export function CurrentBranchPicker({
   hasUncommittedChanges,
   worktreeStateLoading = false,
   isMutating = false,
-  isFetching = false,
   onSwitchBranch,
   onCreateBranch,
   onRenameBranch,
   onDeleteBranch,
   onSetUpstream,
   onUnsetUpstream,
-  onFetch,
 }: CurrentBranchPickerProps) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<BranchTab>("local");
@@ -617,22 +600,6 @@ export function CurrentBranchPicker({
                 {tab === "remote" ? branchListContent : null}
               </TabsPanel>
             </Tabs>
-
-            <div
-              className="flex h-9 flex-none items-center justify-end border-t px-2"
-              data-current-branch-footer
-            >
-              <Button
-                type="button"
-                size="xs"
-                variant="ghost"
-                disabled={isFetching || isMutating || operationLocked}
-                onClick={() => void onFetch()}
-              >
-                <RefreshCw className={cn(isFetching && "animate-spin")} />
-                {isFetching ? "Fetching…" : "Fetch & prune"}
-              </Button>
-            </div>
           </div>
         </PopoverPopup>
       </Popover>
@@ -728,109 +695,110 @@ function BranchRow({
   return (
     <li
       className={cn(
-        "group flex h-9 items-center px-1 hover:bg-accent/64 focus-within:bg-accent/64",
+        "flex h-9 items-center px-1 hover:bg-accent/64 focus-within:bg-accent/64",
         isCurrent && "bg-accent",
       )}
     >
-      <button
-        ref={ref}
-        type="button"
-        aria-current={isCurrent ? "true" : undefined}
-        aria-disabled={disabled || undefined}
-        aria-label={rowLabel}
-        className="flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-sm px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default disabled:opacity-64"
-        disabled={disabled}
-        onClick={onCheckout}
-        onKeyDown={onKeyDown}
-      >
-        <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">
-          {isCurrent ? (
-            <Check className="size-4 text-primary" strokeWidth={2.25} />
-          ) : (
-            <GitBranch className="size-3.5" />
-          )}
-        </span>
-        <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
-          {branch.display_name}
-        </span>
-        {branch.is_protected ? (
-          <ShieldCheck
-            aria-label="Default or protected branch"
-            className="size-3.5 shrink-0 text-muted-foreground"
-          />
-        ) : null}
-        <span className="shrink-0 text-xs text-muted-foreground">
-          {timeAgoFromUnixSeconds(branch.commit.timestamp)}
-        </span>
-      </button>
-
-      <Menu>
-        <MenuTrigger
-          render={
-            <Button
-              type="button"
-              size="icon-xs"
-              variant="ghost"
-              aria-label={`Actions for branch ${branch.display_name}`}
-              className="mr-1 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 data-[popup-open]:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100"
-            />
-          }
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <button
+            ref={ref}
+            type="button"
+            aria-current={isCurrent ? "true" : undefined}
+            aria-description="Right-click for branch actions."
+            aria-disabled={disabled || undefined}
+            aria-label={rowLabel}
+            className="flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-sm px-2 text-left outline-none aria-disabled:cursor-default aria-disabled:opacity-64 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            onClick={onCheckout}
+            onKeyDown={onKeyDown}
+          >
+            <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">
+              {isCurrent ? (
+                <Check className="size-4 text-primary" strokeWidth={2.25} />
+              ) : (
+                <GitBranch className="size-3.5" />
+              )}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+              {branch.display_name}
+            </span>
+            {branch.is_protected ? (
+              <ShieldCheck
+                aria-label="Default or protected branch"
+                className="size-3.5 shrink-0 text-muted-foreground"
+              />
+            ) : null}
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {timeAgoFromUnixSeconds(branch.commit.timestamp)}
+            </span>
+          </button>
+        </ContextMenuTrigger>
+        <ContextMenuContent
+          className="w-64 animate-none! opacity-100!"
+          data-branch-context-menu
+          onEscapeKeyDown={(event) => event.stopPropagation()}
         >
-          <MoreHorizontal />
-        </MenuTrigger>
-        <MenuPopup align="end" className="w-64">
           {!isCurrent ? (
-            <MenuItem closeOnClick disabled={disabled} onClick={onCheckout}>
-              {branch.is_remote ? <Cloud /> : <GitBranch />}
+            <ContextMenuItem
+              className="gap-2"
+              disabled={disabled}
+              onSelect={onCheckout}
+            >
+              {branch.is_remote ? (
+                <Cloud className="size-4 shrink-0" />
+              ) : (
+                <GitBranch className="size-4 shrink-0" />
+              )}
               {branch.is_remote ? "Checkout and track" : "Checkout branch"}
-            </MenuItem>
+            </ContextMenuItem>
           ) : null}
           {!branch.is_remote ? (
             <>
-              <MenuItem
-                closeOnClick
+              <ContextMenuItem
+                className="gap-2"
                 disabled={disabled}
-                onClick={() => onOpenDialog({ kind: "rename", branch })}
+                onSelect={() => onOpenDialog({ kind: "rename", branch })}
               >
-                <Pencil />
+                <Pencil className="size-4 shrink-0" />
                 Rename branch
-              </MenuItem>
-              <MenuItem
-                closeOnClick
+              </ContextMenuItem>
+              <ContextMenuItem
+                className="gap-2"
                 disabled={disabled}
-                onClick={() => onOpenDialog({ kind: "upstream", branch })}
+                onSelect={() => onOpenDialog({ kind: "upstream", branch })}
               >
-                <Link2 />
+                <Link2 className="size-4 shrink-0" />
                 {branch.upstream ? "Change upstream" : "Set upstream"}
-              </MenuItem>
+              </ContextMenuItem>
               {branch.upstream ? (
-                <MenuItem
-                  closeOnClick
+                <ContextMenuItem
+                  className="gap-2"
                   disabled={disabled}
-                  onClick={() => void onUnsetUpstream()}
+                  onSelect={() => void onUnsetUpstream()}
                 >
-                  <Unlink />
+                  <Unlink className="size-4 shrink-0" />
                   Unset upstream
-                </MenuItem>
+                </ContextMenuItem>
               ) : null}
             </>
           ) : null}
-          <MenuSeparator />
-          <MenuItem
-            closeOnClick
-            variant="destructive"
+          <ContextMenuSeparator />
+          <ContextMenuItem
             disabled={disabled}
             aria-disabled={Boolean(deleteBlockReason)}
             className={cn(
+              "gap-2 text-destructive-foreground focus:text-destructive-foreground",
               deleteBlockReason && "cursor-not-allowed items-start opacity-64",
             )}
-            onClick={() => {
-              if (!deleteBlockReason) {
+            onSelect={(event) => {
+              if (deleteBlockReason) {
+                event.preventDefault();
+              } else {
                 onOpenDialog({ kind: "delete", branch });
               }
             }}
           >
-            <Trash2 className="mt-0.5" />
+            <Trash2 className="mt-0.5 size-4 shrink-0" />
             <span className="flex min-w-0 flex-col">
               <span>
                 {branch.is_remote ? "Delete remote branch" : "Delete branch"}
@@ -841,9 +809,9 @@ function BranchRow({
                 </span>
               ) : null}
             </span>
-          </MenuItem>
-        </MenuPopup>
-      </Menu>
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
     </li>
   );
 }

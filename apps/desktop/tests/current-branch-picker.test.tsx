@@ -104,61 +104,52 @@ vi.mock("@gitru/ui/components/popover", async () => {
   };
 });
 
-vi.mock("@gitru/ui/components/menu", async () => {
+vi.mock("@gitru/ui/components/context-menu", async () => {
   const React = await import("react");
-  const TestMenuContext = React.createContext<{
+  const TestContextMenuContext = React.createContext<{
     open: boolean;
     setOpen: (open: boolean) => void;
   } | null>(null);
 
   return {
-    Menu: ({ children }: { children: ReactNode }) => {
+    ContextMenu: ({ children }: { children: ReactNode }) => {
       const [open, setOpen] = React.useState(false);
       return (
-        <TestMenuContext.Provider value={{ open, setOpen }}>
+        <TestContextMenuContext.Provider value={{ open, setOpen }}>
           {children}
-        </TestMenuContext.Provider>
+        </TestContextMenuContext.Provider>
       );
     },
-    MenuTrigger: ({
+    ContextMenuTrigger: ({
+      asChild: _asChild,
       children,
-      render,
     }: {
-      children: ReactNode;
-      render: ReactElement<{
-        onClick?: MouseEventHandler<HTMLButtonElement>;
+      asChild?: boolean;
+      children: ReactElement<{
+        onContextMenu?: MouseEventHandler<HTMLButtonElement>;
       }>;
     }) => {
-      const context = React.useContext(TestMenuContext);
-      if (!context) throw new Error("MenuTrigger must be inside Menu");
+      const context = React.useContext(TestContextMenuContext);
+      if (!context) {
+        throw new Error("ContextMenuTrigger must be inside ContextMenu");
+      }
 
-      return React.cloneElement(
-        render,
-        {
-          onClick: (event) => {
-            render.props.onClick?.(event);
-            context.setOpen(!context.open);
-          },
+      return React.cloneElement(children, {
+        onContextMenu: (event) => {
+          children.props.onContextMenu?.(event);
+          event.preventDefault();
+          context.setOpen(true);
         },
-        children,
-      );
+      });
     },
-    MenuPopup: ({
-      align: _align,
-      alignOffset: _alignOffset,
-      anchor: _anchor,
+    ContextMenuContent: ({
       children,
-      side: _side,
-      sideOffset: _sideOffset,
+      onEscapeKeyDown: _onEscapeKeyDown,
       ...props
     }: ComponentProps<"div"> & {
-      align?: string;
-      alignOffset?: number;
-      anchor?: unknown;
-      side?: string;
-      sideOffset?: number;
+      onEscapeKeyDown?: (event: KeyboardEvent) => void;
     }) => {
-      const context = React.useContext(TestMenuContext);
+      const context = React.useContext(TestContextMenuContext);
       if (!context?.open) return null;
       return (
         <div {...props} role="menu">
@@ -166,32 +157,29 @@ vi.mock("@gitru/ui/components/menu", async () => {
         </div>
       );
     },
-    MenuItem: ({
+    ContextMenuItem: ({
       children,
-      closeOnClick,
-      onClick,
-      variant: _variant,
+      onSelect,
       ...props
-    }: ComponentProps<"button"> & {
-      closeOnClick?: boolean;
-      variant?: string;
+    }: Omit<ComponentProps<"button">, "onSelect"> & {
+      onSelect?: (event: Event) => void;
     }) => {
-      const context = React.useContext(TestMenuContext);
+      const context = React.useContext(TestContextMenuContext);
       return (
         <button
           {...props}
           type="button"
           role="menuitem"
           onClick={(event) => {
-            onClick?.(event);
-            if (closeOnClick) context?.setOpen(false);
+            onSelect?.(event.nativeEvent);
+            context?.setOpen(false);
           }}
         >
           {children}
         </button>
       );
     },
-    MenuSeparator: (props: ComponentProps<"hr">) => (
+    ContextMenuSeparator: (props: ComponentProps<"hr">) => (
       <hr {...props} role="separator" />
     ),
   };
@@ -264,7 +252,6 @@ function createProps(
     onDeleteBranch: vi.fn().mockResolvedValue(true),
     onSetUpstream: vi.fn().mockResolvedValue(true),
     onUnsetUpstream: vi.fn().mockResolvedValue(true),
-    onFetch: vi.fn().mockResolvedValue(true),
     ...overrides,
   };
 }
@@ -317,8 +304,8 @@ describe("CurrentBranchPicker", () => {
       within(popup).getByRole("heading", { name: "Other Branches" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Fetch & prune" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: /Fetch & prune|Fetching/ }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", {
         name: "Current branch main",
@@ -399,16 +386,19 @@ describe("CurrentBranchPicker", () => {
     );
   });
 
-  test("opening a branch action menu does not also check out the branch", async () => {
-    const user = userEvent.setup();
+  test("right-click opens branch actions without reserving an action button", async () => {
     const props = createProps();
     render(<CurrentBranchPicker {...props} />);
     await openPicker();
 
-    await user.click(
-      screen.getByRole("button", {
+    expect(
+      screen.queryByRole("button", {
         name: "Actions for branch feature/one",
       }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: "Checkout feature/one" }),
     );
 
     expect(props.onSwitchBranch).not.toHaveBeenCalled();
@@ -417,7 +407,6 @@ describe("CurrentBranchPicker", () => {
     ).toBeInTheDocument();
     expect(props.onSwitchBranch).not.toHaveBeenCalled();
 
-    fireEvent.keyDown(document, { key: "Escape" });
     await closePicker();
   });
 });

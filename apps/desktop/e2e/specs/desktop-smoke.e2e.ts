@@ -19,6 +19,7 @@ const openCommandDialog =
 const openDialog = '[data-slot="dialog-popup"][data-open]:not([data-closed])';
 const openBranchPanel =
   "[data-current-branch-panel][data-open]:not([data-closed])";
+const openBranchContextMenu = '[data-branch-context-menu][data-state="open"]';
 
 function requiredEnvironment(name: string): string {
   const value = process.env[name];
@@ -193,33 +194,25 @@ async function assertBranchPanelLayout(): Promise<void> {
           const scrollViewport = panel?.querySelector<HTMLElement>(
             '[data-current-branch-scroll] [data-slot="scroll-area-viewport"]',
           );
-          const footer = panel?.querySelector<HTMLElement>(
-            "[data-current-branch-footer]",
-          );
+          const footer = panel?.querySelector("[data-current-branch-footer]");
           const lastFixtureBranch = panel?.querySelector(
             'button[aria-label^="Checkout fixture/branch-60"]',
           );
 
-          if (
-            !trigger ||
-            !panel ||
-            !scrollViewport ||
-            !footer ||
-            !lastFixtureBranch
-          ) {
+          if (!trigger || !panel || !scrollViewport || !lastFixtureBranch) {
             return false;
           }
 
           const triggerRect = trigger.getBoundingClientRect();
           const panelRect = panel.getBoundingClientRect();
           const scrollRect = scrollViewport.getBoundingClientRect();
-          const footerRect = footer.getBoundingClientRect();
 
           return (
             Math.abs(panelRect.left - triggerRect.left) <= 2 &&
             Math.abs(panelRect.top - triggerRect.bottom) <= 2 &&
             scrollViewport.scrollHeight > scrollViewport.clientHeight &&
-            scrollRect.bottom <= footerRect.top + 2
+            Math.abs(scrollRect.bottom - panelRect.bottom) <= 2 &&
+            footer === null
           );
         },
         "[data-current-branch-trigger]",
@@ -240,16 +233,12 @@ async function assertBranchPanelLayout(): Promise<void> {
       const scrollViewport = panel?.querySelector<HTMLElement>(
         '[data-current-branch-scroll] [data-slot="scroll-area-viewport"]',
       );
-      const footer = panel?.querySelector<HTMLElement>(
-        "[data-current-branch-footer]",
-      );
 
-      if (!trigger || !panel || !scrollViewport || !footer) return null;
+      if (!trigger || !panel || !scrollViewport) return null;
 
       const triggerRect = trigger.getBoundingClientRect();
       const panelRect = panel.getBoundingClientRect();
       const scrollRect = scrollViewport.getBoundingClientRect();
-      const footerRect = footer.getBoundingClientRect();
       const panelStyle = getComputedStyle(panel);
       const shadowColors = panelStyle.boxShadow.match(/rgba?\([^)]+\)/g) ?? [];
       const contentPadding =
@@ -261,7 +250,7 @@ async function assertBranchPanelLayout(): Promise<void> {
 
       return {
         contentPadding,
-        footerTop: footerRect.top,
+        hasFooter: panel.querySelector("[data-current-branch-footer]") !== null,
         innerHeight: window.innerHeight,
         innerWidth: window.innerWidth,
         panelBottom: panelRect.bottom,
@@ -311,8 +300,11 @@ async function assertBranchPanelLayout(): Promise<void> {
   if (geometry.panelRight > geometry.innerWidth + tolerance) {
     failures.push("panel overflows the viewport horizontally");
   }
-  if (geometry.scrollBottom > geometry.footerTop + tolerance) {
-    failures.push("branch list overlaps the fixed footer");
+  if (geometry.hasFooter) {
+    failures.push("removed branch panel footer is still rendered");
+  }
+  if (Math.abs(geometry.scrollBottom - geometry.panelBottom) > tolerance) {
+    failures.push("branch list does not fill the panel to the bottom edge");
   }
   if (geometry.scrollHeight <= geometry.scrollClientHeight) {
     failures.push("long branch fixture does not scroll inside the panel");
@@ -329,6 +321,81 @@ async function assertBranchPanelLayout(): Promise<void> {
       `Branch panel layout failed: ${failures.join("; ")}\n${JSON.stringify(geometry, null, 2)}`,
     );
   }
+}
+
+async function assertBranchContextMenu(): Promise<void> {
+  const branchBefore = git("branch", "--show-current");
+  await waitForPortalElement(
+    openBranchPanel,
+    'button[aria-label^="Checkout fixture/branch-01"]',
+  );
+
+  const contextMenuDispatched = await browser.execute(
+    (panelSelector, branchSelector) => {
+      const branchRow = document
+        .querySelector(panelSelector)
+        ?.querySelector<HTMLElement>(branchSelector);
+      if (!branchRow) return false;
+
+      const rect = branchRow.getBoundingClientRect();
+      branchRow.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          button: 2,
+          buttons: 2,
+          cancelable: true,
+          clientX: rect.left + Math.min(40, rect.width / 2),
+          clientY: rect.top + rect.height / 2,
+          view: window,
+        }),
+      );
+      return true;
+    },
+    openBranchPanel,
+    'button[aria-label^="Checkout fixture/branch-01"]',
+  );
+  if (!contextMenuDispatched) {
+    throw new Error("fixture branch row was unavailable for a context menu");
+  }
+
+  await waitForPortalText(openBranchContextMenu, "*", "Rename branch");
+  const contextMenuVisibility = await browser.execute((selector) => {
+    const menu = document.querySelector<HTMLElement>(selector);
+    if (!menu) return null;
+    const style = getComputedStyle(menu);
+    return {
+      display: style.display,
+      opacity: Number.parseFloat(style.opacity),
+      visibility: style.visibility,
+    };
+  }, openBranchContextMenu);
+  if (
+    !contextMenuVisibility ||
+    contextMenuVisibility.display === "none" ||
+    contextMenuVisibility.visibility === "hidden" ||
+    contextMenuVisibility.opacity < 0.99
+  ) {
+    throw new Error(
+      `branch context menu is not visibly rendered: ${JSON.stringify(contextMenuVisibility)}`,
+    );
+  }
+  await waitForPortalElement(
+    openBranchPanel,
+    'input[placeholder="Filter branches…"]',
+  );
+  assertEqual(
+    git("branch", "--show-current"),
+    branchBefore,
+    "right-clicking a branch row must not check it out",
+  );
+  await capture("04-branch-context-menu");
+
+  await browser.keys("Escape");
+  await absent("[data-branch-context-menu]");
+  await waitForPortalElement(
+    openBranchPanel,
+    'input[placeholder="Filter branches…"]',
+  );
 }
 
 async function openRootAction(label: string): Promise<void> {
@@ -410,6 +477,7 @@ describe("packaged Gitru desktop smoke", () => {
 
     await openBranchSwitcher();
     await assertBranchPanelLayout();
+    await assertBranchContextMenu();
     await capture("04-branch-panel-full-height");
     await clickPortalText(openBranchPanel, "button", "New Branch", true);
     await setPortalInput(
