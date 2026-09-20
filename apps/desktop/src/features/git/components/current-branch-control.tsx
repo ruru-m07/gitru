@@ -35,6 +35,7 @@ import {
   FieldDescription,
   FieldLabel,
 } from "@gitru/ui/components/field";
+import { Group, GroupSeparator } from "@gitru/ui/components/group";
 import { Input } from "@gitru/ui/components/input";
 import {
   InputGroup,
@@ -64,10 +65,14 @@ import {
   GitBranch,
   GitBranchPlus,
   GitCommitVertical,
+  HardDrive,
+  LaptopMinimal,
   Link2,
   Loader2,
   Pencil,
+  Plus,
   Search,
+  SearchIcon,
   ShieldCheck,
   Trash2,
   TriangleAlert,
@@ -553,7 +558,6 @@ export function CurrentBranchPicker({
       data-current-branch-scroll
       className="h-full w-full [&_[data-slot=scroll-area-content]]:w-full [&_[data-slot=scroll-area-content]]:min-w-0!"
       scrollFade
-      scrollbarGutter
       viewportRef={setScrollElement}
     >
       {branchesLoading ? (
@@ -678,63 +682,72 @@ export function CurrentBranchPicker({
           </PopoverDescription>
           <div className="flex h-full min-h-0 w-full flex-col bg-background">
             <Tabs
-              className="min-h-0 flex-1 gap-0"
               value={tab}
               onValueChange={(value) => {
                 resetBranchScroll();
                 setTab(value as BranchTab);
               }}
+              className={"gap-0 h-full flex flex-col"}
             >
-              <div className="flex-none border-b px-2">
-                <TabsList variant="underline" className="w-full">
-                  <TabsTab className="flex-1" value="local">
-                    Local
-                    <span className="text-xs text-muted-foreground">
-                      {localBranches.length}
-                    </span>
-                  </TabsTab>
-                  <TabsTab className="flex-1" value="remote">
-                    Remote
-                    <span className="text-xs text-muted-foreground">
-                      {remoteBranches.length}
-                    </span>
-                  </TabsTab>
-                </TabsList>
-              </div>
+              <TabsList
+                className={
+                  "select-none rounded-none bg-background w-full shrink-0 border-b *:data-[slot=tab-indicator]:bg-secondary *:data-[slot=tab-indicator]:transition-none"
+                }
+              >
+                <TabsTab className={"rounded-none!"} value="local">
+                  <LaptopMinimal className="mr-1!" />
+                  Local
+                  <Badge variant={"secondary"}>{localBranches.length}</Badge>
+                </TabsTab>
+                <TabsTab className={"rounded-none!"} value="remote">
+                  <HardDrive className="mr-1!" />
+                  Remote
+                  <Badge variant={"secondary"}>{remoteBranches.length}</Badge>
+                </TabsTab>
+              </TabsList>
 
-              <div className="flex flex-none items-center gap-2 border-b p-2">
-                <InputGroup className="min-w-0 flex-1">
-                  <InputGroupInput
-                    aria-label="Filter branches"
-                    autoFocus
-                    type="search"
-                    placeholder="Filter branches…"
-                    spellCheck={false}
-                    value={query}
-                    onChange={(event) => {
-                      resetBranchScroll();
-                      setQuery(event.target.value);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "ArrowDown") {
-                        event.preventDefault();
-                        focusBranchAtIndex(0);
-                      }
-                    }}
-                  />
-                  <InputGroupAddon align="inline-start">
-                    <Search aria-hidden="true" />
-                  </InputGroupAddon>
-                </InputGroup>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={branchChangesLocked || isMutating}
-                  onClick={() => openDialog({ kind: "create" })}
-                >
-                  New Branch
-                </Button>
+              <div className="p-1.5 max-h-10 min-h-10 border-b">
+                <Group className="w-full">
+                  <InputGroup>
+                    <InputGroupInput
+                      aria-label="Filter branches"
+                      autoFocus
+                      type="search"
+                      size="sm"
+                      placeholder="Filter branches…"
+                      spellCheck={false}
+                      value={query}
+                      onChange={(event) => {
+                        resetBranchScroll();
+                        setQuery(event.target.value);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "ArrowDown") {
+                          event.preventDefault();
+                          focusBranchAtIndex(0);
+                        }
+                      }}
+                    />
+                    <InputGroupAddon>
+                      <SearchIcon
+                        className="opacity-50 -translate-x-0.5"
+                        aria-hidden="true"
+                      />
+                    </InputGroupAddon>
+                  </InputGroup>
+
+                  <GroupSeparator />
+
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="outline"
+                    disabled={branchChangesLocked || isMutating}
+                    onClick={() => openDialog({ kind: "create" })}
+                  >
+                    <GitBranchPlus />
+                  </Button>
+                </Group>
               </div>
 
               {operationLocked ? (
@@ -911,7 +924,7 @@ function BranchRow({
                 <GitBranch className="size-3.5" />
               )}
             </span>
-            <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+            <span className="min-w-0 flex-1 truncate text-[13px] font-[450]">
               {branch.display_name}
             </span>
             {branch.is_protected ? (
