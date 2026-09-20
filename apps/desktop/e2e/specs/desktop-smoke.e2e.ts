@@ -18,6 +18,7 @@ const remoteFixtureBranchCount = 2_000;
 const openCommandDialog =
   '[data-slot="command-dialog-popup"][data-open]:not([data-closed])';
 const openDialog = '[data-slot="dialog-popup"][data-open]:not([data-closed])';
+const openTooltip = '[data-slot="tooltip-popup"][data-open]:not([data-closed])';
 const openBranchPanel =
   "[data-current-branch-panel][data-open]:not([data-closed])";
 const openBranchContextMenu = '[data-branch-context-menu][data-state="open"]';
@@ -314,6 +315,93 @@ async function assertBranchPanelLayout(): Promise<void> {
       `Branch panel layout failed: ${failures.join("; ")}\n${JSON.stringify(geometry, null, 2)}`,
     );
   }
+}
+
+async function assertBranchTimestampTooltip(): Promise<void> {
+  const timestamp = await waitForPortalElement(
+    openBranchPanel,
+    "time[data-branch-commit-time]",
+  );
+  const compactTime = (await timestamp.getText()).trim();
+  if (!/^(?:now|\d+[mhdwy]|in \d+[mhdwy])$/.test(compactTime)) {
+    throw new Error(
+      `Branch age is not compact: ${JSON.stringify(compactTime)}`,
+    );
+  }
+
+  const dateTime = String(await timestamp.getAttribute("datetime"));
+  if (Number.isNaN(Date.parse(dateTime))) {
+    throw new Error(`Branch timestamp is invalid: ${JSON.stringify(dateTime)}`);
+  }
+
+  // WebKitDriver does not route moveTo hover events into the packaged Tauri
+  // webview. Base UI listens for native mouseenter/mouseleave events, so send
+  // those directly after establishing a mouse pointer type for React.
+  const hoverDispatched = await browser.execute((element) => {
+    if (!(element instanceof HTMLElement)) return false;
+    const rect = element.getBoundingClientRect();
+    const clientX = rect.left + rect.width / 2;
+    const clientY = rect.top + rect.height / 2;
+    element.dispatchEvent(
+      new PointerEvent("pointerover", {
+        bubbles: true,
+        clientX,
+        clientY,
+        pointerType: "mouse",
+      }),
+    );
+    element.dispatchEvent(
+      new MouseEvent("mouseenter", {
+        bubbles: false,
+        clientX,
+        clientY,
+        relatedTarget: document.body,
+        view: window,
+      }),
+    );
+    element.dispatchEvent(
+      new MouseEvent("mousemove", {
+        bubbles: true,
+        clientX,
+        clientY,
+        movementX: 1,
+        movementY: 1,
+        view: window,
+      }),
+    );
+    return true;
+  }, timestamp);
+  if (!hoverDispatched) {
+    throw new Error("Compact branch timestamp was unavailable for hover");
+  }
+  const tooltip = await waitForPortalElement("body", openTooltip);
+  const expectedExactTime = await browser.execute(
+    (value) => new Date(value).toLocaleString(),
+    dateTime,
+  );
+  assertEqual(
+    (await tooltip.getText()).trim(),
+    expectedExactTime,
+    "hovering a compact branch age shows its exact local timestamp",
+  );
+  await capture("04-branch-timestamp-tooltip");
+
+  await browser.execute((element) => {
+    if (!(element instanceof HTMLElement)) return;
+    element.dispatchEvent(
+      new PointerEvent("pointerout", {
+        bubbles: true,
+        pointerType: "mouse",
+      }),
+    );
+    element.dispatchEvent(
+      new MouseEvent("mouseleave", {
+        bubbles: false,
+        relatedTarget: document.body,
+      }),
+    );
+  }, timestamp);
+  await absent(openTooltip);
 }
 
 async function assertBranchContextMenu(): Promise<void> {
@@ -697,6 +785,7 @@ describe("packaged Gitru desktop smoke", () => {
 
     await openBranchSwitcher();
     await assertBranchPanelLayout();
+    await assertBranchTimestampTooltip();
     await assertBranchContextMenu();
     await assertLargeRemoteBranchListVirtualized();
     await capture("04-branch-panel-full-height");

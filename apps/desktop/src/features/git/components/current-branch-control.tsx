@@ -50,6 +50,11 @@ import {
 } from "@gitru/ui/components/popover";
 import { ScrollArea } from "@gitru/ui/components/scroll-area";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@gitru/ui/components/tabs";
+import {
+  Tooltip,
+  TooltipPopup,
+  TooltipTrigger,
+} from "@gitru/ui/components/tooltip";
 import { cn } from "@gitru/ui/lib/utils";
 import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -88,7 +93,10 @@ import {
   useGitUnsetBranchUpstream,
   useHasUncommittedChanges,
 } from "@/hooks";
-import { timeAgoFromUnixSeconds } from "@/lib/time";
+import {
+  compactTimeAgoFromUnixSeconds,
+  formatUnixSecondsToDateTime,
+} from "@/lib/time";
 
 type BranchTab = "local" | "remote";
 type RepoOperationKind = RepoOperation["kind"];
@@ -864,6 +872,11 @@ function BranchRow({
   const rowLabel = isCurrent
     ? `Current branch ${branch.display_name}${accessibilityDetails ? `, ${accessibilityDetails}` : ""}`
     : `${rowAction} ${branch.display_name}${accessibilityDetails ? `, ${accessibilityDetails}` : ""}`;
+  const compactCommitTime = compactTimeAgoFromUnixSeconds(
+    branch.commit.timestamp,
+  );
+  const exactCommitTime = formatUnixSecondsToDateTime(branch.commit.timestamp);
+  const commitDateTime = new Date(branch.commit.timestamp * 1000).toISOString();
 
   return (
     <li
@@ -883,7 +896,7 @@ function BranchRow({
             ref={ref}
             type="button"
             aria-current={isCurrent ? "true" : undefined}
-            aria-description="Right-click for branch actions."
+            aria-description={`Last commit ${exactCommitTime}. Right-click for branch actions.`}
             aria-disabled={disabled || undefined}
             aria-label={rowLabel}
             className="flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-sm px-2 text-left outline-none aria-disabled:cursor-default aria-disabled:opacity-64 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
@@ -908,9 +921,22 @@ function BranchRow({
                 className="size-3.5 shrink-0 text-muted-foreground"
               />
             ) : null}
-            <span className="shrink-0 text-xs text-muted-foreground">
-              {timeAgoFromUnixSeconds(branch.commit.timestamp)}
-            </span>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <time
+                    className="shrink-0 text-xs tabular-nums text-muted-foreground"
+                    data-branch-commit-time
+                    dateTime={commitDateTime}
+                  />
+                }
+              >
+                {compactCommitTime}
+              </TooltipTrigger>
+              <TooltipPopup align="end" side="bottom">
+                {exactCommitTime}
+              </TooltipPopup>
+            </Tooltip>
           </button>
         </ContextMenuTrigger>
         <ContextMenuContent

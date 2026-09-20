@@ -358,6 +358,32 @@ describe("CurrentBranchPicker", () => {
     await closePicker();
   });
 
+  test("shows a compact branch age and exposes its exact time", async () => {
+    const timestamp =
+      Math.floor(Date.now() / 1000) - 12 * 7 * 24 * 60 * 60 - 60 * 60;
+    const currentBranch = branch("main", { is_head: true, is_merged: true });
+    currentBranch.commit = { ...currentBranch.commit, timestamp };
+    render(
+      <CurrentBranchPicker
+        {...createProps({ localBranches: [currentBranch] })}
+      />,
+    );
+    await openPicker();
+
+    const row = screen.getByRole("button", { name: "Current branch main" });
+    const compactTime = within(row).getByText("12w");
+    const exactTime = new Date(timestamp * 1000).toLocaleString();
+
+    expect(compactTime).toHaveAttribute(
+      "datetime",
+      new Date(timestamp * 1000).toISOString(),
+    );
+    expect(row).toHaveAttribute(
+      "aria-description",
+      `Last commit ${exactTime}. Right-click for branch actions.`,
+    );
+  });
+
   test("checks out a clean local branch and closes the popover", async () => {
     const user = userEvent.setup();
     const props = createProps();
