@@ -551,7 +551,7 @@ export function CurrentBranchPicker({
   const branchListContent = (
     <ScrollArea
       data-current-branch-scroll
-      className="h-full w-full"
+      className="h-full w-full [&_[data-slot=scroll-area-content]]:w-full [&_[data-slot=scroll-area-content]]:min-w-0!"
       scrollFade
       scrollbarGutter
       viewportRef={setScrollElement}
