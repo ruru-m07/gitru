@@ -70,7 +70,6 @@ import {
   Link2,
   Loader2,
   Pencil,
-  Plus,
   Search,
   SearchIcon,
   ShieldCheck,
