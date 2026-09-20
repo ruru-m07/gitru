@@ -73,6 +73,9 @@ function createFixture(): void {
   git(["commit", "-m", "fixture: initial state"]);
   git(["remote", "add", "origin", fixtureRemote]);
   git(["push", "-u", "origin", "main"]);
+  git(["--git-dir", fixtureRemote, "symbolic-ref", "HEAD", "refs/heads/main"], {
+    cwd: fixtureRoot,
+  });
 
   const baseCommit = git(["rev-parse", "HEAD"]);
   const remoteBranchUpdates = Array.from(
@@ -85,6 +88,7 @@ function createFixture(): void {
     input: `${remoteBranchUpdates.join("\n")}\n`,
   });
   git(["fetch", "origin"]);
+  git(["remote", "set-head", "origin", "--auto"]);
 
   for (let index = 1; index <= 60; index += 1) {
     git([

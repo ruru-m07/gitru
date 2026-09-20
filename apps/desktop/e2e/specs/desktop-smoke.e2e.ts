@@ -317,6 +317,70 @@ async function assertBranchPanelLayout(): Promise<void> {
   }
 }
 
+async function assertLocalBranchGrouping(
+  currentBranchName: string,
+): Promise<void> {
+  await waitForPortalText(
+    openBranchPanel,
+    '*[@role="heading"]',
+    "Default Branch",
+  );
+  await waitForPortalText(
+    openBranchPanel,
+    '*[@role="heading"]',
+    "Other Branches",
+  );
+  await waitForPortalElement(
+    openBranchPanel,
+    `button[aria-label^="Current branch ${currentBranchName}"]`,
+  );
+
+  const grouping = await browser.execute((panelSelector) => {
+    const panel = document.querySelector<HTMLElement>(panelSelector);
+    if (!panel) return null;
+    const list = panel.querySelector<HTMLElement>(
+      '[data-branch-list][aria-label="Local branches"]',
+    );
+    if (!list) return null;
+
+    return [0, 1, 2, 3].map((index) => {
+      const item = list.querySelector<HTMLElement>(`[data-index="${index}"]`);
+      const button = item?.querySelector<HTMLElement>("button[aria-label]");
+      return {
+        ariaCurrent: button?.getAttribute("aria-current") ?? null,
+        label:
+          item?.getAttribute("role") === "heading"
+            ? (item.textContent?.trim() ?? null)
+            : (button?.getAttribute("aria-label") ?? null),
+        type: item?.getAttribute("role") === "heading" ? "heading" : "branch",
+      };
+    });
+  }, openBranchPanel);
+
+  if (!grouping) {
+    throw new Error("Local default/current branch grouping was unavailable");
+  }
+  const expectedGrouping = [
+    { ariaCurrent: null, label: "Default Branch", type: "heading" },
+    {
+      ariaCurrent: null,
+      label: "Checkout main, default or protected, tracks origin/main",
+      type: "branch",
+    },
+    { ariaCurrent: null, label: "Other Branches", type: "heading" },
+    {
+      ariaCurrent: "true",
+      label: `Current branch ${currentBranchName}, tracks origin/${currentBranchName}`,
+      type: "branch",
+    },
+  ];
+  if (JSON.stringify(grouping) !== JSON.stringify(expectedGrouping)) {
+    throw new Error(
+      `Local branch sections are out of order: expected ${JSON.stringify(expectedGrouping)}, got ${JSON.stringify(grouping)}`,
+    );
+  }
+}
+
 async function assertBranchTimestampTooltip(): Promise<void> {
   const timestamp = await waitForPortalElement(
     openBranchPanel,
@@ -481,7 +545,8 @@ async function assertBranchContextMenu(): Promise<void> {
 
 async function assertLargeRemoteBranchListVirtualized(): Promise<void> {
   const branchBefore = git("branch", "--show-current");
-  const expectedRemoteBranches = remoteFixtureBranchCount + 1;
+  // The list includes origin/main plus Git's shortened origin/HEAD alias.
+  const expectedRemoteBranches = remoteFixtureBranchCount + 2;
 
   await clickPortalText(openBranchPanel, "button", "Remote");
   await waitForPortalElement(
@@ -490,7 +555,7 @@ async function assertLargeRemoteBranchListVirtualized(): Promise<void> {
   );
 
   const initialState = await browser.execute(
-    (panelSelector, expectedCount) => {
+    (panelSelector, deepestBranchNumber) => {
       const panel = document.querySelector<HTMLElement>(panelSelector);
       const viewport = panel?.querySelector<HTMLElement>(
         '[data-current-branch-scroll] [data-slot="scroll-area-viewport"]',
@@ -516,7 +581,7 @@ async function assertLargeRemoteBranchListVirtualized(): Promise<void> {
       return {
         deepBranchInitiallyMounted: Boolean(
           panel.querySelector(
-            `button[aria-label^="Checkout and track origin/fixture/remote-${String(expectedCount - 1).padStart(4, "0")}"]`,
+            `button[aria-label^="Checkout and track origin/fixture/remote-${String(deepestBranchNumber).padStart(4, "0")}"]`,
           ),
         ),
         firstRowPosition: firstRow.getAttribute("aria-posinset"),
@@ -529,7 +594,7 @@ async function assertLargeRemoteBranchListVirtualized(): Promise<void> {
       };
     },
     openBranchPanel,
-    expectedRemoteBranches,
+    remoteFixtureBranchCount,
   );
 
   if (!initialState) {
@@ -586,10 +651,8 @@ async function assertLargeRemoteBranchListVirtualized(): Promise<void> {
     () =>
       browser.execute(
         () =>
-          document.activeElement
-            ?.getAttribute("aria-label")
-            ?.startsWith("Checkout and track origin/fixture/remote-0001") ??
-          false,
+          document.activeElement?.getAttribute("aria-label") ===
+          "Checkout and track origin",
       ),
     {
       timeout: 10_000,
@@ -831,6 +894,8 @@ describe("packaged Gitru desktop smoke", () => {
     await visible('button[aria-label="Stage stash-note.txt"]');
 
     await openBranchSwitcher();
+    await assertLocalBranchGrouping(smokeBranch);
+    await capture("05-branch-default-current-grouping");
     await setPortalInput(
       openBranchPanel,
       'input[placeholder="Filter branches…"]',

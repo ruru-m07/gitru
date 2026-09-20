@@ -240,7 +240,11 @@ function createProps(
     detached: false,
     rebasing: false,
     localBranches: [
-      branch("main", { is_head: true, is_merged: true }),
+      branch("main", {
+        is_head: true,
+        is_merged: true,
+        is_protected: true,
+      }),
       branch("feature/one"),
       branch("feature/日本語"),
       branch("fix/other"),
@@ -264,7 +268,7 @@ function createProps(
 
 async function openPicker() {
   const trigger = document.querySelector<HTMLButtonElement>(
-    '[aria-label="Current branch: main. Open branches."]',
+    "[data-current-branch-trigger]",
   );
   if (!trigger) throw new Error("Current branch trigger was not rendered");
   fireEvent.click(trigger);
@@ -274,7 +278,7 @@ async function openPicker() {
 
 async function closePicker() {
   const trigger = document.querySelector<HTMLButtonElement>(
-    '[aria-label="Current branch: main. Open branches."]',
+    "[data-current-branch-trigger]",
   );
   if (!trigger) throw new Error("Current branch trigger was not rendered");
   fireEvent.click(trigger);
@@ -308,23 +312,26 @@ describe("CurrentBranchPicker", () => {
       screen.getByRole("list", { name: "Local branches" }),
     ).toBeInTheDocument();
     expect(
-      within(popup).getByRole("heading", { name: "Current Branch" }),
+      within(popup).getByRole("heading", { name: "Default Branch" }),
     ).toBeInTheDocument();
     expect(
       within(popup).getByRole("heading", { name: "Other Branches" }),
     ).toBeInTheDocument();
     expect(
+      within(popup).queryByRole("heading", { name: "Current Branch" }),
+    ).not.toBeInTheDocument();
+    expect(
       screen.queryByRole("button", { name: /Fetch & prune|Fetching/ }),
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", {
-        name: "Current branch main",
+        name: /^Current branch main/,
       }),
     ).toHaveAttribute("aria-current", "true");
 
     await user.click(
       screen.getByRole("button", {
-        name: "Current branch main",
+        name: /^Current branch main/,
       }),
     );
     expect(props.onSwitchBranch).not.toHaveBeenCalled();
@@ -333,6 +340,43 @@ describe("CurrentBranchPicker", () => {
         screen.queryByRole("searchbox", { name: "Filter branches" }),
       ).not.toBeInTheDocument();
     });
+  });
+
+  test("separates the default branch and pins the current branch first under other branches", async () => {
+    render(
+      <CurrentBranchPicker
+        {...createProps({
+          currentBranchName: "feature/current",
+          currentBranchDisplayName: "feature/current",
+          localBranches: [
+            branch("feature/alpha"),
+            branch("main", { is_merged: true, is_protected: true }),
+            branch("fix/zeta"),
+            branch("feature/current", { is_head: true }),
+          ],
+        })}
+      />,
+    );
+    await openPicker();
+
+    const list = screen.getByRole("list", { name: "Local branches" });
+    const orderedItems = Array.from(list.children).map((item) =>
+      item.getAttribute("role") === "heading"
+        ? item.textContent?.trim()
+        : item.querySelector("button")?.getAttribute("aria-label"),
+    );
+
+    expect(orderedItems).toEqual([
+      "Default Branch",
+      "Checkout main, default or protected",
+      "Other Branches",
+      "Current branch feature/current",
+      "Checkout feature/alpha",
+      "Checkout fix/zeta",
+    ]);
+    expect(
+      screen.getByRole("button", { name: "Current branch feature/current" }),
+    ).toHaveAttribute("aria-current", "true");
   });
 
   test("filters branch names containing slashes and Unicode", async () => {

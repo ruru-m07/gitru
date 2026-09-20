@@ -105,11 +105,16 @@ const BRANCH_ROW_HEIGHT = 36;
 const BRANCH_SECTION_HEIGHT = 28;
 const BRANCH_VIRTUALIZATION_THRESHOLD = 50;
 
+type BranchSectionLabel =
+  | "Default Branch"
+  | "Other Branches"
+  | "Remote Branches";
+
 type BranchListItem =
   | {
       type: "heading";
       key: string;
-      label: "Current Branch" | "Other Branches" | "Remote Branches";
+      label: BranchSectionLabel;
     }
   | {
       type: "branch";
@@ -311,10 +316,12 @@ export function CurrentBranchPicker({
 
     return [...source].sort((a, b) => {
       if (tab === "local") {
+        if (a.is_protected !== b.is_protected) {
+          return a.is_protected ? -1 : 1;
+        }
         const aCurrent = a.name === currentBranchName || a.is_head;
         const bCurrent = b.name === currentBranchName || b.is_head;
         if (aCurrent !== bCurrent) return aCurrent ? -1 : 1;
-        if (a.is_protected !== b.is_protected) return a.is_protected ? -1 : 1;
       }
       return a.display_name.localeCompare(b.display_name);
     });
@@ -329,33 +336,25 @@ export function CurrentBranchPicker({
         .includes(search),
     );
   }, [query, sortedBranches]);
-  const hasVisibleCurrent =
-    tab === "local" &&
-    visibleBranches.some(
-      (branch) => branch.name === currentBranchName || branch.is_head,
-    );
   const branchListItems = useMemo<BranchListItem[]>(() => {
     const items: BranchListItem[] = [];
+    let previousLabel: BranchSectionLabel | null = null;
 
     visibleBranches.forEach((branch, branchIndex) => {
-      const isCurrent = branch.name === currentBranchName || branch.is_head;
-      const showCurrentHeading =
-        tab === "local" && branchIndex === 0 && isCurrent;
-      const showOtherHeading =
-        tab === "local" && branchIndex === (hasVisibleCurrent ? 1 : 0);
-      const showRemoteHeading = tab === "remote" && branchIndex === 0;
+      const label =
+        tab === "remote"
+          ? "Remote Branches"
+          : branch.is_protected
+            ? "Default Branch"
+            : "Other Branches";
 
-      if (showCurrentHeading || showOtherHeading || showRemoteHeading) {
-        const label = showCurrentHeading
-          ? "Current Branch"
-          : showOtherHeading
-            ? "Other Branches"
-            : "Remote Branches";
+      if (label !== previousLabel) {
         items.push({
           type: "heading",
           key: `heading:${tab}:${label}`,
           label,
         });
+        previousLabel = label;
       }
 
       items.push({
@@ -367,7 +366,7 @@ export function CurrentBranchPicker({
     });
 
     return items;
-  }, [currentBranchName, hasVisibleCurrent, tab, visibleBranches]);
+  }, [tab, visibleBranches]);
   const branchItemIndexByBranchIndex = useMemo(() => {
     const indexes: number[] = [];
     branchListItems.forEach((item, itemIndex) => {
