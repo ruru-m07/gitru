@@ -17,8 +17,8 @@ const smokeBranch = "e2e-smoke-branch";
 const openCommandDialog =
   '[data-slot="command-dialog-popup"][data-open]:not([data-closed])';
 const openDialog = '[data-slot="dialog-popup"][data-open]:not([data-closed])';
-const openBranchPopover =
-  '[data-slot="popover-popup"][data-open]:not([data-closed])';
+const openBranchPanel =
+  "[data-current-branch-panel][data-open]:not([data-closed])";
 
 function requiredEnvironment(name: string): string {
   const value = process.env[name];
@@ -176,11 +176,159 @@ async function waitForPortalText(
 async function openBranchSwitcher(): Promise<void> {
   const inputSelector = 'input[placeholder="Filter branches…"]';
 
-  if (await portalHasElement(openBranchPopover, inputSelector)) return;
+  if (await portalHasElement(openBranchPanel, inputSelector)) return;
 
   const opener = await visible('button[aria-label^="Current branch:"]');
   await opener.click();
-  await waitForPortalElement(openBranchPopover, inputSelector);
+  await waitForPortalElement(openBranchPanel, inputSelector);
+}
+
+async function assertBranchPanelLayout(): Promise<void> {
+  await browser.waitUntil(
+    () =>
+      browser.execute(
+        (triggerSelector, panelSelector) => {
+          const trigger = document.querySelector<HTMLElement>(triggerSelector);
+          const panel = document.querySelector<HTMLElement>(panelSelector);
+          const scrollViewport = panel?.querySelector<HTMLElement>(
+            '[data-current-branch-scroll] [data-slot="scroll-area-viewport"]',
+          );
+          const footer = panel?.querySelector<HTMLElement>(
+            "[data-current-branch-footer]",
+          );
+          const lastFixtureBranch = panel?.querySelector(
+            'button[aria-label^="Checkout fixture/branch-60"]',
+          );
+
+          if (
+            !trigger ||
+            !panel ||
+            !scrollViewport ||
+            !footer ||
+            !lastFixtureBranch
+          ) {
+            return false;
+          }
+
+          const triggerRect = trigger.getBoundingClientRect();
+          const panelRect = panel.getBoundingClientRect();
+          const scrollRect = scrollViewport.getBoundingClientRect();
+          const footerRect = footer.getBoundingClientRect();
+
+          return (
+            Math.abs(panelRect.left - triggerRect.left) <= 2 &&
+            Math.abs(panelRect.top - triggerRect.bottom) <= 2 &&
+            scrollViewport.scrollHeight > scrollViewport.clientHeight &&
+            scrollRect.bottom <= footerRect.top + 2
+          );
+        },
+        "[data-current-branch-trigger]",
+        openBranchPanel,
+      ),
+    {
+      timeout: 20_000,
+      interval: 100,
+      timeoutMsg:
+        "Branch panel did not settle below its trigger with a scrollable long list",
+    },
+  );
+
+  const geometry = await browser.execute(
+    (triggerSelector, panelSelector) => {
+      const trigger = document.querySelector<HTMLElement>(triggerSelector);
+      const panel = document.querySelector<HTMLElement>(panelSelector);
+      const scrollViewport = panel?.querySelector<HTMLElement>(
+        '[data-current-branch-scroll] [data-slot="scroll-area-viewport"]',
+      );
+      const footer = panel?.querySelector<HTMLElement>(
+        "[data-current-branch-footer]",
+      );
+
+      if (!trigger || !panel || !scrollViewport || !footer) return null;
+
+      const triggerRect = trigger.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const scrollRect = scrollViewport.getBoundingClientRect();
+      const footerRect = footer.getBoundingClientRect();
+      const panelStyle = getComputedStyle(panel);
+      const shadowColors = panelStyle.boxShadow.match(/rgba?\([^)]+\)/g) ?? [];
+      const contentPadding =
+        Number.parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue(
+            "--main-actual-content-padding",
+          ),
+        ) || 0;
+
+      return {
+        contentPadding,
+        footerTop: footerRect.top,
+        innerHeight: window.innerHeight,
+        innerWidth: window.innerWidth,
+        panelBottom: panelRect.bottom,
+        panelLeft: panelRect.left,
+        panelRight: panelRect.right,
+        panelTop: panelRect.top,
+        panelWidth: panelRect.width,
+        borderRadius: panelStyle.borderRadius,
+        boxShadow: panelStyle.boxShadow,
+        hasVisibleBoxShadow:
+          panelStyle.boxShadow !== "none" &&
+          shadowColors.some((color) => !color.endsWith(", 0)")),
+        scrollBottom: scrollRect.bottom,
+        scrollClientHeight: scrollViewport.clientHeight,
+        scrollHeight: scrollViewport.scrollHeight,
+        triggerBottom: triggerRect.bottom,
+        triggerLeft: triggerRect.left,
+        triggerRight: triggerRect.right,
+      };
+    },
+    "[data-current-branch-trigger]",
+    openBranchPanel,
+  );
+
+  if (!geometry) {
+    throw new Error("Branch panel geometry could not be measured");
+  }
+
+  const tolerance = 2;
+  const expectedBottom = geometry.innerHeight - geometry.contentPadding;
+  const failures: string[] = [];
+
+  if (Math.abs(geometry.panelLeft - geometry.triggerLeft) > tolerance) {
+    failures.push("panel is not left-aligned to the Current Branch trigger");
+  }
+  if (Math.abs(geometry.panelTop - geometry.triggerBottom) > tolerance) {
+    failures.push(
+      "panel does not start directly below the Current Branch trigger",
+    );
+  }
+  if (Math.abs(geometry.panelBottom - expectedBottom) > tolerance) {
+    failures.push("panel does not extend to the bottom content edge");
+  }
+  if (Math.abs(geometry.panelWidth - 365) > tolerance) {
+    failures.push("panel width is not 365px");
+  }
+  if (geometry.panelRight > geometry.innerWidth + tolerance) {
+    failures.push("panel overflows the viewport horizontally");
+  }
+  if (geometry.scrollBottom > geometry.footerTop + tolerance) {
+    failures.push("branch list overlaps the fixed footer");
+  }
+  if (geometry.scrollHeight <= geometry.scrollClientHeight) {
+    failures.push("long branch fixture does not scroll inside the panel");
+  }
+  if (geometry.borderRadius !== "0px") {
+    failures.push("panel still has floating-card rounded corners");
+  }
+  if (geometry.hasVisibleBoxShadow) {
+    failures.push("panel still has a floating-card shadow");
+  }
+
+  if (failures.length > 0) {
+    throw new Error(
+      `Branch panel layout failed: ${failures.join("; ")}\n${JSON.stringify(geometry, null, 2)}`,
+    );
+  }
 }
 
 async function openRootAction(label: string): Promise<void> {
@@ -261,9 +409,9 @@ describe("packaged Gitru desktop smoke", () => {
     await capture("03-commit-and-sync-decision");
 
     await openBranchSwitcher();
-    await browser.pause(200);
-    await capture("04-branch-picker");
-    await clickPortalText(openBranchPopover, "button", "New branch", true);
+    await assertBranchPanelLayout();
+    await capture("04-branch-panel-full-height");
+    await clickPortalText(openBranchPanel, "button", "New Branch", true);
     await setPortalInput(
       openDialog,
       'input[placeholder="feature/my-branch"]',
@@ -306,11 +454,11 @@ describe("packaged Gitru desktop smoke", () => {
 
     await openBranchSwitcher();
     await setPortalInput(
-      openBranchPopover,
+      openBranchPanel,
       'input[placeholder="Filter branches…"]',
       "conflict-work",
     );
-    await clickPortalText(openBranchPopover, "button", "conflict-work");
+    await clickPortalText(openBranchPanel, "button", "conflict-work");
     await clickPortalText(openDialog, "button", "Stash & Checkout");
     await waitForGit(
       () => git("branch", "--show-current"),

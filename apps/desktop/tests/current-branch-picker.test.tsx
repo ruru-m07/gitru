@@ -1,5 +1,11 @@
 import type { BranchInfo } from "@gitru/commands";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {
   ComponentProps,
@@ -62,17 +68,27 @@ vi.mock("@gitru/ui/components/popover", async () => {
       alignOffset: _alignOffset,
       anchor: _anchor,
       children,
+      collisionAvoidance: _collisionAvoidance,
+      collisionPadding: _collisionPadding,
+      positionMethod: _positionMethod,
       side: _side,
       sideOffset: _sideOffset,
       tooltipStyle: _tooltipStyle,
+      viewport: _viewport,
+      viewportClassName: _viewportClassName,
       ...props
     }: ComponentProps<"div"> & {
       align?: string;
       alignOffset?: number;
       anchor?: unknown;
+      collisionAvoidance?: unknown;
+      collisionPadding?: number | object;
+      positionMethod?: string;
       side?: string;
       sideOffset?: number;
       tooltipStyle?: boolean;
+      viewport?: boolean;
+      viewportClassName?: string;
     }) => {
       const context = React.useContext(TestPopoverContext);
       if (!context?.open) return null;
@@ -277,17 +293,31 @@ async function closePicker() {
 }
 
 describe("CurrentBranchPicker", () => {
-  test("opens a dedicated branch popover with focused search", async () => {
-    render(<CurrentBranchPicker {...createProps()} />);
+  test("opens a dedicated branch panel with focused search", async () => {
+    const user = userEvent.setup();
+    const props = createProps();
+    render(<CurrentBranchPicker {...props} />);
 
     const popup = await openPicker();
 
     expect(popup).toBeInTheDocument();
+    expect(popup).toHaveAttribute("data-current-branch-panel");
     expect(
       screen.getByRole("searchbox", { name: "Filter branches" }),
     ).toHaveFocus();
+    expect(screen.getByRole("tab", { name: /Local/ })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Remote/ })).toBeInTheDocument();
     expect(
       screen.getByRole("list", { name: "Local branches" }),
+    ).toBeInTheDocument();
+    expect(
+      within(popup).getByRole("heading", { name: "Current Branch" }),
+    ).toBeInTheDocument();
+    expect(
+      within(popup).getByRole("heading", { name: "Other Branches" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Fetch & prune" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
@@ -295,7 +325,17 @@ describe("CurrentBranchPicker", () => {
       }),
     ).toHaveAttribute("aria-current", "true");
 
-    await closePicker();
+    await user.click(
+      screen.getByRole("button", {
+        name: "Current branch main",
+      }),
+    );
+    expect(props.onSwitchBranch).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("searchbox", { name: "Filter branches" }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   test("filters branch names containing slashes and Unicode", async () => {

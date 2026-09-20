@@ -73,6 +73,13 @@ function createFixture(): void {
   git(["push", "-u", "origin", "main"]);
 
   const baseCommit = git(["rev-parse", "HEAD"]);
+  for (let index = 1; index <= 60; index += 1) {
+    git([
+      "branch",
+      `fixture/branch-${String(index).padStart(2, "0")}`,
+      baseCommit,
+    ]);
+  }
   git(["switch", "-c", "conflict-base"]);
   writeFileSync(
     join(fixtureRepository, "conflict.txt"),

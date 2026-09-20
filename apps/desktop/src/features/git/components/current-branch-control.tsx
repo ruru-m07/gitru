@@ -49,11 +49,9 @@ import {
   PopoverTrigger,
 } from "@gitru/ui/components/popover";
 import { ScrollArea } from "@gitru/ui/components/scroll-area";
-import { Tabs, TabsList, TabsTab } from "@gitru/ui/components/tabs";
+import { Tabs, TabsList, TabsPanel, TabsTab } from "@gitru/ui/components/tabs";
 import { cn } from "@gitru/ui/lib/utils";
 import {
-  ArrowDown,
-  ArrowUp,
   Check,
   ChevronDown,
   Cloud,
@@ -73,6 +71,7 @@ import {
 } from "lucide-react";
 import {
   type FormEvent,
+  Fragment,
   type KeyboardEvent,
   useMemo,
   useRef,
@@ -91,6 +90,7 @@ import {
   useGitUnsetBranchUpstream,
   useHasUncommittedChanges,
 } from "@/hooks";
+import { timeAgoFromUnixSeconds } from "@/lib/time";
 
 type BranchTab = "local" | "remote";
 type RepoOperationKind = RepoOperation["kind"];
@@ -314,6 +314,11 @@ export function CurrentBranchPicker({
       return a.display_name.localeCompare(b.display_name);
     });
   }, [currentBranchName, localBranches, query, remoteBranches, tab]);
+  const hasVisibleCurrent =
+    tab === "local" &&
+    visibleBranches.some(
+      (branch) => branch.name === currentBranchName || branch.is_head,
+    );
 
   const closePopover = () => {
     setOpen(false);
@@ -335,12 +340,11 @@ export function CurrentBranchPicker({
   };
 
   const checkout = async (branch: BranchInfo) => {
-    if (
-      branchChangesLocked ||
-      isMutating ||
-      branch.name === currentBranchName ||
-      branch.is_head
-    ) {
+    if (branch.name === currentBranchName || branch.is_head) {
+      closePopover();
+      return;
+    }
+    if (branchChangesLocked || isMutating) {
       return;
     }
     if (hasUncommittedChanges) {
@@ -355,11 +359,24 @@ export function CurrentBranchPicker({
     event: KeyboardEvent<HTMLButtonElement>,
     index: number,
   ) => {
-    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    if (
+      event.key !== "ArrowDown" &&
+      event.key !== "ArrowUp" &&
+      event.key !== "Home" &&
+      event.key !== "End"
+    ) {
+      return;
+    }
     event.preventDefault();
-    const offset = event.key === "ArrowDown" ? 1 : -1;
     const nextIndex =
-      (index + offset + visibleBranches.length) % visibleBranches.length;
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? visibleBranches.length - 1
+          : (index +
+              (event.key === "ArrowDown" ? 1 : -1) +
+              visibleBranches.length) %
+            visibleBranches.length;
     rowRefs.current[nextIndex]?.focus();
   };
 
@@ -371,6 +388,85 @@ export function CurrentBranchPicker({
   const displayName = rebasing
     ? (rebaseBranch ?? currentBranchDisplayName)
     : currentBranchDisplayName;
+
+  const branchListContent = (
+    <ScrollArea
+      data-current-branch-scroll
+      className="h-full w-full"
+      scrollFade
+      scrollbarGutter
+    >
+      {branchesLoading ? (
+        <div
+          className="flex h-full min-h-32 items-center justify-center gap-2 text-sm text-muted-foreground"
+          role="status"
+        >
+          <Loader2 className="size-4 animate-spin" />
+          Loading branches…
+        </div>
+      ) : visibleBranches.length === 0 ? (
+        <div className="flex h-full min-h-32 flex-col items-center justify-center gap-1 px-6 text-center">
+          <GitBranch className="size-5 text-muted-foreground" />
+          <p className="text-sm font-medium">No branches found</p>
+          <p className="text-xs text-muted-foreground">
+            Try another name or fetch the latest remote branches.
+          </p>
+        </div>
+      ) : (
+        <ul
+          aria-label={`${tab === "local" ? "Local" : "Remote"} branches`}
+          className="py-1"
+        >
+          {visibleBranches.map((branch, index) => {
+            const isCurrent =
+              branch.name === currentBranchName || branch.is_head;
+            const showCurrentHeading =
+              tab === "local" && index === 0 && isCurrent;
+            const showOtherHeading =
+              tab === "local" && index === (hasVisibleCurrent ? 1 : 0);
+            const showRemoteHeading = tab === "remote" && index === 0;
+
+            return (
+              <Fragment
+                key={`${branch.is_remote ? "remote" : "local"}:${branch.name}`}
+              >
+                {showCurrentHeading || showOtherHeading || showRemoteHeading ? (
+                  <li
+                    className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground"
+                    role="presentation"
+                  >
+                    <div aria-level={2} role="heading">
+                      {showCurrentHeading
+                        ? "Current Branch"
+                        : showOtherHeading
+                          ? "Other Branches"
+                          : "Remote Branches"}
+                    </div>
+                  </li>
+                ) : null}
+                <BranchRow
+                  branch={branch}
+                  currentBranchName={currentBranchName}
+                  currentUpstream={currentInfo?.upstream}
+                  disabled={branchChangesLocked || isMutating}
+                  ref={(node) => {
+                    rowRefs.current[index] = node;
+                  }}
+                  onCheckout={() => void checkout(branch)}
+                  onKeyDown={(event) => focusAdjacentRow(event, index)}
+                  onOpenDialog={openDialog}
+                  onUnsetUpstream={async () => {
+                    const succeeded = await onUnsetUpstream(branch.name);
+                    if (succeeded) closePopover();
+                  }}
+                />
+              </Fragment>
+            );
+          })}
+        </ul>
+      )}
+    </ScrollArea>
+  );
 
   return (
     <>
@@ -415,53 +511,33 @@ export function CurrentBranchPicker({
 
         <PopoverPopup
           align="start"
+          collisionAvoidance={{
+            side: "none",
+            align: "shift",
+            fallbackAxisSide: "none",
+          }}
+          collisionPadding={0}
+          data-current-branch-panel
           side="bottom"
           sideOffset={0}
-          className="w-[365px] max-w-[calc(100vw-1rem)] [&>div]:overflow-hidden [&>div]:p-0"
+          style={{
+            height:
+              "calc(var(--available-height) - var(--main-actual-content-padding))",
+          }}
+          viewport={false}
+          className="w-[365px] max-w-[calc(100vw-var(--main-actual-content-padding))] rounded-none! border-y-0 border-l-0 bg-background shadow-none! transition-none before:hidden data-starting-style:scale-100 data-starting-style:opacity-100"
         >
-          <div className="flex max-h-[min(30rem,var(--available-height))] min-h-0 w-full flex-col">
-            <div className="flex items-center justify-between gap-3 border-b px-3 py-2.5">
-              <div className="min-w-0">
-                <PopoverTitle className="text-sm">Branches</PopoverTitle>
-                <PopoverDescription className="sr-only">
-                  Search, switch, create, and manage repository branches.
-                </PopoverDescription>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={branchChangesLocked || isMutating}
-                onClick={() => openDialog({ kind: "create" })}
-              >
-                <GitBranchPlus />
-                New branch
-              </Button>
-            </div>
-
-            {operationLocked ? (
-              <div
-                className="flex items-start gap-2 border-b bg-warning/8 px-3 py-2 text-xs text-warning-foreground"
-                role="status"
-              >
-                <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
-                Finish the active Git operation before changing branches.
-              </div>
-            ) : worktreeStateLoading ? (
-              <div
-                className="flex items-center gap-2 border-b px-3 py-2 text-xs text-muted-foreground"
-                role="status"
-              >
-                <Loader2 className="size-3.5 animate-spin" />
-                Checking the working tree before branch changes…
-              </div>
-            ) : null}
-
-            <div className="px-3 pt-2">
-              <Tabs
-                value={tab}
-                onValueChange={(value) => setTab(value as BranchTab)}
-              >
+          <PopoverTitle className="sr-only">Branches</PopoverTitle>
+          <PopoverDescription className="sr-only">
+            Search, switch, create, and manage repository branches.
+          </PopoverDescription>
+          <div className="flex h-full min-h-0 w-full flex-col bg-background">
+            <Tabs
+              className="min-h-0 flex-1 gap-0"
+              value={tab}
+              onValueChange={(value) => setTab(value as BranchTab)}
+            >
+              <div className="flex-none border-b px-2">
                 <TabsList variant="underline" className="w-full">
                   <TabsTab className="flex-1" value="local">
                     Local
@@ -476,94 +552,79 @@ export function CurrentBranchPicker({
                     </span>
                   </TabsTab>
                 </TabsList>
-              </Tabs>
-            </div>
+              </div>
 
-            <div className="px-3 py-2">
-              <InputGroup>
-                <InputGroupInput
-                  aria-label="Filter branches"
-                  autoFocus
-                  type="search"
-                  placeholder="Filter branches…"
-                  spellCheck={false}
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "ArrowDown") {
-                      event.preventDefault();
-                      rowRefs.current[0]?.focus();
-                    }
-                  }}
-                />
-                <InputGroupAddon align="inline-start">
-                  <Search aria-hidden="true" />
-                </InputGroupAddon>
-              </InputGroup>
-            </div>
+              <div className="flex flex-none items-center gap-2 border-b p-2">
+                <InputGroup className="min-w-0 flex-1">
+                  <InputGroupInput
+                    aria-label="Filter branches"
+                    autoFocus
+                    type="search"
+                    placeholder="Filter branches…"
+                    spellCheck={false}
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "ArrowDown") {
+                        event.preventDefault();
+                        rowRefs.current[0]?.focus();
+                      }
+                    }}
+                  />
+                  <InputGroupAddon align="inline-start">
+                    <Search aria-hidden="true" />
+                  </InputGroupAddon>
+                </InputGroup>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={branchChangesLocked || isMutating}
+                  onClick={() => openDialog({ kind: "create" })}
+                >
+                  New Branch
+                </Button>
+              </div>
 
-            <ScrollArea
-              className="min-h-32 flex-1 border-y"
-              scrollFade
-              scrollbarGutter
-            >
-              {branchesLoading ? (
+              {operationLocked ? (
                 <div
-                  className="flex h-32 items-center justify-center gap-2 text-sm text-muted-foreground"
+                  className="flex flex-none items-start gap-2 border-b bg-warning/8 px-3 py-2 text-xs text-warning-foreground"
                   role="status"
                 >
-                  <Loader2 className="size-4 animate-spin" />
-                  Loading branches…
+                  <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+                  Finish the active Git operation before changing branches.
                 </div>
-              ) : visibleBranches.length === 0 ? (
-                <div className="flex h-32 flex-col items-center justify-center gap-1 px-6 text-center">
-                  <GitBranch className="size-5 text-muted-foreground" />
-                  <p className="text-sm font-medium">No branches found</p>
-                  <p className="text-xs text-muted-foreground">
-                    Try another name or fetch the latest remote branches.
-                  </p>
-                </div>
-              ) : (
-                <ul
-                  aria-label={`${tab === "local" ? "Local" : "Remote"} branches`}
+              ) : worktreeStateLoading ? (
+                <div
+                  className="flex flex-none items-center gap-2 border-b px-3 py-2 text-xs text-muted-foreground"
+                  role="status"
                 >
-                  {visibleBranches.map((branch, index) => (
-                    <BranchRow
-                      key={`${branch.is_remote ? "remote" : "local"}:${branch.name}`}
-                      branch={branch}
-                      currentBranchName={currentBranchName}
-                      currentUpstream={currentInfo?.upstream}
-                      disabled={branchChangesLocked || isMutating}
-                      ref={(node) => {
-                        rowRefs.current[index] = node;
-                      }}
-                      onCheckout={() => void checkout(branch)}
-                      onKeyDown={(event) => focusAdjacentRow(event, index)}
-                      onOpenDialog={openDialog}
-                      onUnsetUpstream={async () => {
-                        const succeeded = await onUnsetUpstream(branch.name);
-                        if (succeeded) closePopover();
-                      }}
-                    />
-                  ))}
-                </ul>
-              )}
-            </ScrollArea>
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Checking the working tree before branch changes…
+                </div>
+              ) : null}
 
-            <div className="flex items-center justify-between gap-3 px-3 py-2">
-              <span
-                className="truncate text-xs text-muted-foreground"
-                aria-live="polite"
+              <TabsPanel
+                className="min-h-0 flex-1 overflow-hidden"
+                value="local"
               >
-                {isMutating
-                  ? "Updating branches…"
-                  : tab === "local"
-                    ? `${localBranches.length} local branches`
-                    : `${remoteBranches.length} remote branches`}
-              </span>
+                {tab === "local" ? branchListContent : null}
+              </TabsPanel>
+              <TabsPanel
+                className="min-h-0 flex-1 overflow-hidden"
+                value="remote"
+              >
+                {tab === "remote" ? branchListContent : null}
+              </TabsPanel>
+            </Tabs>
+
+            <div
+              className="flex h-9 flex-none items-center justify-end border-t px-2"
+              data-current-branch-footer
+            >
               <Button
                 type="button"
-                size="sm"
+                size="xs"
                 variant="ghost"
                 disabled={isFetching || isMutating || operationLocked}
                 onClick={() => void onFetch()}
@@ -665,14 +726,19 @@ function BranchRow({
     : `${rowAction} ${branch.display_name}${accessibilityDetails ? `, ${accessibilityDetails}` : ""}`;
 
   return (
-    <li className="group flex min-h-11 items-center border-b last:border-b-0 hover:bg-accent/64 focus-within:bg-accent/64">
+    <li
+      className={cn(
+        "group flex h-9 items-center px-1 hover:bg-accent/64 focus-within:bg-accent/64",
+        isCurrent && "bg-accent",
+      )}
+    >
       <button
         ref={ref}
         type="button"
         aria-current={isCurrent ? "true" : undefined}
-        aria-disabled={isCurrent || disabled}
+        aria-disabled={disabled || undefined}
         aria-label={rowLabel}
-        className="flex min-w-0 flex-1 items-center gap-2.5 self-stretch rounded-sm px-3 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default disabled:opacity-64"
+        className="flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-sm px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default disabled:opacity-64"
         disabled={disabled}
         onClick={onCheckout}
         onKeyDown={onKeyDown}
@@ -680,54 +746,22 @@ function BranchRow({
         <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">
           {isCurrent ? (
             <Check className="size-4 text-primary" strokeWidth={2.25} />
-          ) : branch.is_remote ? (
-            <Cloud className="size-3.5" />
           ) : (
             <GitBranch className="size-3.5" />
           )}
         </span>
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="flex min-w-0 items-center gap-1.5">
-            <span className="truncate text-sm font-medium">
-              {branch.display_name}
-            </span>
-            {branch.is_protected ? (
-              <ShieldCheck
-                aria-label="Default or protected branch"
-                className="size-3.5 shrink-0 text-muted-foreground"
-              />
-            ) : null}
-          </span>
-          <span className="flex min-w-0 items-center gap-1.5 truncate text-[11px] text-muted-foreground">
-            {isCurrent ? <span>Current</span> : null}
-            {branch.upstream ? (
-              <span className="truncate">Tracks {branch.upstream}</span>
-            ) : null}
-            {!isCurrent && !branch.upstream ? (
-              <span>{branch.is_remote ? "Remote branch" : "Local branch"}</span>
-            ) : null}
-          </span>
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+          {branch.display_name}
         </span>
-        {branch.ahead ? (
-          <Badge
-            size="sm"
-            variant="secondary"
-            aria-label={`${branch.ahead} ahead`}
-          >
-            <ArrowUp />
-            {branch.ahead}
-          </Badge>
+        {branch.is_protected ? (
+          <ShieldCheck
+            aria-label="Default or protected branch"
+            className="size-3.5 shrink-0 text-muted-foreground"
+          />
         ) : null}
-        {branch.behind ? (
-          <Badge
-            size="sm"
-            variant="secondary"
-            aria-label={`${branch.behind} behind`}
-          >
-            <ArrowDown />
-            {branch.behind}
-          </Badge>
-        ) : null}
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {timeAgoFromUnixSeconds(branch.commit.timestamp)}
+        </span>
       </button>
 
       <Menu>
@@ -738,7 +772,7 @@ function BranchRow({
               size="icon-xs"
               variant="ghost"
               aria-label={`Actions for branch ${branch.display_name}`}
-              className="mr-2 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 data-[popup-open]:opacity-100 group-focus-within:opacity-100"
+              className="mr-1 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 data-[popup-open]:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100"
             />
           }
         >
