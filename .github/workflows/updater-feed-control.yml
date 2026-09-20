@@ -1,0 +1,432 @@
+name: updater feed control
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Feed to stop
+        required: true
+        type: choice
+        options:
+          - stable
+          - beta
+      expected_current_version:
+        description: Version currently served by latest.json (compare-and-swap guard)
+        required: true
+        type: string
+      fallback_version:
+        description: Older known-good immutable version to serve to clients that have not updated
+        required: true
+        type: string
+      fallback_manifest_policy:
+        description: Require its audit sidecar, or explicitly allow a pre-sidecar historical manifest
+        required: true
+        type: choice
+        options:
+          - REQUIRE_SIDECAR
+          - ALLOW_LEGACY_WITHOUT_SIDECAR
+      reason:
+        description: Incident or reason for stopping rollout
+        required: true
+        type: string
+      confirmation:
+        description: Use corrupt mode only when current latest.json fails strict validation
+        required: true
+        type: choice
+        options:
+          - STOP_ROLLOUT
+          - STOP_CORRUPT_ROLLOUT
+
+concurrency:
+  group: updater-feed-${{ inputs.channel }}
+  queue: max
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  stop-rollout:
+    name: Stop ${{ inputs.channel }} rollout
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: updater-production
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain
+        uses: ./.github/actions/setup-rust
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: . -> target
+
+      - name: Validate operator inputs
+        env:
+          CURRENT_VERSION: ${{ inputs.expected_current_version }}
+          FALLBACK_VERSION: ${{ inputs.fallback_version }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          FALLBACK_MANIFEST_POLICY: ${{ inputs.fallback_manifest_policy }}
+        run: |
+          set -euo pipefail
+          [[ "${CONFIRMATION}" == "STOP_ROLLOUT" || "${CONFIRMATION}" == "STOP_CORRUPT_ROLLOUT" ]]
+          [[ "${FALLBACK_MANIFEST_POLICY}" == "REQUIRE_SIDECAR" || "${FALLBACK_MANIFEST_POLICY}" == "ALLOW_LEGACY_WITHOUT_SIDECAR" ]]
+          [[ "${CURRENT_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]
+          [[ "${FALLBACK_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]
+
+      - name: Fetch current and known-good immutable manifests
+        id: state
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          CHANNEL: ${{ inputs.channel }}
+          FALLBACK_VERSION: ${{ inputs.fallback_version }}
+        run: |
+          set -euo pipefail
+          mkdir -p feed-control
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          LATEST_KEY="${CHANNEL}/latest.json"
+          FALLBACK_KEY="${CHANNEL}/versions/${FALLBACK_VERSION}/latest.json"
+          FALLBACK_REVOCATION_KEY="${CHANNEL}/revocations/${FALLBACK_VERSION}.json"
+
+          current_metadata="$(aws s3api get-object \
+            --bucket "${R2_BUCKET}" \
+            --key "${LATEST_KEY}" \
+            --endpoint-url "${ENDPOINT}" \
+            feed-control/current.json)"
+          current_etag="$(jq -er '.ETag | select(type == "string" and length > 0)' <<<"${current_metadata}")"
+          test -n "${current_etag}"
+          echo "current_etag=${current_etag}" >> "$GITHUB_OUTPUT"
+
+          aws s3api list-objects-v2 \
+            --bucket "${R2_BUCKET}" \
+            --prefix "${FALLBACK_REVOCATION_KEY}" \
+            --endpoint-url "${ENDPOINT}" \
+            > feed-control/fallback-revocations.json
+          if jq -e --arg key "${FALLBACK_REVOCATION_KEY}" \
+            '.Contents[]?.Key | select(. == $key)' \
+            feed-control/fallback-revocations.json >/dev/null; then
+            echo "::error title=Fallback version is revoked::${FALLBACK_VERSION} has a durable revocation marker and cannot be restored."
+            exit 1
+          fi
+
+          aws s3api get-object \
+            --bucket "${R2_BUCKET}" \
+            --key "${FALLBACK_KEY}" \
+            --endpoint-url "${ENDPOINT}" \
+            feed-control/fallback.json >/dev/null
+
+          aws s3api list-objects-v2 \
+            --bucket "${R2_BUCKET}" \
+            --prefix "${FALLBACK_KEY}.sig" \
+            --endpoint-url "${ENDPOINT}" \
+            > feed-control/fallback-objects.json
+          if jq -e --arg key "${FALLBACK_KEY}.sig" \
+            '.Contents[]?.Key | select(. == $key)' \
+            feed-control/fallback-objects.json >/dev/null; then
+            aws s3api get-object \
+              --bucket "${R2_BUCKET}" \
+              --key "${FALLBACK_KEY}.sig" \
+              --endpoint-url "${ENDPOINT}" \
+              feed-control/fallback.json.sig >/dev/null
+            echo "fallback_signature_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "fallback_signature_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify stop plan, signed history, and updater artifacts
+        id: validation
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          CURRENT_VERSION: ${{ inputs.expected_current_version }}
+          FALLBACK_VERSION: ${{ inputs.fallback_version }}
+          REPO: ${{ github.repository }}
+          FALLBACK_SIGNATURE_EXISTS: ${{ steps.state.outputs.fallback_signature_exists }}
+          FALLBACK_MANIFEST_POLICY: ${{ inputs.fallback_manifest_policy }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          signature_args=()
+          if [[ "${FALLBACK_SIGNATURE_EXISTS}" == "true" ]]; then
+            signature_args+=(--fallback-signature feed-control/fallback.json.sig)
+          else
+            if [[ "${FALLBACK_MANIFEST_POLICY}" != "ALLOW_LEGACY_WITHOUT_SIDECAR" ]]; then
+              echo "::error title=Historical manifest sidecar missing::Select ALLOW_LEGACY_WITHOUT_SIDECAR only for a known pre-policy fallback."
+              exit 1
+            fi
+            signature_args+=(--allow-legacy-manifest-without-sidecar true)
+          fi
+          cargo run --quiet -p updater-release -- validate-stop \
+            --current-manifest feed-control/current.json \
+            --fallback-manifest feed-control/fallback.json \
+            "${signature_args[@]}" \
+            --config apps/desktop/src-tauri/tauri.conf.json \
+            --repository "${REPO}" \
+            --channel "${CHANNEL}" \
+            --expected-current-version "${CURRENT_VERSION}" \
+            --expected-fallback-version "${FALLBACK_VERSION}" \
+            --confirmation "${CONFIRMATION}" \
+            --stop-state feed-control/stop-state.json \
+            --download-directory feed-control/artifacts \
+            --report feed-control/validation-report.json
+
+          current_manifest_valid="$(jq -er '.current_manifest_valid | tostring' feed-control/stop-state.json)"
+          current_manifest_sha256="$(jq -er '.current_manifest_sha256 | select(type == "string" and length == 64)' feed-control/stop-state.json)"
+          echo "current_manifest_valid=${current_manifest_valid}" >> "$GITHUB_OUTPUT"
+          echo "current_manifest_sha256=${current_manifest_sha256}" >> "$GITHUB_OUTPUT"
+          if [[ "${current_manifest_valid}" != "true" ]]; then
+            echo "::warning title=Replacing corrupt updater pointer::The exact ETag-guarded current bytes failed strict validation; their SHA-256 is ${current_manifest_sha256}."
+          fi
+
+      - name: Setup Bun for legacy sidecar backfill
+        if: steps.state.outputs.fallback_signature_exists != 'true'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - name: Cache Bun dependencies for legacy sidecar backfill
+        if: steps.state.outputs.fallback_signature_exists != 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('package.json', 'bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install frontend dependencies for legacy sidecar backfill
+        if: steps.state.outputs.fallback_signature_exists != 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Backfill verified legacy manifest sidecar
+        if: steps.state.outputs.fallback_signature_exists != 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          CHANNEL: ${{ inputs.channel }}
+          FALLBACK_VERSION: ${{ inputs.fallback_version }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          SIGNATURE_KEY="${CHANNEL}/versions/${FALLBACK_VERSION}/latest.json.sig"
+
+          bun --cwd=apps/desktop run tauri signer sign ../../feed-control/fallback.json
+          cargo run --quiet -p updater-release -- verify-signature \
+            --file feed-control/fallback.json \
+            --signature feed-control/fallback.json.sig \
+            --config apps/desktop/src-tauri/tauri.conf.json
+          aws s3api put-object \
+            --bucket "${R2_BUCKET}" \
+            --key "${SIGNATURE_KEY}" \
+            --body feed-control/fallback.json.sig \
+            --content-type text/plain \
+            --cache-control 'public,max-age=31536000,immutable' \
+            --if-none-match '*' \
+            --endpoint-url "${ENDPOINT}" >/dev/null
+          aws s3api get-object \
+            --bucket "${R2_BUCKET}" \
+            --key "${SIGNATURE_KEY}" \
+            --endpoint-url "${ENDPOINT}" \
+            feed-control/fallback-readback.json.sig >/dev/null
+          cmp --silent feed-control/fallback.json.sig feed-control/fallback-readback.json.sig
+          cargo run --quiet -p updater-release -- verify-signature \
+            --file feed-control/fallback.json \
+            --signature feed-control/fallback-readback.json.sig \
+            --config apps/desktop/src-tauri/tauri.conf.json
+          signature_headers="$(aws s3api head-object \
+            --bucket "${R2_BUCKET}" \
+            --key "${SIGNATURE_KEY}" \
+            --endpoint-url "${ENDPOINT}")"
+          jq -e \
+            '.ContentType == "text/plain" and .CacheControl == "public,max-age=31536000,immutable"' \
+            <<<"${signature_headers}" >/dev/null
+
+      - name: Persist revocation and compare-and-swap the channel pointer
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          CHANNEL: ${{ inputs.channel }}
+          CURRENT_ETAG: ${{ steps.state.outputs.current_etag }}
+          CURRENT_VERSION: ${{ inputs.expected_current_version }}
+          FALLBACK_VERSION: ${{ inputs.fallback_version }}
+          REASON: ${{ inputs.reason }}
+          CURRENT_MANIFEST_SHA256: ${{ steps.validation.outputs.current_manifest_sha256 }}
+        run: |
+          set -euo pipefail
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          LATEST_KEY="${CHANNEL}/latest.json"
+          REVOCATION_KEY="${CHANNEL}/revocations/${CURRENT_VERSION}.json"
+          EVIDENCE_KEY="${CHANNEL}/revocation-evidence/${CURRENT_VERSION}/${CURRENT_MANIFEST_SHA256}.bin"
+
+          aws s3api list-objects-v2 \
+            --bucket "${R2_BUCKET}" \
+            --prefix "${EVIDENCE_KEY}" \
+            --endpoint-url "${ENDPOINT}" \
+            > feed-control/evidence-objects.json
+          if ! jq -e --arg key "${EVIDENCE_KEY}" \
+            '.Contents[]?.Key | select(. == $key)' \
+            feed-control/evidence-objects.json >/dev/null; then
+            aws s3api put-object \
+              --bucket "${R2_BUCKET}" \
+              --key "${EVIDENCE_KEY}" \
+              --body feed-control/current.json \
+              --content-type application/octet-stream \
+              --cache-control 'public,max-age=31536000,immutable' \
+              --if-none-match '*' \
+              --endpoint-url "${ENDPOINT}" >/dev/null
+          fi
+          aws s3api get-object \
+            --bucket "${R2_BUCKET}" \
+            --key "${EVIDENCE_KEY}" \
+            --endpoint-url "${ENDPOINT}" \
+            feed-control/current-evidence-readback.bin >/dev/null
+          cmp --silent feed-control/current.json feed-control/current-evidence-readback.bin
+          evidence_sha256="$(sha256sum feed-control/current-evidence-readback.bin | awk '{print $1}')"
+          [[ "${evidence_sha256}" == "${CURRENT_MANIFEST_SHA256}" ]]
+          evidence_headers="$(aws s3api head-object \
+            --bucket "${R2_BUCKET}" \
+            --key "${EVIDENCE_KEY}" \
+            --endpoint-url "${ENDPOINT}")"
+          jq -e \
+            '.ContentType == "application/octet-stream" and .CacheControl == "public,max-age=31536000,immutable"' \
+            <<<"${evidence_headers}" >/dev/null
+
+          jq -n \
+            --arg channel "${CHANNEL}" \
+            --arg revoked_version "${CURRENT_VERSION}" \
+            --arg fallback_version "${FALLBACK_VERSION}" \
+            --arg current_manifest_sha256 "${CURRENT_MANIFEST_SHA256}" \
+            --arg current_evidence_key "${EVIDENCE_KEY}" \
+            --arg reason "${REASON}" \
+            '{schema: 1, channel: $channel, revoked_version: $revoked_version, fallback_version: $fallback_version, current_manifest_sha256: $current_manifest_sha256, current_evidence_key: $current_evidence_key, reason: $reason}' \
+            > feed-control/revocation.json
+
+          aws s3api list-objects-v2 \
+            --bucket "${R2_BUCKET}" \
+            --prefix "${REVOCATION_KEY}" \
+            --endpoint-url "${ENDPOINT}" \
+            > feed-control/revocation-objects.json
+          if jq -e --arg key "${REVOCATION_KEY}" \
+            '.Contents[]?.Key | select(. == $key)' \
+            feed-control/revocation-objects.json >/dev/null; then
+            :
+          else
+            aws s3api put-object \
+              --bucket "${R2_BUCKET}" \
+              --key "${REVOCATION_KEY}" \
+              --body feed-control/revocation.json \
+              --content-type application/json \
+              --cache-control 'public,max-age=31536000,immutable' \
+              --if-none-match '*' \
+              --endpoint-url "${ENDPOINT}" >/dev/null
+          fi
+
+          aws s3api get-object \
+            --bucket "${R2_BUCKET}" \
+            --key "${REVOCATION_KEY}" \
+            --endpoint-url "${ENDPOINT}" \
+            feed-control/revocation-readback.json >/dev/null
+
+          jq -e \
+            --arg channel "${CHANNEL}" \
+            --arg version "${CURRENT_VERSION}" \
+            '.schema == 1 and .channel == $channel and .revoked_version == $version' \
+            feed-control/revocation-readback.json >/dev/null
+          revocation_headers="$(aws s3api head-object \
+            --bucket "${R2_BUCKET}" \
+            --key "${REVOCATION_KEY}" \
+            --endpoint-url "${ENDPOINT}")"
+          jq -e \
+            '.ContentType == "application/json" and .CacheControl == "public,max-age=31536000,immutable"' \
+            <<<"${revocation_headers}" >/dev/null
+
+          aws s3api put-object \
+            --bucket "${R2_BUCKET}" \
+            --key "${LATEST_KEY}" \
+            --body feed-control/fallback.json \
+            --content-type application/json \
+            --cache-control 'no-store,must-revalidate' \
+            --if-match "${CURRENT_ETAG}" \
+            --endpoint-url "${ENDPOINT}" >/dev/null
+
+          aws s3api get-object \
+            --bucket "${R2_BUCKET}" \
+            --key "${LATEST_KEY}" \
+            --endpoint-url "${ENDPOINT}" \
+            feed-control/readback.json >/dev/null
+          cmp --silent feed-control/fallback.json feed-control/readback.json
+          headers="$(aws s3api head-object \
+            --bucket "${R2_BUCKET}" \
+            --key "${LATEST_KEY}" \
+            --endpoint-url "${ENDPOINT}")"
+          jq -e \
+            '.ContentType == "application/json" and .CacheControl == "no-store,must-revalidate"' \
+            <<<"${headers}" >/dev/null
+
+          client_url="https://release.gitru.app/${CHANNEL}/latest.json"
+          client_converged=false
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error \
+              --proto '=https' \
+              --proto-redir '=https' \
+              --connect-timeout 10 \
+              --max-time 30 \
+              --dump-header feed-control/client-headers.txt \
+              --output feed-control/client-latest.json \
+              "${client_url}"; then
+              content_type="$(awk 'BEGIN { IGNORECASE=1 } /^content-type:/ { sub(/^[^:]*:[[:space:]]*/, ""); sub(/\r$/, ""); value=$0 } END { print value }' feed-control/client-headers.txt)"
+              cache_control="$(awk 'BEGIN { IGNORECASE=1 } /^cache-control:/ { sub(/^[^:]*:[[:space:]]*/, ""); sub(/\r$/, ""); value=$0 } END { print value }' feed-control/client-headers.txt)"
+              normalized_cache="${cache_control//[[:space:]]/}"
+              normalized_cache="${normalized_cache,,}"
+              if cmp --silent feed-control/fallback.json feed-control/client-latest.json \
+                && [[ "${content_type,,}" == application/json* ]] \
+                && [[ ",${normalized_cache}," == *,no-store,* ]] \
+                && [[ ",${normalized_cache}," == *,must-revalidate,* ]]; then
+                client_converged=true
+                break
+              fi
+            fi
+            echo "Waiting for ${client_url} to converge (attempt ${attempt}/12)..."
+            sleep 5
+          done
+          if [[ "${client_converged}" != "true" ]]; then
+            echo "::error title=Updater client endpoint did not converge::${client_url} did not serve the fallback bytes and no-store policy."
+            exit 1
+          fi
+
+      - name: Record stop-rollout evidence
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          CURRENT_VERSION: ${{ inputs.expected_current_version }}
+          FALLBACK_VERSION: ${{ inputs.fallback_version }}
+          REASON: ${{ inputs.reason }}
+          FALLBACK_SIGNATURE_EXISTS: ${{ steps.state.outputs.fallback_signature_exists }}
+          CURRENT_MANIFEST_VALID: ${{ steps.validation.outputs.current_manifest_valid }}
+          CURRENT_MANIFEST_SHA256: ${{ steps.validation.outputs.current_manifest_sha256 }}
+        run: |
+          {
+            echo '## Updater rollout stopped'
+            echo
+            printf '%s\n' "- Channel: \`${CHANNEL}\`"
+            printf '%s\n' "- Previous pointer: \`${CURRENT_VERSION}\`"
+            printf '%s\n' "- Known-good pointer: \`${FALLBACK_VERSION}\`"
+            printf '%s\n' "- Historical manifest sidecar present: \`${FALLBACK_SIGNATURE_EXISTS}\`"
+            printf '%s\n' "- Previous pointer passed strict validation: \`${CURRENT_MANIFEST_VALID}\`"
+            printf '%s\n' "- Previous pointer SHA-256: \`${CURRENT_MANIFEST_SHA256}\`"
+            printf '%s\n' "- Preserved pointer bytes: \`${CHANNEL}/revocation-evidence/${CURRENT_VERSION}/${CURRENT_MANIFEST_SHA256}.bin\`"
+            printf '%s\n' "- Durable revocation marker: \`${CHANNEL}/revocations/${CURRENT_VERSION}.json\`"
+            printf '%s\n' "- Reason: ${REASON}"
+            echo
+            echo '> This prevents more clients from receiving the bad version. It does not downgrade clients that already installed it; publish a new higher-version forward recovery next.'
+          } >> "$GITHUB_STEP_SUMMARY"

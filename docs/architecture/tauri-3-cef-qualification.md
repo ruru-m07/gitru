@@ -199,7 +199,7 @@ blocked until the applicable gates are closed or explicitly accepted:
 | macOS stability | Successful hosted runs plus nondeterministic child-target disconnects | Repeated packaged native runs and failure-rate acceptance |
 | macOS distribution | Native arm64 and x64 packages work; universal CEF resolution is unsupported | Architecture-aware downloads/updates, or a proven universal packaging strategy |
 | JavaScript API graph | Root v3 API plus eight plugin-nested v2 copies | Updated plugin metadata, frozen install, and plugin/API requalification |
-| Signing and updates | Qualification bundles are unsigned and updater-disabled | Signed/notarized install, relaunch, update, failed-update recovery, and rollback on every shipped target |
+| Signing and updates | Qualification bundles are unsigned and updater-disabled; feed policy, artifact Minisign verification, and stop-rollout controls are automated | Signed/notarized install, relaunch, update, failed-update recovery, and forward recovery on every shipped target |
 | User profile migration | Qualification identifier is isolated | Tested production-identity transition with existing user state and a recovery plan |
 | Cost and performance | Package sizes recorded; limits not approved | Approved installer, installed-size, update, cache, memory, and launch budgets with reproducible measurements |
 
@@ -218,3 +218,6 @@ blocked until the applicable gates are closed or explicitly accepted:
    release workflow's identity guard until that review is complete.
 
 Tracking issue: RURU-93.
+
+The zero-cost feed controls and their limits are documented in the
+[updater integrity and recovery runbook](../releasing/updater-integrity.md).

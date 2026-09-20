@@ -1,0 +1,3 @@
+artifact.bin -text
+*.pub -text
+*.sig -text
