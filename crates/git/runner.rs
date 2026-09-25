@@ -7,7 +7,7 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::Mutex as AsyncMutex;
+use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 use tokio::time::{sleep, timeout};
 
 #[derive(Clone, Copy)]
@@ -40,6 +40,15 @@ pub struct GitCommandRunner {
     repo_path: PathBuf,
 }
 
+/// A sequence of Git commands executed while holding the runner's per-repository lock.
+///
+/// Use the transaction methods rather than calling [`GitCommandRunner`] again while this
+/// value is alive; the regular runner methods would try to acquire the same lock again.
+pub struct GitCommandTransaction {
+    repo_path: PathBuf,
+    _guard: OwnedMutexGuard<()>,
+}
+
 // TODO(ruru-m07): Consider allowing configuration of additional tool directories via environment variable or config file
 const DEFAULT_TOOL_DIRS: &[&str] = &[
     "/opt/homebrew/bin",
@@ -67,6 +76,17 @@ impl GitCommandRunner {
         options: GitRunOptions,
     ) -> Result<String, String> {
         run_git_command_async(&self.repo_path, args, None, options, &[]).await
+    }
+
+    /// Hold the same per-repository lock used by the regular runner methods across
+    /// multiple commands that must be observed as one Gitru-internal operation.
+    pub async fn transaction(&self) -> Result<GitCommandTransaction, String> {
+        let repo_lock = command_lock_for_repo(&self.repo_path)?;
+        let guard = repo_lock.lock_owned().await;
+        Ok(GitCommandTransaction {
+            repo_path: self.repo_path.clone(),
+            _guard: guard,
+        })
     }
 
     /// Like [`Self::run_with_options`], but sets extra process environment variables.
@@ -123,6 +143,35 @@ impl GitCommandRunner {
         F: FnMut(&str) -> bool,
     {
         run_git_command_streaming(&self.repo_path, args, options, cancel_flag, on_line).await
+    }
+}
+
+impl GitCommandTransaction {
+    pub async fn run_with_options(
+        &mut self,
+        args: &[&str],
+        options: GitRunOptions,
+    ) -> Result<String, String> {
+        run_git_command_async_unlocked(&self.repo_path, args, None, options, &[]).await
+    }
+
+    pub async fn run_with_input(
+        &mut self,
+        args: &[&str],
+        input: &str,
+        options: GitRunOptions,
+    ) -> Result<String, String> {
+        run_git_command_async_unlocked(&self.repo_path, args, Some(input.as_bytes()), options, &[])
+            .await
+    }
+
+    pub async fn run_with_env(
+        &mut self,
+        args: &[&str],
+        options: GitRunOptions,
+        env: &[(&str, &str)],
+    ) -> Result<String, String> {
+        run_git_command_async_unlocked(&self.repo_path, args, None, options, env).await
     }
 }
 
@@ -719,6 +768,59 @@ mod tests {
 
         let result = GitCommandRunner::new(temp_dir.path().to_str().unwrap());
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn transaction_holds_repo_lock_across_commands() {
+        let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+        let output = std::process::Command::new("git")
+            .current_dir(temp_dir.path())
+            .args(["init"])
+            .output()
+            .expect("failed to init git");
+        assert!(output.status.success(), "git init failed");
+
+        let runner = GitCommandRunner::new(temp_dir.path().to_str().unwrap())
+            .expect("failed to create runner");
+        let mut transaction = runner.transaction().await.expect("transaction lock");
+
+        let object_id = transaction
+            .run_with_input(
+                &["hash-object", "--stdin"],
+                "transaction input",
+                GitRunOptions::default_read(),
+            )
+            .await
+            .expect("transaction command should not reacquire its own lock");
+        assert!(!object_id.is_empty());
+
+        let waiting_runner = runner.clone();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let mut waiting = tokio::spawn(async move {
+            started_tx.send(()).expect("start receiver dropped");
+            waiting_runner
+                .run_with_options(
+                    &["rev-parse", "--is-inside-work-tree"],
+                    GitRunOptions::default_read(),
+                )
+                .await
+        });
+        started_rx.await.expect("waiting command did not start");
+
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), &mut waiting)
+                .await
+                .is_err(),
+            "regular runner command should wait for the transaction lock"
+        );
+
+        drop(transaction);
+        let output = tokio::time::timeout(Duration::from_secs(2), waiting)
+            .await
+            .expect("waiting command did not resume")
+            .expect("waiting task failed")
+            .expect("waiting Git command failed");
+        assert_eq!(output, "true");
     }
 
     #[test]

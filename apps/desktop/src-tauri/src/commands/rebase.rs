@@ -88,7 +88,7 @@ pub async fn rebase_update_todo(
     state: tauri::State<'_, AppState>,
 ) -> Result<RepoOperation, String> {
     let services = get_services(state, &context_id).await?;
-    services.rebase().update_todo(request.entries)
+    services.rebase().update_todo(request.entries).await
 }
 
 #[tauri::command]
@@ -98,7 +98,7 @@ pub async fn rebase_set_commit_message(
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     let services = get_services(state, &context_id).await?;
-    services.rebase().set_commit_message(&message)
+    services.rebase().set_commit_message(&message).await
 }
 
 #[tauri::command]
@@ -108,5 +108,5 @@ pub async fn rebase_resolve_conflict(
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     let services = get_services(state, &context_id).await?;
-    services.rebase().resolve_conflict(request)
+    services.rebase().resolve_conflict(request).await
 }

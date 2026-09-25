@@ -83,6 +83,7 @@ pub fn run() {
             commands::commit::last_commit,
             commands::commit::commit_by_id,
             commands::commit::create_commit,
+            commands::commit::commit_authors,
             commands::branch::push,
             commands::branch::publish_branch,
             commands::branch::pull,

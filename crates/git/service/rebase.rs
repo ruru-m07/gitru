@@ -13,7 +13,7 @@ use crate::{
             RebaseProgressPhase, RebaseStartRequest,
         },
     },
-    runner::GitRunOptions,
+    runner::{GitCommandTransaction, GitRunOptions},
     service::operation::{
         GITRU_REBASE_DIR, OperationService, conflict_paths_from_index, read_trimmed,
     },
@@ -103,13 +103,17 @@ impl RebaseService {
         request: RebaseStartRequest,
         app: Option<tauri::AppHandle>,
     ) -> Result<RepoOperation, String> {
+        let transaction = self.ctx.runner.transaction().await?;
         let path = self.ctx.repo_path.clone();
-        let result =
-            tokio::task::spawn_blocking(move || start_rebase_blocking(&path, request, app))
-                .await
-                .map_err(|e| format!("Rebase task join error: {e}"))?;
+        let (transaction, result) = tokio::task::spawn_blocking(move || {
+            let result = start_rebase_blocking(&path, request, app);
+            (transaction, result)
+        })
+        .await
+        .map_err(|e| format!("Rebase task join error: {e}"))?;
 
         self.ctx.cache.invalidate_all();
+        drop(transaction);
         result
     }
 
@@ -118,16 +122,21 @@ impl RebaseService {
         message: Option<String>,
         app: Option<tauri::AppHandle>,
     ) -> Result<RepoOperation, String> {
+        let mut transaction = self.ctx.runner.transaction().await?;
+        // Select the implementation from state observed under the same lock as the
+        // mutation. This prevents an amend/continue race at an edit pause.
         let op = self.get_repo_operation()?;
         match op.engine {
             Some(RebaseEngine::Gitru) => {
                 let path = self.ctx.repo_path.clone();
-                let result = tokio::task::spawn_blocking(move || {
-                    continue_gitru_blocking(&path, message, app)
+                let (transaction, result) = tokio::task::spawn_blocking(move || {
+                    let result = continue_gitru_blocking(&path, message, app);
+                    (transaction, result)
                 })
                 .await
                 .map_err(|e| format!("Rebase continue join error: {e}"))?;
                 self.ctx.cache.invalidate_all();
+                drop(transaction);
                 result
             }
             Some(RebaseEngine::Git) | None => {
@@ -139,21 +148,29 @@ impl RebaseService {
                 if !use_cli {
                     let path = self.ctx.repo_path.clone();
                     let msg = message.clone();
-                    let git2_result = tokio::task::spawn_blocking(move || {
-                        continue_native_git2_blocking(&path, msg)
-                    })
-                    .await
-                    .map_err(|e| format!("Rebase continue join error: {e}"))?;
+                    let (returned_transaction, git2_result) =
+                        tokio::task::spawn_blocking(move || {
+                            let result = continue_native_git2_blocking(&path, msg);
+                            (transaction, result)
+                        })
+                        .await
+                        .map_err(|e| format!("Rebase continue join error: {e}"))?;
+                    transaction = returned_transaction;
 
                     if git2_result.is_ok() {
                         self.ctx.cache.invalidate_all();
+                        drop(transaction);
                         return git2_result;
                     }
                 }
 
                 // Exit code 1 is normal when continue pauses again on conflicts.
                 let cli_result = self
-                    .cli_rebase_command(&["rebase", "--continue"], message.as_deref())
+                    .cli_rebase_command(
+                        &mut transaction,
+                        &["rebase", "--continue"],
+                        message.as_deref(),
+                    )
                     .await;
                 self.ctx.cache.invalidate_all();
                 match cli_result {
@@ -176,18 +193,24 @@ impl RebaseService {
     }
 
     pub async fn skip(&self, app: Option<tauri::AppHandle>) -> Result<RepoOperation, String> {
+        let mut transaction = self.ctx.runner.transaction().await?;
         let op = self.get_repo_operation()?;
         match op.engine {
             Some(RebaseEngine::Gitru) => {
                 let path = self.ctx.repo_path.clone();
-                let result = tokio::task::spawn_blocking(move || skip_gitru_blocking(&path, app))
-                    .await
-                    .map_err(|e| format!("Rebase skip join error: {e}"))?;
+                let (transaction, result) = tokio::task::spawn_blocking(move || {
+                    let result = skip_gitru_blocking(&path, app);
+                    (transaction, result)
+                })
+                .await
+                .map_err(|e| format!("Rebase skip join error: {e}"))?;
                 self.ctx.cache.invalidate_all();
+                drop(transaction);
                 result
             }
             Some(RebaseEngine::Git) | None => {
-                self.cli_rebase_command(&["rebase", "--skip"], None).await?;
+                self.cli_rebase_command(&mut transaction, &["rebase", "--skip"], None)
+                    .await?;
                 self.ctx.cache.invalidate_all();
                 let op = self.get_repo_operation()?;
                 if !op.is_rebasing {
@@ -199,18 +222,23 @@ impl RebaseService {
     }
 
     pub async fn abort(&self, app: Option<tauri::AppHandle>) -> Result<RepoOperation, String> {
+        let mut transaction = self.ctx.runner.transaction().await?;
         let op = self.get_repo_operation()?;
         match op.engine {
             Some(RebaseEngine::Gitru) => {
                 let path = self.ctx.repo_path.clone();
-                let result = tokio::task::spawn_blocking(move || abort_gitru_blocking(&path, app))
-                    .await
-                    .map_err(|e| format!("Rebase abort join error: {e}"))?;
+                let (transaction, result) = tokio::task::spawn_blocking(move || {
+                    let result = abort_gitru_blocking(&path, app);
+                    (transaction, result)
+                })
+                .await
+                .map_err(|e| format!("Rebase abort join error: {e}"))?;
                 self.ctx.cache.invalidate_all();
+                drop(transaction);
                 result
             }
             Some(RebaseEngine::Git) | None => {
-                self.cli_rebase_command(&["rebase", "--abort"], None)
+                self.cli_rebase_command(&mut transaction, &["rebase", "--abort"], None)
                     .await?;
                 self.ctx.cache.invalidate_all();
                 let _ = restore_autostash_at(&self.ctx.repo_path);
@@ -246,7 +274,24 @@ impl RebaseService {
         })
     }
 
-    pub fn update_todo(&self, entries: Vec<RebasePlanEntry>) -> Result<RepoOperation, String> {
+    pub async fn update_todo(
+        &self,
+        entries: Vec<RebasePlanEntry>,
+    ) -> Result<RepoOperation, String> {
+        let transaction = self.ctx.runner.transaction().await?;
+        let result = self.update_todo_locked(entries);
+        drop(transaction);
+        result
+    }
+
+    pub async fn set_commit_message(&self, message: &str) -> Result<(), String> {
+        let transaction = self.ctx.runner.transaction().await?;
+        let result = self.set_commit_message_locked(message);
+        drop(transaction);
+        result
+    }
+
+    fn update_todo_locked(&self, entries: Vec<RebasePlanEntry>) -> Result<RepoOperation, String> {
         let gitru_dir = self.operation().gitru_rebase_dir()?;
         if gitru_dir.is_dir() {
             validate_todo(&entries)?;
@@ -275,7 +320,7 @@ impl RebaseService {
         self.get_repo_operation()
     }
 
-    pub fn set_commit_message(&self, message: &str) -> Result<(), String> {
+    fn set_commit_message_locked(&self, message: &str) -> Result<(), String> {
         let dir = self.operation().gitru_rebase_dir()?;
         if dir.is_dir() {
             fs::write(dir.join("message"), message)
@@ -293,33 +338,19 @@ impl RebaseService {
         Err("No rebase message file available".to_string())
     }
 
-    pub fn resolve_conflict(&self, request: ConflictResolveRequest) -> Result<(), String> {
+    pub async fn resolve_conflict(&self, request: ConflictResolveRequest) -> Result<(), String> {
         crate::runner::validate_relative_path(&request.path)?;
-        let repo = open_repo(&self.ctx.repo_path)?;
-        let path = request.path.as_str();
-        match request.strategy {
-            ConflictResolveStrategy::Ours => {
-                checkout_stage(&repo, path, 2)?;
-                add_path(&repo, path)?;
-            }
-            ConflictResolveStrategy::Theirs => {
-                checkout_stage(&repo, path, 3)?;
-                add_path(&repo, path)?;
-            }
-            ConflictResolveStrategy::Union => {
-                let ours = stage_blob_content(&repo, path, 2)?;
-                let theirs = stage_blob_content(&repo, path, 3)?;
-                let combined = format!("{ours}\n======= union ======\n{theirs}");
-                let abs = Path::new(&self.ctx.repo_path).join(path);
-                if let Some(parent) = abs.parent() {
-                    fs::create_dir_all(parent)
-                        .map_err(|e| format!("Failed to create parent for {path}: {e}"))?;
-                }
-                fs::write(&abs, combined).map_err(|e| format!("Failed to write union: {e}"))?;
-                add_path(&repo, path)?;
-            }
-        }
-        Ok(())
+        let transaction = self.ctx.runner.transaction().await?;
+        let repo_path = self.ctx.repo_path.clone();
+        let (transaction, result) = tokio::task::spawn_blocking(move || {
+            let result = resolve_conflict_blocking(&repo_path, request);
+            (transaction, result)
+        })
+        .await
+        .map_err(|e| format!("Conflict resolution task join error: {e}"))?;
+        self.ctx.cache.invalidate_all();
+        drop(transaction);
+        result
     }
 
     fn is_native_interactive_rebase(&self) -> bool {
@@ -331,6 +362,7 @@ impl RebaseService {
 
     async fn cli_rebase_command(
         &self,
+        transaction: &mut GitCommandTransaction,
         args: &[&str],
         message: Option<&str>,
     ) -> Result<String, String> {
@@ -345,8 +377,7 @@ impl RebaseService {
                     .map_err(|e| format!("Failed to write rebase message: {e}"))?;
             }
         }
-        self.ctx
-            .runner
+        transaction
             .run_with_env(
                 args,
                 GitRunOptions::default_read()
@@ -356,6 +387,37 @@ impl RebaseService {
             )
             .await
     }
+}
+
+fn resolve_conflict_blocking(
+    repo_path: &str,
+    request: ConflictResolveRequest,
+) -> Result<(), String> {
+    let repo = open_repo(repo_path)?;
+    let path = request.path.as_str();
+    match request.strategy {
+        ConflictResolveStrategy::Ours => {
+            checkout_stage(&repo, path, 2)?;
+            add_path(&repo, path)?;
+        }
+        ConflictResolveStrategy::Theirs => {
+            checkout_stage(&repo, path, 3)?;
+            add_path(&repo, path)?;
+        }
+        ConflictResolveStrategy::Union => {
+            let ours = stage_blob_content(&repo, path, 2)?;
+            let theirs = stage_blob_content(&repo, path, 3)?;
+            let combined = format!("{ours}\n======= union ======\n{theirs}");
+            let abs = Path::new(repo_path).join(path);
+            if let Some(parent) = abs.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("Failed to create parent for {path}: {e}"))?;
+            }
+            fs::write(&abs, combined).map_err(|e| format!("Failed to write union: {e}"))?;
+            add_path(&repo, path)?;
+        }
+    }
+    Ok(())
 }
 
 fn open_repo(path: &str) -> Result<Repository, String> {
