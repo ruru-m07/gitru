@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.1.0-beta.7](https://github.com/ruru-m07/gitru/compare/v0.0.0-beta.7...v0.1.0-beta.7) (2026-09-25)
+
+
+### Features
+
+* add complete branch lifecycle management ([ec99532](https://github.com/ruru-m07/gitru/commit/ec9953247f7ae40563e17f8eb67a7a1c1f429641))
+* add dedicated branch picker ([730b6de](https://github.com/ruru-m07/gitru/commit/730b6de45d1e607ad03aefa069164b8d7c6805ba))
+* compact branch timestamps ([f42300b](https://github.com/ruru-m07/gitru/commit/f42300b2824ac7b5cab66f1bee9a53f34e0330fd))
+* enhance branch picker UI with improved filtering and grouping ([2425e63](https://github.com/ruru-m07/gitru/commit/2425e63a795673120593fff385a6e440bdae19b2))
+* group default and current branches ([e4efcaf](https://github.com/ruru-m07/gitru/commit/e4efcaf8d4a393d7deaaa9f78017ea7d61d0d4ec))
+* restore repository filesystem watcher ([46f6fb8](https://github.com/ruru-m07/gitru/commit/46f6fb8d504275ffe864cd6986f96d1f170c4a19))
+* restore repository filesystem watcher (RURU-58) ([ee36c2f](https://github.com/ruru-m07/gitru/commit/ee36c2faaa4c46e9485a84e2f59b8fa720201275))
+
+
+### Bug Fixes
+
+* **ci:** embed Windows manifest in Rust test binaries ([7e0e7d1](https://github.com/ruru-m07/gitru/commit/7e0e7d15d38efc9f2dd44a9433a5c69a2abafade))
+* **desktop:** prevent blank screen during session restore ([58cab7d](https://github.com/ruru-m07/gitru/commit/58cab7d6917038cb64dc79ab1d4289b65a37fd6b))
+* **desktop:** prevent blank screen during session restore ([1fafdd2](https://github.com/ruru-m07/gitru/commit/1fafdd24742db3d1a800ad451a29d5fdbf2de8a8))
+* **desktop:** restore native window preferences ([7d86296](https://github.com/ruru-m07/gitru/commit/7d862964484fc1f00b0e6710510ddd3c436d9fb7))
+* **desktop:** restore window state and Windows test startup ([fc8f8ea](https://github.com/ruru-m07/gitru/commit/fc8f8ea9a4d1fcb46b6daf428efbe998330ab999))
+* keep branch picker above status bar ([1eeddbb](https://github.com/ruru-m07/gitru/commit/1eeddbb59915a5a43e78925ec3d4b50f3b7b10bb))
+* make branch picker a full-height panel ([179c99d](https://github.com/ruru-m07/gitru/commit/179c99dcadc6338ce23862d1c3750e788e62e0f5))
+* prevent branch list horizontal overflow ([1e04d24](https://github.com/ruru-m07/gitru/commit/1e04d24f7503ace379291bad4a92c708008fa615))
+* remove unused Plus icon import from current branch control ([d36719e](https://github.com/ruru-m07/gitru/commit/d36719ec889864bf3ff319e4f212ae9a0ad17028))
+* restore new branch e2e selector ([7122e62](https://github.com/ruru-m07/gitru/commit/7122e62dc13000b882be428a682190e2ddd32222))
+
+
+### Performance Improvements
+
+* virtualize large branch lists ([6c1373c](https://github.com/ruru-m07/gitru/commit/6c1373caf6762925ede5c05314cee854c13c492d))
+
 ## [0.0.0-beta.7](https://github.com/ruru-m07/gitru/compare/v0.0.0-beta.6...v0.0.0-beta.7) (2026-09-09)
 
 
