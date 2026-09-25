@@ -42,9 +42,17 @@ impl ActionService {
                 },
                 "porcelain_v2".to_string(),
                 move || async move {
+                    // An optional index refresh would feed this read back into
+                    // the repository watcher and trigger another status read.
                     let output = runner
                         .run_with_options(
-                            &["status", "--porcelain=v2", "--untracked-files=all", "-z"],
+                            &[
+                                "--no-optional-locks",
+                                "status",
+                                "--porcelain=v2",
+                                "--untracked-files=all",
+                                "-z",
+                            ],
                             GitRunOptions::default_read(),
                         )
                         .await?;

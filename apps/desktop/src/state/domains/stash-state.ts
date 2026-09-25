@@ -42,47 +42,23 @@ class StashState extends StateDomain {
   }
 
   async list(): Promise<StashEntry[]> {
-    await this.queryClient.cancelQueries({
-      queryKey: [...this.baseKey, "list"],
-    });
-
-    const data = await stashList({
+    return await stashList({
       contextId: this.contextId,
     });
-
-    this.queryClient.setQueryData([...this.baseKey, "list"], data);
-    return data;
   }
 
   async quickStat(reference: string): Promise<StashQuickStat> {
-    await this.queryClient.cancelQueries({
-      queryKey: [...this.baseKey, "quickStat", reference],
-    });
-
-    const data = await stashQuickStat({
+    return await stashQuickStat({
       contextId: this.contextId,
       reference,
     });
-
-    this.queryClient.setQueryData(
-      [...this.baseKey, "quickStat", reference],
-      data,
-    );
-    return data;
   }
 
   async show(reference: string): Promise<StashShowResponse> {
-    await this.queryClient.cancelQueries({
-      queryKey: [...this.baseKey, "show", reference],
-    });
-
-    const data = await stashShow({
+    return await stashShow({
       contextId: this.contextId,
       reference,
     });
-
-    this.queryClient.setQueryData([...this.baseKey, "show", reference], data);
-    return data;
   }
 
   async push(params?: StashPushInput): Promise<string> {

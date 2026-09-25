@@ -2,6 +2,7 @@ use git::AppState;
 use ipc::{
     self,
     repo_manager::{RepoManager, STORE_FILE},
+    repository_watcher::RepoContextRuntime,
     session_manager::SessionManager,
 };
 use log::LevelFilter;
@@ -37,6 +38,7 @@ pub fn run() {
         .manage(AppState {
             services: RwLock::new(HashMap::new()),
         })
+        .manage(RepoContextRuntime::default())
         .manage(Arc::new(SessionManager::new()));
 
     #[cfg(target_os = "macos")]
@@ -63,6 +65,8 @@ pub fn run() {
             ipc::commands::init_repository,
             ipc::commands::create_repo_context,
             ipc::commands::dispose_repo_context,
+            ipc::commands::dispose_repo_context_owner,
+            ipc::commands::invalidate_repo_context_caches,
             ipc::commands::open_with_app,
             ipc::repo_manager::list_repositories,
             ipc::repo_manager::add_repository,

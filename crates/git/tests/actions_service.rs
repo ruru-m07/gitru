@@ -10,6 +10,7 @@ use git::models::diff::{DiffScope, PatchAction, PatchRange};
 use git::service::actions::ActionService;
 use serial_test::serial;
 use std::sync::Arc;
+use std::time::Duration;
 
 fn setup_action_service(repo: &TestRepo) -> ActionService {
     let ctx = Arc::new(RepoContext::new(repo.path_str()).expect("failed to create repo context"));
@@ -302,6 +303,30 @@ fn get_status_clean() {
         let status = service.get_status().await.unwrap();
 
         assert!(status.files.is_empty());
+    });
+}
+
+#[test]
+#[serial]
+fn get_status_does_not_refresh_the_index() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("README.md", "# Test", "Initial commit");
+        let index_path = repo.path().join(".git/index");
+        let index_before = std::fs::read(&index_path).unwrap();
+
+        // Rewriting identical contents after the filesystem timestamp advances
+        // makes the index stat cache stale without creating a worktree change.
+        // Background status queries must not rewrite the index, otherwise a
+        // repository watcher can invalidate and refetch status forever.
+        std::thread::sleep(Duration::from_millis(1_100));
+        repo.create_file("README.md", "# Test");
+
+        let service = setup_action_service(&repo);
+        let status = service.get_status().await.unwrap();
+
+        assert!(status.files.is_empty());
+        assert_eq!(std::fs::read(index_path).unwrap(), index_before);
     });
 }
 
