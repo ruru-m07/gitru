@@ -661,14 +661,20 @@ impl RepoContextRuntime {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "linux")]
+    use super::RepositoryWatcher;
     use super::{
         ALL_REPOSITORY_CHANGE_KINDS, ChangeCoalescer, ContextRegistry, RepositoryChangeKind,
         cache_namespaces_for_changes, classify_path, watch_targets,
     };
     use git::context::RepositoryWatchPaths;
+    #[cfg(target_os = "linux")]
+    use git::core::RepoServices;
     use notify::RecursiveMode;
     use std::collections::BTreeSet;
     use std::path::PathBuf;
+    #[cfg(target_os = "linux")]
+    use std::process::Command;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
     use tempfile::tempdir;
@@ -860,6 +866,66 @@ mod tests {
         tokio::task::yield_now().await;
 
         assert!(seen.lock().unwrap().is_empty());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn read_only_status_queries_do_not_feed_the_watcher() {
+        let directory = tempdir().unwrap();
+        let run_git = |args: &[&str]| {
+            let output = Command::new("git")
+                .current_dir(directory.path())
+                .args(args)
+                .output()
+                .expect("run git command");
+            assert!(
+                output.status.success(),
+                "git {} failed: {}",
+                args.join(" "),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+
+        run_git(&["init", "-b", "main"]);
+        run_git(&["config", "user.email", "test@example.com"]);
+        run_git(&["config", "user.name", "Test User"]);
+        let tracked_file = directory.path().join("tracked.txt");
+        std::fs::write(&tracked_file, "unchanged\n").unwrap();
+        run_git(&["add", "tracked.txt"]);
+        run_git(&["commit", "-m", "initial"]);
+
+        let index_path = directory.path().join(".git/index");
+        let index_before = std::fs::read(&index_path).unwrap();
+        std::thread::sleep(Duration::from_millis(1_100));
+        std::fs::write(&tracked_file, "unchanged\n").unwrap();
+
+        let services = RepoServices::new(directory.path().to_str().unwrap()).unwrap();
+        let (change_tx, mut change_rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut watcher = RepositoryWatcher::new(services.watch_paths().unwrap(), move |changes| {
+            let _ = change_tx.send(changes);
+        })
+        .unwrap();
+        watcher.activate();
+
+        assert!(
+            services
+                .action()
+                .get_status()
+                .await
+                .unwrap()
+                .files
+                .is_empty()
+        );
+        assert!(!services.query().has_uncommitted_changes().await.unwrap());
+        assert_eq!(std::fs::read(index_path).unwrap(), index_before);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(500), change_rx.recv())
+                .await
+                .is_err(),
+            "background status queries emitted a repository change"
+        );
+
+        watcher.stop();
     }
 
     #[test]
