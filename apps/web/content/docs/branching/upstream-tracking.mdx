@@ -1,5 +1,33 @@
 ---
-title: Upstream Tracking
-description: Not Documented
+title: Track and sync remotes
+description: Configure an upstream and use Gitru's state-aware publish, push, pull, and fetch actions.
 icon: ArrowUpDown
 ---
+
+An upstream connects a local branch to a remote-tracking branch. Gitru uses that relationship to calculate ahead and behind counts and to choose the correct sync action.
+
+## Set an upstream
+
+Open a local branch's menu and choose **Set upstream**. If one is already configured, use **Change upstream** or **Unset upstream**.
+
+For a new local branch, **Publish Branch** pushes it to `origin` and configures the new remote branch as its upstream.
+
+Gitru does not currently add, rename, or remove remotes. Configure remotes with Git first, then fetch so their branches appear in Gitru.
+
+## Understand the sync action
+
+The main action changes with the branch state:
+
+| State | Gitru action | Result |
+| --- | --- | --- |
+| No upstream | **Publish Branch** | Pushes the branch to `origin` and sets its upstream |
+| Ahead | **Push to Origin** | Sends local commits to the configured upstream |
+| Behind | **Pull from Origin** | Pulls upstream changes using your Git configuration |
+| Ahead and behind | **Branches Diverged** | Offers pull and push choices so you can decide how to reconcile the histories |
+| Synchronized | **Fetch** | Runs fetch with pruning for the configured/default remote |
+
+Sync is unavailable while Gitru is already running another repository operation or while `HEAD` is detached.
+
+<Callout type="info" title="Git configuration still applies">
+  Gitru invokes your configured Git pull behavior. Settings such as merge versus rebase should be configured in Git; Gitru does not currently provide a pull-strategy picker.
+</Callout>

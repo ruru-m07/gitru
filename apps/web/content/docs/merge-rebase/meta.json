@@ -1,12 +1,7 @@
 {
-  "title": "Merge & Rebase",
+  "title": "Rebase and Conflicts",
   "icon": "GitMerge",
   "collapsible": false,
   "defaultOpen": true,
-  "pages": [
-    "merge-interface",
-    "interactive-rebase",
-    "cherry-pick",
-    "conflict-resolution"
-  ]
+  "pages": ["interactive-rebase", "conflict-resolution"]
 }

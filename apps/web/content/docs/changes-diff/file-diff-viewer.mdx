@@ -1,5 +1,36 @@
 ---
-title: File Diff Viewer
-description: Not Documented
+title: Text diffs
+description: Read unified or split diffs and act on individual change blocks.
 icon: FileDiff
 ---
+
+Select a text file to open its diff. Gitru can show working-tree changes, an earlier commit, or a stashed version of the file.
+
+## Choose a layout
+
+Open the diff settings menu to choose:
+
+- **Unified** — additions and deletions share one column.
+- **Split** — the old and new versions appear side by side.
+- **Wrapping on** — long lines wrap inside the viewer.
+- **Wrapping off** — long lines remain on one line and can be scrolled horizontally.
+
+On a narrow window, Gitru uses the unified layout so the change stays readable.
+
+## Work with change blocks
+
+In a working-tree diff, each change block has the action appropriate to its state:
+
+- **Stage** adds that block to the index.
+- **Unstage** removes that block from the index without changing the working file.
+- **Discard** immediately restores that block from Git.
+
+Commit and stash diffs are read-only. They show what changed at that point in history but do not expose staging controls.
+
+## Renames and mixed changes
+
+For a renamed file, Gitru shows the old and new paths along with any content edits. A file can also have both staged and unstaged changes; review each section before committing so the staged snapshot contains exactly what you expect.
+
+<Callout type="warn" title="Review before discarding">
+  A block-level discard is applied immediately and cannot be undone in Gitru. It does not create a stash automatically.
+</Callout>

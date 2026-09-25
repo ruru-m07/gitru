@@ -1,5 +1,86 @@
 ---
-title: Installation
-description: Not Documented
+title: Install and update Gitru
+description: Install a beta build on macOS, Windows, or Linux and keep it on the right update channel.
 icon: Download
 ---
+
+Gitru is a desktop application for macOS, Windows, and Linux. Published builds
+are available from [GitHub Releases](https://github.com/ruru-m07/gitru/releases).
+
+## Before you install
+
+Install Git and make sure the `git` executable is available on your system
+`PATH`:
+
+```bash
+git --version
+```
+
+Gitru uses that executable for most repository operations. Your existing Git
+identity, remotes, and Git configuration continue to apply. Private SSH clones
+can use a key loaded in your SSH agent. For commits, configure at least
+`user.name` and `user.email` in Git.
+
+## Choose a build
+
+| Platform | Release asset | Notes |
+| --- | --- | --- |
+| macOS | `Gitru_*_universal.dmg` | Universal build for Apple silicon and Intel Macs. |
+| Windows | `Gitru_*_x64-setup.exe` | Installer for 64-bit Windows. |
+| Debian or Ubuntu | `Gitru_*_amd64.deb` | Package for 64-bit Debian-based systems. |
+| Fedora, RHEL, or compatible | `Gitru-*-1.x86_64.rpm` | Package for 64-bit RPM-based systems. |
+| Other Linux distributions | `Gitru_*_amd64.AppImage` | Portable 64-bit AppImage. |
+
+Gitru releases are currently prereleases. On GitHub, expand the newest beta and
+download the artifact for your operating system.
+
+## Install on macOS
+
+1. Download the universal DMG.
+2. Open the DMG and drag **Gitru** into **Applications**.
+3. Launch Gitru from Applications.
+
+The current bundle configuration supports macOS 10.13 and newer.
+
+## Install on Windows
+
+1. Download the x64 setup executable.
+2. Run the installer.
+3. Launch Gitru from the Start menu.
+
+Install [Git for Windows](https://git-scm.com/download/win) first if
+`git --version` is not available in PowerShell or Command Prompt.
+
+## Install on Linux
+
+Install the DEB or RPM with your distribution's package manager. For the
+AppImage, mark the file executable before opening it:
+
+```bash
+chmod +x Gitru_*_amd64.AppImage
+./Gitru_*_amd64.AppImage
+```
+
+Linux desktop dependencies differ by distribution. If the application does not
+start, use the native DEB or RPM where possible and check the terminal output
+for a missing WebKitGTK or system-library package.
+
+## Choose an update channel
+
+Gitru checks for updates after launch. Open the command panel with
+**Command/Ctrl K**, choose **Switch Update Channel**, and select one of:
+
+- **Stable** — production releases only. This is the default.
+- **Beta** — prerelease builds for testing current work.
+
+If you installed a beta from GitHub, select **Beta** to receive the next beta.
+When an update is available, a download button appears near the bottom of the
+app sidebar. Select it to download and install the update, then select the
+restart button to relaunch Gitru.
+
+## Verify the installation
+
+Open Gitru, complete the introductory screen, and select **Local Git**. Then
+[add, clone, or create a repository](./repository/add-clone-create.mdx). Once
+the repository opens, the lower-right status bar shows the Gitru version; hover
+the Git icon there to see the detected Git version.
