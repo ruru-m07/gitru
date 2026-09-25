@@ -1,5 +1,19 @@
 ---
-title: Commit History
-description: Not Documented
+title: Browse commit history
+description: Inspect commits, changed files, and read-only historical diffs.
 icon: History
 ---
+
+Open **History** to browse the repository's commits from newest to oldest. Gitru loads more entries as you move through the list.
+
+Each row summarizes the commit message, author, relative time, references such as tags, and the size of the change. Select a commit to open its details.
+
+## Inspect a commit
+
+The detail view shows the full message and commit metadata alongside the files changed by that commit. Use the file search field to narrow a large change, then select a file to read its historical diff.
+
+Historical diffs are read-only. Staging, unstaging, and discarding are available only for working-tree changes.
+
+## Search changed content
+
+For a question such as "when did this string change?", use [Pickaxe search](/docs/history/pickaxe-search). Pickaxe searches content added to or removed from the repository rather than only scanning the current checkout.

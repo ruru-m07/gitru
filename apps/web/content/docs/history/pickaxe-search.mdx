@@ -1,0 +1,29 @@
+---
+title: Search changed content
+description: Use Pickaxe to find the commits that introduced or removed text.
+icon: SearchCode
+---
+
+Pickaxe answers a history question that ordinary file search cannot: **which commits added or removed this content?**
+
+Open the Command Panel with <kbd>Command</kbd>+<kbd>K</kbd> on macOS or <kbd>Ctrl</kbd>+<kbd>K</kbd> on Windows and Linux, then choose **Pickaxe**.
+
+## Refine the query
+
+Enter the text or pattern to find, then optionally enable:
+
+- Case-sensitive matching
+- Whole-word matching
+- Regular expression matching
+- An author filter
+- One or more file patterns
+- A start or end date
+
+Results show the matching commits and the relevant diff. Pickaxe searches content changes across history; it is not a filename or commit-message search.
+
+## Move between matches
+
+- <kbd>Enter</kbd> or <kbd>Command</kbd>/<kbd>Ctrl</kbd>+<kbd>G</kbd> moves to the next match.
+- <kbd>Shift</kbd>+<kbd>Enter</kbd> or <kbd>Command</kbd>/<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> moves to the previous match.
+
+Review each result's commit header and rendered patch before acting on what you found.

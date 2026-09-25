@@ -1,7 +1,12 @@
 {
-  "title": "Changes & Diff",
+  "title": "Changes and Commits",
   "icon": "FileDiff",
   "collapsible": false,
   "defaultOpen": true,
-  "pages": ["working-directory", "file-diff-viewer", "image-binary-diff"]
+  "pages": [
+    "working-directory",
+    "stage-and-commit",
+    "file-diff-viewer",
+    "image-binary-diff"
+  ]
 }

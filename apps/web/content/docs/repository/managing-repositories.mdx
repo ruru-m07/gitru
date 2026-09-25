@@ -1,0 +1,51 @@
+---
+title: Manage saved repositories
+description: Search, switch, inspect, and remove repositories from Gitru without changing their files on disk.
+icon: Library
+---
+
+Gitru keeps a local list of repositories you have imported, cloned, or
+initialized. Open the repository control at the top of Local Git to view it.
+
+## Understand a repository row
+
+Each row can show:
+
+- the repository name and provider owner when an origin is recognized;
+- the current branch;
+- an uncommitted-changes indicator;
+- commits ahead of or behind the configured upstream.
+
+Repositories are grouped by provider and owner when possible. Repositories
+without a recognized GitHub, GitLab, or Bitbucket origin appear in an unknown
+group and still work normally.
+
+## Search and switch
+
+The search field matches repository names and saved paths. Select a repository
+to open it in the current workspace tab. Opening the same repository in another
+tab creates a separate view session; it does not create another checkout.
+
+You can also open **Command/Ctrl K**, choose **Switch Repository**, and search
+the same saved list.
+
+## Add another repository
+
+Use the **Add** menu for:
+
+- **Clone repository…**
+- **Initialize repository…**
+- **Add local repository**
+
+These are the same flows described in
+[Add, clone, or create a repository](./add-clone-create.mdx).
+
+## Remove a saved repository
+
+Right-click a repository row and choose **Remove** to forget it in Gitru.
+Removing the entry does **not** delete, move, or modify the repository folder.
+You can add the same path again later.
+
+If a repository was moved or renamed outside Gitru, remove the stale entry and
+import it from its new path. Cached metadata can remain visible even when the
+old path no longer exists, but live Git operations require the current path.
