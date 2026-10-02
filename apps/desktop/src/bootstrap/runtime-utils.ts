@@ -45,6 +45,19 @@ export const isEmbeddedRuntime = () => {
 
 export const isDesktopHostRuntime = () => !isEmbeddedRuntime();
 
+export const resolveRepositoryContextScope = (
+  embeddedRuntime: boolean,
+  embeddedTabId: string | null,
+  activeRuntimeId: string | null,
+  activeTabId: string | null,
+) => {
+  if (!embeddedRuntime) {
+    return null;
+  }
+
+  return embeddedTabId ?? activeRuntimeId ?? activeTabId ?? "tab-main";
+};
+
 export type TabRuntimeStatePayload = {
   tabId: string;
   routePath?: string;

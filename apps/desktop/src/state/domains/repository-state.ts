@@ -86,22 +86,8 @@ class DiffState extends StateDomain {
       diffScope?: DiffScope;
     },
   ) {
-    const sourceScope = options?.stashReference
-      ? `stash:${options.stashReference}`
-      : options?.commitHash
-        ? `commit:${options.commitHash}:p${options.parentIndex ?? 1}`
-        : "worktree";
     const diffScope = options?.diffScope ?? "Worktree";
-    const queryKey = [
-      ...this.baseKey,
-      sourceScope,
-      diffScope,
-      filePath,
-      options?.fileNewPath ?? "",
-      options?.status?.join(",") ?? "",
-    ];
-
-    const data = await getPatchByFilePath({
+    return await getPatchByFilePath({
       contextId: this.contextId,
       filePath: filePath,
       fileNewPath: options?.fileNewPath,
@@ -111,10 +97,6 @@ class DiffState extends StateDomain {
       parentIndex: options?.parentIndex,
       diffScope,
     });
-
-    this.queryClient.setQueryData(queryKey, data);
-
-    return data;
   }
 
   getDiffQueryKey(
@@ -169,15 +151,9 @@ class StatusState extends StateDomain {
   }
 
   async get() {
-    await this.queryClient.cancelQueries({ queryKey: [...this.baseKey] });
-
-    const data = await getStatus({
+    return await getStatus({
       contextId: this.contextId,
     });
-
-    this.queryClient.setQueryData([...this.baseKey], data);
-
-    return data;
   }
 
   // For React hooks
@@ -210,43 +186,22 @@ class BranchState extends StateDomain {
   }
 
   async list(kind: BranchKind) {
-    await this.queryClient.cancelQueries({
-      queryKey: [...this.baseKey, "list", kind],
-    });
-
-    const data = await listBranches({
+    return await listBranches({
       contextId: this.contextId,
       kind,
     });
-
-    this.queryClient.setQueryData([...this.baseKey, "list", kind], data);
-    return data;
   }
 
   async current() {
-    await this.queryClient.cancelQueries({
-      queryKey: [...this.baseKey, "current"],
-    });
-
-    const data = await currentBranch({
+    return await currentBranch({
       contextId: this.contextId,
     });
-
-    this.queryClient.setQueryData([...this.baseKey, "current"], data);
-    return data;
   }
 
   async statusAheadBehind() {
-    await this.queryClient.cancelQueries({
-      queryKey: [...this.baseKey, "statusAheadBehind"],
-    });
-
-    const data = await statusAheadBehind({
+    return await statusAheadBehind({
       contextId: this.contextId,
     });
-
-    this.queryClient.setQueryData([...this.baseKey, "statusAheadBehind"], data);
-    return data;
   }
 
   getQueryKey(
@@ -461,35 +416,16 @@ class Commit extends StateDomain {
     this.contextId = contextId;
   }
   async last() {
-    await this.queryClient.cancelQueries({
-      queryKey: [...this.baseKey, "last"],
-    });
-
-    const data = await lastCommit({
+    return await lastCommit({
       contextId: this.contextId,
     });
-
-    this.queryClient.setQueryData([...this.baseKey, "last"], data);
-
-    return data;
   }
 
   async getCommitById(hash: string) {
-    await this.queryClient.cancelQueries({
-      queryKey: [...this.baseKey, "getCommitById", hash],
-    });
-
-    const data = await commitById({
+    return await commitById({
       contextId: this.contextId,
       hash,
     });
-
-    this.queryClient.setQueryData(
-      [...this.baseKey, "getCommitById", hash],
-      data,
-    );
-
-    return data;
   }
 
   async createCommit(payload: CreateCommitPayload) {
@@ -502,19 +438,11 @@ class Commit extends StateDomain {
   }
 
   async history() {
-    await this.queryClient.cancelQueries({
-      queryKey: [...this.baseKey, "history"],
-    });
-
-    const data = await history({
+    return await history({
       contextId: this.contextId,
       limit: 100,
       skip: 0,
     });
-
-    this.queryClient.setQueryData([...this.baseKey, "history"], data);
-
-    return data;
   }
 
   async historyGraph(params: HistoryGraphParams["query"]) {
@@ -565,10 +493,7 @@ class OperationState extends StateDomain {
   }
 
   async get(): Promise<RepoOperation> {
-    await this.queryClient.cancelQueries({ queryKey: [...this.baseKey] });
-    const data = await getRepoOperation({ contextId: this.contextId });
-    this.queryClient.setQueryData([...this.baseKey], data);
-    return data;
+    return await getRepoOperation({ contextId: this.contextId });
   }
 
   get queryKey() {
@@ -701,18 +626,9 @@ class RepositoryState extends StateDomain {
   }
 
   async getRepositoryOrigin() {
-    // repositoryOrigin()
-    await this.queryClient.cancelQueries({
-      queryKey: [...this.baseKey, "origin"],
-    });
-
-    const data = await repositoryOrigin({
+    return await repositoryOrigin({
       contextId: this.contextId,
     });
-
-    this.queryClient.setQueryData([...this.baseKey, "origin"], data);
-
-    return data;
   }
 
   getQueryKey(key: "origin") {

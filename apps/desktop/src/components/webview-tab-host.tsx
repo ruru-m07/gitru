@@ -1,7 +1,13 @@
+import { disposeRepoContextOwner } from "@gitru/commands";
 import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
 import { Webview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  sanitizeTabWebviewLabel,
+  TAB_WEBVIEW_LABEL_PREFIX,
+} from "@/bootstrap/runtime-utils";
+import { createRepoContextOwnerId } from "@/state/core/repo-context-registry";
 import { useAppStore } from "@/store/use-app-store";
 import type { WorkspaceTab } from "@/types/store";
 
@@ -14,12 +20,12 @@ type HostBounds = {
 
 type ManagedWebview = {
   tabId: string;
+  ownerId: string;
   webview: Webview;
   ready: Promise<void>;
   bounds: HostBounds;
 };
 
-const WEBVIEW_LABEL_PREFIX = "tab-webview:";
 const CREATE_TIMEOUT_MS = 1200;
 
 const managedWebviews = new Map<string, ManagedWebview>();
@@ -28,9 +34,6 @@ let desiredActiveTabId: string | null = null;
 let visibleTabId: string | null = null;
 let liveTabIds = new Set<string>();
 let pendingCleanupTimer: number | null = null;
-
-const sanitizeWebviewLabel = (tabId: string) =>
-  `${WEBVIEW_LABEL_PREFIX}${tabId.replace(/[^a-zA-Z0-9\-/:_]/g, "_")}`;
 
 const getRoutePathname = (routePath: string) => {
   try {
@@ -79,7 +82,13 @@ const updateManagedBounds = async (
 };
 
 const closeManagedWebview = async (entry: ManagedWebview) => {
-  await Promise.allSettled([entry.webview.close()]);
+  try {
+    await entry.webview.close();
+  } finally {
+    await Promise.allSettled([
+      disposeRepoContextOwner({ ownerId: entry.ownerId }),
+    ]);
+  }
 };
 
 const hideUnlessActive = async (entry: ManagedWebview) => {
@@ -103,12 +112,15 @@ const ensureTabWebview = async (
 
   const task = (async (): Promise<ManagedWebview | null> => {
     const normalized = normalizeBounds(bounds);
-    const label = sanitizeWebviewLabel(tab.id);
+    const label = sanitizeTabWebviewLabel(tab.id);
+    const childScopeId = label.slice(TAB_WEBVIEW_LABEL_PREFIX.length);
+    const ownerId = createRepoContextOwnerId(label, childScopeId);
     const existingByLabel = await Webview.getByLabel(label);
 
     if (existingByLabel) {
       const reused: ManagedWebview = {
         tabId: tab.id,
+        ownerId,
         webview: existingByLabel,
         ready: Promise.resolve(),
         // Force one geometry sync because the native view can outlive a host
@@ -168,6 +180,7 @@ const ensureTabWebview = async (
       void webview.once("tauri://created", () => {
         void hideUnlessActive({
           tabId: tab.id,
+          ownerId,
           webview,
           ready: Promise.resolve(),
           bounds: normalized,
@@ -184,6 +197,7 @@ const ensureTabWebview = async (
 
     const created: ManagedWebview = {
       tabId: tab.id,
+      ownerId,
       webview,
       ready,
       bounds: normalized,
@@ -196,6 +210,7 @@ const ensureTabWebview = async (
       if (recovered) {
         const entry: ManagedWebview = {
           tabId: tab.id,
+          ownerId,
           webview: recovered,
           ready: Promise.resolve(),
           bounds: normalized,
@@ -299,7 +314,7 @@ const cleanupAllWebviews = async () => {
   ensureInFlightByTabId.clear();
   const entries = Array.from(managedWebviews.values());
   managedWebviews.clear();
-  await Promise.all(entries.map(closeManagedWebview));
+  await Promise.all(entries.map((entry) => closeManagedWebview(entry)));
 };
 
 const readHostBounds = (element: HTMLDivElement | null): HostBounds | null => {

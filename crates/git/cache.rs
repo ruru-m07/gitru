@@ -63,6 +63,7 @@ struct RepoCacheState {
 
 pub struct RepoCache {
     generation: AtomicU64,
+    namespace_generations: Mutex<HashMap<String, u64>>,
     state: Mutex<RepoCacheState>,
 }
 
@@ -76,6 +77,7 @@ impl RepoCache {
     pub fn new() -> Self {
         Self {
             generation: AtomicU64::new(0),
+            namespace_generations: Mutex::new(HashMap::new()),
             state: Mutex::new(RepoCacheState::default()),
         }
     }
@@ -85,6 +87,28 @@ impl RepoCache {
         if let Ok(mut state) = self.state.lock() {
             state.entries.clear();
             state.inflight.clear();
+        }
+    }
+
+    pub fn invalidate_namespaces(&self, namespaces: &[&str]) {
+        if namespaces.is_empty() {
+            return;
+        }
+
+        if let Ok(mut generations) = self.namespace_generations.lock() {
+            for namespace in namespaces {
+                let generation = generations.entry((*namespace).to_string()).or_default();
+                *generation = generation.wrapping_add(1);
+            }
+        }
+
+        if let Ok(mut state) = self.state.lock() {
+            state
+                .entries
+                .retain(|key, _| !storage_key_matches_namespace(key, namespaces));
+            state
+                .inflight
+                .retain(|key, _| !storage_key_matches_namespace(key, namespaces));
         }
     }
 
@@ -243,8 +267,20 @@ impl RepoCache {
 
     fn build_storage_key(&self, namespace: &str, key: &str) -> String {
         let generation = self.generation.load(Ordering::SeqCst);
-        format!("{generation}:{namespace}:{key}")
+        let namespace_generation = self
+            .namespace_generations
+            .lock()
+            .map(|generations| generations.get(namespace).copied().unwrap_or_default())
+            .unwrap_or_default();
+        format!("{generation}:{namespace_generation}:{namespace}:{key}")
     }
+}
+
+fn storage_key_matches_namespace(storage_key: &str, namespaces: &[&str]) -> bool {
+    let Some(namespace) = storage_key.split(':').nth(2) else {
+        return false;
+    };
+    namespaces.contains(&namespace)
 }
 
 #[cfg(test)]
@@ -254,6 +290,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
     use tokio::runtime::Builder;
+    use tokio::sync::Notify;
 
     fn run_async<F>(f: F)
     where
@@ -461,6 +498,87 @@ mod tests {
                 .expect("post-invalidation value");
 
             assert_eq!(calls.load(Ordering::SeqCst), 2);
+        });
+    }
+
+    #[test]
+    fn cache_invalidate_namespaces_preserves_unaffected_entries() {
+        run_async(async {
+            let cache = RepoCache::new();
+            let affected = CachePolicy {
+                namespace: "affected",
+                ttl: Duration::from_secs(5),
+            };
+            let unaffected = CachePolicy {
+                namespace: "unaffected",
+                ttl: Duration::from_secs(5),
+            };
+
+            cache
+                .get_or_refresh(affected, "k".into(), || async { Ok::<_, String>(1) })
+                .await
+                .unwrap();
+            cache
+                .get_or_refresh(unaffected, "k".into(), || async { Ok::<_, String>(10) })
+                .await
+                .unwrap();
+            cache.invalidate_namespaces(&["affected"]);
+
+            let affected_value = cache
+                .get_or_refresh(affected, "k".into(), || async { Ok::<_, String>(2) })
+                .await
+                .unwrap();
+            let unaffected_value = cache
+                .get_or_refresh(unaffected, "k".into(), || async { Ok::<_, String>(20) })
+                .await
+                .unwrap();
+
+            assert_eq!(affected_value, 2);
+            assert_eq!(unaffected_value, 10);
+        });
+    }
+
+    #[test]
+    fn namespace_epoch_prevents_an_old_inflight_result_from_repopulating() {
+        run_async(async {
+            let cache = Arc::new(RepoCache::new());
+            let started = Arc::new(Notify::new());
+            let release = Arc::new(Notify::new());
+            let policy = CachePolicy {
+                namespace: "racy",
+                ttl: Duration::from_secs(5),
+            };
+
+            let old_request = {
+                let cache = cache.clone();
+                let started = started.clone();
+                let release = release.clone();
+                tokio::spawn(async move {
+                    cache
+                        .get_or_refresh(policy, "k".into(), move || async move {
+                            started.notify_one();
+                            release.notified().await;
+                            Ok::<_, String>(1)
+                        })
+                        .await
+                })
+            };
+
+            started.notified().await;
+            cache.invalidate_namespaces(&["racy"]);
+            let fresh = cache
+                .get_or_refresh(policy, "k".into(), || async { Ok::<_, String>(2) })
+                .await
+                .unwrap();
+            release.notify_one();
+            assert_eq!(old_request.await.unwrap().unwrap(), 1);
+
+            let cached = cache
+                .get_or_refresh(policy, "k".into(), || async { Ok::<_, String>(3) })
+                .await
+                .unwrap();
+            assert_eq!(fresh, 2);
+            assert_eq!(cached, 2);
         });
     }
 }

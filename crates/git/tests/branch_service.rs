@@ -11,6 +11,7 @@ use git::service::branch::BranchService;
 use serial_test::serial;
 use std::process::Command;
 use std::sync::Arc;
+use std::time::Duration;
 
 fn setup_branch_service(repo: &TestRepo) -> BranchService {
     let ctx = Arc::new(RepoContext::new(repo.path_str()).expect("failed to create repo context"));
@@ -845,6 +846,29 @@ fn has_uncommitted_changes_false_when_clean() {
         let has_changes = service.has_uncommitted_changes().await.unwrap();
 
         assert!(!has_changes);
+    });
+}
+
+#[test]
+#[serial]
+fn has_uncommitted_changes_does_not_refresh_the_index() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("README.md", "# Test", "Initial commit");
+        let index_path = repo.path().join(".git/index");
+        let index_before = std::fs::read(&index_path).unwrap();
+
+        // Keep contents clean while making the index's cached stat data stale.
+        // A background query that refreshes the index would feed its own write
+        // back into the repository watcher and trigger another query.
+        std::thread::sleep(Duration::from_millis(1_100));
+        repo.create_file("README.md", "# Test");
+
+        let service = setup_branch_service(&repo);
+        let has_changes = service.has_uncommitted_changes().await.unwrap();
+
+        assert!(!has_changes);
+        assert_eq!(std::fs::read(index_path).unwrap(), index_before);
     });
 }
 

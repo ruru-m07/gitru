@@ -14,6 +14,10 @@ use tauri::Emitter;
 use uuid::Uuid;
 
 use crate::repo_manager::{RepoManager, RepositoryInfo, SELECTED_REPO_KEY};
+use crate::repository_watcher::{
+    REPOSITORY_CHANGED_EVENT, RepoContextRuntime, RepositoryChangedEvent, RepositoryWatcher,
+    cache_namespaces_for_changes,
+};
 use crate::session_manager::{SessionManager, SessionNavigationInfo};
 
 #[derive(Serialize)]
@@ -41,49 +45,38 @@ pub async fn add_local_git_repo(repo_path: String) -> Result<Option<RepoSitorySt
         return Err(format!("Path is not a directory: {repo_path}"));
     }
 
-    let git_dir = path.join(".git");
-
-    if !git_dir.exists() || !git_dir.is_dir() {
-        return Err(format!(
-            "Not a valid Git repository (no .git folder): {repo_path}"
-        ));
-    }
-
-    let (origin, current_branch, ahead_behind, has_uncommitted_changes) =
-        match RepoServices::new(&repo_path) {
-            Ok(services) => {
-                let origin = services
-                    .origin()
-                    .repository_origin()
-                    .await
-                    .ok()
-                    .map(|o| o.remote_url);
-                let current_branch = services
-                    .branch()
-                    .get_current_branch()
-                    .await
-                    .ok()
-                    .map(|b| b.name);
-                let ahead_behind = services
-                    .branch()
-                    .status_ahead_behind()
-                    .await
-                    .ok()
-                    .map(|status| (status.ahead as u32, status.behind as u32));
-                let has_uncommitted_changes = services
-                    .branch()
-                    .has_uncommitted_changes()
-                    .await
-                    .unwrap_or(false);
-                (
-                    origin,
-                    current_branch,
-                    ahead_behind,
-                    has_uncommitted_changes,
-                )
-            }
-            Err(_) => (None, None, None, false),
-        };
+    // Let Git itself validate normal repositories, linked worktrees (`.git`
+    // is a file), external gitdirs, and newer repository formats that the
+    // pinned libgit2 may not understand yet.
+    let services = RepoServices::new(&repo_path)
+        .map_err(|error| format!("Not a valid Git worktree: {repo_path}: {error}"))?;
+    services
+        .validate_worktree()
+        .await
+        .map_err(|error| format!("Not a valid Git worktree: {repo_path}: {error}"))?;
+    let origin = services
+        .origin()
+        .repository_origin()
+        .await
+        .ok()
+        .map(|origin| origin.remote_url);
+    let current_branch = services
+        .branch()
+        .get_current_branch()
+        .await
+        .ok()
+        .map(|branch| branch.name);
+    let ahead_behind = services
+        .branch()
+        .status_ahead_behind()
+        .await
+        .ok()
+        .map(|status| (status.ahead as u32, status.behind as u32));
+    let has_uncommitted_changes = services
+        .branch()
+        .has_uncommitted_changes()
+        .await
+        .unwrap_or(false);
 
     let name = if let Some(ref o) = origin {
         Path::new(o)
@@ -197,9 +190,24 @@ async fn persist_and_select_repository(
 #[tauri::command]
 pub async fn create_repo_context(
     repo_id: String,
+    owner_id: String,
     state: tauri::State<'_, AppState>,
+    runtime: tauri::State<'_, RepoContextRuntime>,
     manager: tauri::State<'_, Arc<Mutex<RepoManager>>>,
+    app: tauri::AppHandle,
 ) -> Result<String, String> {
+    // Capture the owner epoch before any repository work. Disposal advances
+    // this epoch, so an in-flight create cannot register after its tab closes.
+    // Beginning a new create also retires an older context after a reload or
+    // rapid repository switch.
+    let (owner_generation, retired_context_ids) = runtime.begin_owner_context(&owner_id)?;
+    if !retired_context_ids.is_empty() {
+        let mut services = state.services.write().await;
+        for context_id in retired_context_ids {
+            services.remove(&context_id);
+        }
+    }
+
     let repos = {
         let app = {
             let manager_guard = manager.lock().map_err(|e| e.to_string())?;
@@ -216,18 +224,57 @@ pub async fn create_repo_context(
 
     let services = Arc::new(RepoServices::new(&repo.path)?);
     let context_id = Uuid::new_v4().to_string();
+    let event_context_id = context_id.clone();
+    let event_services = services.clone();
+    let watcher = match services.watch_paths().and_then(|watch_paths| {
+        RepositoryWatcher::new(watch_paths, move |changes| {
+            let namespaces = cache_namespaces_for_changes(&changes);
+            event_services.invalidate_cache_namespaces(&namespaces);
+            if let Err(error) = app.emit(
+                REPOSITORY_CHANGED_EVENT,
+                RepositoryChangedEvent {
+                    context_id: event_context_id.clone(),
+                    changes,
+                },
+            ) {
+                log::warn!("failed to emit repository change event: {error}");
+            }
+        })
+    }) {
+        Ok(watcher) => Some(watcher),
+        Err(error) => {
+            log::warn!(
+                "repository context {context_id} will rely on focus refresh because watching failed: {error}"
+            );
+            None
+        }
+    };
+
     {
         let mut lock = state.services.write().await;
-        lock.insert(context_id.clone(), services);
+        lock.insert(context_id.clone(), services.clone());
     }
 
-    let manager_guard = manager.lock().map_err(|e| e.to_string())?;
-    let store = manager_guard
-        .get_store()
-        .map_err(|e| format!("Failed to get store: {e}"))?;
+    if let Err(error) = runtime.register(owner_id, owner_generation, context_id.clone(), watcher) {
+        state.services.write().await.remove(&context_id);
+        return Err(error);
+    }
 
-    store.set(SELECTED_REPO_KEY, repo_id);
-    store.save().map_err(|e| e.to_string())?;
+    let persist_result = (|| -> Result<(), String> {
+        let manager_guard = manager.lock().map_err(|error| error.to_string())?;
+        let store = manager_guard
+            .get_store()
+            .map_err(|error| format!("Failed to get store: {error}"))?;
+        store.set(SELECTED_REPO_KEY, repo_id);
+        store.save().map_err(|error| error.to_string())
+    })();
+    if let Err(error) = persist_result {
+        if let Err(cleanup_error) = runtime.dispose_context(&context_id) {
+            log::error!("failed to dispose context after store error: {cleanup_error}");
+        }
+        state.services.write().await.remove(&context_id);
+        return Err(error);
+    }
 
     Ok(context_id)
 }
@@ -236,9 +283,47 @@ pub async fn create_repo_context(
 pub async fn dispose_repo_context(
     context_id: String,
     state: tauri::State<'_, AppState>,
+    runtime: tauri::State<'_, RepoContextRuntime>,
 ) -> Result<bool, String> {
+    let watcher_removed = runtime.dispose_context(&context_id)?;
     let mut lock = state.services.write().await;
-    Ok(lock.remove(&context_id).is_some())
+    Ok(lock.remove(&context_id).is_some() || watcher_removed)
+}
+
+#[tauri::command]
+pub async fn dispose_repo_context_owner(
+    owner_id: String,
+    state: tauri::State<'_, AppState>,
+    runtime: tauri::State<'_, RepoContextRuntime>,
+) -> Result<u32, String> {
+    let context_ids = runtime.dispose_owner(&owner_id)?;
+    let mut services = state.services.write().await;
+    let mut removed = 0;
+    for context_id in context_ids {
+        if services.remove(&context_id).is_some() {
+            removed += 1;
+        }
+    }
+    Ok(removed)
+}
+
+#[tauri::command]
+pub async fn invalidate_repo_context_caches(
+    state: tauri::State<'_, AppState>,
+) -> Result<u32, String> {
+    let services = state
+        .services
+        .read()
+        .await
+        .values()
+        .cloned()
+        .collect::<Vec<_>>();
+
+    for service in &services {
+        service.invalidate_cache();
+    }
+
+    Ok(services.len() as u32)
 }
 
 #[tauri::command]

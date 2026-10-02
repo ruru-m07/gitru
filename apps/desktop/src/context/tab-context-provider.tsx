@@ -1,3 +1,4 @@
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   createContext,
   type PropsWithChildren,
@@ -6,7 +7,10 @@ import {
   useMemo,
   useState,
 } from "react";
-import { repoContextRegistry } from "@/state/core/repo-context-registry";
+import {
+  createRepoContextOwnerId,
+  repoContextRegistry,
+} from "@/state/core/repo-context-registry";
 import { useAppStore } from "@/store/use-app-store";
 
 type TabContextValue = {
@@ -31,6 +35,17 @@ export function TabContextProvider({
   children,
   scopeId = "main",
 }: TabContextProviderProps) {
+  const ownerId = useMemo(() => {
+    let webviewLabel = "browser";
+
+    try {
+      webviewLabel = getCurrentWebview().label;
+    } catch {
+      // Plain browser runtimes do not expose a native webview label.
+    }
+
+    return createRepoContextOwnerId(webviewLabel, scopeId);
+  }, [scopeId]);
   const activeSessionRepositoryId = useAppStore((state) => {
     const runtimeId = state.activeSessionId ?? state.activeTabId;
     if (!runtimeId) {
@@ -72,7 +87,7 @@ export function TabContextProvider({
       setIsInitializing(true);
 
       try {
-        await repoContextRegistry.ensureScopeContext(scopeId, repoId);
+        await repoContextRegistry.ensureScopeContext(scopeId, repoId, ownerId);
       } finally {
         if (!cancelled) {
           setIsInitializing(false);
@@ -85,7 +100,7 @@ export function TabContextProvider({
     return () => {
       cancelled = true;
     };
-  }, [scopeId, activeSessionRepositoryId]);
+  }, [scopeId, ownerId, activeSessionRepositoryId]);
 
   useEffect(() => {
     return () => {
