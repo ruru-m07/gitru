@@ -30,6 +30,7 @@ import {
   isEmbeddedRuntime,
   isGitRoutePath,
   normalizeWorkspaceRoutePath,
+  resolveRepositoryContextScope,
   SNAPSHOT_EMIT_DEBOUNCE_MS,
   sanitizeTabWebviewLabel,
   stripEmbeddedQueryFromRoutePath,
@@ -496,10 +497,16 @@ const AppRouter = () => {
     };
   }, [syncTabMetadata]);
 
-  const tabScopeId =
-    embeddedRuntime && embeddedTabId
-      ? embeddedTabId
-      : (activeRuntimeId ?? activeTabId ?? "tab-main");
+  const tabScopeId = resolveRepositoryContextScope(
+    embeddedRuntime,
+    embeddedTabId,
+    activeRuntimeId,
+    activeTabId,
+  );
+
+  if (!tabScopeId) {
+    return <RouterProvider router={router} />;
+  }
 
   return (
     <TabContextProvider scopeId={tabScopeId}>

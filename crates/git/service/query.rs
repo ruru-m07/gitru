@@ -121,9 +121,17 @@ impl QueryService {
                 },
                 "porcelain".to_string(),
                 move || async move {
+                    // An optional index refresh would feed this read back into
+                    // the repository watcher and trigger another status read.
                     let output = runner
                         .run_with_options(
-                            &["status", "--porcelain", "-z", "--untracked-files=all"],
+                            &[
+                                "--no-optional-locks",
+                                "status",
+                                "--porcelain",
+                                "-z",
+                                "--untracked-files=all",
+                            ],
                             GitRunOptions::default_read(),
                         )
                         .await?;
