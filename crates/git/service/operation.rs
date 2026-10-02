@@ -54,9 +54,10 @@ impl OperationService {
         ) {
             let mut op = RepoOperation::clean();
             op.kind = kind;
-            if !matches!(op.kind, RepoOperationKind::Clean) {
-                op.conflict_paths = conflict_paths_from_index(&repo)?;
-            }
+            // An unmerged index can outlive the sequencer that produced it (for
+            // example, a conflicted stash apply leaves RepositoryState::Clean).
+            // Always report those paths so commit operations fail closed.
+            op.conflict_paths = conflict_paths_from_index(&repo)?;
             return Ok(op);
         }
 

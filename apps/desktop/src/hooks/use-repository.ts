@@ -1,5 +1,6 @@
 import type {
   AheadBehindStatus,
+  Author,
   Branch,
   BranchInfo,
   BranchKind,
@@ -186,6 +187,26 @@ export function useGetLastCommit(options?: QueryOptions<CommitInfo>) {
       return await repo.commit.last();
     },
     enabled: !!repo,
+    ...options,
+  });
+}
+
+export function useGetCommitAuthors(options?: QueryOptions<Author[]>) {
+  const repo = useActiveRepositoryState();
+
+  return useQuery({
+    queryKey: repo?.commit.getQueryKey("authors") ?? [
+      "repository",
+      "none",
+      "commit",
+      "authors",
+    ],
+    queryFn: async () => {
+      if (!repo) return null;
+      return await repo.commit.authors();
+    },
+    enabled: !!repo,
+    staleTime: 60_000,
     ...options,
   });
 }
@@ -384,6 +405,7 @@ export function useCreateCommit() {
       await repo?.commit.invalidate();
       await repo?.branches.invalidate("statusAheadBehind");
       await repo?.branches.invalidate("hasUncommittedChanges");
+      await repo?.operation.invalidate();
     },
     onError: (error: string) => {
       toast.error(error);
