@@ -1,0 +1,37 @@
+---
+title: Stage and commit
+description: Prepare a focused commit from staged files or the visible working-tree changes.
+icon: GitCommitHorizontal
+---
+
+Gitru follows Git's staging model: the staged snapshot is what gets committed.
+
+## Create a commit
+
+1. Review the repository's **Changes** view.
+2. Stage the files or individual change blocks that belong together.
+3. Enter a short commit summary. Add a longer description when the reason for the change needs more context.
+4. Select **Commit**.
+
+When at least one file is staged, Gitru commits the staged snapshot. Unstaged edits remain in your working tree.
+
+## Commit the visible changes
+
+If nothing is staged, the action changes to **Add visible & Commit**. Gitru stages the addable files currently visible in the list and then creates the commit.
+
+<Callout type="info" title="Filters affect the commit">
+  Search text and status filters change which files are visible. Clear them first if you intend to include every working-tree change.
+</Callout>
+
+## Commit identity and signing
+
+Gitru uses your existing Git configuration for the author identity and commit signing. Configure these with Git before committing, for example:
+
+```bash
+git config --global user.name "Your Name"
+git config --global user.email "you@example.com"
+```
+
+If signing is enabled, the configured GPG or SSH signing helper must also be available to the packaged Gitru app. A signing failure leaves your changes staged so you can fix the configuration and try again.
+
+Gitru's current commit form does not create empty commits, amend an earlier commit, or add co-authors.

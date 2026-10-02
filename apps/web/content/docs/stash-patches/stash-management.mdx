@@ -1,5 +1,30 @@
 ---
-title: Stash Management
-description: Not Documented
+title: Restore stashed work
+description: Inspect, restore, or discard stashes created during branch changes.
 icon: Archive
 ---
+
+When a dirty branch switch or branch creation would move uncommitted work, Gitru can store it in an automatic, Gitru-managed stash. The stash message records the source and destination branches so the work is easy to find later.
+
+Gitru does not currently offer a general **Create stash** action. Stashes created with the Git CLI still appear in the all-stashes view.
+
+## Find a stash
+
+When Gitru finds a managed stash for the current branch, it surfaces the stashed changes in the repository view. To browse every stash in the repository, open the Command Panel and choose **Stashed Changes**.
+
+Use the search field to filter the stashed file list. Select a file to inspect its read-only diff.
+
+## Restore work
+
+- Choose **Restore File** from a file's menu to restore only that path while leaving the rest of the stash intact.
+- Choose **Restore** to apply the selected stash to the working tree. After a conflict-free restore, Git removes the stash entry.
+
+Restoring can produce conflicts when the current files no longer match the state where the stash was created. In that case, Git keeps the stash entry so the work is not lost. Resolve the conflicts before continuing, then discard the retained entry only after confirming the restored work is safe.
+
+## Discard a stash
+
+Choose **Discard**, then confirm, to permanently drop the selected stash without applying it.
+
+<Callout type="warn" title="Discard cannot be undone">
+  A discarded stash is removed from Git. Make sure it contains no work you still need.
+</Callout>

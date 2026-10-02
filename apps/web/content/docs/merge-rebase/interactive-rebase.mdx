@@ -1,33 +1,56 @@
 ---
-title: Interactive Rebase
-description: Plan and rewrite commits with Gitru’s interactive rebase mode
+title: Rebase commits
+description: Replay commits with a plain, autostash, or interactive rebase.
 icon: Rows3
 ---
 
-# Interactive Rebase
+Rebase rewrites commits on top of another branch, tag, or commit. Use it when you intentionally want a linearized history and understand that rewritten commits receive new IDs.
 
-Gitru detects when a repository is rebasing and switches the Git page into **Rebase mode**.
+<Callout type="warn" title="Rebase rewrites history">
+  Avoid rebasing commits that other people are already using unless your team has agreed on the rewrite.
+</Callout>
 
 ## Start a rebase
 
-Open the command palette and choose **Rebase Onto…**, then:
+1. Open the Command Panel with <kbd>Command</kbd>+<kbd>K</kbd> on macOS or <kbd>Ctrl</kbd>+<kbd>K</kbd> on Windows and Linux.
+2. Choose **Rebase Onto**.
+3. Enter a branch, tag, or commit as the target.
+4. Choose a mode:
 
-- **Rebase** — plain replay of all commits onto the target (git2)
-- **Interactive** — plan pick / reword / edit / squash / fixup / drop, then run Gitru’s sequencer
-- **Autostash + rebase** — stash dirty worktree first, then plain rebase
+| Mode | What it does |
+| --- | --- |
+| **Rebase** | Replays the branch's commits onto the target |
+| **Autostash + rebase** | Temporarily stashes a dirty working tree, runs the rebase, then restores the changes |
+| **Interactive** | Uses Gitru's sequencer and exposes actions for pending commits if the operation pauses |
 
-You can also finish a rebase started in the terminal (`git rebase` / `git rebase -i`); Gitru will take over continue / skip / abort.
+## Change pending actions
 
-## Rebase mode UI
+In the current beta, **Interactive** starts immediately with every commit set to **Pick**. It does not pause on a preflight todo screen. If the operation pauses—for example, on a conflict—the todo view lets you change the action for commits that are still pending:
 
-While rebasing you get:
+Gitru supports these actions:
 
-- Todo list with progress (done / current / pending)
-- Pause banner when stopped for conflicts, edit, or reword
-- Conflict list with **ours / theirs / union / stage**
-- **Continue**, **Skip**, and **Abort** (with abort preview)
+| Action | Result |
+| --- | --- |
+| **Pick** | Keep the commit as written |
+| **Reword** | Keep the change and edit its commit message |
+| **Edit** | Apply the commit and pause before continuing |
+| **Squash** | Combine it with the previous commit and automatically combine their messages |
+| **Fixup** | Combine it with the previous commit and discard this commit's message |
+| **Drop** | Remove the commit from the rewritten history |
 
-## Engine notes
+Reordering the todo list is not currently supported.
 
-- Gitru-started interactive rebases use a custom **git2 sequencer** (libgit2 does not support `git rebase -i`).
-- Externally started interactive rebases use the git CLI for continue / skip / abort.
+<Callout type="warn" title="No preflight planner yet">
+  A clean interactive rebase can finish with every commit picked before the todo view becomes editable. Use `git rebase -i` in a terminal when you need to plan actions before replay; Gitru will detect the in-progress rebase if it later pauses.
+</Callout>
+
+Gitru does not yet expose an amend control when an **Edit** action pauses. If you chose Edit to modify the commit, run `git commit --amend` in a terminal before returning to Gitru and choosing **Continue**.
+
+## Continue a paused rebase
+
+During a rebase, Gitru replaces the normal repository view with a progress list showing completed, current, and pending commits. Depending on why Git paused, you can edit a commit message, resolve conflicts, and then choose **Continue**.
+
+- **Skip** omits the current commit.
+- **Abort** returns to the pre-rebase state. Gitru shows an abort preview before confirmation.
+
+Gitru also detects a rebase started in the terminal. You can return to the app to continue, skip, resolve conflicts, or abort it.

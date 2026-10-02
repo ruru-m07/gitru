@@ -1,6 +1,7 @@
 {
-  "title": "Repository",
+  "title": "Getting Started",
   "icon": "Folder",
   "collapsible": false,
-  "defaultOpen": true
+  "defaultOpen": true,
+  "pages": ["add-clone-create", "interface-tour", "managing-repositories"]
 }

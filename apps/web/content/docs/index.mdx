@@ -1,42 +1,75 @@
 ---
-title: Get Started
-description: Gitru is a modern, lightweight, and powerful Git client designed to simplify and abstract away the complexity of Git. It simplifies complex Git workflows like rebasing and branch management, offers a clear visual interface.
+title: Gitru documentation
+description: Learn how to manage repositories, review and commit changes, work with branches, search history, and complete rebases in Gitru.
 icon: BookOpen
 ---
 
-import { GitBranch, FolderTree } from "lucide-react";
+Gitru is a desktop Git client for reviewing local changes, creating commits,
+following repository history, managing branches, syncing with remotes, and
+working through rebases.
 
-![Gitru Look](/assets/showcase-gitru-at-0.0.0-beta.3.png)
-
-<br />
-
-# Introduction
-
-Gitru is a Git client designed to simplify complex workflows and provide a clear visual interface for managing your Git repositories. It abstracts away the complexity of Git, making it easier for developers to focus on their code and collaborate effectively.
+Gitru works with ordinary Git repositories. It uses the Git installation and
+configuration already on your computer for most operations, so work done in
+Gitru remains compatible with the command line and other Git tools.
 
 <Cards>
   <Card
-    icon={<GitBranch />}
-    href="/docs"
-    title="Branch management"
+    href="/docs/installation"
+    title="Install Gitru"
   >
-    Branch management, rebasing, and more.
+    Choose the right build, install Git, and select an update channel.
   </Card>
   <Card
-    icon={<FolderTree />}
-    href="/docs"
-    title="Multi Worktree"
+    href="/docs/repository/add-clone-create"
+    title="Open a repository"
   >
-    Branch management, rebasing, and more.
+    Import a local checkout, clone a remote, or initialize a new repository.
+  </Card>
+  <Card
+    href="/docs/changes-diff/working-directory"
+    title="Make your first commit"
+  >
+    Review files, stage the changes you want, and create a commit.
+  </Card>
+  <Card
+    href="/docs/branching/branch-management"
+    title="Work with branches"
+  >
+    Create, switch, rename, track, publish, and safely delete branches.
   </Card>
 </Cards>
 
-<br />
+## What is covered
 
-# FAQ
+These docs follow the **Local Git** area of the current `dev` branch. That is
+where Gitru's complete repository workflow lives today:
 
-<br />
+- a repository picker for multiple local checkouts;
+- staged, unstaged, conflicted, text, binary, and image changes;
+- commits, commit details, a lane graph, and content history search;
+- local and remote branch lifecycle management;
+- fetch, pull, push, and first-time branch publishing;
+- Gitru-managed stashes created while switching branches;
+- plain, autostash, and interactive rebase flows.
 
-# Learn More
+Inbox and Issues are development-only previews. Pull Requests can appear in a
+production build, but it is currently a placeholder rather than a complete
+workflow. These areas are intentionally not documented as finished features.
 
-<br />
+## A good first path
+
+1. [Install Gitru](./installation.mdx) and confirm `git` is available on your
+   computer.
+2. [Add, clone, or create a repository](./repository/add-clone-create.mdx).
+3. Use the [interface tour](./repository/interface-tour.mdx) to find the branch,
+   sync, changes, history, diff, and status areas.
+4. Read [Working directory](./changes-diff/working-directory.mdx) and
+   [Stage and commit](./changes-diff/stage-and-commit.mdx) before using a
+   destructive action.
+
+## Beta documentation
+
+Gitru is currently distributed as a beta. These docs describe ongoing work on
+the `dev` branch, so a published beta can trail a documented screen or action.
+When that happens, check the app version in the lower-right status bar and the
+[GitHub releases page](https://github.com/ruru-m07/gitru/releases).

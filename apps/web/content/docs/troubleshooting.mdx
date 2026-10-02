@@ -1,0 +1,89 @@
+---
+title: Troubleshooting
+description: Fix common installation, repository, authentication, signing, sync, and rebase problems.
+icon: CircleQuestionMark
+---
+
+Start with the exact error shown in Gitru. Most repository operations come from the Git installation and configuration already present on your computer, so reproducing the action in a terminal can provide additional detail.
+
+## Gitru cannot find Git
+
+Run this in a new terminal:
+
+```bash
+git --version
+```
+
+If it fails, install Git. If it succeeds only after your shell runs a custom startup script, the packaged app may not inherit the same `PATH`. Put Git in a standard executable directory or launch Gitru after correcting the system environment.
+
+Gitru does not declare a single minimum Git version, but it relies on modern commands such as `git switch` and `git restore`. Use a current Git release when possible.
+
+## A local repository will not import
+
+Choose the repository's top-level worktree folder, not one of its subdirectories. Gitru accepts both standard repositories and linked worktrees, including those whose `.git` entry is a file. If the path is rejected, run `git -C /path/to/repository rev-parse --show-toplevel` and import the directory it prints.
+
+If the repository moved, right-click its stale entry, choose **Remove**, and import it from the new location. Removing an entry only forgets the saved path; it does not delete the repository.
+
+## A clone fails
+
+- Choose a destination that is new or empty.
+- Check that the remote URL exists and is reachable.
+- For a private SSH remote, load the correct key in your SSH agent before opening Gitru.
+- Use a public HTTPS URL or SSH-agent authentication. The current clone dialog does not provide an interactive HTTPS credential prompt.
+- Retry after a network failure; Gitru attempts to clean up an incomplete destination after cancellation or failure.
+
+Gitru does not currently provide a GitHub, GitLab, or Bitbucket sign-in flow. Fetch, pull, and push use your Git configuration and its available credentials; the clone dialog does not invoke Git credential helpers for a private HTTPS clone.
+
+## Commit signing fails
+
+Gitru honors your Git signing configuration. Confirm the signing tool is installed, the configured key exists, and the helper is discoverable by the packaged app. Test with a small signed commit in a terminal to separate Git configuration from the Gitru interface.
+
+The failed commit is not created; your selected changes remain staged so you can retry.
+
+## Push or pull is unavailable
+
+Open the branch menu and confirm the local branch has an upstream. Use **Set upstream**, or use **Publish Branch** to create the branch on an existing `origin`.
+
+Sync is unavailable in detached `HEAD` and while another repository operation is active. If the branch is both ahead and behind, Gitru shows **Branches Diverged** so you can explicitly choose pull or push. Pull behavior follows your Git configuration.
+
+## A rebase cannot continue
+
+Resolve every conflicted file and stage each resolution. If the rebase paused for **Reword**, confirm the commit message before continuing. Gitru does not yet provide an amend control for an **Edit** pause; run `git commit --amend` in a terminal before returning to Gitru and continuing.
+
+Use **Skip** only if the current commit should be omitted. Use **Abort** to return to the pre-rebase state; Gitru shows a preview before it performs the abort.
+
+## A beta update is missing
+
+A fresh installation defaults to the stable channel. Open the Command Panel, choose **Switch Update Channel**, and select **Beta**. Gitru immediately checks the beta manifest again.
+
+The sidebar first downloads and installs an update. The restart action appears only after installation finishes.
+
+## Current product boundaries
+
+The current beta does not provide dedicated interfaces for:
+
+- Adding, renaming, or removing Git remotes
+- Creating an arbitrary manual stash
+- Reordering commits in an interactive rebase plan
+- General merge or cherry-pick operations
+- Pull requests, issues, or provider account authentication
+
+Use the Git CLI for these workflows while they are under development.
+
+## Report a problem
+
+Open a [GitHub bug report](https://github.com/ruru-m07/gitru/issues/new?template=bug_report.md) and include:
+
+- Operating system and version
+- Gitru version and update channel
+- Output of `git --version`
+- Steps to reproduce the problem
+- The complete error and relevant screenshots
+
+On macOS, the application log is stored at:
+
+```text
+~/Library/Logs/com.ruru.gitru/Gitru.log
+```
+
+Do not attach credentials, private keys, repository secrets, or sensitive file contents. Report security issues privately to [yo@ruru.build](mailto:yo@ruru.build).

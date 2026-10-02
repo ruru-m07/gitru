@@ -24,13 +24,8 @@ export function baseOptions(): BaseLayoutProps {
       },
       {
         type: "main",
-        text: "Blog",
-        url: "/blog",
-      },
-      {
-        type: "main",
-        text: "Changelog",
-        url: "/changelog",
+        text: "Roadmap",
+        url: "/roadmap",
       },
     ],
     githubUrl: "https://github.com/ruru-m07/gitru",

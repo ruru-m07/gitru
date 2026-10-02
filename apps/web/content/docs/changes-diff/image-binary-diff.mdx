@@ -1,5 +1,22 @@
 ---
-title: Image & Binary Diff
-description: Not Documented
+title: Image and binary diffs
+description: Compare changed images visually and understand unsupported binary previews.
 icon: Image
 ---
+
+Gitru provides a visual comparison for PNG, JPEG, WebP, GIF, BMP, ICO, and AVIF files. Select a changed image just as you would select a text file.
+
+## Comparison modes
+
+- **2-Up** places the old and new images next to each other.
+- **Swipe** reveals one version over the other with a draggable divider.
+- **Onion Skin** overlays both versions and lets you adjust their balance.
+- **Difference** highlights changed pixels for a more exact comparison.
+
+The viewer reports each version's dimensions and file size so you can spot unexpected asset changes as well as visual ones.
+
+New or deleted images have only one version to display, so Gitru uses the 2-Up presentation. Enhanced image comparison is not currently available while browsing a stash.
+
+## Other binary files
+
+Git cannot produce a line-by-line text patch for arbitrary binary files. Gitru still lists the file and its status, but it cannot render a content preview. Open the file in its native application when you need to inspect it.

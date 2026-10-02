@@ -1,0 +1,66 @@
+---
+title: Add, clone, or create a repository
+description: Start working by importing an existing checkout, cloning a remote, or initializing a new repository.
+icon: FolderOpen
+---
+
+The Local Git start screen offers three ways to open a repository. Gitru saves
+the repositories you add, but the repository itself remains an ordinary folder
+on disk.
+
+## Import a local repository
+
+Use **Import Local Repository** when the repository is already cloned:
+
+1. Select **Import Local Repository**.
+2. Choose the repository's top-level folder.
+3. Gitru validates the folder, adds it to the repository picker, and opens it.
+
+The selected folder must exist and be a valid Git worktree. Gitru accepts
+standard repositories, linked worktrees whose `.git` entry is a file, and
+repositories that use an external Git directory. Selecting the same path twice
+is rejected.
+
+Importing a repository does not copy or move it. Gitru stores only the path and
+display metadata needed to reopen it.
+
+## Clone from a remote
+
+Use **Clone from Remote** for a repository that is not yet on your computer.
+The clone form accepts these URL styles:
+
+```text
+https://github.com/owner/repository.git
+http://example.com/owner/repository.git
+ssh://git@example.com/owner/repository.git
+git@example.com:owner/repository.git
+```
+
+Choose a parent directory and repository folder. The destination must be new or
+empty; Gitru will not clone over existing files. During the clone, the panel
+shows transfer and indexing progress and lets you cancel. A cancelled or failed
+clone is cleaned up before you retry.
+
+For a private SSH remote, make sure your key is loaded in an SSH agent before
+opening Gitru. Gitru does not provide a provider login or interactive HTTPS
+credential prompt in the current clone dialog.
+
+## Create a new repository
+
+Use **Create New Repository** to initialize Git in a folder:
+
+1. Choose or create the destination folder.
+2. Confirm **Initialize**.
+3. Gitru runs `git init`, adds the repository, and selects it.
+
+An initialized repository has no remote until you configure one with Git. Gitru
+can publish a branch to an existing `origin`, but it does not yet include a UI
+for adding or editing remotes.
+
+## Open these flows later
+
+You do not need to return to the empty state. Open the repository picker and use
+its **Add** menu, or open the command panel with **Command/Ctrl K** and choose
+**Clone Repository** or **Initialize Repository**.
+
+Next, take the [interface tour](./interface-tour.mdx).

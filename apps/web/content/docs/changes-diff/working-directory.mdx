@@ -1,5 +1,38 @@
 ---
-title: Working Directory
-description: Not Documented
+title: Review working tree changes
+description: Find, filter, select, stage, unstage, and discard changed files.
 icon: FileText
 ---
+
+The **Changes** view is Gitru's working tree. It separates files into **Conflicted**, **Staged Changes**, and **Changes** so you can see what will be included in the next commit.
+
+## Find the files you need
+
+Use the search field to filter by path. The status filters narrow the list to untracked, modified, renamed, deleted, or conflicted files.
+
+Bulk actions apply to the files that are currently visible. This is useful for focused commits, but it also means an active search or status filter can exclude files from a section's stage action or **Add visible & Commit**.
+
+## Select files
+
+- Click a file to open its diff.
+- Hold <kbd>Command</kbd> on macOS or <kbd>Ctrl</kbd> on Windows and Linux while clicking to add or remove one file from the selection.
+- Hold <kbd>Shift</kbd> while clicking to select a range.
+- Use the arrow keys to move through the list, <kbd>Enter</kbd> to open the focused file, and <kbd>Escape</kbd> to clear the current selection.
+
+An action opened from a selected row applies to the current selection. The buttons in a section header apply to every visible file in that section, regardless of the selection.
+
+## Stage and unstage
+
+Stage a file when it is ready for the next commit. Staged files move to **Staged Changes**. Use **Unstage** to move them back without changing the file on disk.
+
+For text files, you can also stage or unstage an individual change block from the diff. See [Text diffs](/docs/changes-diff/file-diff-viewer).
+
+## Discard changes
+
+Discard restores tracked content from Git and removes the selected working-tree change. Gitru asks for confirmation before it runs the operation.
+
+<Callout type="warn" title="Discarding is destructive">
+  Discarded working-tree changes are not moved to a Git stash or Gitru recycle bin. Review the selected paths carefully before confirming.
+</Callout>
+
+Conflicted files cannot be handled like ordinary modifications. If a rebase is active, use Gitru's [conflict resolution workflow](/docs/merge-rebase/conflict-resolution).

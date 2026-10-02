@@ -1,5 +1,43 @@
 ---
-title: Branch Management
-description: Not Documented
+title: Manage branches
+description: Create, switch, track, rename, and safely delete local and remote branches.
 icon: GitBranch
 ---
+
+Select the current branch name in the Local Git toolbar to open Gitru's branch control. It separates local and remote branches and includes a search field for large repositories.
+
+## Create a branch
+
+Choose **New Branch**, enter a name, and create it from the currently checked-out commit. Gitru checks out the new branch immediately.
+
+If the working tree is dirty, choose how to continue:
+
+- **Stash & Create** temporarily stores the changes in a Gitru-managed stash.
+- **Bring & Create** carries the working-tree changes onto the new branch.
+
+Review uncommitted work before carrying it to a different line of development.
+
+## Switch branches
+
+Select a local branch to check it out. For a remote branch without a local tracking branch, Gitru creates and checks out the corresponding local branch.
+
+When uncommitted work would move with the checkout, Gitru offers **Stash & Checkout** or **Bring & Checkout**. If Git cannot safely switch branches, the checkout stops and your files remain in place.
+
+## Rename a local branch
+
+Open the local branch's menu and choose **Rename**. If the branch already tracks a remote branch, Gitru preserves that upstream relationship.
+
+## Delete a branch
+
+Gitru applies several safeguards before deletion:
+
+- The current branch cannot be deleted.
+- Protected or default branches cannot be deleted from this control.
+- A local branch with unmerged commits requires explicit force confirmation.
+- A remote branch that is the current branch's upstream cannot be deleted until that relationship changes.
+
+Deleting a remote branch changes the shared repository. Gitru checks the live remote branch and uses a lease so it does not silently delete a branch that moved since the last fetch.
+
+<Callout type="warn" title="Force deletion can lose commits">
+  Confirm that valuable commits exist on another branch or remote before force-deleting an unmerged branch.
+</Callout>

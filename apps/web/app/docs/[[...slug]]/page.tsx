@@ -56,6 +56,7 @@ export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
       tableOfContent={{
         style: "clerk",
       }}
+      footer={{ className: "mt-8" }}
       toc={pageData.toc}
       full={pageData.full}
       className="gap-0"

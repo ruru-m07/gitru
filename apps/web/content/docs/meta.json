@@ -1,26 +1,22 @@
 {
-  "title": "Documentation",
+  "title": "Gitru Docs",
   "root": true,
   "pages": [
-    "---Introduction---",
+    "---Start here---",
     "index",
     "installation",
-    "brand-guidelines",
-    "---Repository---",
     "...repository",
-    "---Changes & Diff---",
+    "---Changes and commits---",
     "...changes-diff",
-    "---History---",
+    "---History and search---",
     "...history",
-    "---Branching---",
+    "---Branches and remotes---",
     "...branching",
-    "---Merge & Rebase---",
-    "...merge-rebase",
-    "---Stash & Patches---",
+    "---Advanced workflows---",
     "...stash-patches",
-    "---Search---",
-    "...search",
-    "---Productivity---",
-    "...productivity"
+    "...merge-rebase",
+    "---Reference---",
+    "...productivity",
+    "troubleshooting"
   ]
 }

@@ -1,20 +1,31 @@
 ---
-title: Conflict Resolution
-description: Resolve merge and rebase conflicts in Gitru
+title: Resolve rebase conflicts
+description: Edit conflicted files, stage the resolution, and continue or abort a rebase.
 icon: ShieldAlert
 ---
 
-# Conflict Resolution
+When Git cannot replay a commit cleanly, Gitru pauses the rebase and lists the conflicted files.
 
-When a rebase (or merge) stops with conflicts, Gitru lists conflicted files and highlights them in status.
+## Resolve a file
 
-## During rebase
+1. Select a conflicted file from the rebase view.
+2. Resolve each conflict block with **Accept current**, **Accept incoming**, or **Accept both**.
+3. Check the resulting file. Every conflict block must be resolved.
+4. Choose **Stage** to mark the file resolved.
+5. Resolve and stage every remaining conflicted file, then choose **Continue**.
 
-1. Open a conflicted file from the rebase conflict list.
-2. Resolve manually in the editor, or use **Take ours**, **Take theirs**, or **Union**.
-3. Stage the file (or use “Mark resolved”).
-4. Click **Continue**.
+Gitru also provides file-level **Ours** and **Theirs** actions. These replace the entire file, so use them only when one side should win everywhere.
 
-## Abort safely
+For a custom resolution that cannot be expressed with those choices, edit the file in an external editor or terminal, then return to Gitru and stage it.
 
-**Abort** shows a preview of where HEAD will return before discarding applied rebase commits.
+<Callout type="info" title="Ours and theirs during rebase">
+  Git's labels can feel reversed during a rebase: “ours” is the new base you are rebasing onto, while “theirs” is the commit currently being replayed. Always review the result before staging it.
+</Callout>
+
+## Skip or abort
+
+Choose **Skip** only when the current commit's change should be omitted from the rewritten branch.
+
+Choose **Abort** to stop the operation and restore the pre-rebase state. Gitru first shows where `HEAD` will return and warns about work that could be affected.
+
+Gitru currently provides this guided operation view for rebases. General merge and cherry-pick workflows are not yet available as dedicated interfaces.

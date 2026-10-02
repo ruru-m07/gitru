@@ -3,5 +3,5 @@
   "icon": "GitBranch",
   "collapsible": false,
   "defaultOpen": true,
-  "pages": ["branch-management", "branch-comparison", "upstream-tracking"]
+  "pages": ["branch-management", "upstream-tracking"]
 }

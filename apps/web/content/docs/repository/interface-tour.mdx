@@ -1,0 +1,77 @@
+---
+title: Interface tour
+description: Find the repository picker, branch and sync controls, file list, main canvas, tabs, and status bar.
+icon: PanelsTopLeft
+---
+
+The Local Git workspace is split into a small set of persistent areas. Most
+actions update only the currently selected repository and tab.
+
+## Workspace tabs
+
+Tabs live in the custom title bar. Each Local Git tab keeps its own repository,
+navigation, file selection, and view state. You can:
+
+- select the **+** button or press **Command/Ctrl T** to create a tab;
+- press **Command/Ctrl W** or use the close button to close the active tab;
+- drag tabs to reorder them;
+- middle-click a tab to close it;
+- use **Command/Ctrl Tab** and **Command/Ctrl Shift Tab** to move between tabs.
+
+Window size, position, and maximized state are restored across launches.
+
+## Repository and branch controls
+
+The left side of the Local Git toolbar opens the repository picker. It shows
+the selected repository, its current branch, dirty state, and ahead/behind
+counts. The **Current Branch** control beside it opens the branch picker.
+
+The branch picker separates local and remote branches. Select a row to check it
+out, or right-click it for rename, upstream, and delete actions. See
+[Branch management](/docs/branching/branch-management) before deleting a
+branch.
+
+## Sync control
+
+The next toolbar control adapts to repository state:
+
+- **Publish Branch** when the local branch has no upstream;
+- **Push to Origin** when it is ahead;
+- **Pull from Origin** when it is behind;
+- **Branches Diverged** with separate pull and push choices;
+- **Fetch** when local and upstream tips are aligned.
+
+Sync is hidden for detached HEAD and disabled while another Git operation needs
+to finish. Read [Upstreams and remote sync](/docs/branching/upstream-tracking)
+for the full state model.
+
+## Changes and history panel
+
+The left panel has **Changes** and **History** tabs. Changes are grouped into
+Conflicted, Staged Changes, and Changes. History lists commits and opens commit
+details in the same panel.
+
+The panel can also switch to a stash browser or a selected commit's changed
+files. Use the back arrow to return. Drag the vertical divider to give the file
+list or main canvas more space.
+
+## Main canvas
+
+Selecting a file opens its diff in the main canvas. The canvas can also show:
+
+- the full commit graph;
+- Pickaxe content search results;
+- the rebase todo and conflict resolver during a rebase.
+
+When no view is open, Gitru shows a small shortcut reminder. Close a file or
+search view with its **X** button to return to that empty canvas.
+
+## Status bar
+
+The bottom bar reports the origin, branch and in-progress operation, remote
+ahead/behind state, latest commit, build channel, Gitru version, and detected
+Git version. Selecting the origin badge opens its HTTPS provider page when the
+remote URL can be recognized safely.
+
+The refresh control reloads cached repository data. The separate **Fetch**
+control contacts the remote and prunes stale remote-tracking references.
