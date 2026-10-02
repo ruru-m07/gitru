@@ -114,7 +114,9 @@ pub fn extract_co_authors(message: &str) -> Vec<Author> {
 
     for line in message.lines() {
         let line = line.trim();
-        if (line.starts_with("Co-authored-by:") || line.starts_with("Co-Authored-By:"))
+        if line
+            .split_once(':')
+            .is_some_and(|(key, _)| key.eq_ignore_ascii_case("Co-authored-by"))
             && let Some(author) = parse_author_line(line)
         {
             co_authors.push(author);
@@ -125,10 +127,11 @@ pub fn extract_co_authors(message: &str) -> Vec<Author> {
 }
 
 pub fn parse_author_line(line: &str) -> Option<Author> {
-    let line = line.split(':').nth(1)?.trim();
+    let line = line.split_once(':')?.1.trim();
 
     if let Some(email_start) = line.rfind('<')
         && let Some(email_end) = line.rfind('>')
+        && email_start < email_end
     {
         let name = line[..email_start].trim().to_string();
         let email = line[email_start + 1..email_end].trim().to_string();

@@ -30,6 +30,26 @@ import {
   useCommitDraftStore,
 } from "@/store/use-commit-draft-store";
 
+type RebaseDraftIdentity = {
+  repoKey: string | null;
+  autofillKey: string | null;
+};
+
+function getRebaseDraftIdentity(): RebaseDraftIdentity {
+  const { repoKey, autofillKey } = useCommitDraftStore.getState();
+  return { repoKey, autofillKey };
+}
+
+function clearRebaseDraftIfUnchanged(identity: RebaseDraftIdentity) {
+  const draft = useCommitDraftStore.getState();
+  if (
+    draft.repoKey === identity.repoKey &&
+    draft.autofillKey === identity.autofillKey
+  ) {
+    draft.clear();
+  }
+}
+
 export function RebaseActionsBar({ operation }: { operation: RepoOperation }) {
   const { mutateAsync: continueRebase, isPending: continuing } =
     useRebaseContinue();
@@ -41,11 +61,11 @@ export function RebaseActionsBar({ operation }: { operation: RepoOperation }) {
 
   const title = useCommitDraftStore((s) => s.title);
   const description = useCommitDraftStore((s) => s.description);
-  const clearDraft = useCommitDraftStore((s) => s.clear);
+  const coAuthors = useCommitDraftStore((s) => s.coAuthors);
 
   const busy = continuing || skipping || aborting;
   const hasConflicts = operation.conflictPaths.length > 0;
-  const draftMessage = joinCommitMessage(title, description);
+  const draftMessage = joinCommitMessage(title, description, coAuthors);
   // Only reword requires a message. Edit pauses just need `rebase --continue`
   // (amend is optional). Fall back to the server-provided commit message when
   // the draft is empty so Continue isn't blocked by a missed autofill.
@@ -81,11 +101,18 @@ export function RebaseActionsBar({ operation }: { operation: RepoOperation }) {
           disabled={busy}
           size="sm"
           onClick={() => {
-            toast.promise(skip(), {
-              loading: "Skipping…",
-              success: "Skipped commit",
-              error: (e) => e.message || "Skip failed",
-            });
+            const draftIdentity = getRebaseDraftIdentity();
+            toast.promise(
+              skip().then((op) => {
+                clearRebaseDraftIfUnchanged(draftIdentity);
+                return op;
+              }),
+              {
+                loading: "Skipping…",
+                success: "Skipped commit",
+                error: (e) => e.message || "Skip failed",
+              },
+            );
           }}
         >
           Skip
@@ -98,9 +125,10 @@ export function RebaseActionsBar({ operation }: { operation: RepoOperation }) {
             }
             size="sm"
             onClick={() => {
+              const draftIdentity = getRebaseDraftIdentity();
               toast.promise(
                 continueRebase(continueMessage).then((op) => {
-                  clearDraft();
+                  clearRebaseDraftIfUnchanged(draftIdentity);
                   return op;
                 }),
                 {
@@ -140,8 +168,9 @@ export function RebaseActionsBar({ operation }: { operation: RepoOperation }) {
               variant="destructive"
               disabled={aborting}
               onClick={async () => {
+                const draftIdentity = getRebaseDraftIdentity();
                 await abort();
-                clearDraft();
+                clearRebaseDraftIfUnchanged(draftIdentity);
                 setAbortOpen(false);
               }}
             >
