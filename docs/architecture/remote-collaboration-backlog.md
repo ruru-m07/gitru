@@ -179,7 +179,7 @@ Then implement [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-
 | --- | --- | --- |
 | [RURU-96: Link local Git remotes to collaboration repositories and accounts](https://linear.app/catra/issue/RURU-96/link-local-git-remotes-to-collaboration-repositories-and-accounts) | Backlog | [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
 | [RURU-97: Add independent detail-scope storage and hydration contracts](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts) | Backlog | [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
-| [RURU-77: Hydrate and render cached pull request details](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details) | In Progress | [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
+| [RURU-77: Hydrate and render cached pull request details](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details) | In Review | [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
 | [RURU-78: Hydrate and render cached issue details](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details) | In Progress | [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
 | [RURU-121: Add bounded frontend prefetch and cached navigation](https://linear.app/catra/issue/RURU-121/add-bounded-frontend-prefetch-and-cached-navigation) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-98](https://linear.app/catra/issue/RURU-98/add-foreground-demand-leases-to-the-native-sync-scheduler), [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details) |
 | [RURU-79: Resolve inbox notifications to cached PR and issue subjects](https://linear.app/catra/issue/RURU-79/resolve-inbox-notifications-to-cached-pr-and-issue-subjects) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
@@ -937,3 +937,15 @@ suites and isolated native UI/account/draft QA pass; [the work note](./collabora
 records exact evidence and remaining gates. RURU-78's isolated issue mapper is
 ready to integrate after this shared contract is signed. Remote CI and live
 provider/production vault qualification are distinct from these local results.
+
+
+### RURU-78 publication checkpoint
+
+RURU-77 is In Review in [PR #150](https://github.com/ruru-m07/gitru/pull/150),
+with remote CI running. RURU-78 is locally complete with the shared cached issue
+view, supported GitHub issue detail endpoint and scoped adapter/UI tests;
+[its work note](./collaboration-work/RURU-78.md) records 154 native/215 desktop
+passes and credential-free native QA. It is ready for a signed draft PR on #150.
+RURU-98 has started in a separate managed worktree with its lease/fairness
+contract recorded before edits. Dependencies are implemented review stacks;
+no issue is claimed merged or globally qualified by local checks alone.
