@@ -1747,7 +1747,9 @@ personal CLI credentials were inspected and no remote CI run was created.
 ### Foundation publication and continuation (2026-10-03)
 
 Current continuation adds [PR #147](https://github.com/ruru-m07/gitru/pull/147),
-RURU-97, on the reviewed provider-registry branch. Independent detail facets
+RURU-97, on the reviewed provider-registry branch, and
+[PR #149](https://github.com/ruru-m07/gitru/pull/149), RURU-100, stacked on #147.
+Both issues are In Review. Independent detail facets
 now have cache-only queries, explicit epoch-bound coalesced hydration, bounded
 paging/restart intent and atomic source/coverage/access/revision metadata.
 Known null/empty, missing, omitted, oversized and partial observations remain
@@ -1757,10 +1759,28 @@ accessor shares the caller's SQLite snapshot for contextual capability reads.
 Local validation passes 114 collaboration, 3 command-caller, 36 client and 177
 desktop frontend tests, types/lint/Clippy/formatting, and the 9 CLI cases after
 the ancestor fixture correction. Independent storage and runtime/client reviews
-are accepted. Production GitHub detail endpoints/UI remain RURU-77/78;
-RURU-100 contextual UI is still In Progress. Migration 0004 adds rebuildable
+are accepted. Production GitHub detail endpoints/UI remain RURU-77/78, the next
+read experience chunks. RURU-100's atomic account/repository/resource policies,
+shared local deadline coordinator and ordinary workspace/sidebar consumers
+pass 127 native, 44 SDK, 193 desktop and 3 caller-policy tests, scoped types/lint,
+build/Clippy/formatting, both independent reviews and native synthetic fixture QA.
+Same-actor grant refresh retains private text and inspected CAS; actor/subject
+switching resets the buffer. RURU-99's separate editor/recovery extraction needs
+narrow merge reconciliation. Migration 0004 adds rebuildable
 details; RURU-106's restore policy still refuses unreviewed schemas 0003/0004.
 These are published review stacks, not merged or release-qualified features.
+
+Eight scoped draft PRs are published: #141 foundation, #142 credential cutover,
+#143 migration recovery, #144 saved draft recovery, #145 backup/recovery native
+core, #146 registry, #147 independent details and #149 contextual capabilities.
+RURU-106 remains In Progress. The exact `c215389` foundation head passes frontend,
+Clippy/formatting, Linux/macOS/Windows Rust, all CodeQL analyses and Linux/macOS
+packaged E2E; Windows packaged E2E remained pending when recorded. Test-only
+checked iteration repairs newly reported synthetic `Vec::remove` logging-model
+alerts in #142/#147 without suppression, while retaining exact-one fixture and
+original content assertions. These signed descendant heads have restarted CI;
+completed ancestor checks do not qualify a child's current head. The hourly
+continuation checks live issue dependencies, overlap and CI before proceeding.
 
 The foundation received independent native and frontend review with no new
 blocking findings. `make verify` passed on macOS on 3 October, including the

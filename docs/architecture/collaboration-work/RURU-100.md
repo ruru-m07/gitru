@@ -1,7 +1,9 @@
 # RURU-100 — Contextual collaboration capabilities
 
-Status: implementation and native fixture QA locally verified; publication/remote gates pending,
-3 October 2026. Started on reviewed RURU-76 `f5ae068` / PR #146, integrated
+Status: In Review in draft [PR #149](https://github.com/ruru-m07/gitru/pull/149),
+3 October 2026. Local implementation and native fixture QA are verified;
+current-head remote CI/security remains pending. Started on reviewed RURU-76
+`f5ae068` / PR #146, integrated
 signed RURU-97 `64125441` before shared wiring, then signed-rebased onto
 `4a1e46698e188ed56d3788cfa243bdefb12bcecd` after its parent fixture/security
 corrections. This document is the continuation point for the complete
