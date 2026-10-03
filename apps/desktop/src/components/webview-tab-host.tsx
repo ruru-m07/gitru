@@ -21,15 +21,21 @@ type HostBounds = {
 type ManagedWebview = {
   tabId: string;
   ownerId: string;
+  hostOwner: HostOwner;
   webview: Webview;
   ready: Promise<void>;
   bounds: HostBounds;
 };
 
+type HostOwner = object;
+
 const CREATE_TIMEOUT_MS = 1200;
 
 const managedWebviews = new Map<string, ManagedWebview>();
-const ensureInFlightByTabId = new Map<string, Promise<ManagedWebview | null>>();
+const ensureInFlightByTabId = new Map<
+  string,
+  { owner: HostOwner; work: Promise<ManagedWebview | null> }
+>();
 const pendingNativeCreates = new Set<string>();
 let desiredActiveTabId: string | null = null;
 let visibleTabId: string | null = null;
@@ -37,6 +43,8 @@ let liveTabIds = new Set<string>();
 let pendingCleanupTimer: number | null = null;
 let tabWebviewsSuspended = false;
 let latestHostBounds: HostBounds | null = null;
+let activeHostOwner: HostOwner | null = null;
+let closingWebviews: Promise<void> = Promise.resolve();
 let visibilityWork: Promise<unknown> = Promise.resolve();
 
 // Native child views sit above the host DOM. Serialize visibility changes so a
@@ -114,15 +122,23 @@ const hideUnlessActive = async (entry: ManagedWebview) => {
 const ensureTabWebview = async (
   tab: WorkspaceTab,
   bounds: HostBounds,
+  owner: HostOwner,
 ): Promise<ManagedWebview | null> => {
+  // A replacement host must not adopt native views that the previous host is
+  // still closing. Their map entries are removed before close() completes.
+  await closingWebviews;
+  if (activeHostOwner !== owner) return null;
   const existing = managedWebviews.get(tab.id);
   if (existing) {
+    existing.hostOwner = owner;
     await existing.ready;
-    return managedWebviews.get(tab.id) ?? null;
+    return activeHostOwner === owner
+      ? (managedWebviews.get(tab.id) ?? null)
+      : null;
   }
 
   const existingEnsure = ensureInFlightByTabId.get(tab.id);
-  if (existingEnsure) return await existingEnsure;
+  if (existingEnsure?.owner === owner) return await existingEnsure.work;
 
   const task = (async (): Promise<ManagedWebview | null> => {
     const normalized = normalizeBounds(bounds);
@@ -130,11 +146,15 @@ const ensureTabWebview = async (
     const childScopeId = label.slice(TAB_WEBVIEW_LABEL_PREFIX.length);
     const ownerId = createRepoContextOwnerId(label, childScopeId);
     const existingByLabel = await Webview.getByLabel(label);
+    // Native lookups can finish after unmount or a new host has taken over.
+    // Only that current host may adopt/create a view with its geometry.
+    if (activeHostOwner !== owner) return null;
 
     if (existingByLabel) {
       const reused: ManagedWebview = {
         tabId: tab.id,
         ownerId,
+        hostOwner: owner,
         webview: existingByLabel,
         ready: Promise.resolve(),
         // Force one geometry sync because the native view can outlive a host
@@ -200,6 +220,7 @@ const ensureTabWebview = async (
         void hideUnlessActive({
           tabId: tab.id,
           ownerId,
+          hostOwner: owner,
           webview,
           ready: Promise.resolve(),
           bounds: normalized,
@@ -220,19 +241,23 @@ const ensureTabWebview = async (
     const created: ManagedWebview = {
       tabId: tab.id,
       ownerId,
+      hostOwner: owner,
       webview,
       ready,
       bounds: normalized,
     };
     managedWebviews.set(tab.id, created);
     await ready;
+    if (activeHostOwner !== owner) return null;
 
     if (createError !== null) {
       const recovered = await Webview.getByLabel(label);
+      if (activeHostOwner !== owner) return null;
       if (recovered) {
         const entry: ManagedWebview = {
           tabId: tab.id,
           ownerId,
+          hostOwner: owner,
           webview: recovered,
           ready: Promise.resolve(),
           bounds: normalized,
@@ -261,25 +286,32 @@ const ensureTabWebview = async (
     return created;
   })();
 
-  ensureInFlightByTabId.set(tab.id, task);
+  ensureInFlightByTabId.set(tab.id, { owner, work: task });
   try {
     return await task;
   } finally {
-    if (ensureInFlightByTabId.get(tab.id) === task) {
+    if (ensureInFlightByTabId.get(tab.id)?.work === task) {
       ensureInFlightByTabId.delete(tab.id);
     }
   }
 };
 
-const activateTabWebview = async (tab: WorkspaceTab, bounds: HostBounds) => {
+const activateTabWebview = async (
+  tab: WorkspaceTab,
+  bounds: HostBounds,
+  owner: HostOwner,
+) => {
+  if (activeHostOwner !== owner) return;
   desiredActiveTabId = tab.id;
   latestHostBounds = bounds;
   liveTabIds.add(tab.id);
-  const entry = await ensureTabWebview(tab, bounds);
+  const entry = await ensureTabWebview(tab, bounds, owner);
 
-  if (!entry || desiredActiveTabId !== tab.id) return;
+  if (!entry || activeHostOwner !== owner || desiredActiveTabId !== tab.id)
+    return;
 
   await changeVisibility(async () => {
+    if (activeHostOwner !== owner) return;
     if (tabWebviewsSuspended || desiredActiveTabId !== tab.id) {
       await entry.webview.hide();
       return;
@@ -289,6 +321,12 @@ const activateTabWebview = async (tab: WorkspaceTab, bounds: HostBounds) => {
       : null;
     // Reveal first so warm switches never expose the empty host between tabs.
     await entry.webview.show();
+    if (activeHostOwner !== owner) {
+      // An already-started native show can outlive cleanup. Hide its old
+      // surface unless a current host has deliberately adopted that entry.
+      if (entry.hostOwner === owner) await entry.webview.hide().catch(() => {});
+      return;
+    }
     // Suspension/tab selection may change while the native show is pending.
     if (tabWebviewsSuspended || desiredActiveTabId !== tab.id) {
       await entry.webview.hide();
@@ -312,7 +350,9 @@ export async function setTabWebviewsSuspended(
   if (suspended) {
     // Already-started creates must reach their created/hide callbacks before a
     // host modal is exposed. New creates are deferred by ensureTabWebview.
-    await Promise.allSettled([...ensureInFlightByTabId.values()]);
+    await Promise.allSettled(
+      [...ensureInFlightByTabId.values()].map(({ work }) => work),
+    );
     await changeVisibility(async () => {
       if (!tabWebviewsSuspended) return;
       // Include native surfaces that survived a host HMR/remount and have not
@@ -339,17 +379,20 @@ export async function setTabWebviewsSuspended(
     return;
   }
   const state = useAppStore.getState();
-  desiredActiveTabId = state.activeTabId;
+  const owner = activeHostOwner;
+  const bounds = latestHostBounds;
   const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId);
-  if (activeTab && latestHostBounds) {
-    await activateTabWebview(activeTab, latestHostBounds);
+  if (owner && activeTab && bounds) {
+    await activateTabWebview(activeTab, bounds, owner);
   }
 }
 
 const reconcileTabWebviews = async (
   tabs: WorkspaceTab[],
   bounds: HostBounds,
+  owner: HostOwner,
 ) => {
+  if (activeHostOwner !== owner) return;
   liveTabIds = new Set(tabs.map((tab) => tab.id));
 
   const staleEntries = Array.from(managedWebviews.entries()).filter(
@@ -362,22 +405,24 @@ const reconcileTabWebviews = async (
       await closeManagedWebview(entry);
     }),
   );
+  if (activeHostOwner !== owner) return;
 
   const activeTab = tabs.find((tab) => tab.id === desiredActiveTabId);
   const backgroundTabs = tabs.filter((tab) => tab.id !== desiredActiveTabId);
 
-  if (activeTab) void activateTabWebview(activeTab, bounds);
+  if (activeTab) void activateTabWebview(activeTab, bounds, owner);
 
   // Prewarm background tabs concurrently without blocking the selected tab.
   await Promise.all(
     backgroundTabs.map(async (tab) => {
-      const entry = await ensureTabWebview(tab, bounds);
+      const entry = await ensureTabWebview(tab, bounds, owner);
       if (entry) await hideUnlessActive(entry);
     }),
   );
 };
 
-const resizeManagedWebviews = async (bounds: HostBounds) => {
+const resizeManagedWebviews = async (bounds: HostBounds, owner: HostOwner) => {
+  if (activeHostOwner !== owner) return;
   latestHostBounds = bounds;
   await Promise.all(
     Array.from(managedWebviews.values()).map((entry) =>
@@ -386,14 +431,19 @@ const resizeManagedWebviews = async (bounds: HostBounds) => {
   );
 };
 
-const cleanupAllWebviews = async () => {
+const cleanupAllWebviews = () => {
+  latestHostBounds = null;
   desiredActiveTabId = null;
   visibleTabId = null;
   liveTabIds.clear();
   ensureInFlightByTabId.clear();
   const entries = Array.from(managedWebviews.values());
   managedWebviews.clear();
-  await Promise.all(entries.map((entry) => closeManagedWebview(entry)));
+  closingWebviews = Promise.allSettled([
+    closingWebviews,
+    ...entries.map((entry) => closeManagedWebview(entry)),
+  ]).then(() => {});
+  return closingWebviews;
 };
 
 const readHostBounds = (element: HTMLDivElement | null): HostBounds | null => {
@@ -411,6 +461,7 @@ const readHostBounds = (element: HTMLDivElement | null): HostBounds | null => {
 
 export default function WebviewTabHost() {
   const hostRef = useRef<HTMLDivElement>(null);
+  const hostOwnerRef = useRef<HostOwner | null>(null);
   const tabs = useAppStore((state) => state.tabs);
   const activeTabId = useAppStore((state) => state.activeTabId);
   const [bounds, setBounds] = useState<HostBounds | null>(null);
@@ -424,6 +475,32 @@ export default function WebviewTabHost() {
     [tabs],
   );
   const hasBounds = bounds !== null;
+
+  useEffect(() => {
+    const owner = {};
+    hostOwnerRef.current = owner;
+    activeHostOwner = owner;
+    latestHostBounds = null;
+    if (pendingCleanupTimer !== null) {
+      window.clearTimeout(pendingCleanupTimer);
+      pendingCleanupTimer = null;
+    }
+
+    return () => {
+      if (activeHostOwner !== owner) return;
+      // Dialog completion can release suspension after this host disappears.
+      // Fence it immediately, even before delayed native cleanup has run.
+      activeHostOwner = null;
+      hostOwnerRef.current = null;
+      latestHostBounds = null;
+      // StrictMode immediately remounts effects in development. Delaying this
+      // prevents its probe from destroying the persistent child surfaces.
+      pendingCleanupTimer = window.setTimeout(() => {
+        pendingCleanupTimer = null;
+        if (activeHostOwner === null) void cleanupAllWebviews();
+      }, 0);
+    };
+  }, []);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -456,40 +533,29 @@ export default function WebviewTabHost() {
   }, []);
 
   useEffect(() => {
+    const owner = hostOwnerRef.current;
+    if (!owner) return;
     desiredActiveTabId = activeTabId;
     const currentBounds = boundsRef.current;
     const activeTab = tabsRef.current.find((tab) => tab.id === activeTabId);
     if (currentBounds && activeTab) {
-      void activateTabWebview(activeTab, currentBounds);
+      void activateTabWebview(activeTab, currentBounds, owner);
     }
   }, [activeTabId, hasBounds]);
 
   useEffect(() => {
+    const owner = hostOwnerRef.current;
+    if (!owner) return;
     const currentBounds = boundsRef.current;
     if (currentBounds) {
-      void reconcileTabWebviews(tabsRef.current, currentBounds);
+      void reconcileTabWebviews(tabsRef.current, currentBounds, owner);
     }
   }, [tabIdSignature, hasBounds]);
 
   useEffect(() => {
-    if (bounds) void resizeManagedWebviews(bounds);
+    const owner = hostOwnerRef.current;
+    if (bounds && owner) void resizeManagedWebviews(bounds, owner);
   }, [bounds]);
-
-  useEffect(() => {
-    if (pendingCleanupTimer !== null) {
-      window.clearTimeout(pendingCleanupTimer);
-      pendingCleanupTimer = null;
-    }
-
-    return () => {
-      // StrictMode immediately remounts effects in development. Delaying this
-      // prevents its probe from destroying the persistent child surfaces.
-      pendingCleanupTimer = window.setTimeout(() => {
-        pendingCleanupTimer = null;
-        void cleanupAllWebviews();
-      }, 0);
-    };
-  }, []);
 
   return (
     <div

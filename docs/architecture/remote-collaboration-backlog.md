@@ -22,9 +22,30 @@ checkpoints; the integrated migration suite passed 70 tests including 12
 migration cases. Draft recovery passed 208 frontend, 49 collaboration and 11
 desktop tests, plus native fixture QA of actor switching/copy/save/export/cancel.
 Scope and evidence live in each branch's `docs/architecture/collaboration-work/`
-note. RURU-76 (provider registry/identities) and RURU-106 (backup/recovery core,
-stacked on #143) are In Progress in isolated worktrees.
+note. RURU-76 is In Review in
+[PR #146](https://github.com/ruru-m07/gitru/pull/146): 83 native, 32 client,
+171 desktop frontend and 3 command-caller tests pass, including real pending
+query invalidation regressions. RURU-106's native core is published in
+[PR #145](https://github.com/ruru-m07/gitru/pull/145), with 88 native tests and
+14 independent recovery cases. Both target #143. RURU-106 stays In Progress:
+desktop writer shutdown/picker/dialog integration, schema-0003 policy and
+Windows power-loss qualification remain open. Its core deliberately refuses
+schemas beyond the known v1/v2 policy rather than guessing about durable intent.
+
+The next parallel batch starts from the reviewed #146 commit: RURU-97 owns
+independent detail storage/hydration; RURU-100 owns contextual capabilities and
+their shared UI consumers. Both are In Progress with isolated worktrees and
+issue-specific design notes before major edits. Shared IPC generation is
+sequenced after the detail contract freezes. Account-only capability gating
+cannot complete RURU-100; repository/resource context and saved-read versus
+sync/write availability are required. Temporary network/quota errors retain
+authorized saved reads, while access loss still suppresses provider content.
 Remote CI is running; the original publication index below remains a snapshot.
+Windows Rust migration tests pass after the explicit SQL LF policy. Foundation
+CodeQL passes on `7c5364d`; a later native-host lifetime correction passes all
+200 frontend tests and fresh packaged macOS E2E (2 specs / 3 cases), with remote
+Linux/Windows qualification still required. Neither test order nor assertions
+were weakened to work around the observed post-cleanup native view registration.
 The hourly chat continuation checks live Linear/PR state before picking work.
 PR publication does not authorize merging. GitHub's default CodeQL setup scans
 PRs into default/protected `dev`; children targeting unprotected stack branches

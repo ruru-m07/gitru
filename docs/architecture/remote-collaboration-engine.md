@@ -1783,11 +1783,52 @@ No production credential logging or rule suppression was introduced. Default
 CodeQL only scans PRs targeting default/protected `dev`, so stacked children need
 fresh exact-head security scans when retargeted to `dev` before merge.
 
-The next parallel lanes are RURU-76 (provider-instance dispatch, canonical
-identities, aliases and capabilities) and RURU-106 (verified WAL-consistent backup
-and offline restore core, based on #143). Both document their design before
-major edits. Desktop restore UI/runtime lifecycle remains an explicit integration
-gate. Publication authorizes review; no PR is merged without user authorization.
+CI follow-up: production migrations and frozen SQL fixtures now explicitly use
+LF in Git attributes, preserving SQLx checksums and literal text on Windows.
+The migration stack's exact `d776d663` head passes Windows Rust tests. The
+foundation's `7c5364d` CodeQL analyses and aggregate pass with zero open PR alerts.
+Its Linux collaboration assertions passed, but the subsequent desktop-smoke
+session failed to find the host; artifacts recorded a native view registering
+after cleanup. A delayed dialog suspension release is a source-backed causal
+inference. The host now invalidates its owner and geometry immediately on
+unmount, fences asynchronous lookup/creation/show, and waits for old native close
+before remount adoption. Six lifecycle regressions pass; four failure cases
+fail against the previous source. All 200 frontend tests, desktop/E2E types,
+scoped lint and fresh packaged macOS E2E (both specs/all three cases) pass.
+The E2E order and assertions remain unchanged. The new remote matrix remains
+required; this local repair is not a Linux/Windows packaged pass claim.
+
+Those lanes are published in separate draft PRs based on #143:
+
+- [PR #146](https://github.com/ruru-m07/gitru/pull/146), RURU-76: explicit
+  installation registry, canonical identities, persisted aliases and local
+  capability/resource resolution. Local checks pass 83 native, 32 client,
+  171 desktop frontend and 3 command-caller tests. Independent review found an
+  initial pending-query invalidation race; the shared bridge now cancels affected
+  provider reads before invalidation, with seven real QueryObserver regressions.
+  Authored draft writes retain their separate generation rules. A synthetic
+  10,000-row warm identity lookup measured 78µs p95, excluding IPC/rendering.
+- [PR #145](https://github.com/ruru-m07/gitru/pull/145), RURU-106 native core:
+  verified WAL-consistent snapshots, physical credential-reference redaction,
+  inspected nonce/checksum/CAS replacement and preserved original bundles.
+  Local checks pass 88 native tests, including 14 independently authored recovery
+  cases and nine real hard process terminations. Newer current drafts remain
+  recoverable in the original bundle when incoming drafts replace active data.
+  The issue stays In Progress: actual writer shutdown, native picker/dialog UI,
+  reviewed schema-0003 recovery policy and Windows power-loss qualification remain
+  open. Core policy deliberately refuses v3/unknown/outbox schemas. The parallel
+  stacks do not yet form a release-qualified combined backup feature.
+
+The next batch implements RURU-97 independent detail storage/hydration and
+RURU-100 contextual capability consumers from the reviewed #146 commit. These
+are In Progress and record their contracts before major edits. Detail coverage
+is separate from summary coverage; local reads never initiate provider HTTP.
+Contextual capabilities distinguish authorized saved reads, remote sync and
+remote writes across account/repository/resource targets. Temporary network or
+quota errors must not hide still-authorized cached content; access denial does.
+Private draft recovery stays independent. Shared IPC generation is sequenced
+after the detail contract freezes. Publication authorizes review; no PR is
+merged without user authorization.
 
 ### Linear implementation backlog (2026-10-03)
 
