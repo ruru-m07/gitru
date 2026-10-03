@@ -675,7 +675,7 @@ describe("ordinary collaboration workspace across provider policies", () => {
     expect(item).not.toHaveBeenCalled();
     await user.click(screen.getByLabelText("Provider account"));
     await user.click(
-      await screen.findByRole("option", { name: "@other-user" }),
+      await screen.findByRole("option", { name: "GitHub · @other-user" }),
     );
     await user.click(await screen.findByText("Other actor item"));
     expect(await screen.findByText("Other actor provider body")).toBeVisible();

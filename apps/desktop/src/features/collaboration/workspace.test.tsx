@@ -1,5 +1,10 @@
 import { collaboration, collaborationKeys } from "@gitru/collaboration-client";
-import type { GithubCliDiscovery, ItemPage, LocalDraft } from "@gitru/commands";
+import type {
+  ContextCapabilityRequest,
+  GithubCliDiscovery,
+  ItemPage,
+  LocalDraft,
+} from "@gitru/commands";
 import {
   onlineManager,
   QueryClient,
@@ -14,6 +19,7 @@ import {
   fixtureAccounts,
   fixtureContextualCapabilities,
   fixtureGithubCli,
+  fixtureGitlabAccount,
   fixtureItem,
   fixturePage,
   fixtureRepositories,
@@ -71,6 +77,126 @@ function readMocks(page: ItemPage = fixturePage) {
 }
 
 describe("collaboration workbench", () => {
+  it("distinguishes providers with the same login and actor ID while selecting exact account keys", async () => {
+    // jsdom cannot evaluate the browser top-layer selectors used by Floating UI.
+    const matches = Element.prototype.matches;
+    vi.spyOn(Element.prototype, "matches").mockImplementation(function (
+      this: Element,
+      selector,
+    ) {
+      return [":modal", ":fullscreen", ":popover-open"].includes(selector)
+        ? false
+        : matches.call(this, selector);
+    });
+    const github = {
+      ...fixtureAccount,
+      login: "same-login",
+      actor_id: fixtureGitlabAccount.actor_id,
+    };
+    const gitlab = { ...fixtureGitlabAccount, login: github.login };
+    const gitlabRepositories = {
+      ...fixtureRepositories,
+      repositories: [
+        {
+          ...fixtureRepositories.repositories[0],
+          id: "gitlab-project",
+          account_id: gitlab.id,
+          full_name: "gitlab-group/cached-project",
+          web_url: "https://gitlab.com/gitlab-group/cached-project",
+          selected: false,
+        },
+      ],
+    };
+    const items = readMocks();
+    mockTauriCommandResult("collaboration_accounts", {
+      ...fixtureAccounts,
+      accounts: [github, gitlab],
+    });
+    const repositories = mockTauriCommand(
+      "collaboration_repositories",
+      (payload) =>
+        (payload as { accountId: string }).accountId === gitlab.id
+          ? gitlabRepositories
+          : fixtureRepositories,
+    );
+    const capabilities = mockTauriCommand(
+      "collaboration_contextual_capabilities",
+      (payload) => {
+        const { request } = payload as { request: ContextCapabilityRequest };
+        const isGitlab = request.account_id === gitlab.id;
+        const snapshot = fixtureContextualCapabilities(
+          isGitlab ? gitlab : github,
+          request.target,
+          isGitlab ? "none" : "native_notifications",
+        );
+        if (isGitlab) {
+          for (const facet of snapshot.facets) {
+            if (facet.facet === "repositories") continue;
+            const access = {
+              state: "unsupported" as const,
+              reason:
+                facet.facet === "inbox"
+                  ? ("provider_semantics" as const)
+                  : ("not_implemented" as const),
+            };
+            facet.saved_read = access;
+            facet.synchronize = access;
+            facet.observation = "unknown";
+          }
+        }
+        return snapshot;
+      },
+    );
+    const user = userEvent.setup();
+    const { cache } = mount(<CollaborationWorkspace kind="pull_request" />);
+    expect(await screen.findByText(fixtureItem.title)).toBeVisible();
+    expect(screen.getByLabelText("Provider account")).toHaveTextContent(
+      "GitHub · @same-login",
+    );
+    await user.click(screen.getByLabelText("Provider account"));
+    expect(
+      await screen.findByRole("option", { name: "GitHub · @same-login" }),
+    ).toBeVisible();
+    await user.click(
+      screen.getByRole("option", { name: "GitLab · @same-login" }),
+    );
+    expect(
+      await screen.findByText("gitlab-group/cached-project"),
+    ).toBeVisible();
+    expect(screen.getByLabelText("Provider account")).toHaveTextContent(
+      "GitLab · @same-login",
+    );
+    expect(screen.queryByText(fixtureItem.title)).not.toBeInTheDocument();
+    expect(repositories).toHaveBeenCalledWith({ accountId: gitlab.id });
+    expect(capabilities).toHaveBeenCalledWith({
+      request: expect.objectContaining({
+        account_id: gitlab.id,
+        authorization_epoch: gitlab.authorization_epoch,
+      }),
+    });
+    expect(cache.getQueryData(collaborationKeys.repositories(gitlab))).toEqual(
+      gitlabRepositories,
+    );
+    expect(
+      items.mock.calls.every(
+        ([payload]) =>
+          (payload as { query: { account_id: string } }).query.account_id ===
+          github.id,
+      ),
+    ).toBe(true);
+    await user.click(screen.getByLabelText("Provider account"));
+    await user.click(
+      await screen.findByRole("option", { name: "GitHub · @same-login" }),
+    );
+    expect(await screen.findByText(fixtureItem.title)).toBeVisible();
+    expect(screen.getByLabelText("Provider account")).toHaveTextContent(
+      "GitHub · @same-login",
+    );
+    expect(cache.getQueryData(collaborationKeys.repositories(github))).toEqual(
+      fixtureRepositories,
+    );
+  });
+
   it("bounds repository rendering and lets search find repositories beyond the first page", async () => {
     readMocks();
     mockTauriCommandResult("collaboration_repositories", {

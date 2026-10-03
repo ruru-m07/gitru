@@ -215,3 +215,16 @@ collaboration Clippy and format pass. Synthetic fixtures do not qualify a live
 PAT, production vault or other platforms. Root still integrates the repaired
 R79 ancestor and qualifies caller/native GUI/package before PR publication.
 No PR is merged. See [R110 work note](./RURU-110.md).
+
+### Native account picker correction
+
+Actual dedicated macOS native QA confirms the child Accounts handoff reaches the
+main manual GitLab form, its long dialog scrolls to the complete form, and saved
+nested repositories/selection are isolated between two GitLab actors and a
+GitHub actor with the same login/native ID. This also exposes identical @login
+picker labels across provider families. The picker now presents provider plus
+login (and validated installation presentation when different), retaining exact
+account IDs and immutable query keys. An independent user-event regression
+proves the same-login switch cannot read GitHub items for the unsupported GitLab
+feed. Fifty focused desktop cases, actual desktop/E2E types and scoped Biome
+pass. Final rebuilt native UI and cold reopen qualification follow before review.
