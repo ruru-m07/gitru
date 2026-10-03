@@ -1116,3 +1116,16 @@ exact-head CodeQL. R79 is locally qualified for review; live provider/vault and 
 qualifications remain distinct from its exact-head remote CI. No PR has
 been merged. See [RURU-79's work note](./collaboration-work/RURU-79.md) for current
 native proof, frontend and isolated QA evidence.
+
+
+### RURU-101 qualification lane — 3 October 2026
+
+Live dependency/PR/worktree overlap audit selects independent facet reconciliation
+qualification at R79/#154 `1a51a75`, in its own attached worktree.
+[R101's pre-code contract](./collaboration-work/RURU-101.md) requires a source-backed
+validator/overlap/absence/head policy and independent observable regressions before
+any storage correction; provider facets that are Unsupported remain so. R110's
+GitLab account/repository lane uses a separate checkout. Parent #154 currently has
+a real macOS Rust socket-fixture failure, which root repairs before publishing
+next PRs. Local checks, exact-head CI and live provider/vault gates stay distinct.
+No PR has been merged.
