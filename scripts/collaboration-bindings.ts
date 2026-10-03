@@ -32,6 +32,14 @@ const linkCommands = await Bun.file(
     root,
   ),
 ).text();
+// Repository registration receives the serialized local metadata back from
+// add_local_git_repo. Rust Option is null here too, including safe missing origin.
+const repositoryInfo = await Bun.file(
+  new URL("crates/ipc/src/repo_manager.rs", root),
+).text();
+const repositoryCommands = await Bun.file(
+  new URL("crates/ipc/src/commands.rs", root),
+).text();
 const output = new URL("packages/commands/src/types.ts", root);
 let generated = await Bun.file(output).text();
 const snake = (value: string) =>
@@ -47,6 +55,8 @@ for (const source of [
   localLinks,
   gitRemotes,
   linkCommands,
+  repositoryInfo,
+  repositoryCommands,
 ]) {
   for (const match of source.matchAll(
     /#\[serde\(rename_all = "snake_case"\)\]\s*pub enum (\w+)\s*\{([^}]+)\}/g,

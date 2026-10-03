@@ -70,6 +70,9 @@ const registered = {
   id: "registered-a",
   name: "My registered clone",
   path: "/synthetic/clone-a",
+  origin: null,
+  current_branch: null,
+  ahead_behind: null,
   has_uncommitted_changes: false,
   last_updated: 0,
 };
