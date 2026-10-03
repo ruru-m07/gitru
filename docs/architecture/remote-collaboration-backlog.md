@@ -96,6 +96,15 @@ issue details; both consume the reviewed registry/detail/capability contracts.
 The hourly continuation rechecks live blockers, worktrees, overlap and CI before
 starting them. No PR has been merged.
 
+Subsequent #147 Linux CI captured OS code 26 (`Text file busy`) while launching
+the inherited credential test snapshot. Audit found only two parent-written
+executable snapshots, in RURU-95/RURU-106; both use waited Unix child writers now,
+preserving every hard-kill checkpoint and assertion without retries or changed
+parallelism. Signed repairs passed native/Clippy/review and are propagated through
+the descendant stacks. Current RURU-100 again passes all 127 native tests. New
+exact-head Linux/platform/security runs remain pending; see the work notes for
+the observed errno versus source-inferred descriptor mechanism.
+
 Make GitHub, GitLab and Bitbucket collaboration feel like native local data: cached navigation never waits for provider HTTP, while one Rust runtime keeps durable SQLite projections current across all tabs.
 
 Provider accounts work independently of Gitru cloud sign-in. GitHub connects with a manual PAT or explicitly selected existing GitHub CLI credential; Gitru does not initiate an OAuth/device flow.

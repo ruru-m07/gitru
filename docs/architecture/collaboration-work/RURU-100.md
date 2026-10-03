@@ -196,3 +196,18 @@ GitHub authentication or provider APIs.
 
 Root owns publication, current exact-head CI/security review and Linear status.
 This local evidence does not claim remote matrix completion or live-account QA.
+
+Post-publication fixture correction: #147's `4a1e466` Linux run captured OS code
+26 (`ExecutableFileBusy` / `Text file busy`) when starting the inherited
+credential crash harness, before a recovery assertion. A complete executable
+fixture audit found only the RURU-95 and RURU-106 parent-written snapshots;
+RURU-105 executes its existing binary. Both Unix fixtures now wait for an isolated
+child writer to exit before executing the snapshot. Real crash checkpoints,
+assertions, timeouts, parallelism and production code are preserved. The exact
+errno is observed; the fork-inherited descriptor explanation remains a
+source-supported diagnosis without a CI descriptor trace. Both signed repairs
+passed focused/full native checks, Clippy and independent review, and are
+propagated through the published descendant stack. The current RURU-100 stack
+again passes all 127 native tests, with actual compilation from this worktree
+recorded in `/tmp/gitru-ruru100-post-snapshot-2026-10-03.log`. Remote Linux/platform
+and security runs restarted on the new heads and remain separate gates.

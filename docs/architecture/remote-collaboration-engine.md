@@ -1782,6 +1782,15 @@ original content assertions. These signed descendant heads have restarted CI;
 completed ancestor checks do not qualify a child's current head. The hourly
 continuation checks live issue dependencies, overlap and CI before proceeding.
 
+A later #147 Linux run captured OS code 26 (`Text file busy`) at the inherited
+credential crash-test snapshot spawn. Fixture audit/review corrected the only
+two parent-written executable snapshots (RURU-95 and RURU-106) with waited Unix
+child writers; no retries, test serialization or production change is introduced.
+The observed error and source-inferred descriptor mechanism are distinguished
+in the work notes. The signed repairs are propagated through the review stacks;
+the current RURU-100 native suite again passes 127 tests. Fresh exact-head
+Linux/platform and security checks remain pending.
+
 The foundation received independent native and frontend review with no new
 blocking findings. `make verify` passed on macOS on 3 October, including the
 194 frontend tests, workspace lint/type checks, production frontend build,
