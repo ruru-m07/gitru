@@ -9,6 +9,14 @@ Local C01–C49 keys are planning keys, not Linear identifiers. Linear status an
 
 ## Goal
 
+Continuation started on 2026-10-03: signed foundation commit
+`baafef75e82743b756b412bd5d7bc443636c76c8` is published in draft
+[PR #141](https://github.com/ruru-m07/gitru/pull/141). RURU-138 is In Review;
+RURU-95, RURU-99 and RURU-105 are In Progress in isolated worktrees. Both
+`make verify` and packaged macOS E2E (2 specs / 3 cases) passed locally.
+Remote CI is running; the original publication index below remains a snapshot.
+The hourly chat continuation checks live Linear/PR state before picking work.
+
 Make GitHub, GitLab and Bitbucket collaboration feel like native local data: cached navigation never waits for provider HTTP, while one Rust runtime keeps durable SQLite projections current across all tabs.
 
 Provider accounts work independently of Gitru cloud sign-in. GitHub connects with a manual PAT or explicitly selected existing GitHub CLI credential; Gitru does not initiate an OAuth/device flow.

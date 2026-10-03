@@ -1749,10 +1749,13 @@ personal CLI credentials were inspected and no remote CI run was created.
 The foundation received independent native and frontend review with no new
 blocking findings. `make verify` passed on macOS on 3 October, including the
 194 frontend tests, workspace lint/type checks, production frontend build,
-Rust formatting/Clippy and all Rust workspace tests. Packaged E2E is being
-rerun for publication; remote CI and live provider/vault gates remain pending.
-RURU-138 owns the foundation PR; follow-on issues use isolated branches from
-this foundation until its review completes. RURU-95 (credential cutover),
+Rust formatting/Clippy and all Rust workspace tests. The packaged macOS rerun
+passed both specs and all three cases. The signed foundation commit
+`baafef75e82743b756b412bd5d7bc443636c76c8` is published in draft
+[PR #141](https://github.com/ruru-m07/gitru/pull/141) against `dev`; remote CI
+and live provider/vault gates remain pending. RURU-138 is In Review;
+follow-on issues use isolated branches from this foundation until its review
+completes. RURU-95 (credential cutover),
 RURU-99 (private draft recovery) and RURU-105 (migration fixtures) are the
 first parallel batch, subject to live blockers and explicit file ownership.
 
