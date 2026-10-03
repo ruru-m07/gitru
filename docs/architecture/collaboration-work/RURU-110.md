@@ -174,3 +174,18 @@ change is expected. Independent actual two-response synthetic probes must prove
 oldgrant/draft preservation, strict restart barrier and zero dispatch before
 expiry, plus unknown/mismatched actor controls. The direct low-level probe API
 may remain a compatibility wrapper; keep lifecycle helper behavior explicit.
+
+
+The partial-probe seam also requires a native quota-only writer transaction.
+Existing persist_rate_limit reads its previous deadline outside the writer, so
+concurrent same-epoch observations can overwrite a later deadline with a shorter
+one. Root approves Store.merge_provider_budget and a shared internal cutover
+helper that compares maximum deadlines under the single writer transaction,
+rechecks exact current epoch, preserves last-success evidence and publishes a
+quota revision only. Known AuthRequired/Disconnected actors may retain observed
+quota without reactivating grants; old-epoch late observations cannot commit.
+The ordinary epoch accessor requires Active, so inactive behavior needs this
+explicit quota-only guard, not an assumed set_sync_status exception. Add
+independent concurrent/max/old-epoch/inactive proof. A picked worker delayed by
+the connection lifecycle must recheck strict provider backoff after acquiring
+its gate and before credentials/HTTP, rather than relying on an earlier pick.
