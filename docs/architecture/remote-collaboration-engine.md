@@ -1795,7 +1795,7 @@ Each branch records its design and evidence in
 separate gate. Foundation CI exposed an initial child-probe readiness race and
 four CLI fixture `Vec::remove` logging-model alerts; scoped test fixes passed
 local packaged E2E/CLI checks and the exact-head remote matrix was restarted.
-No production credential logging or rule suppression was introduced. Default
+No production credential logging or rule suppression was introduced.
 Exact-head dynamic CodeQL runs have now been observed on stacked children
 #142, #143, #146 and #147. Each merge still requires every relevant analysis to
 complete and zero relevant alerts on the exact proposed head. Do not infer a
@@ -1885,7 +1885,7 @@ writes remain distinct; every remote write is explicitly unsupported. The
 ordinary workspace and sidebar use typed policy/inbox semantics, with shared
 unsupported/denied/missing/read-only boundaries and private drafts outside
 provider gates. One bridge-owned local deadline timer repairs eligibility after
-cooldown expiry. Local evidence passes 126 collaboration, 44 SDK and 193 desktop
+cooldown expiry. Local evidence passes 127 collaboration, 44 SDK and 193 desktop
 tests, including actual authorization-reset/CAS and pending-query races; both
 independent reviews accepted the source. Native fixture QA and final publication
 gates are recorded in [RURU-100's work note](./collaboration-work/RURU-100.md).

@@ -2,7 +2,9 @@
 
 Status: implementation and native fixture QA locally verified; publication/remote gates pending,
 3 October 2026. Started on reviewed RURU-76 `f5ae068` / PR #146, integrated
-signed RURU-97 `64125441` before shared wiring. This document is the continuation point for the complete
+signed RURU-97 `64125441` before shared wiring, then signed-rebased onto
+`4a1e46698e188ed56d3788cfa243bdefb12bcecd` after its parent fixture/security
+corrections. This document is the continuation point for the complete
 issue; an account-only inbox change does not satisfy its acceptance criteria.
 
 ## Contract and ownership
@@ -122,15 +124,17 @@ copies provider descriptions into capability responses.
 
 Local evidence uses only synthetic accounts, stores and vaults:
 
-- All 126 collaboration tests pass under the shared-target serial wrapper;
+- All 127 collaboration tests pass on the integrated RURU-97 base under the
+  shared-target serial wrapper;
   two subprocess entry points remain intentionally ignored by the normal runner.
   All 12 new contextual cases cover ownership/epoch/kind/instance fences,
   concurrent cutover snapshot coherence, inherited discovery and summary denial,
   inactive canonical identities, unknown profiles and zero HTTP/vault/durable
   hydration admission, detail empty/omitted/oversized evidence, successful-page
   cooldown without an error, quota-only idle detail barriers and expired/absent
-  explicit retry eligibility. A focused final rerun checks the single captured
-  eligibility time; all-target collaboration Clippy passes.
+  explicit retry eligibility. The full final run includes the single captured
+  eligibility time and inherited exact CLI-expiry regression; all-target
+  collaboration Clippy passes.
 - All 44 SDK tests pass, including generated contextual wire/nullability/string
   identities, initial pending same-epoch invalidation, epoch reset and target
   isolation, and five shared deadline cases using real QueryObservers.

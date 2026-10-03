@@ -77,9 +77,10 @@ control account/repository/resource saved reads, sync and explicitly unsupported
 writes. Shared workspace/sidebar consumers distinguish provider inbox semantics,
 permissions and data missingness while retaining authored text/CAS through a
 same-actor authorization refresh. A shared local deadline coordinator repairs
-cooldown eligibility. All 126 collaboration, 44 SDK and 193 desktop tests and
-both independent reviews pass locally. Native fixture QA/publication/current
-exact-head remote security and platform checks remain separate gates; the
+cooldown eligibility. All 127 collaboration, 44 SDK and 193 desktop tests and
+both independent reviews and native synthetic fixture QA pass locally.
+Publication/current exact-head remote security and platform checks remain
+separate gates; the
 publication index below remains historical. The separately published RURU-99
 authored-editor/recovery extraction needs narrow merge reconciliation.
 
