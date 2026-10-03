@@ -113,7 +113,7 @@ if (await eventsFile.exists()) {
     /^import[^\n]+from ["']@tauri-apps\/api\/event["'];?$/m,
     "",
   );
-  if (!/\bEvent\b/.test(eventUses))
+  if (!/\bEvent\b/.test(eventUses.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "")))
     events = events.replace(/,\s*type Event(?=\s*[,}])/, "");
   await Bun.write(eventsOutput, events);
 }
