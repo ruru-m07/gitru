@@ -1,0 +1,30 @@
+{
+  "name": "@gitru/collaboration-client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./react": "./src/react.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run --config ../../vitest.config.ts --project collaboration-client"
+  },
+  "dependencies": {
+    "@gitru/commands": "*",
+    "@tauri-apps/api": "catalog:"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": "^5.90.11",
+    "react": "^19.1.0"
+  },
+  "devDependencies": {
+    "@tanstack/react-query": "^5.90.11",
+    "@types/react": "catalog:",
+    "react": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "^5.0.0"
+  }
+}

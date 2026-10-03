@@ -19,6 +19,7 @@ const E2E_IDENTIFIER: &str = "com.ruru.gitru.e2e";
 
 #[cfg(target_os = "macos")]
 mod app_menu;
+mod collaboration_setup;
 mod commands;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -39,6 +40,7 @@ pub fn run() {
             services: RwLock::new(HashMap::new()),
         })
         .manage(RepoContextRuntime::default())
+        .manage(commands::collaboration::CollaborationState::default())
         .manage(Arc::new(SessionManager::new()));
 
     #[cfg(target_os = "macos")]
@@ -56,9 +58,23 @@ pub fn run() {
             #[cfg(feature = "e2e")]
             reset_e2e_state(app)?;
             setup_managers(app);
+            collaboration_setup::setup(app);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::collaboration::collaboration_accounts,
+            commands::collaboration::collaboration_connect_github,
+            commands::collaboration::collaboration_discover_github_cli,
+            commands::collaboration::collaboration_connect_github_cli,
+            commands::collaboration::collaboration_disconnect,
+            commands::collaboration::collaboration_repositories,
+            commands::collaboration::collaboration_select_repository,
+            commands::collaboration::collaboration_items,
+            commands::collaboration::collaboration_item,
+            commands::collaboration::collaboration_refresh,
+            commands::collaboration::collaboration_changes_since,
+            commands::collaboration::collaboration_save_draft,
+            commands::collaboration::collaboration_draft,
             ipc::commands::add_local_git_repo,
             ipc::commands::clone_repository,
             ipc::commands::cancel_clone_repository,
@@ -158,7 +174,13 @@ fn reset_e2e_state(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let data_dir = app.path().app_data_dir()?;
-    for file_name in [STORE_FILE, "app-state.json"] {
+    for file_name in [
+        STORE_FILE,
+        "app-state.json",
+        "collaboration.sqlite3",
+        "collaboration.sqlite3-wal",
+        "collaboration.sqlite3-shm",
+    ] {
         let path = data_dir.join(file_name);
         match std::fs::remove_file(path) {
             Ok(()) => {}

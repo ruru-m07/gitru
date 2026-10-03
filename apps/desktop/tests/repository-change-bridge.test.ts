@@ -228,7 +228,7 @@ test("focus recovery still refetches if native cache clearing fails", async () =
     throw new Error("native bridge unavailable");
   });
 
-  expect(client.invalidateQueries).toHaveBeenCalledWith({
-    refetchType: "active",
-  });
+  expect(client.invalidateQueries).toHaveBeenCalledWith(
+    expect.objectContaining({ refetchType: "active" }),
+  );
 });

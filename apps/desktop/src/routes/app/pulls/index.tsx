@@ -1,11 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import PageLayout from "@/components/page-layout";
+import { CollaborationWorkspace } from "@/features/collaboration/workspace";
 
 export const Route = createFileRoute("/app/pulls/")({
   component: RouteComponent,
 });
 
-// TODO: Implement pull request browsing and review UI.
 function RouteComponent() {
-  return <PageLayout className="p-4">Cooking pulls</PageLayout>;
+  return <CollaborationWorkspace kind="pull_request" />;
 }

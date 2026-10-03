@@ -1,0 +1,182 @@
+/** Sanitized deterministic test fixtures. Never imported by production code. */
+import type {
+  AccountSnapshot,
+  GithubCliDiscovery,
+  ItemPage,
+  RemoteItem,
+  RepositorySnapshot,
+} from "@gitru/commands";
+import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
+
+export const fixtureAccount = {
+  id: "fixture-account",
+  provider: "github" as const,
+  host: "https://github.com",
+  actor_id: "123",
+  login: "example-user",
+  display_name: "Example User",
+  authorization_epoch: "1",
+  state: "active" as const,
+  notifications_supported: true,
+};
+export const fixtureAccounts: AccountSnapshot = {
+  accounts: [fixtureAccount],
+  revision: "10",
+  authorization_view: "1",
+};
+export const fixtureGithubCli: GithubCliDiscovery = {
+  status: "available",
+  accounts: [
+    {
+      id: "fixture-cli-example",
+      login: "example-user",
+      host: "github.com",
+      active: true,
+      availability: "ready",
+    },
+    {
+      id: "fixture-cli-second",
+      login: "second-user",
+      host: "github.com",
+      active: false,
+      availability: "ready",
+    },
+  ],
+};
+export const fixtureRepositories: RepositorySnapshot = {
+  repositories: [
+    {
+      id: "fixture-repository",
+      account_id: fixtureAccount.id,
+      provider_id: "345",
+      full_name: "example-org/engine",
+      name: "engine",
+      web_url: "https://github.com/example-org/engine",
+      description: "An example repository for tests",
+      default_branch: "main",
+      selected: true,
+    },
+  ],
+  revision: "10",
+  authorization_view: "1",
+  coverage: {
+    state: "partial",
+    validated_at: "2026-10-02T05:00:00Z",
+    remote_has_more: true,
+  },
+  sync: {
+    state: "idle",
+    last_success_at: "2026-10-02T05:00:00Z",
+    next_retry_at: null,
+    error: null,
+  },
+};
+export const fixtureItem: RemoteItem = {
+  id: "fixture-item",
+  account_id: fixtureAccount.id,
+  repository_id: "fixture-repository",
+  provider_id: "678",
+  kind: "pull_request",
+  number: "42",
+  title: "Keep collaboration data available offline",
+  body: "This description is saved locally.\n\nIt remains readable when the provider cannot be reached.",
+  body_omitted: false,
+  author: "example-user",
+  web_url: "https://github.com/example-org/engine/pull/42",
+  state: "open",
+  updated_at: "2026-10-02T05:00:00Z",
+  head_oid: "abc123",
+  is_draft: false,
+  reason: null,
+  unread: null,
+};
+export const fixturePage: ItemPage = {
+  items: [fixtureItem],
+  revision: "10",
+  authorization_view: "1",
+  next_cursor: null,
+  coverage: {
+    state: "partial",
+    validated_at: "2026-10-02T05:00:00Z",
+    remote_has_more: true,
+  },
+  sync: {
+    state: "offline",
+    last_success_at: "2026-10-02T05:00:00Z",
+    next_retry_at: null,
+    error: null,
+  },
+};
+
+/** Install only in a standalone browser QA harness, before rendering real features. */
+export function installCollaborationPreviewBoundary() {
+  mockWindows("main");
+  mockIPC((command, payload) => {
+    const input = payload as Record<string, unknown> | undefined;
+    switch (command) {
+      case "collaboration_accounts":
+        return fixtureAccounts;
+      case "collaboration_discover_github_cli":
+        return fixtureGithubCli;
+      case "collaboration_connect_github_cli":
+        return input?.candidateId === "fixture-cli-second"
+          ? {
+              ...fixtureAccount,
+              id: "fixture-second-account",
+              actor_id: "124",
+              login: "second-user",
+              display_name: "Second User",
+            }
+          : fixtureAccount;
+      case "collaboration_repositories":
+        return fixtureRepositories;
+      case "collaboration_items": {
+        const query = input?.query as {
+          kind: RemoteItem["kind"];
+          search: string | null;
+        };
+        const item = {
+          ...fixtureItem,
+          kind: query.kind,
+          ...(query.kind === "notification"
+            ? { state: "unread", unread: true, reason: "review_requested" }
+            : {}),
+        };
+        return {
+          ...fixturePage,
+          items:
+            query.search &&
+            !item.title.toLowerCase().includes(query.search.toLowerCase())
+              ? []
+              : [item],
+        };
+      }
+      case "collaboration_item":
+        return { item: fixtureItem, revision: "10", authorization_view: "1" };
+      case "collaboration_draft":
+        return null;
+      case "collaboration_save_draft":
+        return { ...(input?.draft as object), generation: "1" };
+      case "collaboration_refresh":
+        return { job_id: "fixture-job" };
+      case "collaboration_select_repository":
+        return "10";
+      case "collaboration_changes_since":
+        return {
+          revision: "10",
+          authorization_view: "1",
+          reset_required: false,
+          changes: [],
+          has_more: false,
+        };
+      case "plugin:event|listen":
+        return 1;
+      case "plugin:event|unlisten":
+        return undefined;
+      default:
+        throw new Error(
+          `Unexpected command in collaboration preview: ${command}`,
+        );
+    }
+  });
+}

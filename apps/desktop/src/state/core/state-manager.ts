@@ -22,7 +22,9 @@ export async function refreshActiveQueriesAfterNativeFocus(
   client: QueryClient,
   invalidateBackendCaches: () => Promise<unknown>,
 ) {
-  await client.cancelQueries({ type: "active" });
+  const gitQueries = (query: { queryKey: readonly unknown[] }) =>
+    query.queryKey[0] !== "collaboration";
+  await client.cancelQueries({ type: "active", predicate: gitQueries });
 
   try {
     await invalidateBackendCaches();
@@ -31,7 +33,10 @@ export async function refreshActiveQueriesAfterNativeFocus(
     // unavailable; the watcher remains the primary freshness path.
   }
 
-  await client.invalidateQueries({ refetchType: "active" });
+  await client.invalidateQueries({
+    refetchType: "active",
+    predicate: gitQueries,
+  });
 }
 
 /**

@@ -2,5 +2,12 @@
 resolver = "2"
 
 members = [
-  "apps/desktop/src-tauri", "crates/git", "crates/ipc", "crates/logger",
+  "apps/desktop/src-tauri", "crates/git", "crates/ipc", "crates/logger", "crates/collaboration",
 ]
+
+# Rust 1.94's stripped proc-macro dylibs can fail macOS 27's LINKEDIT
+# alignment check. Keep debug info for build-time crates; final release
+# binaries retain the normal optimized profile. Revisit on toolchain upgrade.
+# https://github.com/rust-lang/rust/issues/157750
+[profile.release.build-override]
+debug = true

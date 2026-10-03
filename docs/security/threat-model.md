@@ -7,8 +7,16 @@ commit messages, diffs, remotes, and hosted-service responses as untrusted.
 ## Assets and trust boundaries
 
 - **Credentials and tokens:** Git credentials remain with Git/credential helpers.
-  Hosted-service tokens must use the operating-system credential store when that
-  integration is added; they must not enter URLs, analytics, or logs.
+  Hosted-service tokens use the operating-system credential store; they must not
+  enter URLs, analytics, or logs. GitHub PAT entry clears the password field
+  before awaiting native verification and does not persist tokens in UI state.
+  GitHub CLI discovery returns metadata and opaque expiring candidate IDs only.
+  Explicit import retrieves the selected credential natively and verifies its
+  `/user` identity before writing to the vault or database. CLI subprocesses use
+  recognized executable paths, a neutral working directory, bounded output and
+  deadlines; token environment overrides, debug logging and prompts are disabled.
+  No CLI token is returned to a webview. Gitru never initiates CLI login or
+  changes the active CLI account.
 - **Repository and filesystem data:** command inputs are scoped to an open
   repository context. File operations must preserve the existing service-layer
   path checks and must not accept arbitrary web content as a path.
@@ -19,6 +27,17 @@ commit messages, diffs, remotes, and hosted-service responses as untrusted.
 - **Remote content:** external navigation crosses a backend HTTPS-only validator.
   Remote images are limited to the explicitly listed avatar hosts and the CSP
   blocks all other image and network origins.
+- **Collaboration data:** private cached observations are partitioned by account
+  and authorization epoch. Revocation and scope denial fence native reads and
+  delayed frontend responses. Native collaboration management commands require
+  the main local webview; tab webviews can read authorized snapshots and save
+  private drafts. Provider bodies render as text. SQLite files use private Unix
+  permissions but are not encrypted; drafts survive account disconnection.
+  Child Accounts buttons send a fixed, payload-free UI hint to the main host;
+  this event never supplies credentials, account choices or authorization.
+  The host hides native tab surfaces before mounting credential controls and
+  restores the selected tab on close. Repository selection is an authorized
+  domain preference available in local child tabs.
 
 ## Expected attackers
 

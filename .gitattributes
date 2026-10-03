@@ -1,0 +1,3 @@
+# SQLx hashes exact migration bytes; historical SQL fixtures include literal text.
+crates/collaboration/migrations/*.sql text eol=lf
+crates/collaboration/tests/fixtures/migrations/**/*.sql text eol=lf

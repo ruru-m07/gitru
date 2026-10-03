@@ -45,6 +45,7 @@
         "@dnd-kit/modifiers": "^9.0.0",
         "@dnd-kit/sortable": "^10.0.0",
         "@dnd-kit/utilities": "^3.2.2",
+        "@gitru/collaboration-client": "*",
         "@img-comparison-slider/react": "^8.0.2",
         "@lucide/lab": "^0.1.2",
         "@monaco-editor/react": "^4.7.0",
@@ -168,6 +169,25 @@
         "serve": "^14.2.6",
         "tailwindcss": "^4.2.1",
         "typescript": "^5.9.3",
+      },
+    },
+    "packages/collaboration-client": {
+      "name": "@gitru/collaboration-client",
+      "version": "0.0.0",
+      "dependencies": {
+        "@gitru/commands": "*",
+        "@tauri-apps/api": "catalog:",
+      },
+      "devDependencies": {
+        "@tanstack/react-query": "^5.90.11",
+        "@types/react": "catalog:",
+        "react": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "^5.0.0",
+      },
+      "peerDependencies": {
+        "@tanstack/react-query": "^5.90.11",
+        "react": "^19.1.0",
       },
     },
     "packages/commands": {
@@ -471,6 +491,8 @@
     "@formatjs/intl-localematcher": ["@formatjs/intl-localematcher@0.8.13", "", { "dependencies": { "@formatjs/fast-memoize": "3.1.7" } }, "sha512-kHEAFOkeJSPNi7c5PaKaRjxcBrJwzzt81ifUu+8uve1EDW/VJl83KsxmqgqNZLzcFEhSliZGvx3+pk/RH0IOmg=="],
 
     "@fumadocs/tailwind": ["@fumadocs/tailwind@0.0.3", "", { "dependencies": { "postcss-selector-parser": "^7.1.1" }, "peerDependencies": { "tailwindcss": "^4.0.0" }, "optionalPeers": ["tailwindcss"] }, "sha512-/FWcggMz9BhoX+13xBoZLX+XX9mYvJ50dkTqy3IfocJqua65ExcsKfxwKH8hgTO3vA5KnWv4+4jU7LaW2AjAmQ=="],
+
+    "@gitru/collaboration-client": ["@gitru/collaboration-client@workspace:packages/collaboration-client"],
 
     "@gitru/commands": ["@gitru/commands@workspace:packages/commands"],
 

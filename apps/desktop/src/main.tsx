@@ -32,6 +32,7 @@ if (import.meta.env.MODE === "e2e") {
   `;
   document.head.append(style);
   await import("@wdio/tauri-plugin");
+  await import("./bootstrap/e2e-collaboration");
 }
 
 try {
