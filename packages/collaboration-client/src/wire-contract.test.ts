@@ -1,13 +1,17 @@
 import {
   AccountSnapshotSchema,
+  CapabilitySnapshotSchema,
   collaborationAccounts,
+  collaborationCapabilities,
   collaborationConnectGithubCli,
   collaborationDiscoverGithubCli,
   collaborationItem,
   collaborationItems,
+  collaborationResolveResource,
   GithubCliDiscoverySchema,
   ItemPageSchema,
   ItemQuerySchema,
+  ResourceResolutionSchema,
 } from "@gitru/commands";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -16,6 +20,63 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 afterEach(() => invoke.mockReset());
 
 describe("generated collaboration wire contract", () => {
+  it("preserves typed capability states, large native identities, and metadata-only resolution", async () => {
+    const instance = {
+      id: "gitlab:https://git.example:8443/gitlab/",
+      provider: "gitlab",
+      base_url: "https://git.example:8443/gitlab/",
+    };
+    const capabilities = CapabilitySnapshotSchema.parse({
+      account_id: "actor",
+      instance,
+      facets: [
+        { facet: "pull_requests", state: "supported", reason: null },
+        { facet: "merge", state: "unsupported", reason: "not_implemented" },
+        { facet: "inbox", state: "unavailable", reason: "missing_scope" },
+      ],
+      inbox_semantics: "todos",
+      revision: "9007199254740993",
+      authorization_view: "3",
+    });
+    expect(capabilities.facets[0]?.reason).toBeNull();
+    const resolution = ResourceResolutionSchema.parse({
+      state: "resolved",
+      resource: {
+        account_id: "actor",
+        instance_id: instance.id,
+        id: "opaque-pull",
+        kind: "pull_request",
+        provider_id: "9007199254740994",
+      },
+      candidates: [],
+      revision: "9007199254740993",
+      authorization_view: "3",
+    });
+    expect(resolution.resource?.provider_id).toBe("9007199254740994");
+    expect(
+      ResourceResolutionSchema.parse({
+        ...resolution,
+        state: "unresolved",
+        resource: null,
+      }).resource,
+    ).toBeNull();
+    invoke
+      .mockResolvedValueOnce(capabilities)
+      .mockResolvedValueOnce(resolution);
+    await collaborationCapabilities({ accountId: "actor" });
+    const locator = {
+      instance_id: instance.id,
+      kind: "pull_request" as const,
+      locator_kind: "repository_number" as const,
+      value: "7",
+      repository_path: "group/subgroup/project",
+    };
+    await collaborationResolveResource({ accountId: "actor", locator });
+    expect(invoke.mock.calls).toEqual([
+      ["collaboration_capabilities", { accountId: "actor" }],
+      ["collaboration_resolve_resource", { accountId: "actor", locator }],
+    ]);
+  });
   it("accepts metadata-only CLI discovery states without credentials", () => {
     const discovery = GithubCliDiscoverySchema.parse({
       status: "available",

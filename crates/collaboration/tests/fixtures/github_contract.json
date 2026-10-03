@@ -1,0 +1,6 @@
+{
+  "actor": { "id": 9007199254740993, "login": "fixture", "name": "Fixture" },
+  "repositories": [{ "id": 9007199254740993, "full_name": "owner/project", "name": "project", "html_url": "https://github.com/owner/project" }],
+  "pulls": [{ "id": 9007199254740994, "number": 7, "title": "GitHub pull", "body": null, "state": "open", "user": null, "html_url": "https://github.com/owner/project/pull/7", "updated_at": "2026-10-03T12:00:00Z" }],
+  "notifications": [{ "id": "thread-77", "repository": { "id": 9007199254740993, "full_name": "owner/project", "name": "project", "html_url": "https://github.com/owner/project" }, "subject": { "title": "GitHub notification", "type": "PullRequest" }, "reason": "mention", "unread": true, "updated_at": "2026-10-03T12:00:00Z" }]
+}

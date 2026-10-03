@@ -1,5 +1,6 @@
 import {
   collaborationAccounts,
+  collaborationCapabilities,
   collaborationChangesSince,
   collaborationConnectGithub,
   collaborationConnectGithubCli,
@@ -10,6 +11,7 @@ import {
   collaborationItems,
   collaborationRefresh,
   collaborationRepositories,
+  collaborationResolveResource,
   collaborationSaveDraft,
   collaborationSelectRepository,
 } from "@gitru/commands";
@@ -18,12 +20,16 @@ import { listen } from "@tauri-apps/api/event";
 import { CollaborationClient } from "./client";
 
 export type {
+  CanonicalResource,
+  CapabilitySnapshot,
   GithubCliAccount,
   GithubCliDiscovery,
   ItemQuery,
   RemoteAccount,
   RemoteItem,
   RemoteRepository,
+  ResourceLocator,
+  ResourceResolution,
 } from "@gitru/commands";
 export { StaleAuthorizationError } from "./authorization-fence";
 export * from "./client";
@@ -45,6 +51,9 @@ export const collaboration = new CollaborationClient({
   changesSince: (afterRevision) => collaborationChangesSince({ afterRevision }),
   saveDraft: (draft) => collaborationSaveDraft({ draft }),
   draft: (accountId, subjectId) => collaborationDraft({ accountId, subjectId }),
+  capabilities: (accountId) => collaborationCapabilities({ accountId }),
+  resolveResource: (accountId, locator) =>
+    collaborationResolveResource({ accountId, locator }),
   listen: (onWake) =>
     listen<{ revision: string }>("gitru:collaboration-change", onWake),
 });

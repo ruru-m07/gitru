@@ -1,8 +1,12 @@
 //! Adapters normalize provider resources; scheduling and persistence stay outside.
 
+#[cfg(test)]
+mod contract_tests;
 pub mod github;
+mod registry;
 mod transport;
 
+pub use registry::{ProviderProfile, ProviderRegistry};
 pub use transport::{ProviderError, ProviderErrorKind};
 
 use crate::{CollaborationError, ErrorCode, credentials::SecretToken, domain::*};
@@ -38,6 +42,7 @@ pub struct FeedRequest {
 pub struct FetchPage {
     pub repositories: Vec<RemoteRepository>,
     pub items: Vec<RemoteItem>,
+    pub endpoint_aliases: Vec<EndpointAlias>,
     pub next_cursor: Option<String>,
     pub etag: Option<String>,
     pub last_modified: Option<String>,
@@ -51,6 +56,16 @@ pub struct FetchPage {
 #[async_trait]
 pub trait CollaborationProvider: Send + Sync + 'static {
     fn kind(&self) -> ProviderKind;
+    /// The adapter is constructed for one explicitly trusted installation.
+    fn instance(&self) -> ProviderInstance {
+        ProviderInstance::public(self.kind())
+    }
+    fn profile(&self, account: &RemoteAccount) -> ProviderProfile {
+        ProviderProfile::read_only(
+            InboxSemantics::NativeNotifications,
+            account.notifications_supported,
+        )
+    }
     async fn probe(&self, token: &SecretToken) -> Result<VerifiedAccount, ProviderError>;
     async fn fetch_page(
         &self,

@@ -1,10 +1,16 @@
 import type {
   AccountSnapshot,
+  CapabilitySnapshot,
   ChangePage,
   ItemPage,
+  ItemSnapshot,
   RemoteAccount,
+  RemoteItem,
+  RepositorySnapshot,
+  ResourceLocator,
+  ResourceResolution,
 } from "@gitru/commands";
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { StaleAuthorizationError } from "./authorization-fence";
 import {
@@ -79,12 +85,460 @@ function transport(
     changesSince: unexpected,
     saveDraft: unexpected,
     draft: unexpected,
+    capabilities: unexpected,
+    resolveResource: unexpected,
     listen: unexpected,
     ...overrides,
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((finish) => {
+    resolve = finish;
+  });
+  return { promise, resolve };
+}
+
+const locator: ResourceLocator = {
+  instance_id: "github:https://github.com/",
+  kind: "repository",
+  locator_kind: "repository_path",
+  value: "owner/project",
+  repository_path: null,
+};
+const capability: CapabilitySnapshot = {
+  account_id: account.id,
+  instance: {
+    id: locator.instance_id,
+    provider: "github",
+    base_url: "https://github.com/",
+  },
+  facets: [{ facet: "inbox", state: "supported", reason: null }],
+  inbox_semantics: "native_notifications",
+  revision: "1",
+  authorization_view: "1",
+};
+const resolution: ResourceResolution = {
+  state: "unresolved",
+  resource: null,
+  candidates: [],
+  revision: "1",
+  authorization_view: "1",
+};
+
+const privateItem: RemoteItem = {
+  id: "issue:7",
+  account_id: account.id,
+  repository_id: "repository:1",
+  provider_id: "7",
+  kind: "issue",
+  number: "7",
+  title: "Private issue",
+  body: "old private body",
+  body_omitted: false,
+  author: "fixture",
+  web_url: "https://github.com/owner/project/issues/7",
+  state: "open",
+  updated_at: "2026-10-02T00:00:00Z",
+  head_oid: null,
+  is_draft: null,
+  reason: null,
+  unread: null,
+};
+const itemQuery = {
+  kind: "issue" as const,
+  repository_id: privateItem.repository_id,
+  state: null,
+  search: null,
+  cursor: null,
+  limit: 50,
+};
+
 describe("CollaborationClient", () => {
+  it.each([
+    "repositories",
+    "items",
+    "item",
+  ] as const)("refetches an initial pending %s projection on a same-epoch update", async (projection) => {
+    type ProviderSnapshot = RepositorySnapshot | ItemPage | ItemSnapshot;
+    const beforeRepository: RepositorySnapshot = {
+      repositories: [
+        {
+          id: "repository:1",
+          account_id: account.id,
+          provider_id: "1",
+          full_name: "owner/project",
+          name: "project",
+          description: "old private description",
+          web_url: "https://github.com/owner/project",
+          default_branch: "main",
+          selected: true,
+        },
+      ],
+      revision: "1",
+      authorization_view: "1",
+      coverage: page.coverage,
+      sync: page.sync,
+    };
+    const before =
+      projection === "repositories"
+        ? beforeRepository
+        : projection === "items"
+          ? { ...page, items: [privateItem] }
+          : { item: privateItem, revision: "1", authorization_view: "1" };
+    const currentItem = { ...privateItem, body: "current private body" };
+    const current =
+      projection === "repositories"
+        ? {
+            ...beforeRepository,
+            revision: "2",
+            repositories: beforeRepository.repositories.map((repository) => ({
+              ...repository,
+              full_name: "owner/renamed-project",
+              description: "current private description",
+            })),
+          }
+        : projection === "items"
+          ? { ...page, revision: "2", items: [currentItem] }
+          : { item: currentItem, revision: "2", authorization_view: "1" };
+    let next = changePage("1");
+    const oldRead = deferred<ProviderSnapshot>();
+    const read = vi
+      .fn<() => Promise<ProviderSnapshot>>()
+      .mockImplementationOnce(() => oldRead.promise)
+      .mockResolvedValue(current);
+    const client = new CollaborationClient(
+      transport({
+        listen: async () => () => {},
+        changesSince: async () => next,
+        repositories: () => read() as Promise<RepositorySnapshot>,
+        items: () => read() as Promise<ItemPage>,
+        item: () => read() as Promise<ItemSnapshot>,
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    const key =
+      projection === "repositories"
+        ? collaborationKeys.repositories(account)
+        : projection === "items"
+          ? collaborationKeys.items(account, {
+              ...itemQuery,
+              account_id: account.id,
+            })
+          : collaborationKeys.item(account, privateItem.id);
+    const observer = new QueryObserver<ProviderSnapshot>(cache, {
+      queryKey: key,
+      queryFn: ({ signal }) => {
+        const handle = client.forAccount(account);
+        return projection === "repositories"
+          ? handle.repositories(signal)
+          : projection === "items"
+            ? handle.items(itemQuery, signal)
+            : handle.item(privateItem.id, signal);
+      },
+      staleTime: Infinity,
+      retry: false,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(cache.getQueryData(key)).toBeUndefined();
+    next = changePage("2", "1", [
+      {
+        revision: "2",
+        account_id: account.id,
+        scope: "repositories",
+        reset: false,
+      },
+    ]);
+    await client.wake();
+    await vi.waitFor(() => expect(cache.getQueryData(key)).toEqual(current));
+    oldRead.resolve(before);
+    await oldRead.promise;
+    await Promise.resolve();
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(cache.getQueryData(key)).toEqual(current);
+    unsubscribe();
+    stop();
+    cache.clear();
+  });
+
+  it("drops a delayed private item when a same-epoch scope denial resets the authorization view", async () => {
+    let next = changePage("1");
+    const oldRead = deferred<ItemSnapshot>();
+    const client = new CollaborationClient(
+      transport({
+        listen: async () => () => {},
+        changesSince: async () => next,
+        item: () => oldRead.promise,
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    const key = collaborationKeys.item(account, privateItem.id);
+    const observer = new QueryObserver(cache, {
+      queryKey: key,
+      queryFn: ({ signal }) =>
+        client.forAccount(account).item(privateItem.id, signal),
+      staleTime: Infinity,
+      retry: false,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    next = changePage("2", "2", [
+      {
+        revision: "2",
+        account_id: account.id,
+        scope: `repo:${privateItem.repository_id}:issue`,
+        reset: true,
+      },
+    ]);
+    await client.wake();
+    oldRead.resolve({
+      item: privateItem,
+      revision: "1",
+      authorization_view: "1",
+    });
+    await oldRead.promise;
+    await Promise.resolve();
+    expect(cache.getQueryData(key)).toBeUndefined();
+    expect(cache.getQueryState(key)).toBeUndefined();
+    unsubscribe();
+    stop();
+    cache.clear();
+  });
+
+  it.each([
+    "capabilities",
+    "resource",
+  ] as const)("cancels the initial %s fetch before same-epoch invalidation and keeps other accounts and drafts intact", async (projection) => {
+    let next = changePage("1");
+    const oldRead = deferred<CapabilitySnapshot | ResourceResolution>();
+    const current =
+      projection === "capabilities"
+        ? {
+            ...capability,
+            revision: "2",
+            facets: [
+              {
+                facet: "inbox" as const,
+                state: "unavailable" as const,
+                reason: "permission_denied" as const,
+              },
+            ],
+          }
+        : {
+            ...resolution,
+            revision: "2",
+            state: "resolved" as const,
+            resource: {
+              account_id: account.id,
+              instance_id: locator.instance_id,
+              id: "repository:7",
+              kind: "repository" as const,
+              provider_id: "7",
+            },
+          };
+    const read = vi
+      .fn<() => Promise<CapabilitySnapshot | ResourceResolution>>()
+      .mockImplementationOnce(() => oldRead.promise)
+      .mockResolvedValue(current);
+    const client = new CollaborationClient(
+      transport({
+        listen: async () => () => {},
+        changesSince: async () => next,
+        capabilities: () => read() as Promise<CapabilitySnapshot>,
+        resolveResource: () => read() as Promise<ResourceResolution>,
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    const key =
+      projection === "capabilities"
+        ? collaborationKeys.capabilities(account)
+        : collaborationKeys.resource(account, locator);
+    const otherAccount = { ...account, id: "account-b" };
+    const otherKey =
+      projection === "capabilities"
+        ? collaborationKeys.capabilities(otherAccount)
+        : collaborationKeys.resource(otherAccount, locator);
+    const draftKey = collaborationKeys.draft(account, "draft");
+    cache.setQueryData(otherKey, "other account");
+    cache.setQueryData(draftKey, "authored draft");
+    let initialSignal!: AbortSignal;
+    const observer = new QueryObserver<CapabilitySnapshot | ResourceResolution>(
+      cache,
+      {
+        queryKey: key,
+        queryFn: ({ signal }) => {
+          initialSignal ??= signal;
+          return projection === "capabilities"
+            ? client.forAccount(account).capabilities(signal)
+            : client.forAccount(account).resolveResource(locator, signal);
+        },
+        staleTime: Infinity,
+        networkMode: "always",
+        retry: false,
+      },
+    );
+    const unsubscribe = observer.subscribe(() => {});
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(cache.getQueryData(key)).toBeUndefined();
+    next = changePage("2", "1", [
+      {
+        revision: "2",
+        account_id: account.id,
+        scope: projection === "capabilities" ? "notifications" : "repositories",
+        reset: false,
+      },
+    ]);
+    await client.wake();
+    await vi.waitFor(() => expect(cache.getQueryData(key)).toEqual(current));
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(initialSignal.aborted).toBe(true);
+    oldRead.resolve(projection === "capabilities" ? capability : resolution);
+    await oldRead.promise;
+    await Promise.resolve();
+    expect(cache.getQueryData(key)).toEqual(current);
+    expect(cache.getQueryState(key)?.isInvalidated).toBe(false);
+    expect(cache.getQueryState(otherKey)?.isInvalidated).toBe(false);
+    expect(cache.getQueryData(otherKey)).toBe("other account");
+    expect(cache.getQueryState(draftKey)?.isInvalidated).toBe(false);
+    expect(cache.getQueryData(draftKey)).toBe("authored draft");
+    unsubscribe();
+    stop();
+    cache.clear();
+  });
+
+  it("removes a pending capability query after an authorization reset and ignores its late response", async () => {
+    let next = changePage("1");
+    const oldRead = deferred<CapabilitySnapshot>();
+    const client = new CollaborationClient(
+      transport({
+        listen: async () => () => {},
+        changesSince: async () => next,
+        capabilities: () => oldRead.promise,
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    const key = collaborationKeys.capabilities(account);
+    const observer = new QueryObserver(cache, {
+      queryKey: key,
+      queryFn: ({ signal }) => client.forAccount(account).capabilities(signal),
+      staleTime: Infinity,
+      retry: false,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    next = changePage("2", "2", [
+      {
+        revision: "2",
+        account_id: account.id,
+        scope: "account",
+        reset: true,
+      },
+    ]);
+    await client.wake();
+    oldRead.resolve(capability);
+    await oldRead.promise;
+    await Promise.resolve();
+    expect(cache.getQueryData(key)).toBeUndefined();
+    expect(cache.getQueryState(key)).toBeUndefined();
+    unsubscribe();
+    stop();
+    cache.clear();
+  });
+
+  it("binds capability and local resolver reads to the account and fences late lifecycle responses", async () => {
+    const locator: ResourceLocator = {
+      instance_id: "github:https://github.com/",
+      kind: "pull_request",
+      locator_kind: "repository_number",
+      value: "67",
+      repository_path: "owner/project",
+    };
+    const capability: CapabilitySnapshot = {
+      account_id: account.id,
+      instance: {
+        id: locator.instance_id,
+        provider: "github",
+        base_url: "https://github.com/",
+      },
+      facets: [],
+      inbox_semantics: "native_notifications",
+      revision: "1",
+      authorization_view: "1",
+    };
+    const resolution: ResourceResolution = {
+      state: "unresolved",
+      resource: null,
+      candidates: [],
+      revision: "1",
+      authorization_view: "1",
+    };
+    let finish!: (result: ResourceResolution) => void;
+    const capabilities = vi.fn().mockResolvedValue(capability);
+    const resolveResource = vi.fn(
+      () =>
+        new Promise<ResourceResolution>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const client = new CollaborationClient(
+      transport({ capabilities, resolveResource, disconnect: async () => "2" }),
+    );
+    const handle = client.forAccount(account);
+    expect(await handle.capabilities()).toEqual(capability);
+    expect(capabilities).toHaveBeenCalledWith(account.id);
+    const pending = handle.resolveResource(locator);
+    expect(resolveResource).toHaveBeenCalledWith(account.id, locator);
+    await client.disconnect(account.id);
+    finish(resolution);
+    await expect(pending).rejects.toBeInstanceOf(StaleAuthorizationError);
+  });
+
+  it("refreshes unresolved identities and capability observations on provider changes without invalidating drafts", async () => {
+    let next = changePage("1");
+    const client = new CollaborationClient(
+      transport({
+        listen: async () => () => {},
+        changesSince: async () => next,
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    const locator: ResourceLocator = {
+      instance_id: "github:https://github.com/",
+      kind: "repository",
+      locator_kind: "repository_path",
+      value: "owner/project",
+      repository_path: null,
+    };
+    const resourceKey = collaborationKeys.resource(account, locator);
+    const capabilityKey = collaborationKeys.capabilities(account);
+    const draftKey = collaborationKeys.draft(account, "draft");
+    for (const key of [resourceKey, capabilityKey, draftKey])
+      cache.setQueryData(key, "cached");
+    next = changePage("2", "1", [
+      {
+        revision: "2",
+        account_id: account.id,
+        scope: "repositories",
+        reset: false,
+      },
+    ]);
+    await client.wake();
+    expect(cache.getQueryState(resourceKey)?.isInvalidated).toBe(true);
+    expect(cache.getQueryState(capabilityKey)?.isInvalidated).toBe(true);
+    expect(cache.getQueryState(draftKey)?.isInvalidated).toBe(false);
+    stop();
+    cache.clear();
+  });
   it("discovers only CLI metadata without changing the saved authorization view", async () => {
     const discovery = {
       status: "available" as const,

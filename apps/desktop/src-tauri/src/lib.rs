@@ -75,6 +75,8 @@ pub fn run() {
             commands::collaboration::collaboration_changes_since,
             commands::collaboration::collaboration_save_draft,
             commands::collaboration::collaboration_draft,
+            commands::collaboration::collaboration_capabilities,
+            commands::collaboration::collaboration_resolve_resource,
             ipc::commands::add_local_git_repo,
             ipc::commands::clone_repository,
             ipc::commands::cancel_clone_repository,

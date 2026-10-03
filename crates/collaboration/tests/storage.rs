@@ -210,6 +210,7 @@ async fn connect(store: &Store, account_id: &str) {
             run_id,
             repositories: vec![repository(account_id)],
             items: vec![],
+            endpoint_aliases: Vec::new(),
             next_cursor: None,
             etag: None,
             last_modified: None,
@@ -242,6 +243,7 @@ fn page(account_id: &str, run_id: &str, items: Vec<RemoteItem>, complete: bool) 
         run_id: run_id.into(),
         repositories: vec![],
         items,
+        endpoint_aliases: Vec::new(),
         next_cursor: if complete {
             None
         } else {
@@ -691,6 +693,7 @@ async fn notifications_use_remote_disposition_and_accept_repository_references()
             run_id,
             repositories: vec![referenced],
             items: vec![unread, read],
+            endpoint_aliases: Vec::new(),
             next_cursor: None,
             etag: None,
             last_modified: None,
@@ -903,6 +906,7 @@ async fn discovery_membership_and_denial_hide_projections_without_erasing_canoni
                 run_id,
                 repositories: vec![],
                 items: vec![],
+                endpoint_aliases: Vec::new(),
                 next_cursor: None,
                 etag: Some("empty".into()),
                 last_modified: None,
@@ -955,6 +959,7 @@ async fn discovery_membership_and_denial_hide_projections_without_erasing_canoni
             run_id,
             repositories: vec![repository("a")],
             items: vec![],
+            endpoint_aliases: Vec::new(),
             next_cursor: None,
             etag: None,
             last_modified: None,
@@ -1008,6 +1013,7 @@ async fn discovery_membership_and_denial_hide_projections_without_erasing_canoni
             run_id,
             repositories: vec![referenced],
             items: vec![notification],
+            endpoint_aliases: Vec::new(),
             next_cursor: None,
             etag: None,
             last_modified: None,

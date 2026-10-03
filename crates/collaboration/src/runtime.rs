@@ -51,7 +51,7 @@ struct Scheduler {
 pub struct CollaborationRuntime {
     store: Arc<Store>,
     vault: Arc<dyn CredentialVault>,
-    provider: Arc<dyn CollaborationProvider>,
+    registry: Arc<ProviderRegistry>,
     github_cli: Arc<GithubCli>,
     lifecycle: Arc<Mutex<()>>,
     scheduler: Arc<Mutex<Scheduler>>,
@@ -66,11 +66,23 @@ impl CollaborationRuntime {
         vault: Arc<dyn CredentialVault>,
         provider: Arc<dyn CollaborationProvider>,
     ) -> Self {
+        let mut registry = ProviderRegistry::default();
+        registry
+            .register(provider)
+            .expect("valid explicitly bound adapter");
+        Self::with_registry(store, vault, registry)
+    }
+
+    pub fn with_registry(
+        store: Arc<Store>,
+        vault: Arc<dyn CredentialVault>,
+        registry: ProviderRegistry,
+    ) -> Self {
         let (changes, _) = broadcast::channel(64);
         Self {
             store,
             vault,
-            provider,
+            registry: Arc::new(registry),
             github_cli: Arc::new(GithubCli::disabled()),
             lifecycle: Arc::new(Mutex::new(())),
             scheduler: Arc::new(Mutex::new(Scheduler::default())),
@@ -171,10 +183,10 @@ impl CollaborationRuntime {
     ) -> Result<RemoteAccount, CollaborationError> {
         let _lifecycle = self.lifecycle.lock().await;
         let _ = self.cleanup_credentials_locked().await;
-        if self.provider.kind() != ProviderKind::Github {
-            return Err(unsupported());
-        }
-        let verified = self.provider.probe(&token).await?;
+        let provider = self
+            .registry
+            .adapter(&ProviderInstance::public(ProviderKind::Github))?;
+        let verified = provider.probe(&token).await?;
         if expected_login.is_some_and(|expected| !verified.login.eq_ignore_ascii_case(expected)) {
             return Err(CollaborationError::new(
                 ErrorCode::StaleView,
@@ -309,6 +321,9 @@ impl CollaborationRuntime {
         if selected {
             let repository = self.store.repository(account_id, repository_id).await?;
             for kind in [FeedKind::PullRequests, FeedKind::Issues] {
+                if self.require_feed(&account, kind).await.is_err() {
+                    continue;
+                }
                 self.enqueue(account.clone(), Some(repository.clone()), kind, true)
                     .await?;
             }
@@ -361,6 +376,9 @@ impl CollaborationRuntime {
                 None => vec![FeedKind::PullRequests, FeedKind::Issues],
             };
             for kind in kinds {
+                if request.kind.is_none() && self.require_feed(&account, kind).await.is_err() {
+                    continue;
+                }
                 first_job.get_or_insert(
                     self.enqueue(account.clone(), Some(repository.clone()), kind, true)
                         .await?,
@@ -374,13 +392,17 @@ impl CollaborationRuntime {
                 );
             }
             if request.kind.is_none() || request.kind == Some(RemoteItemKind::Notification) {
-                if account.notifications_supported {
+                if self
+                    .require_feed(&account, FeedKind::Notifications)
+                    .await
+                    .is_ok()
+                {
                     first_job.get_or_insert(
                         self.enqueue(account.clone(), None, FeedKind::Notifications, true)
                             .await?,
                     );
                 } else if request.kind.is_some() {
-                    return Err(unsupported());
+                    self.require_feed(&account, FeedKind::Notifications).await?;
                 }
             }
             if request.kind != Some(RemoteItemKind::Notification) {
@@ -393,6 +415,11 @@ impl CollaborationRuntime {
                     .filter(|repo| repo.selected)
                 {
                     for kind in [FeedKind::PullRequests, FeedKind::Issues] {
+                        if request.kind.is_none()
+                            && self.require_feed(&account, kind).await.is_err()
+                        {
+                            continue;
+                        }
                         if request.kind.is_none()
                             || (kind == FeedKind::PullRequests
                                 && request.kind == Some(RemoteItemKind::PullRequest))
@@ -422,10 +449,111 @@ impl CollaborationRuntime {
                 "Reconnect this provider account",
             ));
         }
-        if account.provider != self.provider.kind() {
-            return Err(unsupported());
-        }
+        self.adapter_for_account(&account).await?;
         Ok(account)
+    }
+
+    async fn adapter_for_account(
+        &self,
+        account: &RemoteAccount,
+    ) -> Result<Arc<dyn CollaborationProvider>, CollaborationError> {
+        let instance = self.store.provider_instance(&account.id).await?;
+        if instance.provider != account.provider
+            || instance != ProviderInstance::for_account(account)?
+        {
+            return Err(stale());
+        }
+        self.registry.adapter(&instance)
+    }
+
+    async fn require_feed(
+        &self,
+        account: &RemoteAccount,
+        kind: FeedKind,
+    ) -> Result<(), CollaborationError> {
+        let capability = self
+            .adapter_for_account(account)
+            .await?
+            .profile(account)
+            .facet(kind.facet());
+        match capability.state {
+            CapabilityState::Supported => Ok(()),
+            CapabilityState::Unsupported => Err(unsupported()),
+            CapabilityState::Unavailable => Err(CollaborationError::new(
+                if account.state != AccountState::Active {
+                    ErrorCode::AuthRequired
+                } else {
+                    ErrorCode::PermissionDenied
+                },
+                "This provider capability is currently unavailable",
+            )),
+        }
+    }
+
+    /// Local capability observation. Dispatch rechecks the adapter/current actor.
+    pub async fn capabilities(
+        &self,
+        account_id: &str,
+    ) -> Result<CapabilitySnapshot, CollaborationError> {
+        let snapshot = self.store.accounts().await?;
+        let account = snapshot
+            .accounts
+            .into_iter()
+            .find(|a| a.id == account_id)
+            .ok_or_else(|| {
+                CollaborationError::new(ErrorCode::NotFound, "Provider account was not found")
+            })?;
+        let instance = self.store.provider_instance(account_id).await?;
+        let mut profile = match self.registry.adapter(&instance) {
+            Ok(provider) => provider.profile(&account),
+            Err(_) => ProviderProfile::unavailable(CapabilityReason::AdapterUnavailable),
+        };
+        for capability in &mut profile.facets {
+            if account.state != AccountState::Active {
+                if capability.state != CapabilityState::Unsupported
+                    && capability.reason != Some(CapabilityReason::AdapterUnavailable)
+                {
+                    capability.state = CapabilityState::Unavailable;
+                    capability.reason = Some(CapabilityReason::AuthenticationRequired);
+                }
+            } else {
+                if capability.state != CapabilityState::Supported {
+                    continue;
+                }
+                let scope = match capability.facet {
+                    ResourceFacet::Repositories => Some("repositories"),
+                    ResourceFacet::Inbox => Some("notifications"),
+                    _ => None,
+                };
+                if let Some(scope) = scope {
+                    let status = self.store.scope_state(account_id, scope).await?;
+                    if let Some(status) = status.and_then(|s| s.sync.error)
+                        && matches!(
+                            status.code,
+                            ErrorCode::PermissionDenied
+                                | ErrorCode::Provider
+                                | ErrorCode::Network
+                                | ErrorCode::RateLimited
+                        )
+                    {
+                        capability.state = CapabilityState::Unavailable;
+                        capability.reason = Some(if status.code == ErrorCode::PermissionDenied {
+                            CapabilityReason::PermissionDenied
+                        } else {
+                            CapabilityReason::TemporarilyUnavailable
+                        });
+                    }
+                }
+            }
+        }
+        Ok(CapabilitySnapshot {
+            account_id: account.id,
+            instance,
+            facets: profile.facets,
+            inbox_semantics: profile.inbox_semantics,
+            revision: snapshot.revision,
+            authorization_view: snapshot.authorization_view,
+        })
     }
 
     async fn enqueue_due(&self) -> Result<(), CollaborationError> {
@@ -435,9 +563,7 @@ impl CollaborationRuntime {
             .await?
             .accounts
             .into_iter()
-            .filter(|account| {
-                account.state == AccountState::Active && account.provider == self.provider.kind()
-            })
+            .filter(|account| account.state == AccountState::Active)
             .collect();
         let start = self.scheduler.lock().await.background_cursor;
         let mut total = 0;
@@ -447,13 +573,12 @@ impl CollaborationRuntime {
         for pass in 0..2 {
             total = 0;
             for account in &accounts {
+                if self.adapter_for_account(account).await.is_err() {
+                    continue;
+                }
                 let repositories = self.store.repositories(&account.id).await?.repositories;
                 let scopes = std::iter::once((None, FeedKind::Repositories))
-                    .chain(
-                        account
-                            .notifications_supported
-                            .then_some((None, FeedKind::Notifications)),
-                    )
+                    .chain(std::iter::once((None, FeedKind::Notifications)))
                     .chain(
                         repositories
                             .into_iter()
@@ -469,6 +594,9 @@ impl CollaborationRuntime {
                     let index = total;
                     total += 1;
                     if (pass == 0 && index < start) || (pass == 1 && index >= start) {
+                        continue;
+                    }
+                    if self.require_feed(account, kind).await.is_err() {
                         continue;
                     }
                     match self.enqueue(account.clone(), repository, kind, false).await {
@@ -497,6 +625,7 @@ impl CollaborationRuntime {
         kind: FeedKind,
         manual: bool,
     ) -> Result<String, CollaborationError> {
+        self.require_feed(&account, kind).await?;
         let scope = scope_name(kind, repository.as_ref());
         let key = format!("{}:{}:{scope}", account.id, account.authorization_epoch);
         // Persisted cooldowns survive restarts and constrain manual refresh too.
@@ -723,8 +852,10 @@ impl CollaborationRuntime {
             if current.authorization_epoch != account.authorization_epoch {
                 return Err(stale());
             }
+            self.require_feed(&current, job.kind).await?;
             let page = self
-                .provider
+                .adapter_for_account(&current)
+                .await?
                 .fetch_page(
                     &token,
                     FeedRequest {
@@ -758,6 +889,7 @@ impl CollaborationRuntime {
                     run_id: run_id.clone(),
                     repositories: page.repositories,
                     items: page.items,
+                    endpoint_aliases: page.endpoint_aliases,
                     next_cursor: cursor.clone(),
                     etag: if retain_validator {
                         page.etag.or_else(|| {

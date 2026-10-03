@@ -88,6 +88,8 @@ pub fn setup(app: &App) {
             std::fs::create_dir_all(&dir).map_err(|_| CollaborationError::storage())?;
             let store = Arc::new(Store::open(dir.join("collaboration.sqlite3")).await?);
             let provider = collaboration::providers::github::GithubProvider::new()?;
+            let mut registry = collaboration::providers::ProviderRegistry::default();
+            registry.register(Arc::new(provider))?;
             #[cfg(not(feature = "e2e"))]
             let vault = Arc::new(NativeVault {
                 service,
@@ -100,7 +102,7 @@ pub fn setup(app: &App) {
             #[cfg(feature = "e2e")]
             let github_cli = collaboration::github_cli::GithubCli::disabled();
             Ok::<_, CollaborationError>(Arc::new(
-                CollaborationRuntime::new(store, vault, Arc::new(provider))
+                CollaborationRuntime::with_registry(store, vault, registry)
                     .with_github_cli(github_cli),
             ))
         }
