@@ -284,7 +284,7 @@ async fn assert_native_token(
             key: "fixture".into(),
             account: account.clone(),
             repository: None,
-            kind: FeedKind::Repositories,
+            kind: JobKind::Feed(FeedKind::Repositories),
             scope: "repositories".into(),
         })
         .await

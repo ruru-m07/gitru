@@ -4,9 +4,11 @@ import {
   collaborationChangesSince,
   collaborationConnectGithub,
   collaborationConnectGithubCli,
+  collaborationDetail,
   collaborationDisconnect,
   collaborationDiscoverGithubCli,
   collaborationDraft,
+  collaborationHydrateDetail,
   collaborationItem,
   collaborationItems,
   collaborationRefresh,
@@ -22,8 +24,14 @@ import { CollaborationClient } from "./client";
 export type {
   CanonicalResource,
   CapabilitySnapshot,
+  DetailEntry,
+  DetailEvidence,
+  DetailQuery,
+  DetailSnapshot,
+  DetailValue,
   GithubCliAccount,
   GithubCliDiscovery,
+  HydrateDetailRequest,
   ItemQuery,
   RemoteAccount,
   RemoteItem,
@@ -34,6 +42,7 @@ export type {
 export { StaleAuthorizationError } from "./authorization-fence";
 export * from "./client";
 export type RemoteItemKind = import("@gitru/commands").ItemQuery["kind"];
+export type DetailFacet = import("@gitru/commands").DetailQuery["facet"];
 
 export const collaboration = new CollaborationClient({
   accounts: () => collaborationAccounts({}),
@@ -54,6 +63,8 @@ export const collaboration = new CollaborationClient({
   capabilities: (accountId) => collaborationCapabilities({ accountId }),
   resolveResource: (accountId, locator) =>
     collaborationResolveResource({ accountId, locator }),
+  detail: (query) => collaborationDetail({ query }),
+  hydrateDetail: (request) => collaborationHydrateDetail({ request }),
   listen: (onWake) =>
     listen<{ revision: string }>("gitru:collaboration-change", onWake),
 });

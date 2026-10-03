@@ -11,6 +11,7 @@ use sqlx::{
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+pub(crate) mod details;
 mod identities;
 
 use crate::{
@@ -459,6 +460,12 @@ impl Store {
                     .await
                     .map_err(storage_error)?;
             }
+            // Reselecting the parent cannot make a pre-deselection detail lease
+            // current again. Retain saved observations, but restart any partial
+            // traversal rather than reusing its invalidated membership run.
+            sqlx::query("UPDATE sync_scopes SET run_id=?,next_cursor=NULL,etag=NULL WHERE account_id=? AND EXISTS(SELECT 1 FROM items i WHERE i.account_id=sync_scopes.account_id AND i.repository_id=? AND sync_scopes.scope IN ('detail:'||i.id||':body','detail:'||i.id||':comments','detail:'||i.id||':reviews','detail:'||i.id||':checks'))")
+                .bind(Uuid::new_v4().to_string()).bind(account_id).bind(repository_id)
+                .execute(&mut *tx).await.map_err(storage_error)?;
         }
         let revision = record_change(
             &mut tx,
@@ -1446,6 +1453,7 @@ fn validate_scope(scope: &str) -> Result<()> {
         || scope == "notifications"
         || scope == "provider:rest"
         || repository_from_scope(scope).is_some()
+        || crate::DetailFacet::from_scope(scope).is_some()
     {
         Ok(())
     } else {
@@ -1514,6 +1522,9 @@ async fn ensure_selected_scope(
     account_id: &str,
     scope: &str,
 ) -> Result<()> {
+    if let Some((subject, _)) = crate::DetailFacet::from_scope(scope) {
+        details::subject_in(tx, account_id, subject).await?;
+    }
     // Storage enforces actor/epoch/scope visibility. Provider functionality is
     // checked by the registry at admission and dispatch, including non-native
     // inboxes such as to-dos which have no GitHub notification grant flag.
@@ -1563,6 +1574,8 @@ fn repository_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<RemoteRepository
 }
 async fn clear_remote_cache(tx: &mut Transaction<'_, Sqlite>, account_id: &str) -> Result<()> {
     for sql in [
+        "DELETE FROM detail_demand WHERE account_id=?",
+        "DELETE FROM detail_observations WHERE account_id=?",
         "DELETE FROM items_fts WHERE account_id=?",
         "DELETE FROM items WHERE account_id=?",
         // Provider quota is metadata, not private provider content. A reconnect

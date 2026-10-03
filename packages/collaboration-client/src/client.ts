@@ -3,7 +3,10 @@ import {
   type CapabilitySnapshot,
   type ChangePage,
   type CollaborationChange,
+  type DetailQuery,
+  type DetailSnapshot,
   type GithubCliDiscovery,
+  type HydrateDetailRequest,
   type ItemPage,
   type ItemQuery,
   type ItemSnapshot,
@@ -45,6 +48,8 @@ export interface CollaborationTransport {
     accountId: string,
     locator: ResourceLocator,
   ): Promise<ResourceResolution>;
+  detail(query: DetailQuery): Promise<DetailSnapshot>;
+  hydrateDetail(request: HydrateDetailRequest): Promise<RefreshReceipt>;
   listen(onWake: () => void): Promise<() => void>;
 }
 
@@ -94,6 +99,13 @@ export const collaborationKeys = {
       account.authorization_epoch,
       "resource",
       locator,
+    ] as const,
+  detail: (account: RemoteAccount, query: DetailQuery) =>
+    [
+      ...collaborationKeys.account(account.id),
+      account.authorization_epoch,
+      "detail",
+      query,
     ] as const,
 };
 
@@ -163,6 +175,24 @@ export class CollaborationClient {
         read(() => this.transport.capabilities(account.id), signal),
       resolveResource: (locator: ResourceLocator, signal?: AbortSignal) =>
         read(() => this.transport.resolveResource(account.id, locator), signal),
+      detail: (query: Omit<DetailQuery, "account_id">, signal?: AbortSignal) =>
+        read(
+          () => this.transport.detail({ ...query, account_id: account.id }),
+          signal,
+        ),
+      hydrateDetail: (
+        request: Omit<
+          HydrateDetailRequest,
+          "account_id" | "authorization_epoch"
+        >,
+      ) =>
+        this.fence.read(account.id, () =>
+          this.transport.hydrateDetail({
+            ...request,
+            account_id: account.id,
+            authorization_epoch: account.authorization_epoch,
+          }),
+        ),
       refresh: (request: Omit<RefreshRequest, "account_id">) =>
         this.transport.refresh({ ...request, account_id: account.id }),
       selectRepository: (repositoryId: string, selected: boolean) =>
@@ -324,6 +354,14 @@ function projectionAffected(key: readonly unknown[], scope: string) {
   if (projection === "capabilities" || projection === "resource")
     return scope !== "drafts";
   if (scope === "drafts") return projection === "draft";
+  if (projection === "detail") {
+    const query = key[5] as DetailQuery;
+    return (
+      scope === "repositories" ||
+      scope.startsWith("repo:") ||
+      scope === `detail:${query.subject_id}:${query.facet}`
+    );
+  }
   if (scope === "repositories")
     return (
       projection === "repositories" ||

@@ -9,7 +9,7 @@ mod transport;
 pub use registry::{ProviderProfile, ProviderRegistry};
 pub use transport::{ProviderError, ProviderErrorKind};
 
-use crate::{CollaborationError, ErrorCode, credentials::SecretToken, domain::*};
+use crate::{CollaborationError, ErrorCode, credentials::SecretToken, detail::*, domain::*};
 use async_trait::async_trait;
 
 #[derive(Debug, Clone)]
@@ -51,6 +51,29 @@ pub struct FetchPage {
     pub cooldown_seconds: Option<u64>,
 }
 
+#[derive(Debug, Clone)]
+pub struct DetailRequest {
+    pub account: RemoteAccount,
+    pub repository: RemoteRepository,
+    pub subject: RemoteItem,
+    pub facet: DetailFacet,
+    pub cursor: Option<String>,
+    pub etag: Option<String>,
+    pub source: Option<DetailSource>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DetailPage {
+    pub body: DetailValue,
+    pub entries: Vec<DetailEntry>,
+    pub source: DetailSource,
+    pub next_cursor: Option<String>,
+    pub etag: Option<String>,
+    pub not_modified: bool,
+    pub freshness_seconds: u32,
+    pub cooldown_seconds: Option<u64>,
+}
+
 /// Read-only contract for the first vertical slice. Writes must eventually use
 /// operation-specific durable outbox delivery; adapters do not offer raw HTTP.
 #[async_trait]
@@ -72,6 +95,16 @@ pub trait CollaborationProvider: Send + Sync + 'static {
         token: &SecretToken,
         request: FeedRequest,
     ) -> Result<FetchPage, ProviderError>;
+    async fn fetch_detail(
+        &self,
+        _token: &SecretToken,
+        _request: DetailRequest,
+    ) -> Result<DetailPage, ProviderError> {
+        Err(ProviderError {
+            kind: ProviderErrorKind::Unsupported,
+            retry_after_seconds: None,
+        })
+    }
 }
 
 impl From<ProviderError> for CollaborationError {

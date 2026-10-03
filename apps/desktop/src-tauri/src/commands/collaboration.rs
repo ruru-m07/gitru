@@ -1,8 +1,9 @@
 //! Local reads are separate commands from network refresh intents.
 use collaboration::{
     AccountSnapshot, CapabilitySnapshot, ChangePage, CollaborationError, CollaborationRuntime,
-    ErrorCode, GithubCliDiscovery, ItemPage, ItemQuery, ItemSnapshot, LocalDraft, RefreshReceipt,
-    RefreshRequest, RemoteAccount, RepositorySnapshot, ResourceLocator, ResourceResolution,
+    DetailQuery, DetailSnapshot, ErrorCode, GithubCliDiscovery, HydrateDetailRequest, ItemPage,
+    ItemQuery, ItemSnapshot, LocalDraft, RefreshReceipt, RefreshRequest, RemoteAccount,
+    RepositorySnapshot, ResourceLocator, ResourceResolution,
 };
 use std::sync::Arc;
 use tauri::{State, Webview};
@@ -47,6 +48,8 @@ enum Operation {
     Draft,
     Capabilities,
     ResolveResource,
+    Detail,
+    HydrateDetail,
 }
 
 impl Operation {
@@ -261,6 +264,26 @@ pub async fn collaboration_resolve_resource(
         .await
 }
 
+#[tauri::command]
+pub async fn collaboration_detail(
+    query: DetailQuery,
+    view: Webview,
+    state: State<'_, CollaborationState>,
+) -> Result<DetailSnapshot, CollaborationError> {
+    authorize(&view, Operation::Detail)?;
+    state.get().await?.store().detail(query).await
+}
+
+#[tauri::command]
+pub async fn collaboration_hydrate_detail(
+    request: HydrateDetailRequest,
+    view: Webview,
+    state: State<'_, CollaborationState>,
+) -> Result<RefreshReceipt, CollaborationError> {
+    authorize(&view, Operation::HydrateDetail)?;
+    state.get().await?.hydrate_detail(request).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::{caller_allowed, Operation};
@@ -277,6 +300,8 @@ mod tests {
         Operation::Draft,
         Operation::Capabilities,
         Operation::ResolveResource,
+        Operation::Detail,
+        Operation::HydrateDetail,
     ];
     const CREDENTIAL_OPERATIONS: &[Operation] = &[
         Operation::ConnectGithub,

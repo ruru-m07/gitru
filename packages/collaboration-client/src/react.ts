@@ -1,4 +1,5 @@
 import type {
+  DetailQuery,
   ItemQuery,
   RemoteAccount,
   ResourceLocator,
@@ -128,5 +129,21 @@ export function resourceQueryOptions(
     queryKey: collaborationKeys.resource(account, locator),
     queryFn: ({ signal }) =>
       collaboration.forAccount(account).resolveResource(locator, signal),
+  });
+}
+
+/** Cache-only; callers request hydration separately when the view needs it. */
+export function detailQueryOptions(
+  account: RemoteAccount,
+  query: Omit<DetailQuery, "account_id">,
+) {
+  return queryOptions({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.detail(account, {
+      ...query,
+      account_id: account.id,
+    }),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).detail(query, signal),
   });
 }
