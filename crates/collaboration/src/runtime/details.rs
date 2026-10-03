@@ -1,0 +1,277 @@
+//! Explicit detail demand uses the single engine queue, quota and credential owner.
+use super::*;
+
+impl CollaborationRuntime {
+    async fn require_detail(
+        &self,
+        account: &RemoteAccount,
+        subject: &RemoteItem,
+        facet: DetailFacet,
+    ) -> Result<(), CollaborationError> {
+        let facet = facet.capability(&subject.kind).ok_or_else(unsupported)?;
+        let capability = self
+            .adapter_for_account(account)
+            .await?
+            .profile(account)
+            .facet(facet);
+        match capability.state {
+            CapabilityState::Supported => Ok(()),
+            CapabilityState::Unsupported => Err(unsupported()),
+            CapabilityState::Unavailable => Err(CollaborationError::new(
+                ErrorCode::PermissionDenied,
+                "This detail capability is currently unavailable",
+            )),
+        }
+    }
+    pub async fn hydrate_detail(
+        &self,
+        request: HydrateDetailRequest,
+    ) -> Result<RefreshReceipt, CollaborationError> {
+        let account = self.active_account(&request.account_id).await?;
+        if account.authorization_epoch != request.authorization_epoch {
+            return Err(stale());
+        }
+        let subject = self
+            .store
+            .detail_subject(&account.id, &request.subject_id)
+            .await?;
+        self.require_detail(&account, &subject, request.facet)
+            .await?;
+        let repository = self
+            .store
+            .repository(
+                &account.id,
+                subject.repository_id.as_deref().ok_or_else(unsupported)?,
+            )
+            .await?;
+        // Durable read intent precedes dispatch. Queue pressure can defer it to
+        // the next background admission pass, without dropping explicit demand.
+        let revision = self
+            .store
+            .request_detail(
+                &account.id,
+                &account.authorization_epoch,
+                &subject.id,
+                request.facet,
+            )
+            .await?;
+        self.publish(revision);
+        let job_id = self
+            .enqueue_work(
+                account,
+                Some(repository),
+                JobKind::Detail {
+                    subject_id: request.subject_id.clone(),
+                    facet: request.facet,
+                },
+                request.facet.scope(&request.subject_id),
+                true,
+            )
+            .await?;
+        self.notify.notify_one();
+        Ok(RefreshReceipt { job_id })
+    }
+    pub(super) async fn enqueue_pending_details(&self) -> Result<(), CollaborationError> {
+        for demand in self.store.pending_details().await? {
+            let account = match self.active_account(&demand.account_id).await {
+                Ok(account) => account,
+                Err(error)
+                    if matches!(error.code, ErrorCode::AuthRequired | ErrorCode::Unsupported) =>
+                {
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
+            let subject = match self
+                .store
+                .detail_subject(&account.id, &demand.subject_id)
+                .await
+            {
+                Ok(subject) => subject,
+                Err(error)
+                    if matches!(
+                        error.code,
+                        ErrorCode::PermissionDenied | ErrorCode::NotFound
+                    ) =>
+                {
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
+            if let Err(error) = self.require_detail(&account, &subject, demand.facet).await {
+                if matches!(
+                    error.code,
+                    ErrorCode::Unsupported | ErrorCode::PermissionDenied
+                ) {
+                    continue;
+                }
+                return Err(error);
+            }
+            let repository = self
+                .store
+                .repository(
+                    &account.id,
+                    subject.repository_id.as_deref().ok_or_else(unsupported)?,
+                )
+                .await?;
+            match self
+                .enqueue_work(
+                    account,
+                    Some(repository),
+                    JobKind::Detail {
+                        subject_id: demand.subject_id.clone(),
+                        facet: demand.facet,
+                    },
+                    demand.facet.scope(&demand.subject_id),
+                    false,
+                )
+                .await
+            {
+                Ok(_) => {}
+                Err(error) if error.code == ErrorCode::Busy => break,
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(())
+    }
+    pub(super) async fn sync_detail(
+        &self,
+        job: &Job,
+        subject_id: &str,
+        facet: DetailFacet,
+    ) -> Result<(), CollaborationError> {
+        let (account, token, mut lease) = {
+            let _lifecycle = self.lifecycle.lock().await;
+            let account = self.active_account(&job.account.id).await?;
+            if account.authorization_epoch != job.account.authorization_epoch {
+                return Err(stale());
+            }
+            let subject = self.store.detail_subject(&account.id, subject_id).await?;
+            self.require_detail(&account, &subject, facet).await?;
+            let reference = self
+                .store
+                .credential_reference(&account.id)
+                .await?
+                .ok_or_else(|| {
+                    CollaborationError::new(
+                        ErrorCode::AuthRequired,
+                        "Reconnect this provider account",
+                    )
+                })?;
+            let token = self.load_token(&reference).await?.ok_or_else(|| {
+                CollaborationError::new(ErrorCode::AuthRequired, "Reconnect this provider account")
+            })?;
+            let lease = self
+                .store
+                .begin_detail(&account.id, &account.authorization_epoch, subject_id, facet)
+                .await?;
+            self.publish(self.store.revision().await?);
+            (account, token, lease)
+        };
+        let starts_at_beginning = lease.next_cursor.is_none();
+        let mut conditional = lease.etag.is_some();
+        for page_index in 0..MAX_PAGES_PER_REFRESH {
+            let current = self.active_account(&account.id).await?;
+            if current.authorization_epoch != account.authorization_epoch {
+                return Err(stale());
+            }
+            let subject = self.store.detail_subject(&account.id, subject_id).await?;
+            self.require_detail(&current, &subject, facet).await?;
+            let repository = self
+                .store
+                .repository(
+                    &account.id,
+                    subject.repository_id.as_deref().ok_or_else(unsupported)?,
+                )
+                .await?;
+            let mut page = self
+                .adapter_for_account(&current)
+                .await?
+                .fetch_detail(
+                    &token,
+                    DetailRequest {
+                        account: current,
+                        repository,
+                        subject,
+                        facet,
+                        cursor: lease.next_cursor.clone(),
+                        etag: lease.etag.take(),
+                        source: lease.source.clone(),
+                    },
+                )
+                .await?;
+            // Receipt/validation time is engine owned, never the provider clock.
+            page.source.observed_at = now_string();
+            if page.not_modified && (!conditional || page_index != 0) {
+                return Err(CollaborationError::new(
+                    ErrorCode::Provider,
+                    "Unexpected detail conditional response",
+                ));
+            }
+            let complete = page.not_modified || page.next_cursor.is_none();
+            let cooldown = page.cooldown_seconds.unwrap_or(0);
+            let revision = self
+                .store
+                .apply_detail(DetailCommit {
+                    account_id: account.id.clone(),
+                    authorization_epoch: account.authorization_epoch.clone(),
+                    authorization_view: lease.authorization_view.clone(),
+                    instance_id: lease.instance_id.clone(),
+                    subject_id: subject_id.into(),
+                    facet,
+                    run_id: lease.run_id.clone(),
+                    request_cursor: lease.next_cursor.clone(),
+                    body: page.body,
+                    entries: page.entries,
+                    source: page.source.clone(),
+                    next_cursor: page.next_cursor.clone(),
+                    etag: page.etag,
+                    not_modified: page.not_modified,
+                    whole_scope: starts_at_beginning && page_index == 0 && complete,
+                    complete,
+                    freshness_seconds: page.freshness_seconds,
+                })
+                .await?;
+            self.publish(revision);
+            lease.next_cursor = page.next_cursor;
+            lease.source = Some(page.source);
+            conditional = false;
+            {
+                let mut scheduler = self.scheduler.lock().await;
+                scheduler.failures.remove(&job.key);
+                // Partial bounded reads keep their durable intent and yield.
+                scheduler.due.insert(
+                    job.key.clone(),
+                    deadline_after(if complete { 180 } else { 10 }),
+                );
+                if cooldown > 0 {
+                    scheduler
+                        .account_cooldowns
+                        .insert(account.id.clone(), deadline_after(cooldown));
+                }
+            }
+            if cooldown > 0 {
+                self.persist_rate_limit(&account, cooldown, None).await?;
+                let revision = self
+                    .store
+                    .set_sync_status(
+                        &account.id,
+                        &account.authorization_epoch,
+                        &job.scope,
+                        SyncStatus {
+                            state: SyncState::RateLimited,
+                            last_success_at: Some(now_string()),
+                            next_retry_at: Some(future_string(cooldown)),
+                            error: None,
+                        },
+                    )
+                    .await?;
+                self.publish(revision);
+            }
+            if complete || cooldown > 0 {
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
+}

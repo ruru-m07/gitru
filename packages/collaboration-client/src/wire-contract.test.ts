@@ -4,10 +4,13 @@ import {
   collaborationAccounts,
   collaborationCapabilities,
   collaborationConnectGithubCli,
+  collaborationDetail,
   collaborationDiscoverGithubCli,
+  collaborationHydrateDetail,
   collaborationItem,
   collaborationItems,
   collaborationResolveResource,
+  DetailSnapshotSchema,
   GithubCliDiscoverySchema,
   ItemPageSchema,
   ItemQuerySchema,
@@ -20,6 +23,73 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 afterEach(() => invoke.mockReset());
 
 describe("generated collaboration wire contract", () => {
+  it("preserves detail missingness, nullable authoritative body and string revisions through distinct read/hydrate commands", async () => {
+    const snapshot = DetailSnapshotSchema.parse({
+      subject_id: "pull",
+      body: { state: "known", text: null },
+      entries: [],
+      next_cursor: null,
+      revision: "9007199254740993",
+      authorization_view: "4",
+      evidence: {
+        facet: "body",
+        availability: "ready",
+        coverage: {
+          state: "complete",
+          validated_at: "2026-10-03T00:00:00Z",
+          remote_has_more: false,
+        },
+        freshness: "stale",
+        stale_at: null,
+        facet_revision: "9007199254740993",
+        authorization_epoch: "3",
+        access_reason: null,
+        source: {
+          source: "fixture/body/v1",
+          adapter_version: 1,
+          field_mask: ["body"],
+          provider_updated_at: null,
+          observed_at: "2026-10-03T00:00:00Z",
+        },
+        value_source: null,
+        saved_empty: null,
+        observed_state: "known",
+        sync: {
+          state: "offline",
+          last_success_at: null,
+          next_retry_at: null,
+          error: null,
+        },
+      },
+    });
+    expect(snapshot.body.text).toBeNull();
+    expect(snapshot.evidence.facet_revision).toBe("9007199254740993");
+    for (const state of ["not_loaded", "omitted", "oversized"] as const)
+      expect(
+        DetailSnapshotSchema.parse({ ...snapshot, body: { state, text: null } })
+          .body.state,
+      ).toBe(state);
+    invoke.mockResolvedValue(snapshot);
+    const query = {
+      account_id: "actor",
+      subject_id: "pull",
+      facet: "body" as const,
+      cursor: null,
+      limit: 100,
+    };
+    await collaborationDetail({ query });
+    const request = {
+      account_id: "actor",
+      authorization_epoch: "3",
+      subject_id: "pull",
+      facet: "body" as const,
+    };
+    await collaborationHydrateDetail({ request });
+    expect(invoke.mock.calls).toEqual([
+      ["collaboration_detail", { query }],
+      ["collaboration_hydrate_detail", { request }],
+    ]);
+  });
   it("preserves typed capability states, large native identities, and metadata-only resolution", async () => {
     const instance = {
       id: "gitlab:https://git.example:8443/gitlab/",

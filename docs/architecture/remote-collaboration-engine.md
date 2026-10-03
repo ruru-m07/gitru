@@ -1746,6 +1746,22 @@ personal CLI credentials were inspected and no remote CI run was created.
 
 ### Foundation publication and continuation (2026-10-03)
 
+Current continuation adds [PR #147](https://github.com/ruru-m07/gitru/pull/147),
+RURU-97, on the reviewed provider-registry branch. Independent detail facets
+now have cache-only queries, explicit epoch-bound coalesced hydration, bounded
+paging/restart intent and atomic source/coverage/access/revision metadata.
+Known null/empty, missing, omitted, oversized and partial observations remain
+distinct. Retained body authority survives omitted/oversized and timestamp-free
+304 responses; deselect/reselect cannot revive an old facet lease. A metadata-only
+accessor shares the caller's SQLite snapshot for contextual capability reads.
+Local validation passes 114 collaboration, 3 command-caller, 36 client and 177
+desktop frontend tests, types/lint/Clippy/formatting, and the 9 CLI cases after
+the ancestor fixture correction. Independent storage and runtime/client reviews
+are accepted. Production GitHub detail endpoints/UI remain RURU-77/78;
+RURU-100 contextual UI is still In Progress. Migration 0004 adds rebuildable
+details; RURU-106's restore policy still refuses unreviewed schemas 0003/0004.
+These are published review stacks, not merged or release-qualified features.
+
 The foundation received independent native and frontend review with no new
 blocking findings. `make verify` passed on macOS on 3 October, including the
 194 frontend tests, workspace lint/type checks, production frontend build,
@@ -1847,9 +1863,10 @@ Those lanes are published in separate draft PRs based on #143:
   open. Core policy deliberately refuses v3/unknown/outbox schemas. The parallel
   stacks do not yet form a release-qualified combined backup feature.
 
-The next batch implements RURU-97 independent detail storage/hydration and
-RURU-100 contextual capability consumers from the reviewed #146 commit. These
-are In Progress and record their contracts before major edits. Detail coverage
+This batch adds RURU-97 independent detail storage/hydration in draft #147 and
+RURU-100 contextual capability consumers from the reviewed #146 contract.
+RURU-97 is In Review; RURU-100 remains In Progress. Both record their contracts
+before major edits. Detail coverage
 is separate from summary coverage; local reads never initiate provider HTTP.
 Contextual capabilities distinguish authorized saved reads, remote sync and
 remote writes across account/repository/resource targets. Temporary network or

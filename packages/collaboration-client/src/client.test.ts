@@ -2,6 +2,7 @@ import type {
   AccountSnapshot,
   CapabilitySnapshot,
   ChangePage,
+  DetailSnapshot,
   ItemPage,
   ItemSnapshot,
   RemoteAccount,
@@ -87,6 +88,8 @@ function transport(
     draft: unexpected,
     capabilities: unexpected,
     resolveResource: unexpected,
+    detail: unexpected,
+    hydrateDetail: unexpected,
     listen: unexpected,
     ...overrides,
   };
@@ -156,6 +159,189 @@ const itemQuery = {
 };
 
 describe("CollaborationClient", () => {
+  it("binds cache-only detail reads and explicit hydration without starting refresh from a read", async () => {
+    const saved: DetailSnapshot = {
+      subject_id: "pull",
+      body: { state: "known", text: null },
+      entries: [],
+      next_cursor: null,
+      revision: "1",
+      authorization_view: "1",
+      evidence: {
+        facet: "body",
+        availability: "ready",
+        coverage: {
+          state: "complete",
+          validated_at: "2026-10-03T00:00:00Z",
+          remote_has_more: false,
+        },
+        freshness: "stale",
+        stale_at: "2026-10-03T00:01:00Z",
+        facet_revision: "1",
+        authorization_epoch: "1",
+        access_reason: null,
+        source: {
+          source: "fixture/body/v1",
+          adapter_version: 1,
+          field_mask: ["body"],
+          provider_updated_at: null,
+          observed_at: "2026-10-03T00:00:00Z",
+        },
+        value_source: null,
+        saved_empty: null,
+        observed_state: "known",
+        sync: page.sync,
+      },
+    };
+    const detail = vi.fn().mockResolvedValue(saved);
+    const hydrateDetail = vi.fn().mockResolvedValue({ job_id: "coalesced" });
+    const refresh = vi.fn();
+    const client = new CollaborationClient(
+      transport({ detail, hydrateDetail, refresh }),
+    );
+    const handle = client.forAccount(account);
+    const query = {
+      subject_id: "pull",
+      facet: "body" as const,
+      cursor: null,
+      limit: 100,
+    };
+    expect(await handle.detail(query)).toEqual(saved);
+    expect(detail).toHaveBeenCalledWith({ ...query, account_id: account.id });
+    expect(hydrateDetail).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
+    expect(
+      await handle.hydrateDetail({ subject_id: "pull", facet: "body" }),
+    ).toEqual({ job_id: "coalesced" });
+    expect(hydrateDetail).toHaveBeenCalledWith({
+      subject_id: "pull",
+      facet: "body",
+      account_id: account.id,
+      authorization_epoch: account.authorization_epoch,
+    });
+  });
+
+  it("captures hydration authorization from the account handle and rejects late receipts after reconnect", async () => {
+    const oldReceipt = deferred<{ job_id: string }>();
+    const replacement = { ...account, authorization_epoch: "2" };
+    const hydrateDetail = vi
+      .fn()
+      .mockImplementationOnce(() => oldReceipt.promise)
+      .mockRejectedValue({ code: "stale_view" });
+    const client = new CollaborationClient(
+      transport({ hydrateDetail, connectGithub: async () => replacement }),
+    );
+    const oldHandle = client.forAccount(account);
+    const request = { subject_id: "pull", facet: "body" as const };
+    const pending = oldHandle.hydrateDetail(request);
+    await client.connectGithub("fixture");
+    oldReceipt.resolve({ job_id: "old-grant" });
+    await expect(pending).rejects.toBeInstanceOf(StaleAuthorizationError);
+    await expect(oldHandle.hydrateDetail(request)).rejects.toEqual({
+      code: "stale_view",
+    });
+    expect(hydrateDetail).toHaveBeenLastCalledWith({
+      ...request,
+      account_id: account.id,
+      authorization_epoch: "1",
+    });
+  });
+
+  it("cancels initial pending detail reads on matching facet changes and preserves other facets and drafts", async () => {
+    let next = changePage("1");
+    const old = deferred<DetailSnapshot>();
+    const saved: DetailSnapshot = {
+      subject_id: "pull",
+      body: { state: "not_loaded", text: null },
+      entries: [],
+      next_cursor: null,
+      revision: "2",
+      authorization_view: "1",
+      evidence: {
+        facet: "comments",
+        availability: "ready",
+        coverage: {
+          state: "complete",
+          validated_at: "2026-10-03T00:00:00Z",
+          remote_has_more: false,
+        },
+        freshness: "stale",
+        stale_at: null,
+        facet_revision: "2",
+        authorization_epoch: "1",
+        access_reason: null,
+        source: null,
+        value_source: null,
+        saved_empty: null,
+        observed_state: "known",
+        sync: page.sync,
+      },
+    };
+    const detail = vi
+      .fn<() => Promise<DetailSnapshot>>()
+      .mockImplementationOnce(() => old.promise)
+      .mockResolvedValue(saved);
+    const client = new CollaborationClient(
+      transport({
+        detail,
+        listen: async () => () => {},
+        changesSince: async () => next,
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    const query = {
+      account_id: account.id,
+      subject_id: "pull",
+      facet: "comments" as const,
+      cursor: null,
+      limit: 100,
+    };
+    const key = collaborationKeys.detail(account, query);
+    const other = collaborationKeys.detail(account, {
+      ...query,
+      facet: "reviews",
+    });
+    const draft = collaborationKeys.draft(account, "pull");
+    cache.setQueryData(other, "saved other facet");
+    cache.setQueryData(draft, "authored draft");
+    const observer = new QueryObserver(cache, {
+      queryKey: key,
+      queryFn: ({ signal }) => client.forAccount(account).detail(query, signal),
+      staleTime: Infinity,
+      retry: false,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    next = changePage("2", "1", [
+      {
+        revision: "2",
+        account_id: account.id,
+        scope: "detail:pull:comments",
+        reset: false,
+      },
+    ]);
+    await client.wake();
+    await vi.waitFor(() => expect(cache.getQueryData(key)).toEqual(saved));
+    old.resolve({
+      ...saved,
+      revision: "1",
+      evidence: {
+        ...saved.evidence,
+        availability: "missing",
+        facet_revision: null,
+      },
+    });
+    await old.promise;
+    await Promise.resolve();
+    expect(detail).toHaveBeenCalledTimes(2);
+    expect(cache.getQueryData(key)).toEqual(saved);
+    expect(cache.getQueryState(other)?.isInvalidated).toBe(false);
+    expect(cache.getQueryState(draft)?.isInvalidated).toBe(false);
+    unsubscribe();
+    stop();
+    cache.clear();
+  });
   it.each([
     "repositories",
     "items",

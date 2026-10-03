@@ -20,7 +20,7 @@ pub(super) async fn bind_account_in(
     Ok(())
 }
 
-async fn instance_in(
+pub(super) async fn instance_in(
     tx: &mut Transaction<'_, Sqlite>,
     account: &RemoteAccount,
 ) -> Result<ProviderInstance> {
@@ -316,7 +316,7 @@ fn normalize_web_url(value: &str) -> Result<String> {
     Ok(url.to_string())
 }
 
-async fn accessible(
+pub(super) async fn accessible(
     tx: &mut Transaction<'_, Sqlite>,
     account: &str,
     id: &str,

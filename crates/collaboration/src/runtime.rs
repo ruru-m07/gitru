@@ -16,6 +16,9 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::{Mutex, Notify, broadcast};
+#[cfg(test)]
+mod detail_tests;
+mod details;
 
 const MAX_QUEUED_SCOPES: usize = 128;
 const MAX_PAGES_PER_REFRESH: usize = 10;
@@ -28,11 +31,20 @@ macro_rules! credential_boundary {
 }
 
 #[derive(Clone)]
+enum JobKind {
+    Feed(FeedKind),
+    Detail {
+        subject_id: String,
+        facet: DetailFacet,
+    },
+}
+
+#[derive(Clone)]
 struct Job {
     key: String,
     account: RemoteAccount,
     repository: Option<RemoteRepository>,
-    kind: FeedKind,
+    kind: JobKind,
     scope: String,
 }
 
@@ -557,6 +569,7 @@ impl CollaborationRuntime {
     }
 
     async fn enqueue_due(&self) -> Result<(), CollaborationError> {
+        self.enqueue_pending_details().await?;
         let accounts: Vec<_> = self
             .store
             .accounts()
@@ -627,6 +640,18 @@ impl CollaborationRuntime {
     ) -> Result<String, CollaborationError> {
         self.require_feed(&account, kind).await?;
         let scope = scope_name(kind, repository.as_ref());
+        self.enqueue_work(account, repository, JobKind::Feed(kind), scope, manual)
+            .await
+    }
+
+    async fn enqueue_work(
+        &self,
+        account: RemoteAccount,
+        repository: Option<RemoteRepository>,
+        kind: JobKind,
+        scope: String,
+        manual: bool,
+    ) -> Result<String, CollaborationError> {
         let key = format!("{}:{}:{scope}", account.id, account.authorization_epoch);
         // Persisted cooldowns survive restarts and constrain manual refresh too.
         let persisted_state = self.store.scope_state(&account.id, &scope).await?;
@@ -782,6 +807,12 @@ impl CollaborationRuntime {
     }
 
     async fn sync_job(&self, job: &Job) -> Result<(), CollaborationError> {
+        let kind = match &job.kind {
+            JobKind::Detail { subject_id, facet } => {
+                return self.sync_detail(job, subject_id, *facet).await;
+            }
+            JobKind::Feed(kind) => *kind,
+        };
         let (account, token) = {
             let _lifecycle = self.lifecycle.lock().await;
             let account = self.active_account(&job.account.id).await?;
@@ -852,7 +883,7 @@ impl CollaborationRuntime {
             if current.authorization_epoch != account.authorization_epoch {
                 return Err(stale());
             }
-            self.require_feed(&current, job.kind).await?;
+            self.require_feed(&current, kind).await?;
             let page = self
                 .adapter_for_account(&current)
                 .await?
@@ -861,7 +892,7 @@ impl CollaborationRuntime {
                     FeedRequest {
                         account: account.clone(),
                         repository: job.repository.clone(),
-                        kind: job.kind,
+                        kind,
                         cursor: cursor.clone(),
                         etag: validator.take(),
                         last_modified: modified.take(),
@@ -922,7 +953,7 @@ impl CollaborationRuntime {
             }) {
                 return Err(stale());
             }
-            let normal_interval = match job.kind {
+            let normal_interval = match kind {
                 FeedKind::Repositories => 600,
                 FeedKind::Notifications => 60,
                 FeedKind::PullRequests | FeedKind::Issues => 180,
@@ -981,6 +1012,24 @@ impl CollaborationRuntime {
     async fn record_error(&self, job: &Job, error: CollaborationError) {
         if error.code == ErrorCode::StaleView {
             return;
+        }
+        if matches!(
+            error.code,
+            ErrorCode::Unsupported
+                | ErrorCode::PermissionDenied
+                | ErrorCode::NotFound
+                | ErrorCode::Busy
+        ) && let JobKind::Detail { subject_id, facet } = &job.kind
+        {
+            let _ = self
+                .store
+                .stop_detail_demand(
+                    &job.account.id,
+                    &job.account.authorization_epoch,
+                    subject_id,
+                    *facet,
+                )
+                .await;
         }
         let _lifecycle = self.lifecycle.lock().await;
         if !self
