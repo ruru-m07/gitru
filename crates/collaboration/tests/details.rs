@@ -2,6 +2,16 @@ use collaboration::*;
 mod detail_support;
 use detail_support::*;
 
+fn only_fixture_entry(snapshot: DetailSnapshot) -> DetailEntry {
+    let mut entries = snapshot.entries.into_iter();
+    let entry = entries.next().expect("detail fixture contains an entry");
+    assert!(
+        entries.next().is_none(),
+        "detail fixture contains exactly one entry"
+    );
+    entry
+}
+
 #[tokio::test]
 async fn metadata_emptiness_is_known_only_for_complete_authorized_saved_content() {
     let dir = tempfile::tempdir().unwrap();
@@ -253,12 +263,12 @@ async fn partial_entry_fields_preserve_saved_values_and_validation_times() {
     let mut page = commit(&store, &actor, DetailFacet::Comments).await;
     page.entries = vec![entry("comment")];
     store.apply_detail(page).await.unwrap();
-    let saved = store
-        .detail(query("a", DetailFacet::Comments))
-        .await
-        .unwrap()
-        .entries
-        .remove(0);
+    let saved = only_fixture_entry(
+        store
+            .detail(query("a", DetailFacet::Comments))
+            .await
+            .unwrap(),
+    );
     let body_validation = saved
         .field_validations
         .iter()
@@ -275,12 +285,12 @@ async fn partial_entry_fields_preserve_saved_values_and_validation_times() {
     page.entries = vec![partial];
     page.source.observed_at = "2026-10-03T00:01:00Z".into();
     store.apply_detail(page).await.unwrap();
-    let saved = store
-        .detail(query("a", DetailFacet::Comments))
-        .await
-        .unwrap()
-        .entries
-        .remove(0);
+    let saved = only_fixture_entry(
+        store
+            .detail(query("a", DetailFacet::Comments))
+            .await
+            .unwrap(),
+    );
     assert_eq!(saved.body.text.as_deref(), Some("saved comment"));
     assert_eq!(saved.observed_body_state, DetailValueState::Omitted);
     assert_eq!(saved.author.as_deref(), Some("renamed actor"));

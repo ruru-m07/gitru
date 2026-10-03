@@ -109,3 +109,21 @@ slice; 177 desktop tests and desktop/E2E types pass after stacking onto the revi
 RURU-76 host-lifecycle base. This is local evidence, not remote CI or a live detail
 endpoint claim. Backup restore policy remains separately reviewed in RURU-106;
 do not raise its accepted schema ceiling merely because migration 0004 exists.
+
+CodeQL follow-up (3 October 2026): PR #147 head `5d98afce` has two new
+`rust/cleartext-logging` alerts
+([20](https://github.com/ruru-m07/gitru/security/code-scanning/20),
+[21](https://github.com/ruru-m07/gitru/security/code-scanning/21)) at the partial
+entry-field test's synthetic `entries.remove(0)` extractions. The successful Rust
+analysis also carries the inherited RURU-95 account-extraction alert. The new
+flows reach these vectors from the account read through `Store::detail`; no
+account or saved body is actually logged by this test. CodeQL 2.27.1's
+[generated model](https://github.com/github/codeql/blob/6e9f9e38390175c41b99070a423c875f450759ca/rust/ql/lib/ext/generated/modelgenerator/rust.model.yml#L8766)
+treats `Vec::remove`'s receiver as a logging sink. Checked iteration with fixed
+failure messages now enforces exactly one saved entry before and after the
+partial observation, preserving body, author and validation-time assertions.
+The rule remains enabled and production behavior is unchanged. Scoped local
+verification passes all ten detail storage tests, all-target collaboration Clippy
+with `-D warnings`, workspace formatting and diff whitespace checks. Exact-head
+remote rescanning remains pending for this follow-up, including the inherited
+RURU-95 alert after its repair is propagated.
