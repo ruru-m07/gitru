@@ -12,10 +12,23 @@ Local C01–C49 keys are planning keys, not Linear identifiers. Linear status an
 Continuation started on 2026-10-03: signed foundation commit
 `baafef75e82743b756b412bd5d7bc443636c76c8` is published in draft
 [PR #141](https://github.com/ruru-m07/gitru/pull/141). RURU-138 is In Review;
-RURU-95, RURU-99 and RURU-105 are In Progress in isolated worktrees. Both
+RURU-95 is In Review in [PR #142](https://github.com/ruru-m07/gitru/pull/142),
+RURU-105 in [PR #143](https://github.com/ruru-m07/gitru/pull/143), and RURU-99
+in [PR #144](https://github.com/ruru-m07/gitru/pull/144). These are scoped,
+signed stacks: #142 and #144 target #141's branch; #143 targets #142's branch.
 `make verify` and packaged macOS E2E (2 specs / 3 cases) passed locally.
+Credential recovery passed 58 collaboration tests including 25 process-kill
+checkpoints; the integrated migration suite passed 70 tests including 12
+migration cases. Draft recovery passed 208 frontend, 49 collaboration and 11
+desktop tests, plus native fixture QA of actor switching/copy/save/export/cancel.
+Scope and evidence live in each branch's `docs/architecture/collaboration-work/`
+note. RURU-76 (provider registry/identities) and RURU-106 (backup/recovery core,
+stacked on #143) are In Progress in isolated worktrees.
 Remote CI is running; the original publication index below remains a snapshot.
 The hourly chat continuation checks live Linear/PR state before picking work.
+PR publication does not authorize merging. GitHub's default CodeQL setup scans
+PRs into default/protected `dev`; children targeting unprotected stack branches
+need their own exact-head security scans after retargeting to `dev` before merge.
 
 Make GitHub, GitLab and Bitbucket collaboration feel like native local data: cached navigation never waits for provider HTTP, while one Rust runtime keeps durable SQLite projections current across all tabs.
 
@@ -25,11 +38,11 @@ Provider accounts work independently of Gitru cloud sign-in. GitHub connects wit
 
 The initial GitHub read slice exists locally on branch `ruru/remote-collaboration`: SQLite/WAL/FTS, secure account lifecycle, PAT/CLI connection, repository discovery/selection, PR/issue/inbox summaries, local queries/search, background paging, durable drafts, revision catch-up and the single-window Accounts dialog.
 
-Local evidence: 194 frontend tests, 47 collaboration Rust tests, 3 native caller-policy tests, lint/types/Clippy/formatting, production frontend build and two packaged macOS E2E specs (3 cases). Native computer-use QA verified Inbox → Accounts → close using an isolated E2E vault. Live production credentials/vaults and Windows/Linux remain unverified. This work is uncommitted; no remote CI or release completion is claimed.
+Historical local evidence: 194 frontend tests, 47 collaboration Rust tests, 3 native caller-policy tests, lint/types/Clippy/formatting, production frontend build and two packaged macOS E2E specs (3 cases). Native computer-use QA verified Inbox → Accounts → close using an isolated E2E vault. The 3 October continuation above supersedes publication and CI status. Live production credentials/vaults remain separate gates; no release completion is claimed.
 
 ## Source of truth
 
-Read `docs/architecture/remote-collaboration-engine.md` in the repository before implementing. Its section 23 records actual implementation limits; sections 6–20 define contracts and sections 21–22 define rollout and gates. The document is currently local/uncommitted in the implementation branch, so no nonexistent GitHub document link is supplied.
+Read `docs/architecture/remote-collaboration-engine.md` in the repository before implementing. Its section 23 records actual implementation limits; sections 6–20 define contracts and sections 21–22 define rollout and gates. The document is committed in foundation PR #141; each follow-on branch adds its own work note before major edits.
 
 Rust owns provider networking, credentials, durable storage, sync, commands and delivery. TypeScript owns typed local queries/subscriptions and UI. Generate changed IPC with `make typegen`; never edit `packages/commands` manually.
 

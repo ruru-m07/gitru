@@ -1759,6 +1759,36 @@ completes. RURU-95 (credential cutover),
 RURU-99 (private draft recovery) and RURU-105 (migration fixtures) are the
 first parallel batch, subject to live blockers and explicit file ownership.
 
+That batch is now In Review in separate signed stacks:
+
+- [PR #142](https://github.com/ruru-m07/gitru/pull/142), RURU-95: versioned native
+  vault references and a durable staged/retired cutover journal. Local validation
+  passed 58 collaboration tests, including 25 actual process-kill checkpoints.
+- [PR #143](https://github.com/ruru-m07/gitru/pull/143), RURU-105, stacked on #142:
+  frozen v1→v2 upgrade/downgrade-refusal and migration-failure recovery. The
+  integrated local suite passed 70 tests, including 12 migration cases.
+- [PR #144](https://github.com/ruru-m07/gitru/pull/144), RURU-99: bounded private
+  draft recovery without active provider access and generation-bound native
+  export. Local validation passed 208 frontend, 49 collaboration and 11 desktop
+  tests. Native bundled fixture QA verified two disconnected actors with the same
+  missing subject, exact Unicode export, save-first editing, copy, cancel/reopen,
+  and private file permissions. Recovery covers explicitly saved drafts.
+
+Each branch records its design and evidence in
+`docs/architecture/collaboration-work/RURU-<number>.md`. Remote CI remains a
+separate gate. Foundation CI exposed an initial child-probe readiness race and
+four CLI fixture `Vec::remove` logging-model alerts; scoped test fixes passed
+local packaged E2E/CLI checks and the exact-head remote matrix was restarted.
+No production credential logging or rule suppression was introduced. Default
+CodeQL only scans PRs targeting default/protected `dev`, so stacked children need
+fresh exact-head security scans when retargeted to `dev` before merge.
+
+The next parallel lanes are RURU-76 (provider-instance dispatch, canonical
+identities, aliases and capabilities) and RURU-106 (verified WAL-consistent backup
+and offline restore core, based on #143). Both document their design before
+major edits. Desktop restore UI/runtime lifecycle remains an explicit integration
+gate. Publication authorizes review; no PR is merged without user authorization.
+
 ### Linear implementation backlog (2026-10-03)
 
 The remaining work is organized under
