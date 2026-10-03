@@ -81,6 +81,22 @@ async fn ledger(connection: &mut SqliteConnection) -> Vec<String> {
         .fetch_all(connection).await.unwrap()
 }
 
+async fn credential_metadata(connection: &mut SqliteConnection) -> Vec<Vec<String>> {
+    let mut snapshots = Vec::new();
+    for query in [
+        "SELECT json_array(account_id,credential_ref) FROM account_credentials ORDER BY account_id",
+        "SELECT json_array(credential_ref,account_id,state,attempts,next_retry_at) FROM credential_cleanup ORDER BY credential_ref",
+    ] {
+        snapshots.push(
+            sqlx::query_scalar(query)
+                .fetch_all(&mut *connection)
+                .await
+                .unwrap(),
+        );
+    }
+    snapshots
+}
+
 fn query(account: &str, kind: RemoteItemKind, search: Option<&str>) -> ItemQuery {
     ItemQuery {
         account_id: account.into(),
@@ -257,6 +273,83 @@ async fn frozen_v1_opens_with_latest_schema_and_preserves_private_intent() {
     }
 }
 
+#[tokio::test]
+async fn frozen_v1_upgrade_preserves_legacy_vault_references_and_cleanup_work() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("collaboration.db");
+    frozen_v1(&path).await;
+    for _ in 0..2 {
+        let store = Store::open(&path).await.unwrap();
+        for account in ["a", "b", "d"] {
+            assert_eq!(
+                store
+                    .credential_reference(account)
+                    .await
+                    .unwrap()
+                    .as_deref(),
+                Some(account)
+            );
+        }
+        assert!(store.credential_reference("c").await.unwrap().is_none());
+        let due = store.due_credential_cleanup(0, 32).await.unwrap();
+        assert_eq!(
+            due.len(),
+            1,
+            "Legacy active references must never enter cleanup"
+        );
+        assert_eq!(due[0].reference, "c");
+        assert_eq!(due[0].attempts, 0);
+        store.close().await;
+        drop(store);
+        let mut connection = connect(&path).await;
+        assert_eq!(
+            credential_metadata(&mut connection).await,
+            [
+                vec!["[\"a\",\"a\"]", "[\"b\",\"b\"]", "[\"d\",\"d\"]"],
+                vec!["[\"c\",\"c\",\"retired\",0,0]"],
+            ]
+        );
+        assert_integrity(&mut connection).await;
+        connection.close().await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn historical_v1_migrator_refuses_upgraded_storage_without_down_migrating_intent() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("collaboration.db");
+    frozen_v1(&path).await;
+    let store = Store::open(&path).await.unwrap();
+    store.close().await;
+    drop(store);
+    let mut connection = connect(&path).await;
+    let before = snapshot(&mut connection).await;
+    let before_ledger = ledger(&mut connection).await;
+    let before_credentials = credential_metadata(&mut connection).await;
+    let historical = Migrator::with_migrations(vec![Migration::new(
+        1,
+        "local collaboration".into(),
+        MigrationType::Simple,
+        V1_SCHEMA.into_sql_str(),
+        false,
+    )]);
+    assert!(matches!(
+        historical.run_direct(None, &mut connection, false).await,
+        Err(MigrateError::VersionMissing(2))
+    ));
+    assert_eq!(snapshot(&mut connection).await, before);
+    assert_eq!(ledger(&mut connection).await, before_ledger);
+    assert_eq!(
+        credential_metadata(&mut connection).await,
+        before_credentials
+    );
+    assert_integrity(&mut connection).await;
+    connection.close().await.unwrap();
+    let store = Store::open(&path).await.unwrap();
+    assert_historical_reads(&store).await;
+    store.close().await;
+}
+
 #[derive(Clone, Copy, Debug)]
 enum IncompatibleLedger {
     Future,
@@ -264,10 +357,18 @@ enum IncompatibleLedger {
     ChangedChecksum,
 }
 
-async fn rejected_upgrade_preserves_data_and_releases_writer_lease(fault: IncompatibleLedger) {
+async fn rejected_upgrade_preserves_data_and_releases_writer_lease(
+    fault: IncompatibleLedger,
+    upgraded: bool,
+) {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("collaboration.db");
     frozen_v1(&path).await;
+    if upgraded {
+        let store = Store::open(&path).await.unwrap();
+        store.close().await;
+        drop(store);
+    }
     let mut connection = connect(&path).await;
     match fault {
         IncompatibleLedger::Future => {
@@ -289,6 +390,11 @@ async fn rejected_upgrade_preserves_data_and_releases_writer_lease(fault: Incomp
     }
     let before = snapshot(&mut connection).await;
     let before_ledger = ledger(&mut connection).await;
+    let before_credentials = if upgraded {
+        Some(credential_metadata(&mut connection).await)
+    } else {
+        None
+    };
     connection.close().await.unwrap();
     let error = Store::open(&path)
         .await
@@ -310,6 +416,12 @@ async fn rejected_upgrade_preserves_data_and_releases_writer_lease(fault: Incomp
     let mut connection = connect(&path).await;
     assert_eq!(snapshot(&mut connection).await, before);
     assert_eq!(ledger(&mut connection).await, before_ledger);
+    if let Some(before_credentials) = before_credentials {
+        assert_eq!(
+            credential_metadata(&mut connection).await,
+            before_credentials
+        );
+    }
     assert_integrity(&mut connection).await;
 
     // Deliberate test-fixture repair is not a production recovery/reset path.
@@ -332,18 +444,35 @@ async fn rejected_upgrade_preserves_data_and_releases_writer_lease(fault: Incomp
 
 #[tokio::test]
 async fn newer_schema_is_recoverable_without_silent_reset() {
-    rejected_upgrade_preserves_data_and_releases_writer_lease(IncompatibleLedger::Future).await;
+    for upgraded in [false, true] {
+        rejected_upgrade_preserves_data_and_releases_writer_lease(
+            IncompatibleLedger::Future,
+            upgraded,
+        )
+        .await;
+    }
 }
 
 #[tokio::test]
 async fn dirty_migration_is_recoverable_without_silent_reset() {
-    rejected_upgrade_preserves_data_and_releases_writer_lease(IncompatibleLedger::Dirty).await;
+    for upgraded in [false, true] {
+        rejected_upgrade_preserves_data_and_releases_writer_lease(
+            IncompatibleLedger::Dirty,
+            upgraded,
+        )
+        .await;
+    }
 }
 
 #[tokio::test]
 async fn changed_applied_migration_is_recoverable_without_silent_reset() {
-    rejected_upgrade_preserves_data_and_releases_writer_lease(IncompatibleLedger::ChangedChecksum)
+    for upgraded in [false, true] {
+        rejected_upgrade_preserves_data_and_releases_writer_lease(
+            IncompatibleLedger::ChangedChecksum,
+            upgraded,
+        )
         .await;
+    }
 }
 
 #[tokio::test]
@@ -442,6 +571,7 @@ async fn migration_fault_rolls_back_and_can_retry(fault: Fault) {
     let mut connection = connect(&path).await;
     let before = snapshot(&mut connection).await;
     let before_ledger = ledger(&mut connection).await;
+    let before_credentials = credential_metadata(&mut connection).await;
     let inserted = Arc::new(AtomicBool::new(false));
     match fault {
         Fault::InvalidStatement => {}
@@ -512,6 +642,11 @@ async fn migration_fault_rolls_back_and_can_retry(fault: Fault) {
         .unwrap();
     assert_eq!(snapshot(&mut connection).await, before, "{fault:?}");
     assert_eq!(ledger(&mut connection).await, before_ledger, "{fault:?}");
+    assert_eq!(
+        credential_metadata(&mut connection).await,
+        before_credentials,
+        "{fault:?}"
+    );
     let table_count: i64 =
         sqlx::query_scalar("SELECT count(*) FROM sqlite_schema WHERE name='migration_backfill'")
             .fetch_one(&mut connection)
@@ -534,6 +669,10 @@ async fn migration_fault_rolls_back_and_can_retry(fault: Fault) {
             .await
             .unwrap();
         assert_eq!(snapshot(&mut connection).await, before);
+        assert_eq!(
+            credential_metadata(&mut connection).await,
+            before_credentials
+        );
         let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM migration_backfill")
             .fetch_one(&mut connection)
             .await
@@ -588,6 +727,7 @@ async fn process_crash_during_migration_releases_lease_and_preserves_intent() {
     let mut connection = connect(&path).await;
     let before = snapshot(&mut connection).await;
     let before_ledger = ledger(&mut connection).await;
+    let before_credentials = credential_metadata(&mut connection).await;
     connection.close().await.unwrap();
 
     let mut worker = CrashWorker(
@@ -634,6 +774,10 @@ async fn process_crash_during_migration_releases_lease_and_preserves_intent() {
     let mut connection = connect(&path).await;
     assert_eq!(snapshot(&mut connection).await, before);
     assert_eq!(ledger(&mut connection).await, before_ledger);
+    assert_eq!(
+        credential_metadata(&mut connection).await,
+        before_credentials
+    );
     let table_count: i64 =
         sqlx::query_scalar("SELECT count(*) FROM sqlite_schema WHERE name='migration_backfill'")
             .fetch_one(&mut connection)

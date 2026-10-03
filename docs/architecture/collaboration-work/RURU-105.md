@@ -2,7 +2,8 @@
 
 Issue: [RURU-105](https://linear.app/catra/issue/RURU-105/test-schema-evolution-and-recoverable-migration-failures).
 Architecture: [remote collaboration engine](../remote-collaboration-engine.md),
-section 19. Base: collaboration foundation `baafef75` (PR #141).
+section 19. Foundation: `baafef75` (PR #141). Integration base: RURU-95 credential
+cutover `449db366afab455b751cd691f0deb8aa421105dc`.
 
 ## Implementation
 
@@ -18,8 +19,18 @@ preserving those rows and keeping private reads fenced by account and access.
 The fixture checksum rejects changes to the already-applied v1 migration.
 New forward migrations automatically join this upgrade gate.
 
+The suite now tests the actual `0002_credential_cutover.sql` migration from
+RURU-95. Active and auth-required legacy accounts retain their original vault
+references; disconnected references become durable cleanup work. Reopening must
+not duplicate or reset that work. The historical v1 SQLx migrator refuses the
+upgraded v2 ledger without changing drafts, projections, references or cleanup
+metadata. This characterizes the previous migration policy without claiming to
+run a published older desktop binary.
+
 Recovery cases verify that future-schema, dirty-ledger and modified-checksum
-errors retain all authored/projection data and migration bookkeeping. Failed
+errors retain all authored/projection data and migration bookkeeping, both before
+and after the v2 upgrade. Upgraded failures also preserve committed credential
+references and pending cleanup metadata. Failed
 bootstrap releases the OS writer lease. Repairing deliberately injected fixture
 metadata demonstrates reopen without adding an automatic repair/reset feature to
 production.
@@ -47,13 +58,18 @@ changed by this issue. `make typegen` is therefore not applicable.
 
 ## Validation and boundaries
 
-On the foundation base, the focused suite passes 10 cases plus one subprocess
-helper marked ignored in the normal harness. The full collaboration suite passes
-57 tests (24 unit, 10 migration, 9 runtime, 14 storage). Clippy with warnings denied
-and workspace formatting checks pass. This initially proves frozen
-v1-to-current-v1 compatibility, not an upgrade between published app releases.
-RURU-95's forward credential-cutover migration will provide the first real
-v1-to-v2 integration check before this issue is published.
+Local validation on 3 October 2026, integrated with RURU-95:
+
+- All 12 migration cases pass. The subprocess helper is marked ignored in the
+  normal harness and invoked explicitly by its parent case.
+- The full collaboration suite passes 70 tests: 33 unit, 12 migration, 9 runtime
+  and 16 storage. Both ignored entry points are helpers invoked by passing crash
+  tests, not omitted recovery cases.
+- Crate Clippy across all targets with warnings denied, workspace formatting,
+  and diff whitespace checks pass.
+
+This provides a real frozen v1-to-v2 production-schema upgrade check, while
+distinguishing those schemas from published desktop releases.
 
 Commands (using a shared build cache, with isolated temporary databases):
 
