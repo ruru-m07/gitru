@@ -91,6 +91,15 @@ were obtained with an outer command lock and
 shared-cache runs were discarded.
 
 Evidence must distinguish macOS local execution from remote Windows/Linux runs.
+The first remote Windows run exposed Git checkout CRLF conversion of the frozen
+SQL schema and literal seed text: the migration checksum changed and authored
+newlines acquired carriage returns. Narrow `.gitattributes` rules pin production
+collaboration migrations and historical SQL fixtures to LF. The frozen SQL and
+expected checksum remain unchanged; assertions are not weakened. A simulated
+`core.autocrlf=true` / `core.eol=crlf` checkout retained identical LF bytes for
+both production migrations and both SQL fixtures, with the frozen SHA-384
+checksum intact. All 12 focused migration cases passed after the attribute
+change. The Windows matrix is rerun separately.
 `SQLITE_FULL` tests database allocation exhaustion; they do not simulate every
 filesystem failure or a full physical volume. Synthetic migrations are
 transaction-recovery fixtures, not supported Gitru schema versions. Backup and
