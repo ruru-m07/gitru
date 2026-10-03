@@ -15,6 +15,7 @@ pub mod participants;
 pub mod providers;
 pub mod pull_commits;
 pub mod pull_files;
+pub mod recovery;
 pub mod resource_metadata;
 pub mod runtime;
 pub mod storage;

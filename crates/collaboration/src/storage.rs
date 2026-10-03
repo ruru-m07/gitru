@@ -42,7 +42,7 @@ const MAX_CHANGE_PAGE: i64 = 256;
 const CHANGE_LOG_LIMIT: i64 = 4096;
 const MAX_BODY_BYTES: usize = 1_048_576;
 const MAX_FTS_BODY_CHARS: usize = 16_384;
-static MIGRATIONS: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+pub(crate) static MIGRATIONS: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 // Discovery owns picker membership. Notification-only references can appear
 // independently, but cannot resurrect a denied or retired discovery member.
 const VISIBLE_REPOSITORY: &str = "((EXISTS(SELECT 1 FROM scope_membership m WHERE m.account_id=r.account_id AND m.scope='repositories' AND m.entity_id=r.id AND m.active=1) AND NOT EXISTS(SELECT 1 FROM sync_scopes s WHERE s.account_id=r.account_id AND s.scope='repositories' AND s.access_denied=1)) OR (NOT EXISTS(SELECT 1 FROM scope_membership m WHERE m.account_id=r.account_id AND m.scope='repositories' AND m.entity_id=r.id) AND EXISTS(SELECT 1 FROM items n JOIN scope_membership m ON m.account_id=n.account_id AND m.scope='notifications' AND m.entity_id=n.id AND m.active=1 WHERE n.account_id=r.account_id AND n.repository_id=r.id AND n.kind='notification') AND NOT EXISTS(SELECT 1 FROM sync_scopes s WHERE s.account_id=r.account_id AND s.scope='notifications' AND s.access_denied=1)))";
@@ -63,7 +63,7 @@ struct Inner {
     _writer_lease: WriterLease,
 }
 
-struct WriterLease {
+pub(crate) struct WriterLease {
     file: std::fs::File,
 }
 
@@ -100,6 +100,7 @@ impl Store {
         let path = path.as_ref();
         prepare_private_path(path)?;
         let writer_lease = acquire_writer_lease(path)?;
+        crate::recovery::require_no_pending_restore(path)?;
         let base = SqliteConnectOptions::new()
             .filename(path)
             .foreign_keys(true)
@@ -172,6 +173,16 @@ impl Store {
     pub async fn close(&self) {
         self.inner.readers.close().await;
         // The connection closes when the final Store owner is dropped.
+    }
+
+    /// A verified, WAL-consistent export. Credentials and their vault references
+    /// are removed from private staging before publication. Never overwrites.
+    pub async fn backup_to(
+        &self,
+        path: impl AsRef<Path>,
+    ) -> Result<crate::recovery::BackupSummary> {
+        let mut writer = self.inner.writer.lock().await;
+        crate::recovery::backup_from(&mut writer, path.as_ref()).await
     }
 
     pub async fn revision(&self) -> Result<String> {
@@ -1346,7 +1357,7 @@ async fn retire_credential_in(
 fn storage_error(_: sqlx::Error) -> CollaborationError {
     CollaborationError::storage()
 }
-fn acquire_writer_lease(path: &Path) -> Result<WriterLease> {
+pub(crate) fn acquire_writer_lease(path: &Path) -> Result<WriterLease> {
     let mut name = path.as_os_str().to_os_string();
     name.push(".lock");
     let lock_path = std::path::PathBuf::from(name);
@@ -1379,7 +1390,7 @@ fn acquire_writer_lease(path: &Path) -> Result<WriterLease> {
         Err(_) => Err(CollaborationError::storage()),
     }
 }
-fn prepare_private_path(path: &Path) -> Result<()> {
+pub(crate) fn prepare_private_path(path: &Path) -> Result<()> {
     if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
         return Err(CollaborationError::storage());
     }
@@ -1456,7 +1467,7 @@ fn positive_revision(value: &str) -> Result<i64> {
         Ok(revision)
     }
 }
-fn validate_identifier(value: &str) -> Result<()> {
+pub(crate) fn validate_identifier(value: &str) -> Result<()> {
     if value.is_empty() || value.len() > 1024 || value.contains('\0') {
         Err(CollaborationError::invalid("Invalid local identifier"))
     } else {
