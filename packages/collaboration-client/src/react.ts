@@ -1,5 +1,6 @@
 import type {
   CapabilityTarget,
+  DemandTarget,
   DetailQuery,
   ItemQuery,
   RemoteAccount,
@@ -26,6 +27,68 @@ export function useCollaborationVersion() {
     collaboration.getVersion,
     collaboration.getVersion,
   );
+}
+
+/** View liveness only. Native owns due times, provider retries and all HTTP. */
+export function useVisibleDemand({
+  account,
+  target,
+  enabled,
+}: {
+  account: RemoteAccount;
+  target: DemandTarget;
+  enabled: boolean;
+}): unknown | null {
+  const version = useCollaborationVersion();
+  const { id, actor_id, authorization_epoch, provider, host, state } = account;
+  const { kind, repository_id, subject_id, facet } = target;
+  const identity = JSON.stringify([
+    version,
+    id,
+    actor_id,
+    authorization_epoch,
+    provider,
+    host,
+    state,
+    kind,
+    repository_id,
+    subject_id,
+    facet,
+  ]);
+  const [failure, setFailure] = useState<{
+    identity: string;
+    error: unknown;
+  } | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    const handle = collaboration.retainDemand(
+      { id, actor_id, authorization_epoch, provider, host, state },
+      { kind, repository_id, subject_id, facet },
+    );
+    let current = true;
+    const unsubscribe = handle.subscribe((error) => {
+      if (current) setFailure(error === null ? null : { identity, error });
+    });
+    return () => {
+      current = false;
+      unsubscribe();
+      handle.release();
+    };
+  }, [
+    enabled,
+    id,
+    actor_id,
+    authorization_epoch,
+    provider,
+    host,
+    state,
+    kind,
+    repository_id,
+    subject_id,
+    facet,
+    identity,
+  ]);
+  return enabled && failure?.identity === identity ? failure.error : null;
 }
 
 export function accountsQueryOptions(version = collaboration.getVersion()) {
@@ -180,7 +243,7 @@ export function detailQueryOptions(
   });
 }
 
-/** Local read only. Selected views submit hydration through the separate hook. */
+/** Local read only. Visible demand and manual hydration stay separate. */
 export function useCollaborationDetail(
   account: RemoteAccount,
   query: Omit<DetailQuery, "account_id">,
@@ -188,45 +251,4 @@ export function useCollaborationDetail(
 ) {
   useCollaborationVersion();
   return useQuery({ ...detailQueryOptions(account, query), enabled });
-}
-
-/** Synchronize selected-view intent with the native engine, never a query fetch. */
-export function useSelectedDetailHydration({
-  account,
-  subjectId,
-  parentHeadOid,
-  eligible,
-}: {
-  account: RemoteAccount;
-  subjectId: string;
-  parentHeadOid: string | null;
-  eligible: boolean;
-}) {
-  const identity = JSON.stringify([
-    account.id,
-    account.actor_id,
-    account.authorization_epoch,
-    subjectId,
-    parentHeadOid,
-  ]);
-  const [failure, setFailure] = useState<{
-    identity: string;
-    error: unknown;
-  } | null>(null);
-  useEffect(() => {
-    const lease = collaboration.forAccount(account).retainDetailSelection({
-      subject_id: subjectId,
-      facet: "body",
-    });
-    let current = true;
-    if (eligible)
-      void lease.hydrate(parentHeadOid ?? "").catch((error: unknown) => {
-        if (current) setFailure({ identity, error });
-      });
-    return () => {
-      current = false;
-      lease.release();
-    };
-  }, [account, subjectId, parentHeadOid, eligible, identity]);
-  return eligible && failure?.identity === identity ? failure.error : null;
 }

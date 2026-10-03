@@ -6,6 +6,7 @@ import {
   type CollaborationChange,
   type ContextCapabilityRequest,
   type ContextualCapabilitySnapshot,
+  type DemandTarget,
   type DetailQuery,
   type DetailSnapshot,
   type GithubCliDiscovery,
@@ -27,10 +28,14 @@ import {
   StaleAuthorizationError,
 } from "./authorization-fence";
 import { installCapabilityDeadlines } from "./capability-deadlines";
-import { DetailSelectionCoordinator } from "./detail-selection";
+import {
+  type DemandAccount,
+  DemandCoordinator,
+  type DemandTransport,
+} from "./demand-coordinator";
 import { compareRevisions, RevisionBridge } from "./revision-bridge";
 
-export interface CollaborationTransport {
+export interface CollaborationTransport extends DemandTransport {
   accounts(): Promise<AccountSnapshot>;
   connectGithub(token: string): Promise<RemoteAccount>;
   discoverGithubCli(): Promise<GithubCliDiscovery>;
@@ -133,9 +138,16 @@ export class CollaborationClient {
   >();
   private bridge: RevisionBridge<CollaborationChange> | null = null;
   private queryClient: QueryClient | null = null;
-  private readonly detailSelections = new DetailSelectionCoordinator();
+  private readonly demands: DemandCoordinator;
 
-  constructor(readonly transport: CollaborationTransport) {}
+  constructor(readonly transport: CollaborationTransport) {
+    this.demands = new DemandCoordinator(transport);
+  }
+
+  /** Ephemeral view interest; it never reads or hydrates provider data itself. */
+  retainDemand(account: DemandAccount, target: DemandTarget) {
+    return this.demands.retain(account, target);
+  }
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -173,6 +185,8 @@ export class CollaborationClient {
       return snapshot;
     };
     return {
+      retainDemand: (target: DemandTarget) =>
+        this.retainDemand(account, target),
       repositories: (signal?: AbortSignal) =>
         read(() => this.transport.repositories(account.id), signal),
       items: (query: Omit<ItemQuery, "account_id">, signal?: AbortSignal) =>
@@ -217,31 +231,6 @@ export class CollaborationClient {
             authorization_epoch: account.authorization_epoch,
           }),
         ),
-      retainDetailSelection: (
-        request: Omit<
-          HydrateDetailRequest,
-          "account_id" | "authorization_epoch"
-        >,
-      ) => {
-        const scoped = {
-          ...request,
-          account_id: account.id,
-          authorization_epoch: account.authorization_epoch,
-        };
-        return this.detailSelections.retain(
-          [
-            scoped.account_id,
-            account.actor_id,
-            scoped.authorization_epoch,
-            scoped.subject_id,
-            scoped.facet,
-          ],
-          () =>
-            this.fence.read(scoped.account_id, () =>
-              this.transport.hydrateDetail(scoped),
-            ),
-        );
-      },
       refresh: (request: Omit<RefreshRequest, "account_id">) =>
         this.transport.refresh({ ...request, account_id: account.id }),
       selectRepository: (repositoryId: string, selected: boolean) =>
@@ -346,13 +335,15 @@ export class CollaborationClient {
             queryKey: ["collaboration", "accounts"],
           });
         }
+        this.demands.ready();
       },
     );
     this.bridge = bridge;
+    this.demands.attach();
     void bridge.start();
     return () => {
       stopDeadlines();
-      this.detailSelections.clear();
+      this.demands.stop();
       bridge.stop();
       if (this.bridge === bridge) this.bridge = null;
       this.queryClient = null;
@@ -377,7 +368,7 @@ export class CollaborationClient {
   }
 
   private clearAccount(accountId: string) {
-    this.detailSelections.clear(accountId);
+    this.demands.clear(accountId);
     this.fence.invalidate(accountId);
     void this.queryClient?.cancelQueries({
       queryKey: collaborationKeys.account(accountId),
@@ -389,7 +380,7 @@ export class CollaborationClient {
   }
 
   private resetLocalView() {
-    this.detailSelections.clear();
+    this.demands.clear();
     this.fence.invalidate();
     this.authorizationView = null;
     void this.queryClient?.cancelQueries({ queryKey: collaborationKeys.all });

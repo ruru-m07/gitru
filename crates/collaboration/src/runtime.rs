@@ -16,9 +16,15 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::{Mutex, Notify, broadcast};
+mod clock;
+mod demand;
+#[cfg(test)]
+mod demand_tests;
 #[cfg(test)]
 mod detail_tests;
 mod details;
+mod feeds;
+mod scheduler;
 
 const MAX_QUEUED_SCOPES: usize = 128;
 const MAX_PAGES_PER_REFRESH: usize = 10;
@@ -46,26 +52,42 @@ struct Job {
     repository: Option<RemoteRepository>,
     kind: JobKind,
     scope: String,
+    reason: scheduler::Admission,
+    pages: usize,
+    detail_lease: Option<DetailLease>,
 }
 
 #[derive(Default)]
 struct Scheduler {
+    demands: demand::Demands,
     queue: VecDeque<Job>,
+    deferred: VecDeque<Job>,
     active: HashMap<String, String>,
     due: HashMap<String, Instant>,
     strict_scope_deadlines: HashMap<String, Instant>,
     account_cooldowns: HashMap<String, Instant>,
     failures: HashMap<String, u32>,
     background_cursor: usize,
+    interactive_turns: u8,
+    detail_turns: u8,
+    interactive_account: Option<String>,
+    reconciliation_account: Option<String>,
+    explicit_keys: std::collections::HashSet<String>,
+    manual_keys: std::collections::HashSet<String>,
+    foreground_keys: std::collections::HashSet<String>,
+    detail_cursor: Option<DetailDemand>,
 }
 
 #[derive(Clone)]
 pub struct CollaborationRuntime {
+    clock: Arc<dyn clock::Clock>,
+    demand_visibility: Arc<dyn Fn(&str) -> bool + Send + Sync>,
     store: Arc<Store>,
     vault: Arc<dyn CredentialVault>,
     registry: Arc<ProviderRegistry>,
     github_cli: Arc<GithubCli>,
     lifecycle: Arc<Mutex<()>>,
+    dispatch: Arc<Mutex<()>>,
     scheduler: Arc<Mutex<Scheduler>>,
     notify: Arc<Notify>,
     started: Arc<AtomicBool>,
@@ -92,11 +114,14 @@ impl CollaborationRuntime {
     ) -> Self {
         let (changes, _) = broadcast::channel(64);
         Self {
+            clock: Arc::new(clock::SystemClock),
+            demand_visibility: Arc::new(|_| true),
             store,
             vault,
             registry: Arc::new(registry),
             github_cli: Arc::new(GithubCli::disabled()),
             lifecycle: Arc::new(Mutex::new(())),
+            dispatch: Arc::new(Mutex::new(())),
             scheduler: Arc::new(Mutex::new(Scheduler::default())),
             notify: Arc::new(Notify::new()),
             started: Arc::new(AtomicBool::new(false)),
@@ -155,7 +180,10 @@ impl CollaborationRuntime {
                 // a later tick can recover, and local calls report their errors.
                 let _ = runtime.recover_credentials().await;
                 let _ = runtime.enqueue_due().await;
-                while runtime.run_next().await {}
+                while runtime.run_next().await {
+                    let _ = runtime.enqueue_due().await;
+                    tokio::task::yield_now().await;
+                }
             }
         });
     }
@@ -282,7 +310,7 @@ impl CollaborationRuntime {
                         SyncStatus {
                             state: SyncState::Error,
                             last_success_at: None,
-                            next_retry_at: Some(future_string(60)),
+                            next_retry_at: Some(self.future_string(60)),
                             error: Some(error),
                         },
                     )
@@ -344,6 +372,7 @@ impl CollaborationRuntime {
             let removed: Vec<String> = scheduler
                 .queue
                 .iter()
+                .chain(scheduler.deferred.iter())
                 .filter(|job| {
                     job.account.id == account_id
                         && job
@@ -354,8 +383,12 @@ impl CollaborationRuntime {
                 .map(|job| job.key.clone())
                 .collect();
             scheduler.queue.retain(|job| !removed.contains(&job.key));
+            scheduler.deferred.retain(|job| !removed.contains(&job.key));
             for key in removed {
                 scheduler.active.remove(&key);
+                scheduler.explicit_keys.remove(&key);
+                scheduler.manual_keys.remove(&key);
+                scheduler.foreground_keys.remove(&key);
             }
         }
         self.notify.notify_one();
@@ -667,139 +700,70 @@ impl CollaborationRuntime {
         scope: String,
         manual: bool,
     ) -> Result<String, CollaborationError> {
-        let key = format!("{}:{}:{scope}", account.id, account.authorization_epoch);
-        // Persisted cooldowns survive restarts and constrain manual refresh too.
-        let persisted_state = self.store.scope_state(&account.id, &scope).await?;
-        let persisted_deadline = persisted_state
-            .as_ref()
-            .and_then(|state| state.sync.next_retry_at.as_deref())
-            .and_then(delay_until);
-        let provider_deadline = self
-            .store
-            .scope_state(&account.id, "provider:rest")
-            .await?
-            .and_then(|state| state.sync.next_retry_at)
-            .as_deref()
-            .and_then(delay_until);
-        let mut scheduler = self.scheduler.lock().await;
-        if let Some(delay) = provider_deadline {
-            scheduler
-                .account_cooldowns
-                .insert(account.id.clone(), Instant::now() + delay);
-        }
-        if let Some(delay) = persisted_deadline {
-            let deadline = Instant::now() + delay;
-            scheduler
-                .strict_scope_deadlines
-                .insert(key.clone(), deadline);
-            if persisted_state
-                .as_ref()
-                .is_some_and(|state| state.sync.state == SyncState::RateLimited)
-            {
-                scheduler
-                    .account_cooldowns
-                    .entry(account.id.clone())
-                    .and_modify(|existing| *existing = (*existing).max(deadline))
-                    .or_insert(deadline);
-            }
-        }
-        if let Some(id) = scheduler.active.get(&key).cloned() {
-            if manual
-                && let Some(index) = scheduler.queue.iter().position(|job| job.key == key)
-                && let Some(job) = scheduler.queue.remove(index)
-            {
-                scheduler.queue.push_front(job);
-            }
-            return Ok(id);
-        }
-        if !manual
-            && scheduler
-                .due
-                .get(&key)
-                .is_some_and(|time| *time > Instant::now())
-        {
-            return Ok(String::new());
-        }
-        if scheduler.queue.len() >= MAX_QUEUED_SCOPES {
-            return Err(CollaborationError::new(
-                ErrorCode::Busy,
-                "The collaboration refresh queue is full",
-            ));
-        }
-        if manual {
-            scheduler.failures.remove(&key);
-        }
-        let id = uuid::Uuid::new_v4().to_string();
-        scheduler.active.insert(key.clone(), id.clone());
-        let job = Job {
-            key,
+        self.enqueue_work_reason(
             account,
             repository,
             kind,
             scope,
-        };
-        if manual {
-            scheduler.queue.push_front(job);
-        } else {
-            scheduler.queue.push_back(job);
-        }
-        Ok(id)
+            if manual {
+                scheduler::Admission::Manual
+            } else {
+                scheduler::Admission::Reconcile
+            },
+        )
+        .await
     }
 
     async fn run_next(&self) -> bool {
-        let job = {
-            let mut scheduler = self.scheduler.lock().await;
-            let now = Instant::now();
-            let index = scheduler.queue.iter().position(|job| {
-                scheduler
-                    .strict_scope_deadlines
-                    .get(&job.key)
-                    .is_none_or(|time| *time <= now)
-                    && scheduler
-                        .account_cooldowns
-                        .get(&job.account.id)
-                        .is_none_or(|time| *time <= now)
-            });
-            index.and_then(|index| scheduler.queue.remove(index))
-        };
-        let Some(job) = job else {
+        // Public actions can wake the engine concurrently, but provider reads
+        // remain one lane. The next wake handles any newly admitted interest.
+        let Ok(_dispatch) = self.dispatch.try_lock() else {
             return false;
         };
-        if let Ok(Some(state)) = self
-            .store
-            .scope_state(&job.account.id, "provider:rest")
-            .await
-            && let Some(delay) = state.sync.next_retry_at.as_deref().and_then(delay_until)
-        {
-            let mut scheduler = self.scheduler.lock().await;
-            scheduler
-                .account_cooldowns
-                .insert(job.account.id.clone(), Instant::now() + delay);
-            scheduler.queue.push_back(job);
-            return true;
-        }
-        // Instant deadlines are deliberately bounded segments. Recheck the
-        // persisted absolute deadline before dispatch, so a very long provider
-        // wait is deferred repeatedly rather than shortened by a local cap.
-        if let Ok(Some(state)) = self.store.scope_state(&job.account.id, &job.scope).await
-            && let Some(delay) = state.sync.next_retry_at.as_deref().and_then(delay_until)
-        {
-            let mut scheduler = self.scheduler.lock().await;
-            let deadline = Instant::now() + delay;
-            scheduler
-                .strict_scope_deadlines
-                .insert(job.key.clone(), deadline);
-            if state.sync.state == SyncState::RateLimited {
-                scheduler
-                    .account_cooldowns
-                    .insert(job.account.id.clone(), deadline);
+        let _ = self.enqueue_foreground().await;
+        let Some(mut job) = self.scheduler.lock().await.pick(self.now()) else {
+            return false;
+        };
+        for scope in ["provider:rest".to_string(), job.scope.clone()] {
+            if let Ok(Some(state)) = self.store.scope_state(&job.account.id, &scope).await
+                && let Some(delay) = state
+                    .sync
+                    .next_retry_at
+                    .as_deref()
+                    .and_then(|time| self.delay_until(time))
+            {
+                let mut scheduler = self.scheduler.lock().await;
+                let deadline = self.now() + delay;
+                if scope == "provider:rest" || state.sync.state == SyncState::RateLimited {
+                    scheduler
+                        .account_cooldowns
+                        .entry(job.account.id.clone())
+                        .and_modify(|old| *old = (*old).max(deadline))
+                        .or_insert(deadline);
+                } else {
+                    scheduler
+                        .strict_scope_deadlines
+                        .entry(job.key.clone())
+                        .and_modify(|old| *old = (*old).max(deadline))
+                        .or_insert(deadline);
+                }
+                if scheduler.manual_keys.contains(&job.key) {
+                    scheduler.deferred.push_back(job);
+                } else {
+                    scheduler.active.remove(&job.key);
+                    scheduler.explicit_keys.remove(&job.key);
+                }
+                return true;
             }
-            scheduler.queue.push_back(job);
-            return true;
         }
-        let result = self.sync_job(&job).await;
-        if let Err(error) = result {
-            self.record_error(&job, error).await;
+        let result = match job.kind.clone() {
+            JobKind::Feed(_) => self.sync_feed_page(&mut job).await,
+            JobKind::Detail { subject_id, facet } => {
+                self.sync_detail_page(&mut job, &subject_id, facet).await
+            }
+        };
+        if let Err(error) = &result {
+            self.record_error(&job, error.clone()).await;
         }
         let _lifecycle = self.lifecycle.lock().await;
         let epoch_is_current = self
@@ -811,217 +775,34 @@ impl CollaborationRuntime {
                     && account.authorization_epoch == job.account.authorization_epoch
             });
         let mut scheduler = self.scheduler.lock().await;
+        scheduler.demands.expire(self.now());
+        job.pages += 1;
+        let continue_page = result.is_ok_and(|more| more) && epoch_is_current;
+        let interested = scheduler.demands.interested(&job);
+        let explicit = scheduler.explicit_keys.contains(&job.key);
+        if continue_page
+            && job.pages < MAX_PAGES_PER_REFRESH
+            && (matches!(job.kind, JobKind::Feed(_)) || interested || explicit)
+        {
+            scheduler.requeue(job);
+            return true;
+        }
+        if continue_page && job.pages >= MAX_PAGES_PER_REFRESH {
+            scheduler
+                .due
+                .insert(job.key.clone(), self.deadline_after(10));
+        }
         scheduler.active.remove(&job.key);
+        scheduler.explicit_keys.remove(&job.key);
+        scheduler.manual_keys.remove(&job.key);
+        scheduler.foreground_keys.remove(&job.key);
         if epoch_is_current {
             scheduler
                 .due
                 .entry(job.key)
-                .or_insert_with(|| Instant::now() + Duration::from_secs(60));
+                .or_insert_with(|| self.deadline_after(60));
         }
         true
-    }
-
-    async fn sync_job(&self, job: &Job) -> Result<(), CollaborationError> {
-        let kind = match &job.kind {
-            JobKind::Detail { subject_id, facet } => {
-                return self.sync_detail(job, subject_id, *facet).await;
-            }
-            JobKind::Feed(kind) => *kind,
-        };
-        let (account, token) = {
-            let _lifecycle = self.lifecycle.lock().await;
-            let account = self.active_account(&job.account.id).await?;
-            if account.authorization_epoch != job.account.authorization_epoch {
-                return Err(stale());
-            }
-            let reference = self
-                .store
-                .credential_reference(&account.id)
-                .await?
-                .ok_or_else(|| {
-                    CollaborationError::new(
-                        ErrorCode::AuthRequired,
-                        "Reconnect this provider account",
-                    )
-                })?;
-            let token = self.load_token(&reference).await?.ok_or_else(|| {
-                CollaborationError::new(ErrorCode::AuthRequired, "Reconnect this provider account")
-            })?;
-            (account, token)
-        };
-        let previous = self.store.scope_state(&account.id, &job.scope).await?;
-        let resumed = previous.as_ref().filter(|scope| {
-            scope.coverage.state == CoverageState::Partial && scope.next_cursor.is_some()
-        });
-        let run_id = if let Some(scope) = resumed {
-            let revision = self
-                .store
-                .set_sync_status(
-                    &account.id,
-                    &account.authorization_epoch,
-                    &job.scope,
-                    SyncStatus {
-                        state: SyncState::Syncing,
-                        last_success_at: scope.sync.last_success_at.clone(),
-                        next_retry_at: None,
-                        error: None,
-                    },
-                )
-                .await?;
-            self.publish(revision);
-            scope.run_id.clone()
-        } else {
-            let run_id = self
-                .store
-                .begin_sync(&account.id, &account.authorization_epoch, &job.scope)
-                .await?;
-            self.publish(self.store.revision().await?);
-            run_id
-        };
-        // A bounded bootstrap continues its committed next-link on the next
-        // refresh. After reaching its end, the next reconciliation starts at
-        // page one again; absence is never interpreted as deletion.
-        let mut cursor = previous
-            .as_ref()
-            .filter(|scope| scope.coverage.state == CoverageState::Partial)
-            .and_then(|scope| scope.next_cursor.clone());
-        let starts_at_beginning = cursor.is_none();
-        let conditional = previous.as_ref().filter(|scope| {
-            scope.coverage.state == CoverageState::Complete
-                && scope.next_cursor.is_none()
-                && (scope.etag.is_some() || scope.last_modified.is_some())
-        });
-        let mut validator = conditional.and_then(|scope| scope.etag.clone());
-        let mut modified = conditional.and_then(|scope| scope.last_modified.clone());
-        for page_index in 0..MAX_PAGES_PER_REFRESH {
-            let current = self.active_account(&account.id).await?;
-            if current.authorization_epoch != account.authorization_epoch {
-                return Err(stale());
-            }
-            self.require_feed(&current, kind).await?;
-            let page = self
-                .adapter_for_account(&current)
-                .await?
-                .fetch_page(
-                    &token,
-                    FeedRequest {
-                        account: account.clone(),
-                        repository: job.repository.clone(),
-                        kind,
-                        cursor: cursor.clone(),
-                        etag: validator.take(),
-                        last_modified: modified.take(),
-                    },
-                )
-                .await?;
-            let not_modified = page.not_modified;
-            if not_modified && (page_index != 0 || conditional.is_none()) {
-                return Err(CollaborationError::new(
-                    ErrorCode::Provider,
-                    "The provider returned an unexpected conditional response",
-                ));
-            }
-            let complete = not_modified || page.next_cursor.is_none();
-            cursor = page.next_cursor.clone();
-            // Only a complete single-page feed gets a feed validator. A page-one
-            // 304 cannot prove that page two or older items remain unchanged.
-            let retain_validator = starts_at_beginning && page_index == 0 && complete;
-            let revision = self
-                .store
-                .apply_page(PageCommit {
-                    account_id: account.id.clone(),
-                    authorization_epoch: account.authorization_epoch.clone(),
-                    scope: job.scope.clone(),
-                    run_id: run_id.clone(),
-                    repositories: page.repositories,
-                    items: page.items,
-                    endpoint_aliases: page.endpoint_aliases,
-                    next_cursor: cursor.clone(),
-                    etag: if retain_validator {
-                        page.etag.or_else(|| {
-                            conditional
-                                .filter(|_| not_modified)
-                                .and_then(|scope| scope.etag.clone())
-                        })
-                    } else {
-                        None
-                    },
-                    last_modified: if retain_validator {
-                        page.last_modified.or_else(|| {
-                            conditional
-                                .filter(|_| not_modified)
-                                .and_then(|scope| scope.last_modified.clone())
-                        })
-                    } else {
-                        None
-                    },
-                    not_modified,
-                    complete,
-                    observed_at: now_string(),
-                })
-                .await?;
-            self.publish(revision);
-            let _lifecycle = self.lifecycle.lock().await;
-            if !self.store.account(&account.id).await.is_ok_and(|current| {
-                current.state == AccountState::Active
-                    && current.authorization_epoch == account.authorization_epoch
-            }) {
-                return Err(stale());
-            }
-            let normal_interval = match kind {
-                FeedKind::Repositories => 600,
-                FeedKind::Notifications => 60,
-                FeedKind::PullRequests | FeedKind::Issues => 180,
-            };
-            let poll_interval = page.poll_interval_seconds.unwrap_or(0);
-            let cooldown = page.cooldown_seconds.unwrap_or(0);
-            {
-                let mut scheduler = self.scheduler.lock().await;
-                scheduler.due.insert(
-                    job.key.clone(),
-                    deadline_after(normal_interval.max(poll_interval).max(cooldown)),
-                );
-                scheduler.failures.remove(&job.key);
-                if poll_interval > 0 {
-                    scheduler
-                        .strict_scope_deadlines
-                        .insert(job.key.clone(), deadline_after(poll_interval));
-                }
-                if cooldown > 0 {
-                    scheduler
-                        .account_cooldowns
-                        .insert(account.id.clone(), deadline_after(cooldown));
-                }
-            }
-            if complete || cooldown > 0 || page_index + 1 == MAX_PAGES_PER_REFRESH {
-                let strict_seconds = poll_interval.max(cooldown);
-                let revision = self
-                    .store
-                    .set_sync_status(
-                        &account.id,
-                        &account.authorization_epoch,
-                        &job.scope,
-                        SyncStatus {
-                            state: if cooldown > 0 {
-                                SyncState::RateLimited
-                            } else {
-                                SyncState::Idle
-                            },
-                            last_success_at: Some(now_string()),
-                            next_retry_at: (strict_seconds > 0)
-                                .then(|| future_string(strict_seconds)),
-                            error: None,
-                        },
-                    )
-                    .await?;
-                self.publish(revision);
-                if cooldown > 0 {
-                    self.persist_rate_limit(&account, cooldown, None).await?;
-                }
-                return Ok(());
-            }
-        }
-        Ok(())
     }
 
     async fn record_error(&self, job: &Job, error: CollaborationError) {
@@ -1101,7 +882,7 @@ impl CollaborationRuntime {
             *failures = failures.saturating_add(1).min(5);
             // Read retries are delayed jobs, with bounded exponential backoff
             // and jitter. No worker sleeps while occupying the HTTP slot.
-            let jitter = u64::from(uuid::Uuid::new_v4().as_bytes()[0]) % 15;
+            let jitter = self.clock.jitter() % 15;
             (30 * (1u64 << *failures)).min(900) + jitter
         } else {
             180
@@ -1127,7 +908,7 @@ impl CollaborationRuntime {
                         .ok()
                         .flatten()
                         .and_then(|scope| scope.sync.last_success_at),
-                    next_retry_at: Some(future_string(delay)),
+                    next_retry_at: Some(self.future_string(delay)),
                     error: Some(error.clone()),
                 },
             )
@@ -1142,15 +923,19 @@ impl CollaborationRuntime {
         }
         {
             let mut scheduler = self.scheduler.lock().await;
-            let deadline = deadline_after(delay);
+            let deadline = self.deadline_after(delay);
             scheduler
                 .strict_scope_deadlines
-                .insert(job.key.clone(), deadline);
+                .entry(job.key.clone())
+                .and_modify(|old| *old = (*old).max(deadline))
+                .or_insert(deadline);
             scheduler.due.insert(job.key.clone(), deadline);
             if error.code == ErrorCode::RateLimited {
                 scheduler
                     .account_cooldowns
-                    .insert(job.account.id.clone(), deadline);
+                    .entry(job.account.id.clone())
+                    .and_modify(|old| *old = (*old).max(deadline))
+                    .or_insert(deadline);
             }
         }
     }
@@ -1159,6 +944,26 @@ impl CollaborationRuntime {
         let mut scheduler = self.scheduler.lock().await;
         let prefix = format!("{account_id}:");
         scheduler.queue.retain(|job| job.account.id != account_id);
+        scheduler
+            .deferred
+            .retain(|job| job.account.id != account_id);
+        scheduler
+            .demands
+            .leases
+            .retain(|_, lease| lease.account.id != account_id);
+        scheduler
+            .demands
+            .coverage_attempted
+            .retain(|key| !key.starts_with(&prefix));
+        scheduler
+            .explicit_keys
+            .retain(|key| !key.starts_with(&prefix));
+        scheduler
+            .manual_keys
+            .retain(|key| !key.starts_with(&prefix));
+        scheduler
+            .foreground_keys
+            .retain(|key| !key.starts_with(&prefix));
         scheduler.active.retain(|key, _| !key.starts_with(&prefix));
         scheduler.due.retain(|key, _| !key.starts_with(&prefix));
         scheduler
@@ -1181,6 +986,19 @@ impl CollaborationRuntime {
         delay: u64,
         error: Option<CollaborationError>,
     ) -> Result<(), CollaborationError> {
+        let proposed = self.future_string(delay);
+        let deadline = self
+            .store
+            .scope_state(&account.id, "provider:rest")
+            .await?
+            .and_then(|scope| scope.sync.next_retry_at)
+            .filter(|old| {
+                DateTime::parse_from_rfc3339(old)
+                    .ok()
+                    .zip(DateTime::parse_from_rfc3339(&proposed).ok())
+                    .is_some_and(|(old, next)| old > next)
+            })
+            .unwrap_or(proposed);
         let revision = self
             .store
             .set_sync_status(
@@ -1190,7 +1008,7 @@ impl CollaborationRuntime {
                 SyncStatus {
                     state: SyncState::RateLimited,
                     last_success_at: None,
-                    next_retry_at: Some(future_string(delay)),
+                    next_retry_at: Some(deadline),
                     error,
                 },
             )
@@ -1298,27 +1116,6 @@ fn next_epoch(epoch: &str) -> Result<String, CollaborationError> {
         .and_then(|n| n.checked_add(1))
         .map(|n| n.to_string())
         .ok_or_else(CollaborationError::storage)
-}
-fn now_string() -> String {
-    Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
-}
-fn future_string(seconds: u64) -> String {
-    Utc::now()
-        .checked_add_signed(chrono::Duration::seconds(
-            seconds.min(i64::MAX as u64 / 1000) as i64,
-        ))
-        .unwrap_or(DateTime::<Utc>::MAX_UTC)
-        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
-}
-fn delay_until(time: &str) -> Option<Duration> {
-    let delay = DateTime::parse_from_rfc3339(time)
-        .ok()?
-        .signed_duration_since(Utc::now())
-        .num_milliseconds();
-    (delay > 0).then(|| Duration::from_millis((delay as u64).min(86400000)))
-}
-fn deadline_after(seconds: u64) -> Instant {
-    Instant::now() + Duration::from_secs(seconds.min(86400))
 }
 fn unsupported() -> CollaborationError {
     CollaborationError::new(

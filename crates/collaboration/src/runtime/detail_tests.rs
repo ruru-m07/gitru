@@ -3,7 +3,7 @@ use crate::credentials::CredentialError;
 use async_trait::async_trait;
 use std::sync::{Mutex as StdMutex, atomic::AtomicUsize};
 #[path = "../../tests/detail_support/mod.rs"]
-mod fixtures;
+pub(super) mod fixtures;
 
 #[derive(Default)]
 struct Vault {
@@ -256,7 +256,9 @@ async fn bounded_partial_traversal_resumes_from_committed_checkpoint_after_resta
         .hydrate_detail(demand(&actor, DetailFacet::Comments))
         .await
         .unwrap();
-    assert!(runtime.run_next().await);
+    for _ in 0..10 {
+        assert!(runtime.run_next().await);
+    }
     assert_eq!(provider.calls.load(Ordering::SeqCst), 10);
     let partial = runtime
         .store
@@ -270,7 +272,9 @@ async fn bounded_partial_traversal_resumes_from_committed_checkpoint_after_resta
     let store = Arc::new(Store::open(path).await.unwrap());
     let runtime = CollaborationRuntime::new(store, vault, provider.clone());
     runtime.enqueue_pending_details().await.unwrap();
-    assert!(runtime.run_next().await);
+    for _ in 0..2 {
+        assert!(runtime.run_next().await);
+    }
     let complete = runtime
         .store
         .detail(fixtures::query("a", DetailFacet::Comments))

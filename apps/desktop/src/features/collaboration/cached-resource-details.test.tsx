@@ -3,7 +3,11 @@ import {
   type RemoteAccount,
   type RemoteItemKind,
 } from "@gitru/collaboration-client";
-import type { ContextCapabilityRequest, DetailSnapshot } from "@gitru/commands";
+import type {
+  AcquireDemandRequest,
+  ContextCapabilityRequest,
+  DetailSnapshot,
+} from "@gitru/commands";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -21,6 +25,7 @@ import {
   fixtureBody,
   fixtureMetadata,
 } from "../../../tests/fixtures/resource-detail";
+import { mockForegroundDemand } from "../../../tests/mocks/collaboration-demand";
 import {
   mockTauriCommand,
   mockTauriCommandResult,
@@ -33,6 +38,7 @@ let accounts = fixtureAccounts;
 let summary = fixtureItem;
 let body: DetailSnapshot;
 let denied = false;
+let demands: ReturnType<typeof mockForegroundDemand>;
 const stops: Array<() => void> = [];
 const caches: QueryClient[] = [];
 beforeEach(() => {
@@ -42,6 +48,7 @@ beforeEach(() => {
   summary = fixtureItem;
   body = fixtureBody();
   denied = false;
+  demands = mockForegroundDemand();
   vi.spyOn(collaboration.transport, "listen").mockResolvedValue(() => {});
   mockTauriCommand("collaboration_accounts", () => ({
     ...accounts,
@@ -149,8 +156,16 @@ async function change() {
   });
 }
 
+function bodyAcquisitions() {
+  return demands.acquire.mock.calls.filter(
+    ([payload]) =>
+      (payload as { request: AcquireDemandRequest }).request.target.kind ===
+      "detail",
+  );
+}
+
 describe("cached PR and issue detail views", () => {
-  it("hydrates metadata once after an upgrade even when the saved description is fresh", async () => {
+  it("retains one Body interest after an upgrade even when the saved description is fresh", async () => {
     body.metadata = null;
     const hydrate = mockTauriCommandResult("collaboration_hydrate_detail", {
       job_id: "metadata-upgrade",
@@ -162,7 +177,7 @@ describe("cached PR and issue detail views", () => {
     expect(
       detail.getByRole("heading", { name: fixtureItem.title }),
     ).toBeVisible();
-    await waitFor(() => expect(hydrate).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(bodyAcquisitions()).toHaveLength(1));
     body = fixtureBody();
     await change();
     expect(
@@ -170,10 +185,11 @@ describe("cached PR and issue detail views", () => {
         name: "Authoritative detail title",
       }),
     ).toBeVisible();
-    expect(hydrate).toHaveBeenCalledTimes(1);
+    expect(bodyAcquisitions()).toHaveLength(1);
+    expect(hydrate).not.toHaveBeenCalled();
   });
 
-  it("admits one missing partial description attempt and never loops on omitted observations", async () => {
+  it("retains missing partial description interest without durable admission or omitted-observation loops", async () => {
     body.body = { state: "omitted", text: null };
     body.evidence = {
       ...body.evidence,
@@ -185,7 +201,7 @@ describe("cached PR and issue detail views", () => {
       job_id: "partial-description",
     });
     const { detail } = await open();
-    await waitFor(() => expect(hydrate).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(bodyAcquisitions()).toHaveLength(1));
     expect(
       detail.getByText(/The provider omitted this description/),
     ).toBeVisible();
@@ -193,10 +209,11 @@ describe("cached PR and issue detail views", () => {
     expect(
       await detail.findByText(/The provider omitted this description/),
     ).toBeVisible();
-    expect(hydrate).toHaveBeenCalledTimes(1);
+    expect(bodyAcquisitions()).toHaveLength(1);
+    expect(hydrate).not.toHaveBeenCalled();
   });
 
-  it("does not automatically retry a known persistent oversized description", async () => {
+  it("retains oversized description interest once and leaves retry eligibility to native policy", async () => {
     body.body = { state: "oversized", text: null };
     body.evidence = {
       ...body.evidence,
@@ -212,19 +229,33 @@ describe("cached PR and issue detail views", () => {
       await detail.findByText("This description exceeds the local text limit."),
     ).toBeVisible();
     await change();
+    expect(bodyAcquisitions()).toHaveLength(1);
     expect(hydrate).not.toHaveBeenCalled();
   });
 
-  it("renders cached body/metadata immediately while a separate stale hydration intent remains pending", async () => {
+  it("renders cached body/metadata immediately while the separate Body lease remains pending", async () => {
     body.evidence.freshness = "stale";
-    let finish!: (receipt: { job_id: string }) => void;
-    const hydrate = mockTauriCommand(
-      "collaboration_hydrate_detail",
-      () =>
-        new Promise<{ job_id: string }>((resolve) => {
-          finish = resolve;
-        }),
-    );
+    let finish!: (
+      receipt: import("@gitru/commands").DemandLeaseReceipt,
+    ) => void;
+    mockTauriCommand("collaboration_acquire_demand", (payload) => {
+      const { request } = payload as { request: AcquireDemandRequest };
+      return request.target.kind === "detail"
+        ? new Promise<import("@gitru/commands").DemandLeaseReceipt>(
+            (resolve) => {
+              finish = resolve;
+            },
+          )
+        : {
+            lease_id: `other-${request.target.kind}`,
+            owner_generation: request.owner_generation,
+            expires_in_seconds: 45,
+            renew_after_seconds: 15,
+          };
+    });
+    const hydrate = mockTauriCommandResult("collaboration_hydrate_detail", {
+      job_id: "must-not-run",
+    });
     const { detail } = await open();
     expect(
       await detail.findByRole("heading", {
@@ -233,18 +264,16 @@ describe("cached PR and issue detail views", () => {
     ).toBeVisible();
     expect(detail.getByText("Full cached resource description")).toBeVisible();
     expect(detail.getByText("detail-label")).toBeVisible();
-    await waitFor(() => expect(hydrate).toHaveBeenCalledTimes(1));
-    expect(hydrate).toHaveBeenCalledWith({
-      request: {
-        account_id: fixtureAccount.id,
-        authorization_epoch: "1",
-        subject_id: fixtureItem.id,
-        facet: "body",
-      },
-    });
+    await waitFor(() => expect(finish).toBeDefined());
     await act(async () => {
-      finish({ job_id: "queued" });
+      finish({
+        lease_id: "pending-body",
+        owner_generation: "1",
+        expires_in_seconds: 45,
+        renew_after_seconds: 15,
+      });
     });
+    expect(hydrate).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -275,15 +304,16 @@ describe("cached PR and issue detail views", () => {
     expect(detail.getByText("Detail milestone")).toBeVisible();
     expect(detail.queryByText("Head branch / SHA")).not.toBeInTheDocument();
     expect(hydrate).not.toHaveBeenCalled();
+    expect(bodyAcquisitions()).toHaveLength(1);
   });
 
-  it("does not rearm automatic hydration from 304 or retained omitted metadata revisions", async () => {
+  it("reuses Body interest across 304 and retained omitted metadata revisions", async () => {
     body.evidence.freshness = "stale";
     const hydrate = mockTauriCommandResult("collaboration_hydrate_detail", {
       job_id: "queued",
     });
     const { detail } = await open();
-    await waitFor(() => expect(hydrate).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(bodyAcquisitions()).toHaveLength(1));
     body = {
       ...body,
       evidence: { ...body.evidence, freshness: "fresh", facet_revision: "11" },
@@ -314,23 +344,24 @@ describe("cached PR and issue detail views", () => {
       await detail.findByText("Latest provider value omitted"),
     ).toBeVisible();
     expect(detail.getByText("detail-label")).toBeVisible();
-    expect(hydrate).toHaveBeenCalledTimes(1);
+    expect(bodyAcquisitions()).toHaveLength(1);
+    expect(hydrate).not.toHaveBeenCalled();
   });
 
-  it("allows one new selected intent after an accepted parent head changes", async () => {
+  it("reuses the canonical Body lease when an accepted parent head changes", async () => {
     body.evidence.freshness = "stale";
     const hydrate = mockTauriCommandResult("collaboration_hydrate_detail", {
       job_id: "queued",
     });
     const { cache, detail } = await open();
-    await waitFor(() => expect(hydrate).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(bodyAcquisitions()).toHaveLength(1));
     summary = { ...summary, head_oid: "new-summary-head" };
     await act(async () => {
       await cache.invalidateQueries({
         predicate: (query) => query.queryKey[4] === "item",
       });
     });
-    await waitFor(() => expect(hydrate).toHaveBeenCalledTimes(2));
+    expect(bodyAcquisitions()).toHaveLength(1);
     body = fixtureBody();
     body.metadata!.values.head!.oid = "c".repeat(40);
     body.metadata!.values.title = "New head detail title";
@@ -339,7 +370,8 @@ describe("cached PR and issue detail views", () => {
       await detail.findByRole("heading", { name: "New head detail title" }),
     ).toBeVisible();
     expect(detail.getByText("c".repeat(40))).toBeVisible();
-    expect(hydrate).toHaveBeenCalledTimes(2);
+    expect(bodyAcquisitions()).toHaveLength(1);
+    expect(hydrate).not.toHaveBeenCalled();
   });
 
   it("hides denied Body/header metadata while preserving private text and its inspected generation", async () => {
@@ -370,6 +402,8 @@ describe("cached PR and issue detail views", () => {
       "Private unsaved resource text",
     );
     expect(hydrate).not.toHaveBeenCalled();
+    expect(bodyAcquisitions()).toHaveLength(1);
+    expect(demands.release).toHaveBeenCalled();
     const save = mockTauriCommand("collaboration_save_draft", (payload) => {
       const draft = (payload as { draft: { body: string; generation: string } })
         .draft;
@@ -383,6 +417,73 @@ describe("cached PR and issue detail views", () => {
     });
     await user.click(detail.getByRole("button", { name: "Save draft" }));
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  });
+
+  it("uses one explicit durable intent only after the user requests Sync", async () => {
+    const hydrate = mockTauriCommandResult("collaboration_hydrate_detail", {
+      job_id: "manual-request",
+    });
+    const { user, detail } = await open();
+    await waitFor(() => expect(bodyAcquisitions()).toHaveLength(1));
+    expect(hydrate).not.toHaveBeenCalled();
+    await user.click(
+      detail.getByRole("button", { name: "Sync full description" }),
+    );
+    await waitFor(() =>
+      expect(hydrate).toHaveBeenCalledExactlyOnceWith({
+        request: {
+          account_id: fixtureAccount.id,
+          authorization_epoch: fixtureAccount.authorization_epoch,
+          subject_id: fixtureItem.id,
+          facet: "body",
+        },
+      }),
+    );
+    expect(bodyAcquisitions()).toHaveLength(1);
+  });
+
+  it("releases selected Body interest on Back while retaining the visible feed and repository leases", async () => {
+    const { user, detail } = await open();
+    await waitFor(() => expect(bodyAcquisitions()).toHaveLength(1));
+    const bodyLease = `fixture-lease-${demands.acquire.mock.calls.indexOf(bodyAcquisitions()[0]) + 1}`;
+    const initial = demands.acquire.mock.calls.length;
+    await user.click(detail.getByRole("button", { name: "Back to list" }));
+    await waitFor(() =>
+      expect(demands.release).toHaveBeenCalledExactlyOnceWith({
+        request: { lease_id: bodyLease },
+      }),
+    );
+    expect(
+      screen.queryByRole("article", { name: "Saved item detail" }),
+    ).not.toBeInTheDocument();
+    expect(demands.acquire).toHaveBeenCalledTimes(initial);
+  });
+
+  it("releases interest on native hide and restores only the current visible targets after activation", async () => {
+    const hydrate = mockTauriCommandResult("collaboration_hydrate_detail", {
+      job_id: "must-not-run",
+    });
+    const { detail } = await open();
+    await waitFor(() => expect(bodyAcquisitions()).toHaveLength(1));
+    const initial = demands.acquire.mock.calls.length;
+    await act(async () => {
+      demands.emit({ generation: "2", active: false });
+    });
+    await waitFor(() => expect(demands.release).toHaveBeenCalledTimes(initial));
+    expect(detail.getByText("Full cached resource description")).toBeVisible();
+    expect(demands.acquire).toHaveBeenCalledTimes(initial);
+    await act(async () => {
+      demands.emit({ generation: "3", active: true });
+    });
+    await waitFor(() =>
+      expect(demands.acquire).toHaveBeenCalledTimes(initial * 2),
+    );
+    expect(bodyAcquisitions()).toHaveLength(2);
+    for (const [payload] of demands.acquire.mock.calls.slice(initial))
+      expect(
+        (payload as { request: AcquireDemandRequest }).request.owner_generation,
+      ).toBe("3");
+    expect(hydrate).not.toHaveBeenCalled();
   });
 
   it("suppresses a late actor-A Body snapshot after switching the same subject to actor B", async () => {
@@ -464,6 +565,13 @@ describe("cached PR and issue detail views", () => {
       screen.queryByText("Full cached resource description"),
     ).not.toBeInTheDocument();
     expect(screen.getByText("Actor B full description")).toBeVisible();
+    expect(
+      bodyAcquisitions().map(
+        ([payload]) =>
+          (payload as { request: AcquireDemandRequest }).request.account_id,
+      ),
+    ).toEqual([fixtureAccount.id, other.id]);
+    expect(demands.release).toHaveBeenCalled();
     expect(hydrate).not.toHaveBeenCalled();
   });
 });

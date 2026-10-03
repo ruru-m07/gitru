@@ -1,5 +1,9 @@
 import { collaboration, type RemoteAccount } from "@gitru/collaboration-client";
-import type { ContextCapabilityRequest, DetailSnapshot } from "@gitru/commands";
+import type {
+  AcquireDemandRequest,
+  ContextCapabilityRequest,
+  DetailSnapshot,
+} from "@gitru/commands";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -17,6 +21,7 @@ import {
   fixtureBody,
   fixtureMetadata,
 } from "../../../tests/fixtures/resource-detail";
+import { mockForegroundDemand } from "../../../tests/mocks/collaboration-demand";
 import {
   mockTauriCommand,
   mockTauriCommandResult,
@@ -252,15 +257,36 @@ describe("cached issue detail authority", () => {
     expect(hydrate).not.toHaveBeenCalled();
   });
 
-  it("retains an issue reason and Unicode text through omission and a later validation without rearming hydration", async () => {
+  it("retains an issue reason and Unicode text through omission and a later validation with one Body lease", async () => {
     body.body = { state: "known", text: "Issue history — 保存された本文" };
     body.evidence.freshness = "stale";
+    const demands = mockForegroundDemand();
+    const bodyAcquisitions = () =>
+      demands.acquire.mock.calls.filter(
+        ([payload]) =>
+          (payload as { request: AcquireDemandRequest }).request.target.kind ===
+          "detail",
+      );
     const hydrate = mockTauriCommandResult("collaboration_hydrate_detail", {
       job_id: "one-selected-issue-intent",
     });
     const { detail } = await open();
     expect(await detail.findByText("completed")).toBeVisible();
-    await waitFor(() => expect(hydrate).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(bodyAcquisitions()).toHaveLength(1));
+    expect(bodyAcquisitions()[0]?.[0]).toEqual({
+      request: {
+        account_id: fixtureAccount.id,
+        authorization_epoch: fixtureAccount.authorization_epoch,
+        owner_generation: "1",
+        target: {
+          kind: "detail",
+          repository_id: null,
+          subject_id: issue.id,
+          facet: "body",
+        },
+      },
+    });
+    expect(hydrate).not.toHaveBeenCalled();
     body.metadata!.fields = body.metadata!.fields.map((field) =>
       field.field === "state_reason"
         ? {
@@ -278,12 +304,15 @@ describe("cached issue detail authority", () => {
     expect(detail.getByText("completed")).toBeVisible();
     expect(detail.getByText("Issue history — 保存された本文")).toBeVisible();
     expect(detail.getByText("May be stale")).toBeVisible();
+    expect(bodyAcquisitions()).toHaveLength(1);
+    expect(hydrate).not.toHaveBeenCalled();
     body.evidence.freshness = "fresh";
     body.evidence.facet_revision = "12";
     await change();
     expect(await detail.findByText("completed")).toBeVisible();
     expect(detail.getByText("Latest provider value omitted")).toBeVisible();
-    expect(hydrate).toHaveBeenCalledTimes(1);
+    expect(bodyAcquisitions()).toHaveLength(1);
+    expect(hydrate).not.toHaveBeenCalled();
   });
 
   it.each([

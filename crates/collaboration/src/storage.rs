@@ -430,6 +430,41 @@ impl Store {
         tx.commit().await.map_err(storage_error)?;
         Ok(repository)
     }
+    pub(crate) async fn demand_repositories(
+        &self,
+        account_id: &str,
+        after_id: Option<&str>,
+    ) -> Result<Vec<RemoteRepository>> {
+        let mut tx = self.inner.readers.begin().await.map_err(storage_error)?;
+        account_in(&mut tx, account_id, true).await?;
+        let mut result = vec![];
+        for after in [after_id, None] {
+            let mut sql = sqlx::QueryBuilder::<Sqlite>::new(
+                "SELECT r.json,r.selected FROM repositories r WHERE r.account_id=",
+            );
+            sql.push_bind(account_id)
+                .push(" AND r.selected=1 AND ")
+                .push(VISIBLE_REPOSITORY);
+            if let Some(id) = after {
+                sql.push(" AND r.id>").push_bind(id);
+            }
+            sql.push(" ORDER BY r.id LIMIT 16");
+            let rows = sql
+                .build()
+                .fetch_all(&mut *tx)
+                .await
+                .map_err(storage_error)?;
+            result = rows
+                .iter()
+                .map(repository_from_row)
+                .collect::<Result<Vec<_>>>()?;
+            if !result.is_empty() || after.is_none() {
+                break;
+            }
+        }
+        tx.commit().await.map_err(storage_error)?;
+        Ok(result)
+    }
 
     pub async fn select_repository(
         &self,

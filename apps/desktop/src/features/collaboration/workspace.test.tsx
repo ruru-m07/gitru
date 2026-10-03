@@ -18,6 +18,7 @@ import {
   fixturePage,
   fixtureRepositories,
 } from "../../../tests/fixtures/collaboration";
+import { mockForegroundDemand } from "../../../tests/mocks/collaboration-demand";
 import {
   mockTauriCommand,
   mockTauriCommandResult,
@@ -28,6 +29,7 @@ import { CollaborationWorkspace } from "./workspace";
 
 const caches: QueryClient[] = [];
 beforeEach(() => {
+  mockForegroundDemand();
   mockTauriCommandResult("collaboration_discover_github_cli", {
     status: "not_installed",
     accounts: [],

@@ -22,6 +22,7 @@ import {
   fixtureRepositories,
 } from "../../../tests/fixtures/collaboration";
 import { fixtureMetadata } from "../../../tests/fixtures/resource-detail";
+import { mockForegroundDemand } from "../../../tests/mocks/collaboration-demand";
 import {
   mockTauriCommand,
   mockTauriCommandResult,
@@ -35,6 +36,7 @@ let currentAccounts: AccountSnapshot;
 let currentView = "1";
 let currentRevision = "10";
 beforeEach(() => {
+  mockForegroundDemand();
   currentAccounts = fixtureAccounts;
   currentView = "1";
   currentRevision = "10";

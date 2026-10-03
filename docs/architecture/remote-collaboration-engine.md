@@ -1996,3 +1996,69 @@ packaging pass. Shared schema 0005/IPC/view code is inherited unchanged. Issue
 endpoint identity rejects PR representations and retains field authority/304
 masks. Signed draft publication and remote CI remain separate from live provider
 qualification and merging. RURU-98's approved foreground lease contract follows.
+
+
+### RURU-98 implementation contract
+
+[RURU-98](./collaboration-work/RURU-98.md) is the next bounded scheduler slice,
+starting from signed cached PR details #150. Native-issued, caller-owned
+45-second activity leases coalesce visible list/detail demand; a 15-second SDK
+heartbeat renews liveness without provider polling or durable automatic intent.
+Native host visibility/close/window gates fence owners. One committed HTTP page
+is the scheduling quantum, with preserved traversal checkpoints, weighted
+interactive/reconciliation and account rotation, bounded queue reservations and
+strict persisted quota/retry/poll barriers. Manual Sync remains explicit durable
+intent. The approved work note defines deterministic lifecycle, saturation,
+offline and fairness acceptance; implementation and qualification are pending.
+
+
+### Exact-head read-detail CI checkpoint — 3 October 2026
+
+Signed PR [#150](https://github.com/ruru-m07/gitru/pull/150) (`7e282ad`) and
+[#151](https://github.com/ruru-m07/gitru/pull/151) (`863967f`) each pass all 11
+reported checks, including three-platform Rust and packaged desktop E2E. No
+exact-head CodeQL check is reported; security and production provider/vault
+qualification remain separate. Both remain open and unmerged. RURU-98 lease/page
+fairness integration and RURU-96 native local-link integration are in progress
+in isolated worktrees with saved contracts.
+
+
+### RURU-98 local qualification checkpoint — 3 October 2026
+
+Foreground demand now uses caller/session/account/scope-bound ephemeral leases,
+native activity/visibility/expiry fences and one bounded SDK heartbeat. Automatic
+interest creates no durable detail intent; manual Sync remains explicit. The
+single native worker yields at committed pages, preserves traversal checkpoints,
+rotates accounts/scopes and reserves selected-detail capacity while guaranteeing
+reconciliation turns. Native cadence and persisted provider/retry/quota deadlines
+control eligibility; renewals cannot reset those barriers. Same-label failed
+close-disposal and slow-start readiness are fenced and tested.
+
+Local159 native/82 SDK/223 desktop tests,6 caller cases, types/lint/Clippy/fmt,
+normal103-command generation, frontend build and actual isolated two-native-tab
+macOS QA pass. Post-Quit SQLite confirms zero automatic durable detail demand,
+zero credentials, preserved metadata/drafts and strict cooldowns. Detailed bounds,
+review findings/fixes and evidence are in [RURU-98's work note](./collaboration-work/RURU-98.md).
+Signed draft publication/remote CI is the next step; live provider/vault and
+R102/R103/R121 gates remain distinct. RURU-96 native links and SDK/UI navigation
+continue in an isolated sibling worktree; no partial link UI is claimed complete.
+No PR has been merged.
+
+
+### RURU-98 restack onto cached issue details — 3 October 2026
+
+The two signed RURU-98 commits from published PR #152 head `9046322` are replayed
+onto signed RURU-78/PR #151 `863967f`, inheriting GitHub issue details. Both
+chronicles remain intact. The only code-range adjustment is a test-only issue
+omission case that now proves one account/epoch/subject Body lease across two
+revisions and zero automatic durable hydration, preserving its cached text and
+staleness assertions. Runtime, schema and generated command contracts are
+unchanged.
+
+Combined local validation passes 170 collaboration, 6 caller, 82 SDK and 230
+desktop cases, including 12 frozen migration and 7 focused issue-view cases;
+types/Biome/workspace Clippy/formatting pass. Full evidence and old-head versus
+new-head qualification boundaries are in [RURU-98's work note](./collaboration-work/RURU-98.md).
+All 11 reported remote checks passed on the old `9046322` head only. Parent
+review/publication and the new exact-head matrix remain pending; prior native
+macOS QA is not represented as a rerun of this combined branch. No merge occurs.

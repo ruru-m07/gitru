@@ -286,12 +286,15 @@ async fn assert_native_token(
     token: &str,
 ) {
     runtime
-        .sync_job(&Job {
+        .sync_feed_page(&mut Job {
             key: "fixture".into(),
             account: account.clone(),
             repository: None,
             kind: JobKind::Feed(FeedKind::Repositories),
             scope: "repositories".into(),
+            reason: scheduler::Admission::Manual,
+            pages: 0,
+            detail_lease: None,
         })
         .await
         .unwrap();

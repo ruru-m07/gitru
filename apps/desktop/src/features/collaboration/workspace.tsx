@@ -16,7 +16,7 @@ import {
   useCollaborationItems,
   useCollaborationRepositories,
   useContextualCapabilities,
-  useSelectedDetailHydration,
+  useVisibleDemand,
 } from "@gitru/collaboration-client/react";
 import type { LocalDraft } from "@gitru/commands";
 import { Badge } from "@gitru/ui/components/badge";
@@ -61,6 +61,7 @@ import {
 } from "./capability-boundary";
 import {
   accountCapabilityTarget,
+  canMaintainDemand,
   canReadSaved,
   canSynchronize,
   dispatchCapabilityIntent,
@@ -279,6 +280,31 @@ function AccountWorkspace({
       : accountCapabilityTarget,
   );
   const policy = facetPolicy(context.data, feedFacet[kind]);
+  useVisibleDemand({
+    account,
+    target: {
+      kind: "repositories",
+      repository_id: null,
+      subject_id: null,
+      facet: null,
+    },
+    enabled: account.state === "active" && canMaintainDemand(repositoryPolicy),
+  });
+  useVisibleDemand({
+    account,
+    target: {
+      kind:
+        kind === "notification"
+          ? "inbox"
+          : kind === "pull_request"
+            ? "pull_requests"
+            : "issues",
+      repository_id: kind === "notification" ? null : selectedRepositoryId,
+      subject_id: null,
+      facet: null,
+    },
+    enabled: account.state === "active" && canMaintainDemand(policy),
+  });
 
   async function refresh(recheck = false) {
     setRefreshing(true);
@@ -896,26 +922,21 @@ function ItemDetail({
     body.data?.evidence.availability !== "unavailable"
       ? body.data
       : undefined;
-  const automaticHydrationError = useSelectedDetailHydration({
+  const foregroundDemandError = useVisibleDemand({
     account,
-    subjectId: itemId,
-    parentHeadOid: item?.head_oid ?? null,
-    eligible:
+    target: {
+      kind: "detail",
+      repository_id: null,
+      subject_id: itemId,
+      facet: "body",
+    },
+    enabled:
+      account.state === "active" &&
       kind !== "notification" &&
       !!item &&
       canReadSaved(policy) &&
-      canSynchronize(bodyPolicy) &&
-      !!bodyData &&
-      bodyData.evidence.sync.state === "idle" &&
-      bodyData.evidence.sync.error === null &&
-      (bodyData.evidence.availability === "missing" ||
-        bodyData.metadata === null ||
-        bodyData.evidence.freshness === "stale" ||
-        (bodyData.evidence.availability === "partial" &&
-          bodyData.evidence.freshness === "unknown" &&
-          bodyData.body.state !== "known" &&
-          bodyData.body.state !== "oversized" &&
-          bodyData.evidence.observed_state !== "oversized")),
+      canMaintainDemand(bodyPolicy) &&
+      body.data?.evidence.availability !== "unavailable",
   });
   const bodyAccessDenied =
     kind !== "notification" &&
@@ -973,9 +994,9 @@ function ItemDetail({
           This item is no longer available in your saved view.
         </p>
       )}
-      {automaticHydrationError ? (
+      {foregroundDemandError ? (
         <p role="alert" className="mt-3 text-xs text-destructive-foreground">
-          {collaborationErrorMessage(automaticHydrationError)}
+          {collaborationErrorMessage(foregroundDemandError)}
         </p>
       ) : null}
       <ResourceCapabilityPanels
