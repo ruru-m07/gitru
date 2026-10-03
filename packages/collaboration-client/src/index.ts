@@ -3,6 +3,7 @@ import {
   collaborationAcquireDemand,
   collaborationCapabilities,
   collaborationChangesSince,
+  collaborationConfirmLocalLink,
   collaborationConnectGithub,
   collaborationConnectGithubCli,
   collaborationContextualCapabilities,
@@ -14,13 +15,19 @@ import {
   collaborationHydrateDetail,
   collaborationItem,
   collaborationItems,
+  collaborationLocalClones,
+  collaborationLocalLinks,
   collaborationRefresh,
   collaborationReleaseDemand,
+  collaborationRemoveLocalLink,
+  collaborationRemoveTransportBinding,
   collaborationRenewDemand,
   collaborationRepositories,
   collaborationResolveResource,
   collaborationSaveDraft,
+  collaborationSaveTransportBinding,
   collaborationSelectRepository,
+  collaborationValidateLocalNavigation,
 } from "@gitru/commands";
 import type { QueryClient } from "@tanstack/react-query";
 import { listen } from "@tauri-apps/api/event";
@@ -53,6 +60,15 @@ export type {
   GithubCliDiscovery,
   HydrateDetailRequest,
   ItemQuery,
+  LocalCloneRecord,
+  LocalCloneSnapshot,
+  LocalLinkCandidate,
+  LocalLinkInspection,
+  LocalLinkVersion,
+  LocalNavigationReceipt,
+  LocalNavigationRequest,
+  LocalRepositoryLink,
+  LocalTransportBinding,
   MetadataFieldEvidence,
   ReleaseDemandRequest,
   RemoteAccount,
@@ -63,10 +79,13 @@ export type {
   ResourceMetadataSnapshot,
   ResourceMetadataValues,
   ResourceResolution,
+  TransportBindingRequest,
 } from "@gitru/commands";
 export { StaleAuthorizationError } from "./authorization-fence";
 export * from "./client";
 export type { DemandAccount, DemandHandle } from "./demand-coordinator";
+export type LocalLinkState =
+  import("@gitru/commands").LocalRepositoryLink["state"];
 export type RemoteItemKind = import("@gitru/commands").ItemQuery["kind"];
 export type DetailFacet = import("@gitru/commands").DetailQuery["facet"];
 export type CapabilityObservation =
@@ -94,6 +113,23 @@ export const collaboration = new CollaborationClient({
       if (payload.owner_label === ownerLabel) onActivity(payload.activity);
     });
   },
+  localLinks: (localRepositoryId) =>
+    collaborationLocalLinks({ localRepositoryId }),
+  confirmLocalLink: (request) => collaborationConfirmLocalLink({ request }),
+  removeLocalLink: ({ id, generation }) =>
+    collaborationRemoveLocalLink({ id, generation }),
+  saveTransportBinding: (request) =>
+    collaborationSaveTransportBinding({ request }),
+  removeTransportBinding: ({ id, generation }, expectedBindingsGeneration) =>
+    collaborationRemoveTransportBinding({
+      id,
+      generation,
+      expectedBindingsGeneration,
+    }),
+  localClones: (request) => collaborationLocalClones({ request }),
+  validateLocalNavigation: (request) =>
+    collaborationValidateLocalNavigation({ request }),
+  listenLocalChanges: (onWake) => listen("gitru://repository-changed", onWake),
   accounts: () => collaborationAccounts({}),
   connectGithub: (token) => collaborationConnectGithub({ token }),
   discoverGithubCli: () => collaborationDiscoverGithubCli({}),

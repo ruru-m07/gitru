@@ -143,7 +143,7 @@ impl QueryService {
 
     #[logger::logger]
     pub async fn repository_origin(&self) -> Result<RepositoryOrigin, String> {
-        let runner = self.ctx.runner.clone();
+        let remotes = crate::service::remotes::RemotesService::new(self.ctx.clone());
 
         self.ctx
             .cache
@@ -154,15 +154,30 @@ impl QueryService {
                 },
                 "origin".to_string(),
                 move || async move {
-                    let url = runner
-                        .run_with_options(
-                            &["remote", "get-url", "origin"],
-                            GitRunOptions::default_read(),
-                        )
+                    let snapshot = remotes
+                        .snapshot()
                         .await
                         .map_err(|_| "No origin remote found".to_string())?;
-
-                    let (protocol, host, owner, repo_name, provider) = parse_remote_url(&url);
+                    let safe = snapshot
+                        .remotes
+                        .iter()
+                        .find(|r| r.name == "origin")
+                        .and_then(|r| r.fetch_urls.first())
+                        .ok_or("No origin remote found")?;
+                    let url = safe
+                        .sanitized_url
+                        .clone()
+                        .ok_or("No supported origin remote found")?;
+                    // Existing presentation parser expects SCP for SSH. Its
+                    // dummy username is never persisted or used for identity.
+                    let presentation = safe
+                        .endpoint
+                        .as_ref()
+                        .filter(|e| e.transport != crate::models::remotes::RemoteTransport::Https)
+                        .map(|e| format!("git@{}:{}", e.host, e.path))
+                        .unwrap_or_else(|| url.clone());
+                    let (protocol, host, owner, repo_name, provider) =
+                        parse_remote_url(&presentation);
 
                     Ok(RepositoryOrigin {
                         remote_name: "origin".into(),

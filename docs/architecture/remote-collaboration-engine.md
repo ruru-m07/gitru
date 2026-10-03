@@ -2062,3 +2062,56 @@ new-head qualification boundaries are in [RURU-98's work note](./collaboration-w
 All 11 reported remote checks passed on the old `9046322` head only. Parent
 review/publication and the new exact-head matrix remain pending; prior native
 macOS QA is not represented as a rerun of this combined branch. No merge occurs.
+
+### RURU-96 implementation contract
+
+[RURU-96's work note](./collaboration-work/RURU-96.md) records the next independent
+local-clone link slice before implementation. Native Rust enumerates bounded,
+credential-safe effective Git remotes and matches only exact configured provider
+instances/transport aliases. User-confirmed links preserve durable local and
+immutable remote IDs with CAS/proof/access fences; migration 0006 retains authored
+intent independently of provider cache. Actual inspect/change/remove, ambiguity
+choices and navigation both ways are required before completion. No Git remote,
+branch, provider demand or credential is changed by cached navigation. Conditional
+enterprise and physical directory relocation remain separate scope.
+
+
+### RURU-96 local qualification and stack integration
+
+RURU-96 implements bounded safe Git observations, explicit account/endpoint
+choices, durable authored links and transport mapping CAS, actual settings and
+navigation in both directions. [Its work note](./collaboration-work/RURU-96.md)
+records 172 native, nine caller, 61 SDK and 249 desktop passing tests plus real
+isolated macOS clone-import/link/change/remove/mapping/restart QA. UI findings
+were fixed and rebuilt; four authored drafts and strict quota barriers remain
+intact with zero credential records. This synthetic qualification is separate
+from remote/platform/security/live-account and schema0006 recovery gates.
+
+The review stack is being aligned to R78 → R98 → R96 before R79 storage starts.
+RURU-98 PR152 old signed head9046322 passed all11reported checks including all
+three native/E2E platforms, with no exact-head CodeQL reported. Its signed local
+restack onto R78 includes 170 native/82SDK/230desktop passing checks; new-head
+remote CI awaits publication. No PR is merged, and generated IPC is regenerated
+only after the combined native command/source contract freezes.
+
+
+### RURU-96 combined review publication checkpoint — 3 October 2026
+
+The review stack now follows R78/#151 → R98/#152 (`2d415938`) → R96. Authored
+local clone/account/endpoint links, explicit transport mapping settings and cached
+navigation are qualified together with the native foreground scheduler. The
+[RURU-96 work note](./collaboration-work/RURU-96.md) records 188 collaboration,
+11 caller, 93 SDK and 264 desktop tests, types/lint/workspace Clippy/formatting,
+normal110-command generation and a fresh combined native macOS GUI check. Cold
+saved routes, two duplicate-name clones, mapped SSH push actor scope and main-host
+settings suspension/resume all pass. Post-Quit preserves three authored links,
+one mapping, four drafts and strict cooldowns with zero credentials or automatic
+durable detail intent. R106's recovery ceiling remains unchanged.
+
+R96's signed draft publication targets #152; its own exact-head CI is pending.
+At this checkpoint #152's restacked head passes reported frontend, native
+formatting and all three Rust platforms plus Linux/macOS packaged E2E; Windows
+packaged E2E is still running. No exact-head CodeQL is reported. No PR has been
+merged. R79's reviewed parser stage remains isolated; SQL0007 may begin only once
+this actual0006 ancestor is established, with strict notified-subject provenance
+and explicit finite identity discovery as recorded in its approved work note.

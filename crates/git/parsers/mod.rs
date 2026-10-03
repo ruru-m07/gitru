@@ -4,5 +4,6 @@ pub mod graph;
 pub mod history;
 pub mod origin;
 pub mod pickaxe;
+pub mod remotes;
 pub mod stash;
 pub mod status;

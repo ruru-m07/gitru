@@ -7,5 +7,6 @@ pub mod operation;
 pub mod origin;
 pub mod pickaxe;
 pub mod rebase;
+pub mod remotes;
 pub mod stash;
 pub mod status;

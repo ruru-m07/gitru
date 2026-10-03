@@ -9,6 +9,7 @@ pub mod origin;
 pub mod pickaxe;
 pub mod query;
 pub mod rebase;
+pub mod remotes;
 pub mod repository;
 pub mod request_queue;
 pub mod stash;

@@ -1,10 +1,22 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { CollaborationWorkspace } from "@/features/collaboration/workspace";
+import { LinkedCollaborationRoute } from "@/features/collaboration/linked-collaboration-route";
+import {
+  localLinkTarget,
+  parseLocalLinkSearch,
+} from "@/features/collaboration/local-link-navigation";
 
 export const Route = createFileRoute("/app/issues/")({
+  validateSearch: parseLocalLinkSearch,
   component: RouteComponent,
 });
 
 function RouteComponent() {
-  return <CollaborationWorkspace kind="issue" />;
+  const search = Route.useSearch();
+  return (
+    <LinkedCollaborationRoute
+      kind="issue"
+      target={localLinkTarget(search)}
+      invalid={search.invalidLocalLink}
+    />
+  );
 }

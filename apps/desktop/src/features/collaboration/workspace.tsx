@@ -71,6 +71,8 @@ import {
   repositoryCapabilityTarget,
   resourceCapabilityTarget,
 } from "./capability-policy";
+import { OpenLocalCloneButton } from "./local-clone-picker";
+import type { LocalLinkRouteTarget } from "./local-link-navigation";
 import { ResourceCapabilityPanels } from "./resource-capability-panels";
 import { SelectedResourceHeader } from "./resource-metadata";
 import { CollaborationStatePanel } from "./state-panel";
@@ -87,7 +89,13 @@ const icons = {
   notification: Bell,
 };
 
-export function CollaborationWorkspace({ kind }: { kind: RemoteItemKind }) {
+export function CollaborationWorkspace({
+  kind,
+  target,
+}: {
+  kind: RemoteItemKind;
+  target?: LocalLinkRouteTarget;
+}) {
   const accounts = useCollaborationAccounts();
   const [accountId, setAccountId] = useState<string | null>(null);
   const connected = useMemo(
@@ -105,10 +113,16 @@ export function CollaborationWorkspace({ kind }: { kind: RemoteItemKind }) {
       })),
     [connected],
   );
-  const account =
-    connected.find((candidate) => candidate.id === accountId) ??
-    connected.find((candidate) => candidate.state === "active") ??
-    connected[0];
+  const account = target
+    ? connected.find(
+        (candidate) =>
+          candidate.id === target.account_id &&
+          candidate.authorization_epoch === target.authorization_epoch &&
+          candidate.state === "active",
+      )
+    : (connected.find((candidate) => candidate.id === accountId) ??
+      connected.find((candidate) => candidate.state === "active") ??
+      connected[0]);
   return (
     <PageLayout className="min-w-0">
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b px-5 py-3">
@@ -118,7 +132,7 @@ export function CollaborationWorkspace({ kind }: { kind: RemoteItemKind }) {
           <h1 className="text-base font-semibold">{labels[kind]}</h1>
         )}
         <div className="flex min-w-0 items-center gap-2">
-          {connected.length > 1 && account ? (
+          {!target && connected.length > 1 && account ? (
             <Select
               items={accountItems}
               value={account.id}
@@ -161,6 +175,11 @@ export function CollaborationWorkspace({ kind }: { kind: RemoteItemKind }) {
         >
           {collaborationErrorMessage(accounts.error)}
         </CollaborationStatePanel>
+      ) : target && !account ? (
+        <CollaborationStatePanel title="Linked account unavailable">
+          Reconnect and open this link again from Local Git. No other account
+          has been selected.
+        </CollaborationStatePanel>
       ) : !account ? (
         <CollaborationStatePanel title="Bring your remote work into Gitru">
           Connect a GitHub account using Accounts above, then choose
@@ -171,6 +190,7 @@ export function CollaborationWorkspace({ kind }: { kind: RemoteItemKind }) {
           key={`${account.id}:${account.actor_id}:${kind}`}
           account={account}
           kind={kind}
+          target={target}
         />
       )}
     </PageLayout>
@@ -189,9 +209,11 @@ function InboxHeading({ account }: { account: RemoteAccount }) {
 function AccountContextWorkspace({
   account,
   kind,
+  target,
 }: {
   account: RemoteAccount;
   kind: RemoteItemKind;
+  target?: LocalLinkRouteTarget;
 }) {
   const context = useContextualCapabilities(account, accountCapabilityTarget);
   const [metadata, setMetadata] = useState<{
@@ -215,10 +237,31 @@ function AccountContextWorkspace({
       semantics: context.data.inbox_semantics,
     });
   }
+  if (target && !context.data)
+    return (
+      <CollaborationStatePanel
+        title={
+          context.isError
+            ? "Linked installation unavailable"
+            : "Reading linked installation"
+        }
+      >
+        {context.isError
+          ? collaborationErrorMessage(context.error)
+          : "Waiting for current saved account access."}
+      </CollaborationStatePanel>
+    );
+  if (target && context.data && context.data.instance.id !== target.instance_id)
+    return (
+      <CollaborationStatePanel title="Linked installation unavailable">
+        Open this link again from Local Git.
+      </CollaborationStatePanel>
+    );
   return (
     <AccountWorkspace
       account={account}
       kind={kind}
+      target={target}
       snapshot={context.data}
       instanceId={metadata?.instanceId ?? null}
       semantics={metadata?.semantics ?? null}
@@ -232,6 +275,7 @@ function AccountContextWorkspace({
 function AccountWorkspace({
   account,
   kind,
+  target,
   snapshot,
   instanceId,
   semantics,
@@ -239,6 +283,7 @@ function AccountWorkspace({
 }: {
   account: RemoteAccount;
   kind: RemoteItemKind;
+  target?: LocalLinkRouteTarget;
   snapshot: ContextualCapabilitySnapshot | undefined;
   instanceId: string | null;
   semantics: InboxSemantics | null;
@@ -252,7 +297,9 @@ function AccountWorkspace({
   const inbox = inboxPresentation(semantics ?? "none");
   const [observedSemantics, setObservedSemantics] = useState(semantics);
   const [manageRepositories, setManageRepositories] = useState(false);
-  const [repositoryId, setRepositoryId] = useState<string | null>(null);
+  const [repositoryId, setRepositoryId] = useState<string | null>(
+    target?.repository_id ?? null,
+  );
   const [search, setSearch] = useState("");
   const searchValue = useDeferredValue(search.trim());
   const [state, setState] = useState<string | null>(
@@ -268,11 +315,17 @@ function AccountWorkspace({
     repositories.data?.repositories.filter(
       (repository) => repository.selected,
     ) ?? [];
-  const selectedRepositoryId = selected.some(
-    (repository) => repository.id === repositoryId,
-  )
-    ? repositoryId
-    : null;
+  const linkedRepository =
+    target && canReadSaved(repositoryPolicy)
+      ? repositories.data?.repositories.find(
+          (repository) => repository.id === target.repository_id,
+        )
+      : undefined;
+  const selectedRepositoryId = target
+    ? target.repository_id
+    : selected.some((repository) => repository.id === repositoryId)
+      ? repositoryId
+      : null;
   const context = useContextualCapabilities(
     account,
     selectedRepositoryId && instanceId
@@ -337,8 +390,42 @@ function AccountWorkspace({
           { label: "All states", value: "all" },
         ];
 
+  if (target && !repositories.isPending && !linkedRepository)
+    return (
+      <CollaborationStatePanel title="Linked repository unavailable">
+        This exact saved repository is missing or inaccessible. Open its link
+        again from Local Git.
+      </CollaborationStatePanel>
+    );
   return (
     <>
+      {target && linkedRepository && !linkedRepository.selected ? (
+        <div className="space-y-2 border-b p-5">
+          <p className="text-sm">
+            {linkedRepository.full_name} is not selected for synchronization.
+            This view stays scoped to that repository.
+          </p>
+          <Button
+            size="sm"
+            disabled={refreshing || !canReadSaved(repositoryPolicy)}
+            onClick={() => {
+              if (!canReadSaved(repositoryPolicy)) return;
+              setRefreshing(true);
+              setRefreshError(null);
+              void collaboration
+                .forAccount(account)
+                .selectRepository(linkedRepository.id, true)
+                .then(() => collaboration.wake())
+                .catch((failure) =>
+                  setRefreshError(collaborationErrorMessage(failure)),
+                )
+                .finally(() => setRefreshing(false));
+            }}
+          >
+            Select this repository
+          </Button>
+        </div>
+      ) : null}
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-5 py-3">
         <div className="relative min-w-32 flex-1 max-w-sm">
           <Input
@@ -385,6 +472,7 @@ function AccountWorkspace({
                 value: repository.id,
               })),
             ]}
+            disabled={!!target}
             value={selectedRepositoryId ?? "all"}
             onValueChange={(value) =>
               setRepositoryId(value === "all" ? null : value)
@@ -407,15 +495,17 @@ function AccountWorkspace({
             </SelectPopup>
           </Select>
         ) : null}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setManageRepositories((value) => !value)}
-          aria-expanded={manageRepositories}
-        >
-          <FolderGit2 aria-hidden="true" />
-          Repositories
-        </Button>
+        {!target ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setManageRepositories((value) => !value)}
+            aria-expanded={manageRepositories}
+          >
+            <FolderGit2 aria-hidden="true" />
+            Repositories
+          </Button>
+        ) : null}
         <Button
           variant="outline"
           size="sm"
@@ -448,8 +538,25 @@ function AccountWorkspace({
           {refreshError}
         </p>
       ) : null}
-      {manageRepositories || (kind !== "notification" && !selected.length) ? (
+      {!target &&
+      (manageRepositories || (kind !== "notification" && !selected.length)) ? (
         <RepositoryPicker account={account} policy={repositoryPolicy} />
+      ) : null}
+      {selectedRepositoryId &&
+      instanceId &&
+      canReadSaved(repositoryPolicy) &&
+      (target
+        ? !!linkedRepository
+        : selected.some(
+            (repository) => repository.id === selectedRepositoryId,
+          )) ? (
+        <div className="px-5 py-2">
+          <OpenLocalCloneButton
+            account={account}
+            instanceId={instanceId}
+            repositoryId={selectedRepositoryId}
+          />
+        </div>
       ) : null}
       <ReadOnlyCapability policy={policy} />
       <div className="px-5">

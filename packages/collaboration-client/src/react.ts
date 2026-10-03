@@ -252,3 +252,46 @@ export function useCollaborationDetail(
   useCollaborationVersion();
   return useQuery({ ...detailQueryOptions(account, query), enabled });
 }
+
+/** Local Git/SQLite only; no provider request or automatic link selection. */
+export function localLinksQueryOptions(
+  localRepositoryId: string,
+  version = collaboration.getVersion(),
+) {
+  return queryOptions({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.localLinks(localRepositoryId, version),
+    queryFn: ({ signal }) =>
+      collaboration.localLinks(localRepositoryId, signal),
+    staleTime: 0,
+    gcTime: 0,
+  });
+}
+export function useLocalRepositoryLinks(localRepositoryId: string) {
+  const version = useCollaborationVersion();
+  return useQuery(localLinksQueryOptions(localRepositoryId, version));
+}
+export function localClonesQueryOptions(
+  account: RemoteAccount,
+  instanceId: string,
+  repositoryId: string,
+) {
+  return queryOptions({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.localClones(account, instanceId, repositoryId),
+    queryFn: ({ signal }) =>
+      collaboration
+        .forAccount(account)
+        .localClones(instanceId, repositoryId, signal),
+    staleTime: 0,
+    gcTime: 0,
+  });
+}
+export function useLocalClones(
+  account: RemoteAccount,
+  instanceId: string,
+  repositoryId: string,
+) {
+  useCollaborationVersion();
+  return useQuery(localClonesQueryOptions(account, instanceId, repositoryId));
+}

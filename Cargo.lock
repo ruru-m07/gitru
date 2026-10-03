@@ -2021,10 +2021,13 @@ dependencies = [
  "log",
  "logger",
  "serde",
+ "serde_json",
  "serial_test",
+ "sha2 0.10.9",
  "tauri",
  "tempfile",
  "tokio",
+ "url",
 ]
 
 [[package]]
@@ -2068,6 +2071,7 @@ dependencies = [
  "tauri-plugin-window-state",
  "tokio",
  "url",
+ "uuid",
 ]
 
 [[package]]
@@ -2710,11 +2714,13 @@ dependencies = [
  "notify",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tauri",
  "tauri-plugin-store",
  "tempfile",
  "tokio",
  "uuid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
