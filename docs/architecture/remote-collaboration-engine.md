@@ -1796,8 +1796,10 @@ separate gate. Foundation CI exposed an initial child-probe readiness race and
 four CLI fixture `Vec::remove` logging-model alerts; scoped test fixes passed
 local packaged E2E/CLI checks and the exact-head remote matrix was restarted.
 No production credential logging or rule suppression was introduced. Default
-CodeQL only scans PRs targeting default/protected `dev`, so stacked children need
-fresh exact-head security scans when retargeted to `dev` before merge.
+Exact-head dynamic CodeQL runs have now been observed on stacked children
+#142, #143, #146 and #147. Each merge still requires every relevant analysis to
+complete and zero relevant alerts on the exact proposed head. Do not infer a
+policy change from the observed run availability or reuse an ancestor's scan.
 
 CI follow-up: production migrations and frozen SQL fixtures now explicitly use
 LF in Git attributes, preserving SQLx checksums and literal text on Windows.
@@ -1874,6 +1876,22 @@ quota errors must not hide still-authorized cached content; access denial does.
 Private draft recovery stays independent. Shared IPC generation is sequenced
 after the detail contract freezes. Publication authorizes review; no PR is
 merged without user authorization.
+
+RURU-100's complete contextual slice is locally implemented atop the signed
+RURU-97 contract. Its separate native reader captures account/repository/resource
+ownership, authorization, visibility, detail evidence and both facet/account
+quota barriers in one SQLite snapshot. Saved reads, synchronization and remote
+writes remain distinct; every remote write is explicitly unsupported. The
+ordinary workspace and sidebar use typed policy/inbox semantics, with shared
+unsupported/denied/missing/read-only boundaries and private drafts outside
+provider gates. One bridge-owned local deadline timer repairs eligibility after
+cooldown expiry. Local evidence passes 126 collaboration, 44 SDK and 193 desktop
+tests, including actual authorization-reset/CAS and pending-query races; both
+independent reviews accepted the source. Native fixture QA and final publication
+gates are recorded in [RURU-100's work note](./collaboration-work/RURU-100.md).
+RURU-99's separately published authored recovery/editor extraction still needs a
+narrow merge reconciliation preserving recovery/copy/export and its own CAS
+rules. Remote CI/security and live-account qualification remain separate gates.
 
 ### Linear implementation backlog (2026-10-03)
 

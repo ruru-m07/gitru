@@ -1,6 +1,7 @@
 //! Local collaboration data is independent of Tauri and local Git contexts.
 #[cfg(test)]
 extern crate self as collaboration;
+pub mod contextual_capabilities;
 pub mod credentials;
 pub mod detail;
 pub mod domain;
@@ -10,6 +11,7 @@ pub mod providers;
 pub mod runtime;
 pub mod storage;
 
+pub use contextual_capabilities::*;
 pub use detail::*;
 pub use domain::*;
 pub use error::{CollaborationError, ErrorCode};

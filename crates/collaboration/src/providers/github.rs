@@ -31,6 +31,13 @@ impl CollaborationProvider for GithubProvider {
         ProviderKind::Github
     }
 
+    fn profile(&self, account: &RemoteAccount) -> ProviderProfile {
+        ProviderProfile::read_only(
+            InboxSemantics::NativeNotifications,
+            account.notifications_supported,
+        )
+    }
+
     async fn probe(&self, token: &SecretToken) -> Result<VerifiedAccount, ProviderError> {
         let response = self
             .http

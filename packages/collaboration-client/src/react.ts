@@ -1,4 +1,5 @@
 import type {
+  CapabilityTarget,
   DetailQuery,
   ItemQuery,
   RemoteAccount,
@@ -32,6 +33,9 @@ export function accountsQueryOptions(version = collaboration.getVersion()) {
     ...localQueryPolicy,
     queryKey: collaborationKeys.accounts(version),
     queryFn: ({ signal }) => collaboration.accounts(signal),
+    // Account/actor metadata may keep a private editor mounted during a grant
+    // refresh. Provider projections never use placeholder data.
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -62,9 +66,12 @@ export function repositoriesQueryOptions(account: RemoteAccount) {
   });
 }
 
-export function useCollaborationRepositories(account: RemoteAccount) {
+export function useCollaborationRepositories(
+  account: RemoteAccount,
+  enabled = true,
+) {
   useCollaborationVersion();
-  return useQuery(repositoriesQueryOptions(account));
+  return useQuery({ ...repositoriesQueryOptions(account), enabled });
 }
 
 export function itemsQueryOptions(
@@ -83,9 +90,10 @@ export function itemsQueryOptions(
 export function useCollaborationItems(
   account: RemoteAccount,
   query: Omit<ItemQuery, "account_id">,
+  enabled = true,
 ) {
   useCollaborationVersion();
-  return useQuery(itemsQueryOptions(account, query));
+  return useQuery({ ...itemsQueryOptions(account, query), enabled });
 }
 
 export function itemQueryOptions(account: RemoteAccount, itemId: string) {
@@ -97,9 +105,33 @@ export function itemQueryOptions(account: RemoteAccount, itemId: string) {
   });
 }
 
-export function useCollaborationItem(account: RemoteAccount, itemId: string) {
+export function useCollaborationItem(
+  account: RemoteAccount,
+  itemId: string,
+  enabled = true,
+) {
   useCollaborationVersion();
-  return useQuery(itemQueryOptions(account, itemId));
+  return useQuery({ ...itemQueryOptions(account, itemId), enabled });
+}
+
+export function contextualCapabilitiesQueryOptions(
+  account: RemoteAccount,
+  target: CapabilityTarget,
+) {
+  return queryOptions({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.contextualCapabilities(account, target),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).contextualCapabilities(target, signal),
+  });
+}
+
+export function useContextualCapabilities(
+  account: RemoteAccount,
+  target: CapabilityTarget,
+) {
+  useCollaborationVersion();
+  return useQuery(contextualCapabilitiesQueryOptions(account, target));
 }
 
 export function draftQueryOptions(account: RemoteAccount, subjectId: string) {

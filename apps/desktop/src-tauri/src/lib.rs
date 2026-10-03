@@ -76,6 +76,7 @@ pub fn run() {
             commands::collaboration::collaboration_save_draft,
             commands::collaboration::collaboration_draft,
             commands::collaboration::collaboration_capabilities,
+            commands::collaboration::collaboration_contextual_capabilities,
             commands::collaboration::collaboration_resolve_resource,
             commands::collaboration::collaboration_detail,
             commands::collaboration::collaboration_hydrate_detail,

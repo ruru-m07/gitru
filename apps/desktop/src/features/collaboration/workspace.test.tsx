@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fixtureAccount,
   fixtureAccounts,
+  fixtureContextualCapabilities,
   fixtureGithubCli,
   fixtureItem,
   fixturePage,
@@ -58,6 +59,12 @@ function readMocks(page: ItemPage = fixturePage) {
     authorization_view: "1",
   });
   mockTauriCommandResult("collaboration_draft", null);
+  mockTauriCommand("collaboration_contextual_capabilities", (payload) => {
+    const { request } = payload as {
+      request: import("@gitru/commands").ContextCapabilityRequest;
+    };
+    return fixtureContextualCapabilities(fixtureAccount, request.target);
+  });
   return items;
 }
 
@@ -185,14 +192,34 @@ describe("collaboration workbench", () => {
   });
 
   it("makes inbox credential capability explicit", async () => {
+    readMocks();
     mockTauriCommandResult("collaboration_accounts", {
       ...fixtureAccounts,
       accounts: [{ ...fixtureAccount, notifications_supported: false }],
     });
+    mockTauriCommand("collaboration_contextual_capabilities", (payload) => {
+      const { request } = payload as {
+        request: import("@gitru/commands").ContextCapabilityRequest;
+      };
+      const snapshot = fixtureContextualCapabilities(
+        fixtureAccount,
+        request.target,
+      );
+      return {
+        ...snapshot,
+        facets: snapshot.facets.map((facet) =>
+          facet.facet === "inbox"
+            ? {
+                ...facet,
+                saved_read: { state: "unavailable", reason: "missing_scope" },
+                synchronize: { state: "unavailable", reason: "missing_scope" },
+              }
+            : facet,
+        ),
+      };
+    });
     mount(<CollaborationWorkspace kind="notification" />);
-    expect(
-      await screen.findByText("Inbox access is not connected"),
-    ).toBeVisible();
+    expect(await screen.findByText("Permission required")).toBeVisible();
   });
 });
 

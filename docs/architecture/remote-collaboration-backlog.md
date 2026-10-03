@@ -64,9 +64,24 @@ account selection lifetime and avoids subtraction; its exact-boundary regression
 and all 48 foundation collaboration tests pass locally. Fresh Windows CI remains
 required.
 The hourly chat continuation checks live Linear/PR state before picking work.
-PR publication does not authorize merging. GitHub's default CodeQL setup scans
-PRs into default/protected `dev`; children targeting unprotected stack branches
-need their own exact-head security scans after retargeting to `dev` before merge.
+PR publication does not authorize merging. Exact-head dynamic CodeQL runs have
+now been observed on stacked children #142, #143, #146 and #147. Every merge
+requires completed relevant analyses and zero relevant alerts on its own exact
+proposed head. This records observed run availability without assuming why it
+changed or treating an ancestor's scan as a child's qualification.
+
+RURU-100's complete contextual slice is locally implemented atop the signed
+RURU-97 contract; source/evidence are in
+[RURU-100's work note](./collaboration-work/RURU-100.md). Atomic native policies
+control account/repository/resource saved reads, sync and explicitly unsupported
+writes. Shared workspace/sidebar consumers distinguish provider inbox semantics,
+permissions and data missingness while retaining authored text/CAS through a
+same-actor authorization refresh. A shared local deadline coordinator repairs
+cooldown eligibility. All 126 collaboration, 44 SDK and 193 desktop tests and
+both independent reviews pass locally. Native fixture QA/publication/current
+exact-head remote security and platform checks remain separate gates; the
+publication index below remains historical. The separately published RURU-99
+authored-editor/recovery extraction needs narrow merge reconciliation.
 
 Make GitHub, GitLab and Bitbucket collaboration feel like native local data: cached navigation never waits for provider HTTP, while one Rust runtime keeps durable SQLite projections current across all tabs.
 

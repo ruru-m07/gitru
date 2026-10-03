@@ -1,7 +1,9 @@
 import { type RemoteAccount } from "@gitru/collaboration-client";
 import {
+  contextualCapabilitiesQueryOptions,
   itemsQueryOptions,
   useCollaborationAccounts,
+  useCollaborationVersion,
 } from "@gitru/collaboration-client/react";
 import { Avatar, AvatarFallback } from "@gitru/ui/components/avatar";
 import { Button } from "@gitru/ui/components/button";
@@ -9,20 +11,39 @@ import { ScrollArea } from "@gitru/ui/components/scroll-area";
 import { useQueries } from "@tanstack/react-query";
 import { Plus, UserRound } from "lucide-react";
 import { AccountSettingsButton } from "./account-manager";
+import {
+  accountCapabilityTarget,
+  canReadSaved,
+  facetPolicy,
+  inboxPresentation,
+} from "./capability-policy";
 
 export function useSavedInboxBadge() {
   const accounts = useCollaborationAccounts();
+  useCollaborationVersion();
   const connected =
-    accounts.data?.accounts.filter(
-      (account) =>
-        account.state === "active" && account.notifications_supported,
-    ) ?? [];
-  const pages = useQueries({
+    accounts.data?.accounts.filter((account) => account.state === "active") ??
+    [];
+  const contexts = useQueries({
     queries: connected.map((account) =>
+      contextualCapabilitiesQueryOptions(account, accountCapabilityTarget),
+    ),
+  });
+  const inboxes = connected.flatMap((account, index) => {
+    const snapshot = contexts[index]?.data;
+    const state = snapshot
+      ? inboxPresentation(snapshot.inbox_semantics).badgeState
+      : null;
+    return snapshot && canReadSaved(facetPolicy(snapshot, "inbox")) && state
+      ? [{ account, state }]
+      : [];
+  });
+  const pages = useQueries({
+    queries: inboxes.map(({ account, state }) =>
       itemsQueryOptions(account, {
         kind: "notification",
         repository_id: null,
-        state: "unread",
+        state,
         search: null,
         cursor: null,
         limit: 100,
