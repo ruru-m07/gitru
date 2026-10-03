@@ -178,3 +178,25 @@ diff checks pass. After the LF-base rebase, the full 88-test suite passes again;
 Git attributes confirm production migration SQL and frozen fixture SQL use LF.
 No remote CI, live provider/vault, desktop recovery UI
 or Windows power-loss verification is claimed.
+
+Executable-fixture audit follow-up (3 October 2026): PR #147 head `4a1e466`'s
+[Linux workspace job](https://github.com/ruru-m07/gitru/actions/runs/37106707761/job/111156589988)
+records OS code 26 (`ExecutableFileBusy` / `Text file busy`) at the RURU-95 crash
+harness spawn. No RURU-106 failure is observed in that job. The sibling audit
+finds the same parent-copy-then-execute pattern in this module's test-only crash
+harness; RURU-105 executes its existing test binary without writing it, and
+recovery integration copies are SQLite data rather than executables. The Unix
+inherited writable-descriptor explanation is supported by the source and
+[Rust issue 114554](https://github.com/rust-lang/rust/issues/114554), rather than
+a CI descriptor trace. This test-only snapshot now uses fixed `/bin/cp` in a
+child with cleared environment, fixture-directory working directory and null
+streams, and waits for successful exit before executing the copy. Non-Unix
+retains its existing copy. Nine real backup/restore/rollback kills, writer-lease
+checks, checkpoint timeouts, parallelism and content assertions are preserved.
+Production recovery and SQLite copying are unchanged. Local macOS verification
+passes the four focused core tests (nine real process kills), all 14 recovery
+integration cases, and the full current collaboration suite: 89 passed and three
+intentionally ignored subprocess entry points invoked by their passing parents.
+All-target collaboration Clippy with `-D warnings`, workspace formatting and
+diff whitespace checks pass. New-head Linux/platform CI remains pending after
+the RURU-95 repair is propagated into this branch.
