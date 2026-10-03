@@ -17,6 +17,12 @@ impl GithubProvider {
             http: GithubHttp::new()?,
         })
     }
+    #[cfg(test)]
+    pub(super) fn for_test_base(base: reqwest::Url) -> Self {
+        Self {
+            http: GithubHttp::for_test_base(base).expect("fixture transport"),
+        }
+    }
 }
 
 #[async_trait]
@@ -145,6 +151,7 @@ impl CollaborationProvider for GithubProvider {
         let mut page = FetchPage {
             repositories: Vec::new(),
             items: Vec::new(),
+            endpoint_aliases: Vec::new(),
             next_cursor: response.next_url,
             etag: response.validators.etag,
             last_modified: response.validators.last_modified,
@@ -189,11 +196,20 @@ impl CollaborationProvider for GithubProvider {
                     .repository
                     .as_ref()
                     .expect("repository validated above");
-                page.items = issues
-                    .into_iter()
-                    .filter(|issue| issue.pull_request.is_none())
-                    .map(|issue| issue.into_remote(&request.account.id, repo))
-                    .collect::<Result<_, _>>()?;
+                for issue in issues {
+                    if issue.pull_request.is_some() {
+                        page.endpoint_aliases.push(EndpointAlias {
+                            kind: ResourceKind::PullRequest,
+                            repository_provider_id: repo.provider_id.clone(),
+                            number: issue.number.to_string(),
+                            native_identity: format!("issue:{}", issue.id),
+                            web_url: Some(bounded(issue.html_url, 2048)?),
+                        });
+                    } else {
+                        page.items
+                            .push(issue.into_remote(&request.account.id, repo)?);
+                    }
+                }
             }
             FeedKind::Notifications => {
                 let notifications: Vec<GithubNotification> = decode(&response.body)?;
@@ -464,6 +480,32 @@ mod tests {
                 "repo, notifications"
             ));
         }
+    }
+
+    #[tokio::test]
+    async fn issue_feed_keeps_pull_endpoint_identity_without_creating_an_issue() {
+        let (provider, server) = fixture_server(|_| {
+            let body = r#"[{"id":9007199254740993,"number":67,"title":"pull representation","body":null,"state":"open","user":null,"html_url":"https://github.com/old/repo/pull/67","updated_at":"2026-10-03T12:00:00Z","pull_request":{}},{"id":9007199254740994,"number":68,"title":"true issue","body":null,"state":"open","user":null,"html_url":"https://github.com/old/repo/issues/68","updated_at":"2026-10-03T12:00:00Z"}]"#;
+            vec![format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )]
+        });
+        let mut request = fixture_request();
+        request.kind = FeedKind::Issues;
+        let page = provider
+            .fetch_page(&SecretToken::new("fixture".into()).unwrap(), request)
+            .await
+            .unwrap();
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].kind, RemoteItemKind::Issue);
+        assert_eq!(page.endpoint_aliases.len(), 1);
+        assert_eq!(
+            page.endpoint_aliases[0].native_identity,
+            "issue:9007199254740993"
+        );
+        assert_eq!(page.endpoint_aliases[0].repository_provider_id, "123");
+        server.join().unwrap();
     }
     use std::io::{Read, Write};
 

@@ -11,6 +11,8 @@ use sqlx::{
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+mod identities;
+
 use crate::{
     domain::*,
     error::{CollaborationError, ErrorCode},
@@ -480,13 +482,7 @@ impl Store {
             return Err(CollaborationError::invalid("Search text is too long"));
         }
         let mut tx = self.inner.readers.begin().await.map_err(storage_error)?;
-        let account = account_in(&mut tx, &query.account_id, true).await?;
-        if query.kind == RemoteItemKind::Notification && !account.notifications_supported {
-            return Err(CollaborationError::new(
-                ErrorCode::Unsupported,
-                "This credential does not support provider notifications",
-            ));
-        }
+        account_in(&mut tx, &query.account_id, true).await?;
         let (revision, authorization_view) = metadata(&mut tx).await?;
         let projection_view = query_projection_view(&mut tx, &query).await?;
         let mut fingerprint = query.clone();
@@ -541,9 +537,12 @@ impl Store {
                     "read" => {
                         sql.push(" AND json_extract(items.json,'$.unread')=0");
                     }
+                    "pending" | "done" => {
+                        sql.push(" AND items.state=").push_bind(state);
+                    }
                     _ => {
                         return Err(CollaborationError::invalid(
-                            "Unsupported notification disposition filter",
+                            "Unsupported inbox disposition filter",
                         ));
                     }
                 }
@@ -657,7 +656,7 @@ impl Store {
 
     pub async fn apply_page(&self, page: PageCommit) -> Result<String> {
         validate_scope(&page.scope)?;
-        if page.repositories.len() + page.items.len() > 100 {
+        if page.repositories.len() + page.items.len() + page.endpoint_aliases.len() > 100 {
             return Err(CollaborationError::invalid(
                 "Provider page exceeds the write batch limit",
             ));
@@ -667,7 +666,11 @@ impl Store {
                 "Completed traversal cannot have a continuation",
             ));
         }
-        if page.not_modified && (!page.items.is_empty() || !page.repositories.is_empty()) {
+        if page.not_modified
+            && (!page.items.is_empty()
+                || !page.repositories.is_empty()
+                || !page.endpoint_aliases.is_empty())
+        {
             return Err(CollaborationError::invalid(
                 "Unmodified response cannot contain observations",
             ));
@@ -675,6 +678,7 @@ impl Store {
         let mut writer = self.inner.writer.lock().await;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         epoch_in(&mut tx, &page.account_id, &page.authorization_epoch).await?;
+        let account = account_in(&mut tx, &page.account_id, true).await?;
         ensure_selected_scope(&mut tx, &page.account_id, &page.scope).await?;
         let stored = scope_in(&mut tx, &page.account_id, &page.scope)
             .await?
@@ -696,6 +700,7 @@ impl Store {
                 ));
             }
             validate_identifier(&repository.id)?;
+            identities::repository_in(&mut tx, &account, repository).await?;
             sqlx::query("INSERT INTO repositories(account_id,id,provider_id,full_name,selected,json) VALUES(?,?,?,?,?,?) ON CONFLICT(account_id,id) DO UPDATE SET provider_id=excluded.provider_id,full_name=excluded.full_name,json=excluded.json")
                 .bind(&page.account_id).bind(&repository.id).bind(&repository.provider_id).bind(&repository.full_name).bind(repository.selected).bind(encode(repository)?)
                 .execute(&mut *tx).await.map_err(storage_error)?;
@@ -753,6 +758,7 @@ impl Store {
                     item.is_draft = previous.is_draft;
                 }
             }
+            identities::item_in(&mut tx, &account, &item).await?;
             sqlx::query("INSERT INTO items(account_id,id,repository_id,kind,state,updated_at,json) VALUES(?,?,?,?,?,?,?) ON CONFLICT(account_id,id) DO UPDATE SET repository_id=excluded.repository_id,kind=excluded.kind,state=excluded.state,updated_at=excluded.updated_at,json=excluded.json")
                 .bind(&page.account_id).bind(&item.id).bind(&item.repository_id).bind(tag(&item.kind)?).bind(&item.state).bind(&item.updated_at).bind(encode(&item)?)
                 .execute(&mut *tx).await.map_err(storage_error)?;
@@ -778,6 +784,9 @@ impl Store {
                 .await
                 .map_err(storage_error)?;
             seen(&mut tx, &page, &item.id).await?;
+        }
+        for alias in &page.endpoint_aliases {
+            identities::endpoint_in(&mut tx, &account, alias, &page.scope).await?;
         }
         // Two completed traversals establish observed feed absence. Keep the
         // canonical row: a list miss never proves deletion or denied access.
@@ -1076,6 +1085,7 @@ async fn upsert_account_in(
     sqlx::query("INSERT INTO accounts(id,provider,host,actor_id,authorization_epoch,state,json) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET authorization_epoch=excluded.authorization_epoch,state=excluded.state,json=excluded.json")
             .bind(&account.id).bind(provider).bind(&account.host).bind(&account.actor_id).bind(epoch).bind(state).bind(encode(account)?)
             .execute(&mut **tx).await.map_err(storage_error)?;
+    identities::bind_account_in(tx, account).await?;
     sqlx::query(
         "UPDATE runtime_meta SET authorization_view=authorization_view+1 WHERE singleton=1",
     )
@@ -1504,16 +1514,9 @@ async fn ensure_selected_scope(
     account_id: &str,
     scope: &str,
 ) -> Result<()> {
-    if scope == "notifications"
-        && !account_in(tx, account_id, true)
-            .await?
-            .notifications_supported
-    {
-        return Err(CollaborationError::new(
-            ErrorCode::Unsupported,
-            "This credential does not support provider notifications",
-        ));
-    }
+    // Storage enforces actor/epoch/scope visibility. Provider functionality is
+    // checked by the registry at admission and dispatch, including non-native
+    // inboxes such as to-dos which have no GitHub notification grant flag.
     if let Some(repository_id) = repository_from_scope(scope) {
         let mut sql = sqlx::QueryBuilder::<Sqlite>::new(
             "SELECT r.selected FROM repositories r WHERE r.account_id=",

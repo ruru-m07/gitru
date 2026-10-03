@@ -1,5 +1,6 @@
 import {
   type AccountSnapshot,
+  type CapabilitySnapshot,
   type ChangePage,
   type CollaborationChange,
   type GithubCliDiscovery,
@@ -11,6 +12,8 @@ import {
   type RefreshRequest,
   type RemoteAccount,
   type RepositorySnapshot,
+  type ResourceLocator,
+  type ResourceResolution,
 } from "@gitru/commands";
 import type { QueryClient } from "@tanstack/react-query";
 import {
@@ -37,6 +40,11 @@ export interface CollaborationTransport {
   changesSince(afterRevision: string): Promise<ChangePage>;
   saveDraft(draft: LocalDraft): Promise<LocalDraft>;
   draft(accountId: string, subjectId: string): Promise<LocalDraft | null>;
+  capabilities(accountId: string): Promise<CapabilitySnapshot>;
+  resolveResource(
+    accountId: string,
+    locator: ResourceLocator,
+  ): Promise<ResourceResolution>;
   listen(onWake: () => void): Promise<() => void>;
 }
 
@@ -73,6 +81,19 @@ export const collaborationKeys = {
       account.authorization_epoch,
       "draft",
       subjectId,
+    ] as const,
+  capabilities: (account: RemoteAccount) =>
+    [
+      ...collaborationKeys.account(account.id),
+      account.authorization_epoch,
+      "capabilities",
+    ] as const,
+  resource: (account: RemoteAccount, locator: ResourceLocator) =>
+    [
+      ...collaborationKeys.account(account.id),
+      account.authorization_epoch,
+      "resource",
+      locator,
     ] as const,
 };
 
@@ -138,6 +159,10 @@ export class CollaborationClient {
         ),
       item: (itemId: string, signal?: AbortSignal) =>
         read(() => this.transport.item(account.id, itemId), signal),
+      capabilities: (signal?: AbortSignal) =>
+        read(() => this.transport.capabilities(account.id), signal),
+      resolveResource: (locator: ResourceLocator, signal?: AbortSignal) =>
+        read(() => this.transport.resolveResource(account.id, locator), signal),
       refresh: (request: Omit<RefreshRequest, "account_id">) =>
         this.transport.refresh({ ...request, account_id: account.id }),
       selectRepository: (repositoryId: string, selected: boolean) =>
@@ -289,6 +314,8 @@ export class CollaborationClient {
 
 function projectionAffected(key: readonly unknown[], scope: string) {
   const projection = key[4];
+  if (projection === "capabilities" || projection === "resource")
+    return scope !== "drafts";
   if (scope === "drafts") return projection === "draft";
   if (scope === "repositories")
     return (

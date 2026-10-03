@@ -1,8 +1,11 @@
 import type {
   AccountSnapshot,
+  CapabilitySnapshot,
   ChangePage,
   ItemPage,
   RemoteAccount,
+  ResourceLocator,
+  ResourceResolution,
 } from "@gitru/commands";
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
@@ -79,12 +82,100 @@ function transport(
     changesSince: unexpected,
     saveDraft: unexpected,
     draft: unexpected,
+    capabilities: unexpected,
+    resolveResource: unexpected,
     listen: unexpected,
     ...overrides,
   };
 }
 
 describe("CollaborationClient", () => {
+  it("binds capability and local resolver reads to the account and fences late lifecycle responses", async () => {
+    const locator: ResourceLocator = {
+      instance_id: "github:https://github.com/",
+      kind: "pull_request",
+      locator_kind: "repository_number",
+      value: "67",
+      repository_path: "owner/project",
+    };
+    const capability: CapabilitySnapshot = {
+      account_id: account.id,
+      instance: {
+        id: locator.instance_id,
+        provider: "github",
+        base_url: "https://github.com/",
+      },
+      facets: [],
+      inbox_semantics: "native_notifications",
+      revision: "1",
+      authorization_view: "1",
+    };
+    const resolution: ResourceResolution = {
+      state: "unresolved",
+      resource: null,
+      candidates: [],
+      revision: "1",
+      authorization_view: "1",
+    };
+    let finish!: (result: ResourceResolution) => void;
+    const capabilities = vi.fn().mockResolvedValue(capability);
+    const resolveResource = vi.fn(
+      () =>
+        new Promise<ResourceResolution>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const client = new CollaborationClient(
+      transport({ capabilities, resolveResource, disconnect: async () => "2" }),
+    );
+    const handle = client.forAccount(account);
+    expect(await handle.capabilities()).toEqual(capability);
+    expect(capabilities).toHaveBeenCalledWith(account.id);
+    const pending = handle.resolveResource(locator);
+    expect(resolveResource).toHaveBeenCalledWith(account.id, locator);
+    await client.disconnect(account.id);
+    finish(resolution);
+    await expect(pending).rejects.toBeInstanceOf(StaleAuthorizationError);
+  });
+
+  it("refreshes unresolved identities and capability observations on provider changes without invalidating drafts", async () => {
+    let next = changePage("1");
+    const client = new CollaborationClient(
+      transport({
+        listen: async () => () => {},
+        changesSince: async () => next,
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    const locator: ResourceLocator = {
+      instance_id: "github:https://github.com/",
+      kind: "repository",
+      locator_kind: "repository_path",
+      value: "owner/project",
+      repository_path: null,
+    };
+    const resourceKey = collaborationKeys.resource(account, locator);
+    const capabilityKey = collaborationKeys.capabilities(account);
+    const draftKey = collaborationKeys.draft(account, "draft");
+    for (const key of [resourceKey, capabilityKey, draftKey])
+      cache.setQueryData(key, "cached");
+    next = changePage("2", "1", [
+      {
+        revision: "2",
+        account_id: account.id,
+        scope: "repositories",
+        reset: false,
+      },
+    ]);
+    await client.wake();
+    expect(cache.getQueryState(resourceKey)?.isInvalidated).toBe(true);
+    expect(cache.getQueryState(capabilityKey)?.isInvalidated).toBe(true);
+    expect(cache.getQueryState(draftKey)?.isInvalidated).toBe(false);
+    stop();
+    cache.clear();
+  });
   it("discovers only CLI metadata without changing the saved authorization view", async () => {
     const discovery = {
       status: "available" as const,

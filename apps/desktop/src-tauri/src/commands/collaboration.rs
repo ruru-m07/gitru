@@ -1,8 +1,8 @@
 //! Local reads are separate commands from network refresh intents.
 use collaboration::{
-    AccountSnapshot, ChangePage, CollaborationError, CollaborationRuntime, ErrorCode,
-    GithubCliDiscovery, ItemPage, ItemQuery, ItemSnapshot, LocalDraft, RefreshReceipt,
-    RefreshRequest, RemoteAccount, RepositorySnapshot,
+    AccountSnapshot, CapabilitySnapshot, ChangePage, CollaborationError, CollaborationRuntime,
+    ErrorCode, GithubCliDiscovery, ItemPage, ItemQuery, ItemSnapshot, LocalDraft, RefreshReceipt,
+    RefreshRequest, RemoteAccount, RepositorySnapshot, ResourceLocator, ResourceResolution,
 };
 use std::sync::Arc;
 use tauri::{State, Webview};
@@ -45,6 +45,8 @@ enum Operation {
     ChangesSince,
     SaveDraft,
     Draft,
+    Capabilities,
+    ResolveResource,
 }
 
 impl Operation {
@@ -233,6 +235,32 @@ pub async fn collaboration_draft(
         .await
 }
 
+#[tauri::command]
+pub async fn collaboration_capabilities(
+    account_id: String,
+    view: Webview,
+    state: State<'_, CollaborationState>,
+) -> Result<CapabilitySnapshot, CollaborationError> {
+    authorize(&view, Operation::Capabilities)?;
+    state.get().await?.capabilities(&account_id).await
+}
+
+#[tauri::command]
+pub async fn collaboration_resolve_resource(
+    account_id: String,
+    locator: ResourceLocator,
+    view: Webview,
+    state: State<'_, CollaborationState>,
+) -> Result<ResourceResolution, CollaborationError> {
+    authorize(&view, Operation::ResolveResource)?;
+    state
+        .get()
+        .await?
+        .store()
+        .resolve_resource(&account_id, locator)
+        .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::{caller_allowed, Operation};
@@ -247,6 +275,8 @@ mod tests {
         Operation::ChangesSince,
         Operation::SaveDraft,
         Operation::Draft,
+        Operation::Capabilities,
+        Operation::ResolveResource,
     ];
     const CREDENTIAL_OPERATIONS: &[Operation] = &[
         Operation::ConnectGithub,

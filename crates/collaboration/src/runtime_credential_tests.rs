@@ -119,6 +119,7 @@ impl CollaborationProvider for TokenProvider {
         Ok(FetchPage {
             repositories: vec![],
             items: vec![],
+            endpoint_aliases: Vec::new(),
             next_cursor: None,
             etag: None,
             last_modified: None,

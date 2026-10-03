@@ -1,0 +1,7 @@
+{
+  "actor": { "id": 9007199254740993, "username": "fixture", "name": "Fixture" },
+  "projects": [{ "id": 9007199254740993, "path_with_namespace": "team/platform/project", "name": "project", "web_url": "https://git.example:8443/gitlab/team/platform/project" }],
+  "merge_requests": [{ "id": 9007199254740994, "iid": 7, "project_id": 9007199254740993, "title": "GitLab merge request", "description": null, "state": "opened", "draft": true, "web_url": "https://git.example:8443/gitlab/team/platform/project/-/merge_requests/7", "updated_at": "2026-10-03T12:00:00Z" }],
+  "issues": [{ "id": 9007199254740995, "iid": 7, "project_id": 9007199254740993, "title": "GitLab issue", "description": null, "state": "opened", "web_url": "https://git.example:8443/gitlab/team/platform/project/-/issues/7", "updated_at": "2026-10-03T12:00:00Z" }],
+  "todos": [{ "id": 88, "action_name": "mentioned", "target_type": "MergeRequest", "state": "pending", "created_at": "2026-10-03T12:00:00Z", "target": { "title": "GitLab to-do" } }]
+}

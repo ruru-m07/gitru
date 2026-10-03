@@ -1,7 +1,7 @@
 use crate::error::CollaborationError;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
     Github,
@@ -260,10 +260,146 @@ pub struct PageCommit {
     pub run_id: String,
     pub repositories: Vec<RemoteRepository>,
     pub items: Vec<RemoteItem>,
+    pub endpoint_aliases: Vec<EndpointAlias>,
     pub next_cursor: Option<String>,
     pub etag: Option<String>,
     pub last_modified: Option<String>,
     pub not_modified: bool,
     pub complete: bool,
     pub observed_at: String,
+}
+
+/// An endpoint representation which is not a separate domain entity. A GitHub
+/// issue-side PR must wait for its authoritative pull identity before resolving.
+#[derive(Debug, Clone)]
+pub struct EndpointAlias {
+    pub kind: ResourceKind,
+    pub repository_provider_id: String,
+    pub number: String,
+    pub native_identity: String,
+    pub web_url: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderInstance {
+    pub id: String,
+    pub provider: ProviderKind,
+    pub base_url: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResourceFacet {
+    Repositories,
+    PullRequests,
+    Issues,
+    Inbox,
+    PullDetails,
+    IssueDetails,
+    Comments,
+    Reviews,
+    Checks,
+    Merge,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CapabilityState {
+    Supported,
+    Unsupported,
+    Unavailable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CapabilityReason {
+    NotImplemented,
+    ProviderSemantics,
+    AdapterUnavailable,
+    AuthenticationRequired,
+    MissingScope,
+    PermissionDenied,
+    TemporarilyUnavailable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InboxSemantics {
+    NativeNotifications,
+    Todos,
+    None,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FacetCapability {
+    pub facet: ResourceFacet,
+    pub state: CapabilityState,
+    pub reason: Option<CapabilityReason>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CapabilitySnapshot {
+    pub account_id: String,
+    pub instance: ProviderInstance,
+    pub facets: Vec<FacetCapability>,
+    pub inbox_semantics: InboxSemantics,
+    pub revision: String,
+    pub authorization_view: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResourceKind {
+    Repository,
+    PullRequest,
+    Issue,
+    Notification,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocatorKind {
+    Canonical,
+    Native,
+    RepositoryPath,
+    RepositoryNumber,
+    WebUrl,
+}
+
+/// Structured locators are explicit about actor, installation, resource kind,
+/// and mutable presentation. Native values include a representation namespace.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResourceLocator {
+    pub instance_id: String,
+    pub kind: ResourceKind,
+    pub locator_kind: LocatorKind,
+    pub value: String,
+    pub repository_path: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CanonicalResource {
+    pub account_id: String,
+    pub instance_id: String,
+    pub id: String,
+    pub kind: ResourceKind,
+    pub provider_id: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResolutionState {
+    Resolved,
+    Unresolved,
+    Ambiguous,
+    Unavailable,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResourceResolution {
+    pub state: ResolutionState,
+    pub resource: Option<CanonicalResource>,
+    pub candidates: Vec<CanonicalResource>,
+    pub revision: String,
+    pub authorization_view: String,
 }
