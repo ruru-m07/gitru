@@ -17,7 +17,7 @@ interface ParseOriginResult {
 
 /** Present native-sanitized origins; this does not resolve repository identity. */
 export function parseOrigin(
-  origin: string | undefined,
+  origin: string | null | undefined,
 ): ParseOriginResult | undefined {
   if (
     !origin ||

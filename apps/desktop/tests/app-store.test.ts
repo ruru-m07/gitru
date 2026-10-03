@@ -15,7 +15,9 @@ const createRepository = (id: string, path: string): RepositoryInfo => ({
   id,
   name: id,
   path,
+  origin: null,
   current_branch: "main",
+  ahead_behind: null,
   has_uncommitted_changes: false,
   last_updated: 0,
 });

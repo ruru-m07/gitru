@@ -828,3 +828,38 @@ This is combined synthetic macOS GUI qualification, not live GitHub/vault or
 Windows/power-loss/security qualification. R106's accepted restore ceiling is
 unchanged; schema0006 recovery policy remains its own gate. Remote CI for the
 forthcoming R96 publication is pending, and no PR is merged.
+
+
+### Exact-head packaged CI finding and nullable registration repair
+
+Initial published PR153 head `c435af8` passes frontend, formatting/Clippy and
+Rust tests on Linux/macOS/Windows. Linux/macOS packaged E2E fail at first import:
+`Stage stage-me.txt` never appears, and retained HTML/screenshots show the welcome
+screen. Both collaboration packaged cases pass. The native log reaches
+`add_local_git_repo` but never `add_repository`. Full artifacts are retained under
+`/tmp/gitru-r96-ci-{macos,linux}-artifacts`, with the completed macOS job log at
+`/tmp/gitru-r96-ci-macos-e2e.log` (CIrun37119120468).
+
+R96 safely omits an unsupported local-file origin, returning Rust `None` as JSON
+`null`. The pre-existing generated RepositoryInfo registration schema instead
+accepted only a string or an omitted property, so the subsequent generated
+`addRepository` input validation rejects the returned metadata before native
+registration. The source correction pipeline now also reads the actual Rust
+RepositoryInfo/RepoSitoryStore definitions. Normal `make typegen` generates their
+nullable origin/current-branch/ahead-behind fields; all other named schema content
+is unchanged. No generated file is manually edited, and no raw origin fallback
+is introduced. Presentation accepts a nullable absent origin; typed fixture
+metadata now supplies real Rust nulls without weakening existing assertions.
+
+Three meaningful hook tests traverse the real generated wrappers and fail-closed
+native boundary: absent origin/branch metadata and a safe HTTPS origin register
+successfully, while malformed numeric origin creates no native registration or
+saved state. All **267 desktop cases** pass after the final fixture changes;
+desktop/E2E/SDK types, scoped Biome and normal110-command generation pass. Fresh
+packaged macOS E2E passes both specs/all three cases, including actual UI →
+generated registration → Rust → Git flow and native account-dialog handoff.
+Logs: `/tmp/gitru-ruru96-nullable-{typegen,types,sdk-types,lint,desktop-tests-final,e2e}.log`
+and `/tmp/gitru-ruru96-nullable-test-initial.log`. Native implementation is
+unchanged; the packaging build itself qualifies native/IPC linkage. New exact-head
+Linux/Windows/security results must qualify the signed repair separately from
+this local macOS evidence. No test timeout/order/assertion is relaxed.
