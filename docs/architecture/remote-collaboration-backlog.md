@@ -1,0 +1,820 @@
+# Collaboration engine — Linear backlog
+
+Parent: [RURU-53: Build a provider-independent, local-first remote collaboration engine](https://linear.app/catra/issue/RURU-53/build-a-provider-independent-local-first-remote-collaboration-engine).
+Project: Gitru. Team: ruru. Milestone: Hosted Collaboration.
+Published and verified: 2026-10-03.
+49 direct children: 44 new, 5 existing issues updated. All 49 issue bodies and 106 direct blocker relationships were read back; the graph is acyclic. Six immediate independent tasks are Todo. Other unblocked product-policy work remains Backlog.
+
+Local C01–C49 keys are planning keys, not Linear identifiers. Linear status and dependency links are authoritative and may change; this document records the verified publication snapshot. Retained valid dependencies from the original five children are included below.
+
+## Goal
+
+Make GitHub, GitLab and Bitbucket collaboration feel like native local data: cached navigation never waits for provider HTTP, while one Rust runtime keeps durable SQLite projections current across all tabs.
+
+Provider accounts work independently of Gitru cloud sign-in. GitHub connects with a manual PAT or explicitly selected existing GitHub CLI credential; Gitru does not initiate an OAuth/device flow.
+
+## Current implementation — 2 October 2026
+
+The initial GitHub read slice exists locally on branch `ruru/remote-collaboration`: SQLite/WAL/FTS, secure account lifecycle, PAT/CLI connection, repository discovery/selection, PR/issue/inbox summaries, local queries/search, background paging, durable drafts, revision catch-up and the single-window Accounts dialog.
+
+Local evidence: 194 frontend tests, 47 collaboration Rust tests, 3 native caller-policy tests, lint/types/Clippy/formatting, production frontend build and two packaged macOS E2E specs (3 cases). Native computer-use QA verified Inbox → Accounts → close using an isolated E2E vault. Live production credentials/vaults and Windows/Linux remain unverified. This work is uncommitted; no remote CI or release completion is claimed.
+
+## Source of truth
+
+Read `docs/architecture/remote-collaboration-engine.md` in the repository before implementing. Its section 23 records actual implementation limits; sections 6–20 define contracts and sections 21–22 define rollout and gates. The document is currently local/uncommitted in the implementation branch, so no nonexistent GitHub document link is supplied.
+
+Rust owns provider networking, credentials, durable storage, sync, commands and delivery. TypeScript owns typed local queries/subscriptions and UI. Generate changed IPC with `make typegen`; never edit `packages/commands` manually.
+
+## Delivery rules
+
+- Child issues are concrete remaining slices. Implemented foundations are context, not new duplicate tickets.
+- Follow actual Linear blocker relations. Work that is independent can run in parallel; aim for one or two reviewable PRs and split further if a measured scope grows.
+- Provider differences use capabilities and native facets; unsupported operations are explicit.
+- Add focused contracts, recovery and UI checks for changed behavior. Keep local verification, remote CI and production/provider validation distinct.
+- Build durable admission, delivery evidence, effective optimistic projections and conflict recovery before exposing remote writes.
+- Never silently retry an ambiguous non-idempotent create or promise an unsupported guarded merge.
+- Enterprise/Data Center/webhook-relay assessments are later conditional scope, not prerequisites for the public-provider milestone.
+
+## Completion gates
+
+- A user can connect accounts, link a local clone, browse cached lists/details/search/inbox offline after restart, and see truthful partial/stale/access states.
+- One bounded native scheduler coalesces work across tabs, prioritizes demand fairly, honors provider quotas and survives reconnect/crash.
+- Supported edits preserve durable user intent and reconcile optimistic state without losing text, duplicating ambiguous delivery or using an obsolete authorization/head.
+- GitLab and Bitbucket Cloud exercise the common contracts with explicit unsupported capabilities; self-hosted support is claimed only for tested versions.
+- Migration/backup/restore, resource budgets, account isolation and supported-platform vault/runtime gates have recorded evidence.
+
+## Pickup order
+
+Start with [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) (provider registry/identities) and [RURU-95](https://linear.app/catra/issue/RURU-95/make-credential-replacement-recover-safely-after-a-process-crash) (crash-safe credential cutover). [RURU-75](https://linear.app/catra/issue/RURU-75/verify-production-github-patcli-authentication-and-offline-restart) (production PAT/CLI verification), [RURU-99](https://linear.app/catra/issue/RURU-99/recover-private-drafts-after-disconnect-or-missing-subjects) (draft recovery), [RURU-105](https://linear.app/catra/issue/RURU-105/test-schema-evolution-and-recoverable-migration-failures) (migration fixtures) and [RURU-138](https://linear.app/catra/issue/RURU-138/review-and-publish-the-implemented-collaboration-foundation) (review/publish current foundation) are independent parallel lanes, all marked Todo. [RURU-108](https://linear.app/catra/issue/RURU-108/decide-cached-private-data-encryption-policy-before-ga) is an unblocked product-policy decision kept in Backlog for the GA gate.
+
+Then implement [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts) (detail scopes), [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details) / [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details) (cached PR/issue details), [RURU-98](https://linear.app/catra/issue/RURU-98/add-foreground-demand-leases-to-the-native-sync-scheduler) (foreground leases) and [RURU-121](https://linear.app/catra/issue/RURU-121/add-bounded-frontend-prefetch-and-cached-navigation) (bounded prefetch). Broader facets, local mapping and reliability checks follow; remote actions stay blocked on durable delivery and conflict recovery. Check live blockers and changed-file overlap before picking parallel implementation work.
+
+## Published issue index
+
+### Foundation, identities and accounts
+
+| Task | State | Blocked by |
+| --- | --- | --- |
+| [RURU-138: Review and publish the implemented collaboration foundation](https://linear.app/catra/issue/RURU-138/review-and-publish-the-implemented-collaboration-foundation) | Todo | — |
+| [RURU-76: Introduce a provider registry, canonical resource identities and capabilities](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) | Todo | — |
+| [RURU-75: Verify production GitHub PAT/CLI authentication and offline restart](https://linear.app/catra/issue/RURU-75/verify-production-github-patcli-authentication-and-offline-restart) | Todo | — |
+| [RURU-95: Make credential replacement recover safely after a process crash](https://linear.app/catra/issue/RURU-95/make-credential-replacement-recover-safely-after-a-process-crash) | Todo | — |
+| [RURU-99: Recover private drafts after disconnect or missing subjects](https://linear.app/catra/issue/RURU-99/recover-private-drafts-after-disconnect-or-missing-subjects) | Todo | — |
+| [RURU-100: Drive collaboration UI from typed resource capabilities](https://linear.app/catra/issue/RURU-100/drive-collaboration-ui-from-typed-resource-capabilities) | Backlog | [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
+| [RURU-105: Test schema evolution and recoverable migration failures](https://linear.app/catra/issue/RURU-105/test-schema-evolution-and-recoverable-migration-failures) | Todo | — |
+| [RURU-108: Decide cached private-data encryption policy before GA](https://linear.app/catra/issue/RURU-108/decide-cached-private-data-encryption-policy-before-ga) | Backlog | — |
+
+### Cached collaboration experience
+
+| Task | State | Blocked by |
+| --- | --- | --- |
+| [RURU-96: Link local Git remotes to collaboration repositories and accounts](https://linear.app/catra/issue/RURU-96/link-local-git-remotes-to-collaboration-repositories-and-accounts) | Backlog | [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
+| [RURU-97: Add independent detail-scope storage and hydration contracts](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts) | Backlog | [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
+| [RURU-77: Hydrate and render cached pull request details](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details) | Backlog | [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
+| [RURU-78: Hydrate and render cached issue details](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details) | Backlog | [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
+| [RURU-121: Add bounded frontend prefetch and cached navigation](https://linear.app/catra/issue/RURU-121/add-bounded-frontend-prefetch-and-cached-navigation) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-98](https://linear.app/catra/issue/RURU-98/add-foreground-demand-leases-to-the-native-sync-scheduler), [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details) |
+| [RURU-79: Resolve inbox notifications to cached PR and issue subjects](https://linear.app/catra/issue/RURU-79/resolve-inbox-notifications-to-cached-pr-and-issue-subjects) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
+| [RURU-122: Cache and display conversation comments and activity timelines](https://linear.app/catra/issue/RURU-122/cache-and-display-conversation-comments-and-activity-timelines) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details) |
+| [RURU-123: Cache PR review summaries and review threads with head context](https://linear.app/catra/issue/RURU-123/cache-pr-review-summaries-and-review-threads-with-head-context) | Backlog | [RURU-122](https://linear.app/catra/issue/RURU-122/cache-and-display-conversation-comments-and-activity-timelines), [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details) |
+| [RURU-118: Show cached checks and commit statuses for the current PR head](https://linear.app/catra/issue/RURU-118/show-cached-checks-and-commit-statuses-for-the-current-pr-head) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details) |
+| [RURU-119: Add cached PR changed-file and diff navigation](https://linear.app/catra/issue/RURU-119/add-cached-pr-changed-file-and-diff-navigation) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-98](https://linear.app/catra/issue/RURU-98/add-foreground-demand-leases-to-the-native-sync-scheduler) |
+| [RURU-124: Add local inbox snooze, bookmark and disposition state](https://linear.app/catra/issue/RURU-124/add-local-inbox-snooze-bookmark-and-disposition-state) | Backlog | [RURU-79](https://linear.app/catra/issue/RURU-79/resolve-inbox-notifications-to-cached-pr-and-issue-subjects) |
+| [RURU-136: Check out pull request branches through the local Git workflow](https://linear.app/catra/issue/RURU-136/check-out-pull-request-branches-through-the-local-git-workflow) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-96](https://linear.app/catra/issue/RURU-96/link-local-git-remotes-to-collaboration-repositories-and-accounts) |
+| [RURU-137: Cache and navigate the pull request commit list](https://linear.app/catra/issue/RURU-137/cache-and-navigate-the-pull-request-commit-list) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details) |
+
+### Sync, storage and performance
+
+| Task | State | Blocked by |
+| --- | --- | --- |
+| [RURU-98: Add foreground demand leases to the native sync scheduler](https://linear.app/catra/issue/RURU-98/add-foreground-demand-leases-to-the-native-sync-scheduler) | Backlog | [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts) |
+| [RURU-101: Validate incremental reconciliation for independent resource facets](https://linear.app/catra/issue/RURU-101/validate-incremental-reconciliation-for-independent-resource-facets) | Backlog | [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts) |
+| [RURU-102: Add fair rate budgets and scheduler lifecycle recovery](https://linear.app/catra/issue/RURU-102/add-fair-rate-budgets-and-scheduler-lifecycle-recovery) | Backlog | [RURU-98](https://linear.app/catra/issue/RURU-98/add-foreground-demand-leases-to-the-native-sync-scheduler), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
+| [RURU-103: Prove sync and revision recovery across real native webviews](https://linear.app/catra/issue/RURU-103/prove-sync-and-revision-recovery-across-real-native-webviews) | Backlog | [RURU-98](https://linear.app/catra/issue/RURU-98/add-foreground-demand-leases-to-the-native-sync-scheduler) |
+| [RURU-104: Implement bounded cache retention, pins and WAL maintenance](https://linear.app/catra/issue/RURU-104/implement-bounded-cache-retention-pins-and-wal-maintenance) | Backlog | [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-99](https://linear.app/catra/issue/RURU-99/recover-private-drafts-after-disconnect-or-missing-subjects) |
+| [RURU-106: Add consistent collaboration backup and restore recovery](https://linear.app/catra/issue/RURU-106/add-consistent-collaboration-backup-and-restore-recovery) | Backlog | [RURU-105](https://linear.app/catra/issue/RURU-105/test-schema-evolution-and-recoverable-migration-failures) |
+| [RURU-125: Measure cached navigation latency and memory through native IPC](https://linear.app/catra/issue/RURU-125/measure-cached-navigation-latency-and-memory-through-native-ipc) | Backlog | [RURU-121](https://linear.app/catra/issue/RURU-121/add-bounded-frontend-prefetch-and-cached-navigation), [RURU-103](https://linear.app/catra/issue/RURU-103/prove-sync-and-revision-recovery-across-real-native-webviews) |
+| [RURU-126: Expose safe local sync diagnostics and actionable retry states](https://linear.app/catra/issue/RURU-126/expose-safe-local-sync-diagnostics-and-actionable-retry-states) | Backlog | [RURU-102](https://linear.app/catra/issue/RURU-102/add-fair-rate-budgets-and-scheduler-lifecycle-recovery), [RURU-125](https://linear.app/catra/issue/RURU-125/measure-cached-navigation-latency-and-memory-through-native-ipc) |
+| [RURU-107: Verify collaboration vaults and storage on supported desktop platforms](https://linear.app/catra/issue/RURU-107/verify-collaboration-vaults-and-storage-on-supported-desktop-platforms) | Backlog | [RURU-105](https://linear.app/catra/issue/RURU-105/test-schema-evolution-and-recoverable-migration-failures), [RURU-103](https://linear.app/catra/issue/RURU-103/prove-sync-and-revision-recovery-across-real-native-webviews), [RURU-95](https://linear.app/catra/issue/RURU-95/make-credential-replacement-recover-safely-after-a-process-crash) |
+
+### GitLab and Bitbucket Cloud
+
+| Task | State | Blocked by |
+| --- | --- | --- |
+| [RURU-110: Connect GitLab accounts and discover repositories](https://linear.app/catra/issue/RURU-110/connect-gitlab-accounts-and-discover-repositories) | Backlog | [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and), [RURU-95](https://linear.app/catra/issue/RURU-95/make-credential-replacement-recover-safely-after-a-process-crash) |
+| [RURU-111: Sync GitLab merge requests and issues through shared local queries](https://linear.app/catra/issue/RURU-111/sync-gitlab-merge-requests-and-issues-through-shared-local-queries) | Backlog | [RURU-100](https://linear.app/catra/issue/RURU-100/drive-collaboration-ui-from-typed-resource-capabilities), [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-110](https://linear.app/catra/issue/RURU-110/connect-gitlab-accounts-and-discover-repositories) |
+| [RURU-127: Support GitLab todos with explicit inbox semantics](https://linear.app/catra/issue/RURU-127/support-gitlab-todos-with-explicit-inbox-semantics) | Backlog | [RURU-79](https://linear.app/catra/issue/RURU-79/resolve-inbox-notifications-to-cached-pr-and-issue-subjects), [RURU-111](https://linear.app/catra/issue/RURU-111/sync-gitlab-merge-requests-and-issues-through-shared-local-queries), [RURU-100](https://linear.app/catra/issue/RURU-100/drive-collaboration-ui-from-typed-resource-capabilities) |
+| [RURU-128: Add GitLab discussion and approval detail facets](https://linear.app/catra/issue/RURU-128/add-gitlab-discussion-and-approval-detail-facets) | Backlog | [RURU-122](https://linear.app/catra/issue/RURU-122/cache-and-display-conversation-comments-and-activity-timelines), [RURU-118](https://linear.app/catra/issue/RURU-118/show-cached-checks-and-commit-statuses-for-the-current-pr-head), [RURU-123](https://linear.app/catra/issue/RURU-123/cache-pr-review-summaries-and-review-threads-with-head-context), [RURU-111](https://linear.app/catra/issue/RURU-111/sync-gitlab-merge-requests-and-issues-through-shared-local-queries) |
+| [RURU-112: Add Bitbucket Cloud account and pull request reads](https://linear.app/catra/issue/RURU-112/add-bitbucket-cloud-account-and-pull-request-reads) | Backlog | [RURU-111](https://linear.app/catra/issue/RURU-111/sync-gitlab-merge-requests-and-issues-through-shared-local-queries), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and), [RURU-100](https://linear.app/catra/issue/RURU-100/drive-collaboration-ui-from-typed-resource-capabilities) |
+
+### Durable writes and remote actions
+
+| Task | State | Blocked by |
+| --- | --- | --- |
+| [RURU-114: Add durable command admission and outbox schema](https://linear.app/catra/issue/RURU-114/add-durable-command-admission-and-outbox-schema) | Backlog | [RURU-104](https://linear.app/catra/issue/RURU-104/implement-bounded-cache-retention-pins-and-wal-maintenance), [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and), [RURU-105](https://linear.app/catra/issue/RURU-105/test-schema-evolution-and-recoverable-migration-failures) |
+| [RURU-115: Implement outbox delivery and ambiguous-outcome recovery](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery) | Backlog | [RURU-95](https://linear.app/catra/issue/RURU-95/make-credential-replacement-recover-safely-after-a-process-crash), [RURU-106](https://linear.app/catra/issue/RURU-106/add-consistent-collaboration-backup-and-restore-recovery), [RURU-114](https://linear.app/catra/issue/RURU-114/add-durable-command-admission-and-outbox-schema) |
+| [RURU-116: Project optimistic intent into local lists, details, counts and search](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search) | Backlog | [RURU-114](https://linear.app/catra/issue/RURU-114/add-durable-command-admission-and-outbox-schema), [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts) |
+| [RURU-117: Add conflict resolution and superseding-command recovery UI](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui) | Backlog | [RURU-116](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search), [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery) |
+| [RURU-129: Deliver queued issue and PR desired-state edits](https://linear.app/catra/issue/RURU-129/deliver-queued-issue-and-pr-desired-state-edits) | Backlog | [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details), [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui), [RURU-116](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search), [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details) |
+| [RURU-130: Deliver provider inbox read/done actions with explicit activity policy](https://linear.app/catra/issue/RURU-130/deliver-provider-inbox-readdone-actions-with-explicit-activity-policy) | Backlog | [RURU-79](https://linear.app/catra/issue/RURU-79/resolve-inbox-notifications-to-cached-pr-and-issue-subjects), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui), [RURU-116](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search), [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery), [RURU-124](https://linear.app/catra/issue/RURU-124/add-local-inbox-snooze-bookmark-and-disposition-state) |
+| [RURU-131: Submit comments with durable drafts and ambiguous-create handling](https://linear.app/catra/issue/RURU-131/submit-comments-with-durable-drafts-and-ambiguous-create-handling) | Backlog | [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery), [RURU-99](https://linear.app/catra/issue/RURU-99/recover-private-drafts-after-disconnect-or-missing-subjects), [RURU-122](https://linear.app/catra/issue/RURU-122/cache-and-display-conversation-comments-and-activity-timelines), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui) |
+| [RURU-132: Submit PR reviews bound to the inspected head and anchors](https://linear.app/catra/issue/RURU-132/submit-pr-reviews-bound-to-the-inspected-head-and-anchors) | Backlog | [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery), [RURU-123](https://linear.app/catra/issue/RURU-123/cache-pr-review-summaries-and-review-threads-with-head-context), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui), [RURU-119](https://linear.app/catra/issue/RURU-119/add-cached-pr-changed-file-and-diff-navigation), [RURU-99](https://linear.app/catra/issue/RURU-99/recover-private-drafts-after-disconnect-or-missing-subjects) |
+| [RURU-133: Add guarded online merge with asynchronous receipt reconciliation](https://linear.app/catra/issue/RURU-133/add-guarded-online-merge-with-asynchronous-receipt-reconciliation) | Backlog | [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery), [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-118](https://linear.app/catra/issue/RURU-118/show-cached-checks-and-commit-statuses-for-the-current-pr-head), [RURU-123](https://linear.app/catra/issue/RURU-123/cache-pr-review-summaries-and-review-threads-with-head-context), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui) |
+| [RURU-134: Create issues through durable drafts and reconciled delivery](https://linear.app/catra/issue/RURU-134/create-issues-through-durable-drafts-and-reconciled-delivery) | Backlog | [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui), [RURU-116](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search), [RURU-99](https://linear.app/catra/issue/RURU-99/recover-private-drafts-after-disconnect-or-missing-subjects), [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery) |
+| [RURU-120: Create pull requests with online branch and head validation](https://linear.app/catra/issue/RURU-120/create-pull-requests-with-online-branch-and-head-validation) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-96](https://linear.app/catra/issue/RURU-96/link-local-git-remotes-to-collaboration-repositories-and-accounts), [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery), [RURU-99](https://linear.app/catra/issue/RURU-99/recover-private-drafts-after-disconnect-or-missing-subjects), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui), [RURU-116](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search) |
+
+### Conditional later expansion
+
+| Task | State | Blocked by |
+| --- | --- | --- |
+| [RURU-109: Configure and validate self-hosted provider instances](https://linear.app/catra/issue/RURU-109/configure-and-validate-self-hosted-provider-instances) | Backlog | [RURU-95](https://linear.app/catra/issue/RURU-95/make-credential-replacement-recover-safely-after-a-process-crash), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
+| [RURU-113: Assess Bitbucket Data Center support against selected server versions](https://linear.app/catra/issue/RURU-113/assess-bitbucket-data-center-support-against-selected-server-versions) | Backlog | [RURU-109](https://linear.app/catra/issue/RURU-109/configure-and-validate-self-hosted-provider-instances), [RURU-112](https://linear.app/catra/issue/RURU-112/add-bitbucket-cloud-account-and-pull-request-reads) |
+| [RURU-135: Assess an optional webhook relay after measuring polling limits](https://linear.app/catra/issue/RURU-135/assess-an-optional-webhook-relay-after-measuring-polling-limits) | Backlog | [RURU-125](https://linear.app/catra/issue/RURU-125/measure-cached-navigation-latency-and-memory-through-native-ipc), [RURU-102](https://linear.app/catra/issue/RURU-102/add-fair-rate-budgets-and-scheduler-lifecycle-recovery) |
+
+## RURU-75: Verify production GitHub PAT/CLI authentication and offline restart
+
+Planning key: C01. Group: Authentication. Priority: High. State: Todo.
+Linear: [RURU-75](https://linear.app/catra/issue/RURU-75/verify-production-github-patcli-authentication-and-offline-restart).
+Prerequisites: Existing implementation; no new child blocker.
+
+Validate the implemented connection flow with an isolated test account in a packaged build; this is verification of production vault behavior, not another OAuth implementation.
+
+Acceptance criteria:
+
+- [ ] Manual PAT and explicitly selected CLI import verify the same actor and store credentials only in the production OS vault.
+- [ ] Sync, restart offline, credential replacement, revocation and disconnect behave predictably; Gitru never changes CLI authentication.
+- [ ] Record reproducible results without tokens, private payloads or real credentials in fixtures; record other-platform gaps explicitly.
+
+## RURU-95: Make credential replacement recover safely after a process crash
+
+Planning key: C02. Group: Authentication. Priority: High. State: Todo.
+Linear: [RURU-95](https://linear.app/catra/issue/RURU-95/make-credential-replacement-recover-safely-after-a-process-crash).
+Prerequisites: Existing implementation; no new child blocker.
+
+Close the cross-store crash window between writing a replacement credential and committing its SQLite authorization epoch; the current compensation only runs if the process survives.
+
+Acceptance criteria:
+
+- [ ] Use a recoverable cutover journal or versioned credential references so an old authorization partition cannot use an uncommitted replacement token.
+- [ ] Fault-inject crashes before and after each vault/SQLite boundary; recovery either completes a verified cutover or requires authentication.
+- [ ] Preserve drafts, reject obsolete in-flight responses, and safely clean orphaned credentials without losing a working account.
+
+## RURU-76: Introduce a provider registry, canonical resource identities and capabilities
+
+Planning key: C03. Group: Provider contracts. Priority: High. State: Todo.
+Linear: [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and).
+Prerequisites: Existing implementation; no new child blocker.
+
+Extend the existing single-provider seam into account/instance-dispatched adapters and typed resource/facet capabilities. Exercise a divergent GitLab fixture before expanding GitHub-specific details. Persist account-scoped locator/endpoint aliases and expose typed local resource resolution so callers can open resources without parsing provider APIs.
+
+Acceptance criteria:
+
+- [ ] Runtime dispatch selects an adapter by provider instance/account; normal feature code never branches on provider names or uses raw provider HTTP.
+- [ ] Common identities distinguish immutable IDs from mutable repository paths and numbers; capability states describe unsupported, unavailable and supported operations.
+- [ ] GitHub and GitLab fixtures cover nested namespaces, IDs versus IIDs, divergent inbox semantics, pagination and errors through the same contract.
+- [ ] Persist and resolve locator/endpoint aliases to one canonical resource: GitHub issue/pull representations of a PR and repository rename/transfer must converge without crossing account or provider-instance boundaries.
+
+## RURU-96: Link local Git remotes to collaboration repositories and accounts
+
+Planning key: C04. Group: Read experience. Priority: High. State: Backlog.
+Linear: [RURU-96](https://linear.app/catra/issue/RURU-96/link-local-git-remotes-to-collaboration-repositories-and-accounts).
+Prerequisites: [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and).
+
+Add durable links between local clones and remote repository identities without changing Git remotes or checking out branches implicitly.
+
+Acceptance criteria:
+
+- [ ] Resolve SSH/HTTPS remotes to provider instances and cached immutable repository identities through Rust Git services.
+- [ ] Multiple remotes/accounts present an explicit choice; users can inspect, change or remove a link.
+- [ ] Links survive restart and repository rename; local Git and collaboration views navigate in both directions without provider HTTP on the cached path.
+
+## RURU-97: Add independent detail-scope storage and hydration contracts
+
+Planning key: C05. Group: Read experience. Priority: High. State: Backlog.
+Linear: [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts).
+Prerequisites: [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and).
+
+Separate resource detail coverage and synchronization from summary-feed coverage; establish the engine seam consumed by the PR and issue detail tasks.
+
+Acceptance criteria:
+
+- [ ] Persist bounded detail facets with independent freshness, completeness, authorization and revision metadata.
+- [ ] Local detail queries never trigger HTTP; explicit hydration intent coalesces jobs and commits observations before notifying views.
+- [ ] Distinguish uncached, omitted/oversized and authoritatively empty content; test restart, offline reads, stale responses and access loss.
+
+## RURU-98: Add foreground demand leases to the native sync scheduler
+
+Planning key: C06. Group: Sync scheduling. Priority: High. State: Backlog.
+Linear: [RURU-98](https://linear.app/catra/issue/RURU-98/add-foreground-demand-leases-to-the-native-sync-scheduler).
+Prerequisites: [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts).
+
+Track visible list/detail demand across webviews so interactive work has priority without creating per-tab polling engines.
+
+Acceptance criteria:
+
+- [ ] Leases are account/scope-bound, expire safely, and release on hidden/closed/disposed views and account epoch changes.
+- [ ] Equivalent demand across tabs produces one provider job; foreground work bypasses backfill within rate and concurrency budgets.
+- [ ] Deterministic tests cover lost cleanup, reopen, idle views, queue saturation and offline/reconnect without starving reconciliation.
+
+## RURU-121: Add bounded frontend prefetch and cached navigation
+
+Planning key: C07. Group: Read experience. Priority: High. State: Backlog.
+Linear: [RURU-121](https://linear.app/catra/issue/RURU-121/add-bounded-frontend-prefetch-and-cached-navigation).
+Prerequisites: [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-98](https://linear.app/catra/issue/RURU-98/add-foreground-demand-leases-to-the-native-sync-scheduler), [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details).
+
+Connect active views to native demand leases and prefetch a small working set on hover, keyboard focus and recent navigation.
+
+Acceptance criteria:
+
+- [ ] Cached list/detail navigation renders useful content without waiting for provider HTTP; missing data has a clear state.
+- [ ] Prefetch shares native jobs across webviews and respects a bounded count/byte/concurrency budget.
+- [ ] Hidden tabs drop urgency; large-list and keyboard tests prove demand/prefetch does not grow without bound.
+
+## RURU-79: Resolve inbox notifications to cached PR and issue subjects
+
+Planning key: C08. Group: Read experience. Priority: High. State: Backlog.
+Linear: [RURU-79](https://linear.app/catra/issue/RURU-79/resolve-inbox-notifications-to-cached-pr-and-issue-subjects).
+Prerequisites: [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and).
+
+Extend the implemented notification-summary inbox so opening a supported item reaches its actual local collaboration subject.
+
+Acceptance criteria:
+
+- [ ] Resolve provider notification subjects to canonical account-scoped PR/issue identities and open cached details immediately.
+- [ ] Hydration accepts only validated provider resource paths; missing or unsupported subjects retain a safe provider link and useful explanation.
+- [ ] Tests cover permission changes, private-account isolation, restart and offline navigation; this task performs no mark-read write.
+
+## RURU-122: Cache and display conversation comments and activity timelines
+
+Planning key: C09. Group: Read experience. Priority: Medium. State: Backlog.
+Linear: [RURU-122](https://linear.app/catra/issue/RURU-122/cache-and-display-conversation-comments-and-activity-timelines).
+Prerequisites: [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details).
+
+Add read-only, independently paginated PR/issue conversation comments and a bounded activity timeline.
+
+Acceptance criteria:
+
+- [ ] Persist deterministic ordering, pagination and independent facet coverage; partial history is distinct from an empty conversation.
+- [ ] Render cached provider text safely offline and tolerate unsupported activity types.
+- [ ] Contract/UI tests cover edits, deleted comments, incomplete pages, restart and authorization loss.
+
+## RURU-123: Cache PR review summaries and review threads with head context
+
+Planning key: C10. Group: Read experience. Priority: Medium. State: Backlog.
+Linear: [RURU-123](https://linear.app/catra/issue/RURU-123/cache-pr-review-summaries-and-review-threads-with-head-context).
+Prerequisites: [RURU-122](https://linear.app/catra/issue/RURU-122/cache-and-display-conversation-comments-and-activity-timelines), [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details).
+
+Add read-only review decisions and review threads without implying old reviews apply to a newly pushed head.
+
+Acceptance criteria:
+
+- [ ] Persist reviewer decisions and independently paged review threads with head/base/anchor metadata.
+- [ ] Show stale or outdated anchors and distinguish historical review state from current-head coverage.
+- [ ] Offline, insufficient-permission and partial-coverage states remain honest; no review mutation is dispatched.
+
+## RURU-118: Show cached checks and commit statuses for the current PR head
+
+Planning key: C11. Group: Read experience. Priority: Medium. State: Backlog.
+Linear: [RURU-118](https://linear.app/catra/issue/RURU-118/show-cached-checks-and-commit-statuses-for-the-current-pr-head).
+Prerequisites: [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details).
+
+Introduce a head-scoped checks/status facet that can later support guarded review and merge decisions.
+
+Acceptance criteria:
+
+- [ ] Checks and statuses bind to exact head OIDs; prior-head results remain clearly historical.
+- [ ] Partial coverage, missing permission or a changed head cannot produce an authoritative all-checks-passed state.
+- [ ] Coalesced background hydration and local-only UI reads pass fake-provider, restart and stale-head tests.
+
+## RURU-119: Add cached PR changed-file and diff navigation
+
+Planning key: C12. Group: Read experience. Priority: Medium. State: Backlog.
+Linear: [RURU-119](https://linear.app/catra/issue/RURU-119/add-cached-pr-changed-file-and-diff-navigation).
+Prerequisites: [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-98](https://linear.app/catra/issue/RURU-98/add-foreground-demand-leases-to-the-native-sync-scheduler).
+
+Load PR file summaries and selected diffs on demand, reusing the existing desktop diff viewers.
+
+Acceptance criteria:
+
+- [ ] File/diff observations bind to base and head; changing the head invalidates only affected coverage.
+- [ ] Diff/blob caching is bounded and handles binary, omitted and oversized content with clear offline states.
+- [ ] Navigation supports keyboard access and safe provider content rendering; local Git fetching/parsing stays in Rust.
+
+## RURU-124: Add local inbox snooze, bookmark and disposition state
+
+Planning key: C13. Group: Read experience. Priority: Medium. State: Backlog.
+Linear: [RURU-124](https://linear.app/catra/issue/RURU-124/add-local-inbox-snooze-bookmark-and-disposition-state).
+Prerequisites: [RURU-79](https://linear.app/catra/issue/RURU-79/resolve-inbox-notifications-to-cached-pr-and-issue-subjects).
+
+Provide useful inbox organization owned by Gitru, explicitly separate from the provider's read/done state.
+
+Acceptance criteria:
+
+- [ ] Local disposition persists across restart and updates effective lists/counts/search coherently.
+- [ ] New provider activity does not disappear behind stale local read intent; remote versus local status is clear.
+- [ ] Unsupported provider inbox capabilities remain explicit; no remote write is sent in this task.
+
+## RURU-99: Recover private drafts after disconnect or missing subjects
+
+Planning key: C14. Group: Read experience. Priority: High. State: Todo.
+Linear: [RURU-99](https://linear.app/catra/issue/RURU-99/recover-private-drafts-after-disconnect-or-missing-subjects).
+Prerequisites: Existing implementation; no new child blocker.
+
+Add recovery navigation for the durable drafts that already survive disconnect, missing targets and cache rebuilding.
+
+Acceptance criteria:
+
+- [ ] List and reopen/copy/export user-authored drafts after restart and disconnect without requiring valid provider credentials.
+- [ ] Recovery never resurrects inaccessible provider bodies or mixes account-owned drafts.
+- [ ] Generation conflicts preserve the user's text; recovering a draft never sends it automatically.
+
+## RURU-100: Drive collaboration UI from typed resource capabilities
+
+Planning key: C15. Group: Provider contracts. Priority: Medium. State: Backlog.
+Linear: [RURU-100](https://linear.app/catra/issue/RURU-100/drive-collaboration-ui-from-typed-resource-capabilities).
+Prerequisites: [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and).
+
+Replace future feature/provider conditionals with shared capability-driven presentation and query/action availability.
+
+Acceptance criteria:
+
+- [ ] Account, repository and resource capabilities control inbox, reviews, checks and future actions.
+- [ ] Unsupported, permission-denied, not-yet-loaded and read-only states have distinct user-visible behavior.
+- [ ] Divergent provider fixtures share ordinary feature components and cannot dispatch an unsupported operation.
+
+## RURU-101: Validate incremental reconciliation for independent resource facets
+
+Planning key: C16. Group: Sync reliability. Priority: High. State: Backlog.
+Linear: [RURU-101](https://linear.app/catra/issue/RURU-101/validate-incremental-reconciliation-for-independent-resource-facets).
+Prerequisites: [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts).
+
+Extend the existing conservative feed reconciliation to independently refreshed details, children and head-bound facets; do not rewrite the already implemented paging/absence policy.
+
+Acceptance criteria:
+
+- [ ] Each facet defines validators, overlap/watermark rules and qualified absence evidence rather than treating timestamps as a complete event log.
+- [ ] Edits, closes, merges, renames, deletions and access denial reconcile without partial traversal erasing useful cache or drafts.
+- [ ] Fake-provider tests cover 304 responses, overlapping pages, pagination drift and obsolete authorization/head responses.
+
+## RURU-102: Add fair rate budgets and scheduler lifecycle recovery
+
+Planning key: C17. Group: Sync scheduling. Priority: High. State: Backlog.
+Linear: [RURU-102](https://linear.app/catra/issue/RURU-102/add-fair-rate-budgets-and-scheduler-lifecycle-recovery).
+Prerequisites: [RURU-98](https://linear.app/catra/issue/RURU-98/add-foreground-demand-leases-to-the-native-sync-scheduler), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and).
+
+Extend the current persisted GitHub REST quota/backoff into fair scheduling across accounts, provider API families and foreground/background work.
+
+Acceptance criteria:
+
+- [ ] Foreground work remains responsive while background accounts/scopes receive bounded service under saturated queues.
+- [ ] Respect observed provider cooldowns and documented quota families, with bounded retry jitter and no spinning on permanent/auth failures.
+- [ ] Deterministic sleep/resume, clock-change, reconnect and long-cooldown tests demonstrate persisted recovery.
+
+## RURU-103: Prove sync and revision recovery across real native webviews
+
+Planning key: C18. Group: Sync reliability. Priority: High. State: Backlog.
+Linear: [RURU-103](https://linear.app/catra/issue/RURU-103/prove-sync-and-revision-recovery-across-real-native-webviews).
+Prerequisites: [RURU-98](https://linear.app/catra/issue/RURU-98/add-foreground-demand-leases-to-the-native-sync-scheduler).
+
+Build a retained multi-client fake-provider harness and focused native lifecycle coverage beyond the current fixed Accounts handoff test.
+
+Acceptance criteria:
+
+- [ ] Equivalent host/child demand produces one provider job and consistent committed local snapshots.
+- [ ] Dropped/reordered hints, catch-up overflow and reload recover through durable revisions without stale private cache repopulation.
+- [ ] Disconnect and process-crash tests fence delayed reads/writes and preserve drafts; avoid exposing arbitrary evaluation in production.
+
+## RURU-104: Implement bounded cache retention, pins and WAL maintenance
+
+Planning key: C19. Group: Storage and operations. Priority: Medium. State: Backlog.
+Linear: [RURU-104](https://linear.app/catra/issue/RURU-104/implement-bounded-cache-retention-pins-and-wal-maintenance).
+Prerequisites: [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-99](https://linear.app/catra/issue/RURU-99/recover-private-drafts-after-disconnect-or-missing-subjects).
+
+Introduce explicit coverage and rebuildable-content budgets without evicting user intent.
+
+Acceptance criteria:
+
+- [ ] Eviction runs in bounded batches and protects drafts, pins, minimum identities and any durable pending-intent/evidence references.
+- [ ] Eviction updates coverage/revisions so the UI distinguishes uncached from empty data and can request hydration again.
+- [ ] Measure database/WAL growth under large datasets and verify safe checkpoints without blocking active reads; extend protection tests when outbox lands.
+
+## RURU-105: Test schema evolution and recoverable migration failures
+
+Planning key: C20. Group: Storage and operations. Priority: High. State: Todo.
+Linear: [RURU-105](https://linear.app/catra/issue/RURU-105/test-schema-evolution-and-recoverable-migration-failures).
+Prerequisites: Existing implementation; no new child blocker.
+
+Extend current forward migrations with realistic upgrade fixtures and interruption/recovery verification.
+
+Acceptance criteria:
+
+- [ ] Old-schema fixtures migrate without losing drafts, identity, authorization partitions or durable revisions.
+- [ ] Unknown/newer schemas and failed upgrades never silently reset user data; large upgrades expose bounded progress where needed.
+- [ ] Regenerate changed wire contracts through make typegen and test compatible/incompatible clients and restart boundaries.
+
+## RURU-106: Add consistent collaboration backup and restore recovery
+
+Planning key: C21. Group: Storage and operations. Priority: Medium. State: Backlog.
+Linear: [RURU-106](https://linear.app/catra/issue/RURU-106/add-consistent-collaboration-backup-and-restore-recovery).
+Prerequisites: [RURU-105](https://linear.app/catra/issue/RURU-105/test-schema-evolution-and-recoverable-migration-failures).
+
+Back up and restore durable local collaboration state consistently while SQLite WAL and the writer runtime are active.
+
+Acceptance criteria:
+
+- [ ] Backups are transactionally consistent and verified; never copy only the live main database while omitting its WAL.
+- [ ] Recovery preserves drafts and refuses destructive reset without explicit user choice; credentials are not exported in backups.
+- [ ] When outbox exists, restored dispatchable commands are quarantined until reconciled; cover interrupted backup/restore and database corruption.
+
+## RURU-125: Measure cached navigation latency and memory through native IPC
+
+Planning key: C22. Group: Performance. Priority: High. State: Backlog.
+Linear: [RURU-125](https://linear.app/catra/issue/RURU-125/measure-cached-navigation-latency-and-memory-through-native-ipc).
+Prerequisites: [RURU-121](https://linear.app/catra/issue/RURU-121/add-bounded-frontend-prefetch-and-cached-navigation), [RURU-103](https://linear.app/catra/issue/RURU-103/prove-sync-and-revision-recovery-across-real-native-webviews).
+
+Measure the actual SQLite → generated IPC → React useful-content path rather than relying on the existing storage-only benchmark.
+
+Acceptance criteria:
+
+- [ ] Define repeatable hardware/datasets including 10k cached items, cold restart and multiple native views.
+- [ ] Record p50/p95/p99, payload sizes, startup time, Rust/webview memory and disk/WAL growth against architecture section 18.
+- [ ] Document bottlenecks and add justified performance regression checks; separate warm storage latency from end-to-end UI latency.
+
+## RURU-126: Expose safe local sync diagnostics and actionable retry states
+
+Planning key: C23. Group: Storage and operations. Priority: Medium. State: Backlog.
+Linear: [RURU-126](https://linear.app/catra/issue/RURU-126/expose-safe-local-sync-diagnostics-and-actionable-retry-states).
+Prerequisites: [RURU-102](https://linear.app/catra/issue/RURU-102/add-fair-rate-budgets-and-scheduler-lifecycle-recovery), [RURU-125](https://linear.app/catra/issue/RURU-125/measure-cached-navigation-latency-and-memory-through-native-ipc).
+
+Add bounded, user-readable sync health and a privacy-preserving export for troubleshooting.
+
+Acceptance criteria:
+
+- [ ] Show coverage/queue age, cooldowns, retry category, storage/WAL usage and aggregate latency using local state.
+- [ ] Auth, permission, rate, offline, unavailable and permanent errors offer appropriate recovery without retry loops.
+- [ ] Export tests reject tokens, usernames, repository identifiers, provider URLs and remote text; authorized contextual UI remains separate.
+
+## RURU-107: Verify collaboration vaults and storage on supported desktop platforms
+
+Planning key: C24. Group: Release gates. Priority: High. State: Backlog.
+Linear: [RURU-107](https://linear.app/catra/issue/RURU-107/verify-collaboration-vaults-and-storage-on-supported-desktop-platforms).
+Prerequisites: [RURU-105](https://linear.app/catra/issue/RURU-105/test-schema-evolution-and-recoverable-migration-failures), [RURU-103](https://linear.app/catra/issue/RURU-103/prove-sync-and-revision-recovery-across-real-native-webviews), [RURU-95](https://linear.app/catra/issue/RURU-95/make-credential-replacement-recover-safely-after-a-process-crash).
+
+Extend packaged platform coverage specifically for collaboration, coordinating with the existing cross-platform smoke issue.
+
+Acceptance criteria:
+
+- [ ] Windows/Linux/macOS lanes verify bundled SQLite/FTS, exclusive runtime ownership, migration, offline startup and native vault failure behavior.
+- [ ] Use isolated fake credentials in automated tests; record live production-vault verification separately per supported OS.
+- [ ] Record actual platform results and remaining gates without equating a macOS fixture pass to cross-platform support.
+
+## RURU-108: Decide cached private-data encryption policy before GA
+
+Planning key: C25. Group: Storage and operations. Priority: Medium. State: Backlog.
+Linear: [RURU-108](https://linear.app/catra/issue/RURU-108/decide-cached-private-data-encryption-policy-before-ga).
+Prerequisites: Existing implementation; no new child blocker.
+
+Resolve the architecture's explicit at-rest encryption product/security gate; evaluate a tested SQLite encryption option if required.
+
+Acceptance criteria:
+
+- [ ] Document threat model, platform/key lifecycle, disk/WAL/backup exposure and the chosen product policy.
+- [ ] If encryption is required, spike compatibility with the pinned SQLx/SQLite build, migrations, backup and recovery and create bounded follow-up implementation tasks.
+- [ ] Do not imply the current credential vault encrypts SQLite content; distinguish permission hardening from encryption.
+
+## RURU-109: Configure and validate self-hosted provider instances
+
+Planning key: C26. Group: Later provider expansion. Priority: Low. State: Backlog.
+Linear: [RURU-109](https://linear.app/catra/issue/RURU-109/configure-and-validate-self-hosted-provider-instances).
+Prerequisites: [RURU-95](https://linear.app/catra/issue/RURU-95/make-credential-replacement-recover-safely-after-a-process-crash), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and).
+
+Conditional later scope: instance-aware accounts and private-host trust controls for a user-selected enterprise provider/version.
+
+Acceptance criteria:
+
+- [ ] Validate canonical endpoints, host-specific vault namespaces, trust policy and credential-safe redirects; keep provider networking in Rust.
+- [ ] Keep accounts and immutable identities isolated between public and private instances, even when logins/path names match.
+- [ ] Test the selected supported versions and document unsupported configurations; no broad private-network access or hosted secret broker is assumed.
+
+## RURU-110: Connect GitLab accounts and discover repositories
+
+Planning key: C27. Group: Provider rollout. Priority: Medium. State: Backlog.
+Linear: [RURU-110](https://linear.app/catra/issue/RURU-110/connect-gitlab-accounts-and-discover-repositories).
+Prerequisites: [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and), [RURU-95](https://linear.app/catra/issue/RURU-95/make-credential-replacement-recover-safely-after-a-process-crash).
+
+Add GitLab.com authentication and repository discovery through the common native lifecycle; enterprise instances follow their separate trust task.
+
+Acceptance criteria:
+
+- [ ] Verify provider actor/credential capabilities and use the existing native vault, epoch, disconnect and crash-recovery contracts.
+- [ ] Discover/select resumable paginated repositories including nested subgroup paths without assuming GitHub owner/name semantics.
+- [ ] Contract tests cover multiple accounts, replacement, rate/auth errors, rename and revoked scope; use current official auth requirements during implementation.
+
+## RURU-111: Sync GitLab merge requests and issues through shared local queries
+
+Planning key: C28. Group: Provider rollout. Priority: Medium. State: Backlog.
+Linear: [RURU-111](https://linear.app/catra/issue/RURU-111/sync-gitlab-merge-requests-and-issues-through-shared-local-queries).
+Prerequisites: [RURU-100](https://linear.app/catra/issue/RURU-100/drive-collaboration-ui-from-typed-resource-capabilities), [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-110](https://linear.app/catra/issue/RURU-110/connect-gitlab-accounts-and-discover-repositories).
+
+Implement GitLab MR/issue summary and supported detail reads using ordinary collaboration components.
+
+Acceptance criteria:
+
+- [ ] Retain immutable native IDs, scoped IIDs/locators and provider facets while sharing local projections and queries.
+- [ ] Support progressive paging, independently cached details, offline restart and explicit capability/access states.
+- [ ] Divergent fixtures cover state transitions, transfers/renames, pagination and access loss with no GitLab branches in ordinary UI.
+
+## RURU-127: Support GitLab todos with explicit inbox semantics
+
+Planning key: C29. Group: Provider rollout. Priority: Medium. State: Backlog.
+Linear: [RURU-127](https://linear.app/catra/issue/RURU-127/support-gitlab-todos-with-explicit-inbox-semantics).
+Prerequisites: [RURU-79](https://linear.app/catra/issue/RURU-79/resolve-inbox-notifications-to-cached-pr-and-issue-subjects), [RURU-111](https://linear.app/catra/issue/RURU-111/sync-gitlab-merge-requests-and-issues-through-shared-local-queries), [RURU-100](https://linear.app/catra/issue/RURU-100/drive-collaboration-ui-from-typed-resource-capabilities).
+
+Add a provider-native todo inbox source without pretending todos are GitHub notification threads.
+
+Acceptance criteria:
+
+- [ ] Persist todo identity, source, subject and completion/read semantics explicitly in the shared model.
+- [ ] Reuse inbox UI where semantics match and resolve supported subjects to cached local details.
+- [ ] Unsupported completion actions remain unavailable until durable delivery policies are verified; read-only syncing/offline tests pass.
+
+## RURU-128: Add GitLab discussion and approval detail facets
+
+Planning key: C30. Group: Provider rollout. Priority: Medium. State: Backlog.
+Linear: [RURU-128](https://linear.app/catra/issue/RURU-128/add-gitlab-discussion-and-approval-detail-facets).
+Prerequisites: [RURU-122](https://linear.app/catra/issue/RURU-122/cache-and-display-conversation-comments-and-activity-timelines), [RURU-118](https://linear.app/catra/issue/RURU-118/show-cached-checks-and-commit-statuses-for-the-current-pr-head), [RURU-123](https://linear.app/catra/issue/RURU-123/cache-pr-review-summaries-and-review-threads-with-head-context), [RURU-111](https://linear.app/catra/issue/RURU-111/sync-gitlab-merge-requests-and-issues-through-shared-local-queries).
+
+Validate richer shared detail contracts against GitLab discussion, approval and pipeline/check differences.
+
+Acceptance criteria:
+
+- [ ] Normalize supported discussion/review/approval facets while preserving provider-native positions and plan/version limitations.
+- [ ] Bind approvals and pipeline/check observations to relevant heads; unavailable/partial data cannot imply readiness to merge.
+- [ ] Run shared component/adapter tests with divergent fixtures and offline snapshots; remain read-only until mutation policies exist.
+
+## RURU-112: Add Bitbucket Cloud account and pull request reads
+
+Planning key: C31. Group: Provider rollout. Priority: Medium. State: Backlog.
+Linear: [RURU-112](https://linear.app/catra/issue/RURU-112/add-bitbucket-cloud-account-and-pull-request-reads).
+Prerequisites: [RURU-111](https://linear.app/catra/issue/RURU-111/sync-gitlab-merge-requests-and-issues-through-shared-local-queries), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and), [RURU-100](https://linear.app/catra/issue/RURU-100/drive-collaboration-ui-from-typed-resource-capabilities).
+
+Implement a bounded read-only Bitbucket Cloud vertical slice after the common contract is tested against two providers.
+
+Acceptance criteria:
+
+- [ ] Verify current API-token authentication, actor identity and repositories through the common account/vault lifecycle.
+- [ ] Sync PR states, participants/tasks and supported details using opaque continuation links and shared local queries.
+- [ ] Unsupported native issues/inbox and strict head-guarded merge remain capability states; test pagination, access isolation and offline restart.
+
+## RURU-113: Assess Bitbucket Data Center support against selected server versions
+
+Planning key: C32. Group: Later provider expansion. Priority: Low. State: Backlog.
+Linear: [RURU-113](https://linear.app/catra/issue/RURU-113/assess-bitbucket-data-center-support-against-selected-server-versions).
+Prerequisites: [RURU-109](https://linear.app/catra/issue/RURU-109/configure-and-validate-self-hosted-provider-instances), [RURU-112](https://linear.app/catra/issue/RURU-112/add-bitbucket-cloud-account-and-pull-request-reads).
+
+Conditional feasibility task; Data Center must be a distinct adapter from Bitbucket Cloud, not an assumed compatible API.
+
+Acceptance criteria:
+
+- [ ] Select and record a concrete supported server/version matrix with auth, pagination, PR version/head and capability evidence.
+- [ ] Use fixtures/spikes to test common-model fit, including external issue tracking and unsupported inbox semantics.
+- [ ] Produce bounded implementation follow-ups and a support decision; do not claim shipping Data Center support from this assessment.
+
+## RURU-114: Add durable command admission and outbox schema
+
+Planning key: C33. Group: Offline writes. Priority: High. State: Backlog.
+Linear: [RURU-114](https://linear.app/catra/issue/RURU-114/add-durable-command-admission-and-outbox-schema).
+Prerequisites: [RURU-104](https://linear.app/catra/issue/RURU-104/implement-bounded-cache-retention-pins-and-wal-maintenance), [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and), [RURU-105](https://linear.app/catra/issue/RURU-105/test-schema-evolution-and-recoverable-migration-failures).
+
+Introduce operation-specific immutable intent, separate from provider base observations, without exposing remote mutation controls yet.
+
+Acceptance criteria:
+
+- [ ] Persist command UUID, canonical submission/hash, account epoch, target, guards and submitted dependencies atomically with its local receipt.
+- [ ] Duplicate identical submissions reuse receipts; changed payload with the same UUID is rejected.
+- [ ] Forward migrations preserve original intent hashes and drafts; fake-provider/storage tests cover crash/restart and concurrent admission.
+- [ ] Integrate retention protection for command targets, predecessor receipts and attempt evidence; eviction tests prove pending/conflicted/unknown commands retain the references needed for recovery.
+
+## RURU-115: Implement outbox delivery and ambiguous-outcome recovery
+
+Planning key: C34. Group: Offline writes. Priority: High. State: Backlog.
+Linear: [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery).
+Prerequisites: [RURU-95](https://linear.app/catra/issue/RURU-95/make-credential-replacement-recover-safely-after-a-process-crash), [RURU-106](https://linear.app/catra/issue/RURU-106/add-consistent-collaboration-backup-and-restore-recovery), [RURU-114](https://linear.app/catra/issue/RURU-114/add-durable-command-admission-and-outbox-schema).
+
+Build a native delivery worker with durable attempt evidence and operation-specific retry/reconciliation policy.
+
+Acceptance criteria:
+
+- [ ] Persist attempt start before dispatch and distinguish queued, sending, accepted, confirmed, rejected, conflict and outcome-unknown.
+- [ ] Crash at each boundary preserves evidence; accepted/202 acknowledgements are not treated as completion and ambiguous non-idempotent creates never blindly retry.
+- [ ] Account replacement/revocation fences delivery; dependent commands wait for proven predecessor results and quota/offline recovery is bounded.
+- [ ] Exercise backup → successful remote dispatch → restore: quarantine restored potentially sent commands and allow recovery only through operation-specific strong evidence, never automatic duplicate delivery.
+
+## RURU-116: Project optimistic intent into local lists, details, counts and search
+
+Planning key: C35. Group: Offline writes. Priority: High. State: Backlog.
+Linear: [RURU-116](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search).
+Prerequisites: [RURU-114](https://linear.app/catra/issue/RURU-114/add-durable-command-admission-and-outbox-schema), [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts).
+
+Layer pending intent over provider observations as a derived effective projection consumed by existing local queries.
+
+Acceptance criteria:
+
+- [ ] Pending effects update detail/list/count/search views together after durable admission, including across webviews.
+- [ ] Refresh cannot overwrite submitted intent; rejection removes only that command's effect and replays successors over current base.
+- [ ] Relevant effective changes invalidate paging/subscriptions coherently; restart reconstructs optimistic state from SQLite.
+
+## RURU-117: Add conflict resolution and superseding-command recovery UI
+
+Planning key: C36. Group: Offline writes. Priority: High. State: Backlog.
+Linear: [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui).
+Prerequisites: [RURU-116](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search), [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery).
+
+Implement operation-specific base/remote/desired comparison and user-preserving recovery instead of last-write-wins.
+
+Acceptance criteria:
+
+- [ ] Independent field changes merge when safe; overlapping text/workflow/head changes remain visible conflicts.
+- [ ] Changed resolution creates a new superseding command UUID while preserving original intent, attempts and dependency evidence.
+- [ ] UI preserves text and offers retry/review/export/cancel options honestly; cancellation after dispatch never claims to undo a remote action.
+
+## RURU-129: Deliver queued issue and PR desired-state edits
+
+Planning key: C37. Group: Remote actions. Priority: Medium. State: Backlog.
+Linear: [RURU-129](https://linear.app/catra/issue/RURU-129/deliver-queued-issue-and-pr-desired-state-edits).
+Prerequisites: [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details), [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui), [RURU-116](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search), [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details).
+
+First remote edit slice: selected title/body/label and close/reopen intent using per-operation capability and conflict policies.
+
+Acceptance criteria:
+
+- [ ] Admit supported offline intent durably and apply effective local updates immediately without hiding pending state.
+- [ ] Revalidate affected fields, workflow and permissions; disclose guarded versus best-effort delivery rather than claiming compare-and-swap from a preflight GET.
+- [ ] Failure, restart and remote concurrent-edit tests preserve user text and reconcile without duplicate dispatch.
+
+## RURU-130: Deliver provider inbox read/done actions with explicit activity policy
+
+Planning key: C38. Group: Remote actions. Priority: Medium. State: Backlog.
+Linear: [RURU-130](https://linear.app/catra/issue/RURU-130/deliver-provider-inbox-readdone-actions-with-explicit-activity-policy).
+Prerequisites: [RURU-79](https://linear.app/catra/issue/RURU-79/resolve-inbox-notifications-to-cached-pr-and-issue-subjects), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui), [RURU-116](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search), [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery), [RURU-124](https://linear.app/catra/issue/RURU-124/add-local-inbox-snooze-bookmark-and-disposition-state).
+
+Add supported provider mark-read/done delivery separately from Gitru-local disposition.
+
+Acceptance criteria:
+
+- [ ] Model source-specific read/done semantics and use documented server fences where available.
+- [ ] New activity causes skip/conflict or explicit local disposition; unfenced per-item delivery is best effort and cannot promise it consumes no newer activity.
+- [ ] Offline/retry/restart tests maintain truthful counts and preserve provider capability differences; unsupported actions never dispatch.
+
+## RURU-131: Submit comments with durable drafts and ambiguous-create handling
+
+Planning key: C39. Group: Remote actions. Priority: Medium. State: Backlog.
+Linear: [RURU-131](https://linear.app/catra/issue/RURU-131/submit-comments-with-durable-drafts-and-ambiguous-create-handling).
+Prerequisites: [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery), [RURU-99](https://linear.app/catra/issue/RURU-99/recover-private-drafts-after-disconnect-or-missing-subjects), [RURU-122](https://linear.app/catra/issue/RURU-122/cache-and-display-conversation-comments-and-activity-timelines), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui).
+
+Expose one non-idempotent creation flow only after the delivery state machine can preserve unknown outcomes.
+
+Acceptance criteria:
+
+- [ ] Save drafts before send and use explicit offline-send policy where supported; normal provider comments retain canonical remote IDs.
+- [ ] A lost response or crash leaves outcome-unknown unless strong endpoint evidence proves completion/non-delivery; matching text/time is not proof.
+- [ ] UI preserves drafts and requires explicit reconciliation before repeating an ambiguous create; test duplicates, revocation and restart.
+
+## RURU-132: Submit PR reviews bound to the inspected head and anchors
+
+Planning key: C40. Group: Remote actions. Priority: Medium. State: Backlog.
+Linear: [RURU-132](https://linear.app/catra/issue/RURU-132/submit-pr-reviews-bound-to-the-inspected-head-and-anchors).
+Prerequisites: [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery), [RURU-123](https://linear.app/catra/issue/RURU-123/cache-pr-review-summaries-and-review-threads-with-head-context), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui), [RURU-119](https://linear.app/catra/issue/RURU-119/add-cached-pr-changed-file-and-diff-navigation), [RURU-99](https://linear.app/catra/issue/RURU-99/recover-private-drafts-after-disconnect-or-missing-subjects).
+
+Add online review submission and approval/request-changes with durable drafts and provider-specific anchor metadata.
+
+Acceptance criteria:
+
+- [ ] Submitted intent retains inspected head/base/path/line/side and provider position fields.
+- [ ] A force-push or stale anchor blocks submission or presents a verified explicit remapping choice; old approvals cannot authorize a new head.
+- [ ] Use current permissions and durable evidence; accepted/unknown outcomes preserve drafts and never silently duplicate submission.
+
+## RURU-133: Add guarded online merge with asynchronous receipt reconciliation
+
+Planning key: C41. Group: Remote actions. Priority: Medium. State: Backlog.
+Linear: [RURU-133](https://linear.app/catra/issue/RURU-133/add-guarded-online-merge-with-asynchronous-receipt-reconciliation).
+Prerequisites: [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery), [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-118](https://linear.app/catra/issue/RURU-118/show-cached-checks-and-commit-statuses-for-the-current-pr-head), [RURU-123](https://linear.app/catra/issue/RURU-123/cache-pr-review-summaries-and-review-threads-with-head-context), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui).
+
+Expose merge only for providers with a verified server-side guard protecting the head the user inspected.
+
+Acceptance criteria:
+
+- [ ] Send and test the expected head/version guard; unsupported strict-guard providers keep merge unavailable.
+- [ ] Surface current permissions, checks/approval coverage and provider merge methods without treating cached partial data as authorization.
+- [ ] Auto-merge/202 responses remain accepted until confirmed; test head change, conflict, revocation, lost response and restart.
+
+## RURU-134: Create issues through durable drafts and reconciled delivery
+
+Planning key: C42. Group: Later remote actions. Priority: Medium. State: Backlog.
+Linear: [RURU-134](https://linear.app/catra/issue/RURU-134/create-issues-through-durable-drafts-and-reconciled-delivery).
+Prerequisites: [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui), [RURU-116](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search), [RURU-99](https://linear.app/catra/issue/RURU-99/recover-private-drafts-after-disconnect-or-missing-subjects), [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery).
+
+Add provider-capability-aware issue creation after non-idempotent recovery is proven.
+
+Acceptance criteria:
+
+- [ ] Preserve title/body/metadata drafts independently of authentication and restart.
+- [ ] Use documented idempotency/strong receipt evidence where available; ambiguous creation requires explicit recovery before resend.
+- [ ] Creation resolves its temporary local identity to a canonical provider entity and updates effective feeds without erasing drafts.
+
+## RURU-120: Create pull requests with online branch and head validation
+
+Planning key: C43. Group: Later remote actions. Priority: Medium. State: Backlog.
+Linear: [RURU-120](https://linear.app/catra/issue/RURU-120/create-pull-requests-with-online-branch-and-head-validation).
+Prerequisites: [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-96](https://linear.app/catra/issue/RURU-96/link-local-git-remotes-to-collaboration-repositories-and-accounts), [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery), [RURU-99](https://linear.app/catra/issue/RURU-99/recover-private-drafts-after-disconnect-or-missing-subjects), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui), [RURU-116](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search).
+
+Add durable PR drafts and online creation without silently publishing or checking out Git branches.
+
+Acceptance criteria:
+
+- [ ] Map repository/account explicitly and validate source/target branches, heads and permissions online before provider creation.
+- [ ] Keep local Git operations in generated Rust commands; publishing/checkouts require their explicit existing user flows.
+- [ ] Non-idempotent creation ambiguity preserves the draft and receipt; successful creation resolves canonical identity and cached navigation.
+
+## RURU-135: Assess an optional webhook relay after measuring polling limits
+
+Planning key: C44. Group: Later infrastructure. Priority: Low. State: Backlog.
+Linear: [RURU-135](https://linear.app/catra/issue/RURU-135/assess-an-optional-webhook-relay-after-measuring-polling-limits).
+Prerequisites: [RURU-125](https://linear.app/catra/issue/RURU-125/measure-cached-navigation-latency-and-memory-through-native-ipc), [RURU-102](https://linear.app/catra/issue/RURU-102/add-fair-rate-budgets-and-scheduler-lifecycle-recovery).
+
+Conditional research/decision task; build a relay only if measured budgets and product needs justify it.
+
+Acceptance criteria:
+
+- [ ] Document achievable polling freshness/cost and compare a small optional relay with desktop constraints.
+- [ ] Specify signed, replay-protected, deduplicated event hints, privacy boundaries and polling recovery after gaps/outages.
+- [ ] Keep provider accounts and all normal reads independent of Gitru cloud sign-in; no cloud deployment or provider webhook registration is part of this task.
+
+## RURU-77: Hydrate and render cached pull request details
+
+Planning key: C45. Group: Read experience. Priority: High. State: Backlog.
+Linear: [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details).
+Prerequisites: [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and).
+
+Narrow the existing broad PR workflow issue to the next read-only PR detail slice; comments/reviews/checks/diffs and writes have separate sibling tasks.
+
+Acceptance criteria:
+
+- [ ] Fetch and persist PR description, state, head/base, author and supported metadata independently of list traversal.
+- [ ] Open cached details immediately and request missing/stale facets as background intent; partial, offline, oversized and permission states are clear.
+- [ ] No provider SDK/HTTP runs in React query functions; adapter, IPC and UI tests cover restart, head changes and revoked scope.
+
+## RURU-78: Hydrate and render cached issue details
+
+Planning key: C46. Group: Read experience. Priority: High. State: Backlog.
+Linear: [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details).
+Prerequisites: [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and).
+
+Narrow the existing broad issue workflow issue to independent read-only details; comments and create/edit/close delivery remain sibling tasks.
+
+Acceptance criteria:
+
+- [ ] Fetch and persist issue body, state, author, labels, assignees, milestones and supported metadata independently of summary feeds.
+- [ ] Cached details render immediately with clear partial/unavailable/oversized/offline coverage rather than waiting for provider HTTP.
+- [ ] Shared local query/components work with divergent provider fixtures; pagination, restart and access-loss tests pass.
+
+## RURU-136: Check out pull request branches through the local Git workflow
+
+Planning key: C47. Group: Read experience. Priority: Medium. State: Backlog.
+Linear: [RURU-136](https://linear.app/catra/issue/RURU-136/check-out-pull-request-branches-through-the-local-git-workflow).
+Prerequisites: [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-96](https://linear.app/catra/issue/RURU-96/link-local-git-remotes-to-collaboration-repositories-and-accounts).
+
+Preserve the original PR workflow's branch-checkout requirement as a separate local Git slice rather than coupling it to provider merge or outbox delivery.
+
+Acceptance criteria:
+
+- [ ] Resolve the linked local clone and verified PR source/fork/head explicitly; confirm fetch or checkout intent and reuse Rust Git services/generated commands.
+- [ ] Respect dirty worktrees, detached heads, existing branches and moved PR heads; inspect fetched/local OIDs before claiming the requested head is checked out.
+- [ ] Do not alter remotes or expose credentials implicitly; tests cover fork PRs, stale heads, missing local objects and failed Git operations.
+
+## RURU-137: Cache and navigate the pull request commit list
+
+Planning key: C48. Group: Read experience. Priority: Medium. State: Backlog.
+Linear: [RURU-137](https://linear.app/catra/issue/RURU-137/cache-and-navigate-the-pull-request-commit-list).
+Prerequisites: [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details).
+
+Preserve the original PR detail commit-list requirement as an independently paginated read facet.
+
+Acceptance criteria:
+
+- [ ] Cache provider PR commits in deterministic order with completeness and exact head/base context; changed heads supersede stale membership.
+- [ ] Render commit metadata locally/offline and navigate to existing local Git commit/diff views when objects are available.
+- [ ] Bound large histories and represent unavailable objects honestly; restart, paging drift and authorization tests do not fabricate Git history.
+
+## RURU-138: Review and publish the implemented collaboration foundation
+
+Planning key: C49. Group: Release gates. Priority: High. State: Todo.
+Linear: [RURU-138](https://linear.app/catra/issue/RURU-138/review-and-publish-the-implemented-collaboration-foundation).
+Prerequisites: Existing implementation; no new child blocker.
+
+Turn the existing local implementation and architecture into a reviewable foundation PR. This publication lane can run alongside independent feature work; it does not reimplement shipped-local foundations.
+
+Acceptance criteria:
+
+- [ ] Review and commit the architecture, generated IPC contracts and scoped implementation on ruru/remote-collaboration while preserving unrelated work.
+- [ ] Open a PR with accurate scope and local validation evidence; record and resolve actual remote CI results, including platform checks, before claiming the foundation is merge-ready.
+- [ ] Update section 23 and this backlog with the reviewed commit/PR and remaining production/provider/platform gates; do not mark future features complete from fixture-only coverage.

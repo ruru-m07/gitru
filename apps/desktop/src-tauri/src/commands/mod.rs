@@ -1,5 +1,6 @@
 pub mod actions;
 pub mod branch;
+pub mod collaboration;
 pub mod commit;
 pub mod diff;
 pub mod history;

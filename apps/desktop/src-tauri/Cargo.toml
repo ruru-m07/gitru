@@ -26,6 +26,8 @@ tauri = { version = "2", features = ["unstable"] }
 serde = { version = "1", features = ["derive"] }
 ipc = { path = "../../../crates/ipc" }
 git = { path = "../../../crates/git" }
+collaboration = { path = "../../../crates/collaboration" }
+keyring = { version = "=3.6.3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust", "vendored"] }
 tokio = { version = "1", features = ["full"] }
 tauri-plugin-opener = "2"
 tauri-plugin-process = "2"

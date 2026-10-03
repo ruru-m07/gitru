@@ -1,20 +1,19 @@
 import { Git, Inbox, Issue, PullRequest } from "@gitru/icon";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@gitru/ui/components/avatar";
 import { Button } from "@gitru/ui/components/button";
-import { ScrollArea } from "@gitru/ui/components/scroll-area";
 import {
   Tooltip,
   TooltipPopup,
   TooltipProvider,
   TooltipTrigger,
 } from "@gitru/ui/components/tooltip";
-import { Download, Plus, RotateCcw } from "lucide-react";
+import { Download, RotateCcw } from "lucide-react";
 import { isEmbeddedRuntime } from "@/bootstrap/runtime-utils";
-import { githubAccountAvatarUrl } from "@/lib/external-content";
+import { AccountSettingsButton } from "@/features/collaboration/account-manager";
+import {
+  AccountAvatar,
+  SidebarAccounts,
+  useSavedInboxBadge,
+} from "@/features/collaboration/sidebar-accounts";
 import { useAppStore } from "@/store/use-app-store";
 import SideBarItems from "./items";
 import { useUpdateState } from "./update-state";
@@ -24,6 +23,7 @@ const CIRCLE_CIRCUMFERENCE = 2 * Math.PI * CIRCLE_RADIUS;
 
 const Sidebar = () => {
   const updateChannel = useAppStore((s) => s.updateChannel);
+  const inboxBadge = useSavedInboxBadge();
   const {
     updateStatus,
     availableUpdate,
@@ -71,11 +71,11 @@ const Sidebar = () => {
                   icon: Inbox,
                   name: "Inbox",
                   href: "/app/inbox",
-                  badge: "5",
+                  badge: inboxBadge,
                 },
                 {
                   icon: PullRequest,
-                  name: "pull requests",
+                  name: "Pull requests",
                   href: "/app/pulls",
                 },
                 {
@@ -93,42 +93,7 @@ const Sidebar = () => {
             <div className="w-full flex justify-center items-center">
               <div className="my-1 h-px w-7 bg-muted-foreground/20" />
             </div>
-            {/* // TODO: we will forward to do some kindof sortcuts */}
-            <ScrollArea className="w-full max-h-[calc(100vh-3rem-4rem)]">
-              <div className="flex flex-col items-center gap-1">
-                {[
-                  "legions-developer",
-                  "ruru-m07",
-                  "vercel",
-                  "tauri-apps",
-                  "aceternity",
-                  "shadcn-ui",
-                  "pierrecomputer",
-                  "raycast",
-                  "gitru-app",
-                ].map((v) => (
-                  <Button
-                    className="size-8 p-0"
-                    key={v}
-                    variant="ghost"
-                    size="icon"
-                  >
-                    <Avatar className="rounded-md size-7">
-                      <AvatarImage src={githubAccountAvatarUrl(v)} alt={v} />
-                      <AvatarFallback></AvatarFallback>
-                    </Avatar>
-                  </Button>
-                ))}
-                <Button variant="outline" size="icon" className="size-8 p-0">
-                  <Plus
-                    className="opacity-60"
-                    size={14}
-                    strokeWidth={2}
-                    aria-hidden="true"
-                  />
-                </Button>
-              </div>
-            </ScrollArea>
+            <SidebarAccounts />
 
             {/* <div className="my-1 h-px w-full bg-border" /> */}
             {/* <SideBarItems
@@ -188,10 +153,13 @@ const Sidebar = () => {
           </TooltipProvider>
         ) : null}
 
-        <Avatar className="rounded-md size-7">
-          <AvatarImage alt="User" src={githubAccountAvatarUrl("ruru-m07")} />
-          <AvatarFallback>AV</AvatarFallback>
-        </Avatar>
+        <AccountSettingsButton
+          trigger={
+            <Button variant="ghost" size="icon" aria-label="Connected accounts">
+              <AccountAvatar />
+            </Button>
+          }
+        />
         {/* <AvatarDropdown rateLimit={rateLimit} user={session?.user} /> */}
       </div>
     </div>

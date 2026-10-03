@@ -30,10 +30,22 @@ const CREATE_TIMEOUT_MS = 1200;
 
 const managedWebviews = new Map<string, ManagedWebview>();
 const ensureInFlightByTabId = new Map<string, Promise<ManagedWebview | null>>();
+const pendingNativeCreates = new Set<string>();
 let desiredActiveTabId: string | null = null;
 let visibleTabId: string | null = null;
 let liveTabIds = new Set<string>();
 let pendingCleanupTimer: number | null = null;
+let tabWebviewsSuspended = false;
+let latestHostBounds: HostBounds | null = null;
+let visibilityWork: Promise<unknown> = Promise.resolve();
+
+// Native child views sit above the host DOM. Serialize visibility changes so a
+// delayed show cannot cover a host-owned dialog after suspension has completed.
+const changeVisibility = <T,>(operation: () => Promise<T>): Promise<T> => {
+  const work = visibilityWork.then(operation, operation);
+  visibilityWork = work.catch(() => {});
+  return work;
+};
 
 const getRoutePathname = (routePath: string) => {
   try {
@@ -92,9 +104,11 @@ const closeManagedWebview = async (entry: ManagedWebview) => {
 };
 
 const hideUnlessActive = async (entry: ManagedWebview) => {
-  if (entry.tabId !== desiredActiveTabId) {
-    await Promise.allSettled([entry.webview.hide()]);
-  }
+  await changeVisibility(async () => {
+    if (tabWebviewsSuspended || entry.tabId !== desiredActiveTabId) {
+      await entry.webview.hide();
+    }
+  });
 };
 
 const ensureTabWebview = async (
@@ -136,6 +150,9 @@ const ensureTabWebview = async (
     }
 
     const routePath = normalizeWorkspaceRoutePath(tab.routePath);
+    // Defer cold creation while a host modal is open. A newly created native
+    // Webview is initially visible, regardless of CSS stacking or focus=false.
+    if (tabWebviewsSuspended) return null;
     let targetUrl: string;
 
     try {
@@ -169,6 +186,7 @@ const ensureTabWebview = async (
     }
 
     let createError: unknown = null;
+    pendingNativeCreates.add(label);
     const ready = new Promise<void>((resolve) => {
       let settled = false;
       const finish = () => {
@@ -178,16 +196,20 @@ const ensureTabWebview = async (
       };
 
       void webview.once("tauri://created", () => {
+        pendingNativeCreates.delete(label);
         void hideUnlessActive({
           tabId: tab.id,
           ownerId,
           webview,
           ready: Promise.resolve(),
           bounds: normalized,
-        }).finally(finish);
+        })
+          .catch(() => {})
+          .finally(finish);
       });
 
       void webview.once("tauri://error", (event) => {
+        pendingNativeCreates.delete(label);
         createError = event.payload;
         finish();
       });
@@ -251,22 +273,78 @@ const ensureTabWebview = async (
 
 const activateTabWebview = async (tab: WorkspaceTab, bounds: HostBounds) => {
   desiredActiveTabId = tab.id;
+  latestHostBounds = bounds;
   liveTabIds.add(tab.id);
   const entry = await ensureTabWebview(tab, bounds);
 
   if (!entry || desiredActiveTabId !== tab.id) return;
 
-  const previousEntry = visibleTabId ? managedWebviews.get(visibleTabId) : null;
-
-  // Reveal first so warm switches never expose the empty host between tabs.
-  await entry.webview.show();
-  visibleTabId = tab.id;
-  void entry.webview.setFocus();
-
-  if (previousEntry && previousEntry.tabId !== tab.id) {
-    void previousEntry.webview.hide();
-  }
+  await changeVisibility(async () => {
+    if (tabWebviewsSuspended || desiredActiveTabId !== tab.id) {
+      await entry.webview.hide();
+      return;
+    }
+    const previousEntry = visibleTabId
+      ? managedWebviews.get(visibleTabId)
+      : null;
+    // Reveal first so warm switches never expose the empty host between tabs.
+    await entry.webview.show();
+    // Suspension/tab selection may change while the native show is pending.
+    if (tabWebviewsSuspended || desiredActiveTabId !== tab.id) {
+      await entry.webview.hide();
+      return;
+    }
+    visibleTabId = tab.id;
+    if (previousEntry && previousEntry.tabId !== tab.id) {
+      await previousEntry.webview.hide();
+    }
+    if (!tabWebviewsSuspended && desiredActiveTabId === tab.id) {
+      await entry.webview.setFocus();
+    }
+  });
 };
+
+/** Suspend native tabs before mounting a host dialog; restore current selection. */
+export async function setTabWebviewsSuspended(
+  suspended: boolean,
+): Promise<void> {
+  tabWebviewsSuspended = suspended;
+  if (suspended) {
+    // Already-started creates must reach their created/hide callbacks before a
+    // host modal is exposed. New creates are deferred by ensureTabWebview.
+    await Promise.allSettled([...ensureInFlightByTabId.values()]);
+    await changeVisibility(async () => {
+      if (!tabWebviewsSuspended) return;
+      // Include native surfaces that survived a host HMR/remount and have not
+      // yet been adopted into managedWebviews. Credentials stay in the host.
+      const nativeViews = await Webview.getAll();
+      // The normal tab warm-up timeout is not proof that native creation has
+      // finished. A later create could otherwise cover an already-open form.
+      for (const view of nativeViews) pendingNativeCreates.delete(view.label);
+      if (pendingNativeCreates.size > 0) {
+        throw new Error("Native tabs are still starting");
+      }
+      const hidden = await Promise.allSettled(
+        nativeViews
+          .filter((view) => view.label.startsWith(TAB_WEBVIEW_LABEL_PREFIX))
+          .map((view) => view.hide()),
+      );
+      // Drain every hide before permitting resume: an older pending hide must
+      // not finish after restoration and leave the selected tab invisible.
+      if (hidden.some((result) => result.status === "rejected")) {
+        throw new Error("Could not hide tab views");
+      }
+      visibleTabId = null;
+    });
+    return;
+  }
+  const state = useAppStore.getState();
+  desiredActiveTabId = state.activeTabId;
+  const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId);
+  if (activeTab && latestHostBounds) {
+    await activateTabWebview(activeTab, latestHostBounds);
+  }
+}
 
 const reconcileTabWebviews = async (
   tabs: WorkspaceTab[],
@@ -300,6 +378,7 @@ const reconcileTabWebviews = async (
 };
 
 const resizeManagedWebviews = async (bounds: HostBounds) => {
+  latestHostBounds = bounds;
   await Promise.all(
     Array.from(managedWebviews.values()).map((entry) =>
       updateManagedBounds(entry, bounds),

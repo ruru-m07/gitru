@@ -87,6 +87,16 @@ export default defineConfig({
         test: {
           environment: "node",
           include: ["**/*.{test,spec}.ts"],
+          name: "collaboration-client",
+          root: resolve(repositoryRoot, "packages/collaboration-client"),
+          setupFiles: [],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          environment: "node",
+          include: ["**/*.{test,spec}.ts"],
           name: "commands",
           root: resolve(repositoryRoot, "packages/commands"),
           setupFiles: [],
