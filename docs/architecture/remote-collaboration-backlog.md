@@ -1116,3 +1116,24 @@ exact-head CodeQL. R79 is locally qualified for review; live provider/vault and 
 qualifications remain distinct from its exact-head remote CI. No PR has
 been merged. See [RURU-79's work note](./collaboration-work/RURU-79.md) for current
 native proof, frontend and isolated QA evidence.
+
+
+### Next bounded lanes after RURU-79 review publication — 3 October 2026
+
+[R79/#154](https://github.com/ruru-m07/gitru/pull/154) is published at signed
+`1a51a75a0f122c1e41288a9b6b6ca09421a38025`, stacked on repaired R96/#153.
+Its exact-head remote matrix is running; local249 native/106SDK/287desktop,
+frozen migration12, caller11, isolated native cold restart and packaged macOS
+E2E3 pass. Parent R96 and R98 each pass all11 reported checks; CodeQL/live
+provider/platform recovery gates remain distinct. No PR is merged.
+
+Live Linear, PR, worktree and file-overlap audit selects R110 GitLab.com accounts/
+repositories and an independent R101 facet reconciliation qualification lane.
+Both begin in attached isolated worktrees at the actual R79 head, preserving its
+shared scheduler/access/cache contracts; implementation blockers are reviewed
+ancestors, not silently marked Done. [R110's contract](./collaboration-work/RURU-110.md)
+records direct PAT operation probes, fixed installation trust, the existing owned
+vault cutover and an explicitly repository-only profile. OAuth/PKCE, enterprise,
+Data Center and relay spikes stay separate. R101 must preserve conservative
+qualified absence and add independent facet/validator/head/epoch evidence, not
+rewrite existing paging or invent unsupported provider operations.
