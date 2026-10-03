@@ -502,6 +502,21 @@ impl CollaborationRuntime {
         }
     }
 
+    /// Atomic local contextual policy, with the captured actor/installation.
+    pub async fn contextual_capabilities(
+        &self,
+        request: ContextCapabilityRequest,
+    ) -> Result<ContextualCapabilitySnapshot, CollaborationError> {
+        self.store
+            .contextual_capabilities(request, |account, instance| {
+                match self.registry.adapter(instance) {
+                    Ok(provider) => provider.profile(account),
+                    Err(_) => ProviderProfile::unavailable(CapabilityReason::AdapterUnavailable),
+                }
+            })
+            .await
+    }
+
     /// Local capability observation. Dispatch rechecks the adapter/current actor.
     pub async fn capabilities(
         &self,

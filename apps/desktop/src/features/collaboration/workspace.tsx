@@ -1,8 +1,10 @@
 import {
+  type ContextFacetCapability,
+  type ContextualCapabilitySnapshot,
   collaboration,
   collaborationErrorMessage,
+  type InboxSemantics,
   type RemoteAccount,
-  type RemoteItem,
   type RemoteItemKind,
   type RemoteRepository,
 } from "@gitru/collaboration-client";
@@ -12,7 +14,9 @@ import {
   useCollaborationItem,
   useCollaborationItems,
   useCollaborationRepositories,
+  useContextualCapabilities,
 } from "@gitru/collaboration-client/react";
+import type { LocalDraft } from "@gitru/commands";
 import { Badge } from "@gitru/ui/components/badge";
 import { Button } from "@gitru/ui/components/button";
 import { Checkbox } from "@gitru/ui/components/checkbox";
@@ -43,11 +47,29 @@ import {
   useDeferredValue,
   useEffect,
   useId,
+  useMemo,
   useState,
 } from "react";
 import PageLayout from "@/components/page-layout";
 import { AccountSettingsButton } from "./account-manager";
+import {
+  CapabilityBoundary,
+  ReadOnlyCapability,
+  SynchronizationAvailability,
+} from "./capability-boundary";
+import {
+  accountCapabilityTarget,
+  canReadSaved,
+  canSynchronize,
+  dispatchCapabilityIntent,
+  facetPolicy,
+  feedFacet,
+  inboxPresentation,
+  repositoryCapabilityTarget,
+  resourceCapabilityTarget,
+} from "./capability-policy";
 import { ProviderLink } from "./provider-link";
+import { ResourceCapabilityPanels } from "./resource-capability-panels";
 import { CollaborationStatePanel } from "./state-panel";
 import { SyncIndicator } from "./sync-indicator";
 
@@ -65,10 +87,21 @@ const icons = {
 export function CollaborationWorkspace({ kind }: { kind: RemoteItemKind }) {
   const accounts = useCollaborationAccounts();
   const [accountId, setAccountId] = useState<string | null>(null);
-  const connected =
-    accounts.data?.accounts.filter(
-      (account) => account.state !== "disconnected",
-    ) ?? [];
+  const connected = useMemo(
+    () =>
+      accounts.data?.accounts.filter(
+        (account) => account.state !== "disconnected",
+      ) ?? [],
+    [accounts.data],
+  );
+  const accountItems = useMemo(
+    () =>
+      connected.map((candidate) => ({
+        label: `@${candidate.login}`,
+        value: candidate.id,
+      })),
+    [connected],
+  );
   const account =
     connected.find((candidate) => candidate.id === accountId) ??
     connected.find((candidate) => candidate.state === "active") ??
@@ -76,14 +109,15 @@ export function CollaborationWorkspace({ kind }: { kind: RemoteItemKind }) {
   return (
     <PageLayout className="min-w-0">
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b px-5 py-3">
-        <h1 className="text-base font-semibold">{labels[kind]}</h1>
+        {kind === "notification" && account ? (
+          <InboxHeading account={account} />
+        ) : (
+          <h1 className="text-base font-semibold">{labels[kind]}</h1>
+        )}
         <div className="flex min-w-0 items-center gap-2">
           {connected.length > 1 && account ? (
             <Select
-              items={connected.map((candidate) => ({
-                label: `@${candidate.login}`,
-                value: candidate.id,
-              }))}
+              items={accountItems}
               value={account.id}
               onValueChange={setAccountId}
             >
@@ -129,19 +163,9 @@ export function CollaborationWorkspace({ kind }: { kind: RemoteItemKind }) {
           Connect a GitHub account using Accounts above, then choose
           repositories to sync. Your saved data will be available offline.
         </CollaborationStatePanel>
-      ) : account.state === "auth_required" ? (
-        <CollaborationStatePanel title="Reconnect your account">
-          Open Accounts to connect a new token for @{account.login}.
-        </CollaborationStatePanel>
-      ) : kind === "notification" && !account.notifications_supported ? (
-        <CollaborationStatePanel title="Inbox access is not connected">
-          This credential can access repositories. Connect a classic GitHub
-          token with notifications or repo access, or a GitHub CLI account with
-          inbox access.
-        </CollaborationStatePanel>
       ) : (
-        <AccountWorkspace
-          key={`${account.id}:${account.authorization_epoch}:${kind}`}
+        <AccountContextWorkspace
+          key={`${account.id}:${account.actor_id}:${kind}`}
           account={account}
           kind={kind}
         />
@@ -150,21 +174,91 @@ export function CollaborationWorkspace({ kind }: { kind: RemoteItemKind }) {
   );
 }
 
-function AccountWorkspace({
+function InboxHeading({ account }: { account: RemoteAccount }) {
+  const context = useContextualCapabilities(account, accountCapabilityTarget);
+  return (
+    <h1 className="text-base font-semibold">
+      {inboxPresentation(context.data?.inbox_semantics ?? "none").title}
+    </h1>
+  );
+}
+
+function AccountContextWorkspace({
   account,
   kind,
 }: {
   account: RemoteAccount;
   kind: RemoteItemKind;
 }) {
-  const repositories = useCollaborationRepositories(account);
+  const context = useContextualCapabilities(account, accountCapabilityTarget);
+  const [metadata, setMetadata] = useState<{
+    instanceId: string;
+    semantics: InboxSemantics;
+  } | null>(() =>
+    context.data
+      ? {
+          instanceId: context.data.instance.id,
+          semantics: context.data.inbox_semantics,
+        }
+      : null,
+  );
+  if (
+    context.data &&
+    (metadata?.instanceId !== context.data.instance.id ||
+      metadata.semantics !== context.data.inbox_semantics)
+  ) {
+    setMetadata({
+      instanceId: context.data.instance.id,
+      semantics: context.data.inbox_semantics,
+    });
+  }
+  return (
+    <AccountWorkspace
+      account={account}
+      kind={kind}
+      snapshot={context.data}
+      instanceId={metadata?.instanceId ?? null}
+      semantics={metadata?.semantics ?? null}
+      contextError={
+        context.isError ? collaborationErrorMessage(context.error) : undefined
+      }
+    />
+  );
+}
+
+function AccountWorkspace({
+  account,
+  kind,
+  snapshot,
+  instanceId,
+  semantics,
+  contextError,
+}: {
+  account: RemoteAccount;
+  kind: RemoteItemKind;
+  snapshot: ContextualCapabilitySnapshot | undefined;
+  instanceId: string | null;
+  semantics: InboxSemantics | null;
+  contextError: string | undefined;
+}) {
+  const repositoryPolicy = facetPolicy(snapshot, "repositories");
+  const repositories = useCollaborationRepositories(
+    account,
+    canReadSaved(repositoryPolicy),
+  );
+  const inbox = inboxPresentation(semantics ?? "none");
+  const [observedSemantics, setObservedSemantics] = useState(semantics);
   const [manageRepositories, setManageRepositories] = useState(false);
   const [repositoryId, setRepositoryId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const searchValue = useDeferredValue(search.trim());
   const [state, setState] = useState<string | null>(
-    kind === "notification" ? "unread" : "open",
+    kind === "notification" ? inbox.initialState : "open",
   );
+  if (semantics !== observedSemantics) {
+    setObservedSemantics(semantics);
+    if (kind === "notification") setState(inbox.initialState);
+  }
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const selected =
@@ -176,14 +270,26 @@ function AccountWorkspace({
   )
     ? repositoryId
     : null;
+  const context = useContextualCapabilities(
+    account,
+    selectedRepositoryId && instanceId
+      ? repositoryCapabilityTarget(instanceId, selectedRepositoryId)
+      : accountCapabilityTarget,
+  );
+  const policy = facetPolicy(context.data, feedFacet[kind]);
 
-  async function refresh() {
+  async function refresh(recheck = false) {
     setRefreshing(true);
     setRefreshError(null);
     try {
-      await collaboration
-        .forAccount(account)
-        .refresh({ repository_id: selectedRepositoryId, kind });
+      await dispatchCapabilityIntent(
+        policy,
+        recheck ? "recheck_access" : "synchronize",
+        () =>
+          collaboration
+            .forAccount(account)
+            .refresh({ repository_id: selectedRepositoryId, kind }),
+      );
     } catch (error) {
       setRefreshError(collaborationErrorMessage(error));
     } finally {
@@ -193,10 +299,7 @@ function AccountWorkspace({
 
   const filterItems =
     kind === "notification"
-      ? [
-          { label: "Unread", value: "unread" },
-          { label: "All saved", value: "all" },
-        ]
+      ? inbox.filters
       : [
           { label: "Open", value: "open" },
           { label: "Closed", value: "closed" },
@@ -225,6 +328,7 @@ function AccountWorkspace({
           />
         </div>
         <Select
+          key={`${kind}:${semantics ?? "unknown"}`}
           items={filterItems}
           value={state ?? "all"}
           onValueChange={(value) => setState(value === "all" ? null : value)}
@@ -287,7 +391,7 @@ function AccountWorkspace({
         <Button
           variant="outline"
           size="sm"
-          disabled={refreshing}
+          disabled={refreshing || !canSynchronize(policy)}
           onClick={() => {
             void refresh();
           }}
@@ -295,6 +399,18 @@ function AccountWorkspace({
           <RefreshCw aria-hidden="true" />
           Refresh
         </Button>
+        {canReadSaved(policy) && policy?.can_recheck_access ? (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={refreshing}
+            onClick={() => {
+              void refresh(true);
+            }}
+          >
+            Recheck access
+          </Button>
+        ) : null}
       </div>
       {refreshError ? (
         <p
@@ -305,38 +421,54 @@ function AccountWorkspace({
         </p>
       ) : null}
       {manageRepositories || (kind !== "notification" && !selected.length) ? (
-        <RepositoryPicker account={account} />
+        <RepositoryPicker account={account} policy={repositoryPolicy} />
       ) : null}
-      {kind === "notification" || selected.length ? (
-        <ItemFeed
-          key={`${kind}:${selectedRepositoryId}:${state}:${searchValue}`}
-          account={account}
-          kind={kind}
-          repositoryId={selectedRepositoryId}
-          repositories={repositories.data?.repositories ?? []}
-          state={state}
-          search={searchValue}
-          refresh={refresh}
-          refreshing={refreshing}
-        />
-      ) : (
-        <CollaborationStatePanel title="Choose repositories to sync">
-          Select repositories above. Pull requests and issues will appear here
-          as they sync.
-        </CollaborationStatePanel>
-      )}
+      <ReadOnlyCapability policy={policy} />
+      <div className="px-5">
+        <SynchronizationAvailability policy={policy} />
+      </div>
+      <ItemFeed
+        key={`${kind}:${repositoryId}:${state}:${searchValue}`}
+        account={account}
+        kind={kind}
+        instanceId={instanceId}
+        policy={policy}
+        contextPending={context.isPending}
+        contextError={
+          contextError ??
+          (context.isError
+            ? collaborationErrorMessage(context.error)
+            : undefined)
+        }
+        recheck={() => {
+          void refresh(true);
+        }}
+        repositoryId={selectedRepositoryId}
+        repositories={repositories.data?.repositories ?? []}
+        state={state}
+        search={searchValue}
+        refresh={refresh}
+        refreshing={refreshing}
+      />
     </>
   );
 }
 
-function RepositoryPicker({ account }: { account: RemoteAccount }) {
-  const query = useCollaborationRepositories(account);
+function RepositoryPicker({
+  account,
+  policy,
+}: {
+  account: RemoteAccount;
+  policy: ContextFacetCapability | undefined;
+}) {
+  const query = useCollaborationRepositories(account, canReadSaved(policy));
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const matchingRepositories =
-    query.data?.repositories.filter((repository) =>
-      repository.full_name.toLowerCase().includes(filter.toLowerCase()),
+    (canReadSaved(policy) ? query.data?.repositories : undefined)?.filter(
+      (repository) =>
+        repository.full_name.toLowerCase().includes(filter.toLowerCase()),
     ) ?? [];
   const repositories = matchingRepositories.slice(0, 100);
 
@@ -344,9 +476,14 @@ function RepositoryPicker({ account }: { account: RemoteAccount }) {
     setBusy("discovery");
     setError(null);
     try {
-      await collaboration
-        .forAccount(account)
-        .refresh({ repository_id: null, kind: null });
+      await dispatchCapabilityIntent(
+        policy,
+        policy?.can_recheck_access ? "recheck_access" : "synchronize",
+        () =>
+          collaboration
+            .forAccount(account)
+            .refresh({ repository_id: null, kind: null }),
+      );
     } catch (failure) {
       setError(collaborationErrorMessage(failure));
     } finally {
@@ -355,6 +492,7 @@ function RepositoryPicker({ account }: { account: RemoteAccount }) {
   }
 
   async function select(repository: RemoteRepository, checked: boolean) {
+    if (!canReadSaved(policy)) return;
     setBusy(repository.id);
     setError(null);
     try {
@@ -385,16 +523,32 @@ function RepositoryPicker({ account }: { account: RemoteAccount }) {
         <Button
           size="sm"
           variant="outline"
-          disabled={busy !== null}
+          disabled={
+            busy !== null ||
+            (!canSynchronize(policy) && !policy?.can_recheck_access)
+          }
           onClick={() => {
             void discover();
           }}
         >
           <RefreshCw aria-hidden="true" />
-          Discover repositories
+          {policy?.can_recheck_access
+            ? "Recheck repository access"
+            : "Discover repositories"}
         </Button>
       </div>
-      {query.data ? (
+      {!canReadSaved(policy) ? (
+        <CapabilityBoundary
+          policy={policy}
+          recheck={() => {
+            void discover();
+          }}
+          busy={busy !== null}
+        >
+          {null}
+        </CapabilityBoundary>
+      ) : null}
+      {canReadSaved(policy) && query.data ? (
         <div className="mt-2">
           <SyncIndicator
             state={query.data.sync.state}
@@ -464,9 +618,19 @@ function ItemFeed({
   search,
   refresh,
   refreshing,
+  instanceId,
+  policy,
+  contextPending,
+  contextError,
+  recheck,
 }: {
   account: RemoteAccount;
   kind: RemoteItemKind;
+  instanceId: string | null;
+  policy: ContextFacetCapability | undefined;
+  contextPending: boolean;
+  contextError: string | undefined;
+  recheck: () => void;
   repositoryId: string | null;
   repositories: RemoteRepository[];
   state: string | null;
@@ -493,17 +657,21 @@ function ItemFeed({
     [account.id, kind, repositoryId],
   );
   const cursor = cursors[cursors.length - 1] ?? null;
-  const query = useCollaborationItems(account, {
-    kind,
-    repository_id: repositoryId,
-    state,
-    search: search || null,
-    cursor,
-    limit: 50,
-  });
+  const query = useCollaborationItems(
+    account,
+    {
+      kind,
+      repository_id: repositoryId,
+      state,
+      search: search || null,
+      cursor,
+      limit: 50,
+    },
+    canReadSaved(policy),
+  );
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const Icon = icons[kind];
-  const page = query.data;
+  const page = canReadSaved(policy) ? query.data : undefined;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-2">
@@ -514,7 +682,13 @@ function ItemFeed({
         </span>
         {page ? (
           <SyncIndicator
-            state={page.sync.state}
+            state={
+              policy?.synchronize.reason === "temporarily_unavailable"
+                ? policy.sync.state
+                : page.sync.state === "rate_limited" && canSynchronize(policy)
+                  ? "idle"
+                  : page.sync.state
+            }
             validatedAt={page.coverage.validated_at}
             partial={page.coverage.state === "partial"}
           />
@@ -528,99 +702,113 @@ function ItemFeed({
           {collaborationErrorMessage(page.sync.error)}
         </p>
       ) : null}
-      {query.isPending ? (
-        <CollaborationStatePanel title="Loading saved activity">
-          This view reads the data saved on your device.
-        </CollaborationStatePanel>
-      ) : query.isError ? (
-        <CollaborationStatePanel
-          title="Could not load this view"
-          action="Reload saved items"
-          onAction={() => {
-            if (cursor !== null) setCursors([null]);
-            else void query.refetch();
-          }}
-        >
-          {collaborationErrorMessage(query.error)}
-        </CollaborationStatePanel>
-      ) : page && !page.items.length ? (
-        <CollaborationStatePanel
-          title={
-            page.coverage.state === "missing"
-              ? "Not synced yet"
-              : page.coverage.state === "partial" || search
-                ? "No saved matches"
-                : "Nothing here yet"
-          }
-          offline={page.sync.state === "offline"}
-          action="Refresh activity"
-          onAction={() => {
-            void refresh();
-          }}
-          busy={refreshing}
-        >
-          {page.coverage.state === "missing"
-            ? "Refresh to bring recent activity onto this device."
-            : page.coverage.state === "partial"
-              ? "Some history has not been synced. Refresh to check for more activity."
-              : search
-                ? "Search covers saved items. Try another search or refresh to bring in recent activity."
-                : "There are no saved items matching the selected filters."}
-        </CollaborationStatePanel>
-      ) : (
+      <div
+        className={`grid min-h-0 flex-1 ${selectedItem ? "md:grid-cols-2" : "grid-cols-1"}`}
+      >
         <div
-          className={`grid min-h-0 flex-1 ${selectedItem ? "md:grid-cols-2" : "grid-cols-1"}`}
+          className={`min-w-0 overflow-y-auto ${selectedItem ? "hidden md:block" : ""}`}
         >
-          <div
-            className={`min-w-0 overflow-y-auto ${selectedItem ? "hidden md:block" : ""}`}
-          >
-            {page?.items.map((item) => (
-              <Button
-                key={item.id}
-                variant="ghost"
-                className="h-auto w-full justify-start gap-3 rounded-none border-b border-border px-5 py-3 text-left whitespace-normal"
-                aria-pressed={selectedItem === item.id}
-                onClick={() => setSelectedItem(item.id)}
-              >
-                <Icon
-                  className={`size-4 shrink-0 ${item.state === "open" || item.unread ? "text-success-foreground" : "text-muted-foreground"}`}
-                  aria-hidden="true"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="line-clamp-2 break-words text-sm font-medium">
-                    {item.title}
-                  </p>
-                  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                    <span className="truncate max-w-60">
-                      {repositories.find(
-                        (repository) => repository.id === item.repository_id,
-                      )?.full_name ??
-                        item.reason ??
-                        "GitHub"}
-                    </span>
-                    {item.number ? <span>#{item.number}</span> : null}
-                    {item.author ? <span>@{item.author}</span> : null}
-                    <span>{item.state}</span>
+          {!canReadSaved(policy) ? (
+            <CapabilityBoundary
+              policy={policy}
+              pending={contextPending}
+              error={contextError}
+              recheck={recheck}
+              busy={refreshing}
+            >
+              {null}
+            </CapabilityBoundary>
+          ) : query.isPending ? (
+            <CollaborationStatePanel title="Loading saved activity">
+              This view reads the data saved on your device.
+            </CollaborationStatePanel>
+          ) : query.isError ? (
+            <CollaborationStatePanel
+              title="Could not load this view"
+              action="Reload saved items"
+              onAction={() => {
+                if (cursor !== null) setCursors([null]);
+                else void query.refetch();
+              }}
+            >
+              {collaborationErrorMessage(query.error)}
+            </CollaborationStatePanel>
+          ) : page && !page.items.length ? (
+            <CollaborationStatePanel
+              title={
+                page.coverage.state === "missing"
+                  ? "Not synced yet"
+                  : page.coverage.state === "partial" || search
+                    ? "No saved matches"
+                    : "Nothing here yet"
+              }
+              offline={page.sync.state === "offline"}
+              action={canSynchronize(policy) ? "Refresh activity" : undefined}
+              onAction={() => {
+                void refresh();
+              }}
+              busy={refreshing}
+            >
+              {page.coverage.state === "missing"
+                ? "Refresh to bring recent activity onto this device."
+                : page.coverage.state === "partial"
+                  ? "Some history has not been synced. Refresh to check for more activity."
+                  : search
+                    ? "Search covers saved items. Try another search or refresh to bring in recent activity."
+                    : "There are no saved items matching the selected filters."}
+            </CollaborationStatePanel>
+          ) : (
+            <div>
+              {page?.items.map((item) => (
+                <Button
+                  key={item.id}
+                  variant="ghost"
+                  className="h-auto w-full justify-start gap-3 rounded-none border-b border-border px-5 py-3 text-left whitespace-normal"
+                  aria-pressed={selectedItem === item.id}
+                  onClick={() => setSelectedItem(item.id)}
+                >
+                  <Icon
+                    className={`size-4 shrink-0 ${item.state === "open" || item.unread ? "text-success-foreground" : "text-muted-foreground"}`}
+                    aria-hidden="true"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="line-clamp-2 break-words text-sm font-medium">
+                      {item.title}
+                    </p>
+                    <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                      <span className="truncate max-w-60">
+                        {repositories.find(
+                          (repository) => repository.id === item.repository_id,
+                        )?.full_name ??
+                          item.reason ??
+                          "Provider activity"}
+                      </span>
+                      {item.number ? <span>#{item.number}</span> : null}
+                      {item.author ? <span>@{item.author}</span> : null}
+                      <span>{item.state}</span>
+                    </div>
                   </div>
-                </div>
-                {item.is_draft ? (
-                  <Badge variant="outline" size="sm">
-                    Draft
-                  </Badge>
-                ) : null}
-              </Button>
-            ))}
-          </div>
-          {selectedItem ? (
-            <ItemDetail
-              key={selectedItem}
-              account={account}
-              itemId={selectedItem}
-              close={() => setSelectedItem(null)}
-            />
-          ) : null}
+                  {item.is_draft ? (
+                    <Badge variant="outline" size="sm">
+                      Draft
+                    </Badge>
+                  ) : null}
+                </Button>
+              ))}
+            </div>
+          )}
         </div>
-      )}
+        {selectedItem && instanceId ? (
+          <ItemDetail
+            key={selectedItem}
+            account={account}
+            itemId={selectedItem}
+            kind={kind}
+            instanceId={instanceId}
+            close={() => setSelectedItem(null)}
+          />
+        ) : null}
+      </div>
       {page &&
       (page.next_cursor ||
         cursors.length > 1 ||
@@ -658,7 +846,7 @@ function ItemFeed({
             <Button
               size="sm"
               variant="outline"
-              disabled={refreshing}
+              disabled={refreshing || !canSynchronize(policy)}
               onClick={() => {
                 void refresh();
               }}
@@ -676,12 +864,21 @@ function ItemDetail({
   account,
   itemId,
   close,
+  kind,
+  instanceId,
 }: {
   account: RemoteAccount;
   itemId: string;
+  kind: RemoteItemKind;
+  instanceId: string;
   close: () => void;
 }) {
-  const query = useCollaborationItem(account, itemId);
+  const context = useContextualCapabilities(
+    account,
+    resourceCapabilityTarget(instanceId, itemId, kind),
+  );
+  const policy = facetPolicy(context.data, feedFacet[kind]);
+  const query = useCollaborationItem(account, itemId, canReadSaved(policy));
   const item = query.data?.item;
   return (
     <article
@@ -692,7 +889,19 @@ function ItemDetail({
         <ArrowLeft aria-hidden="true" />
         Back to list
       </Button>
-      {query.isPending ? (
+      {!canReadSaved(policy) ? (
+        <CapabilityBoundary
+          policy={policy}
+          pending={context.isPending}
+          error={
+            context.isError
+              ? collaborationErrorMessage(context.error)
+              : undefined
+          }
+        >
+          {null}
+        </CapabilityBoundary>
+      ) : query.isPending ? (
         <p role="status" className="text-sm text-muted-foreground">
           Loading saved detail…
         </p>
@@ -727,39 +936,57 @@ function ItemDetail({
                 ? "This description is not saved on this device. Open the provider to read it."
                 : "This saved item has no description.")}
           </div>
-          <PrivateDraft account={account} item={item} />
+          <ReadOnlyCapability policy={policy} />
         </>
       ) : (
         <p className="text-sm text-muted-foreground">
           This item is no longer available in your saved view.
         </p>
       )}
+      <ResourceCapabilityPanels
+        account={account}
+        subjectId={itemId}
+        kind={kind}
+        snapshot={context.data}
+      />
+      <PrivateDraft account={account} subjectId={itemId} />
     </article>
   );
 }
 
 function PrivateDraft({
   account,
-  item,
+  subjectId,
 }: {
   account: RemoteAccount;
-  item: RemoteItem;
+  subjectId: string;
 }) {
-  const query = useQuery(draftQueryOptions(account, item.id));
-  if (query.isPending) return null;
-  if (query.isError)
-    return (
-      <p role="alert" className="mt-6 text-xs text-destructive-foreground">
-        {collaborationErrorMessage(query.error)}
-      </p>
-    );
+  const query = useQuery(draftQueryOptions(account, subjectId));
+  // This is authored editor initialization, scoped by the parent account and
+  // subject keys. A provider authorization reset may reread local drafts, but
+  // cannot discard an already mounted editor's text during that reread.
+  const [loaded, setLoaded] = useState<{ draft: LocalDraft | null } | null>(
+    () => (query.data === undefined ? null : { draft: query.data }),
+  );
+  if (query.data !== undefined && query.data !== loaded?.draft) {
+    setLoaded({ draft: query.data });
+  }
   return (
-    <DraftForm
-      account={account}
-      itemId={item.id}
-      initialBody={query.data?.body ?? ""}
-      generation={query.data?.generation ?? "0"}
-    />
+    <>
+      {query.isError ? (
+        <p role="alert" className="mt-6 text-xs text-destructive-foreground">
+          {collaborationErrorMessage(query.error)}
+        </p>
+      ) : null}
+      {loaded ? (
+        <DraftForm
+          account={account}
+          itemId={subjectId}
+          initialBody={loaded.draft?.body ?? ""}
+          generation={loaded.draft?.generation ?? "0"}
+        />
+      ) : null}
+    </>
   );
 }
 

@@ -1,7 +1,9 @@
 import type {
   AccountSnapshot,
   CapabilitySnapshot,
+  CapabilityTarget,
   ChangePage,
+  ContextualCapabilitySnapshot,
   DetailSnapshot,
   ItemPage,
   ItemSnapshot,
@@ -87,6 +89,7 @@ function transport(
     saveDraft: unexpected,
     draft: unexpected,
     capabilities: unexpected,
+    contextualCapabilities: unexpected,
     resolveResource: unexpected,
     detail: unexpected,
     hydrateDetail: unexpected,
@@ -159,6 +162,159 @@ const itemQuery = {
 };
 
 describe("CollaborationClient", () => {
+  it("binds contextual requests to epoch and canonical target and cancels initial pending policy on same-epoch changes", async () => {
+    const target: CapabilityTarget = {
+      kind: "resource",
+      instance_id: "github:https://github.com/",
+      repository_id: null,
+      resource_id: "pull:67",
+      resource_kind: "pull_request",
+    };
+    const old: ContextualCapabilitySnapshot = {
+      ...capability,
+      authorization_epoch: account.authorization_epoch,
+      target,
+      facets: [],
+    };
+    const current: ContextualCapabilitySnapshot = {
+      ...old,
+      revision: "2",
+      facets: [
+        {
+          facet: "reviews",
+          saved_read: { state: "unsupported", reason: "not_implemented" },
+          synchronize: { state: "unsupported", reason: "not_implemented" },
+          remote_write: { state: "unsupported", reason: "not_implemented" },
+          observation: "unknown",
+          sync: page.sync,
+          can_recheck_access: false,
+        },
+      ],
+    };
+    let next = changePage("1");
+    const delayed = deferred<ContextualCapabilitySnapshot>();
+    const read = vi
+      .fn()
+      .mockImplementationOnce(() => delayed.promise)
+      .mockResolvedValue(current);
+    const client = new CollaborationClient(
+      transport({
+        listen: async () => () => {},
+        changesSince: async () => next,
+        contextualCapabilities: read,
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    const key = collaborationKeys.contextualCapabilities(account, target);
+    expect(key).not.toEqual(
+      collaborationKeys.contextualCapabilities(
+        { ...account, authorization_epoch: "2" },
+        target,
+      ),
+    );
+    expect(key).not.toEqual(
+      collaborationKeys.contextualCapabilities(account, {
+        ...target,
+        resource_id: "pull:68",
+      }),
+    );
+    const unrelated = collaborationKeys.contextualCapabilities(
+      { ...account, id: "actor-b" },
+      target,
+    );
+    cache.setQueryData(unrelated, current);
+    const draft = collaborationKeys.draft(account, "draft");
+    cache.setQueryData(draft, "authored text");
+    let signal!: AbortSignal;
+    const observer = new QueryObserver(cache, {
+      queryKey: key,
+      queryFn: ({ signal: abort }) => {
+        signal ??= abort;
+        return client.forAccount(account).contextualCapabilities(target, abort);
+      },
+      staleTime: Infinity,
+      retry: false,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    expect(read).toHaveBeenCalledWith({
+      account_id: account.id,
+      authorization_epoch: "1",
+      target,
+    });
+    expect(cache.getQueryData(key)).toBeUndefined();
+    next = changePage("2", "1", [
+      {
+        revision: "2",
+        account_id: account.id,
+        scope: "detail:pull:67:reviews",
+        reset: false,
+      },
+    ]);
+    await client.wake();
+    await vi.waitFor(() => expect(cache.getQueryData(key)).toEqual(current));
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(signal.aborted).toBe(true);
+    delayed.resolve(old);
+    await delayed.promise;
+    await Promise.resolve();
+    expect(cache.getQueryData(key)).toEqual(current);
+    expect(cache.getQueryState(unrelated)?.isInvalidated).toBe(false);
+    expect(cache.getQueryState(draft)?.isInvalidated).toBe(false);
+    unsubscribe();
+    stop();
+    cache.clear();
+  });
+
+  it("removes contextual eligibility on an epoch reset and rejects a late prior-actor response", async () => {
+    const target: CapabilityTarget = {
+      kind: "account",
+      instance_id: null,
+      repository_id: null,
+      resource_id: null,
+      resource_kind: null,
+    };
+    const old: ContextualCapabilitySnapshot = {
+      ...capability,
+      authorization_epoch: "1",
+      target,
+      facets: [],
+    };
+    const delayed = deferred<ContextualCapabilitySnapshot>();
+    let next = changePage("1");
+    const client = new CollaborationClient(
+      transport({
+        listen: async () => () => {},
+        changesSince: async () => next,
+        contextualCapabilities: () => delayed.promise,
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    const key = collaborationKeys.contextualCapabilities(account, target);
+    const observer = new QueryObserver(cache, {
+      queryKey: key,
+      queryFn: ({ signal }) =>
+        client.forAccount(account).contextualCapabilities(target, signal),
+      staleTime: Infinity,
+      retry: false,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    next = changePage("2", "2", [
+      { revision: "2", account_id: account.id, scope: "account", reset: true },
+    ]);
+    await client.wake();
+    delayed.resolve(old);
+    await delayed.promise;
+    await Promise.resolve();
+    expect(cache.getQueryState(key)).toBeUndefined();
+    expect(cache.getQueryData(key)).toBeUndefined();
+    unsubscribe();
+    stop();
+    cache.clear();
+  });
   it("binds cache-only detail reads and explicit hydration without starting refresh from a read", async () => {
     const saved: DetailSnapshot = {
       subject_id: "pull",

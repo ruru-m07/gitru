@@ -4,6 +4,7 @@ import {
   collaborationChangesSince,
   collaborationConnectGithub,
   collaborationConnectGithubCli,
+  collaborationContextualCapabilities,
   collaborationDetail,
   collaborationDisconnect,
   collaborationDiscoverGithubCli,
@@ -24,6 +25,11 @@ import { CollaborationClient } from "./client";
 export type {
   CanonicalResource,
   CapabilitySnapshot,
+  CapabilityTarget,
+  ContextCapabilityAccess,
+  ContextCapabilityRequest,
+  ContextFacetCapability,
+  ContextualCapabilitySnapshot,
   DetailEntry,
   DetailEvidence,
   DetailQuery,
@@ -43,6 +49,16 @@ export { StaleAuthorizationError } from "./authorization-fence";
 export * from "./client";
 export type RemoteItemKind = import("@gitru/commands").ItemQuery["kind"];
 export type DetailFacet = import("@gitru/commands").DetailQuery["facet"];
+export type CapabilityObservation =
+  import("@gitru/commands").ContextFacetCapability["observation"];
+export type ContextCapabilityReason = NonNullable<
+  import("@gitru/commands").ContextCapabilityAccess["reason"]
+>;
+export type InboxSemantics =
+  import("@gitru/commands").CapabilitySnapshot["inbox_semantics"];
+export type ResourceFacet =
+  import("@gitru/commands").ContextFacetCapability["facet"];
+export type ResourceKind = import("@gitru/commands").ResourceLocator["kind"];
 
 export const collaboration = new CollaborationClient({
   accounts: () => collaborationAccounts({}),
@@ -61,6 +77,8 @@ export const collaboration = new CollaborationClient({
   saveDraft: (draft) => collaborationSaveDraft({ draft }),
   draft: (accountId, subjectId) => collaborationDraft({ accountId, subjectId }),
   capabilities: (accountId) => collaborationCapabilities({ accountId }),
+  contextualCapabilities: (request) =>
+    collaborationContextualCapabilities({ request }),
   resolveResource: (accountId, locator) =>
     collaborationResolveResource({ accountId, locator }),
   detail: (query) => collaborationDetail({ query }),

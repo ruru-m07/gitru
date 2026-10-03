@@ -1747,7 +1747,9 @@ personal CLI credentials were inspected and no remote CI run was created.
 ### Foundation publication and continuation (2026-10-03)
 
 Current continuation adds [PR #147](https://github.com/ruru-m07/gitru/pull/147),
-RURU-97, on the reviewed provider-registry branch. Independent detail facets
+RURU-97, on the reviewed provider-registry branch, and
+[PR #149](https://github.com/ruru-m07/gitru/pull/149), RURU-100, stacked on #147.
+Both issues are In Review. Independent detail facets
 now have cache-only queries, explicit epoch-bound coalesced hydration, bounded
 paging/restart intent and atomic source/coverage/access/revision metadata.
 Known null/empty, missing, omitted, oversized and partial observations remain
@@ -1757,10 +1759,37 @@ accessor shares the caller's SQLite snapshot for contextual capability reads.
 Local validation passes 114 collaboration, 3 command-caller, 36 client and 177
 desktop frontend tests, types/lint/Clippy/formatting, and the 9 CLI cases after
 the ancestor fixture correction. Independent storage and runtime/client reviews
-are accepted. Production GitHub detail endpoints/UI remain RURU-77/78;
-RURU-100 contextual UI is still In Progress. Migration 0004 adds rebuildable
+are accepted. Production GitHub detail endpoints/UI remain RURU-77/78, the next
+read experience chunks. RURU-100's atomic account/repository/resource policies,
+shared local deadline coordinator and ordinary workspace/sidebar consumers
+pass 127 native, 44 SDK, 193 desktop and 3 caller-policy tests, scoped types/lint,
+build/Clippy/formatting, both independent reviews and native synthetic fixture QA.
+Same-actor grant refresh retains private text and inspected CAS; actor/subject
+switching resets the buffer. RURU-99's separate editor/recovery extraction needs
+narrow merge reconciliation. Migration 0004 adds rebuildable
 details; RURU-106's restore policy still refuses unreviewed schemas 0003/0004.
 These are published review stacks, not merged or release-qualified features.
+
+Eight scoped draft PRs are published: #141 foundation, #142 credential cutover,
+#143 migration recovery, #144 saved draft recovery, #145 backup/recovery native
+core, #146 registry, #147 independent details and #149 contextual capabilities.
+RURU-106 remains In Progress. The exact `c215389` foundation head passes frontend,
+Clippy/formatting, Linux/macOS/Windows Rust, all CodeQL analyses and Linux/macOS
+packaged E2E; Windows packaged E2E remained pending when recorded. Test-only
+checked iteration repairs newly reported synthetic `Vec::remove` logging-model
+alerts in #142/#147 without suppression, while retaining exact-one fixture and
+original content assertions. These signed descendant heads have restarted CI;
+completed ancestor checks do not qualify a child's current head. The hourly
+continuation checks live issue dependencies, overlap and CI before proceeding.
+
+A later #147 Linux run captured OS code 26 (`Text file busy`) at the inherited
+credential crash-test snapshot spawn. Fixture audit/review corrected the only
+two parent-written executable snapshots (RURU-95 and RURU-106) with waited Unix
+child writers; no retries, test serialization or production change is introduced.
+The observed error and source-inferred descriptor mechanism are distinguished
+in the work notes. The signed repairs are propagated through the review stacks;
+the current RURU-100 native suite again passes 127 tests. Fresh exact-head
+Linux/platform and security checks remain pending.
 
 The foundation received independent native and frontend review with no new
 blocking findings. `make verify` passed on macOS on 3 October, including the
@@ -1795,9 +1824,11 @@ Each branch records its design and evidence in
 separate gate. Foundation CI exposed an initial child-probe readiness race and
 four CLI fixture `Vec::remove` logging-model alerts; scoped test fixes passed
 local packaged E2E/CLI checks and the exact-head remote matrix was restarted.
-No production credential logging or rule suppression was introduced. Default
-CodeQL only scans PRs targeting default/protected `dev`, so stacked children need
-fresh exact-head security scans when retargeted to `dev` before merge.
+No production credential logging or rule suppression was introduced.
+Exact-head dynamic CodeQL runs have now been observed on stacked children
+#142, #143, #146 and #147. Each merge still requires every relevant analysis to
+complete and zero relevant alerts on the exact proposed head. Do not infer a
+policy change from the observed run availability or reuse an ancestor's scan.
 
 CI follow-up: production migrations and frozen SQL fixtures now explicitly use
 LF in Git attributes, preserving SQLx checksums and literal text on Windows.
@@ -1874,6 +1905,22 @@ quota errors must not hide still-authorized cached content; access denial does.
 Private draft recovery stays independent. Shared IPC generation is sequenced
 after the detail contract freezes. Publication authorizes review; no PR is
 merged without user authorization.
+
+RURU-100's complete contextual slice is locally implemented atop the signed
+RURU-97 contract. Its separate native reader captures account/repository/resource
+ownership, authorization, visibility, detail evidence and both facet/account
+quota barriers in one SQLite snapshot. Saved reads, synchronization and remote
+writes remain distinct; every remote write is explicitly unsupported. The
+ordinary workspace and sidebar use typed policy/inbox semantics, with shared
+unsupported/denied/missing/read-only boundaries and private drafts outside
+provider gates. One bridge-owned local deadline timer repairs eligibility after
+cooldown expiry. Local evidence passes 127 collaboration, 44 SDK and 193 desktop
+tests, including actual authorization-reset/CAS and pending-query races; both
+independent reviews accepted the source. Native fixture QA and final publication
+gates are recorded in [RURU-100's work note](./collaboration-work/RURU-100.md).
+RURU-99's separately published authored recovery/editor extraction still needs a
+narrow merge reconciliation preserving recovery/copy/export and its own CAS
+rules. Remote CI/security and live-account qualification remain separate gates.
 
 ### Linear implementation backlog (2026-10-03)
 

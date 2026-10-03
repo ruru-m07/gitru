@@ -1,8 +1,11 @@
 import {
   type AccountSnapshot,
   type CapabilitySnapshot,
+  type CapabilityTarget,
   type ChangePage,
   type CollaborationChange,
+  type ContextCapabilityRequest,
+  type ContextualCapabilitySnapshot,
   type DetailQuery,
   type DetailSnapshot,
   type GithubCliDiscovery,
@@ -23,6 +26,7 @@ import {
   AuthorizationFence,
   StaleAuthorizationError,
 } from "./authorization-fence";
+import { installCapabilityDeadlines } from "./capability-deadlines";
 import { compareRevisions, RevisionBridge } from "./revision-bridge";
 
 export interface CollaborationTransport {
@@ -44,6 +48,9 @@ export interface CollaborationTransport {
   saveDraft(draft: LocalDraft): Promise<LocalDraft>;
   draft(accountId: string, subjectId: string): Promise<LocalDraft | null>;
   capabilities(accountId: string): Promise<CapabilitySnapshot>;
+  contextualCapabilities(
+    request: ContextCapabilityRequest,
+  ): Promise<ContextualCapabilitySnapshot>;
   resolveResource(
     accountId: string,
     locator: ResourceLocator,
@@ -93,6 +100,8 @@ export const collaborationKeys = {
       account.authorization_epoch,
       "capabilities",
     ] as const,
+  contextualCapabilities: (account: RemoteAccount, target: CapabilityTarget) =>
+    [...collaborationKeys.capabilities(account), "context", target] as const,
   resource: (account: RemoteAccount, locator: ResourceLocator) =>
     [
       ...collaborationKeys.account(account.id),
@@ -173,6 +182,19 @@ export class CollaborationClient {
         read(() => this.transport.item(account.id, itemId), signal),
       capabilities: (signal?: AbortSignal) =>
         read(() => this.transport.capabilities(account.id), signal),
+      contextualCapabilities: (
+        target: CapabilityTarget,
+        signal?: AbortSignal,
+      ) =>
+        read(
+          () =>
+            this.transport.contextualCapabilities({
+              account_id: account.id,
+              authorization_epoch: account.authorization_epoch,
+              target,
+            }),
+          signal,
+        ),
       resolveResource: (locator: ResourceLocator, signal?: AbortSignal) =>
         read(() => this.transport.resolveResource(account.id, locator), signal),
       detail: (query: Omit<DetailQuery, "account_id">, signal?: AbortSignal) =>
@@ -247,6 +269,7 @@ export class CollaborationClient {
   installBridge(queryClient: QueryClient): () => void {
     if (this.bridge) return () => {};
     this.queryClient = queryClient;
+    const stopDeadlines = installCapabilityDeadlines(queryClient);
     const bridge = new RevisionBridge<CollaborationChange>(
       {
         listen: this.transport.listen,
@@ -301,6 +324,7 @@ export class CollaborationClient {
     this.bridge = bridge;
     void bridge.start();
     return () => {
+      stopDeadlines();
       bridge.stop();
       if (this.bridge === bridge) this.bridge = null;
       this.queryClient = null;

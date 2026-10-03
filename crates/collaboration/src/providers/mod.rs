@@ -6,6 +6,7 @@ pub mod github;
 mod registry;
 mod transport;
 
+pub(crate) use registry::FACETS;
 pub use registry::{ProviderProfile, ProviderRegistry};
 pub use transport::{ProviderError, ProviderErrorKind};
 
@@ -83,11 +84,13 @@ pub trait CollaborationProvider: Send + Sync + 'static {
     fn instance(&self) -> ProviderInstance {
         ProviderInstance::public(self.kind())
     }
-    fn profile(&self, account: &RemoteAccount) -> ProviderProfile {
-        ProviderProfile::read_only(
-            InboxSemantics::NativeNotifications,
-            account.notifications_supported,
-        )
+    fn profile(&self, _: &RemoteAccount) -> ProviderProfile {
+        // An adapter must declare its own implementation and inbox semantics.
+        // The common layer cannot infer GitHub grants for a future provider.
+        ProviderProfile {
+            facets: vec![],
+            inbox_semantics: InboxSemantics::None,
+        }
     }
     async fn probe(&self, token: &SecretToken) -> Result<VerifiedAccount, ProviderError>;
     async fn fetch_page(

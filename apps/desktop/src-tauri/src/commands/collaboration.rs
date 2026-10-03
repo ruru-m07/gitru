@@ -1,9 +1,10 @@
 //! Local reads are separate commands from network refresh intents.
 use collaboration::{
     AccountSnapshot, CapabilitySnapshot, ChangePage, CollaborationError, CollaborationRuntime,
-    DetailQuery, DetailSnapshot, ErrorCode, GithubCliDiscovery, HydrateDetailRequest, ItemPage,
-    ItemQuery, ItemSnapshot, LocalDraft, RefreshReceipt, RefreshRequest, RemoteAccount,
-    RepositorySnapshot, ResourceLocator, ResourceResolution,
+    ContextCapabilityRequest, ContextualCapabilitySnapshot, DetailQuery, DetailSnapshot, ErrorCode,
+    GithubCliDiscovery, HydrateDetailRequest, ItemPage, ItemQuery, ItemSnapshot, LocalDraft,
+    RefreshReceipt, RefreshRequest, RemoteAccount, RepositorySnapshot, ResourceLocator,
+    ResourceResolution,
 };
 use std::sync::Arc;
 use tauri::{State, Webview};
@@ -47,6 +48,7 @@ enum Operation {
     SaveDraft,
     Draft,
     Capabilities,
+    ContextualCapabilities,
     ResolveResource,
     Detail,
     HydrateDetail,
@@ -239,6 +241,16 @@ pub async fn collaboration_draft(
 }
 
 #[tauri::command]
+pub async fn collaboration_contextual_capabilities(
+    request: ContextCapabilityRequest,
+    view: Webview,
+    state: State<'_, CollaborationState>,
+) -> Result<ContextualCapabilitySnapshot, CollaborationError> {
+    authorize(&view, Operation::ContextualCapabilities)?;
+    state.get().await?.contextual_capabilities(request).await
+}
+
+#[tauri::command]
 pub async fn collaboration_capabilities(
     account_id: String,
     view: Webview,
@@ -299,6 +311,7 @@ mod tests {
         Operation::SaveDraft,
         Operation::Draft,
         Operation::Capabilities,
+        Operation::ContextualCapabilities,
         Operation::ResolveResource,
         Operation::Detail,
         Operation::HydrateDetail,

@@ -1,9 +1,11 @@
 import {
   AccountSnapshotSchema,
   CapabilitySnapshotSchema,
+  ContextualCapabilitySnapshotSchema,
   collaborationAccounts,
   collaborationCapabilities,
   collaborationConnectGithubCli,
+  collaborationContextualCapabilities,
   collaborationDetail,
   collaborationDiscoverGithubCli,
   collaborationHydrateDetail,
@@ -23,6 +25,76 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 afterEach(() => invoke.mockReset());
 
 describe("generated collaboration wire contract", () => {
+  it("preserves contextual targets, independent modes and observation states without injected webviews", async () => {
+    const target = {
+      kind: "resource" as const,
+      instance_id: "github:https://github.com/",
+      repository_id: null,
+      resource_id: "9007199254740995",
+      resource_kind: "pull_request" as const,
+    };
+    const snapshot = ContextualCapabilitySnapshotSchema.parse({
+      account_id: "actor",
+      authorization_epoch: "9007199254740993",
+      instance: {
+        id: target.instance_id,
+        provider: "github",
+        base_url: "https://github.com/",
+      },
+      target,
+      facets: [
+        {
+          facet: "pull_details",
+          saved_read: { state: "supported", reason: null },
+          synchronize: {
+            state: "unavailable",
+            reason: "temporarily_unavailable",
+          },
+          remote_write: { state: "unsupported", reason: "not_implemented" },
+          observation: "oversized",
+          can_recheck_access: false,
+          sync: {
+            state: "rate_limited",
+            next_retry_at: "2099-10-03T12:00:00Z",
+            last_success_at: null,
+            error: null,
+          },
+        },
+      ],
+      inbox_semantics: "native_notifications",
+      revision: "9007199254740994",
+      authorization_view: "3",
+    });
+    expect(snapshot.target.resource_id).toBe("9007199254740995");
+    expect(snapshot.target.repository_id).toBeNull();
+    expect(snapshot.facets[0].saved_read.reason).toBeNull();
+    for (const observation of [
+      "unknown",
+      "not_loaded",
+      "partial",
+      "complete",
+      "empty",
+      "omitted",
+      "oversized",
+    ] as const)
+      expect(
+        ContextualCapabilitySnapshotSchema.parse({
+          ...snapshot,
+          facets: [{ ...snapshot.facets[0], observation }],
+        }).facets[0].observation,
+      ).toBe(observation);
+    const request = {
+      account_id: "actor",
+      authorization_epoch: "9007199254740993",
+      target,
+    };
+    invoke.mockResolvedValue(snapshot);
+    await collaborationContextualCapabilities({ request });
+    expect(invoke).toHaveBeenCalledWith(
+      "collaboration_contextual_capabilities",
+      { request },
+    );
+  });
   it("preserves detail missingness, nullable authoritative body and string revisions through distinct read/hydrate commands", async () => {
     const snapshot = DetailSnapshotSchema.parse({
       subject_id: "pull",

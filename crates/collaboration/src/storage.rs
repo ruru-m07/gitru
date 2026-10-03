@@ -11,6 +11,7 @@ use sqlx::{
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+mod contextual_capabilities;
 pub(crate) mod details;
 mod identities;
 

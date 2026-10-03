@@ -32,19 +32,19 @@ desktop writer shutdown/picker/dialog integration, schema-0003 policy and
 Windows power-loss qualification remain open. Its core deliberately refuses
 schemas beyond the known v1/v2 policy rather than guessing about durable intent.
 
-The next parallel batch starts from the reviewed #146 commit: RURU-97 owns
+The next parallel batch started from the reviewed #146 commit: RURU-97 owns
 independent detail storage/hydration; RURU-100 owns contextual capabilities and
 their shared UI consumers. RURU-97 is now In Review in
 [PR #147](https://github.com/ruru-m07/gitru/pull/147), stacked on #146. It passes
 114 native, 3 command-caller, 36 client and 177 desktop frontend tests, plus
 lint/types/Clippy; independent access and source-authority reviews are recorded
 in its work note. Production GitHub detail endpoints remain RURU-77/78.
-RURU-100 stays In Progress in its isolated worktree, with an issue-specific
-design note before major edits. Shared IPC generation is
-sequenced after the detail contract freezes. Account-only capability gating
-cannot complete RURU-100; repository/resource context and saved-read versus
-sync/write availability are required. Temporary network/quota errors retain
-authorized saved reads, while access loss still suppresses provider content.
+RURU-100 is In Review in [PR #149](https://github.com/ruru-m07/gitru/pull/149),
+stacked on #147, with its issue-specific design note written before major edits.
+Shared IPC generation followed the detail contract freeze. Contextual native
+policies and UI cover account/repository/resource targets, saved reads, sync and
+write availability. Temporary network/quota errors retain authorized saved
+reads, while access loss still suppresses provider content.
 Remote CI is running; the original publication index below remains a snapshot.
 Windows Rust migration tests pass after the explicit SQL LF policy. Foundation
 CodeQL passes on `7c5364d`; a later native-host lifetime correction passes all
@@ -61,12 +61,49 @@ test ordering/parallelism are unchanged.
 Windows CI also exposed an expired-candidate fixture that backdated an Instant
 before runner boot. An equivalent strict expiry deadline preserves the five-minute
 account selection lifetime and avoids subtraction; its exact-boundary regression
-and all 48 foundation collaboration tests pass locally. Fresh Windows CI remains
-required.
+and all 48 foundation collaboration tests pass locally. The exact `c215389`
+foundation head subsequently passed Rust tests on Linux/macOS/Windows, all
+CodeQL analyses and Linux/macOS packaged E2E; Windows packaged E2E remained
+pending when recorded. Narrow synthetic `Vec::remove` fixture repairs in #142
+and #147 preserve exact-one assertions without suppression; their current
+signed stacks are published and remote rescanning is pending.
 The hourly chat continuation checks live Linear/PR state before picking work.
-PR publication does not authorize merging. GitHub's default CodeQL setup scans
-PRs into default/protected `dev`; children targeting unprotected stack branches
-need their own exact-head security scans after retargeting to `dev` before merge.
+PR publication does not authorize merging. Exact-head dynamic CodeQL runs have
+now been observed on stacked children #142, #143, #146 and #147. Every merge
+requires completed relevant analyses and zero relevant alerts on its own exact
+proposed head. This records observed run availability without assuming why it
+changed or treating an ancestor's scan as a child's qualification.
+
+RURU-100's complete contextual slice is published in draft #149 atop the signed
+RURU-97 contract; source/evidence are in
+[RURU-100's work note](./collaboration-work/RURU-100.md). Atomic native policies
+control account/repository/resource saved reads, sync and explicitly unsupported
+writes. Shared workspace/sidebar consumers distinguish provider inbox semantics,
+permissions and data missingness while retaining authored text/CAS through a
+same-actor authorization refresh. A shared local deadline coordinator repairs
+cooldown eligibility. All 127 collaboration, 44 SDK and 193 desktop tests and
+both independent reviews and native synthetic fixture QA pass locally.
+Current exact-head remote security and platform checks remain separate gates; the
+publication index below remains historical. The separately published RURU-99
+authored-editor/recovery extraction needs narrow merge reconciliation.
+
+Eight scoped PRs are published: #141 foundation, #142 credential cutover, #143
+migration recovery, #144 saved drafts, #145 backup/recovery native core, #146
+provider registry, #147 independent details and #149 contextual capabilities.
+RURU-106 remains In Progress with its desktop/schema/power-loss gates open.
+The next read experience chunks are RURU-77 pull request details and RURU-78
+issue details; both consume the reviewed registry/detail/capability contracts.
+The hourly continuation rechecks live blockers, worktrees, overlap and CI before
+starting them. No PR has been merged.
+
+Subsequent #147 Linux CI captured OS code 26 (`Text file busy`) while launching
+the inherited credential test snapshot. Audit found only two parent-written
+executable snapshots, in RURU-95/RURU-106; both use waited Unix child writers now,
+preserving every hard-kill checkpoint and assertion without retries or changed
+parallelism. Signed repairs passed native/Clippy/review and are propagated through
+the descendant stacks. Current RURU-100 again passes all 127 native tests. New
+exact-head Linux/platform/security runs remain pending; see the work notes for
+the observed errno versus source-inferred descriptor mechanism.
 
 Make GitHub, GitLab and Bitbucket collaboration feel like native local data: cached navigation never waits for provider HTTP, while one Rust runtime keeps durable SQLite projections current across all tabs.
 
