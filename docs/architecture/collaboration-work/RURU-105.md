@@ -3,7 +3,8 @@
 Issue: [RURU-105](https://linear.app/catra/issue/RURU-105/test-schema-evolution-and-recoverable-migration-failures).
 Architecture: [remote collaboration engine](../remote-collaboration-engine.md),
 section 19. Foundation: `baafef75` (PR #141). Integration base: RURU-95 credential
-cutover `449db366afab455b751cd691f0deb8aa421105dc`.
+cutover `8335c51a5602edf1e716fd6ba2c5e602d2e53c8f`
+([PR #142](https://github.com/ruru-m07/gitru/pull/142)).
 
 ## Implementation
 
