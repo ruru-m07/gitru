@@ -31,6 +31,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
+        .plugin(commands::collaboration_local_links::lifetime_plugin())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level_for("tao", LevelFilter::Off)
@@ -87,6 +88,13 @@ pub fn run() {
             commands::collaboration_demand::collaboration_inspect_demand_owner,
             commands::collaboration_demand::collaboration_set_demand_owner_activity,
             commands::collaboration_demand::collaboration_dispose_demand_owner,
+            commands::collaboration_local_links::collaboration_local_links,
+            commands::collaboration_local_links::collaboration_confirm_local_link,
+            commands::collaboration_local_links::collaboration_remove_local_link,
+            commands::collaboration_local_links::collaboration_save_transport_binding,
+            commands::collaboration_local_links::collaboration_remove_transport_binding,
+            commands::collaboration_local_links::collaboration_local_clones,
+            commands::collaboration_local_links::collaboration_validate_local_navigation,
             ipc::commands::add_local_git_repo,
             ipc::commands::clone_repository,
             ipc::commands::cancel_clone_repository,

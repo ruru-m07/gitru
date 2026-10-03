@@ -14,6 +14,10 @@ log = "0.4"
 git = { path = "../git" }
 notify = "8.2.0"
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
+sha2 = "0.10"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
 
 [dev-dependencies]
 tempfile = "3"

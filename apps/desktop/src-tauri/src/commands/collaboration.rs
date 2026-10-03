@@ -14,6 +14,8 @@ use tokio::sync::OnceCell;
 pub struct CollaborationState {
     pub runtime: OnceCell<Result<Arc<CollaborationRuntime>, CollaborationError>>,
     pub(super) demand_hosts: tokio::sync::Mutex<std::collections::HashMap<String, bool>>,
+    pub(super) local_link_previews: super::collaboration_local_links::LocalLinkPreviews,
+    pub(super) webview_lifetimes: super::collaboration_local_links::NativeWebviewLifetimes,
 }
 
 impl CollaborationState {
@@ -60,6 +62,8 @@ pub(super) enum Operation {
     InspectDemandOwner,
     SetDemandOwner,
     DisposeDemandOwner,
+    LocalLinks,
+    TransportBindings,
 }
 
 impl Operation {
@@ -73,6 +77,7 @@ impl Operation {
                 | Self::InspectDemandOwner
                 | Self::SetDemandOwner
                 | Self::DisposeDemandOwner
+                | Self::TransportBindings
         )
     }
 }
@@ -335,12 +340,14 @@ mod tests {
         Operation::AcquireDemand,
         Operation::RenewDemand,
         Operation::ReleaseDemand,
+        Operation::LocalLinks,
     ];
     const CREDENTIAL_OPERATIONS: &[Operation] = &[
         Operation::ConnectGithub,
         Operation::DiscoverGithubCli,
         Operation::ConnectGithubCli,
         Operation::Disconnect,
+        Operation::TransportBindings,
     ];
     const HOST_OPERATIONS: &[Operation] = &[
         Operation::InspectDemandOwner,
@@ -402,31 +409,31 @@ mod tests {
             "http://tauri.localhost/app/pulls",
         ] {
             let app = url::Url::parse(address).unwrap();
-            assert!(caller_allowed("main", &app, Operation::SetDemandOwner));
-            assert!(caller_allowed(
-                "tab-webview:1",
-                &app,
-                Operation::AcquireDemand
-            ));
-            assert!(!caller_allowed(
-                "tab-webview:1",
-                &app,
-                Operation::SetDemandOwner
-            ));
+            for operation in [Operation::SetDemandOwner, Operation::TransportBindings] {
+                assert!(caller_allowed("main", &app, operation));
+                assert!(!caller_allowed("tab-webview:1", &app, operation));
+            }
+            for operation in [Operation::AcquireDemand, Operation::LocalLinks] {
+                assert!(caller_allowed("tab-webview:1", &app, operation));
+            }
         }
         for address in [
             "http://localhost:1420/app/pulls",
             "http://127.0.0.1:1420/app/pulls",
         ] {
             let app = url::Url::parse(address).unwrap();
-            assert_eq!(
-                caller_allowed("main", &app, Operation::SetDemandOwner),
-                cfg!(debug_assertions)
-            );
-            assert_eq!(
-                caller_allowed("tab-webview:1", &app, Operation::AcquireDemand),
-                cfg!(debug_assertions)
-            );
+            for operation in [Operation::SetDemandOwner, Operation::TransportBindings] {
+                assert_eq!(
+                    caller_allowed("main", &app, operation),
+                    cfg!(debug_assertions)
+                );
+            }
+            for operation in [Operation::AcquireDemand, Operation::LocalLinks] {
+                assert_eq!(
+                    caller_allowed("tab-webview:1", &app, operation),
+                    cfg!(debug_assertions)
+                );
+            }
         }
     }
 }

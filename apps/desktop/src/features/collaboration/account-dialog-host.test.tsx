@@ -1,14 +1,19 @@
 import { collaborationKeys } from "@gitru/collaboration-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useAppStore } from "@/store/use-app-store";
 import {
   fixtureAccounts,
   fixtureGithubCli,
 } from "../../../tests/fixtures/collaboration";
-import { mockTauriCommandResult } from "../../../tests/mocks/tauri";
+import { fixtureInspection } from "../../../tests/fixtures/local-links";
+import {
+  mockTauriCommand,
+  mockTauriCommandResult,
+} from "../../../tests/mocks/tauri";
 import { ACCOUNT_SETTINGS_OPEN_EVENT } from "./account-dialog-events";
 import { AccountDialogHost } from "./account-dialog-host";
 import { AccountSettingsButton } from "./account-manager";
@@ -31,11 +36,32 @@ vi.mock("@tauri-apps/api/webview", () => ({
 vi.mock("@/components/webview-tab-host", () => ({
   setTabWebviewsSuspended: native.suspend,
 }));
+vi.mock("@tauri-apps/plugin-store", () => ({
+  Store: {
+    load: async () => ({
+      get: async () => null,
+      set: async () => {},
+      save: async () => {},
+    }),
+  },
+}));
 
 type Handler = () => void;
 let handler: Handler | undefined;
 const caches: QueryClient[] = [];
+const initialStore = useAppStore.getState();
 beforeEach(() => {
+  const matches = Element.prototype.matches;
+  vi.spyOn(Element.prototype, "matches").mockImplementation(function (
+    this: Element,
+    selector: string,
+  ) {
+    // jsdom has no top layer; its CSS matcher recurses for these three
+    // unsupported selectors used by Floating UI during Select positioning.
+    return [":modal", ":fullscreen", ":popover-open"].includes(selector)
+      ? false
+      : matches.call(this, selector);
+  });
   native.label = "main";
   handler = undefined;
   native.listen.mockReset().mockImplementation(async (_event, receive) => {
@@ -55,6 +81,7 @@ afterEach(async () => {
     await Promise.resolve();
   });
   for (const cache of caches.splice(0)) cache.clear();
+  useAppStore.setState(initialStore);
 });
 
 function mount(component: React.ReactNode) {
@@ -80,6 +107,75 @@ function host() {
 }
 
 describe("main account dialog host", () => {
+  it("chooses a registered transport repository inside the real suspended account dialog", async () => {
+    useAppStore.getState().setRepositories([
+      {
+        id: "registered-a",
+        name: "project",
+        path: "/synthetic/a",
+        has_uncommitted_changes: false,
+        last_updated: 0,
+      },
+      {
+        id: "registered-b",
+        name: "project",
+        path: "/synthetic/b",
+        has_uncommitted_changes: false,
+        last_updated: 0,
+      },
+    ]);
+    const inspect = mockTauriCommand(
+      "collaboration_local_links",
+      (payload) => ({
+        ...fixtureInspection(),
+        local_repository_id: (payload as { localRepositoryId: string })
+          .localRepositoryId,
+      }),
+    );
+    const save = mockTauriCommandResult(
+      "collaboration_save_transport_binding",
+      {},
+    );
+    mount(host());
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Accounts" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Connected accounts",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Repository transports" }),
+    );
+    const body = within(dialog).getByRole("region", {
+      name: "Account and repository settings",
+    });
+    await user.click(
+      within(body).getByRole("combobox", {
+        name: "Registered local repository",
+      }),
+    );
+    const choice = await screen.findByRole("option", {
+      name: "project · /synthetic/b",
+    });
+    expect(choice).toBeVisible();
+    expect(
+      within(dialog).getByRole("heading", { name: "Connected accounts" }),
+    ).toBeVisible();
+    expect(inspect).not.toHaveBeenCalled();
+    await user.hover(choice);
+    await user.click(choice);
+    await waitFor(() =>
+      expect(inspect).toHaveBeenCalledExactlyOnceWith({
+        localRepositoryId: "registered-b",
+      }),
+    );
+    expect(
+      await within(body).findByRole("combobox", {
+        name: "Provider installation account",
+      }),
+    ).toBeVisible();
+    expect(native.suspend).toHaveBeenCalledWith(true);
+    expect(save).not.toHaveBeenCalled();
+  });
   it("routes a child button to the explicit main webview without mounting credential controls", async () => {
     native.label = "tab-webview:inbox";
     const discover = mockTauriCommandResult(

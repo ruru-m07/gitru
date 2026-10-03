@@ -14,6 +14,7 @@ use uuid::Uuid;
 mod contextual_capabilities;
 pub(crate) mod details;
 mod identities;
+mod local_links;
 mod resource_metadata;
 
 use crate::{

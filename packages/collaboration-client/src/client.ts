@@ -4,6 +4,7 @@ import {
   type CapabilityTarget,
   type ChangePage,
   type CollaborationChange,
+  type ConfirmLocalLinkPreview,
   type ContextCapabilityRequest,
   type ContextualCapabilitySnapshot,
   type DemandTarget,
@@ -14,13 +15,22 @@ import {
   type ItemPage,
   type ItemQuery,
   type ItemSnapshot,
+  type LocalCloneRequest,
+  type LocalCloneSnapshot,
   type LocalDraft,
+  type LocalLinkInspection,
+  type LocalLinkVersion,
+  type LocalLinkWriteReceipt,
+  type LocalNavigationReceipt,
+  type LocalNavigationRequest,
+  type LocalTransportBinding,
   type RefreshReceipt,
   type RefreshRequest,
   type RemoteAccount,
   type RepositorySnapshot,
   type ResourceLocator,
   type ResourceResolution,
+  type TransportBindingRequest,
 } from "@gitru/commands";
 import type { QueryClient } from "@tanstack/react-query";
 import {
@@ -36,6 +46,23 @@ import {
 import { compareRevisions, RevisionBridge } from "./revision-bridge";
 
 export interface CollaborationTransport extends DemandTransport {
+  localLinks(localRepositoryId: string): Promise<LocalLinkInspection>;
+  confirmLocalLink(
+    request: ConfirmLocalLinkPreview,
+  ): Promise<LocalLinkWriteReceipt>;
+  removeLocalLink(version: LocalLinkVersion): Promise<string>;
+  saveTransportBinding(
+    request: TransportBindingRequest,
+  ): Promise<LocalTransportBinding>;
+  removeTransportBinding(
+    version: LocalLinkVersion,
+    bindingsGeneration: string,
+  ): Promise<string>;
+  localClones(request: LocalCloneRequest): Promise<LocalCloneSnapshot>;
+  validateLocalNavigation(
+    request: LocalNavigationRequest,
+  ): Promise<LocalNavigationReceipt>;
+  listenLocalChanges(onWake: () => void): Promise<() => void>;
   accounts(): Promise<AccountSnapshot>;
   connectGithub(token: string): Promise<RemoteAccount>;
   discoverGithubCli(): Promise<GithubCliDiscovery>;
@@ -68,6 +95,21 @@ export interface CollaborationTransport extends DemandTransport {
 
 export const collaborationKeys = {
   all: ["collaboration"] as const,
+  localLinks: (localRepositoryId: string, version: number) =>
+    ["collaboration", "local-links", localRepositoryId, version] as const,
+  localClones: (
+    account: RemoteAccount,
+    instanceId: string,
+    repositoryId: string,
+  ) =>
+    [
+      ...collaborationKeys.account(account.id),
+      account.authorization_epoch,
+      "local-clones",
+      account.actor_id,
+      instanceId,
+      repositoryId,
+    ] as const,
   accounts: (version: number) =>
     ["collaboration", "accounts", version] as const,
   githubCli: ["collaboration", "github-cli-accounts"] as const,
@@ -125,6 +167,7 @@ export const collaborationKeys = {
 };
 
 const ACCOUNTS_SCOPE = "$accounts";
+const LOCAL_LINKS_SCOPE = "$local-links";
 
 /** Account-bound local reads and explicit background sync intents. No provider HTTP. */
 export class CollaborationClient {
@@ -173,6 +216,70 @@ export class CollaborationClient {
     return snapshot;
   }
 
+  async localLinks(localRepositoryId: string, signal?: AbortSignal) {
+    const inspection = await this.fence.read(
+      LOCAL_LINKS_SCOPE,
+      () => this.transport.localLinks(localRepositoryId),
+      signal,
+    );
+    this.acceptSnapshot(inspection.snapshot);
+    return inspection;
+  }
+  async confirmLocalLink(request: ConfirmLocalLinkPreview) {
+    const receipt = await this.fence.read(LOCAL_LINKS_SCOPE, () =>
+      this.transport.confirmLocalLink({ ...request }),
+    );
+    this.acceptSnapshot(receipt);
+    await this.invalidateLocalLinks();
+    return receipt;
+  }
+  async removeLocalLink(version: LocalLinkVersion) {
+    const revision = await this.fence.read(LOCAL_LINKS_SCOPE, () =>
+      this.transport.removeLocalLink({ ...version }),
+    );
+    await this.invalidateLocalLinks();
+    return revision;
+  }
+  async saveTransportBinding(request: TransportBindingRequest) {
+    const binding = await this.fence.read(LOCAL_LINKS_SCOPE, () =>
+      this.transport.saveTransportBinding({ ...request }),
+    );
+    await this.invalidateLocalLinks();
+    return binding;
+  }
+  async removeTransportBinding(
+    version: LocalLinkVersion,
+    bindingsGeneration: string,
+  ) {
+    const revision = await this.fence.read(LOCAL_LINKS_SCOPE, () =>
+      this.transport.removeTransportBinding({ ...version }, bindingsGeneration),
+    );
+    await this.invalidateLocalLinks();
+    return revision;
+  }
+  validateLocalNavigation(
+    request: LocalNavigationRequest,
+    signal?: AbortSignal,
+  ) {
+    return this.fence.read(
+      LOCAL_LINKS_SCOPE,
+      () => this.transport.validateLocalNavigation({ ...request }),
+      signal,
+    );
+  }
+  async invalidateLocalLinks() {
+    this.fence.invalidate(LOCAL_LINKS_SCOPE);
+    if (!this.queryClient) return;
+    const affected = {
+      predicate: (query: { queryKey: readonly unknown[] }) =>
+        query.queryKey[0] === "collaboration" &&
+        (query.queryKey[1] === "local-links" ||
+          query.queryKey[4] === "local-clones"),
+    };
+    await this.queryClient.cancelQueries(affected);
+    await this.queryClient.invalidateQueries(affected);
+  }
+
   forAccount(account: RemoteAccount) {
     const read = async <
       T extends { authorization_view: string; revision: string },
@@ -184,9 +291,29 @@ export class CollaborationClient {
       this.acceptSnapshot(snapshot);
       return snapshot;
     };
+    const cloneAccount = {
+      id: account.id,
+      authorization_epoch: account.authorization_epoch,
+    };
     return {
       retainDemand: (target: DemandTarget) =>
         this.retainDemand(account, target),
+      localClones: (
+        instanceId: string,
+        repositoryId: string,
+        signal?: AbortSignal,
+      ) =>
+        this.fence.read(
+          cloneAccount.id,
+          () =>
+            this.transport.localClones({
+              account_id: cloneAccount.id,
+              authorization_epoch: cloneAccount.authorization_epoch,
+              instance_id: instanceId,
+              repository_id: repositoryId,
+            }),
+          signal,
+        ),
       repositories: (signal?: AbortSignal) =>
         read(() => this.transport.repositories(account.id), signal),
       items: (query: Omit<ItemQuery, "account_id">, signal?: AbortSignal) =>
@@ -286,6 +413,17 @@ export class CollaborationClient {
     if (this.bridge) return () => {};
     this.queryClient = queryClient;
     const stopDeadlines = installCapabilityDeadlines(queryClient);
+    let disposed = false;
+    let stopLocalChanges: (() => void) | undefined;
+    void this.transport
+      .listenLocalChanges(() => {
+        if (!disposed) void this.invalidateLocalLinks();
+      })
+      .then((remove) => {
+        if (disposed) remove();
+        else stopLocalChanges = remove;
+      })
+      .catch(() => {});
     const bridge = new RevisionBridge<CollaborationChange>(
       {
         listen: this.transport.listen,
@@ -308,6 +446,17 @@ export class CollaborationClient {
         if (batch.reset || authorizationChanged) this.resetLocalView();
         this.authorizationView = batch.authorizationView ?? null;
         this.authorizationRevision = batch.toInclusive;
+        if (
+          batch.changes.some(
+            (change) =>
+              change.reset ||
+              change.scope === "account" ||
+              change.scope === "repositories" ||
+              change.scope === "local_transport_bindings" ||
+              change.scope.startsWith("local_link:"),
+          )
+        )
+          await this.invalidateLocalLinks();
         for (const change of batch.changes) {
           if (change.reset) this.clearAccount(change.account_id);
           for (const listener of this.changeListeners) listener(change);
@@ -342,6 +491,8 @@ export class CollaborationClient {
     this.demands.attach();
     void bridge.start();
     return () => {
+      disposed = true;
+      stopLocalChanges?.();
       stopDeadlines();
       this.demands.stop();
       bridge.stop();
@@ -369,6 +520,13 @@ export class CollaborationClient {
 
   private clearAccount(accountId: string) {
     this.demands.clear(accountId);
+    this.fence.invalidate(LOCAL_LINKS_SCOPE);
+    void this.queryClient?.cancelQueries({
+      queryKey: ["collaboration", "local-links"],
+    });
+    this.queryClient?.removeQueries({
+      queryKey: ["collaboration", "local-links"],
+    });
     this.fence.invalidate(accountId);
     void this.queryClient?.cancelQueries({
       queryKey: collaborationKeys.account(accountId),

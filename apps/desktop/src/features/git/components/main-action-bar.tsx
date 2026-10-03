@@ -15,6 +15,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
+import { LocalRepositoryLinksButton } from "@/features/collaboration/local-repository-links";
 import {
   useGetCurrentBranch,
   useGetRepoOperation,
@@ -108,6 +109,7 @@ export const MainActionBar = () => {
           {syncState.detail}
         </span>
       </div>
+      <LocalRepositoryLinksButton />
     </div>
   );
 
@@ -186,6 +188,7 @@ export const MainActionBar = () => {
           </>
         )}
       </div>
+      <LocalRepositoryLinksButton />
     </div>
   );
 };

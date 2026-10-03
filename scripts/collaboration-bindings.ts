@@ -20,6 +20,18 @@ const resourceMetadata = await Bun.file(
 const demand = await Bun.file(
   new URL("crates/collaboration/src/demand.rs", root),
 ).text();
+const localLinks = await Bun.file(
+  new URL("crates/collaboration/src/local_links.rs", root),
+).text();
+const gitRemotes = await Bun.file(
+  new URL("crates/git/models/remotes.rs", root),
+).text();
+const linkCommands = await Bun.file(
+  new URL(
+    "apps/desktop/src-tauri/src/commands/collaboration_local_links.rs",
+    root,
+  ),
+).text();
 const output = new URL("packages/commands/src/types.ts", root);
 let generated = await Bun.file(output).text();
 const snake = (value: string) =>
@@ -32,6 +44,9 @@ for (const source of [
   contextualCapabilities,
   resourceMetadata,
   demand,
+  localLinks,
+  gitRemotes,
+  linkCommands,
 ]) {
   for (const match of source.matchAll(
     /#\[serde\(rename_all = "snake_case"\)\]\s*pub enum (\w+)\s*\{([^}]+)\}/g,
@@ -115,5 +130,5 @@ if (await eventsFile.exists()) {
   );
   if (!/\bEvent\b/.test(eventUses.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "")))
     events = events.replace(/,\s*type Event(?=\s*[,}])/, "");
-  await Bun.write(eventsOutput, events);
+  await Bun.write(eventsOutput, `${events.trimEnd()}\n`);
 }

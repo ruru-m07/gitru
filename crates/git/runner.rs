@@ -6,7 +6,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use std::time::{Duration, Instant};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 use tokio::time::{sleep, timeout};
 
@@ -147,6 +147,55 @@ impl GitCommandRunner {
 }
 
 impl GitCommandTransaction {
+    /// Bounded local metadata read. Raw diagnostics are discarded before return.
+    /// This method intentionally does not share the ordinary stderr fallback.
+    pub(crate) async fn sensitive_read(
+        &mut self,
+        args: &[&str],
+        maximum: usize,
+    ) -> Result<(Vec<u8>, i32), crate::models::remotes::RemoteObservationError> {
+        use crate::models::remotes::RemoteObservationError as Error;
+        let binary = git_binary_path().map_err(|_| Error::Unavailable)?;
+        let path = git_path_env().map_err(|_| Error::Unavailable)?;
+        let mut command = tokio::process::Command::new(binary);
+        command
+            .current_dir(&self.repo_path)
+            .args(args)
+            .env("PATH", path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        for (key, _) in std::env::vars_os() {
+            if key.to_str().is_some_and(|k| {
+                let upper = k.to_ascii_uppercase();
+                upper.starts_with("GIT_TRACE") || upper == "GIT_CURL_VERBOSE"
+            }) {
+                command.env_remove(key);
+            }
+        }
+        command.env("GIT_TERMINAL_PROMPT", "0");
+        let mut child = command
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|_| Error::Unavailable)?;
+        let stdout = child.stdout.take().ok_or(Error::Unavailable)?;
+        let mut bytes = Vec::new();
+        let read = async {
+            stdout
+                .take(maximum as u64 + 1)
+                .read_to_end(&mut bytes)
+                .await
+                .map_err(|_| Error::Unavailable)?;
+            if bytes.len() > maximum {
+                return Err(Error::LimitExceeded);
+            }
+            Ok(())
+        };
+        let wait = async { child.wait().await.map_err(|_| Error::Unavailable) };
+        let (_, status) = tokio::try_join!(read, wait)?;
+        Ok((bytes, status.code().ok_or(Error::Unavailable)?))
+    }
+
     pub async fn run_with_options(
         &mut self,
         args: &[&str],
