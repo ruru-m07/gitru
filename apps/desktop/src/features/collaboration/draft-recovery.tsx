@@ -1,0 +1,219 @@
+import {
+  collaboration,
+  collaborationErrorMessage,
+  type RemoteAccount,
+} from "@gitru/collaboration-client";
+import {
+  draftsQueryOptions,
+  useCollaborationVersion,
+} from "@gitru/collaboration-client/react";
+import { Button } from "@gitru/ui/components/button";
+import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from "@gitru/ui/components/select";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { SavedDraftEditor } from "./private-draft";
+import { CollaborationStatePanel } from "./state-panel";
+
+export function DraftRecovery({ accounts }: { accounts: RemoteAccount[] }) {
+  const [accountId, setAccountId] = useState<string | null>(
+    accounts[0]?.id ?? null,
+  );
+  const accountItems = useMemo(
+    () =>
+      accounts.map((candidate) => ({
+        label: `@${candidate.login} · ${candidate.host}`,
+        value: candidate.id,
+      })),
+    [accounts],
+  );
+  const account =
+    accounts.find((candidate) => candidate.id === accountId) ?? accounts[0];
+  return (
+    <section
+      className="flex min-h-0 flex-1 flex-col"
+      aria-label="Private draft recovery"
+    >
+      <div className="space-y-2 border-b px-5 py-3">
+        <h2 className="text-sm font-medium">Saved private drafts</h2>
+        <p className="text-xs text-muted-foreground">
+          Recover your text even when an account is disconnected or an item is
+          unavailable. Drafts stay on this device.
+        </p>
+        {account ? (
+          <Select
+            key={accounts.map((candidate) => candidate.id).join(":")}
+            items={accountItems}
+            value={account.id}
+            onValueChange={setAccountId}
+          >
+            <SelectTrigger
+              size="sm"
+              className="w-full max-w-sm"
+              aria-label="Draft account"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectPopup>
+              {accounts.map((candidate) => (
+                <SelectItem key={candidate.id} value={candidate.id}>
+                  @{candidate.login} · {candidate.host}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        ) : null}
+        {account ? (
+          <p className="text-xs text-muted-foreground">
+            {account.state === "disconnected"
+              ? "Disconnected account"
+              : account.state === "auth_required"
+                ? "Account needs reconnection"
+                : "Connected account"}{" "}
+            · Local drafts remain editable
+          </p>
+        ) : null}
+      </div>
+      {account ? (
+        <AccountDrafts key={account.id} account={account} />
+      ) : (
+        <CollaborationStatePanel title="No saved accounts">
+          Saved drafts from your connected accounts will appear here.
+        </CollaborationStatePanel>
+      )}
+    </section>
+  );
+}
+
+function AccountDrafts({ account }: { account: RemoteAccount }) {
+  const [cursors, setCursors] = useState<Array<string | null>>([null]);
+  const [subjectId, setSubjectId] = useState<string | null>(null);
+  const version = useCollaborationVersion();
+  const [observedVersion, setObservedVersion] = useState(version);
+  if (observedVersion !== version) {
+    setObservedVersion(version);
+    if (cursors.length > 1) setCursors([null]);
+  }
+  useEffect(
+    () =>
+      collaboration.subscribeChanges((change) => {
+        if (change.account_id === account.id && change.scope === "drafts") {
+          setCursors((values) => (values.length > 1 ? [null] : values));
+        }
+      }),
+    [account.id],
+  );
+  const query = useQuery(
+    draftsQueryOptions(account, { cursor: cursors.at(-1) ?? null, limit: 50 }),
+  );
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        className={`grid min-h-0 flex-1 ${subjectId ? "md:grid-cols-2" : "grid-cols-1"}`}
+      >
+        <div
+          className={`min-w-0 overflow-y-auto ${subjectId ? "hidden md:block" : ""}`}
+        >
+          {query.isPending ? (
+            <p
+              className="px-5 py-4 text-sm text-muted-foreground"
+              role="status"
+            >
+              Loading saved drafts…
+            </p>
+          ) : query.isError ? (
+            <div className="space-y-2 p-5">
+              <p role="alert" className="text-sm text-destructive-foreground">
+                {collaborationErrorMessage(query.error)}
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  void query.refetch();
+                }}
+              >
+                Retry saved drafts
+              </Button>
+            </div>
+          ) : !query.data?.drafts.length ? (
+            <p className="px-5 py-4 text-sm text-muted-foreground">
+              No saved drafts for this account.
+            </p>
+          ) : (
+            query.data.drafts.map((draft) => (
+              <Button
+                key={draft.subject_id}
+                variant="ghost"
+                className="h-auto w-full min-w-0 flex-col items-start gap-1 rounded-none border-b px-5 py-3 text-left whitespace-normal"
+                aria-label={`Open draft for ${draft.subject_id}`}
+                aria-pressed={subjectId === draft.subject_id}
+                onClick={() => setSubjectId(draft.subject_id)}
+              >
+                <span className="w-full break-all text-xs font-medium">
+                  {draft.subject_id}
+                </span>
+                <span className="line-clamp-2 w-full break-words text-sm text-muted-foreground">
+                  {draft.preview || "Empty draft"}
+                </span>
+              </Button>
+            ))
+          )}
+        </div>
+        {subjectId ? (
+          <article
+            className="min-w-0 overflow-y-auto border-l p-5"
+            aria-label="Recovered private draft"
+          >
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setSubjectId(null)}
+            >
+              Back to drafts
+            </Button>
+            <h3 className="mt-4 break-all text-sm font-medium">{subjectId}</h3>
+            <p className="mt-2 text-xs text-muted-foreground">
+              @{account.login} · {account.host}
+            </p>
+            <SavedDraftEditor
+              key={`${account.id}:${subjectId}`}
+              account={account}
+              subjectId={subjectId}
+            />
+          </article>
+        ) : null}
+      </div>
+      {query.data?.next_cursor || cursors.length > 1 ? (
+        <footer className="flex shrink-0 gap-2 border-t px-5 py-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={cursors.length <= 1}
+            onClick={() => {
+              setCursors((values) => values.slice(0, -1));
+            }}
+          >
+            Previous drafts
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={!query.data?.next_cursor}
+            onClick={() => {
+              if (query.data?.next_cursor)
+                setCursors((values) => [...values, query.data.next_cursor]);
+            }}
+          >
+            Next drafts
+          </Button>
+        </footer>
+      ) : null}
+    </div>
+  );
+}

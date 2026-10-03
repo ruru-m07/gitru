@@ -1130,3 +1130,159 @@ async fn cursor_depends_on_the_selected_projection_instead_of_unrelated_runtime_
         "Changing the selected projection invalidates its cursor"
     );
 }
+
+#[tokio::test]
+async fn recovery_enumerates_only_authored_drafts_after_disconnect_and_restart() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("recovery.db");
+    let store = Store::open(&path).await.unwrap();
+    connect(&store, "a").await;
+    connect(&store, "b").await;
+    for (account_id, body) in [("a", "My private text 🪴"), ("b", "Another actor's text")] {
+        store
+            .save_draft(LocalDraft {
+                account_id: account_id.into(),
+                subject_id: "missing-subject".into(),
+                body: body.into(),
+                generation: "0".into(),
+            })
+            .await
+            .unwrap();
+    }
+    let run_id = run(&store, "a").await;
+    store
+        .apply_page(page("a", &run_id, vec![item("a", "provider-only")], true))
+        .await
+        .unwrap();
+    store.disconnect("a").await.unwrap();
+    store.close().await;
+    drop(store);
+    let store = Store::open(&path).await.unwrap();
+    let recovered = store
+        .query_drafts(DraftQuery {
+            account_id: "a".into(),
+            cursor: None,
+            limit: 50,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        recovered.drafts,
+        vec![DraftSummary {
+            subject_id: "missing-subject".into(),
+            preview: "My private text 🪴".into(),
+            generation: "1".into()
+        }]
+    );
+    assert_eq!(recovered.next_cursor, None);
+    let mut draft = store.draft("a", "missing-subject").await.unwrap().unwrap();
+    let old = draft.clone();
+    draft.body = "Recovered and edited offline".into();
+    assert_eq!(store.save_draft(draft).await.unwrap().generation, "2");
+    assert_eq!(
+        store.save_draft(old).await.unwrap_err().code,
+        ErrorCode::StaleView
+    );
+    assert_eq!(
+        store
+            .draft("a", "missing-subject")
+            .await
+            .unwrap()
+            .unwrap()
+            .body,
+        "Recovered and edited offline"
+    );
+    assert_eq!(
+        store
+            .draft("b", "missing-subject")
+            .await
+            .unwrap()
+            .unwrap()
+            .body,
+        "Another actor's text"
+    );
+}
+
+#[tokio::test]
+async fn recovery_pages_are_bounded_and_cursors_cannot_cross_actor_partitions() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::open(temp.path().join("recovery.db")).await.unwrap();
+    store.upsert_account(account("a")).await.unwrap();
+    store.upsert_account(account("b")).await.unwrap();
+    for index in 0..105 {
+        store
+            .save_draft(LocalDraft {
+                account_id: "a".into(),
+                subject_id: format!("subject-{index:03}"),
+                body: "界".repeat(200),
+                generation: "0".into(),
+            })
+            .await
+            .unwrap();
+    }
+    let query = DraftQuery {
+        account_id: "a".into(),
+        cursor: None,
+        limit: 50,
+    };
+    let first = store.query_drafts(query.clone()).await.unwrap();
+    assert_eq!(first.drafts.len(), 50);
+    assert_eq!(first.drafts[0].preview.chars().count(), 160);
+    let second = store
+        .query_drafts(DraftQuery {
+            cursor: first.next_cursor.clone(),
+            ..query.clone()
+        })
+        .await
+        .unwrap();
+    assert_eq!(second.drafts.len(), 50);
+    assert_eq!(second.drafts[0].subject_id, "subject-050");
+    let last = store
+        .query_drafts(DraftQuery {
+            cursor: second.next_cursor,
+            ..query.clone()
+        })
+        .await
+        .unwrap();
+    assert_eq!(last.drafts.len(), 5);
+    assert_eq!(last.next_cursor, None);
+    let crossed = DraftQuery {
+        account_id: "b".into(),
+        cursor: first.next_cursor,
+        limit: 50,
+    };
+    assert_eq!(
+        store.query_drafts(crossed).await.unwrap_err().code,
+        ErrorCode::InvalidInput
+    );
+    for limit in [0, 101, u32::MAX] {
+        assert_eq!(
+            store
+                .query_drafts(DraftQuery {
+                    limit,
+                    ..query.clone()
+                })
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::InvalidInput
+        );
+    }
+    for cursor in [
+        "not-json".to_owned(),
+        "x".repeat(4097),
+        r#"{"version":2,"account_id":"a","subject_id":"s"}"#.into(),
+    ] {
+        assert_eq!(
+            store
+                .query_drafts(DraftQuery {
+                    cursor: Some(cursor),
+                    ..query.clone()
+                })
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::InvalidInput
+        );
+    }
+}

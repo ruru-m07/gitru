@@ -1,4 +1,4 @@
-import type { ItemQuery, RemoteAccount } from "@gitru/commands";
+import type { DraftQuery, ItemQuery, RemoteAccount } from "@gitru/commands";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 import { collaboration, collaborationKeys } from "./index";
@@ -103,5 +103,18 @@ export function draftQueryOptions(account: RemoteAccount, subjectId: string) {
     queryKey: collaborationKeys.draft(account, subjectId),
     queryFn: ({ signal }) =>
       collaboration.forAccount(account).draft(subjectId, signal),
+  });
+}
+
+export function draftsQueryOptions(
+  account: RemoteAccount,
+  query: Omit<DraftQuery, "account_id">,
+) {
+  const fullQuery = { ...query, account_id: account.id };
+  return queryOptions({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.drafts(account, fullQuery),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).drafts(query, signal),
   });
 }

@@ -3,8 +3,11 @@ import {
   collaborationAccounts,
   collaborationConnectGithubCli,
   collaborationDiscoverGithubCli,
+  collaborationDrafts,
+  collaborationExportDraft,
   collaborationItem,
   collaborationItems,
+  DraftPageSchema,
   GithubCliDiscoverySchema,
   ItemPageSchema,
   ItemQuerySchema,
@@ -16,6 +19,43 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 afterEach(() => invoke.mockReset());
 
 describe("generated collaboration wire contract", () => {
+  it("keeps recovery cursors nullable and exports only saved draft identities", async () => {
+    expect(
+      DraftPageSchema.parse({
+        drafts: [
+          {
+            subject_id: "missing",
+            preview: "authored text",
+            generation: "9007199254740993",
+          },
+        ],
+        next_cursor: null,
+      }).next_cursor,
+    ).toBeNull();
+    invoke.mockResolvedValue(false);
+    await collaborationDrafts({
+      query: { account_id: "actor", cursor: null, limit: 50 },
+    });
+    await collaborationExportDraft({
+      accountId: "actor",
+      subjectId: "missing",
+      generation: "9007199254740993",
+    });
+    expect(invoke.mock.calls).toEqual([
+      [
+        "collaboration_drafts",
+        { query: { account_id: "actor", cursor: null, limit: 50 } },
+      ],
+      [
+        "collaboration_export_draft",
+        {
+          accountId: "actor",
+          subjectId: "missing",
+          generation: "9007199254740993",
+        },
+      ],
+    ]);
+  });
   it("accepts metadata-only CLI discovery states without credentials", () => {
     const discovery = GithubCliDiscoverySchema.parse({
       status: "available",

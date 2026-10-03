@@ -41,6 +41,7 @@ openssl = { version = "0.10.80", features = ["vendored"] }
 tauri-plugin-log = "2"
 log = "0.4"
 url = "2"
+tempfile = "3"
 tauri-plugin-wdio = { version = "=1.4.0", optional = true }
 tauri-plugin-wdio-webdriver = { version = "=1.4.0", optional = true }
 

@@ -6,6 +6,8 @@ import {
   collaborationDisconnect,
   collaborationDiscoverGithubCli,
   collaborationDraft,
+  collaborationDrafts,
+  collaborationExportDraft,
   collaborationItem,
   collaborationItems,
   collaborationRefresh,
@@ -18,9 +20,13 @@ import { listen } from "@tauri-apps/api/event";
 import { CollaborationClient } from "./client";
 
 export type {
+  DraftPage,
+  DraftQuery,
+  DraftSummary,
   GithubCliAccount,
   GithubCliDiscovery,
   ItemQuery,
+  LocalDraft,
   RemoteAccount,
   RemoteItem,
   RemoteRepository,
@@ -45,6 +51,9 @@ export const collaboration = new CollaborationClient({
   changesSince: (afterRevision) => collaborationChangesSince({ afterRevision }),
   saveDraft: (draft) => collaborationSaveDraft({ draft }),
   draft: (accountId, subjectId) => collaborationDraft({ accountId, subjectId }),
+  drafts: (query) => collaborationDrafts({ query }),
+  exportDraft: (accountId, subjectId, generation) =>
+    collaborationExportDraft({ accountId, subjectId, generation }),
   listen: (onWake) =>
     listen<{ revision: string }>("gitru:collaboration-change", onWake),
 });
