@@ -1043,6 +1043,26 @@ mod tests {
 
     async fn kill_at(root: &Path, boundary: &str, mode: &str) {
         let executable = root.join(format!("child-{}.exe", Uuid::new_v4()));
+        #[cfg(unix)]
+        {
+            // Only the waited child may open the executable for writing;
+            // concurrent parent forks cannot inherit its writable descriptor.
+            let copied = Command::new("/bin/cp")
+                .arg(std::env::current_exe().unwrap())
+                .arg(&executable)
+                .env_clear()
+                .current_dir(root)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .expect("recovery fixture snapshot writer starts");
+            assert!(
+                copied.success(),
+                "recovery fixture snapshot writer succeeds"
+            );
+        }
+        #[cfg(not(unix))]
         std::fs::copy(std::env::current_exe().unwrap(), &executable).unwrap();
         let marker = root.join(format!("reached-{}.txt", Uuid::new_v4()));
         let log_path = root.join(format!("child-{}.log", Uuid::new_v4()));
