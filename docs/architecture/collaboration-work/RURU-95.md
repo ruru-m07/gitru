@@ -58,3 +58,17 @@ its Store before tearing down the original owner.
 Frozen-v1 fixture upgrade/ledger coverage belongs to the parallel RURU-105 suite.
 Production native-vault/live-PAT and Linux/Windows execution remain separate
 validation gates. No remote CI or platform success is implied by this local run.
+
+CodeQL follow-up (3 October 2026): PR #142 head `20625e17` has one
+`rust/cleartext-logging` alert ([19](https://github.com/ruru-m07/gitru/security/code-scanning/19))
+at the crash child's synthetic `accounts.remove(0)` extraction. The completed
+Rust analysis has no infrastructure error or warning. CodeQL 2.27.1's
+[generated model](https://github.com/github/codeql/blob/6e9f9e38390175c41b99070a423c875f450759ca/rust/ql/lib/ext/generated/modelgenerator/rust.model.yml#L8766)
+classifies `Vec::remove`'s receiver as a logging sink; this test has no account
+logging and uses only its temporary database and fake vault. Checked iteration
+with fixed failure messages now requires exactly one fixture account before
+disconnect. The repair preserves every crash boundary without suppressing the
+rule or changing production behavior. Scoped local verification passes all nine
+credential crash/failure tests (one intentionally ignored subprocess entry point),
+all-target collaboration Clippy with `-D warnings`, workspace formatting and diff
+whitespace checks. Exact-head remote rescanning remains pending for this follow-up.

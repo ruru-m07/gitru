@@ -233,7 +233,14 @@ fn credential_crash_child() {
         .block_on(async {
             let (store, _, _, runtime) = runtime(&root).await;
             if std::env::var("GITRU_CREDENTIAL_CRASH_OPERATION").as_deref() == Ok("disconnect") {
-                let account = store.accounts().await.unwrap().accounts.remove(0);
+                let mut accounts = store.accounts().await.unwrap().accounts.into_iter();
+                let account = accounts
+                    .next()
+                    .expect("disconnect fixture contains an account");
+                assert!(
+                    accounts.next().is_none(),
+                    "disconnect fixture contains exactly one account"
+                );
                 runtime.disconnect(&account.id).await.unwrap();
             } else {
                 runtime
