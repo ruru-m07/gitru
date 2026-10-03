@@ -60,10 +60,18 @@ impl std::error::Error for CredentialError {}
 
 /// Implemented by the application using an OS credential store. Blocking native
 /// calls are made on Tokio's blocking pool by the runtime, never on its scheduler.
+/// Deletion is idempotent: an absent reference is success. A failed store may
+/// still have written the reference, so the runtime retains cleanup evidence.
 pub trait CredentialVault: Send + Sync + 'static {
     fn store(&self, credential_ref: &str, token: &SecretToken) -> Result<(), CredentialError>;
     fn load(&self, credential_ref: &str) -> Result<Option<SecretToken>, CredentialError>;
     fn delete(&self, credential_ref: &str) -> Result<(), CredentialError>;
+}
+
+/// Native cleanup metadata; deliberately absent from every IPC DTO.
+pub struct CredentialCleanup {
+    pub reference: String,
+    pub attempts: u32,
 }
 
 #[cfg(test)]

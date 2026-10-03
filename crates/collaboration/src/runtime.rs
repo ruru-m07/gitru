@@ -20,6 +20,13 @@ use tokio::sync::{Mutex, Notify, broadcast};
 const MAX_QUEUED_SCOPES: usize = 128;
 const MAX_PAGES_PER_REFRESH: usize = 10;
 
+macro_rules! credential_boundary {
+    ($name:literal) => {
+        #[cfg(test)]
+        credential_crash_tests::checkpoint($name);
+    };
+}
+
 #[derive(Clone)]
 struct Job {
     key: String,
@@ -40,15 +47,16 @@ struct Scheduler {
     background_cursor: usize,
 }
 
+#[derive(Clone)]
 pub struct CollaborationRuntime {
     store: Arc<Store>,
     vault: Arc<dyn CredentialVault>,
     provider: Arc<dyn CollaborationProvider>,
-    github_cli: GithubCli,
-    lifecycle: Mutex<()>,
-    scheduler: Mutex<Scheduler>,
+    github_cli: Arc<GithubCli>,
+    lifecycle: Arc<Mutex<()>>,
+    scheduler: Arc<Mutex<Scheduler>>,
     notify: Arc<Notify>,
-    started: AtomicBool,
+    started: Arc<AtomicBool>,
     changes: broadcast::Sender<ChangeHint>,
 }
 
@@ -63,17 +71,17 @@ impl CollaborationRuntime {
             store,
             vault,
             provider,
-            github_cli: GithubCli::disabled(),
-            lifecycle: Mutex::new(()),
-            scheduler: Mutex::new(Scheduler::default()),
+            github_cli: Arc::new(GithubCli::disabled()),
+            lifecycle: Arc::new(Mutex::new(())),
+            scheduler: Arc::new(Mutex::new(Scheduler::default())),
             notify: Arc::new(Notify::new()),
-            started: AtomicBool::new(false),
+            started: Arc::new(AtomicBool::new(false)),
             changes,
         }
     }
 
     pub fn with_github_cli(mut self, github_cli: GithubCli) -> Self {
-        self.github_cli = github_cli;
+        self.github_cli = Arc::new(github_cli);
         self
     }
 
@@ -86,8 +94,7 @@ impl CollaborationRuntime {
         candidate_id: &str,
     ) -> Result<RemoteAccount, CollaborationError> {
         let (expected_login, token) = self.github_cli.import(candidate_id).await?;
-        self.connect_github_token(token, Some(&expected_login))
-            .await
+        self.connect_owned_token(token, Some(expected_login)).await
     }
 
     pub fn store(&self) -> &Arc<Store> {
@@ -122,6 +129,7 @@ impl CollaborationRuntime {
                 };
                 // A damaged database does not terminate scheduling permanently;
                 // a later tick can recover, and local calls report their errors.
+                let _ = runtime.recover_credentials().await;
                 let _ = runtime.enqueue_due().await;
                 while runtime.run_next().await {}
             }
@@ -132,7 +140,28 @@ impl CollaborationRuntime {
         let token = SecretToken::new(token).map_err(|_| {
             CollaborationError::invalid("Enter a valid GitHub personal access token")
         })?;
-        self.connect_github_token(token, None).await
+        self.connect_owned_token(token, None).await
+    }
+
+    async fn connect_owned_token(
+        &self,
+        token: SecretToken,
+        expected_login: Option<String>,
+    ) -> Result<RemoteAccount, CollaborationError> {
+        // Once staging can begin, the runtime owns completion. Dropping the IPC
+        // requester cannot race janitor deletion against a delayed vault write.
+        let runtime = self.clone();
+        tokio::spawn(async move {
+            let result = runtime
+                .connect_github_token(token, expected_login.as_deref())
+                .await;
+            // Release the owned storage/runtime before notifying the requester
+            // that completion has finished (also relevant to reopen tests).
+            drop(runtime);
+            result
+        })
+        .await
+        .map_err(|_| vault_error())?
     }
 
     async fn connect_github_token(
@@ -141,6 +170,7 @@ impl CollaborationRuntime {
         expected_login: Option<&str>,
     ) -> Result<RemoteAccount, CollaborationError> {
         let _lifecycle = self.lifecycle.lock().await;
+        let _ = self.cleanup_credentials_locked().await;
         if self.provider.kind() != ProviderKind::Github {
             return Err(unsupported());
         }
@@ -170,12 +200,18 @@ impl CollaborationRuntime {
             Some(account) => next_epoch(&account.authorization_epoch)?,
             None => "1".to_string(),
         };
-        let previous_token = if previous.is_some() {
-            self.load_token(&id).await?
-        } else {
-            None
-        };
-        self.store_token(&id, &token).await?;
+        let reference = format!("credential:{}", uuid::Uuid::new_v4());
+        credential_boundary!("before_stage");
+        self.store.stage_credential(&id, &reference).await?;
+        credential_boundary!("after_stage");
+        credential_boundary!("before_vault_write");
+        if let Err(error) = self.store_token(&reference, &token).await {
+            // A vault may report failure after a partial side effect. The
+            // journal remains durable until deletion is confirmed.
+            let _ = self.cleanup_credentials_locked().await;
+            return Err(error);
+        }
+        credential_boundary!("after_vault_write");
         let account = RemoteAccount {
             id: id.clone(),
             provider: ProviderKind::Github,
@@ -187,24 +223,19 @@ impl CollaborationRuntime {
             state: AccountState::Active,
             notifications_supported: verified.notifications_supported,
         };
-        let account = match self.store.upsert_account(account).await {
+        credential_boundary!("before_cutover");
+        let account = match self
+            .store
+            .commit_account_credential(account, &reference)
+            .await
+        {
             Ok(account) => account,
             Err(error) => {
-                let compensated = match previous_token {
-                    Some(previous_token) => self.store_token(&id, &previous_token).await,
-                    None => self.delete_token(&id).await,
-                };
-                if compensated.is_err() {
-                    // A vault failure must not leave an old authorized partition
-                    // using a replacement credential of uncertain scope.
-                    if let Ok(revision) = self.store.disconnect(&id).await {
-                        self.publish(revision);
-                    }
-                    return Err(vault_error());
-                }
+                let _ = self.cleanup_credentials_locked().await;
                 return Err(error);
             }
         };
+        credential_boundary!("after_cutover");
         self.reset_account_scheduler(&account.id).await;
         self.publish(self.store.revision().await?);
         if let Err(error) = self
@@ -236,17 +267,29 @@ impl CollaborationRuntime {
                 self.publish(revision);
             }
         }
+        // Promotion has committed even if retirement cleanup fails. Do not
+        // present a working replacement as a failed connection.
+        let _ = self.cleanup_credentials_locked().await;
         Ok(account)
     }
 
     pub async fn disconnect(&self, account_id: &str) -> Result<String, CollaborationError> {
         let _lifecycle = self.lifecycle.lock().await;
+        credential_boundary!("before_disconnect");
+        let reference = self.store.credential_reference(account_id).await?;
         let revision = self.store.disconnect(account_id).await?;
+        credential_boundary!("after_disconnect");
         self.reset_account_scheduler(account_id).await;
         // Epoch invalidation commits before removal, so in-flight observations
         // cannot become visible even if the native vault is temporarily locked.
         self.publish(revision.clone());
-        self.delete_token(account_id).await?;
+        // The explicit disconnect cleans its own secret first, even when the
+        // bounded background batch contains unrelated retired references.
+        if let Some(reference) = reference
+            && let Some(entry) = self.store.credential_cleanup(&reference).await?
+        {
+            self.cleanup_credential_locked(entry).await?;
+        }
         Ok(revision)
     }
 
@@ -616,7 +659,17 @@ impl CollaborationRuntime {
             if account.authorization_epoch != job.account.authorization_epoch {
                 return Err(stale());
             }
-            let token = self.load_token(&account.id).await?.ok_or_else(|| {
+            let reference = self
+                .store
+                .credential_reference(&account.id)
+                .await?
+                .ok_or_else(|| {
+                    CollaborationError::new(
+                        ErrorCode::AuthRequired,
+                        "Reconnect this provider account",
+                    )
+                })?;
+            let token = self.load_token(&reference).await?.ok_or_else(|| {
                 CollaborationError::new(ErrorCode::AuthRequired, "Reconnect this provider account")
             })?;
             (account, token)
@@ -950,6 +1003,53 @@ impl CollaborationRuntime {
         Ok(())
     }
 
+    /// Restart recovery and periodic cleanup use the same bounded durable queue.
+    /// Staged replacements are abandoned, never promoted without a live probe.
+    pub async fn recover_credentials(&self) -> Result<(), CollaborationError> {
+        let _lifecycle = self.lifecycle.lock().await;
+        self.cleanup_credentials_locked().await
+    }
+
+    async fn cleanup_credentials_locked(&self) -> Result<(), CollaborationError> {
+        let pending = self
+            .store
+            .due_credential_cleanup(Utc::now().timestamp(), 8)
+            .await?;
+        let mut failed = false;
+        for entry in pending {
+            if let Err(error) = self.cleanup_credential_locked(entry).await {
+                if error.code != ErrorCode::CredentialStoreUnavailable {
+                    return Err(error);
+                }
+                failed = true;
+            }
+        }
+        if failed { Err(vault_error()) } else { Ok(()) }
+    }
+
+    async fn cleanup_credential_locked(
+        &self,
+        entry: crate::credentials::CredentialCleanup,
+    ) -> Result<(), CollaborationError> {
+        credential_boundary!("before_delete");
+        if self.delete_token(&entry.reference).await.is_ok() {
+            credential_boundary!("after_delete");
+            self.store
+                .finish_credential_cleanup(&entry.reference)
+                .await?;
+            credential_boundary!("after_cleanup");
+            Ok(())
+        } else {
+            // Keep evidence when the vault is locked. Retries never change the
+            // committed account reference or shorten a previous authorization.
+            let delay = (30_i64 * (1_i64 << entry.attempts.min(5))).min(900);
+            self.store
+                .defer_credential_cleanup(&entry.reference, Utc::now().timestamp() + delay)
+                .await?;
+            Err(vault_error())
+        }
+    }
+
     async fn load_token(&self, reference: &str) -> Result<Option<SecretToken>, CollaborationError> {
         let vault = self.vault.clone();
         let reference = reference.to_string();
@@ -1042,3 +1142,7 @@ fn vault_error() -> CollaborationError {
         "The operating system credential store is unavailable",
     )
 }
+
+#[cfg(test)]
+#[path = "runtime_credential_tests.rs"]
+pub(crate) mod credential_crash_tests;
