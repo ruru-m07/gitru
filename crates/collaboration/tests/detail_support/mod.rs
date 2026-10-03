@@ -122,6 +122,8 @@ pub async fn commit(store: &Store, account: &RemoteAccount, facet: DetailFacet) 
 }
 pub fn from_lease(account: &RemoteAccount, facet: DetailFacet, lease: DetailLease) -> DetailCommit {
     DetailCommit {
+        metadata: None,
+        subject_binding: None,
         account_id: account.id.clone(),
         authorization_epoch: account.authorization_epoch.clone(),
         authorization_view: lease.authorization_view,

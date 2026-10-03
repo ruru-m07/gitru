@@ -1,4 +1,5 @@
 //! Typed local detail observations. Summary endpoints have no authority here.
+use crate::resource_metadata::ResourceMetadataSnapshot;
 use crate::{
     CapabilityReason, CollaborationError, Coverage, RemoteItemKind, ResourceFacet, SyncStatus,
 };
@@ -175,6 +176,7 @@ pub struct DetailQuery {
 pub struct DetailSnapshot {
     pub subject_id: String,
     pub body: DetailValue,
+    pub metadata: Option<ResourceMetadataSnapshot>,
     pub entries: Vec<DetailEntry>,
     pub next_cursor: Option<String>,
     pub evidence: DetailEvidence,
@@ -201,6 +203,8 @@ pub struct DetailCommit {
     pub run_id: String,
     pub request_cursor: Option<String>,
     pub body: DetailValue,
+    pub metadata: Option<crate::ResourceMetadataObservation>,
+    pub subject_binding: Option<crate::DetailSubjectBinding>,
     pub entries: Vec<DetailEntry>,
     pub source: DetailSource,
     pub next_cursor: Option<String>,

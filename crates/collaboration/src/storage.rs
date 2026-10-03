@@ -14,6 +14,7 @@ use uuid::Uuid;
 mod contextual_capabilities;
 pub(crate) mod details;
 mod identities;
+mod resource_metadata;
 
 use crate::{
     domain::*,
@@ -747,8 +748,10 @@ impl Store {
                     .fetch_optional(&mut *tx)
                     .await
                     .map_err(storage_error)?;
+            let mut previous_head = None;
             if let Some(previous) = previous {
                 let previous: RemoteItem = decode(&previous)?;
+                previous_head = previous.head_oid.clone();
                 // Provider timestamps are comparable for this list projection.
                 // Missing detail fields from a summary never erase cached detail.
                 if timestamp_older(&item.updated_at, &previous.updated_at) {
@@ -767,6 +770,13 @@ impl Store {
                 }
             }
             identities::item_in(&mut tx, &account, &item).await?;
+            resource_metadata::invalidate_head_in(
+                &mut tx,
+                &account,
+                &item,
+                previous_head.as_deref(),
+            )
+            .await?;
             sqlx::query("INSERT INTO items(account_id,id,repository_id,kind,state,updated_at,json) VALUES(?,?,?,?,?,?,?) ON CONFLICT(account_id,id) DO UPDATE SET repository_id=excluded.repository_id,kind=excluded.kind,state=excluded.state,updated_at=excluded.updated_at,json=excluded.json")
                 .bind(&page.account_id).bind(&item.id).bind(&item.repository_id).bind(tag(&item.kind)?).bind(&item.state).bind(&item.updated_at).bind(encode(&item)?)
                 .execute(&mut *tx).await.map_err(storage_error)?;

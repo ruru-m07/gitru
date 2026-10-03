@@ -184,6 +184,14 @@ impl CollaborationRuntime {
                     subject.repository_id.as_deref().ok_or_else(unsupported)?,
                 )
                 .await?;
+            let binding = DetailSubjectBinding {
+                repository_id: repository.id.clone(),
+                repository_provider_id: repository.provider_id.clone(),
+                provider_id: subject.provider_id.clone(),
+                number: subject.number.clone(),
+                kind: subject.kind.clone(),
+                head_oid: subject.head_oid.clone(),
+            };
             let mut page = self
                 .adapter_for_account(&current)
                 .await?
@@ -202,6 +210,9 @@ impl CollaborationRuntime {
                 .await?;
             // Receipt/validation time is engine owned, never the provider clock.
             page.source.observed_at = now_string();
+            if let Some(metadata) = &mut page.metadata {
+                metadata.source.observed_at = page.source.observed_at.clone();
+            }
             if page.not_modified && (!conditional || page_index != 0) {
                 return Err(CollaborationError::new(
                     ErrorCode::Provider,
@@ -222,6 +233,8 @@ impl CollaborationRuntime {
                     run_id: lease.run_id.clone(),
                     request_cursor: lease.next_cursor.clone(),
                     body: page.body,
+                    metadata: page.metadata,
+                    subject_binding: Some(binding),
                     entries: page.entries,
                     source: page.source.clone(),
                     next_cursor: page.next_cursor.clone(),

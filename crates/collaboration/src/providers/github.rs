@@ -6,6 +6,8 @@ use super::{
     *,
 };
 use serde::Deserialize;
+mod pull_details;
+mod resource_details;
 
 pub struct GithubProvider {
     http: GithubHttp,
@@ -32,10 +34,34 @@ impl CollaborationProvider for GithubProvider {
     }
 
     fn profile(&self, account: &RemoteAccount) -> ProviderProfile {
-        ProviderProfile::read_only(
+        let mut profile = ProviderProfile::read_only(
             InboxSemantics::NativeNotifications,
             account.notifications_supported,
+        );
+        for facet in &mut profile.facets {
+            if facet.facet == ResourceFacet::PullDetails {
+                facet.state = CapabilityState::Supported;
+                facet.reason = None;
+            }
+        }
+        profile
+    }
+
+    async fn fetch_detail(
+        &self,
+        token: &SecretToken,
+        request: DetailRequest,
+    ) -> Result<DetailPage, ProviderError> {
+        if request.subject.kind != RemoteItemKind::PullRequest {
+            return Err(ProviderError::new(ProviderErrorKind::Unsupported));
+        }
+        self.request_resource_details(
+            token,
+            request,
+            resource_details::PULL_SOURCE,
+            pull_details::normalize,
         )
+        .await
     }
 
     async fn probe(&self, token: &SecretToken) -> Result<VerifiedAccount, ProviderError> {

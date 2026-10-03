@@ -27,6 +27,7 @@ import {
   StaleAuthorizationError,
 } from "./authorization-fence";
 import { installCapabilityDeadlines } from "./capability-deadlines";
+import { DetailSelectionCoordinator } from "./detail-selection";
 import { compareRevisions, RevisionBridge } from "./revision-bridge";
 
 export interface CollaborationTransport {
@@ -132,6 +133,7 @@ export class CollaborationClient {
   >();
   private bridge: RevisionBridge<CollaborationChange> | null = null;
   private queryClient: QueryClient | null = null;
+  private readonly detailSelections = new DetailSelectionCoordinator();
 
   constructor(readonly transport: CollaborationTransport) {}
 
@@ -215,6 +217,31 @@ export class CollaborationClient {
             authorization_epoch: account.authorization_epoch,
           }),
         ),
+      retainDetailSelection: (
+        request: Omit<
+          HydrateDetailRequest,
+          "account_id" | "authorization_epoch"
+        >,
+      ) => {
+        const scoped = {
+          ...request,
+          account_id: account.id,
+          authorization_epoch: account.authorization_epoch,
+        };
+        return this.detailSelections.retain(
+          [
+            scoped.account_id,
+            account.actor_id,
+            scoped.authorization_epoch,
+            scoped.subject_id,
+            scoped.facet,
+          ],
+          () =>
+            this.fence.read(scoped.account_id, () =>
+              this.transport.hydrateDetail(scoped),
+            ),
+        );
+      },
       refresh: (request: Omit<RefreshRequest, "account_id">) =>
         this.transport.refresh({ ...request, account_id: account.id }),
       selectRepository: (repositoryId: string, selected: boolean) =>
@@ -325,6 +352,7 @@ export class CollaborationClient {
     void bridge.start();
     return () => {
       stopDeadlines();
+      this.detailSelections.clear();
       bridge.stop();
       if (this.bridge === bridge) this.bridge = null;
       this.queryClient = null;
@@ -349,6 +377,7 @@ export class CollaborationClient {
   }
 
   private clearAccount(accountId: string) {
+    this.detailSelections.clear(accountId);
     this.fence.invalidate(accountId);
     void this.queryClient?.cancelQueries({
       queryKey: collaborationKeys.account(accountId),
@@ -360,6 +389,7 @@ export class CollaborationClient {
   }
 
   private resetLocalView() {
+    this.detailSelections.clear();
     this.fence.invalidate();
     this.authorizationView = null;
     void this.queryClient?.cancelQueries({ queryKey: collaborationKeys.all });

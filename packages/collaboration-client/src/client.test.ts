@@ -315,10 +315,68 @@ describe("CollaborationClient", () => {
     stop();
     cache.clear();
   });
+  it("captures selected actor/epoch/subject admission and drops old targets after disconnect", async () => {
+    const hydrateDetail = vi.fn().mockResolvedValue({ job_id: "queued" });
+    const client = new CollaborationClient(
+      transport({ hydrateDetail, disconnect: async () => "2" }),
+    );
+    const captured = { ...account };
+    const request = { subject_id: "pull", facet: "body" as const };
+    const old = client.forAccount(captured).retainDetailSelection(request);
+    expect(hydrateDetail).not.toHaveBeenCalled();
+    captured.authorization_epoch = "2";
+    request.subject_id = "mutated-caller-subject";
+    await old.hydrate("head");
+    expect(hydrateDetail).toHaveBeenNthCalledWith(1, {
+      account_id: account.id,
+      authorization_epoch: "1",
+      subject_id: "pull",
+      facet: "body",
+    });
+    const current = client
+      .forAccount(captured)
+      .retainDetailSelection({ subject_id: "pull", facet: "body" });
+    await current.hydrate("head");
+    expect(hydrateDetail).toHaveBeenNthCalledWith(2, {
+      account_id: account.id,
+      authorization_epoch: "2",
+      subject_id: "pull",
+      facet: "body",
+    });
+    await client.disconnect(account.id);
+    await expect(old.hydrate("late-head")).resolves.toBe(false);
+    await expect(current.hydrate("late-head")).resolves.toBe(false);
+    expect(hydrateDetail).toHaveBeenCalledTimes(2);
+    old.release();
+    current.release();
+  });
+
+  it("fences a pending selected hydration receipt across authorization removal", async () => {
+    const pending = deferred<{ job_id: string }>();
+    const client = new CollaborationClient(
+      transport({
+        hydrateDetail: () => pending.promise,
+        disconnect: async () => "2",
+      }),
+    );
+    const lease = client
+      .forAccount(account)
+      .retainDetailSelection({ subject_id: "pull", facet: "body" });
+    const admission = lease.hydrate("head");
+    const rejected = expect(admission).rejects.toBeInstanceOf(
+      StaleAuthorizationError,
+    );
+    await client.disconnect(account.id);
+    pending.resolve({ job_id: "late" });
+    await rejected;
+    lease.release();
+  });
+
   it("binds cache-only detail reads and explicit hydration without starting refresh from a read", async () => {
     const saved: DetailSnapshot = {
       subject_id: "pull",
       body: { state: "known", text: null },
+      metadata: null,
       entries: [],
       next_cursor: null,
       revision: "1",
@@ -409,6 +467,7 @@ describe("CollaborationClient", () => {
     const saved: DetailSnapshot = {
       subject_id: "pull",
       body: { state: "not_loaded", text: null },
+      metadata: null,
       entries: [],
       next_cursor: null,
       revision: "2",

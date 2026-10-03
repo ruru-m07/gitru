@@ -14,12 +14,21 @@ const detail = await Bun.file(
 const contextualCapabilities = await Bun.file(
   new URL("crates/collaboration/src/contextual_capabilities.rs", root),
 ).text();
+const resourceMetadata = await Bun.file(
+  new URL("crates/collaboration/src/resource_metadata.rs", root),
+).text();
 const output = new URL("packages/commands/src/types.ts", root);
 let generated = await Bun.file(output).text();
 const snake = (value: string) =>
   value.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
 
-for (const source of [domain, error, detail, contextualCapabilities]) {
+for (const source of [
+  domain,
+  error,
+  detail,
+  contextualCapabilities,
+  resourceMetadata,
+]) {
   for (const match of source.matchAll(
     /#\[serde\(rename_all = "snake_case"\)\]\s*pub enum (\w+)\s*\{([^}]+)\}/g,
   )) {
