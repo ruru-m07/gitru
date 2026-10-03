@@ -2182,3 +2182,13 @@ GitLab account/repository lane uses a separate checkout. Parent #154 currently h
 a real macOS Rust socket-fixture failure, which root repairs before publishing
 next PRs. Local checks, exact-head CI and live provider/vault gates stay distinct.
 No PR has been merged.
+
+
+R101 source audit establishes that `whole_scope` means validator authority, not
+full-enumeration absence. Six independent cases produce four actual gaps:
+collection clock loss after304, a nullable child timestamp erasing retained-field
+clock evidence, continuation representation drift qualifying absence, and current-
+head checks remaining fresh after an accepted new head. Full multipage absence
+and historical Reviews are green controls. The approved work note records narrow
+schema-free native receipt/provenance/field-clock corrections before source edits,
+with conservative legacy JSON and unchanged public DTOs/provider support.
