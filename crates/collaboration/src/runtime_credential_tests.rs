@@ -191,6 +191,26 @@ async fn kill_at(root: &Path, boundary: &str, operation: &str) {
     } else {
         "crash-harness"
     });
+    #[cfg(unix)]
+    {
+        // Concurrent forks must never inherit a parent descriptor that can
+        // write this executable, even after the parent's copy has completed.
+        let copied = Command::new("/bin/cp")
+            .arg(std::env::current_exe().unwrap())
+            .arg(&binary)
+            .env_clear()
+            .current_dir(root)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .expect("credential fixture snapshot writer starts");
+        assert!(
+            copied.success(),
+            "credential fixture snapshot writer succeeds"
+        );
+    }
+    #[cfg(not(unix))]
     std::fs::copy(std::env::current_exe().unwrap(), &binary).unwrap();
     let mut child = Command::new(binary)
         .args(["--exact", CHILD_TEST, "--ignored", "--nocapture"])

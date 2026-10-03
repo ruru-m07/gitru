@@ -72,3 +72,24 @@ rule or changing production behavior. Scoped local verification passes all nine
 credential crash/failure tests (one intentionally ignored subprocess entry point),
 all-target collaboration Clippy with `-D warnings`, workspace formatting and diff
 whitespace checks. Exact-head remote rescanning remains pending for this follow-up.
+
+Linux snapshot follow-up (3 October 2026): PR #147 head `4a1e466`'s
+[Linux workspace test job](https://github.com/ruru-m07/gitru/actions/runs/37106707761/job/111156589988)
+fails while spawning the copied credential crash harness, before a recovery
+assertion or checkpoint. The original error is OS code 26,
+`ExecutableFileBusy` / `Text file busy`; library results are 44 passed, one failed
+and one ignored subprocess entry point. The CLI and detail runtime cases pass.
+The parent copies an executable immediately before spawning it while other tests
+fork. This matches the inherited writable-descriptor mechanism described in
+[Rust issue 114554](https://github.com/rust-lang/rust/issues/114554); that mechanism
+is a source-supported diagnosis, not a captured CI file-descriptor trace.
+Unix snapshots now use fixed `/bin/cp` in a child with cleared environment,
+fixture-directory working directory and null standard streams. The parent waits
+for successful child exit before executing the snapshot and never opens its
+destination for writing. Non-Unix keeps the existing copy. All real hard-kill
+checkpoints, timeouts, parallelism and recovery assertions remain intact; there
+are no spawn retries. The parallel library suite passes all 34 tests, and the
+focused credential suite passes all nine tests, each retaining the intentionally
+ignored child entry point used by the passing parents. All-target collaboration
+Clippy with `-D warnings`, workspace formatting and diff whitespace checks pass.
+These are local macOS results; new-head Linux/platform CI remains pending.
