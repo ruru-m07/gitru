@@ -141,3 +141,36 @@ Open an attached reviewable PR; no merge is authorized.
   [GitLab.com rate limits](https://docs.gitlab.com/user/gitlab_com/rate_limits/).
 
 Implementation, validation and publication evidence follow this contract.
+
+
+## Review corrections and approved probe-failure seam — before source edits
+
+Root and independent peer review find two backoff gaps with executed synthetic
+transport reds: long valid Retry-After172800 was truncated to86400, and explicit
+Retry-After on503/redirect was discarded/followed immediately. GitLab transport
+now preserves representable server waits (safe saturation for numeric overflow),
+keeps503 Unavailable while retaining delay, and returns bounded delayed-redirect
+intent without sleeping a worker or forwarding credentials. The native lifecycle
+review also finds a source-derived crash gap: a successful final probe's quota
+was persisted after credential cutover. The corrected transaction writes the
+maximum existing/observed provider barrier atomically with promotion; new
+kill/rollback tests qualify it, without claiming an executed original red.
+[RFC9110 Retry-After](https://www.rfc-editor.org/rfc/rfc9110.html#section-10.2.3)
+is the primary HTTP semantics reference.
+
+A further independent review establishes partial-probe barrier loss: /user proves
+immutable actor, then /projects fails with observed cooldown. Plain ProviderError
+loses that actor, so a previously connected SAME exact actor can continue using
+its old grant without the new barrier. Root approves a narrow native-only
+connection-probe outcome/failure carrying optional proven immutable actor ID plus
+the existing typed redacted ProviderError. Default providers retain old probe
+semantics; GitLab publishes proven actor evidence only after authorized /user
+identity validation. Runtime may match only an existing exact provider+installation
++immutable actor under the lifecycle lock, persist its maximum same-epoch quota,
+and return the original validation error without replacing its token, advancing
+epoch, clearing caches/drafts or creating a new account. An unverified actor
+never poisons guessed/current/other-provider accounts. No migration/wire DTO
+change is expected. Independent actual two-response synthetic probes must prove
+oldgrant/draft preservation, strict restart barrier and zero dispatch before
+expiry, plus unknown/mismatched actor controls. The direct low-level probe API
+may remain a compatibility wrapper; keep lifecycle helper behavior explicit.
