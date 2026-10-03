@@ -155,3 +155,25 @@ Initial actual validation: 2 green controls, 4 reds in
 | completed_same_representation_multipage_scan_reconciles_only_its_own_children | GREEN: all Comments/Reviews/Checks cases; stable multi-page complete+whole_scope=false, overlap ordering, qualified absence, independentBody/privateCAS preserved. |
 | close_merge_and_historical_review_head_do_not_order_unrelated_child_fields | GREEN: parent state/head does not relabel or invalidate review history; privateCAS unchanged. |
 
+
+## Authoritative head conflict correction — before source edits
+
+Root's independent source review proposes and the native lane reproduces an
+additional actual red: saved current-head checkA stays Fresh when authoritative
+Body metadata proves HeadB(T3), while an intermediate accepted feed still carries
+summaryA(T2). R77 correctly keeps summary/list and detail-field authority
+independent. Root approves a conservative current-head veto: authorized saved
+Known detail Head contradicting a captured summary head cannot qualify current-
+head freshness/validator/commit. A known metadata head commit must stale and
+fence the contradictory explicitly CurrentHead scope; keep its cached historical
+entries and private CAS draft, and do not rewrite summary rows or historical
+Reviews. Read-only metadata ambiguity does not invent a new effective head.
+
+Add same-head/no-known-detail/history green controls and exact rejected oldhead
+receipt/304 proof. Check current-head authority at commit and lease/dispatch where
+its explicit policy is known. First unknown provider facet receipt remains
+adapter-qualified and commit-fenced; actual future endpoint/head-selection policy
+belongs in R118 and must explicitly reconcile authoritative head evidence before
+production dispatch. Do not claim this conservative veto chooses a globally
+current server head or orders incomparable endpoint clocks. Record any remaining
+endpoint rollout boundary honestly; all such production facets remain Unsupported.
