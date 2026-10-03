@@ -46,6 +46,13 @@ CodeQL passes on `7c5364d`; a later native-host lifetime correction passes all
 200 frontend tests and fresh packaged macOS E2E (2 specs / 3 cases), with remote
 Linux/Windows qualification still required. Neither test order nor assertions
 were weakened to work around the observed post-cleanup native view registration.
+The exact `e1ad8c569` foundation head subsequently passed Linux/macOS packaged
+E2E and all CodeQL analyses; Windows checks remained pending. A provider-registry
+Linux Rust run exposed a newly-written CLI executable fixture race. Test-only
+publication now uses an exited child writer, with nine focused macOS cases
+passing and all original assertions retained. The original OS error was not
+captured; fresh Linux CI qualifies this correction. Production CLI behavior and
+test ordering/parallelism are unchanged.
 The hourly chat continuation checks live Linear/PR state before picking work.
 PR publication does not authorize merging. GitHub's default CodeQL setup scans
 PRs into default/protected `dev`; children targeting unprotected stack branches

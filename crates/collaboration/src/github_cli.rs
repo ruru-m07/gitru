@@ -628,6 +628,7 @@ mod tests {
     }
 
     fn only_fixture_account(discovery: GithubCliDiscovery) -> GithubCliAccount {
+        assert_eq!(discovery.status, GithubCliStatus::Available);
         let mut accounts = discovery.accounts.into_iter();
         let account = accounts
             .next()
@@ -872,12 +873,39 @@ mod tests {
     }
 
     #[cfg(unix)]
-    fn fixture_process(script: &str, timeout: Duration) -> (tempfile::TempDir, NativeRunner) {
+    fn publish_fixture_executable(executable: &std::path::Path, script: &str) {
+        use std::io::Write;
         use std::os::unix::fs::PermissionsExt;
+
+        // A parallel process fork can inherit a newly written executable's
+        // write descriptor until exec, causing ETXTBSY after fs::write returns.
+        // https://github.com/rust-lang/rust/issues/114554
+        // Write only in this child and wait for its exit before publication;
+        // the test parent never owns a writable descriptor for the executable.
+        let mut writer = std::process::Command::new("/bin/sh")
+            .args(["-c", "umask 077; exec /bin/cat > \"$1\"", "fixture-writer"])
+            .arg(executable)
+            .env_clear()
+            .current_dir(neutral_cwd())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("fixture writer starts");
+        let mut input = writer.stdin.take().expect("fixture writer input");
+        let written = input.write_all(script.as_bytes());
+        drop(input);
+        let status = writer.wait().expect("fixture writer exits");
+        written.expect("fixture script is written");
+        assert!(status.success(), "fixture writer succeeds");
+        std::fs::set_permissions(executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+
+    #[cfg(unix)]
+    fn fixture_process(script: &str, timeout: Duration) -> (tempfile::TempDir, NativeRunner) {
         let directory = tempfile::tempdir().unwrap();
         let executable = directory.path().join("gh-fixture");
-        std::fs::write(&executable, format!("#!/bin/sh\n{script}\n")).unwrap();
-        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+        publish_fixture_executable(&executable, &format!("#!/bin/sh\n{script}\n"));
         let environment = allowed_environment(vec![
             ("GH_TOKEN".into(), "fixture_secret".into()),
             ("HOME".into(), directory.path().as_os_str().to_owned()),
@@ -896,7 +924,7 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn native_discovery_observes_new_install_and_upgraded_symlink_without_changing_choice() {
-        use std::os::unix::{fs::PermissionsExt, fs::symlink};
+        use std::os::unix::fs::symlink;
         let directory = tempfile::tempdir().unwrap();
         let installation = directory.path().join("gh");
         let runner = Arc::new(NativeRunner {
@@ -916,8 +944,7 @@ mod tests {
                 "#!/bin/sh\nif [ \"$3\" = --help ]; then printf '%s\\n' '--user string'; elif [ \"$2\" = status ]; then printf '%s\\n' '{}'; elif [ \"$2\" = token ]; then printf '%s\\n' '{token}'; else exit 9; fi\n",
                 metadata(login)
             );
-            std::fs::write(&executable, script).unwrap();
-            std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+            publish_fixture_executable(&executable, &script);
             executable
         };
         let first_version = write_version("first-version-gh", "actor", "first_fixture_secret");

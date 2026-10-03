@@ -1798,6 +1798,24 @@ scoped lint and fresh packaged macOS E2E (both specs/all three cases) pass.
 The E2E order and assertions remain unchanged. The new remote matrix remains
 required; this local repair is not a Linux/Windows packaged pass claim.
 
+Subsequent exact-head CI on `e1ad8c569` passed Linux and macOS packaged E2E
+and all three CodeQL analyses. Windows checks were still pending when recorded.
+The provider-registry stack's Linux Rust job `111149561690` exposed an
+intermittent newly-installed CLI fixture failure before its first account
+assertion. Its original status/OS error was not captured, so the exact cause is
+unconfirmed. The fixture wrote its executable in the multithreaded test parent,
+matching the concurrent-fork writable-descriptor race documented in
+[Rust issue 114554](https://github.com/rust-lang/rust/issues/114554).
+Unix fixture publication now writes synthetic scripts in an isolated child,
+closes input and waits for writer exit before chmod/symlink publication. The
+parent never owns the executable's writable descriptor. All existing discovery,
+upgrade, selected-account, timeout and output-bound assertions remain; safe
+status assertions improve future failure evidence. Nine focused CLI tests, all
+47 foundation collaboration tests and all-target Clippy pass locally on macOS.
+No production runner behavior, retry, test ordering or global
+test serialization changed. Fresh Linux CI remains the qualification gate;
+this source-backed correction is not a locally reproduced Linux failure claim.
+
 Those lanes are published in separate draft PRs based on #143:
 
 - [PR #146](https://github.com/ruru-m07/gitru/pull/146), RURU-76: explicit
