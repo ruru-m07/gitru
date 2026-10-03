@@ -3,6 +3,7 @@ pub mod branch;
 pub mod collaboration;
 pub mod collaboration_demand;
 pub mod collaboration_local_links;
+pub mod collaboration_notification_subjects;
 pub mod commit;
 pub mod diff;
 pub mod history;

@@ -95,6 +95,8 @@ pub fn run() {
             commands::collaboration_local_links::collaboration_remove_transport_binding,
             commands::collaboration_local_links::collaboration_local_clones,
             commands::collaboration_local_links::collaboration_validate_local_navigation,
+            commands::collaboration_notification_subjects::collaboration_notification_subject,
+            commands::collaboration_notification_subjects::collaboration_discover_notification_subject,
             ipc::commands::add_local_git_repo,
             ipc::commands::clone_repository,
             ipc::commands::cancel_clone_repository,

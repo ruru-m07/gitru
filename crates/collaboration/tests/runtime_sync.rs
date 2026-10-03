@@ -123,6 +123,7 @@ impl CollaborationProvider for FakeProvider {
             repositories,
             items: Vec::new(),
             endpoint_aliases: Vec::new(),
+            notification_subjects: vec![],
             next_cursor: (page < self.pages)
                 .then(|| format!("https://api.github.com/user/repos?page={}", page + 1)),
             etag: Some(format!("etag-{page}")),

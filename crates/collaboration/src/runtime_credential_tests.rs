@@ -126,6 +126,7 @@ impl CollaborationProvider for TokenProvider {
             repositories: vec![],
             items: vec![],
             endpoint_aliases: Vec::new(),
+            notification_subjects: vec![],
             next_cursor: None,
             etag: None,
             last_modified: None,

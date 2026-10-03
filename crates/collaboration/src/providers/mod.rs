@@ -44,6 +44,7 @@ pub struct FetchPage {
     pub repositories: Vec<RemoteRepository>,
     pub items: Vec<RemoteItem>,
     pub endpoint_aliases: Vec<EndpointAlias>,
+    pub notification_subjects: Vec<crate::NotificationSubjectObservation>,
     pub next_cursor: Option<String>,
     pub etag: Option<String>,
     pub last_modified: Option<String>,
@@ -74,6 +75,36 @@ pub struct DetailPage {
     pub not_modified: bool,
     pub freshness_seconds: u32,
     pub cooldown_seconds: Option<u64>,
+}
+
+/// Native receipts capture the trusted installation and same-notification parent.
+/// No command accepts a renderer-authored URL or selector as HTTP authority.
+#[derive(Debug, Clone)]
+pub struct TrustedNotificationSubjectRequest {
+    pub account: RemoteAccount,
+    pub instance_id: String,
+    pub notification_id: String,
+    pub selector_generation: String,
+    pub authorization_view: String,
+    pub repository: RemoteRepository,
+    pub selector: crate::NotificationSubjectSelector,
+}
+
+#[derive(Debug, Clone)]
+pub enum NotificationSubjectDiscovery {
+    Failed {
+        error: ProviderError,
+        cooldown_seconds: Option<u64>,
+    },
+    Verified {
+        subject: Box<RemoteItem>,
+        detail: Box<DetailPage>,
+        endpoint_aliases: Vec<EndpointAlias>,
+    },
+    Unresolved {
+        reason: crate::NotificationSubjectReason,
+        cooldown_seconds: Option<u64>,
+    },
 }
 
 /// Read-only contract for the first vertical slice. Writes must eventually use
@@ -107,6 +138,25 @@ pub trait CollaborationProvider: Send + Sync + 'static {
         Err(ProviderError {
             kind: ProviderErrorKind::Unsupported,
             retry_after_seconds: None,
+            account_cooldown_seconds: None,
+        })
+    }
+    fn notification_subject_support(
+        &self,
+        _account: &RemoteAccount,
+        _kind: crate::NotificationSubjectKind,
+    ) -> CapabilityState {
+        CapabilityState::Unsupported
+    }
+    async fn discover_notification_subject(
+        &self,
+        _token: &SecretToken,
+        _request: TrustedNotificationSubjectRequest,
+    ) -> Result<NotificationSubjectDiscovery, ProviderError> {
+        Err(ProviderError {
+            kind: ProviderErrorKind::Unsupported,
+            retry_after_seconds: None,
+            account_cooldown_seconds: None,
         })
     }
 }

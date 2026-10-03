@@ -114,6 +114,7 @@ impl CollaborationRuntime {
         drop(scheduler);
         if automatic {
             let target = match &job.kind {
+                JobKind::NotificationSubject { .. } => return Err(stale()),
                 JobKind::Detail { subject_id, facet } => DemandTarget {
                     kind: DemandTargetKind::Detail,
                     repository_id: None,

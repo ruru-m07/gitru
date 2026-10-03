@@ -1,0 +1,11 @@
+{
+  "notification_id": "777",
+  "repository_provider_id": "9007199254740993",
+  "repository_path": "qa-fixture/project",
+  "subject": {
+    "type": "Issue",
+    "title": "Synthetic notification subject",
+    "url": "https://api.github.com/repos/qa-fixture/project/issues/67",
+    "latest_comment_url": "https://untrusted.example.test/ignored/comments/999"
+  }
+}

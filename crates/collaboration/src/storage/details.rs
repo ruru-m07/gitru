@@ -548,243 +548,246 @@ impl Store {
         Ok(result)
     }
 
-    pub async fn apply_detail(&self, mut page: DetailCommit) -> Result<String> {
-        if page.entries.len() > 100
-            || page.source.source.is_empty()
-            || page.source.source.len() > 256
-            || page.source.adapter_version == 0
-            || !mask_valid(&page.source.field_mask)
-            || !timestamp_valid(&page.source.observed_at)
-            || page
-                .source
-                .provider_updated_at
-                .as_ref()
-                .is_some_and(|s| !timestamp_valid(s))
-            || page
-                .next_cursor
-                .as_ref()
-                .is_some_and(|s| s.is_empty() || s.len() > 8192)
-            || page.etag.as_ref().is_some_and(|s| s.len() > 8192)
-            || page.complete && page.next_cursor.is_some()
-        {
-            return Err(invalid_detail());
-        }
-        validate_value(&page.body)?;
-        if page
-            .body
-            .text
-            .as_ref()
-            .is_some_and(|v| v.len() > MAX_BODY_BYTES)
-        {
-            page.body = DetailValue {
-                state: DetailValueState::Oversized,
-                text: None,
-            };
-        }
-        if page.facet == DetailFacet::Body {
-            if !page.entries.is_empty()
-                || page.next_cursor.is_some()
-                || (!page.not_modified && !page.source.field_mask.contains(&DetailField::Body))
-            {
-                return Err(invalid_detail());
-            }
-        } else if page.body != DetailValue::default() {
-            return Err(invalid_detail());
-        }
-        let scope = page.facet.scope(&page.subject_id);
+    pub async fn apply_detail(&self, page: DetailCommit) -> Result<String> {
         let mut writer = self.inner.writer.lock().await;
         let mut tx = writer.begin().await.map_err(storage_error)?;
-        epoch_in(&mut tx, &page.account_id, &page.authorization_epoch).await?;
-        let account = account_in(&mut tx, &page.account_id, true).await?;
-        let subject = subject_in(&mut tx, &page.account_id, &page.subject_id).await?;
-        if let Some(binding) = &page.subject_binding {
-            super::resource_metadata::validate_binding_in(
-                &mut tx,
-                &page.account_id,
-                &subject,
-                binding,
-            )
-            .await?;
-        } else if page.metadata.is_some() {
-            return Err(invalid_detail());
-        }
-        if page.facet.capability(&subject.kind).is_none() {
-            return Err(invalid_detail());
-        }
-        if identities::instance_in(&mut tx, &account).await?.id != page.instance_id
-            || metadata(&mut tx).await?.1 != page.authorization_view
-        {
-            return Err(stale());
-        }
-        let stored = scope_in(&mut tx, &page.account_id, &scope)
-            .await?
-            .ok_or_else(stale)?;
-        if stored.run_id != page.run_id || stored.next_cursor != page.request_cursor {
-            return Err(stale());
-        }
-        let previous=sqlx::query("SELECT body_json,source_json,value_source_json,stale_at FROM detail_observations WHERE account_id=? AND subject_id=? AND facet=?")
-            .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).fetch_optional(&mut *tx).await.map_err(storage_error)?;
-        let previous_source: Option<DetailSource> = previous
-            .as_ref()
-            .map(|r| decode(r.get("source_json")))
-            .transpose()?;
-        let previous_value_source: Option<DetailSource> = previous
-            .as_ref()
-            .and_then(|r| r.get::<Option<String>, _>("value_source_json"))
-            .map(|json| decode(&json))
-            .transpose()?;
-        let ordering_source = if page.facet == DetailFacet::Body {
-            previous_value_source.as_ref()
-        } else {
-            previous_source.as_ref()
-        };
-        if ordering_source.is_some_and(|old| {
-            old.source == page.source.source
-                && old.adapter_version == page.source.adapter_version
-                && old
-                    .provider_updated_at
-                    .as_ref()
-                    .zip(page.source.provider_updated_at.as_ref())
-                    .is_some_and(|(old, new)| timestamp_older(new, old))
-        }) {
-            return Err(stale());
-        }
-        if page.not_modified
-            && (previous.is_none()
-                || !page.whole_scope
-                || !page.complete
-                || !page.entries.is_empty()
-                || page.body != DetailValue::default()
-                || stored.coverage.state != CoverageState::Complete
-                || stored.etag.is_none()
-                || previous_source.as_ref().is_none_or(|old| {
-                    old.source != page.source.source
-                        || old.adapter_version != page.source.adapter_version
-                        || old.field_mask != page.source.field_mask
-                })
-                || page
-                    .etag
-                    .as_ref()
-                    .is_some_and(|etag| Some(etag) != stored.etag.as_ref()))
-        {
-            return Err(invalid_detail());
-        }
-        let observes_body =
-            page.facet == DetailFacet::Body && page.body.state == DetailValueState::Known;
-        let validates = page.not_modified || page.facet != DetailFacet::Body || observes_body;
-        let value_source = if page.not_modified {
-            previous_value_source.map(|mut source| {
-                source.observed_at = page.source.observed_at.clone();
-                source
-            })
-        } else if validates {
-            let mut source = page.source.clone();
-            if source.provider_updated_at.is_none()
-                && let Some(old) = previous_value_source.as_ref().filter(|old| {
-                    old.source == source.source && old.adapter_version == source.adapter_version
-                })
-            {
-                source.provider_updated_at = old.provider_updated_at.clone();
-            }
-            Some(source)
-        } else {
-            previous_value_source
-        };
-        let mut body: DetailValue = previous
-            .as_ref()
-            .map(|r| decode(r.get("body_json")))
-            .transpose()?
-            .unwrap_or_default();
-        if observes_body || body.state != DetailValueState::Known && !page.not_modified {
-            body = page.body.clone();
-        }
-        let observed_state = if page.not_modified {
-            DetailValueState::Known
-        } else if page.facet == DetailFacet::Body {
-            page.body.state
-        } else {
-            DetailValueState::Known
-        };
-        let validated_at = if validates {
-            Some(page.source.observed_at.clone())
-        } else {
-            stored.coverage.validated_at.clone()
-        };
-        let stale_at = if validates {
-            Some(
-                (chrono::DateTime::parse_from_rfc3339(&page.source.observed_at)
-                    .map_err(|_| invalid_detail())?
-                    + chrono::Duration::seconds(i64::from(page.freshness_seconds.min(86_400))))
-                .to_rfc3339(),
-            )
-        } else {
-            previous.as_ref().and_then(|r| r.get("stale_at"))
-        };
-        let coverage = Coverage {
-            state: if page.complete && validates {
-                CoverageState::Complete
-            } else {
-                CoverageState::Partial
-            },
-            validated_at,
-            remote_has_more: page.next_cursor.is_some(),
-        };
-        let revision = record_change(
-            &mut tx,
-            &page.account_id,
-            positive_revision(&page.authorization_epoch)?,
-            &scope,
-            false,
-        )
-        .await?;
-        sqlx::query("INSERT INTO detail_observations(account_id,subject_id,facet,authorization_epoch,facet_revision,body_json,source_json,value_source_json,observed_state,stale_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(account_id,subject_id,facet) DO UPDATE SET authorization_epoch=excluded.authorization_epoch,facet_revision=excluded.facet_revision,body_json=excluded.body_json,source_json=excluded.source_json,value_source_json=excluded.value_source_json,observed_state=excluded.observed_state,stale_at=excluded.stale_at")
-            .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&page.authorization_epoch).bind(&revision).bind(encode(&body)?).bind(encode(&page.source)?).bind(value_source.map(|s|encode(&s)).transpose()?).bind(tag(&observed_state)?).bind(stale_at).execute(&mut *tx).await.map_err(storage_error)?;
-        if page.facet == DetailFacet::Body {
-            super::resource_metadata::apply_in(&mut tx, &page, &subject.kind).await?;
-        } else if page.metadata.is_some() {
-            return Err(invalid_detail());
-        }
-        for incoming in page.entries {
-            let old:Option<String>=sqlx::query_scalar("SELECT json FROM detail_entries WHERE account_id=? AND subject_id=? AND facet=? AND id=?")
-                .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&incoming.id).fetch_optional(&mut *tx).await.map_err(storage_error)?;
-            let entry = merge_entry(incoming, old.map(|s| decode(&s)).transpose()?, &page.source)?;
-            sqlx::query("INSERT INTO detail_entries(account_id,subject_id,facet,id,json,last_seen_run) VALUES(?,?,?,?,?,?) ON CONFLICT(account_id,subject_id,facet,id) DO UPDATE SET json=excluded.json,last_seen_run=excluded.last_seen_run")
-                .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&entry.id).bind(encode(&entry)?).bind(&page.run_id).execute(&mut *tx).await.map_err(storage_error)?;
-        }
-        if page.complete && !page.not_modified && page.facet != DetailFacet::Body {
-            sqlx::query("DELETE FROM detail_entries WHERE account_id=? AND subject_id=? AND facet=? AND last_seen_run<>?")
-                .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&page.run_id).execute(&mut *tx).await.map_err(storage_error)?;
-        }
-        let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM detail_entries WHERE account_id=? AND subject_id=? AND facet=?",
-        )
-        .bind(&page.account_id)
-        .bind(&page.subject_id)
-        .bind(tag(&page.facet)?)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(storage_error)?;
-        if count > MAX_DETAIL_ENTRIES {
-            return Err(CollaborationError::new(
-                ErrorCode::Busy,
-                "The detail collection cache limit was reached",
-            ));
-        }
-        let mut sync = stored.sync;
-        sync.state = SyncState::Idle;
-        sync.error = None;
-        sync.next_retry_at = None;
-        if validates {
-            sync.last_success_at = Some(page.source.observed_at);
-        }
-        let retain_validator = page.complete && page.whole_scope && validates;
-        sqlx::query("UPDATE sync_scopes SET next_cursor=?,etag=?,coverage_json=?,sync_json=?,access_denied=0,data_revision=data_revision+1 WHERE account_id=? AND scope=? AND run_id=?")
-            .bind(&page.next_cursor).bind(if retain_validator { page.etag.or(if page.not_modified {stored.etag}else{None}) } else {None}).bind(encode(&coverage)?).bind(encode(&sync)?).bind(&page.account_id).bind(&scope).bind(&page.run_id).execute(&mut *tx).await.map_err(storage_error)?;
-        if page.complete {
-            sqlx::query("UPDATE detail_demand SET requested=0 WHERE account_id=? AND subject_id=? AND facet=? AND authorization_epoch=?")
-                .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&page.authorization_epoch).execute(&mut *tx).await.map_err(storage_error)?;
-        }
+        let revision = apply_detail_in(&mut tx, page).await?;
         tx.commit().await.map_err(storage_error)?;
         Ok(revision)
     }
+}
+
+pub(super) async fn apply_detail_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    mut page: DetailCommit,
+) -> Result<String> {
+    if page.entries.len() > 100
+        || page.source.source.is_empty()
+        || page.source.source.len() > 256
+        || page.source.adapter_version == 0
+        || !mask_valid(&page.source.field_mask)
+        || !timestamp_valid(&page.source.observed_at)
+        || page
+            .source
+            .provider_updated_at
+            .as_ref()
+            .is_some_and(|s| !timestamp_valid(s))
+        || page
+            .next_cursor
+            .as_ref()
+            .is_some_and(|s| s.is_empty() || s.len() > 8192)
+        || page.etag.as_ref().is_some_and(|s| s.len() > 8192)
+        || page.complete && page.next_cursor.is_some()
+    {
+        return Err(invalid_detail());
+    }
+    validate_value(&page.body)?;
+    if page
+        .body
+        .text
+        .as_ref()
+        .is_some_and(|v| v.len() > MAX_BODY_BYTES)
+    {
+        page.body = DetailValue {
+            state: DetailValueState::Oversized,
+            text: None,
+        };
+    }
+    if page.facet == DetailFacet::Body {
+        if !page.entries.is_empty()
+            || page.next_cursor.is_some()
+            || (!page.not_modified && !page.source.field_mask.contains(&DetailField::Body))
+        {
+            return Err(invalid_detail());
+        }
+    } else if page.body != DetailValue::default() {
+        return Err(invalid_detail());
+    }
+    let scope = page.facet.scope(&page.subject_id);
+    epoch_in(tx, &page.account_id, &page.authorization_epoch).await?;
+    let account = account_in(tx, &page.account_id, true).await?;
+    let subject = subject_in(tx, &page.account_id, &page.subject_id).await?;
+    if let Some(binding) = &page.subject_binding {
+        super::resource_metadata::validate_binding_in(tx, &page.account_id, &subject, binding)
+            .await?;
+    } else if page.metadata.is_some() {
+        return Err(invalid_detail());
+    }
+    if page.facet.capability(&subject.kind).is_none() {
+        return Err(invalid_detail());
+    }
+    if identities::instance_in(tx, &account).await?.id != page.instance_id
+        || metadata(tx).await?.1 != page.authorization_view
+    {
+        return Err(stale());
+    }
+    let stored = scope_in(tx, &page.account_id, &scope)
+        .await?
+        .ok_or_else(stale)?;
+    if stored.run_id != page.run_id || stored.next_cursor != page.request_cursor {
+        return Err(stale());
+    }
+    let previous=sqlx::query("SELECT body_json,source_json,value_source_json,stale_at FROM detail_observations WHERE account_id=? AND subject_id=? AND facet=?")
+            .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).fetch_optional(&mut **tx).await.map_err(storage_error)?;
+    let previous_source: Option<DetailSource> = previous
+        .as_ref()
+        .map(|r| decode(r.get("source_json")))
+        .transpose()?;
+    let previous_value_source: Option<DetailSource> = previous
+        .as_ref()
+        .and_then(|r| r.get::<Option<String>, _>("value_source_json"))
+        .map(|json| decode(&json))
+        .transpose()?;
+    let ordering_source = if page.facet == DetailFacet::Body {
+        previous_value_source.as_ref()
+    } else {
+        previous_source.as_ref()
+    };
+    if ordering_source.is_some_and(|old| {
+        old.source == page.source.source
+            && old.adapter_version == page.source.adapter_version
+            && old
+                .provider_updated_at
+                .as_ref()
+                .zip(page.source.provider_updated_at.as_ref())
+                .is_some_and(|(old, new)| timestamp_older(new, old))
+    }) {
+        return Err(stale());
+    }
+    if page.not_modified
+        && (previous.is_none()
+            || !page.whole_scope
+            || !page.complete
+            || !page.entries.is_empty()
+            || page.body != DetailValue::default()
+            || stored.coverage.state != CoverageState::Complete
+            || stored.etag.is_none()
+            || previous_source.as_ref().is_none_or(|old| {
+                old.source != page.source.source
+                    || old.adapter_version != page.source.adapter_version
+                    || old.field_mask != page.source.field_mask
+            })
+            || page
+                .etag
+                .as_ref()
+                .is_some_and(|etag| Some(etag) != stored.etag.as_ref()))
+    {
+        return Err(invalid_detail());
+    }
+    let observes_body =
+        page.facet == DetailFacet::Body && page.body.state == DetailValueState::Known;
+    let validates = page.not_modified || page.facet != DetailFacet::Body || observes_body;
+    let value_source = if page.not_modified {
+        previous_value_source.map(|mut source| {
+            source.observed_at = page.source.observed_at.clone();
+            source
+        })
+    } else if validates {
+        let mut source = page.source.clone();
+        if source.provider_updated_at.is_none()
+            && let Some(old) = previous_value_source.as_ref().filter(|old| {
+                old.source == source.source && old.adapter_version == source.adapter_version
+            })
+        {
+            source.provider_updated_at = old.provider_updated_at.clone();
+        }
+        Some(source)
+    } else {
+        previous_value_source
+    };
+    let mut body: DetailValue = previous
+        .as_ref()
+        .map(|r| decode(r.get("body_json")))
+        .transpose()?
+        .unwrap_or_default();
+    if observes_body || body.state != DetailValueState::Known && !page.not_modified {
+        body = page.body.clone();
+    }
+    let observed_state = if page.not_modified {
+        DetailValueState::Known
+    } else if page.facet == DetailFacet::Body {
+        page.body.state
+    } else {
+        DetailValueState::Known
+    };
+    let validated_at = if validates {
+        Some(page.source.observed_at.clone())
+    } else {
+        stored.coverage.validated_at.clone()
+    };
+    let stale_at = if validates {
+        Some(
+            (chrono::DateTime::parse_from_rfc3339(&page.source.observed_at)
+                .map_err(|_| invalid_detail())?
+                + chrono::Duration::seconds(i64::from(page.freshness_seconds.min(86_400))))
+            .to_rfc3339(),
+        )
+    } else {
+        previous.as_ref().and_then(|r| r.get("stale_at"))
+    };
+    let coverage = Coverage {
+        state: if page.complete && validates {
+            CoverageState::Complete
+        } else {
+            CoverageState::Partial
+        },
+        validated_at,
+        remote_has_more: page.next_cursor.is_some(),
+    };
+    let revision = record_change(
+        tx,
+        &page.account_id,
+        positive_revision(&page.authorization_epoch)?,
+        &scope,
+        false,
+    )
+    .await?;
+    sqlx::query("INSERT INTO detail_observations(account_id,subject_id,facet,authorization_epoch,facet_revision,body_json,source_json,value_source_json,observed_state,stale_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(account_id,subject_id,facet) DO UPDATE SET authorization_epoch=excluded.authorization_epoch,facet_revision=excluded.facet_revision,body_json=excluded.body_json,source_json=excluded.source_json,value_source_json=excluded.value_source_json,observed_state=excluded.observed_state,stale_at=excluded.stale_at")
+            .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&page.authorization_epoch).bind(&revision).bind(encode(&body)?).bind(encode(&page.source)?).bind(value_source.map(|s|encode(&s)).transpose()?).bind(tag(&observed_state)?).bind(stale_at).execute(&mut **tx).await.map_err(storage_error)?;
+    if page.facet == DetailFacet::Body {
+        super::resource_metadata::apply_in(tx, &page, &subject.kind).await?;
+    } else if page.metadata.is_some() {
+        return Err(invalid_detail());
+    }
+    for incoming in page.entries {
+        let old:Option<String>=sqlx::query_scalar("SELECT json FROM detail_entries WHERE account_id=? AND subject_id=? AND facet=? AND id=?")
+                .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&incoming.id).fetch_optional(&mut **tx).await.map_err(storage_error)?;
+        let entry = merge_entry(incoming, old.map(|s| decode(&s)).transpose()?, &page.source)?;
+        sqlx::query("INSERT INTO detail_entries(account_id,subject_id,facet,id,json,last_seen_run) VALUES(?,?,?,?,?,?) ON CONFLICT(account_id,subject_id,facet,id) DO UPDATE SET json=excluded.json,last_seen_run=excluded.last_seen_run")
+                .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&entry.id).bind(encode(&entry)?).bind(&page.run_id).execute(&mut **tx).await.map_err(storage_error)?;
+    }
+    if page.complete && !page.not_modified && page.facet != DetailFacet::Body {
+        sqlx::query("DELETE FROM detail_entries WHERE account_id=? AND subject_id=? AND facet=? AND last_seen_run<>?")
+                .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&page.run_id).execute(&mut **tx).await.map_err(storage_error)?;
+    }
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM detail_entries WHERE account_id=? AND subject_id=? AND facet=?",
+    )
+    .bind(&page.account_id)
+    .bind(&page.subject_id)
+    .bind(tag(&page.facet)?)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(storage_error)?;
+    if count > MAX_DETAIL_ENTRIES {
+        return Err(CollaborationError::new(
+            ErrorCode::Busy,
+            "The detail collection cache limit was reached",
+        ));
+    }
+    let mut sync = stored.sync;
+    sync.state = SyncState::Idle;
+    sync.error = None;
+    sync.next_retry_at = None;
+    if validates {
+        sync.last_success_at = Some(page.source.observed_at);
+    }
+    let retain_validator = page.complete && page.whole_scope && validates;
+    sqlx::query("UPDATE sync_scopes SET next_cursor=?,etag=?,coverage_json=?,sync_json=?,access_denied=0,data_revision=data_revision+1 WHERE account_id=? AND scope=? AND run_id=?")
+            .bind(&page.next_cursor).bind(if retain_validator { page.etag.or(if page.not_modified {stored.etag}else{None}) } else {None}).bind(encode(&coverage)?).bind(encode(&sync)?).bind(&page.account_id).bind(&scope).bind(&page.run_id).execute(&mut **tx).await.map_err(storage_error)?;
+    if page.complete {
+        sqlx::query("UPDATE detail_demand SET requested=0 WHERE account_id=? AND subject_id=? AND facet=? AND authorization_epoch=?")
+                .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&page.authorization_epoch).execute(&mut **tx).await.map_err(storage_error)?;
+    }
+    Ok(revision)
 }

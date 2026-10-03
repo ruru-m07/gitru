@@ -128,6 +128,7 @@ impl CollaborationProvider for Provider {
             repositories: vec![],
             items: vec![],
             endpoint_aliases: vec![],
+            notification_subjects: vec![],
             next_cursor: (index < self.pages).then(|| (index + 1).to_string()),
             etag: None,
             last_modified: None,

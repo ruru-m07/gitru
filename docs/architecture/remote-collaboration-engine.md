@@ -2115,3 +2115,78 @@ packaged E2E is still running. No exact-head CodeQL is reported. No PR has been
 merged. R79's reviewed parser stage remains isolated; SQL0007 may begin only once
 this actual0006 ancestor is established, with strict notified-subject provenance
 and explicit finite identity discovery as recorded in its approved work note.
+
+
+### RURU-79 notified-subject integration — 3 October 2026
+
+RURU-79 now implements the recorded contract atop R96/#153's actual signed
+repair `0eb71a5` (inherited by signed merge `ab958df`). Forward0007 adds only
+rebuildable selector/discovery state and indexed immutable-alias lookups;
+previous migration bytes and R106's conservative recovery ceiling are unchanged.
+A cache-only account/instance/immutable-parent/kind/number resolver opens PR/issue
+Body and metadata immediately. Only current, non-denied inbox provenance grants
+that exact subject independently of local repository selection. All hidden
+canonical claims and contradictory immutable Native representation targets take
+part in ambiguity. Mutable path/web aliases after a rename and several distinct
+issue-side aliases naming one PR do not create false conflicts.
+
+Notification membership/denial withdrawal fences pending detail/discovery and
+provider projections atomically, preserving private drafts and their generations.
+Existing independently selected cached detail remains readable after discovery
+absence; actual discovery denial still wins. The old absence-versus-denial
+regression remains unchanged. Shared item/detail/context/demand predicates and
+point commit recheck the same grant rather than creating a second access policy.
+
+Explicit identity discovery has durable finite intent (16/account,64/process,
+three attempts per generation), one HTTP worker and strict persisted REST/retry
+barriers. It accepts no renderer URL or native ID. PR responses prove immutable
+parent via their own base repository; named-only issue responses remain typed
+IdentityUnverified. Unsolicited304 cannot bootstrap identity/content. Verified
+identity, aliases, bounded summary and shared Body/metadata publish in one point
+transaction without feed membership, cursor, selection or mark-read writes.
+Same-epoch stale responses may preserve consumed account quota only; stale
+subject/error/denial/intent effects and old epochs remain fenced.
+
+Normal112-command generation adds eight named schemas and changes no existing
+schema semantics. Local evidence passes249 collaboration tests (two existing
+ignored subprocess helpers), all12 frozen-v1 migration cases,11 collaboration
+caller/lifetime tests (15 complete desktop-native package tests),106 SDK and287
+desktop tests. Workspace all-target Clippy and native formatting pass. Fresh isolated macOS
+QA and cold restart pass with six separate authored drafts, both parents
+unselected, eight unchanged unread notifications, zero credentials and one
+strictly paused explicit intent (attempts0). Fresh packaged macOS E2E passes all three cases; review publication and
+exact-head remote CI are tracked on the linked RURU-79 and attached PR. Independent adversarial review
+reproduced and repaired older-selector rollback, immutable representation
+ambiguity, and a missing provider:rest subscription dependency. The shared
+frontend retains canonical private draft CAS separately from historical thread
+drafts and acknowledges explicit durable read receipts. Read experience never
+silently selects a repository or marks a notification read.
+
+R96 repaired head `0eb71a5` now passes all11 reported checks, including
+Linux/macOS/Windows packaged E2E and all three Rust platforms; the final Windows
+E2E check completed2026-10-03T12:11:26Z. R98 head `2d415938` passes all11 reported checks. Neither reports
+exact-head CodeQL. R79 is locally qualified for review; live provider/vault and platform/security
+qualifications remain distinct from its exact-head remote CI. No PR has
+been merged. See [RURU-79's work note](./collaboration-work/RURU-79.md) for current
+native proof, frontend and isolated QA evidence.
+
+
+### Exact-head remote CI repair — 3 October 2026
+
+Published R79/#154 `1a51a75` passes frontend/lint/types/build, Clippy, Linux
+Rust and packaged Linux/macOS E2E in run37122670576; Windows is still running.
+The macOS Rust job111201717043 fails two synthetic HTTP fixture cases at
+notification_subject_discovery/tests.rs345 with Darwin WouldBlock35. The
+nonblocking listener's flag is inherited by accepted sockets on that platform;
+read timeout does not turn them blocking. The test helper now explicitly makes
+the accepted socket blocking before the existing bounded read timeout. No
+production HTTP behavior, deadline, assertion or CI ordering is changed.
+
+Local correction: all16 focused notification-discovery adapter cases and all120
+collaboration library cases pass (one existing subprocess-entrypoint ignored);
+workspace formatting passes. Previously qualified GUI/package evidence remains
+on its recorded executable; fresh remote checks qualify the repaired PR head.
+Logs: `/tmp/gitru-ruru79-macos-ci-failure.log`,
+`/tmp/gitru-ruru79-accepted-socket-tests.log`,
+`/tmp/gitru-ruru79-accepted-socket-lib.log`,
+`/tmp/gitru-ruru79-accepted-socket-fmt.log`. No PR is merged.

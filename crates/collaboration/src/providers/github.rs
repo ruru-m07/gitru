@@ -7,6 +7,8 @@ use super::{
 };
 use serde::Deserialize;
 mod issue_details;
+mod notification_subject_discovery;
+pub mod notification_subjects;
 mod pull_details;
 mod resource_details;
 
@@ -32,6 +34,29 @@ impl GithubProvider {
 impl CollaborationProvider for GithubProvider {
     fn kind(&self) -> ProviderKind {
         ProviderKind::Github
+    }
+
+    fn notification_subject_support(
+        &self,
+        account: &RemoteAccount,
+        _: crate::NotificationSubjectKind,
+    ) -> CapabilityState {
+        if account.provider != ProviderKind::Github || account.host != "github.com" {
+            CapabilityState::Unsupported
+        } else if account.state != AccountState::Active || !account.notifications_supported {
+            CapabilityState::Unavailable
+        } else {
+            CapabilityState::Supported
+        }
+    }
+
+    async fn discover_notification_subject(
+        &self,
+        token: &SecretToken,
+        request: TrustedNotificationSubjectRequest,
+    ) -> Result<NotificationSubjectDiscovery, ProviderError> {
+        self.request_notification_subject_discovery(token, request)
+            .await
     }
 
     fn profile(&self, account: &RemoteAccount) -> ProviderProfile {
@@ -200,6 +225,7 @@ impl CollaborationProvider for GithubProvider {
             repositories: Vec::new(),
             items: Vec::new(),
             endpoint_aliases: Vec::new(),
+            notification_subjects: Vec::new(),
             next_cursor: response.next_url,
             etag: response.validators.etag,
             last_modified: response.validators.last_modified,
@@ -266,6 +292,12 @@ impl CollaborationProvider for GithubProvider {
                 }
                 for notification in notifications {
                     let repo = notification.repository.into_remote(&request.account.id)?;
+                    let mapping = notification_subjects::normalize(
+                        &reqwest::Url::parse("https://api.github.com/")
+                            .expect("constant API origin"),
+                        &repo,
+                        &notification.subject,
+                    );
                     let item = RemoteItem {
                         id: format!(
                             "github:notification:{}",
@@ -276,20 +308,39 @@ impl CollaborationProvider for GithubProvider {
                         provider_id: notification.id,
                         kind: RemoteItemKind::Notification,
                         number: None,
-                        title: bounded(notification.subject.title, 16 * 1024)?,
+                        title: bounded(
+                            notification
+                                .subject
+                                .get("title")
+                                .and_then(serde_json::Value::as_str)
+                                .unwrap_or("Notification")
+                                .to_string(),
+                            16 * 1024,
+                        )?,
                         body: None,
                         body_omitted: true,
                         author: None,
                         // API subject URLs are not web URLs. Until subject hydration
                         // provides an html_url, use a safe repository destination.
                         web_url: Some(repo.web_url.clone()),
-                        state: bounded(notification.subject.kind, 128)?,
+                        state: notification
+                            .subject
+                            .get("type")
+                            .and_then(serde_json::Value::as_str)
+                            .filter(|kind| kind.len() <= 128)
+                            .unwrap_or("Unknown")
+                            .to_string(),
                         updated_at: bounded(notification.updated_at, 128)?,
                         head_oid: None,
                         is_draft: None,
                         reason: Some(bounded(notification.reason, 255)?),
                         unread: Some(notification.unread),
                     };
+                    page.notification_subjects
+                        .push(crate::NotificationSubjectObservation {
+                            notification_id: item.id.clone(),
+                            mapping,
+                        });
                     page.repositories.push(repo);
                     page.items.push(item);
                 }
@@ -495,17 +546,10 @@ impl GithubIssue {
 struct GithubNotification {
     id: String,
     repository: GithubRepository,
-    subject: GithubSubject,
+    subject: serde_json::Value,
     reason: String,
     unread: bool,
     updated_at: String,
-}
-
-#[derive(Deserialize)]
-struct GithubSubject {
-    title: String,
-    #[serde(rename = "type")]
-    kind: String,
 }
 
 #[cfg(test)]

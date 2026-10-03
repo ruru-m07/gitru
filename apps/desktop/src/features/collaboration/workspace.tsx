@@ -9,20 +9,15 @@ import {
   type RemoteRepository,
 } from "@gitru/collaboration-client";
 import {
-  draftQueryOptions,
   useCollaborationAccounts,
-  useCollaborationDetail,
-  useCollaborationItem,
   useCollaborationItems,
   useCollaborationRepositories,
   useContextualCapabilities,
   useVisibleDemand,
 } from "@gitru/collaboration-client/react";
-import type { LocalDraft } from "@gitru/commands";
 import { Badge } from "@gitru/ui/components/badge";
 import { Button } from "@gitru/ui/components/button";
 import { Checkbox } from "@gitru/ui/components/checkbox";
-import { Field, FieldLabel } from "@gitru/ui/components/field";
 import { Input } from "@gitru/ui/components/input";
 import {
   Select,
@@ -31,10 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@gitru/ui/components/select";
-import { Textarea } from "@gitru/ui/components/textarea";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft,
   Bell,
   ChevronLeft,
   ChevronRight,
@@ -44,14 +36,7 @@ import {
   RefreshCw,
   Search,
 } from "lucide-react";
-import {
-  type FormEvent,
-  useDeferredValue,
-  useEffect,
-  useId,
-  useMemo,
-  useState,
-} from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import PageLayout from "@/components/page-layout";
 import { AccountSettingsButton } from "./account-manager";
 import {
@@ -69,12 +54,11 @@ import {
   feedFacet,
   inboxPresentation,
   repositoryCapabilityTarget,
-  resourceCapabilityTarget,
 } from "./capability-policy";
 import { OpenLocalCloneButton } from "./local-clone-picker";
 import type { LocalLinkRouteTarget } from "./local-link-navigation";
-import { ResourceCapabilityPanels } from "./resource-capability-panels";
-import { SelectedResourceHeader } from "./resource-metadata";
+import { NotificationSubjectView } from "./notification-subject-view";
+import { SavedItemDetail } from "./saved-item-detail";
 import { CollaborationStatePanel } from "./state-panel";
 import { SyncIndicator } from "./sync-indicator";
 
@@ -934,14 +918,24 @@ function ItemFeed({
           )}
         </div>
         {selectedItem && instanceId ? (
-          <ItemDetail
-            key={selectedItem}
-            account={account}
-            itemId={selectedItem}
-            kind={kind}
-            instanceId={instanceId}
-            close={() => setSelectedItem(null)}
-          />
+          kind === "notification" ? (
+            <NotificationSubjectView
+              key={selectedItem}
+              account={account}
+              notificationId={selectedItem}
+              instanceId={instanceId}
+              close={() => setSelectedItem(null)}
+            />
+          ) : (
+            <SavedItemDetail
+              key={selectedItem}
+              account={account}
+              itemId={selectedItem}
+              kind={kind}
+              instanceId={instanceId}
+              close={() => setSelectedItem(null)}
+            />
+          )
         ) : null}
       </div>
       {page &&
@@ -992,274 +986,5 @@ function ItemFeed({
         </footer>
       ) : null}
     </div>
-  );
-}
-
-function ItemDetail({
-  account,
-  itemId,
-  close,
-  kind,
-  instanceId,
-}: {
-  account: RemoteAccount;
-  itemId: string;
-  kind: RemoteItemKind;
-  instanceId: string;
-  close: () => void;
-}) {
-  const context = useContextualCapabilities(
-    account,
-    resourceCapabilityTarget(instanceId, itemId, kind),
-  );
-  const policy = facetPolicy(context.data, feedFacet[kind]);
-  const query = useCollaborationItem(account, itemId, canReadSaved(policy));
-  const item = query.data?.item;
-  const bodyPolicy = facetPolicy(
-    context.data,
-    kind === "pull_request" ? "pull_details" : "issue_details",
-  );
-  const body = useCollaborationDetail(
-    account,
-    { subject_id: itemId, facet: "body", cursor: null, limit: 50 },
-    kind !== "notification" && canReadSaved(policy) && canReadSaved(bodyPolicy),
-  );
-  const bodyData =
-    canReadSaved(bodyPolicy) &&
-    body.data?.evidence.availability !== "unavailable"
-      ? body.data
-      : undefined;
-  const foregroundDemandError = useVisibleDemand({
-    account,
-    target: {
-      kind: "detail",
-      repository_id: null,
-      subject_id: itemId,
-      facet: "body",
-    },
-    enabled:
-      account.state === "active" &&
-      kind !== "notification" &&
-      !!item &&
-      canReadSaved(policy) &&
-      canMaintainDemand(bodyPolicy) &&
-      body.data?.evidence.availability !== "unavailable",
-  });
-  const bodyAccessDenied =
-    kind !== "notification" &&
-    (bodyPolicy?.saved_read.state === "unavailable" ||
-      body.data?.evidence.availability === "unavailable");
-  return (
-    <article
-      className="min-w-0 overflow-y-auto border-l p-5"
-      aria-label="Saved item detail"
-    >
-      <Button variant="ghost" size="sm" onClick={close} className="mb-4">
-        <ArrowLeft aria-hidden="true" />
-        Back to list
-      </Button>
-      {!canReadSaved(policy) ? (
-        <CapabilityBoundary
-          policy={policy}
-          pending={context.isPending}
-          error={
-            context.isError
-              ? collaborationErrorMessage(context.error)
-              : undefined
-          }
-        >
-          {null}
-        </CapabilityBoundary>
-      ) : bodyAccessDenied ? (
-        <CapabilityBoundary policy={bodyPolicy}>{null}</CapabilityBoundary>
-      ) : query.isPending ? (
-        <p role="status" className="text-sm text-muted-foreground">
-          Loading saved detail…
-        </p>
-      ) : query.isError ? (
-        <p role="alert" className="text-sm text-destructive-foreground">
-          {collaborationErrorMessage(query.error)}
-        </p>
-      ) : item ? (
-        <>
-          <SelectedResourceHeader
-            item={item}
-            metadata={bodyData?.metadata ?? null}
-          />
-          {kind === "notification" || !canReadSaved(bodyPolicy) ? (
-            <div className="mt-4 whitespace-pre-wrap break-words text-sm leading-relaxed">
-              {item.body ??
-                (item.body_omitted
-                  ? "This description is not saved on this device. Open the provider to read it."
-                  : "This saved item has no description.")}
-            </div>
-          ) : null}
-          <ReadOnlyCapability policy={policy} />
-        </>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          This item is no longer available in your saved view.
-        </p>
-      )}
-      {foregroundDemandError ? (
-        <p role="alert" className="mt-3 text-xs text-destructive-foreground">
-          {collaborationErrorMessage(foregroundDemandError)}
-        </p>
-      ) : null}
-      <ResourceCapabilityPanels
-        account={account}
-        subjectId={itemId}
-        kind={kind}
-        snapshot={context.data}
-      />
-      <PrivateDraft account={account} subjectId={itemId} />
-    </article>
-  );
-}
-
-function PrivateDraft({
-  account,
-  subjectId,
-}: {
-  account: RemoteAccount;
-  subjectId: string;
-}) {
-  const query = useQuery(draftQueryOptions(account, subjectId));
-  // This is authored editor initialization, scoped by the parent account and
-  // subject keys. A provider authorization reset may reread local drafts, but
-  // cannot discard an already mounted editor's text during that reread.
-  const [loaded, setLoaded] = useState<{ draft: LocalDraft | null } | null>(
-    () => (query.data === undefined ? null : { draft: query.data }),
-  );
-  if (query.data !== undefined && query.data !== loaded?.draft) {
-    setLoaded({ draft: query.data });
-  }
-  return (
-    <>
-      {query.isError ? (
-        <p role="alert" className="mt-6 text-xs text-destructive-foreground">
-          {collaborationErrorMessage(query.error)}
-        </p>
-      ) : null}
-      {loaded ? (
-        <DraftForm
-          account={account}
-          itemId={subjectId}
-          initialBody={loaded.draft?.body ?? ""}
-          generation={loaded.draft?.generation ?? "0"}
-        />
-      ) : null}
-    </>
-  );
-}
-
-function DraftForm({
-  account,
-  itemId,
-  initialBody,
-  generation,
-}: {
-  account: RemoteAccount;
-  itemId: string;
-  initialBody: string;
-  generation: string;
-}) {
-  const draftId = useId();
-  const [body, setBody] = useState(initialBody);
-  const [savedBody, setSavedBody] = useState(initialBody);
-  const [draftGeneration, setDraftGeneration] = useState(generation);
-  const [previousBody, setPreviousBody] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const queryClient = useQueryClient();
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSaving(true);
-    setError(null);
-    try {
-      const draft = await collaboration
-        .forAccount(account)
-        .saveDraft({ subject_id: itemId, body, generation: draftGeneration });
-      queryClient.setQueryData(
-        draftQueryOptions(account, itemId).queryKey,
-        draft,
-      );
-      setDraftGeneration(draft.generation);
-      setSavedBody(draft.body);
-    } catch (failure) {
-      setError(collaborationErrorMessage(failure));
-    } finally {
-      setSaving(false);
-    }
-  }
-  return (
-    <form className="mt-6 space-y-3 border-t pt-4" onSubmit={save}>
-      <Field name="private-draft">
-        <FieldLabel htmlFor={draftId}>Private draft</FieldLabel>
-        <Textarea
-          id={draftId}
-          name="private-draft"
-          value={body}
-          disabled={saving}
-          onChange={(event) => setBody(event.currentTarget.value)}
-          maxLength={100_000}
-          rows={4}
-          placeholder="Keep a draft here for later…"
-        />
-      </Field>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">
-          Saved on this device. Visible only to you.
-        </p>
-        <Button
-          type="submit"
-          size="sm"
-          variant="outline"
-          disabled={
-            saving || body === savedBody || generation !== draftGeneration
-          }
-        >
-          {saving ? "Saving…" : "Save draft"}
-        </Button>
-      </div>
-      {generation !== draftGeneration ? (
-        <div className="space-y-2 text-xs text-muted-foreground">
-          <p>
-            This draft changed in another tab. Your text is still here. Reload
-            the saved draft before saving again.
-          </p>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setPreviousBody(body);
-              setBody(initialBody);
-              setSavedBody(initialBody);
-              setDraftGeneration(generation);
-              setError(null);
-            }}
-          >
-            Reload saved draft
-          </Button>
-        </div>
-      ) : null}
-      {previousBody !== null ? (
-        <details className="text-xs text-muted-foreground">
-          <summary className="cursor-pointer">Your previous draft text</summary>
-          <Textarea
-            aria-label="Previous draft text"
-            className="mt-2"
-            value={previousBody}
-            readOnly
-            rows={4}
-          />
-        </details>
-      ) : null}
-      {error ? (
-        <p role="alert" className="text-xs text-destructive-foreground">
-          {error}
-        </p>
-      ) : null}
-    </form>
   );
 }
