@@ -107,6 +107,7 @@ impl CollaborationProvider for Provider {
             .map(|s| s.parse::<usize>().unwrap())
             .unwrap_or(1);
         Ok(DetailPage {
+            metadata: None,
             body: if request.facet == DetailFacet::Body {
                 fixtures::known(Some("detail body"))
             } else {

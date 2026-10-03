@@ -312,6 +312,7 @@ impl Store {
         let mut result = DetailSnapshot {
             subject_id: query.subject_id.clone(),
             body: DetailValue::default(),
+            metadata: None,
             entries: vec![],
             next_cursor: None,
             evidence,
@@ -321,6 +322,10 @@ impl Store {
         if result.evidence.availability == DetailAvailability::Unavailable {
             tx.commit().await.map_err(storage_error)?;
             return Ok(result);
+        }
+        if query.facet == DetailFacet::Body {
+            result.metadata =
+                super::resource_metadata::read_in(&mut tx, &account, &query.subject_id).await?;
         }
         let mut after = String::new();
         if let Some(cursor) = query.cursor {
@@ -528,6 +533,17 @@ impl Store {
         epoch_in(&mut tx, &page.account_id, &page.authorization_epoch).await?;
         let account = account_in(&mut tx, &page.account_id, true).await?;
         let subject = subject_in(&mut tx, &page.account_id, &page.subject_id).await?;
+        if let Some(binding) = &page.subject_binding {
+            super::resource_metadata::validate_binding_in(
+                &mut tx,
+                &page.account_id,
+                &subject,
+                binding,
+            )
+            .await?;
+        } else if page.metadata.is_some() {
+            return Err(invalid_detail());
+        }
         if page.facet.capability(&subject.kind).is_none() {
             return Err(invalid_detail());
         }
@@ -598,7 +614,15 @@ impl Store {
                 source
             })
         } else if validates {
-            Some(page.source.clone())
+            let mut source = page.source.clone();
+            if source.provider_updated_at.is_none()
+                && let Some(old) = previous_value_source.as_ref().filter(|old| {
+                    old.source == source.source && old.adapter_version == source.adapter_version
+                })
+            {
+                source.provider_updated_at = old.provider_updated_at.clone();
+            }
+            Some(source)
         } else {
             previous_value_source
         };
@@ -651,6 +675,11 @@ impl Store {
         .await?;
         sqlx::query("INSERT INTO detail_observations(account_id,subject_id,facet,authorization_epoch,facet_revision,body_json,source_json,value_source_json,observed_state,stale_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(account_id,subject_id,facet) DO UPDATE SET authorization_epoch=excluded.authorization_epoch,facet_revision=excluded.facet_revision,body_json=excluded.body_json,source_json=excluded.source_json,value_source_json=excluded.value_source_json,observed_state=excluded.observed_state,stale_at=excluded.stale_at")
             .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&page.authorization_epoch).bind(&revision).bind(encode(&body)?).bind(encode(&page.source)?).bind(value_source.map(|s|encode(&s)).transpose()?).bind(tag(&observed_state)?).bind(stale_at).execute(&mut *tx).await.map_err(storage_error)?;
+        if page.facet == DetailFacet::Body {
+            super::resource_metadata::apply_in(&mut tx, &page, &subject.kind).await?;
+        } else if page.metadata.is_some() {
+            return Err(invalid_detail());
+        }
         for incoming in page.entries {
             let old:Option<String>=sqlx::query_scalar("SELECT json FROM detail_entries WHERE account_id=? AND subject_id=? AND facet=? AND id=?")
                 .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&incoming.id).fetch_optional(&mut *tx).await.map_err(storage_error)?;

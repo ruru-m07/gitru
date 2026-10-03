@@ -6,7 +6,7 @@ import type {
   ResourceLocator,
 } from "@gitru/commands";
 import { queryOptions, useQuery } from "@tanstack/react-query";
-import { useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { collaboration, collaborationKeys } from "./index";
 
 const localQueryPolicy = {
@@ -178,4 +178,55 @@ export function detailQueryOptions(
     queryFn: ({ signal }) =>
       collaboration.forAccount(account).detail(query, signal),
   });
+}
+
+/** Local read only. Selected views submit hydration through the separate hook. */
+export function useCollaborationDetail(
+  account: RemoteAccount,
+  query: Omit<DetailQuery, "account_id">,
+  enabled = true,
+) {
+  useCollaborationVersion();
+  return useQuery({ ...detailQueryOptions(account, query), enabled });
+}
+
+/** Synchronize selected-view intent with the native engine, never a query fetch. */
+export function useSelectedDetailHydration({
+  account,
+  subjectId,
+  parentHeadOid,
+  eligible,
+}: {
+  account: RemoteAccount;
+  subjectId: string;
+  parentHeadOid: string | null;
+  eligible: boolean;
+}) {
+  const identity = JSON.stringify([
+    account.id,
+    account.actor_id,
+    account.authorization_epoch,
+    subjectId,
+    parentHeadOid,
+  ]);
+  const [failure, setFailure] = useState<{
+    identity: string;
+    error: unknown;
+  } | null>(null);
+  useEffect(() => {
+    const lease = collaboration.forAccount(account).retainDetailSelection({
+      subject_id: subjectId,
+      facet: "body",
+    });
+    let current = true;
+    if (eligible)
+      void lease.hydrate(parentHeadOid ?? "").catch((error: unknown) => {
+        if (current) setFailure({ identity, error });
+      });
+    return () => {
+      current = false;
+      lease.release();
+    };
+  }, [account, subjectId, parentHeadOid, eligible, identity]);
+  return eligible && failure?.identity === identity ? failure.error : null;
 }

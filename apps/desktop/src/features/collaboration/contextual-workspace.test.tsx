@@ -21,6 +21,7 @@ import {
   fixturePage,
   fixtureRepositories,
 } from "../../../tests/fixtures/collaboration";
+import { fixtureMetadata } from "../../../tests/fixtures/resource-detail";
 import {
   mockTauriCommand,
   mockTauriCommandResult,
@@ -427,6 +428,7 @@ describe("ordinary collaboration workspace across provider policies", () => {
       };
       const value: DetailSnapshot = {
         subject_id: query.subject_id,
+        metadata: query.facet === "body" ? fixtureMetadata() : null,
         body: {
           state: query.facet === "body" ? "known" : "not_loaded",
           text: query.facet === "body" ? text : null,

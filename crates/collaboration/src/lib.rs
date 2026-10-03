@@ -8,6 +8,7 @@ pub mod domain;
 pub mod error;
 pub mod github_cli;
 pub mod providers;
+pub mod resource_metadata;
 pub mod runtime;
 pub mod storage;
 
@@ -15,5 +16,6 @@ pub use contextual_capabilities::*;
 pub use detail::*;
 pub use domain::*;
 pub use error::{CollaborationError, ErrorCode};
+pub use resource_metadata::*;
 pub use runtime::CollaborationRuntime;
 pub use storage::Store;

@@ -1922,6 +1922,28 @@ RURU-99's separately published authored recovery/editor extraction still needs a
 narrow merge reconciliation preserving recovery/copy/export and its own CAS
 rules. Remote CI/security and live-account qualification remain separate gates.
 
+### Resource description and metadata contract (2026-10-03)
+
+RURU-77 and RURU-78 now implement cached PR and issue details from #149's signed
+`6799e6d` head in isolated managed worktrees. Their approved common contract is
+recorded before implementation in [RURU-77's work note](./collaboration-work/RURU-77.md).
+The existing Body facet owns one resource endpoint; description and typed
+metadata publish atomically under the same native dispatch and authorization
+fences. Migration 0005 is additive rebuildable metadata storage. Each field keeps
+its saved source clock, validation time and latest observation; absent/null/empty/
+oversized values remain distinct. Matching conditional responses validate only
+fields known in their preceding representation. Selected detail headers can
+project authorized endpoint values without implying fresh list membership.
+
+The PR adapter and common native contract are one lane; the issue mapper and
+synthetic fixtures are another. A single frontend owner consumes the frozen
+generated contract, avoiding competing common UI or schema changes. Validation,
+publication and live provider qualification are pending for these slices. Live
+CI is now green for every reported check on all eight published heads, including
+Rust and packaged E2E on Linux/macOS/Windows. Five report completed CodeQL
+analyses (#141/#142/#143/#146/#147); no current exact-head run is observed for
+#144/#145/#149, which retain that separate security gate. No PR has been merged.
+
 ### Linear implementation backlog (2026-10-03)
 
 The remaining work is organized under
@@ -1947,3 +1969,16 @@ Record accepted architecture changes, phase completion evidence, unresolved
 integration gates, and tested provider/server/dependency versions here. Do not
 mark a phase complete from a demo or local-only result while its acceptance gates
 remain unresolved.
+
+
+### RURU-77 local qualification
+
+The shared cached resource metadata contract and GitHub pull detail endpoint
+are locally complete in the signed review lane. [RURU-77's work note](./collaboration-work/RURU-77.md)
+records 143 native, 51 SDK, 208 desktop and three caller-policy passing tests,
+forward migration 0005, generated IPC and accepted independent reviews. Actual
+isolated macOS WKWebView QA verifies immediate cached metadata, known-null body,
+large wrapped labels, actor isolation and explicit-save draft persistence. A
+label-height overlap found during native QA was fixed and the app rebuilt.
+No personal credential or live provider was used. Exact-head remote CI starts
+after publication; RURU-78 will stack its issue adapter on this frozen contract.

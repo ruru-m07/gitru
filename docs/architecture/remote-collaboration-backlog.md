@@ -107,6 +107,19 @@ the observed errno versus source-inferred descriptor mechanism.
 
 Make GitHub, GitLab and Bitbucket collaboration feel like native local data: cached navigation never waits for provider HTTP, while one Rust runtime keeps durable SQLite projections current across all tabs.
 
+The next bounded batch has started: RURU-77 and RURU-78 are In Progress in
+isolated managed worktrees based on #149's signed `6799e6d` head. The approved
+[RURU-77 contract](./collaboration-work/RURU-77.md) uses one Body endpoint and
+atomic description/typed-metadata publication, with migration 0005 and independent
+field authority. The issue mapper consumes that shared contract; generated IPC
+and common UI integrate after it freezes. No new slice is yet validated or
+published. Live CI on 3 October subsequently confirms all eight published heads
+pass every reported check, including Rust and packaged E2E on all three platforms.
+#141/#142/#143/#146/#147 report 15/15 with all CodeQL analyses; #144/#145/#149
+report 11/11 with no current exact-head CodeQL run observed. Those three retain
+their separate security qualification gate. No credentials were inspected and
+no PR was merged.
+
 Provider accounts work independently of Gitru cloud sign-in. GitHub connects with a manual PAT or explicitly selected existing GitHub CLI credential; Gitru does not initiate an OAuth/device flow.
 
 ## Current implementation — 2 October 2026
@@ -166,8 +179,8 @@ Then implement [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-
 | --- | --- | --- |
 | [RURU-96: Link local Git remotes to collaboration repositories and accounts](https://linear.app/catra/issue/RURU-96/link-local-git-remotes-to-collaboration-repositories-and-accounts) | Backlog | [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
 | [RURU-97: Add independent detail-scope storage and hydration contracts](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts) | Backlog | [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
-| [RURU-77: Hydrate and render cached pull request details](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details) | Backlog | [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
-| [RURU-78: Hydrate and render cached issue details](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details) | Backlog | [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
+| [RURU-77: Hydrate and render cached pull request details](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details) | In Progress | [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
+| [RURU-78: Hydrate and render cached issue details](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details) | In Progress | [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
 | [RURU-121: Add bounded frontend prefetch and cached navigation](https://linear.app/catra/issue/RURU-121/add-bounded-frontend-prefetch-and-cached-navigation) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-98](https://linear.app/catra/issue/RURU-98/add-foreground-demand-leases-to-the-native-sync-scheduler), [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details) |
 | [RURU-79: Resolve inbox notifications to cached PR and issue subjects](https://linear.app/catra/issue/RURU-79/resolve-inbox-notifications-to-cached-pr-and-issue-subjects) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
 | [RURU-122: Cache and display conversation comments and activity timelines](https://linear.app/catra/issue/RURU-122/cache-and-display-conversation-comments-and-activity-timelines) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details) |
@@ -914,3 +927,13 @@ Acceptance criteria:
 - [ ] Review and commit the architecture, generated IPC contracts and scoped implementation on ruru/remote-collaboration while preserving unrelated work.
 - [ ] Open a PR with accurate scope and local validation evidence; record and resolve actual remote CI results, including platform checks, before claiming the foundation is merge-ready.
 - [ ] Update section 23 and this backlog with the reviewed commit/PR and remaining production/provider/platform gates; do not mark future features complete from fixture-only coverage.
+
+
+### RURU-77 qualification checkpoint
+
+RURU-77 is ready for draft PR publication with cached PR body/metadata, atomic
+forward migration 0005 and bounded selection hydration. Local native/SDK/desktop
+suites and isolated native UI/account/draft QA pass; [the work note](./collaboration-work/RURU-77.md)
+records exact evidence and remaining gates. RURU-78's isolated issue mapper is
+ready to integrate after this shared contract is signed. Remote CI and live
+provider/production vault qualification are distinct from these local results.

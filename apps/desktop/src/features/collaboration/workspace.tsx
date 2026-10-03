@@ -11,10 +11,12 @@ import {
 import {
   draftQueryOptions,
   useCollaborationAccounts,
+  useCollaborationDetail,
   useCollaborationItem,
   useCollaborationItems,
   useCollaborationRepositories,
   useContextualCapabilities,
+  useSelectedDetailHydration,
 } from "@gitru/collaboration-client/react";
 import type { LocalDraft } from "@gitru/commands";
 import { Badge } from "@gitru/ui/components/badge";
@@ -68,8 +70,8 @@ import {
   repositoryCapabilityTarget,
   resourceCapabilityTarget,
 } from "./capability-policy";
-import { ProviderLink } from "./provider-link";
 import { ResourceCapabilityPanels } from "./resource-capability-panels";
+import { SelectedResourceHeader } from "./resource-metadata";
 import { CollaborationStatePanel } from "./state-panel";
 import { SyncIndicator } from "./sync-indicator";
 
@@ -880,6 +882,45 @@ function ItemDetail({
   const policy = facetPolicy(context.data, feedFacet[kind]);
   const query = useCollaborationItem(account, itemId, canReadSaved(policy));
   const item = query.data?.item;
+  const bodyPolicy = facetPolicy(
+    context.data,
+    kind === "pull_request" ? "pull_details" : "issue_details",
+  );
+  const body = useCollaborationDetail(
+    account,
+    { subject_id: itemId, facet: "body", cursor: null, limit: 50 },
+    kind !== "notification" && canReadSaved(policy) && canReadSaved(bodyPolicy),
+  );
+  const bodyData =
+    canReadSaved(bodyPolicy) &&
+    body.data?.evidence.availability !== "unavailable"
+      ? body.data
+      : undefined;
+  const automaticHydrationError = useSelectedDetailHydration({
+    account,
+    subjectId: itemId,
+    parentHeadOid: item?.head_oid ?? null,
+    eligible:
+      kind !== "notification" &&
+      !!item &&
+      canReadSaved(policy) &&
+      canSynchronize(bodyPolicy) &&
+      !!bodyData &&
+      bodyData.evidence.sync.state === "idle" &&
+      bodyData.evidence.sync.error === null &&
+      (bodyData.evidence.availability === "missing" ||
+        bodyData.metadata === null ||
+        bodyData.evidence.freshness === "stale" ||
+        (bodyData.evidence.availability === "partial" &&
+          bodyData.evidence.freshness === "unknown" &&
+          bodyData.body.state !== "known" &&
+          bodyData.body.state !== "oversized" &&
+          bodyData.evidence.observed_state !== "oversized")),
+  });
+  const bodyAccessDenied =
+    kind !== "notification" &&
+    (bodyPolicy?.saved_read.state === "unavailable" ||
+      body.data?.evidence.availability === "unavailable");
   return (
     <article
       className="min-w-0 overflow-y-auto border-l p-5"
@@ -901,6 +942,8 @@ function ItemDetail({
         >
           {null}
         </CapabilityBoundary>
+      ) : bodyAccessDenied ? (
+        <CapabilityBoundary policy={bodyPolicy}>{null}</CapabilityBoundary>
       ) : query.isPending ? (
         <p role="status" className="text-sm text-muted-foreground">
           Loading saved detail…
@@ -911,31 +954,18 @@ function ItemDetail({
         </p>
       ) : item ? (
         <>
-          <div className="mb-3 flex flex-wrap gap-2">
-            <Badge variant="outline">{item.state}</Badge>
-            {item.number ? (
-              <span className="text-xs text-muted-foreground">
-                #{item.number}
-              </span>
-            ) : null}
-            {item.is_draft ? <Badge variant="outline">Draft</Badge> : null}
-          </div>
-          <h2 className="break-words text-lg font-semibold leading-snug">
-            {item.title}
-          </h2>
-          <p className="mt-2 text-xs text-muted-foreground">
-            {item.author ? `@${item.author} · ` : ""}Updated{" "}
-            {formatDate(item.updated_at)}
-          </p>
-          <div className="my-4">
-            <ProviderLink url={item.web_url} />
-          </div>
-          <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-            {item.body ??
-              (item.body_omitted
-                ? "This description is not saved on this device. Open the provider to read it."
-                : "This saved item has no description.")}
-          </div>
+          <SelectedResourceHeader
+            item={item}
+            metadata={bodyData?.metadata ?? null}
+          />
+          {kind === "notification" || !canReadSaved(bodyPolicy) ? (
+            <div className="mt-4 whitespace-pre-wrap break-words text-sm leading-relaxed">
+              {item.body ??
+                (item.body_omitted
+                  ? "This description is not saved on this device. Open the provider to read it."
+                  : "This saved item has no description.")}
+            </div>
+          ) : null}
           <ReadOnlyCapability policy={policy} />
         </>
       ) : (
@@ -943,6 +973,11 @@ function ItemDetail({
           This item is no longer available in your saved view.
         </p>
       )}
+      {automaticHydrationError ? (
+        <p role="alert" className="mt-3 text-xs text-destructive-foreground">
+          {collaborationErrorMessage(automaticHydrationError)}
+        </p>
+      ) : null}
       <ResourceCapabilityPanels
         account={account}
         subjectId={itemId}
@@ -1099,14 +1134,4 @@ function DraftForm({
       ) : null}
     </form>
   );
-}
-
-function formatDate(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? "date unavailable"
-    : date.toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      });
 }

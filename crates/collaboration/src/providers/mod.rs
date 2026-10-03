@@ -66,6 +66,7 @@ pub struct DetailRequest {
 #[derive(Debug, Clone)]
 pub struct DetailPage {
     pub body: DetailValue,
+    pub metadata: Option<crate::ResourceMetadataObservation>,
     pub entries: Vec<DetailEntry>,
     pub source: DetailSource,
     pub next_cursor: Option<String>,
