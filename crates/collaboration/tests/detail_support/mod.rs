@@ -122,6 +122,7 @@ pub async fn commit(store: &Store, account: &RemoteAccount, facet: DetailFacet) 
 }
 pub fn from_lease(account: &RemoteAccount, facet: DetailFacet, lease: DetailLease) -> DetailCommit {
     DetailCommit {
+        reconciliation: DetailReconciliation::full_history(),
         metadata: None,
         subject_binding: None,
         account_id: account.id.clone(),

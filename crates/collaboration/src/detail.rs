@@ -191,9 +191,44 @@ pub struct HydrateDetailRequest {
     pub facet: DetailFacet,
 }
 
+/// Native adapter evidence. Exhausting a delta is not full absence evidence.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DetailEnumeration {
+    FullEnumeration,
+    Incremental,
+    #[default]
+    Uncertain,
+}
+
+/// Historical reviews/comments and a current-head check set have different scopes.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DetailHeadScope {
+    #[default]
+    SubjectHistory,
+    CurrentHead,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DetailReconciliation {
+    pub enumeration: DetailEnumeration,
+    pub head_scope: DetailHeadScope,
+}
+impl DetailReconciliation {
+    /// Adapter declaration for a complete subject-history enumeration.
+    pub const fn full_history() -> Self {
+        Self {
+            enumeration: DetailEnumeration::FullEnumeration,
+            head_scope: DetailHeadScope::SubjectHistory,
+        }
+    }
+}
+
 /// Native-only page transaction. IPC never accepts provider observations.
 #[derive(Debug, Clone)]
 pub struct DetailCommit {
+    pub reconciliation: DetailReconciliation,
     pub account_id: String,
     pub authorization_epoch: String,
     pub authorization_view: String,
@@ -224,6 +259,7 @@ pub struct DetailLease {
     pub next_cursor: Option<String>,
     pub etag: Option<String>,
     pub source: Option<DetailSource>,
+    pub reconciliation: Option<DetailReconciliation>,
 }
 
 #[derive(Debug, Clone)]

@@ -203,10 +203,19 @@ impl CollaborationRuntime {
                 kind: subject.kind.clone(),
                 head_oid: subject.head_oid.clone(),
             };
+            let adapter = self.adapter_for_account(&current).await?;
             self.ensure_demand_dispatch(job).await?;
-            let mut page = self
-                .adapter_for_account(&current)
-                .await?
+            self.store
+                .validate_detail_dispatch(
+                    &account.id,
+                    &account.authorization_epoch,
+                    subject_id,
+                    facet,
+                    &lease,
+                    &binding,
+                )
+                .await?;
+            let mut page = adapter
                 .fetch_detail(
                     &token,
                     DetailRequest {
@@ -215,7 +224,7 @@ impl CollaborationRuntime {
                         subject,
                         facet,
                         cursor: lease.next_cursor.clone(),
-                        etag: lease.etag.take(),
+                        etag: lease.etag.clone(),
                         source: lease.source.clone(),
                     },
                 )
@@ -233,9 +242,10 @@ impl CollaborationRuntime {
             }
             let complete = page.not_modified || page.next_cursor.is_none();
             let cooldown = page.cooldown_seconds.unwrap_or(0);
-            let revision = self
+            let result = self
                 .store
                 .apply_detail(DetailCommit {
+                    reconciliation: page.reconciliation,
                     account_id: account.id.clone(),
                     authorization_epoch: account.authorization_epoch.clone(),
                     authorization_view: lease.authorization_view.clone(),
@@ -256,10 +266,60 @@ impl CollaborationRuntime {
                     complete,
                     freshness_seconds: page.freshness_seconds,
                 })
-                .await?;
+                .await;
+            let revision = match result {
+                Ok(revision) => revision,
+                Err(error)
+                    if crate::storage::facet_reconciliation::is_drift(&error)
+                        && !job.detail_restarted =>
+                {
+                    // The rejected page never committed provider truth. Reset
+                    // only this exact live traversal, once per admitted job.
+                    let revision = self
+                        .store
+                        .restart_detail_traversal(
+                            &account.id,
+                            &account.authorization_epoch,
+                            subject_id,
+                            facet,
+                            &lease,
+                        )
+                        .await?;
+                    self.publish(revision);
+                    job.detail_restarted = true;
+                    job.detail_lease = None;
+                    if cooldown > 0 {
+                        self.persist_rate_limit(&account, cooldown, None).await?;
+                    }
+                    return Ok(cooldown == 0);
+                }
+                Err(error) if crate::storage::facet_reconciliation::is_drift(&error) => {
+                    // A broken adapter must not spin through representation
+                    // restarts. Later independent reads still respect the
+                    // ordinary strict retry barriers.
+                    self.store
+                        .stop_detail_reconciliation(
+                            &account.id,
+                            &account.authorization_epoch,
+                            subject_id,
+                            facet,
+                            &lease,
+                        )
+                        .await?;
+                    if cooldown > 0 {
+                        self.persist_rate_limit(&account, cooldown, None).await?;
+                    }
+                    return Err(CollaborationError::new(
+                        ErrorCode::Provider,
+                        "Detail traversal changed repeatedly",
+                    ));
+                }
+                Err(error) => return Err(error),
+            };
             self.publish(revision);
             lease.next_cursor = page.next_cursor;
             lease.source = Some(page.source);
+            lease.reconciliation = Some(page.reconciliation);
             lease.etag = None;
             job.detail_lease = Some(lease);
             {

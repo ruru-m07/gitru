@@ -252,6 +252,7 @@ fn verified(
     NotificationSubjectDiscovery::Verified {
         subject: Box::new(subject),
         detail: Box::new(collaboration::providers::DetailPage {
+            reconciliation: Default::default(),
             body: DetailValue {
                 state: DetailValueState::Known,
                 text: Some(format!("Private detail {actor}")),
@@ -382,6 +383,7 @@ async fn body_commit(store: &Store, actor: &str, id: &str) -> DetailCommit {
         .await
         .unwrap();
     DetailCommit {
+        reconciliation: Default::default(),
         account_id: actor.into(),
         authorization_epoch: epoch,
         authorization_view: lease.authorization_view,

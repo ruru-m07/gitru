@@ -54,6 +54,9 @@ const nativeOnlyTypes = new Set([
   "NotificationSubjectRepresentation",
   "NotificationSubjectFallbackReason",
   "NotificationSubjectSelector",
+  "DetailEnumeration",
+  "DetailHeadScope",
+  "DetailReconciliation",
 ]);
 
 for (const source of [

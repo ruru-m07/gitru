@@ -369,6 +369,7 @@ impl CollaborationRuntime {
             reason,
             pages: 0,
             detail_lease: None,
+            detail_restarted: false,
         };
         if blocked {
             scheduler.deferred.push_back(job);

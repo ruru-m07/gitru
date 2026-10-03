@@ -197,3 +197,27 @@ after deselect/reselect or run/view rotation. Reproduce this race through exact
 lease state and fence terminal stop to the captured view/run/cursor as well.
 No general feed rewrite, wire DTO or production endpoint rollout is authorized.
 Keep history controls, qualified full traversal and private CAS assertions.
+
+### Captured state correction and stack integration checkpoint
+
+Independent review reproduces four additional actual failures before correction:
+headA/cursorA→summaryB without Body metadata dispatches an extra request, and
+obsolete terminal drift cleanup clears each newer same-epoch view/run/cursor
+intent. The corrected final pre-HTTP read transaction matches captured instance,
+authorization view, run, cursor, ETag, exact committed source/strategy/head and
+subject/native-parent binding. Restart and terminal cleanup recheck the same
+lease after writer acquisition. Rejected old work preserves current intent and
+private CAS. All79 focused cases, all-target collaboration Clippy-Dwarnings,
+format and diff checks pass. Public DTOs and migrations are unchanged.
+
+Root will stack the frozen R101 source onto published R110/#155725b9f2 before
+normal generation and full combined qualification, to preserve atomic quota and
+credential lifecycle fixes and repaired R79/e6fe69e HTTP fixtures. No duplicate
+PR exists; a different PR base is recorded explicitly rather than claiming the
+unmerged review prerequisites are Done. The first full native run exposed a
+one-off new cold-reopen Busy from OS File.try_lock, not SQLite checkpointing.
+Weak Runtime/Store ownership is asserted gone on subsequent successful runs;
+read-only audit finds O_CLOEXEC and no descriptor clone/directory collision, but
+cannot attribute the initial conflict to a child. Keep immediate reopen fatal;
+no sleep/retry/global serialization or unproven production lock fix is added.
+Full combined rerun and exact remote platform qualification remain required.

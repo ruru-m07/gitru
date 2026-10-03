@@ -16,6 +16,21 @@ pub(super) async fn read_in(
     json.map(|s| decode(&s)).transpose()
 }
 
+/// A saved authorized head can contradict the independent list projection.
+/// Fail closed for head-scoped evidence; do not elect or rewrite either head.
+pub(super) async fn head_conflicts_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    account: &RemoteAccount,
+    subject_id: &str,
+    summary_head: Option<&str>,
+) -> Result<bool> {
+    // Metadata-only projection: do not materialize a description, summary body
+    // or the rest of the saved metadata in the contextual evidence accessor.
+    sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM detail_resource_metadata m WHERE m.account_id=? AND m.subject_id=? AND m.authorization_epoch=? AND json_extract(m.metadata_json,'$.values.head.oid') IS NOT ? AND EXISTS(SELECT 1 FROM json_each(m.metadata_json,'$.fields') f WHERE json_extract(f.value,'$.field')='head' AND json_extract(f.value,'$.saved_state')='known') AND NOT EXISTS(SELECT 1 FROM sync_scopes s WHERE s.account_id=m.account_id AND s.scope=? AND s.access_denied=1))")
+        .bind(&account.id).bind(subject_id).bind(&account.authorization_epoch).bind(summary_head).bind(DetailFacet::Body.scope(subject_id))
+        .fetch_one(&mut **tx).await.map_err(storage_error)
+}
+
 pub(super) async fn validate_binding_in(
     tx: &mut Transaction<'_, Sqlite>,
     account: &str,
@@ -301,6 +316,20 @@ pub(super) async fn apply_in(
     }
     sqlx::query("INSERT INTO detail_resource_metadata(account_id,subject_id,authorization_epoch,metadata_json,source_json) VALUES(?,?,?,?,?) ON CONFLICT(account_id,subject_id) DO UPDATE SET authorization_epoch=excluded.authorization_epoch,metadata_json=excluded.metadata_json,source_json=excluded.source_json")
         .bind(&page.account_id).bind(&page.subject_id).bind(&page.authorization_epoch).bind(json).bind(encode(&source)?).execute(&mut **tx).await.map_err(storage_error)?;
+    if !page.not_modified
+        && saved.fields.iter().any(|field| {
+            field.field == MetadataField::Head && field.observed_state == DetailValueState::Known
+        })
+    {
+        let account = account_in(tx, &page.account_id, true).await?;
+        super::details::invalidate_declared_head_in(
+            tx,
+            &account,
+            &page.subject_id,
+            saved.values.head.as_ref().map(|head| head.oid.as_str()),
+        )
+        .await?;
+    }
     Ok(())
 }
 
@@ -311,7 +340,11 @@ pub(super) async fn invalidate_head_in(
     item: &RemoteItem,
     previous_head: Option<&str>,
 ) -> Result<()> {
-    if item.kind != RemoteItemKind::PullRequest || item.head_oid.is_none() {
+    if item.kind != RemoteItemKind::PullRequest {
+        return Ok(());
+    }
+    super::details::invalidate_head_scopes_in(tx, account, item).await?;
+    if item.head_oid.is_none() {
         return Ok(());
     }
     let mut saved = read_in(tx, account, &item.id).await?;

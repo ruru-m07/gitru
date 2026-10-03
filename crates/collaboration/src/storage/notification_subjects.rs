@@ -1018,6 +1018,7 @@ impl Store {
                 details::apply_detail_in(
                     &mut tx,
                     crate::DetailCommit {
+                        reconciliation: detail.reconciliation,
                         account_id: account.id.clone(),
                         authorization_epoch: account.authorization_epoch.clone(),
                         authorization_view: lease.request.authorization_view.clone(),

@@ -488,6 +488,7 @@ async fn detail_page(
     let lease = store.begin_detail("a", "1", "pull", facet).await.unwrap();
     store
         .apply_detail(DetailCommit {
+            reconciliation: DetailReconciliation::full_history(),
             metadata: None,
             subject_binding: None,
             account_id: "a".into(),
@@ -600,6 +601,7 @@ async fn detail_evidence_distinguishes_authoritative_empty_omission_and_oversize
         .unwrap();
     store
         .apply_detail(DetailCommit {
+            reconciliation: DetailReconciliation::full_history(),
             metadata: None,
             subject_binding: None,
             account_id: "a".into(),

@@ -296,6 +296,7 @@ async fn assert_native_token(
             reason: scheduler::Admission::Manual,
             pages: 0,
             detail_lease: None,
+            detail_restarted: false,
         })
         .await
         .unwrap();

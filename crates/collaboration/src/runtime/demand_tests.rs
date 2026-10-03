@@ -156,6 +156,7 @@ impl CollaborationProvider for Provider {
             return Err(error);
         }
         Ok(DetailPage {
+            reconciliation: DetailReconciliation::full_history(),
             body: if request.facet == DetailFacet::Body {
                 fixtures::known(Some("native cached body"))
             } else {
@@ -699,6 +700,7 @@ fn queued(account: &RemoteAccount, index: usize, reason: scheduler::Admission) -
         reason,
         pages: 0,
         detail_lease: None,
+        detail_restarted: false,
     }
 }
 
