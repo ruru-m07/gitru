@@ -67,10 +67,28 @@ Local automated checks completed on macOS:
   lint, and the production desktop frontend build passed. Existing font/chunk
   build warnings remain outside this slice.
 
-Native save-dialog and interactive multi-account picker inspection is still pending.
-The DOM suite tests an account inventory replacement and ordering change. The pinned
-Base UI popup does not reliably settle under jsdom; packaged inspection is recorded
-separately. The export uses the pinned Tauri dialog plugin's Rust callback API
+Native computer-use QA also passed on 2026-10-03 using a release binary with
+packaged assets, a separate `com.ruru.gitru.draftqa99` identifier, an in-memory E2E
+credential vault, disabled GitHub CLI discovery, and two synthetic disconnected
+accounts. There were no tokens or provider item rows.
+
+- Drafts opened with zero active accounts. The missing-subject draft for actor A
+  rendered its authored Unicode text. Cancelling the actual system save dialog
+  reported cancellation and retained the editor text; reopening the dialog then
+  exported actor A's exact saved UTF-8 body, including its final newline.
+- Keyboard selection in the native account picker switched to actor B, removed
+  actor A's editor, and displayed actor B's different body for the same subject.
+- Editing actor B enabled Save and disabled Export with the Save-first hint. Copy
+  followed by a temporary edit and paste restored the exact current edited body.
+  Saving committed generation 2, enabled Export, and the next native dialog wrote
+  the exact new actor B body to the explicitly chosen QA file.
+- Read-only inspection confirmed actor A remained generation 1, actor B became
+  generation 2, provider item count stayed zero, and both exported files matched
+  their respective saved account bodies. Quitting the QA app released its driver
+  port. The pinned Base UI popup does not reliably settle under jsdom; this actual
+  packaged keyboard interaction supplements the DOM inventory-switch tests.
+
+The export uses the pinned Tauri dialog plugin's Rust callback API
 ([official dialog documentation](https://v2.tauri.app/plugin/dialog/)), rather than
 relying on a WKWebView Blob download.
 
