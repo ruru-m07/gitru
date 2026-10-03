@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { CapabilityBoundary, ReadOnlyCapability } from "./capability-boundary";
 import {
+  canMaintainDemand,
   canReadSaved,
   dispatchCapabilityIntent,
   inboxPresentation,
@@ -83,6 +84,64 @@ describe("contextual feature policy", () => {
     );
     expect(screen.getByText("Saved authorized text")).toBeVisible();
     expect(screen.getByText("Read-only")).toBeVisible();
+  });
+
+  it.each([
+    "not_loaded",
+    "partial",
+    "empty",
+    "omitted",
+    "oversized",
+    "complete",
+  ] as const)("maintains declared authorized interest for %s evidence", (observation) => {
+    expect(canMaintainDemand({ ...supported, observation })).toBe(true);
+  });
+
+  it("retains authorized quota/offline interest while explicit sync remains unavailable", async () => {
+    const paused: ContextFacetCapability = {
+      ...supported,
+      synchronize: { state: "unavailable", reason: "temporarily_unavailable" },
+    };
+    expect(canMaintainDemand(paused)).toBe(true);
+    const dispatch = vi.fn();
+    expect(
+      await dispatchCapabilityIntent(paused, "synchronize", dispatch),
+    ).toBe(false);
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("never maintains automatic interest for denied, unknown, unsupported or disconnected policy", () => {
+    expect(canMaintainDemand(undefined)).toBe(false);
+    for (const reason of [
+      "permission_denied",
+      "authentication_required",
+      "not_implemented",
+    ] as const) {
+      expect(
+        canMaintainDemand({
+          ...supported,
+          synchronize: { state: "unavailable", reason },
+        }),
+      ).toBe(false);
+      expect(
+        canMaintainDemand({
+          ...supported,
+          saved_read: { state: "unavailable", reason },
+        }),
+      ).toBe(false);
+    }
+    expect(
+      canMaintainDemand({
+        ...supported,
+        synchronize: { state: "unsupported", reason: "not_implemented" },
+      }),
+    ).toBe(false);
+    expect(
+      canMaintainDemand({
+        ...supported,
+        synchronize: { state: "unavailable", reason: "not_observed" },
+      }),
+    ).toBe(false);
   });
 
   it("does not mount provider content before policy grants a saved read", () => {

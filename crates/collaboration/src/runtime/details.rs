@@ -2,7 +2,7 @@
 use super::*;
 
 impl CollaborationRuntime {
-    async fn require_detail(
+    pub(super) async fn require_detail(
         &self,
         account: &RemoteAccount,
         subject: &RemoteItem,
@@ -72,7 +72,11 @@ impl CollaborationRuntime {
         Ok(RefreshReceipt { job_id })
     }
     pub(super) async fn enqueue_pending_details(&self) -> Result<(), CollaborationError> {
-        for demand in self.store.pending_details().await? {
+        let cursor = self.scheduler.lock().await.detail_cursor.clone();
+        for demand in self.store.pending_detail_batch(cursor.as_ref()).await? {
+            // Advance over blocked and already fresh subjects too; a sorted
+            // prefix must not permanently hide later explicit read intent.
+            self.scheduler.lock().await.detail_cursor = Some(demand.clone());
             let account = match self.active_account(&demand.account_id).await {
                 Ok(account) => account,
                 Err(error)
@@ -115,7 +119,7 @@ impl CollaborationRuntime {
                 )
                 .await?;
             match self
-                .enqueue_work(
+                .enqueue_work_reason(
                     account,
                     Some(repository),
                     JobKind::Detail {
@@ -123,23 +127,24 @@ impl CollaborationRuntime {
                         facet: demand.facet,
                     },
                     demand.facet.scope(&demand.subject_id),
-                    false,
+                    scheduler::Admission::Explicit,
                 )
                 .await
             {
                 Ok(_) => {}
-                Err(error) if error.code == ErrorCode::Busy => break,
+                Err(error) if error.code == ErrorCode::Busy => continue,
                 Err(error) => return Err(error),
             }
         }
         Ok(())
     }
-    pub(super) async fn sync_detail(
+    pub(super) async fn sync_detail_page(
         &self,
-        job: &Job,
+        job: &mut Job,
         subject_id: &str,
         facet: DetailFacet,
-    ) -> Result<(), CollaborationError> {
+    ) -> Result<bool, CollaborationError> {
+        self.ensure_demand_dispatch(job).await?;
         let (account, token, mut lease) = {
             let _lifecycle = self.lifecycle.lock().await;
             let account = self.active_account(&job.account.id).await?;
@@ -161,16 +166,22 @@ impl CollaborationRuntime {
             let token = self.load_token(&reference).await?.ok_or_else(|| {
                 CollaborationError::new(ErrorCode::AuthRequired, "Reconnect this provider account")
             })?;
-            let lease = self
-                .store
-                .begin_detail(&account.id, &account.authorization_epoch, subject_id, facet)
-                .await?;
-            self.publish(self.store.revision().await?);
+            let lease = if let Some(lease) = &job.detail_lease {
+                lease.clone()
+            } else {
+                let lease = self
+                    .store
+                    .begin_detail(&account.id, &account.authorization_epoch, subject_id, facet)
+                    .await?;
+                self.publish(self.store.revision().await?);
+                lease
+            };
             (account, token, lease)
         };
         let starts_at_beginning = lease.next_cursor.is_none();
-        let mut conditional = lease.etag.is_some();
-        for page_index in 0..MAX_PAGES_PER_REFRESH {
+        let conditional = lease.etag.is_some();
+        let page_index = job.pages;
+        {
             let current = self.active_account(&account.id).await?;
             if current.authorization_epoch != account.authorization_epoch {
                 return Err(stale());
@@ -192,6 +203,7 @@ impl CollaborationRuntime {
                 kind: subject.kind.clone(),
                 head_oid: subject.head_oid.clone(),
             };
+            self.ensure_demand_dispatch(job).await?;
             let mut page = self
                 .adapter_for_account(&current)
                 .await?
@@ -209,7 +221,7 @@ impl CollaborationRuntime {
                 )
                 .await?;
             // Receipt/validation time is engine owned, never the provider clock.
-            page.source.observed_at = now_string();
+            page.source.observed_at = self.now_string();
             if let Some(metadata) = &mut page.metadata {
                 metadata.source.observed_at = page.source.observed_at.clone();
             }
@@ -248,19 +260,26 @@ impl CollaborationRuntime {
             self.publish(revision);
             lease.next_cursor = page.next_cursor;
             lease.source = Some(page.source);
-            conditional = false;
+            lease.etag = None;
+            job.detail_lease = Some(lease);
             {
                 let mut scheduler = self.scheduler.lock().await;
                 scheduler.failures.remove(&job.key);
                 // Partial bounded reads keep their durable intent and yield.
                 scheduler.due.insert(
                     job.key.clone(),
-                    deadline_after(if complete { 180 } else { 10 }),
+                    self.deadline_after(if complete {
+                        u64::from(page.freshness_seconds.max(1))
+                    } else {
+                        0
+                    }),
                 );
                 if cooldown > 0 {
                     scheduler
                         .account_cooldowns
-                        .insert(account.id.clone(), deadline_after(cooldown));
+                        .entry(account.id.clone())
+                        .and_modify(|old| *old = (*old).max(self.deadline_after(cooldown)))
+                        .or_insert_with(|| self.deadline_after(cooldown));
                 }
             }
             if cooldown > 0 {
@@ -273,18 +292,15 @@ impl CollaborationRuntime {
                         &job.scope,
                         SyncStatus {
                             state: SyncState::RateLimited,
-                            last_success_at: Some(now_string()),
-                            next_retry_at: Some(future_string(cooldown)),
+                            last_success_at: Some(self.now_string()),
+                            next_retry_at: Some(self.future_string(cooldown)),
                             error: None,
                         },
                     )
                     .await?;
                 self.publish(revision);
             }
-            if complete || cooldown > 0 {
-                return Ok(());
-            }
+            Ok(!complete && cooldown == 0)
         }
-        Ok(())
     }
 }

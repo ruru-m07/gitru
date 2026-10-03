@@ -296,6 +296,26 @@ impl Store {
         tx.commit().await.map_err(storage_error)?;
         Ok(result)
     }
+    pub(crate) async fn demand_detail_state(
+        &self,
+        account_id: &str,
+        subject_id: &str,
+        facet: DetailFacet,
+    ) -> Result<(DetailEvidence, bool, Vec<String>)> {
+        let mut tx = self.inner.readers.begin().await.map_err(storage_error)?;
+        let account = account_in(&mut tx, account_id, false).await?;
+        let evidence = detail_evidence_in(&mut tx, &account, subject_id, facet).await?;
+        let mut present = false;
+        let mut deadlines = vec![];
+        if facet == DetailFacet::Body && evidence.availability != DetailAvailability::Unavailable {
+            present = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM detail_resource_metadata WHERE account_id=? AND subject_id=? AND authorization_epoch=?)")
+                .bind(account_id).bind(subject_id).bind(&account.authorization_epoch).fetch_one(&mut *tx).await.map_err(storage_error)?;
+            deadlines = sqlx::query_scalar("SELECT json_extract(f.value,'$.stale_at') FROM detail_resource_metadata m,json_each(m.metadata_json,'$.fields') f WHERE m.account_id=? AND m.subject_id=? AND m.authorization_epoch=? AND json_extract(f.value,'$.observed_state')='known' AND json_extract(f.value,'$.saved_state')='known' AND json_extract(f.value,'$.stale_at') IS NOT NULL LIMIT 13")
+                .bind(account_id).bind(subject_id).bind(&account.authorization_epoch).fetch_all(&mut *tx).await.map_err(storage_error)?;
+        }
+        tx.commit().await.map_err(storage_error)?;
+        Ok((evidence, present, deadlines))
+    }
     pub async fn detail(&self, query: DetailQuery) -> Result<DetailSnapshot> {
         if query.limit == 0
             || query.limit > 100
@@ -402,6 +422,50 @@ impl Store {
                 })
             })
             .collect()
+    }
+    pub(crate) async fn pending_detail_batch(
+        &self,
+        after: Option<&DetailDemand>,
+    ) -> Result<Vec<DetailDemand>> {
+        let mut tx = self.inner.readers.begin().await.map_err(storage_error)?;
+        let mut rows = Vec::new();
+        for pass in 0..2 {
+            let mut sql = sqlx::QueryBuilder::<Sqlite>::new(
+                "SELECT d.account_id,d.subject_id,d.facet FROM detail_demand d JOIN accounts a ON a.id=d.account_id AND CAST(a.authorization_epoch AS TEXT)=d.authorization_epoch WHERE d.requested=1 AND a.state='active'",
+            );
+            if pass == 0
+                && let Some(after) = after
+            {
+                sql.push(" AND (d.account_id,d.subject_id,d.facet) > (")
+                    .push_bind(&after.account_id)
+                    .push(",")
+                    .push_bind(&after.subject_id)
+                    .push(",")
+                    .push_bind(tag(&after.facet)?)
+                    .push(")");
+            }
+            sql.push(" ORDER BY d.account_id,d.subject_id,d.facet LIMIT 16");
+            rows = sql
+                .build()
+                .fetch_all(&mut *tx)
+                .await
+                .map_err(storage_error)?;
+            if !rows.is_empty() || after.is_none() {
+                break;
+            }
+        }
+        let demands = rows
+            .into_iter()
+            .map(|row| {
+                Ok(DetailDemand {
+                    account_id: row.get("account_id"),
+                    subject_id: row.get("subject_id"),
+                    facet: decode(&format!("\"{}\"", row.get::<String, _>("facet")))?,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        tx.commit().await.map_err(storage_error)?;
+        Ok(demands)
     }
     pub async fn stop_detail_demand(
         &self,

@@ -949,3 +949,65 @@ passes and credential-free native QA. It is ready for a signed draft PR on #150.
 RURU-98 has started in a separate managed worktree with its lease/fairness
 contract recorded before edits. Dependencies are implemented review stacks;
 no issue is claimed merged or globally qualified by local checks alone.
+
+
+### RURU-98 implementation start
+
+RURU-77 is published as draft [PR #150](https://github.com/ruru-m07/gitru/pull/150)
+and In Review, with local evidence recorded; its remote matrix is running.
+RURU-78 is locally verified and undergoing isolated native QA. RURU-98 starts
+in a separate managed worktree from the signed shared contract, using the
+[approved lease/fairness plan](./collaboration-work/RURU-98.md). It keeps native
+leases ephemeral, visibility caller-bound, and cadence/retry/quota authoritative;
+provider HTTP remains single-owner. RURU-97's prerequisite is implemented in an
+open review stack, not marked merged or Done. No duplicate PR or merge is created.
+
+
+### Exact-head read-detail CI checkpoint — 3 October 2026
+
+Signed PR [#150](https://github.com/ruru-m07/gitru/pull/150) (`7e282ad`) and
+[#151](https://github.com/ruru-m07/gitru/pull/151) (`863967f`) each pass all 11
+reported checks, including three-platform Rust and packaged desktop E2E. No
+exact-head CodeQL check is reported; security and production provider/vault
+qualification remain separate. Both remain open and unmerged. RURU-98 lease/page
+fairness integration and RURU-96 native local-link integration are in progress
+in isolated worktrees with saved contracts.
+
+
+### RURU-98 local qualification checkpoint — 3 October 2026
+
+Foreground demand now uses caller/session/account/scope-bound ephemeral leases,
+native activity/visibility/expiry fences and one bounded SDK heartbeat. Automatic
+interest creates no durable detail intent; manual Sync remains explicit. The
+single native worker yields at committed pages, preserves traversal checkpoints,
+rotates accounts/scopes and reserves selected-detail capacity while guaranteeing
+reconciliation turns. Native cadence and persisted provider/retry/quota deadlines
+control eligibility; renewals cannot reset those barriers. Same-label failed
+close-disposal and slow-start readiness are fenced and tested.
+
+Local159 native/82 SDK/223 desktop tests,6 caller cases, types/lint/Clippy/fmt,
+normal103-command generation, frontend build and actual isolated two-native-tab
+macOS QA pass. Post-Quit SQLite confirms zero automatic durable detail demand,
+zero credentials, preserved metadata/drafts and strict cooldowns. Detailed bounds,
+review findings/fixes and evidence are in [RURU-98's work note](./collaboration-work/RURU-98.md).
+Signed draft publication/remote CI is the next step; live provider/vault and
+R102/R103/R121 gates remain distinct. RURU-96 native links and SDK/UI navigation
+continue in an isolated sibling worktree; no partial link UI is claimed complete.
+No PR has been merged.
+
+
+### RURU-98 integration restack checkpoint — 3 October 2026
+
+RURU-98/PR #152 is restacked locally from signed `9046322` onto signed
+RURU-78/PR #151 `863967f`. GitHub issue details and foreground Body leases now
+qualify together: 170 collaboration, 6 caller, 82 SDK and 230 desktop cases pass,
+including all 12 frozen migration cases. Types/lint/Clippy/formatting pass; schema
+and generated wire contracts are unchanged. One inherited issue test is adapted
+to verify a single bound Body lease and zero automatic durable hydration through
+omission/revalidation, with all saved-value assertions retained.
+
+Both historical master-document chronicles are preserved. The [RURU-98 work
+note](./collaboration-work/RURU-98.md) distinguishes these combined local results
+from all 11 reported green checks on the old published head, previous native
+GUI QA and pending publication/new exact-head CI. RURU-96/RURU-79 are untouched;
+no issue is marked merged or Done by the restack.

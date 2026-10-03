@@ -3,6 +3,7 @@
 extern crate self as collaboration;
 pub mod contextual_capabilities;
 pub mod credentials;
+pub mod demand;
 pub mod detail;
 pub mod domain;
 pub mod error;
@@ -13,6 +14,7 @@ pub mod runtime;
 pub mod storage;
 
 pub use contextual_capabilities::*;
+pub use demand::*;
 pub use detail::*;
 pub use domain::*;
 pub use error::{CollaborationError, ErrorCode};

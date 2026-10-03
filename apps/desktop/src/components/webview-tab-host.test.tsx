@@ -25,6 +25,16 @@ const native = vi.hoisted(() => ({
   holdCreation: false,
   showGate: null as Promise<void> | null,
   closeGate: null as Promise<void> | null,
+  demandAtHide: [] as Array<{ label: string; active: boolean }>,
+  demandAtClose: [] as Array<{ label: string; active: boolean }>,
+  readinessListeners: new Set<() => void>(),
+  demandSequence: 0,
+  demandOwners: new Map<string, { generation: string; active: boolean }>(),
+  demandTransitions: [] as Array<{
+    label: string;
+    active: boolean;
+    visible: boolean;
+  }>,
   state: {
     activeTabId: "a",
     tabs: [
@@ -53,9 +63,74 @@ vi.mock("@/store/use-app-store", async () => {
 
 vi.mock("@gitru/commands", () => ({
   disposeRepoContextOwner: vi.fn().mockResolvedValue(undefined),
+  collaborationInspectDemandOwner: vi.fn(
+    async ({ ownerLabel }: { ownerLabel: string }) => {
+      let activity = native.demandOwners.get(ownerLabel);
+      if (!activity) {
+        activity = {
+          generation: String(++native.demandSequence),
+          active: false,
+        };
+        native.demandOwners.set(ownerLabel, activity);
+      }
+      return { ...activity };
+    },
+  ),
+  collaborationSetDemandOwnerActivity: vi.fn(
+    async ({
+      ownerLabel,
+      expectedGeneration,
+      active,
+    }: {
+      ownerLabel: string;
+      expectedGeneration: string;
+      active: boolean;
+    }) => {
+      const current = native.demandOwners.get(ownerLabel);
+      if (!current || current.generation !== expectedGeneration)
+        throw { code: "stale_view" };
+      const activity = {
+        generation:
+          active === current.active
+            ? current.generation
+            : String(++native.demandSequence),
+        active,
+      };
+      native.demandOwners.set(ownerLabel, activity);
+      native.demandTransitions.push({
+        label: ownerLabel,
+        active,
+        visible:
+          native.views.find((view) => view.label === ownerLabel)?.visible ??
+          true,
+      });
+      return { ...activity };
+    },
+  ),
+  collaborationDisposeDemandOwner: vi.fn(
+    async ({
+      ownerLabel,
+      expectedGeneration,
+    }: {
+      ownerLabel: string;
+      expectedGeneration: string;
+    }) => {
+      if (
+        native.demandOwners.get(ownerLabel)?.generation !== expectedGeneration
+      )
+        throw { code: "stale_view" };
+      native.demandOwners.delete(ownerLabel);
+    },
+  ),
 }));
 vi.mock("@/state/core/repo-context-registry", () => ({
   createRepoContextOwnerId: (label: string) => "owner:" + label,
+}));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async (_event: string, callback: () => void) => {
+    native.readinessListeners.add(callback);
+    return () => native.readinessListeners.delete(callback);
+  }),
 }));
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({ label: "main" }),
@@ -80,12 +155,20 @@ vi.mock("@tauri-apps/api/webview", () => ({
       this.visible = true;
     });
     hide = vi.fn(async () => {
+      native.demandAtHide.push({
+        label: this.label,
+        active: native.demandOwners.get(this.label)?.active ?? false,
+      });
       this.visible = false;
     });
     setFocus = vi.fn().mockResolvedValue(undefined);
     setPosition = vi.fn().mockResolvedValue(undefined);
     setSize = vi.fn().mockResolvedValue(undefined);
     close = vi.fn(async () => {
+      native.demandAtClose.push({
+        label: this.label,
+        active: native.demandOwners.get(this.label)?.active ?? false,
+      });
       if (native.closeGate) await native.closeGate;
       native.views = native.views.filter((view) => view !== this);
     });
@@ -119,6 +202,12 @@ beforeEach(() => {
   native.holdCreation = false;
   native.showGate = null;
   native.closeGate = null;
+  native.demandOwners.clear();
+  native.demandAtHide = [];
+  native.demandAtClose = [];
+  native.demandTransitions = [];
+  native.demandSequence = 0;
+  native.readinessListeners.clear();
   native.listeners.clear();
   native.state = {
     activeTabId: "a",
@@ -488,4 +577,116 @@ it("drains pending hides on failure before restoring the active tab", async () =
   expect(refused).toBe(true);
   expect(native.views[0].visible).toBe(true);
   expect(native.views[0].setFocus).toHaveBeenCalled();
+});
+
+it("grants urgency only after show and revokes every hidden prewarm and modal owner", async () => {
+  const host = await mountHost();
+  await waitFor(() => expect(native.views[0]?.setFocus).toHaveBeenCalled());
+  await waitFor(() => expect(native.views).toHaveLength(2));
+  expect(native.demandOwners.get("tab-webview:a")?.active).toBe(true);
+  expect(native.demandOwners.get("tab-webview:b")?.active).toBe(false);
+  expect(native.demandOwners.get("main")?.active).toBe(false);
+  expect(
+    native.demandTransitions
+      .filter(({ active }) => active)
+      .every(({ visible }) => visible),
+  ).toBe(true);
+  const originalGeneration =
+    native.demandOwners.get("tab-webview:a")?.generation;
+
+  await host.setTabWebviewsSuspended(true);
+  expect([...native.demandOwners.values()].every(({ active }) => !active)).toBe(
+    true,
+  );
+  await changeActive("b");
+  await host.setTabWebviewsSuspended(false);
+  expect(native.demandOwners.get("tab-webview:b")?.active).toBe(true);
+  expect(native.demandOwners.get("tab-webview:a")?.active).toBe(false);
+  await changeActive("a");
+  await waitFor(() =>
+    expect(native.demandOwners.get("tab-webview:a")?.active).toBe(true),
+  );
+  expect(native.demandOwners.get("tab-webview:a")?.generation).not.toBe(
+    originalGeneration,
+  );
+  expect(native.demandAtHide.every(({ active }) => !active)).toBe(true);
+});
+
+it("disposes demand before native close and a same-label replacement gets a new generation", async () => {
+  const host = await import("./webview-tab-host");
+  const first = render(<host.default />);
+  await waitFor(() => expect(native.views[0]?.setFocus).toHaveBeenCalled());
+  const original = native.demandOwners.get("tab-webview:a")?.generation;
+  first.unmount();
+  await waitFor(() => expect(native.views).toHaveLength(0));
+  expect(native.demandAtClose.length).toBeGreaterThan(0);
+  expect(native.demandAtClose.every(({ active }) => !active)).toBe(true);
+  expect(native.demandOwners.has("tab-webview:a")).toBe(false);
+  render(<host.default />);
+  await waitFor(() => expect(native.views[0]?.setFocus).toHaveBeenCalled());
+  expect(native.demandOwners.get("tab-webview:a")?.active).toBe(true);
+  expect(native.demandOwners.get("tab-webview:a")?.generation).not.toBe(
+    original,
+  );
+});
+
+it("still closes the native surface when demand revocation fails during disposal", async () => {
+  const { collaborationSetDemandOwnerActivity } = await import(
+    "@gitru/commands"
+  );
+  const host = await import("./webview-tab-host");
+  const first = render(<host.default />);
+  await waitFor(() => expect(native.views[0]?.setFocus).toHaveBeenCalled());
+  vi.mocked(collaborationSetDemandOwnerActivity).mockRejectedValueOnce({
+    code: "busy",
+  });
+  const previous = native.demandOwners.get("tab-webview:a")?.generation;
+  first.unmount();
+  await waitFor(() => expect(native.views).toHaveLength(0));
+  // Reopen without waiting for the native observer to notice the missing view.
+  render(<host.default />);
+  await waitFor(() => expect(native.views[0]?.setFocus).toHaveBeenCalled());
+  expect(native.demandOwners.get("tab-webview:a")?.generation).not.toBe(
+    previous,
+  );
+  expect(native.demandOwners.get("tab-webview:a")?.active).toBe(true);
+});
+
+it("repairs a still-visible startup owner once after native readiness without a tab revisit", async () => {
+  const { collaborationSetDemandOwnerActivity } = await import(
+    "@gitru/commands"
+  );
+  const setter = vi.mocked(collaborationSetDemandOwnerActivity);
+  const original = setter.getMockImplementation();
+  if (!original) throw new Error("Missing explicit demand fixture");
+  let ready = false;
+  let rejectedActiveAttempts = 0;
+  setter.mockImplementation(async (request) => {
+    if (request.active && !ready) {
+      rejectedActiveAttempts += 1;
+      throw { code: "not_ready" };
+    }
+    return original(request);
+  });
+  await mountHost();
+  await waitFor(() => expect(native.views[0]?.show).toHaveBeenCalled());
+  await waitFor(() => expect(rejectedActiveAttempts).toBeGreaterThan(0));
+  expect(native.demandOwners.get("tab-webview:a")?.active).toBe(false);
+  ready = true;
+  await act(async () => {
+    for (const listener of native.readinessListeners) listener();
+  });
+  await waitFor(() =>
+    expect(native.demandOwners.get("tab-webview:a")?.active).toBe(true),
+  );
+  const activeCalls = setter.mock.calls.filter(
+    ([request]) => request.active,
+  ).length;
+  await act(async () => {
+    for (const listener of native.readinessListeners) listener();
+  });
+  expect(setter.mock.calls.filter(([request]) => request.active).length).toBe(
+    activeCalls,
+  );
+  setter.mockImplementation(original);
 });

@@ -101,9 +101,16 @@ pub fn setup(app: &App) {
             let github_cli = collaboration::github_cli::GithubCli::native();
             #[cfg(feature = "e2e")]
             let github_cli = collaboration::github_cli::GithubCli::disabled();
+            let visibility_handle = handle.clone();
             Ok::<_, CollaborationError>(Arc::new(
                 CollaborationRuntime::with_registry(store, vault, registry)
-                    .with_github_cli(github_cli),
+                    .with_github_cli(github_cli)
+                    .with_demand_visibility_probe(Arc::new(move |owner| {
+                        crate::commands::collaboration_demand::owner_window_available(
+                            &visibility_handle,
+                            owner,
+                        )
+                    })),
             ))
         }
         .await;
@@ -123,10 +130,25 @@ pub fn setup(app: &App) {
                     }
                 }
             });
+            crate::commands::collaboration_demand::observe_window_activity(
+                handle.clone(),
+                runtime.clone(),
+            );
             runtime.clone().start_background();
         } else {
             log::error!("Collaboration storage initialization failed");
         }
+        let ready_runtime = result.as_ref().ok().cloned();
         let _ = handle.state::<CollaborationState>().runtime.set(result);
+        if let Some(runtime) = ready_runtime {
+            // An early local reader can outlast the bounded startup wait. Publish
+            // readiness after the state is installed, even with no provider work.
+            if let Ok(revision) = runtime.store().revision().await {
+                let _ = handle.emit(
+                    "gitru:collaboration-change",
+                    collaboration::ChangeHint { revision },
+                );
+            }
+        }
     });
 }

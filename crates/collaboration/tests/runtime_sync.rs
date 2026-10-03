@@ -227,6 +227,9 @@ async fn capped_bootstrap_resumes_committed_cursor_and_run_instead_of_restarting
             .is_some_and(|scope| {
                 scope.coverage.state == CoverageState::Partial
                     && scope.sync.state == SyncState::Idle
+                    // Each committed page now yields an idle checkpoint. Wait
+                    // for the actual activation cap, rather than the first page.
+                    && scope.next_cursor.as_ref().is_some_and(|cursor| cursor.ends_with("page=11"))
             })
     })
     .await;

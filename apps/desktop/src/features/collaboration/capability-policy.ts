@@ -64,6 +64,16 @@ export function canSynchronize(policy: ContextFacetCapability | undefined) {
   return policy?.synchronize.state === "supported";
 }
 
+/** Visible interest survives a temporary network/quota pause; Rust owns due work. */
+export function canMaintainDemand(policy: ContextFacetCapability | undefined) {
+  return (
+    canReadSaved(policy) &&
+    (canSynchronize(policy) ||
+      (policy?.synchronize.state === "unavailable" &&
+        policy.synchronize.reason === "temporarily_unavailable"))
+  );
+}
+
 /** Keep the handler guarded too: a disabled control is only presentation. */
 export async function dispatchCapabilityIntent(
   policy: ContextFacetCapability | undefined,

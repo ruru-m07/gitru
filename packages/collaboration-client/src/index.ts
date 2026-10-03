@@ -1,10 +1,12 @@
 import {
   collaborationAccounts,
+  collaborationAcquireDemand,
   collaborationCapabilities,
   collaborationChangesSince,
   collaborationConnectGithub,
   collaborationConnectGithubCli,
   collaborationContextualCapabilities,
+  collaborationDemandActivity,
   collaborationDetail,
   collaborationDisconnect,
   collaborationDiscoverGithubCli,
@@ -13,6 +15,8 @@ import {
   collaborationItem,
   collaborationItems,
   collaborationRefresh,
+  collaborationReleaseDemand,
+  collaborationRenewDemand,
   collaborationRepositories,
   collaborationResolveResource,
   collaborationSaveDraft,
@@ -20,9 +24,11 @@ import {
 } from "@gitru/commands";
 import type { QueryClient } from "@tanstack/react-query";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { CollaborationClient } from "./client";
 
 export type {
+  AcquireDemandRequest,
   CanonicalResource,
   CapabilitySnapshot,
   CapabilityTarget,
@@ -30,6 +36,10 @@ export type {
   ContextCapabilityRequest,
   ContextFacetCapability,
   ContextualCapabilitySnapshot,
+  DemandLeaseReceipt,
+  DemandOwnerActivity,
+  DemandRenewalReceipt,
+  DemandTarget,
   DetailActor,
   DetailBranch,
   DetailEntry,
@@ -44,9 +54,11 @@ export type {
   HydrateDetailRequest,
   ItemQuery,
   MetadataFieldEvidence,
+  ReleaseDemandRequest,
   RemoteAccount,
   RemoteItem,
   RemoteRepository,
+  RenewDemandRequest,
   ResourceLocator,
   ResourceMetadataSnapshot,
   ResourceMetadataValues,
@@ -54,6 +66,7 @@ export type {
 } from "@gitru/commands";
 export { StaleAuthorizationError } from "./authorization-fence";
 export * from "./client";
+export type { DemandAccount, DemandHandle } from "./demand-coordinator";
 export type RemoteItemKind = import("@gitru/commands").ItemQuery["kind"];
 export type DetailFacet = import("@gitru/commands").DetailQuery["facet"];
 export type CapabilityObservation =
@@ -68,6 +81,19 @@ export type ResourceFacet =
 export type ResourceKind = import("@gitru/commands").ResourceLocator["kind"];
 
 export const collaboration = new CollaborationClient({
+  demandActivity: () => collaborationDemandActivity({}),
+  acquireDemand: (request) => collaborationAcquireDemand({ request }),
+  renewDemand: (request) => collaborationRenewDemand({ request }),
+  releaseDemand: (request) => collaborationReleaseDemand({ request }),
+  listenDemandActivity: (onActivity) => {
+    const ownerLabel = getCurrentWebview().label;
+    return listen<{
+      owner_label: string;
+      activity: import("@gitru/commands").DemandOwnerActivity;
+    }>("collaboration:owner-activity", ({ payload }) => {
+      if (payload.owner_label === ownerLabel) onActivity(payload.activity);
+    });
+  },
   accounts: () => collaborationAccounts({}),
   connectGithub: (token) => collaborationConnectGithub({ token }),
   discoverGithubCli: () => collaborationDiscoverGithubCli({}),
