@@ -11,6 +11,7 @@ struct Evidence {
     recheckable: bool,
     sync_denied: bool,
     sync: SyncStatus,
+    synchronize_blocked: bool,
 }
 
 struct TargetEvidence {
@@ -18,6 +19,7 @@ struct TargetEvidence {
     resource_saved: bool,
     parent_denied: bool,
     reason: Option<ContextCapabilityReason>,
+    notified: bool,
 }
 
 impl Store {
@@ -149,6 +151,7 @@ async fn target_evidence(
         resource_saved: false,
         parent_denied: false,
         reason: None,
+        notified: false,
     };
     if target.kind == CapabilityTargetKind::Account {
         return Ok(evidence);
@@ -262,6 +265,23 @@ async fn target_evidence(
                 .bind(&account.id).bind(repository_scope(repository_id, &kind)).fetch_one(&mut **tx).await.map_err(storage_error)?;
         }
     }
+    if target.kind == CapabilityTargetKind::Resource
+        && matches!(
+            expected_kind,
+            ResourceKind::PullRequest | ResourceKind::Issue
+        )
+        && super::notification_subjects::provenance_in(tx, &account.id, id).await?
+        && matches!(
+            evidence.reason,
+            Some(
+                ContextCapabilityReason::NotObserved
+                    | ContextCapabilityReason::RepositoryNotSelected
+            )
+        )
+    {
+        evidence.reason = None;
+        evidence.notified = true;
+    }
     Ok(evidence)
 }
 
@@ -319,6 +339,7 @@ async fn scope_evidence(
         recheckable: denied,
         sync_denied: denied,
         sync,
+        synchronize_blocked: false,
     })
 }
 
@@ -357,6 +378,13 @@ async fn facet_evidence(
         _ => None,
     };
     if let Some(kind) = kind {
+        if bound.notified {
+            return Ok(Evidence {
+                observation: Some(CapabilityObservation::Partial),
+                synchronize_blocked: true,
+                ..Evidence::default()
+            });
+        }
         if let Some(reason) = bound.reason {
             return Ok(Evidence {
                 reason: Some(reason),
@@ -471,6 +499,7 @@ async fn facet_evidence(
             recheckable: denied || aggregate_denied,
             sync_denied: denied || aggregate_denied,
             sync,
+            synchronize_blocked: false,
             observation: Some(
                 if target.kind == CapabilityTargetKind::Resource && !bound.resource_saved {
                     CapabilityObservation::NotLoaded
@@ -528,6 +557,7 @@ async fn facet_evidence(
                 }
             }),
             sync: detail.sync,
+            synchronize_blocked: false,
         });
     }
     Ok(Evidence::default())
@@ -594,6 +624,9 @@ fn combine(
         }
     };
     let mut synchronize = saved_read.clone();
+    if synchronize.state == CapabilityState::Supported && evidence.synchronize_blocked {
+        synchronize = unavailable(ContextCapabilityReason::RepositoryNotSelected);
+    }
     if synchronize.state == CapabilityState::Supported && evidence.sync_denied {
         synchronize = unavailable(ContextCapabilityReason::PermissionDenied);
     }

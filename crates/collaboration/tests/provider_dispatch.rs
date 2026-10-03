@@ -79,6 +79,7 @@ impl CollaborationProvider for Adapter {
             repositories,
             items: vec![],
             endpoint_aliases: vec![],
+            notification_subjects: vec![],
             next_cursor: None,
             etag: None,
             last_modified: None,

@@ -1,13 +1,14 @@
 # RURU-79 — Inbox subjects
 
-Status: next bounded chunk selected from live Linear/PR/artifact/file-overlap
-state on3October2026. Root-approved staged contract saved before code; persisted storage/scheduler
-implementation waits for the dependency stack to be settled. Attached isolated worktree
+Status: implemented and locally qualified, ready for code review. Publication
+and exact-head remote CI are tracked on RURU-79 and the attached review PR.
+The attached isolated worktree is
 `/Users/ruru/.codex/worktrees/collab-ruru-79/gitru`, branch
-`ruru/ruru-79-inbox-subjects`, signed base RURU-78 `863967f`/PR151. Prerequisites
-R76/77/78 are implemented in open review PRs, not marked Done or merged. R96
-local linking and R98 leases remain isolated siblings; new work cannot silently
-assume their APIs are in this branch.
+`ruru/ruru-79-inbox-subjects`. Initial parser planning began from signed RURU-78
+`863967f`/PR151; integration now inherits R98/#152 `2d415938` and R96/#153
+`0eb71a5` via signed merge `ab958df`. Prerequisites remain implemented unmerged
+reviews. The integration/evidence records below distinguish local, native GUI,
+packaged macOS and exact-head remote qualification.
 
 ## Live requirement and boundaries
 
@@ -18,7 +19,7 @@ accepts only validated provider resource coordinates. Permission/actor/grant los
 offline/restart and private-account isolation are required. Opening performs no
 mark-read, remote mutation, implicit repository selection or permission expansion.
 
-## Current source findings
+## Initial source findings (before implementation)
 
 The GitHub notification mapper retains repository immutable identity and type,
 but currently discards subject.url and uses the repository web URL as a safe
@@ -474,3 +475,269 @@ behavior changed. No personal credential, CLI, vault, app database or provider
 HTTP was accessed. Root owns the later stack integration and remote CI; this
 stage does not complete RURU-79 or qualify live notifications.
 <!-- END RURU-79 stage-one implementation -->
+
+
+## Root integration checkpoint and stage-two approval — 3 October 2026
+
+Stage one was signed as `e20c088` on R78, then replayed with only the module
+export union onto signed R96 `c435af8ba3666b6f558d2938d6d15c2d7996e123`/draft
+PR153. Current signed stage-one head is `364a9e3794b2bb41ee5d41b4e9f6ebf6fedc701f`.
+R96 actually contains migration0006 and inherits signed R98 `2d415938`/PR152,
+which inherits R78 `863967f`/PR151. Root verifies that ancestry and clean tree;
+these remain open unmerged reviews, not Done prerequisites.
+
+Root approves the native owner to implement the complete accepted stage-two
+storage/provenance/provider-discovery/scheduler contract using **forward0007**.
+Do not edit migrations0001–0006, broaden list membership/selection, weaken any
+native lifetime/authorization/source gate, or reinstate automatic durable detail
+selection. Preserve the R96 authored-link and R98 physical/activity lease seams.
+Native owner owns collaboration domain/provider/storage/runtime/new tests and
+this note's distinctly marked native evidence only; root owns Tauri caller,
+registration, generation, master documents, Linear, commits and publication.
+Frontend owner owns SDK/UI only after native DTO freeze. The independent reviewer
+may add one separate test file after the contract freezes, with no overlapping
+source ownership.
+
+Final consumer review requires the native snapshot to carry discovery admission,
+support/access and retry status rather than the renderer inferring permission
+from selector presence. One shared current-inbox provenance accessor must govern
+item/detail/context and demand admission. Notification withdrawal must invalidate
+pending detail/resolver reads even if saved body bytes do not change. The SDK
+cancels initial pending reads before invalidation, uses immutable account/epoch
+bindings, and reuses its existing deadline coordinator. Same-actor withdrawal
+hides provider data while preserving the prior verified canonical draft CAS;
+actor/notification/canonical identity changes choose a distinct editor. Retained
+thread drafts remain separate. Full acceptance and safe unverifiable-issue
+fallback remain as approved above; no live provider or personal credential QA.
+
+<!-- BEGIN RURU-79 frontend and SDK integration -->
+## Frontend and SDK integration
+
+The accepted renderer snapshot and explicit discovery request remain native
+authority. The SDK adds account/actor/epoch/notification-bound local keys and
+immutable request bindings, query options and typed transport methods. The
+existing bridge cancels pending resolver/detail reads before notification,
+subject-discovery or parent invalidation. Author drafts keep their separate CAS
+and lifecycle; this work preserves the R96 local-link and R98 demand APIs.
+
+Notification selection mounts a local resolver wrapper inside the inbox. Current
+authorized notification reason/unread stay separate from canonical PR/issue
+metadata. A resolved subject reuses the existing saved resource pane and Body
+visibility lease; missing identity discovery is exclusively an explicit button
+action. Native admission accepts a finite intent even while dispatch is paused,
+without clearing quotas. No automatic discovery timer, provider-name branch,
+mark-read, repository selection or false list membership is introduced.
+
+The shared pane keeps only its prior verified subject binding and private draft
+mounted during same-actor resolver/authorization refresh; provider header/body
+are hidden while authority is unavailable. Actor, notification or canonical
+identity switches replace the editor. Existing notification-thread drafts stay
+separate and are never renamed or copied into canonical drafts. R99's sibling
+recovery/editor reconciliation remains a separate root integration gate.
+
+The pure SDK notification suite passes **9 tests**, with **41 combined** existing
+client/local-link/resolver tests at `/tmp/gitru-ruru79-sdk-client-regressions.log`.
+They include real QueryObserver initial-pending
+resolver/detail cancellation, immutable actor/epoch/selector requests and stale
+epoch rejection before revision or authorization-view metadata is accepted.
+Authored cache survival and delayed withdrawal receipts are independently covered.
+The native peer found and the SDK corrected the `provider:rest` resolver dependency;
+both pending and cached quota-status observers reread while preserving explicit
+admission and issuing no discovery or content requests. The unchanged shared
+workspace/cached PR/cached issue regression suites pass **37 tests** at
+`/tmp/gitru-ruru79-shared-pane-regressions.log`.
+Owned Biome checks pass; the frozen Bun copyfile install changed no dependency
+declaration or lockfile.
+
+The renderer regression suite passes **16 cases** for immediate saved null/empty
+and Unicode content, unselected current-inbox views, explicit paused discovery,
+unsupported/ambiguous/unverified fallback, bounded terminal manual retry, late
+receipts, actor/notification/selector switches, actual bridge withdrawal, denied
+Body metadata, separate thread drafts and private inspected-generation retention.
+Four generated wire cases pass against root's normal **112-command generation**,
+covering native string identities, nulls, all resolution states and authority-free
+explicit requests. The initial UI run caught only a test expectation for the
+existing provider button label; changing the expectation to “Open on provider”
+left production behavior unchanged. No generated file is edited here.
+
+Final local frontend checks on the generated source all pass:
+
+- **106 SDK tests**, 12 files: `/tmp/gitru-ruru79-sdk-tests.log`.
+- **283 desktop tests**, 33 files: `/tmp/gitru-ruru79-desktop-tests.log`.
+- **16 new notification UI tests**: `/tmp/gitru-ruru79-notification-ui.log`.
+- **13 new resolver/wire tests**: `/tmp/gitru-ruru79-notification-sdk.log`.
+- SDK types: `/tmp/gitru-ruru79-sdk-types.log`; desktop and E2E types:
+  `/tmp/gitru-ruru79-desktop-types.log`.
+- Owned SDK/UI Biome: `/tmp/gitru-ruru79-sdk-ui-lint.log`; production frontend
+  build: `/tmp/gitru-ruru79-ui-build.log` (existing Vite large-chunk warnings).
+
+The independent native peer accepted the consumer fences and corrected quota
+dependency read-only. These are mocked local/native-command and jsdom assertions,
+not live-provider or packaged-window qualification. Native provenance, caller
+policy, Rust checks and native GUI QA remain root/native ownership. R99's
+save/copy/export recovery editor is an unmerged sibling and is not claimed here.
+<!-- END RURU-79 frontend and SDK integration -->
+
+<!-- BEGIN RURU-79 native stage two -->
+## Native implementation — stage two
+
+Forward migration `0007_notification_subjects.sql` stores accepted inbox
+observations and finite explicit discovery intents. Migrations 0001–0006 and
+their frozen fixtures remain unchanged. An older notification representation
+cannot replace a newer selector; the shared page transaction accepts the item
+and selector together. Active repository-less legacy notifications remain valid
+inbox rows and resolve to `Unsupported`/`MissingSelector` without discovery
+authority. Denied or inactive notifications hide coordinates, fallback and the
+selector generation.
+
+The transaction-local current-inbox predicate gates canonical item reads,
+Body/detail queries, contextual capabilities, visibility-demand admission,
+point dispatch and publication. It requires current inbox membership, immutable
+account/instance/parent coordinates and the relevant access gates. Hidden
+canonical competitors participate in resolution. One immutable Native alias
+that identifies different definite canonical targets also prevents a new inbox
+grant, including a collision introduced by the point response's own endpoint
+aliases. Multiple distinct representation aliases for one canonical target
+remain valid; mutable URL/path aliases do not create immutable conflicts.
+Supporting indices bound the alias checks to the candidate's representations.
+
+This preserves the inherited ordinary selected-cache policy: repository
+discovery absence withdraws an unselected notification grant, while an
+independently selected canonical subject keeps its existing cached eligibility.
+Actual discovery denial hides both. Withdrawal uses that same ordinary predicate
+before fencing detail runs and the authorization view. Retained provider rows,
+bodies and private draft IDs/CAS generations remain intact. Point reads never
+change selection, list membership, seen markers, coverage, cursors, counts or
+full-text indexing; thread drafts are never renamed into canonical drafts.
+
+Discovery is an explicit GET-only intent. The cache query loads neither a vault
+credential nor a provider response. Admission coalesces the same current intent,
+enforces 16 pending intents per account and 64 globally, and reserves at most
+three attempts durably across restart. Reservations include abandoned attempts
+before HTTP, so interruption cannot authorize a fourth request. Snapshot
+admission describes support and current authority; queue capacity is enforced
+at action time with `Busy`. An explicit new intent can be admitted while paused
+but cannot clear account/scope cooldowns or a known permission denial. Terminal
+transient exhaustion requires another explicit user action; there is no
+continuous discovery lease, automatic lookup loop or mark-read operation.
+
+The GitHub adapter dispatches only the accepted named PR/issue GET route. Exact
+origin/path, raw redirect spelling and a four-request redirect bound are
+enforced without conditional or pagination requests. Immutable parent proof
+comes from the same response: PR base repository identity, or a strongly proven
+issue parent. A named-only issue parent remains `IdentityUnverified`; an
+issue-side PR marker remains a typed representation mismatch without a second
+GET. Body and typed metadata use the existing shared normalization and detail
+transaction helper. Identity, summary, aliases, Body and metadata publish
+atomically under account, instance, epoch, authorization-view, selector,
+intent/run and canonical-source fences. Existing canonical IDs, retained clocks,
+observed masks and metadata budgets remain authoritative.
+
+The worker rechecks current authority and the maximum persisted provider/scope
+deadline after awaited credential access and before dispatch. Point errors use
+the captured lease, so a late 403/404 or transient failure cannot modify a
+replacement selector. Successful response quota evidence survives unresolved,
+malformed and oversized responses. There is one deliberate narrow exception to
+selector fencing: a response consumed under the same authorization epoch may
+still extend account-wide quota metadata after its selector becomes stale. All
+subject, denial, error and intent effects remain rejected; a replacement
+authorization epoch rejects the old quota observation too. The finite runtime
+tests exercise this distinction explicitly.
+
+Final native validation uses synthetic accounts/providers/vaults and isolated
+temporary databases:
+
+- **249 collaboration tests pass**, with two ignored subprocess entrypoints;
+  `/tmp/gitru-ruru79-native-final.log`. This includes all **12 frozen-v1
+  migration/recovery cases** against actual migration 0007, the inherited
+  credential crash checkpoints and unchanged storage disappearance tests.
+- **50 stage-two cases** cover 16 real transport/adapter fixtures, 11 deterministic
+  worker scenarios and 23 independent public storage/access cases. Final peer
+  logs are `/tmp/gitru-ruru79-discovery-adapter-final.log` and
+  `/tmp/gitru-ruru79-independent-access-23.log`.
+- Independent access tests demonstrate real writer-wait caller retirement,
+  atomic rollback, same-result representation collision, selected versus
+  unselected withdrawal, draft continuity and no feed mutation. The older
+  selector regression failed before its source fix. The immutable-alias case
+  also has a preserved executed red result at
+  `/tmp/gitru-ruru79-representation-red.log`; its primary `Ambiguous` assertion
+  passes unchanged after the shared guard. The generic alias diagnostic now
+  accepts its existing access-filtered `Unavailable` result as well.
+- Full workspace Clippy with warnings denied passes at
+  `/tmp/gitru-ruru79-workspace-clippy.log`; independent owned native Clippy passes
+  at `/tmp/gitru-ruru79-independent-final-clippy.log`. Formatting is applied with
+  `cargo fmt --all`; the final check passes at
+  `/tmp/gitru-ruru79-native-format-final.log`. `git diff --check` also passes.
+
+These are local native results. Parent-owned Tauri caller/generated bindings,
+SDK/UI, fresh packaged-window QA and exact-head remote CI remain distinct
+integration evidence. No personal account, live provider API or vault was
+qualified. R106's restore schema ceiling and the unmerged R99 editor-recovery
+sibling remain unchanged.
+<!-- END RURU-79 native stage two -->
+
+
+<!-- root final integration and native QA evidence: 2026-10-03 -->
+### Root final integration and isolated native qualification
+
+Final native source is formatting-frozen with249 collaboration tests (two
+pre-existing ignored subprocess helpers),12 frozen-v1 cases,15 complete desktop
+native tests (11 collaboration caller/lifetime plus four updater), full workspace
+all-target Clippy and formatting passing. SDK106/12files, desktop287/33files,
+focused notificationUI20 and resolver/generated-wire13 pass. SDK/desktop/E2E
+types, owned lint and production frontend builds pass. Root source pipeline lint
+passes. Normal112-command `make typegen` regenerates IPC after final formatting;
+a named-schema comparison against inherited `ab958df` confirms every existing
+schema retains exact normalized semantics, with eight new command/domain schemas.
+No generated file was hand-edited.
+
+The reviewed authority corrections include an older observation replacing a
+newer selector (reproduced red→green), same immutable Native representation key
+claiming two distinct canonical targets (including a hidden competitor), and
+same-point alias insertion causing atomic rollback. Several distinct issue IDs
+naming one canonical PR remain resolved; mutable renamed paths do not contradict
+immutable coordinates. Existing ordinary selected-cache reads survive discovery
+absence, as required by the unchanged inherited storage regression; actual
+parent/feed denial and retirement of the narrow unselected inbox grant remain
+separate. The approved same-epoch consumed-quota-only exception has a worker
+regression; old epochs and stale identity/denial/intent receipts cannot publish.
+
+Root used real native WKWebView UI in dedicated task-owned apps, compiled with
+the e2e feature (vault/CLI disabled) and production frontend. No personal Git
+configuration, credentials, keychain or provider account was inspected. Initial
+QA exercised both synthetic actors, cached PR/issue descriptions, UTF-8 metadata,
+canonical draft CAS and separate thread draft text. An actual UX gap—no visible
+receipt after accepting a paused read—was corrected in the notification view,
+with four semantic UI cases, localized retry dates and existing late-receipt
+actor/thread/selector suppression intact.
+
+Because unpublished0007 gained two lookup indexes before publication, final QA
+uses a fresh `com.ruru.gitru.ruru79.qa.final` installation; the earlier synthetic
+installation/evidence is preserved. It does not rewrite an old migration checksum.
+Frozen final executable SHA256:
+`58340e32ecfbfb0fa476d946565777d6d47450fa584a307a14b263ae02d87c07`.
+Task LaunchServices Git config/XDG paths are empty fixtures. Final real UI checks
+cached PR67 and Issue68 from unselected parents, known authoritative Unicode Body
+and metadata, original reason/unread, actor-B isolation, safe unsupported fallback,
+localized strict2099 quota and visible acknowledgement of an explicit missing-PR
+request. A cold Quit/relaunch restores cached inbox and generation2 canonical draft.
+
+Final post-Quit read-only database evidence is at
+`/tmp/gitru-ruru79-qa/final-post-quit-evidence.json`: six distinct authored drafts
+(one saved canonical draft generation2, all other generations1), eight unread
+notifications, both parent selections0, one durable explicit discovery intent
+requested1/attempts0/runNULL, strict2099 provider barriers, zero credentials,
+cleanup and automatic durable detail intents, migration versions1..7. No remote
+write or implicit repository selection occurred. Adapter proof/HTTP worker tests
+are separate from synthetic GUI checks; this does not qualify live PAT/provider,
+OS vault, Windows power loss or exact-head remote security/CI.
+
+Logs: `/tmp/gitru-ruru79-{native-final,caller-tests,workspace-clippy,typegen-final,
+sdk-types-final,desktop-types-final,bindings-lint}.log`, agent-owned SDK/UI/native
+logs above, `/tmp/gitru-ruru79-qa-build-final.log`, and task-only prepare/evidence.
+Fresh packaged macOS E2E passes all three cases across two specs, including
+real UI→Tauri→Rust→Git repository import/branch/stage/commit flows and both
+collaboration storage/host-dialog flows. No timeout, fixture order or inherited
+assertion was relaxed. Log `/tmp/gitru-ruru79-packaged-e2e.log`; artifacts are in
+the task worktree's ignored `artifacts/e2e/` directory. Signed publication and exact-head remote CI are tracked on RURU-79 and the
+attached PR; local success alone does not qualify remote CI or live accounts.

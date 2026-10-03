@@ -316,7 +316,7 @@ fn normalize_web_url(value: &str) -> Result<String> {
     Ok(url.to_string())
 }
 
-pub(super) async fn accessible(
+pub(super) async fn ordinary_accessible(
     tx: &mut Transaction<'_, Sqlite>,
     account: &str,
     id: &str,
@@ -339,9 +339,33 @@ pub(super) async fn accessible(
             .await
             .map_err(storage_error)
     } else {
-        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM items i WHERE i.account_id=? AND i.id=? AND (i.kind='notification' OR EXISTS(SELECT 1 FROM repositories r WHERE r.account_id=i.account_id AND r.id=i.repository_id AND r.selected=1)) AND NOT EXISTS(SELECT 1 FROM sync_scopes s WHERE s.account_id=i.account_id AND s.scope=CASE WHEN i.kind='notification' THEN 'notifications' ELSE 'repo:'||i.repository_id||':'||i.kind END AND s.access_denied=1) AND (i.kind='notification' OR NOT EXISTS(SELECT 1 FROM sync_scopes s JOIN scope_membership m ON m.account_id=s.account_id AND m.scope=s.scope WHERE s.account_id=i.account_id AND s.scope='repositories' AND s.access_denied=1 AND m.entity_id=i.repository_id)))")
-            .bind(account).bind(id).fetch_one(&mut **tx).await.map_err(storage_error)
+        // Selection remains an independent saved-cache grant after discovery
+        // absence. Explicit parent/feed denial still overrides that grant.
+        let sql = "SELECT EXISTS(SELECT 1 FROM items i WHERE i.account_id=? AND i.id=? AND i.kind=? AND ((i.kind='notification' AND EXISTS(SELECT 1 FROM scope_membership m WHERE m.account_id=i.account_id AND m.scope='notifications' AND m.entity_id=i.id AND m.active=1)) OR (i.kind IN ('pull_request','issue') AND EXISTS(SELECT 1 FROM repositories r WHERE r.account_id=i.account_id AND r.id=i.repository_id AND r.selected=1))) AND NOT EXISTS(SELECT 1 FROM sync_scopes s WHERE s.account_id=i.account_id AND s.scope=CASE WHEN i.kind='notification' THEN 'notifications' ELSE 'repo:'||i.repository_id||':'||i.kind END AND s.access_denied=1) AND (i.kind='notification' OR NOT EXISTS(SELECT 1 FROM sync_scopes s JOIN scope_membership m ON m.account_id=s.account_id AND m.scope=s.scope WHERE s.account_id=i.account_id AND s.scope='repositories' AND s.access_denied=1 AND m.entity_id=i.repository_id)))";
+        sqlx::QueryBuilder::<Sqlite>::new(sql)
+            .build_query_scalar()
+            .bind(account)
+            .bind(id)
+            .bind(tag(&kind)?)
+            .fetch_one(&mut **tx)
+            .await
+            .map_err(storage_error)
     }
+}
+
+pub(super) async fn accessible(
+    tx: &mut Transaction<'_, Sqlite>,
+    account: &str,
+    id: &str,
+    kind: ResourceKind,
+) -> Result<bool> {
+    if ordinary_accessible(tx, account, id, kind).await? {
+        return Ok(true);
+    }
+    if matches!(kind, ResourceKind::PullRequest | ResourceKind::Issue) {
+        return super::notification_subjects::provenance_in(tx, account, id).await;
+    }
+    Ok(false)
 }
 
 impl Store {

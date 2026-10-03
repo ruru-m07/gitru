@@ -222,7 +222,7 @@ pub(crate) fn lifetime_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct CallerProof {
+pub(super) struct CallerProof {
     label: String,
     url: String,
     owners: Vec<(String, u64)>,
@@ -230,7 +230,7 @@ struct CallerProof {
     incarnation: u64,
 }
 impl CallerProof {
-    fn capture(view: &Webview, app: &AppHandle) -> Result<Self, CollaborationError> {
+    pub(super) fn capture(view: &Webview, app: &AppHandle) -> Result<Self, CollaborationError> {
         authorize(view, Operation::LocalLinks)?;
         let native_identity = native_identity(view);
         let incarnation = app
@@ -253,7 +253,11 @@ impl CallerProof {
         proof.validate(view, app)?;
         Ok(proof)
     }
-    fn validate(&self, view: &Webview, app: &AppHandle) -> Result<(), CollaborationError> {
+    pub(super) fn validate(
+        &self,
+        view: &Webview,
+        app: &AppHandle,
+    ) -> Result<(), CollaborationError> {
         authorize(view, Operation::LocalLinks)?;
         let current = app.get_webview(&self.label).ok_or_else(denied)?;
         if view.label() != self.label
@@ -265,7 +269,7 @@ impl CallerProof {
         self.validate_under_writer(app)
     }
     /// No native URL lookup/UI-thread dispatch while SQLite owns the writer.
-    fn validate_under_writer(&self, app: &AppHandle) -> Result<(), CollaborationError> {
+    pub(super) fn validate_under_writer(&self, app: &AppHandle) -> Result<(), CollaborationError> {
         let current = app.get_webview(&self.label).ok_or_else(denied)?;
         let identity = native_identity(&current);
         let incarnation = app

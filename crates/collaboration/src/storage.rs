@@ -15,6 +15,7 @@ mod contextual_capabilities;
 pub(crate) mod details;
 mod identities;
 mod local_links;
+pub(crate) mod notification_subjects;
 mod resource_metadata;
 
 use crate::{
@@ -656,9 +657,24 @@ impl Store {
         let mut tx = self.inner.readers.begin().await.map_err(storage_error)?;
         account_in(&mut tx, account_id, true).await?;
         let (revision, authorization_view) = metadata(&mut tx).await?;
-        let json: Option<String> = sqlx::query_scalar("SELECT i.json FROM items i WHERE i.account_id=? AND i.id=? AND (i.kind='notification' OR EXISTS(SELECT 1 FROM repositories r WHERE r.account_id=i.account_id AND r.id=i.repository_id AND r.selected=1)) AND NOT EXISTS(SELECT 1 FROM sync_scopes s WHERE s.account_id=i.account_id AND s.scope=CASE WHEN i.kind='notification' THEN 'notifications' ELSE 'repo:'||i.repository_id||':'||i.kind END AND s.access_denied=1) AND (i.kind='notification' OR NOT EXISTS(SELECT 1 FROM sync_scopes s JOIN scope_membership m ON m.account_id=s.account_id AND m.scope=s.scope WHERE s.account_id=i.account_id AND s.scope='repositories' AND s.access_denied=1 AND m.entity_id=i.repository_id))")
-            .bind(account_id).bind(item_id).fetch_optional(&mut *tx).await.map_err(storage_error)?;
-        let item = json.as_ref().map(|s| decode(s)).transpose()?;
+        let json: Option<String> =
+            sqlx::query_scalar("SELECT json FROM items WHERE account_id=? AND id=?")
+                .bind(account_id)
+                .bind(item_id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(storage_error)?;
+        let mut item: Option<RemoteItem> = json.as_ref().map(|s| decode(s)).transpose()?;
+        if let Some(value) = &item {
+            let kind = match value.kind {
+                RemoteItemKind::PullRequest => ResourceKind::PullRequest,
+                RemoteItemKind::Issue => ResourceKind::Issue,
+                RemoteItemKind::Notification => ResourceKind::Notification,
+            };
+            if !identities::accessible(&mut tx, account_id, item_id, kind).await? {
+                item = None;
+            }
+        }
         tx.commit().await.map_err(storage_error)?;
         Ok(ItemSnapshot {
             item,
@@ -700,6 +716,15 @@ impl Store {
     }
 
     pub async fn apply_page(&self, page: PageCommit) -> Result<String> {
+        self.apply_page_with_notification_subjects(page, vec![])
+            .await
+    }
+
+    pub async fn apply_page_with_notification_subjects(
+        &self,
+        page: PageCommit,
+        observations: Vec<crate::NotificationSubjectObservation>,
+    ) -> Result<String> {
         validate_scope(&page.scope)?;
         if page.repositories.len() + page.items.len() + page.endpoint_aliases.len() > 100 {
             return Err(CollaborationError::invalid(
@@ -724,6 +749,7 @@ impl Store {
         let mut tx = writer.begin().await.map_err(storage_error)?;
         epoch_in(&mut tx, &page.account_id, &page.authorization_epoch).await?;
         let account = account_in(&mut tx, &page.account_id, true).await?;
+        notification_subjects::capture_in(&mut tx, &page.account_id).await?;
         ensure_selected_scope(&mut tx, &page.account_id, &page.scope).await?;
         let stored = scope_in(&mut tx, &page.account_id, &page.scope)
             .await?
@@ -842,6 +868,7 @@ impl Store {
         for alias in &page.endpoint_aliases {
             identities::endpoint_in(&mut tx, &account, alias, &page.scope).await?;
         }
+        notification_subjects::observe_in(&mut tx, &account, &page, &observations).await?;
         // Two completed traversals establish observed feed absence. Keep the
         // canonical row: a list miss never proves deletion or denied access.
         // Partial traversals cannot hide previous membership. A 304 leaves the
@@ -898,6 +925,7 @@ impl Store {
         sqlx::query("UPDATE sync_scopes SET next_cursor=?,etag=?,last_modified=?,coverage_json=?,sync_json=?,access_denied=0,completed_run_id=CASE WHEN ? THEN ? ELSE completed_run_id END WHERE account_id=? AND scope=?")
             .bind(page.next_cursor).bind(etag).bind(last_modified).bind(encode(&coverage)?).bind(encode(&sync)?).bind(page.complete).bind(&page.run_id).bind(&page.account_id).bind(&page.scope)
             .execute(&mut *tx).await.map_err(storage_error)?;
+        notification_subjects::reconcile_in(&mut tx, &account).await?;
         let revision = record_change(
             &mut tx,
             &page.account_id,
@@ -928,6 +956,7 @@ impl Store {
         let mut writer = self.inner.writer.lock().await;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         epoch_in(&mut tx, account_id, epoch).await?;
+        notification_subjects::capture_in(&mut tx, account_id).await?;
         ensure_selected_scope(&mut tx, account_id, scope).await?;
         if status.state == SyncState::AuthRequired {
             // Authentication revocation fences *all* provider content and old
@@ -989,6 +1018,8 @@ impl Store {
             .await
             .map_err(storage_error)?;
         }
+        let account = account_in(&mut tx, account_id, true).await?;
+        notification_subjects::reconcile_in(&mut tx, &account).await?;
         let revision =
             record_change(&mut tx, account_id, positive_revision(epoch)?, scope, reset).await?;
         tx.commit().await.map_err(storage_error)?;
@@ -1499,6 +1530,9 @@ fn validate_scope(scope: &str) -> Result<()> {
     if scope == "repositories"
         || scope == "notifications"
         || scope == "provider:rest"
+        || scope
+            .strip_prefix(notification_subjects::PREFIX)
+            .is_some_and(|id| validate_identifier(id).is_ok())
         || repository_from_scope(scope).is_some()
         || crate::DetailFacet::from_scope(scope).is_some()
     {
@@ -1621,6 +1655,8 @@ fn repository_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<RemoteRepository
 }
 async fn clear_remote_cache(tx: &mut Transaction<'_, Sqlite>, account_id: &str) -> Result<()> {
     for sql in [
+        "DELETE FROM notification_subject_discovery WHERE account_id=?",
+        "DELETE FROM notification_subject_selectors WHERE account_id=?",
         "DELETE FROM detail_demand WHERE account_id=?",
         "DELETE FROM detail_observations WHERE account_id=?",
         "DELETE FROM items_fts WHERE account_id=?",

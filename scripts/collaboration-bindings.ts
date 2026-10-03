@@ -23,6 +23,9 @@ const demand = await Bun.file(
 const localLinks = await Bun.file(
   new URL("crates/collaboration/src/local_links.rs", root),
 ).text();
+const notificationSubjects = await Bun.file(
+  new URL("crates/collaboration/src/notification_subjects.rs", root),
+).text();
 const gitRemotes = await Bun.file(
   new URL("crates/git/models/remotes.rs", root),
 ).text();
@@ -44,6 +47,14 @@ const output = new URL("packages/commands/src/types.ts", root);
 let generated = await Bun.file(output).text();
 const snake = (value: string) =>
   value.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
+// These serialized cache/parser types are native-only and deliberately absent
+// from renderer command signatures. If reachable later, correct them normally.
+const nativeOnlyTypes = new Set([
+  "NotificationSubjectKind",
+  "NotificationSubjectRepresentation",
+  "NotificationSubjectFallbackReason",
+  "NotificationSubjectSelector",
+]);
 
 for (const source of [
   domain,
@@ -53,6 +64,7 @@ for (const source of [
   resourceMetadata,
   demand,
   localLinks,
+  notificationSubjects,
   gitRemotes,
   linkCommands,
   repositoryInfo,
@@ -69,6 +81,7 @@ for (const source of [
     const pattern = new RegExp(
       `export const ${name}Schema = z\\.enum\\(\\[[^\\]]+\\]\\);`,
     );
+    if (!pattern.test(generated) && nativeOnlyTypes.has(name)) continue;
     if (!pattern.test(generated))
       throw new Error(`Missing generated enum ${name}`);
     generated = generated.replace(
@@ -88,6 +101,7 @@ for (const source of [
     const schema = generated.match(pattern);
     // Wake hints are event-only; the generator emits command-reachable DTOs.
     if (!schema && name === "ChangeHint") continue;
+    if (!schema && nativeOnlyTypes.has(name)) continue;
     if (!schema) throw new Error(`Missing generated schema ${name}`);
     let fields = schema[2];
     for (const field of body.matchAll(/pub (\w+): Option</g)) {

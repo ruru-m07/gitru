@@ -5,6 +5,7 @@ impl CollaborationRuntime {
     pub(super) async fn sync_feed_page(&self, job: &mut Job) -> Result<bool, CollaborationError> {
         self.ensure_demand_dispatch(job).await?;
         let kind = match &job.kind {
+            JobKind::NotificationSubject { .. } => return Err(unsupported()),
             JobKind::Detail { subject_id, facet } => {
                 let _ = (subject_id, facet);
                 return Err(unsupported());
@@ -121,37 +122,40 @@ impl CollaborationRuntime {
             let retain_validator = starts_at_beginning && page_index == 0 && complete;
             let revision = self
                 .store
-                .apply_page(PageCommit {
-                    account_id: account.id.clone(),
-                    authorization_epoch: account.authorization_epoch.clone(),
-                    scope: job.scope.clone(),
-                    run_id: run_id.clone(),
-                    repositories: page.repositories,
-                    items: page.items,
-                    endpoint_aliases: page.endpoint_aliases,
-                    next_cursor: cursor.clone(),
-                    etag: if retain_validator {
-                        page.etag.or_else(|| {
-                            conditional
-                                .filter(|_| not_modified)
-                                .and_then(|scope| scope.etag.clone())
-                        })
-                    } else {
-                        None
+                .apply_page_with_notification_subjects(
+                    PageCommit {
+                        account_id: account.id.clone(),
+                        authorization_epoch: account.authorization_epoch.clone(),
+                        scope: job.scope.clone(),
+                        run_id: run_id.clone(),
+                        repositories: page.repositories,
+                        items: page.items,
+                        endpoint_aliases: page.endpoint_aliases,
+                        next_cursor: cursor.clone(),
+                        etag: if retain_validator {
+                            page.etag.or_else(|| {
+                                conditional
+                                    .filter(|_| not_modified)
+                                    .and_then(|scope| scope.etag.clone())
+                            })
+                        } else {
+                            None
+                        },
+                        last_modified: if retain_validator {
+                            page.last_modified.or_else(|| {
+                                conditional
+                                    .filter(|_| not_modified)
+                                    .and_then(|scope| scope.last_modified.clone())
+                            })
+                        } else {
+                            None
+                        },
+                        not_modified,
+                        complete,
+                        observed_at: self.now_string(),
                     },
-                    last_modified: if retain_validator {
-                        page.last_modified.or_else(|| {
-                            conditional
-                                .filter(|_| not_modified)
-                                .and_then(|scope| scope.last_modified.clone())
-                        })
-                    } else {
-                        None
-                    },
-                    not_modified,
-                    complete,
-                    observed_at: self.now_string(),
-                })
+                    page.notification_subjects,
+                )
                 .await?;
             self.publish(revision);
             let _lifecycle = self.lifecycle.lock().await;

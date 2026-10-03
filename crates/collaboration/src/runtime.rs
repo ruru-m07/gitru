@@ -24,6 +24,9 @@ mod demand_tests;
 mod detail_tests;
 mod details;
 mod feeds;
+#[cfg(test)]
+mod notification_subject_tests;
+mod notification_subjects;
 mod scheduler;
 
 const MAX_QUEUED_SCOPES: usize = 128;
@@ -38,6 +41,9 @@ macro_rules! credential_boundary {
 
 #[derive(Clone)]
 enum JobKind {
+    NotificationSubject {
+        intent: NotificationDiscoveryIntent,
+    },
     Feed(FeedKind),
     Detail {
         subject_id: String,
@@ -617,6 +623,7 @@ impl CollaborationRuntime {
     }
 
     async fn enqueue_due(&self) -> Result<(), CollaborationError> {
+        self.enqueue_pending_notification_subjects().await?;
         self.enqueue_pending_details().await?;
         let accounts: Vec<_> = self
             .store
@@ -757,12 +764,17 @@ impl CollaborationRuntime {
             }
         }
         let result = match job.kind.clone() {
+            JobKind::NotificationSubject { intent } => {
+                self.sync_notification_subject(&intent).await
+            }
             JobKind::Feed(_) => self.sync_feed_page(&mut job).await,
             JobKind::Detail { subject_id, facet } => {
                 self.sync_detail_page(&mut job, &subject_id, facet).await
             }
         };
-        if let Err(error) = &result {
+        if let Err(error) = &result
+            && !matches!(job.kind, JobKind::NotificationSubject { .. })
+        {
             self.record_error(&job, error.clone()).await;
         }
         let _lifecycle = self.lifecycle.lock().await;

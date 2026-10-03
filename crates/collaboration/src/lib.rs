@@ -25,3 +25,4 @@ pub use notification_subjects::*;
 pub use resource_metadata::*;
 pub use runtime::CollaborationRuntime;
 pub use storage::Store;
+pub use storage::notification_subjects::{NotificationDiscoveryIntent, NotificationDiscoveryLease};

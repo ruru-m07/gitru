@@ -92,6 +92,8 @@ function fixture() {
     resolveResource: unexpected,
     detail: unexpected,
     hydrateDetail: unexpected,
+    notificationSubject: unexpected,
+    discoverNotificationSubject: unexpected,
     demandActivity: unexpected,
     acquireDemand: unexpected,
     renewDemand: unexpected,

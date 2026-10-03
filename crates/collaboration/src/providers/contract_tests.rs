@@ -115,6 +115,7 @@ impl CollaborationProvider for GitlabFixture {
             repositories: vec![],
             items: vec![],
             endpoint_aliases: vec![],
+            notification_subjects: vec![],
             next_cursor: (page == 1).then(|| "gl-page:2".into()),
             etag: None,
             last_modified: None,
@@ -410,6 +411,7 @@ async fn divergent_fixture_errors_and_bad_continuations_use_typed_safe_outcomes(
             error: Some(ProviderError {
                 kind,
                 retry_after_seconds: (kind == ProviderErrorKind::RateLimited).then_some(90),
+                account_cooldown_seconds: None,
             }),
         };
         let error = provider

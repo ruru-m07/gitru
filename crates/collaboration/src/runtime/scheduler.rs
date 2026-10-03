@@ -35,7 +35,10 @@ impl Scheduler {
         if room(self) {
             return true;
         }
-        if !matches!(kind, JobKind::Detail { .. }) {
+        if !matches!(
+            kind,
+            JobKind::Detail { .. } | JobKind::NotificationSubject { .. }
+        ) {
             return false;
         }
         let demote = self
@@ -164,7 +167,12 @@ impl Scheduler {
         let interactive = has_interactive && (!has_background || self.interactive_turns < 3);
         let has_detail = interactive
             && self.queue.iter().any(|job| {
-                eligible(job) && self.interactive(job) && matches!(job.kind, JobKind::Detail { .. })
+                eligible(job)
+                    && self.interactive(job)
+                    && matches!(
+                        job.kind,
+                        JobKind::Detail { .. } | JobKind::NotificationSubject { .. }
+                    )
             });
         let has_index = interactive
             && self.queue.iter().any(|job| {
@@ -174,7 +182,11 @@ impl Scheduler {
         let selected = |job: &Job| {
             eligible(job)
                 && self.interactive(job) == interactive
-                && (!interactive || matches!(job.kind, JobKind::Detail { .. }) == detail)
+                && (!interactive
+                    || matches!(
+                        job.kind,
+                        JobKind::Detail { .. } | JobKind::NotificationSubject { .. }
+                    ) == detail)
         };
         let accounts: BTreeSet<_> = self
             .queue
@@ -385,6 +397,7 @@ impl CollaborationRuntime {
             return Ok(cached.unwrap_or_else(|| self.now()));
         }
         let seconds = match kind {
+            JobKind::NotificationSubject { .. } => return Ok(self.now()),
             JobKind::Feed(FeedKind::Repositories) => {
                 if reason == Admission::Foreground {
                     120

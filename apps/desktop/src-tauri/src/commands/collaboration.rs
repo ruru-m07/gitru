@@ -64,6 +64,8 @@ pub(super) enum Operation {
     DisposeDemandOwner,
     LocalLinks,
     TransportBindings,
+    NotificationSubject,
+    DiscoverNotificationSubject,
 }
 
 impl Operation {
@@ -341,6 +343,8 @@ mod tests {
         Operation::RenewDemand,
         Operation::ReleaseDemand,
         Operation::LocalLinks,
+        Operation::NotificationSubject,
+        Operation::DiscoverNotificationSubject,
     ];
     const CREDENTIAL_OPERATIONS: &[Operation] = &[
         Operation::ConnectGithub,

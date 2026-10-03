@@ -295,3 +295,32 @@ export function useLocalClones(
   useCollaborationVersion();
   return useQuery(localClonesQueryOptions(account, instanceId, repositoryId));
 }
+
+/** Local identity/provenance only. Discovery is an explicit, separate intent. */
+export function notificationSubjectQueryOptions(
+  account: RemoteAccount,
+  notificationId: string,
+) {
+  // Query options may outlive a caller's mutable account object.
+  const captured = { ...account };
+  return queryOptions({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.notificationSubject(captured, notificationId),
+    queryFn: ({ signal }) =>
+      collaboration
+        .forAccount(captured)
+        .notificationSubject(notificationId, signal),
+  });
+}
+
+export function useNotificationSubject(
+  account: RemoteAccount,
+  notificationId: string,
+  enabled = true,
+) {
+  useCollaborationVersion();
+  return useQuery({
+    ...notificationSubjectQueryOptions(account, notificationId),
+    enabled,
+  });
+}

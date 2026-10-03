@@ -22,6 +22,8 @@ pub enum ProviderErrorKind {
 pub struct ProviderError {
     pub kind: ProviderErrorKind,
     pub retry_after_seconds: Option<u64>,
+    /// A response may reveal account quota before its body/identity fails validation.
+    pub account_cooldown_seconds: Option<u64>,
 }
 
 impl ProviderError {
@@ -29,7 +31,12 @@ impl ProviderError {
         Self {
             kind,
             retry_after_seconds: None,
+            account_cooldown_seconds: None,
         }
+    }
+    fn with_cooldown(mut self, seconds: Option<u64>) -> Self {
+        self.account_cooldown_seconds = seconds;
+        self
     }
 }
 
@@ -151,12 +158,37 @@ impl GithubHttp {
 
     pub async fn get_with_paths(
         &self,
-        mut url: Url,
+        url: Url,
         token: &SecretToken,
         validators: &HttpValidators,
         allowed_paths: &[String],
     ) -> Result<HttpPage, ProviderError> {
+        self.get_policy(url, token, validators, allowed_paths, false)
+            .await
+    }
+
+    pub async fn get_point(
+        &self,
+        url: Url,
+        token: &SecretToken,
+    ) -> Result<HttpPage, ProviderError> {
+        let paths = [url.path().to_string()];
+        self.get_policy(url, token, &HttpValidators::default(), &paths, true)
+            .await
+    }
+
+    async fn get_policy(
+        &self,
+        mut url: Url,
+        token: &SecretToken,
+        validators: &HttpValidators,
+        allowed_paths: &[String],
+        strict_point: bool,
+    ) -> Result<HttpPage, ProviderError> {
         for redirect in 0..=MAX_REDIRECTS {
+            if strict_point && url.query().is_some() {
+                return Err(ProviderError::new(ProviderErrorKind::InvalidResponse));
+            }
             self.check_page_url_with_paths(url.as_str(), allowed_paths)?;
             let mut authorization =
                 header::HeaderValue::from_str(&format!("Bearer {}", token.expose()))
@@ -182,32 +214,50 @@ impl GithubHttp {
                 })
             })?;
             let status = response.status();
-            if status.is_redirection() && status != StatusCode::NOT_MODIFIED {
-                if redirect == MAX_REDIRECTS {
-                    return Err(ProviderError::new(ProviderErrorKind::InvalidResponse));
-                }
-                let location = header_text(response.headers(), header::LOCATION.as_str())
-                    .ok_or_else(|| ProviderError::new(ProviderErrorKind::InvalidResponse))?;
-                url = url
-                    .join(&location)
-                    .map_err(|_| ProviderError::new(ProviderErrorKind::InvalidResponse))?;
-                self.check_page_url_with_paths(url.as_str(), allowed_paths)?;
-                continue;
-            }
-            let headers = response.headers();
-            let retry_after = header_number(headers, "retry-after");
-            let remaining = header_number(headers, "x-ratelimit-remaining");
+            let remaining = header_number(response.headers(), "x-ratelimit-remaining");
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs();
-            let reset_wait = header_number(headers, "x-ratelimit-reset")
+            let reset_wait = header_number(response.headers(), "x-ratelimit-reset")
                 .map(|reset| reset.saturating_sub(now).max(1));
-            let cooldown = if remaining == Some(0) {
-                Some(reset_wait.unwrap_or(60))
-            } else {
-                None
-            };
+            let cooldown = (remaining == Some(0)).then(|| reset_wait.unwrap_or(60));
+            if status.is_redirection() && status != StatusCode::NOT_MODIFIED {
+                if redirect == MAX_REDIRECTS {
+                    return Err(ProviderError::new(ProviderErrorKind::InvalidResponse)
+                        .with_cooldown(cooldown));
+                }
+                let location = header_text(response.headers(), header::LOCATION.as_str())
+                    .ok_or_else(|| {
+                        ProviderError::new(ProviderErrorKind::InvalidResponse)
+                            .with_cooldown(cooldown)
+                    })?;
+                if strict_point
+                    && (location.trim() != location
+                        || location.len() > 2048
+                        || location.chars().any(char::is_control)
+                        || location.contains(['?', '#', '%', '\\'])
+                        || location.split('/').any(|part| matches!(part, "." | "..")))
+                {
+                    return Err(ProviderError::new(ProviderErrorKind::InvalidResponse)
+                        .with_cooldown(cooldown));
+                }
+                if strict_point && let Some(wait) = cooldown {
+                    return Err(ProviderError {
+                        kind: ProviderErrorKind::RateLimited,
+                        retry_after_seconds: Some(wait),
+                        account_cooldown_seconds: Some(wait),
+                    });
+                }
+                url = url.join(&location).map_err(|_| {
+                    ProviderError::new(ProviderErrorKind::InvalidResponse).with_cooldown(cooldown)
+                })?;
+                self.check_page_url_with_paths(url.as_str(), allowed_paths)
+                    .map_err(|e| e.with_cooldown(cooldown))?;
+                continue;
+            }
+            let headers = response.headers();
+            let retry_after = header_number(headers, "retry-after");
             let response_validators = HttpValidators {
                 etag: header_text(headers, "etag"),
                 last_modified: header_text(headers, "last-modified"),
@@ -217,10 +267,16 @@ impl GithubHttp {
             let links = header_text(headers, "link");
             let next_url = links.as_deref().and_then(next_link);
             if let Some(next) = &next_url {
+                if strict_point {
+                    return Err(ProviderError::new(ProviderErrorKind::InvalidResponse)
+                        .with_cooldown(cooldown));
+                }
                 self.check_page_url_with_paths(next, allowed_paths)?;
             }
             if status == StatusCode::UNAUTHORIZED {
-                return Err(ProviderError::new(ProviderErrorKind::Authentication));
+                return Err(
+                    ProviderError::new(ProviderErrorKind::Authentication).with_cooldown(cooldown)
+                );
             }
             if status == StatusCode::TOO_MANY_REQUESTS
                 || (status == StatusCode::FORBIDDEN
@@ -228,6 +284,7 @@ impl GithubHttp {
             {
                 return Err(ProviderError {
                     kind: ProviderErrorKind::RateLimited,
+                    account_cooldown_seconds: cooldown,
                     retry_after_seconds: Some(match (retry_after, cooldown) {
                         (Some(retry), Some(reset)) => retry.max(reset).max(1),
                         (Some(wait), None) | (None, Some(wait)) => wait.max(1),
@@ -260,15 +317,20 @@ impl GithubHttp {
                     return Err(ProviderError {
                         kind: ProviderErrorKind::RateLimited,
                         retry_after_seconds: Some(60),
+                        account_cooldown_seconds: None,
                     });
                 }
-                return Err(ProviderError::new(ProviderErrorKind::Permission));
+                return Err(
+                    ProviderError::new(ProviderErrorKind::Permission).with_cooldown(cooldown)
+                );
             }
             if status == StatusCode::NOT_FOUND || status == StatusCode::GONE {
-                return Err(ProviderError::new(ProviderErrorKind::NotFound));
+                return Err(ProviderError::new(ProviderErrorKind::NotFound).with_cooldown(cooldown));
             }
             if status.is_server_error() {
-                return Err(ProviderError::new(ProviderErrorKind::Unavailable));
+                return Err(
+                    ProviderError::new(ProviderErrorKind::Unavailable).with_cooldown(cooldown)
+                );
             }
             let not_modified = status == StatusCode::NOT_MODIFIED;
             if !status.is_success() && !not_modified {
@@ -280,15 +342,15 @@ impl GithubHttp {
                     .content_length()
                     .is_some_and(|length| length > MAX_RESPONSE_BYTES as u64)
                 {
-                    return Err(ProviderError::new(ProviderErrorKind::InvalidResponse));
+                    return Err(ProviderError::new(ProviderErrorKind::InvalidResponse)
+                        .with_cooldown(cooldown));
                 }
-                while let Some(chunk) = response
-                    .chunk()
-                    .await
-                    .map_err(|_| ProviderError::new(ProviderErrorKind::Unavailable))?
-                {
+                while let Some(chunk) = response.chunk().await.map_err(|_| {
+                    ProviderError::new(ProviderErrorKind::Unavailable).with_cooldown(cooldown)
+                })? {
                     if chunk.len() > MAX_RESPONSE_BYTES.saturating_sub(body.len()) {
-                        return Err(ProviderError::new(ProviderErrorKind::InvalidResponse));
+                        return Err(ProviderError::new(ProviderErrorKind::InvalidResponse)
+                            .with_cooldown(cooldown));
                     }
                     body.extend_from_slice(&chunk);
                 }

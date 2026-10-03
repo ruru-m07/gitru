@@ -10,6 +10,7 @@ import {
   type DemandTarget,
   type DetailQuery,
   type DetailSnapshot,
+  type DiscoverNotificationSubjectRequest,
   type GithubCliDiscovery,
   type HydrateDetailRequest,
   type ItemPage,
@@ -24,6 +25,8 @@ import {
   type LocalNavigationReceipt,
   type LocalNavigationRequest,
   type LocalTransportBinding,
+  type NotificationSubjectQuery,
+  type NotificationSubjectSnapshot,
   type RefreshReceipt,
   type RefreshRequest,
   type RemoteAccount,
@@ -90,6 +93,12 @@ export interface CollaborationTransport extends DemandTransport {
   ): Promise<ResourceResolution>;
   detail(query: DetailQuery): Promise<DetailSnapshot>;
   hydrateDetail(request: HydrateDetailRequest): Promise<RefreshReceipt>;
+  notificationSubject(
+    query: NotificationSubjectQuery,
+  ): Promise<NotificationSubjectSnapshot>;
+  discoverNotificationSubject(
+    request: DiscoverNotificationSubjectRequest,
+  ): Promise<RefreshReceipt>;
   listen(onWake: () => void): Promise<() => void>;
 }
 
@@ -163,6 +172,14 @@ export const collaborationKeys = {
       account.authorization_epoch,
       "detail",
       query,
+    ] as const,
+  notificationSubject: (account: RemoteAccount, notificationId: string) =>
+    [
+      ...collaborationKeys.account(account.id),
+      account.authorization_epoch,
+      "notification-subject",
+      account.actor_id,
+      notificationId,
     ] as const,
 };
 
@@ -280,7 +297,8 @@ export class CollaborationClient {
     await this.queryClient.invalidateQueries(affected);
   }
 
-  forAccount(account: RemoteAccount) {
+  forAccount(accountInput: RemoteAccount) {
+    const account = { ...accountInput };
     const read = async <
       T extends { authorization_view: string; revision: string },
     >(
@@ -298,6 +316,41 @@ export class CollaborationClient {
     return {
       retainDemand: (target: DemandTarget) =>
         this.retainDemand(account, target),
+      notificationSubject: async (
+        notificationId: string,
+        signal?: AbortSignal,
+      ) => {
+        const snapshot = await this.fence.read(
+          cloneAccount.id,
+          () =>
+            this.transport.notificationSubject({
+              account_id: cloneAccount.id,
+              authorization_epoch: cloneAccount.authorization_epoch,
+              notification_id: notificationId,
+            }),
+          signal,
+        );
+        if (snapshot.authorization_epoch !== account.authorization_epoch)
+          throw new StaleAuthorizationError();
+        this.acceptSnapshot(snapshot);
+        return snapshot;
+      },
+      discoverNotificationSubject: (
+        notificationId: string,
+        selectorGeneration: string,
+        signal?: AbortSignal,
+      ) =>
+        this.fence.read(
+          cloneAccount.id,
+          () =>
+            this.transport.discoverNotificationSubject({
+              account_id: cloneAccount.id,
+              authorization_epoch: cloneAccount.authorization_epoch,
+              notification_id: notificationId,
+              selector_generation: selectorGeneration,
+            }),
+          signal,
+        ),
       localClones: (
         instanceId: string,
         repositoryId: string,
@@ -557,10 +610,21 @@ function projectionAffected(key: readonly unknown[], scope: string) {
   if (projection === "capabilities" || projection === "resource")
     return scope !== "drafts";
   if (scope === "drafts") return projection === "draft";
+  if (projection === "notification-subject")
+    return (
+      scope === "provider:rest" ||
+      scope === "notifications" ||
+      scope.startsWith("notification_subject:") ||
+      scope === "repositories" ||
+      scope.startsWith("repo:") ||
+      scope.startsWith("detail:")
+    );
   if (projection === "detail") {
     const query = key[5] as DetailQuery;
     return (
       scope === "repositories" ||
+      scope === "notifications" ||
+      scope.startsWith("notification_subject:") ||
       scope.startsWith("repo:") ||
       scope === `detail:${query.subject_id}:${query.facet}`
     );
