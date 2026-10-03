@@ -232,7 +232,7 @@ export class CollaborationClient {
           };
         },
       },
-      (batch) => {
+      async (batch) => {
         const authorizationChanged =
           this.authorizationView !== null &&
           batch.authorizationView !== this.authorizationView;
@@ -242,11 +242,18 @@ export class CollaborationClient {
         for (const change of batch.changes) {
           if (change.reset) this.clearAccount(change.account_id);
           for (const listener of this.changeListeners) listener(change);
-          void queryClient.invalidateQueries({
+          // TanStack preserves an initial fetch with no cached data during
+          // invalidation. Cancel affected provider reads first so a late snapshot
+          // cannot erase the change and become fresh with staleTime: Infinity.
+          const affectedQueries = {
             queryKey: collaborationKeys.account(change.account_id),
-            predicate: (query) =>
+            predicate: (query: { queryKey: readonly unknown[] }) =>
               projectionAffected(query.queryKey, change.scope),
-          });
+          };
+          // Authored writes have their own generation/authorization fences.
+          if (change.scope !== "drafts")
+            await queryClient.cancelQueries(affectedQueries);
+          void queryClient.invalidateQueries(affectedQueries);
         }
         if (
           batch.reset ||

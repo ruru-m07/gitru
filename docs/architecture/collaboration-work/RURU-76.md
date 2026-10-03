@@ -120,15 +120,28 @@ path reuse, actor/provider/host/port/base-path isolation, denied/disconnected
 visibility, transaction rollback, divergent fixtures, bound credential dispatch,
 and unsupported/unavailable inbox semantics.
 
-All 25 client tests and 3 desktop command-caller tests pass on the stacked base.
-The 171 desktop frontend tests passed before the base update; that update changed
-native migration/security checks and SQL line-ending attributes. Desktop/client
-type checks, core and desktop Clippy, formatting, and regenerated 93-command
-bindings pass. No remote CI or live GitLab support is asserted.
+All 32 client tests, 171 desktop frontend tests, and 3 desktop command-caller tests
+pass on the stacked base. Desktop/client type checks, core and desktop Clippy,
+formatting, and regenerated 93-command bindings pass. No remote CI or live GitLab
+support is asserted.
 
 The final stack uses RURU-105 commit `d776d663`; its changes from the tested base
 are architecture/backlog documentation only, with identical code, migrations,
 fixtures, and SQL line-ending policy.
+
+Peer review found that TanStack invalidation preserves an initial pending fetch
+when there is no cached data. Its late result could overwrite a newer change and
+become fresh indefinitely. The bridge now cancels each affected provider query
+before invalidating/refetching, using the existing account/scope filters. This
+applies to repository, item-list, detail, capability, and resource projections;
+authored draft changes retain their separate generation/authorization handling.
+Real QueryObserver tests cover delayed initial reads for all five provider
+projections, account/draft isolation, and pending metadata/private-content reads
+across authorization resets. First scope denial changes the authorization view
+and resets the affected account, while ordinary updates keep the account epoch.
+An independent frontend review reproduced the original race and verified that
+the corrected capability/resource queries reject their older result and retain
+the current snapshot. Read-only migration/identity review found no blocker.
 
 The release `read_benchmark` example measures 200 local reads against 10,000
 cached records on this development Mac. Identity resolution measured p50 59µs /
