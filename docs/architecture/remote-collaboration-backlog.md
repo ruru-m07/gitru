@@ -53,6 +53,11 @@ publication now uses an exited child writer, with nine focused macOS cases
 passing and all original assertions retained. The original OS error was not
 captured; fresh Linux CI qualifies this correction. Production CLI behavior and
 test ordering/parallelism are unchanged.
+Windows CI also exposed an expired-candidate fixture that backdated an Instant
+before runner boot. An equivalent strict expiry deadline preserves the five-minute
+account selection lifetime and avoids subtraction; its exact-boundary regression
+and all 48 foundation collaboration tests pass locally. Fresh Windows CI remains
+required.
 The hourly chat continuation checks live Linear/PR state before picking work.
 PR publication does not authorize merging. GitHub's default CodeQL setup scans
 PRs into default/protected `dev`; children targeting unprotected stack branches

@@ -54,7 +54,13 @@ pub enum GithubCliFailure {
 struct Candidate {
     login: String,
     availability: GithubCliAccountAvailability,
-    discovered_at: Instant,
+    expires_at: Instant,
+}
+
+impl Candidate {
+    fn is_fresh_at(&self, now: Instant) -> bool {
+        now < self.expires_at
+    }
 }
 
 pub struct GithubCli {
@@ -110,7 +116,7 @@ impl GithubCli {
                 Candidate {
                     login: entry.login.clone(),
                     availability: availability.clone(),
-                    discovered_at: Instant::now(),
+                    expires_at: Instant::now() + CANDIDATE_TTL,
                 },
             );
             accounts.push(GithubCliAccount {
@@ -140,7 +146,7 @@ impl GithubCli {
             .lock()
             .await
             .get(candidate_id)
-            .filter(|candidate| candidate.discovered_at.elapsed() < CANDIDATE_TTL)
+            .filter(|candidate| candidate.is_fresh_at(Instant::now()))
             .cloned()
             .ok_or_else(stale_candidate)?;
         if candidate.availability != GithubCliAccountAvailability::Ready {
@@ -725,6 +731,20 @@ mod tests {
         );
     }
 
+    #[test]
+    fn candidate_freshness_excludes_the_exact_deadline_without_backdating_an_instant() {
+        let now = Instant::now();
+        let candidate = Candidate {
+            login: "actor".into(),
+            availability: GithubCliAccountAvailability::Ready,
+            expires_at: now + CANDIDATE_TTL,
+        };
+        assert!(candidate.is_fresh_at(now));
+        assert!(candidate.is_fresh_at(now + Duration::from_secs(299)));
+        assert!(!candidate.is_fresh_at(now + CANDIDATE_TTL));
+        assert!(!candidate.is_fresh_at(now + CANDIDATE_TTL + Duration::from_secs(1)));
+    }
+
     #[tokio::test]
     async fn unknown_expired_and_removed_candidates_never_request_a_token() {
         let runner = FixtureRunner::new(vec![
@@ -751,7 +771,7 @@ mod tests {
             .await
             .get_mut(&candidate.id)
             .unwrap()
-            .discovered_at = Instant::now() - CANDIDATE_TTL;
+            .expires_at = Instant::now();
         assert!(
             matches!(cli.import(&candidate.id).await, Err(error) if error.code == ErrorCode::StaleView)
         );

@@ -1816,6 +1816,16 @@ No production runner behavior, retry, test ordering or global
 test serialization changed. Fresh Linux CI remains the qualification gate;
 this source-backed correction is not a locally reproduced Linux failure claim.
 
+Windows Rust jobs `111152076847` and `111152155586` then recorded a distinct
+expiry-fixture panic: subtracting five minutes from `Instant::now()` underflowed
+on a freshly booted runner. CLI candidates now store an equivalent monotonic
+expiry deadline and are accepted only strictly before it. The existing expired
+selection test sets the deadline to now; a deterministic boundary test covers
+fresh, before, exactly at and after expiry without backdating an instant. Account
+selection and the five-minute lifetime are unchanged. Independent review accepts
+the equivalence. All 48 foundation collaboration tests pass locally; actual
+Windows CI remains required for this platform-specific correction.
+
 Those lanes are published in separate draft PRs based on #143:
 
 - [PR #146](https://github.com/ruru-m07/gitru/pull/146), RURU-76: explicit
