@@ -2169,3 +2169,24 @@ exact-head CodeQL. R79 is locally qualified for review; live provider/vault and 
 qualifications remain distinct from its exact-head remote CI. No PR has
 been merged. See [RURU-79's work note](./collaboration-work/RURU-79.md) for current
 native proof, frontend and isolated QA evidence.
+
+
+### Exact-head remote CI repair — 3 October 2026
+
+Published R79/#154 `1a51a75` passes frontend/lint/types/build, Clippy, Linux
+Rust and packaged Linux/macOS E2E in run37122670576; Windows is still running.
+The macOS Rust job111201717043 fails two synthetic HTTP fixture cases at
+notification_subject_discovery/tests.rs345 with Darwin WouldBlock35. The
+nonblocking listener's flag is inherited by accepted sockets on that platform;
+read timeout does not turn them blocking. The test helper now explicitly makes
+the accepted socket blocking before the existing bounded read timeout. No
+production HTTP behavior, deadline, assertion or CI ordering is changed.
+
+Local correction: all16 focused notification-discovery adapter cases and all120
+collaboration library cases pass (one existing subprocess-entrypoint ignored);
+workspace formatting passes. Previously qualified GUI/package evidence remains
+on its recorded executable; fresh remote checks qualify the repaired PR head.
+Logs: `/tmp/gitru-ruru79-macos-ci-failure.log`,
+`/tmp/gitru-ruru79-accepted-socket-tests.log`,
+`/tmp/gitru-ruru79-accepted-socket-lib.log`,
+`/tmp/gitru-ruru79-accepted-socket-fmt.log`. No PR is merged.
