@@ -109,11 +109,29 @@ their authoritative identity onto the device. The resolver does not queue networ
 work. Endpoint aliases and canonical metadata survive cache replacement while
 inactive/denied accounts cannot use them to recover provider content.
 
-Before stacking the final RURU-105 base: 171 desktop frontend tests and 25 client
-tests pass; desktop/client type checks, core and desktop Clippy, formatting and
-binding generation pass. New native checks cover both representation arrival
-orders, rename/transfer/restart/path reuse, actor/provider/host/port/base-path
-isolation, denied/disconnected visibility, rollback, divergent fixtures, runtime
-credential dispatch, and unsupported/unavailable inbox semantics. Final native
-and frozen-v1 migration evidence will be recorded after rebasing onto RURU-105.
-No remote CI or live GitLab support is asserted.
+After stacking RURU-105 commit `d3889072`, all 83 collaboration tests pass: 37 unit,
+6 identity, 12 migration, 3 dispatch, 9 runtime, and 16 storage tests. Two process
+worker entry points are ignored in ordinary discovery and invoked by their
+parent crash tests. The migration suite upgrades the frozen first-version
+database through the actual migration 0003 and checks interruption, checksum,
+dirty/newer-version refusal, and preserved drafts/epochs/credential metadata.
+Native checks cover both representation arrival orders, rename/transfer/restart/
+path reuse, actor/provider/host/port/base-path isolation, denied/disconnected
+visibility, transaction rollback, divergent fixtures, bound credential dispatch,
+and unsupported/unavailable inbox semantics.
+
+All 25 client tests and 3 desktop command-caller tests pass on the stacked base.
+The 171 desktop frontend tests passed before the base update; that update changed
+native migration/security checks and SQL line-ending attributes. Desktop/client
+type checks, core and desktop Clippy, formatting, and regenerated 93-command
+bindings pass. No remote CI or live GitLab support is asserted.
+
+The final stack uses RURU-105 commit `d776d663`; its changes from the tested base
+are architecture/backlog documentation only, with identical code, migrations,
+fixtures, and SQL line-ending policy.
+
+The release `read_benchmark` example measures 200 local reads against 10,000
+cached records on this development Mac. Identity resolution measured p50 59µs /
+p95 78µs; a 50-row indexed list measured 221µs / 261µs, and an FTS phrase query
+measured 4,364µs / 4,635µs. These are synthetic warm local-query measurements;
+they do not include IPC/rendering or provider/network latency.

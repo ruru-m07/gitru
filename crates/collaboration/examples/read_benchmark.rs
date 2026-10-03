@@ -121,6 +121,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             samples[100], samples[190]
         );
     }
+    let instance = store.provider_instance(&account.id).await?;
+    let mut samples = Vec::with_capacity(200);
+    for _ in 0..200 {
+        let start = Instant::now();
+        let resolved = store
+            .resolve_resource(
+                &account.id,
+                ResourceLocator {
+                    instance_id: instance.id.clone(),
+                    kind: ResourceKind::Issue,
+                    locator_kind: LocatorKind::Native,
+                    value: "issue:5000".into(),
+                    repository_path: None,
+                },
+            )
+            .await?;
+        assert_eq!(resolved.state, ResolutionState::Resolved);
+        samples.push(start.elapsed().as_micros());
+    }
+    samples.sort_unstable();
+    println!(
+        "local identity: 10000 cached rows, 200 reads, p50={}us p95={}us",
+        samples[100], samples[190]
+    );
     store.close().await;
     Ok(())
 }
