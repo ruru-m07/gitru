@@ -241,6 +241,27 @@ pub struct LocalDraft {
     pub generation: String,
 }
 
+/// Recovery lists contain only user-authored text and stable subject identities.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DraftSummary {
+    pub subject_id: String,
+    pub preview: String,
+    pub generation: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DraftQuery {
+    pub account_id: String,
+    pub cursor: Option<String>,
+    pub limit: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DraftPage {
+    pub drafts: Vec<DraftSummary>,
+    pub next_cursor: Option<String>,
+}
+
 /// Runtime-only checkpoint/validator state; no token or response body is stored.
 #[derive(Debug, Clone)]
 pub struct StoredScope {

@@ -1,16 +1,20 @@
 //! Local reads are separate commands from network refresh intents.
 use collaboration::{
-    AccountSnapshot, ChangePage, CollaborationError, CollaborationRuntime, ErrorCode,
-    GithubCliDiscovery, ItemPage, ItemQuery, ItemSnapshot, LocalDraft, RefreshReceipt,
+    AccountSnapshot, ChangePage, CollaborationError, CollaborationRuntime, DraftPage, DraftQuery,
+    ErrorCode, GithubCliDiscovery, ItemPage, ItemQuery, ItemSnapshot, LocalDraft, RefreshReceipt,
     RefreshRequest, RemoteAccount, RepositorySnapshot,
 };
 use std::sync::Arc;
 use tauri::{State, Webview};
+use tauri_plugin_dialog::DialogExt;
 use tokio::sync::OnceCell;
+
+mod draft_export;
 
 #[derive(Default)]
 pub struct CollaborationState {
     pub runtime: OnceCell<Result<Arc<CollaborationRuntime>, CollaborationError>>,
+    draft_export: tokio::sync::Mutex<()>,
 }
 
 impl CollaborationState {
@@ -45,6 +49,8 @@ enum Operation {
     ChangesSince,
     SaveDraft,
     Draft,
+    Drafts,
+    ExportDraft,
 }
 
 impl Operation {
@@ -233,6 +239,57 @@ pub async fn collaboration_draft(
         .await
 }
 
+#[tauri::command]
+pub async fn collaboration_drafts(
+    query: DraftQuery,
+    view: Webview,
+    state: State<'_, CollaborationState>,
+) -> Result<DraftPage, CollaborationError> {
+    authorize(&view, Operation::Drafts)?;
+    state.get().await?.store().query_drafts(query).await
+}
+
+/// The native dialog is the only source of the destination path. IPC callers
+/// cannot supply arbitrary paths or text to this narrowly scoped export.
+#[tauri::command]
+pub async fn collaboration_export_draft(
+    account_id: String,
+    subject_id: String,
+    generation: String,
+    view: Webview,
+    state: State<'_, CollaborationState>,
+) -> Result<bool, CollaborationError> {
+    authorize(&view, Operation::ExportDraft)?;
+    let _lease = state.draft_export.try_lock().map_err(|_| {
+        CollaborationError::new(ErrorCode::NotReady, "A draft export dialog is already open")
+    })?;
+    let draft = draft_export::saved(
+        state.get().await?.store(),
+        &account_id,
+        &subject_id,
+        &generation,
+    )
+    .await?;
+    let (send, receive) = tokio::sync::oneshot::channel();
+    view.dialog()
+        .file()
+        .set_parent(&view.window())
+        .set_title("Export private draft")
+        .set_file_name("gitru-draft.txt")
+        .add_filter("Text", &["txt"])
+        .save_file(move |path| {
+            let _ = send.send(path);
+        });
+    draft_export::export(draft, async move {
+        receive
+            .await
+            .map_err(|_| CollaborationError::storage())?
+            .map(|path| path.into_path().map_err(|_| CollaborationError::storage()))
+            .transpose()
+    })
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::{caller_allowed, Operation};
@@ -247,6 +304,8 @@ mod tests {
         Operation::ChangesSince,
         Operation::SaveDraft,
         Operation::Draft,
+        Operation::Drafts,
+        Operation::ExportDraft,
     ];
     const CREDENTIAL_OPERATIONS: &[Operation] = &[
         Operation::ConnectGithub,

@@ -2066,6 +2066,7 @@ dependencies = [
  "tauri-plugin-wdio",
  "tauri-plugin-wdio-webdriver",
  "tauri-plugin-window-state",
+ "tempfile",
  "tokio",
  "url",
 ]

@@ -2,12 +2,10 @@ import {
   collaboration,
   collaborationErrorMessage,
   type RemoteAccount,
-  type RemoteItem,
   type RemoteItemKind,
   type RemoteRepository,
 } from "@gitru/collaboration-client";
 import {
-  draftQueryOptions,
   useCollaborationAccounts,
   useCollaborationItem,
   useCollaborationItems,
@@ -16,7 +14,6 @@ import {
 import { Badge } from "@gitru/ui/components/badge";
 import { Button } from "@gitru/ui/components/button";
 import { Checkbox } from "@gitru/ui/components/checkbox";
-import { Field, FieldLabel } from "@gitru/ui/components/field";
 import { Input } from "@gitru/ui/components/input";
 import {
   Select,
@@ -25,8 +22,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@gitru/ui/components/select";
-import { Textarea } from "@gitru/ui/components/textarea";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Bell,
@@ -38,15 +33,11 @@ import {
   RefreshCw,
   Search,
 } from "lucide-react";
-import {
-  type FormEvent,
-  useDeferredValue,
-  useEffect,
-  useId,
-  useState,
-} from "react";
+import { useDeferredValue, useEffect, useState } from "react";
 import PageLayout from "@/components/page-layout";
 import { AccountSettingsButton } from "./account-manager";
+import { DraftRecovery } from "./draft-recovery";
+import { PrivateDraft } from "./private-draft";
 import { ProviderLink } from "./provider-link";
 import { CollaborationStatePanel } from "./state-panel";
 import { SyncIndicator } from "./sync-indicator";
@@ -65,6 +56,7 @@ const icons = {
 export function CollaborationWorkspace({ kind }: { kind: RemoteItemKind }) {
   const accounts = useCollaborationAccounts();
   const [accountId, setAccountId] = useState<string | null>(null);
+  const [recoverDrafts, setRecoverDrafts] = useState(false);
   const connected =
     accounts.data?.accounts.filter(
       (account) => account.state !== "disconnected",
@@ -78,7 +70,7 @@ export function CollaborationWorkspace({ kind }: { kind: RemoteItemKind }) {
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b px-5 py-3">
         <h1 className="text-base font-semibold">{labels[kind]}</h1>
         <div className="flex min-w-0 items-center gap-2">
-          {connected.length > 1 && account ? (
+          {!recoverDrafts && connected.length > 1 && account ? (
             <Select
               items={connected.map((candidate) => ({
                 label: `@${candidate.login}`,
@@ -102,11 +94,19 @@ export function CollaborationWorkspace({ kind }: { kind: RemoteItemKind }) {
                 ))}
               </SelectPopup>
             </Select>
-          ) : account ? (
+          ) : !recoverDrafts && account ? (
             <span className="truncate text-xs text-muted-foreground">
               @{account.login}
             </span>
           ) : null}
+          <Button
+            size="sm"
+            variant={recoverDrafts ? "secondary" : "ghost"}
+            aria-pressed={recoverDrafts}
+            onClick={() => setRecoverDrafts((value) => !value)}
+          >
+            Drafts
+          </Button>
           <AccountSettingsButton />
         </div>
       </header>
@@ -124,6 +124,8 @@ export function CollaborationWorkspace({ kind }: { kind: RemoteItemKind }) {
         >
           {collaborationErrorMessage(accounts.error)}
         </CollaborationStatePanel>
+      ) : recoverDrafts ? (
+        <DraftRecovery accounts={accounts.data?.accounts ?? []} />
       ) : !account ? (
         <CollaborationStatePanel title="Bring your remote work into Gitru">
           Connect a GitHub account using Accounts above, then choose
@@ -735,142 +737,6 @@ function ItemDetail({
         </p>
       )}
     </article>
-  );
-}
-
-function PrivateDraft({
-  account,
-  item,
-}: {
-  account: RemoteAccount;
-  item: RemoteItem;
-}) {
-  const query = useQuery(draftQueryOptions(account, item.id));
-  if (query.isPending) return null;
-  if (query.isError)
-    return (
-      <p role="alert" className="mt-6 text-xs text-destructive-foreground">
-        {collaborationErrorMessage(query.error)}
-      </p>
-    );
-  return (
-    <DraftForm
-      account={account}
-      itemId={item.id}
-      initialBody={query.data?.body ?? ""}
-      generation={query.data?.generation ?? "0"}
-    />
-  );
-}
-
-function DraftForm({
-  account,
-  itemId,
-  initialBody,
-  generation,
-}: {
-  account: RemoteAccount;
-  itemId: string;
-  initialBody: string;
-  generation: string;
-}) {
-  const draftId = useId();
-  const [body, setBody] = useState(initialBody);
-  const [savedBody, setSavedBody] = useState(initialBody);
-  const [draftGeneration, setDraftGeneration] = useState(generation);
-  const [previousBody, setPreviousBody] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const queryClient = useQueryClient();
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSaving(true);
-    setError(null);
-    try {
-      const draft = await collaboration
-        .forAccount(account)
-        .saveDraft({ subject_id: itemId, body, generation: draftGeneration });
-      queryClient.setQueryData(
-        draftQueryOptions(account, itemId).queryKey,
-        draft,
-      );
-      setDraftGeneration(draft.generation);
-      setSavedBody(draft.body);
-    } catch (failure) {
-      setError(collaborationErrorMessage(failure));
-    } finally {
-      setSaving(false);
-    }
-  }
-  return (
-    <form className="mt-6 space-y-3 border-t pt-4" onSubmit={save}>
-      <Field name="private-draft">
-        <FieldLabel htmlFor={draftId}>Private draft</FieldLabel>
-        <Textarea
-          id={draftId}
-          name="private-draft"
-          value={body}
-          disabled={saving}
-          onChange={(event) => setBody(event.currentTarget.value)}
-          maxLength={100_000}
-          rows={4}
-          placeholder="Keep a draft here for later…"
-        />
-      </Field>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">
-          Saved on this device. Visible only to you.
-        </p>
-        <Button
-          type="submit"
-          size="sm"
-          variant="outline"
-          disabled={
-            saving || body === savedBody || generation !== draftGeneration
-          }
-        >
-          {saving ? "Saving…" : "Save draft"}
-        </Button>
-      </div>
-      {generation !== draftGeneration ? (
-        <div className="space-y-2 text-xs text-muted-foreground">
-          <p>
-            This draft changed in another tab. Your text is still here. Reload
-            the saved draft before saving again.
-          </p>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setPreviousBody(body);
-              setBody(initialBody);
-              setSavedBody(initialBody);
-              setDraftGeneration(generation);
-              setError(null);
-            }}
-          >
-            Reload saved draft
-          </Button>
-        </div>
-      ) : null}
-      {previousBody !== null ? (
-        <details className="text-xs text-muted-foreground">
-          <summary className="cursor-pointer">Your previous draft text</summary>
-          <Textarea
-            aria-label="Previous draft text"
-            className="mt-2"
-            value={previousBody}
-            readOnly
-            rows={4}
-          />
-        </details>
-      ) : null}
-      {error ? (
-        <p role="alert" className="text-xs text-destructive-foreground">
-          {error}
-        </p>
-      ) : null}
-    </form>
   );
 }
 

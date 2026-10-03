@@ -2,6 +2,8 @@ import {
   type AccountSnapshot,
   type ChangePage,
   type CollaborationChange,
+  type DraftPage,
+  type DraftQuery,
   type GithubCliDiscovery,
   type ItemPage,
   type ItemQuery,
@@ -37,6 +39,12 @@ export interface CollaborationTransport {
   changesSince(afterRevision: string): Promise<ChangePage>;
   saveDraft(draft: LocalDraft): Promise<LocalDraft>;
   draft(accountId: string, subjectId: string): Promise<LocalDraft | null>;
+  drafts(query: DraftQuery): Promise<DraftPage>;
+  exportDraft(
+    accountId: string,
+    subjectId: string,
+    generation: string,
+  ): Promise<boolean>;
   listen(onWake: () => void): Promise<() => void>;
 }
 
@@ -70,9 +78,16 @@ export const collaborationKeys = {
   draft: (account: RemoteAccount, subjectId: string) =>
     [
       ...collaborationKeys.account(account.id),
-      account.authorization_epoch,
+      "local",
       "draft",
       subjectId,
+    ] as const,
+  drafts: (account: RemoteAccount, query: DraftQuery) =>
+    [
+      ...collaborationKeys.account(account.id),
+      "local",
+      "drafts",
+      query,
     ] as const,
 };
 
@@ -151,6 +166,16 @@ export class CollaborationClient {
       saveDraft: (draft: Omit<LocalDraft, "account_id">) =>
         this.fence.read(account.id, () =>
           this.transport.saveDraft({ ...draft, account_id: account.id }),
+        ),
+      drafts: (query: Omit<DraftQuery, "account_id">, signal?: AbortSignal) =>
+        this.fence.read(
+          account.id,
+          () => this.transport.drafts({ ...query, account_id: account.id }),
+          signal,
+        ),
+      exportDraft: (subjectId: string, generation: string) =>
+        this.fence.read(account.id, () =>
+          this.transport.exportDraft(account.id, subjectId, generation),
         ),
     };
   }
@@ -264,11 +289,10 @@ export class CollaborationClient {
 
   private clearAccount(accountId: string) {
     this.fence.invalidate(accountId);
-    void this.queryClient?.cancelQueries({
-      queryKey: collaborationKeys.account(accountId),
-    });
+    this.refreshAuthoredDrafts(collaborationKeys.account(accountId));
     this.queryClient?.removeQueries({
       queryKey: collaborationKeys.account(accountId),
+      predicate: (query) => !isAuthoredDraft(query.queryKey),
     });
     this.publish();
   }
@@ -276,9 +300,27 @@ export class CollaborationClient {
   private resetLocalView() {
     this.fence.invalidate();
     this.authorizationView = null;
-    void this.queryClient?.cancelQueries({ queryKey: collaborationKeys.all });
-    this.queryClient?.removeQueries({ queryKey: collaborationKeys.all });
+    // Authored text belongs to the local actor partition, independent of a
+    // provider grant. Keep an open editor intact while clearing remote data.
+    this.refreshAuthoredDrafts(collaborationKeys.all);
+    this.queryClient?.removeQueries({
+      queryKey: collaborationKeys.all,
+      predicate: (query) => !isAuthoredDraft(query.queryKey),
+    });
     this.publish();
+  }
+
+  private refreshAuthoredDrafts(queryKey: readonly unknown[]) {
+    const cache = this.queryClient;
+    if (!cache) return;
+    // Cancellation retains committed query data, so an open editor survives.
+    // Re-read authored projections after a stream reset; a lost draft hint must
+    // not leave their otherwise-infinite local cache stale.
+    void cache.cancelQueries({ queryKey });
+    void cache.invalidateQueries({
+      queryKey,
+      predicate: (query) => isAuthoredDraft(query.queryKey),
+    });
   }
 
   private publish() {
@@ -287,9 +329,18 @@ export class CollaborationClient {
   }
 }
 
+function isAuthoredDraft(key: readonly unknown[]) {
+  return (
+    key[1] === "account" &&
+    key[3] === "local" &&
+    (key[4] === "draft" || key[4] === "drafts")
+  );
+}
+
 function projectionAffected(key: readonly unknown[], scope: string) {
   const projection = key[4];
-  if (scope === "drafts") return projection === "draft";
+  if (scope === "drafts")
+    return projection === "draft" || projection === "drafts";
   if (scope === "repositories")
     return (
       projection === "repositories" ||

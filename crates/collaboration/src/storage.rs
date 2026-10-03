@@ -49,6 +49,14 @@ struct Cursor {
     id: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DraftCursor {
+    version: u32,
+    account_id: String,
+    subject_id: String,
+}
+
 impl Store {
     pub async fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
@@ -900,6 +908,68 @@ impl Store {
         tx.commit().await.map_err(storage_error)?;
         draft.generation = generation.to_string();
         Ok(draft)
+    }
+
+    /// No provider join or active-credential check: authored drafts survive
+    /// permission changes, missing subjects and disconnected accounts.
+    pub async fn query_drafts(&self, query: DraftQuery) -> Result<DraftPage> {
+        if query.limit == 0 || query.limit > MAX_ITEMS {
+            return Err(CollaborationError::invalid("Invalid local draft page size"));
+        }
+        let cursor = query
+            .cursor
+            .as_ref()
+            .map(|value| {
+                if value.len() > 4096 {
+                    return Err(CollaborationError::invalid("Invalid local draft cursor"));
+                }
+                let cursor: DraftCursor = serde_json::from_str(value)
+                    .map_err(|_| CollaborationError::invalid("Invalid local draft cursor"))?;
+                if cursor.version != 1 || cursor.account_id != query.account_id {
+                    return Err(CollaborationError::invalid(
+                        "Cursor belongs to a different account",
+                    ));
+                }
+                validate_identifier(&cursor.subject_id)?;
+                Ok(cursor)
+            })
+            .transpose()?;
+        let mut tx = self.inner.readers.begin().await.map_err(storage_error)?;
+        account_in(&mut tx, &query.account_id, false).await?;
+        let rows = sqlx::query("SELECT subject_id,substr(body,1,160) AS preview,generation FROM drafts WHERE account_id=? AND subject_id>? ORDER BY subject_id ASC LIMIT ?")
+            .bind(&query.account_id)
+            .bind(cursor.map(|cursor| cursor.subject_id).unwrap_or_default())
+            .bind(i64::from(query.limit) + 1)
+            .fetch_all(&mut *tx).await.map_err(storage_error)?;
+        let mut drafts: Vec<DraftSummary> = rows
+            .iter()
+            .map(|row| DraftSummary {
+                subject_id: row.get("subject_id"),
+                preview: row.get("preview"),
+                generation: row.get::<i64, _>("generation").to_string(),
+            })
+            .collect();
+        let has_more = drafts.len() > query.limit as usize;
+        drafts.truncate(query.limit as usize);
+        let next_cursor = if has_more {
+            drafts
+                .last()
+                .map(|draft| {
+                    encode(&DraftCursor {
+                        version: 1,
+                        account_id: query.account_id,
+                        subject_id: draft.subject_id.clone(),
+                    })
+                })
+                .transpose()?
+        } else {
+            None
+        };
+        tx.commit().await.map_err(storage_error)?;
+        Ok(DraftPage {
+            drafts,
+            next_cursor,
+        })
     }
 
     pub async fn draft(&self, account_id: &str, subject_id: &str) -> Result<Option<LocalDraft>> {

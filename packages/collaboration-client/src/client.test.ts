@@ -79,6 +79,8 @@ function transport(
     changesSince: unexpected,
     saveDraft: unexpected,
     draft: unexpected,
+    drafts: unexpected,
+    exportDraft: unexpected,
     listen: unexpected,
     ...overrides,
   };
@@ -338,5 +340,171 @@ describe("CollaborationClient", () => {
       generation: "1",
     });
     await expect(saved).rejects.toBeInstanceOf(StaleAuthorizationError);
+  });
+});
+
+describe("authored draft recovery", () => {
+  it("keeps authored caches across disconnect/replacement while clearing provider projections", async () => {
+    let revision = "1";
+    const client = new CollaborationClient(
+      transport({
+        listen: async () => () => {},
+        changesSince: async () => changePage(revision, revision),
+        disconnect: async () => {
+          revision = "2";
+          return revision;
+        },
+        connectGithub: async () => {
+          revision = "3";
+          return { ...account, authorization_epoch: "3" };
+        },
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    const draft = {
+      account_id: account.id,
+      subject_id: "missing",
+      body: "My text",
+      generation: "1",
+    };
+    const key = collaborationKeys.draft(account, "missing");
+    const listKey = collaborationKeys.drafts(account, {
+      account_id: account.id,
+      cursor: null,
+      limit: 50,
+    });
+    const remoteKey = collaborationKeys.item(account, "private-provider-data");
+    cache.setQueryData(key, draft);
+    cache.setQueryData(listKey, { drafts: [], next_cursor: null });
+    cache.setQueryData(remoteKey, { body: "Provider body" });
+    await client.disconnect(account.id);
+    expect(cache.getQueryData(key)).toEqual(draft);
+    expect(cache.getQueryState(key)?.isInvalidated).toBe(true);
+    expect(cache.getQueryData(listKey)).toBeDefined();
+    expect(cache.getQueryState(listKey)?.isInvalidated).toBe(true);
+    expect(cache.getQueryData(remoteKey)).toBeUndefined();
+    await client.connectGithub("fixture");
+    expect(
+      collaborationKeys.draft(
+        { ...account, authorization_epoch: "3" },
+        "missing",
+      ),
+    ).toEqual(key);
+    expect(
+      collaborationKeys.draft(
+        { ...account, id: "actor-b", actor_id: "2" },
+        "missing",
+      ),
+    ).not.toEqual(key);
+    expect(cache.getQueryData(key)).toEqual(draft);
+    stop();
+    cache.clear();
+  });
+
+  it("fences delayed authored reads at disconnect and when a subject observer is cancelled", async () => {
+    let finish!: (value: import("@gitru/commands").LocalDraft | null) => void;
+    const client = new CollaborationClient(
+      transport({
+        disconnect: async () => "2",
+        connectGithub: async () => ({ ...account, authorization_epoch: "3" }),
+        draft: () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      }),
+    );
+    const pending = client.forAccount(account).draft("old-subject");
+    await client.disconnect(account.id);
+    finish({
+      account_id: account.id,
+      subject_id: "old-subject",
+      body: "old actor text",
+      generation: "1",
+    });
+    await expect(pending).rejects.toBeInstanceOf(StaleAuthorizationError);
+    const replacing = client.forAccount(account).draft("old-subject");
+    await client.connectGithub("fixture");
+    finish(null);
+    await expect(replacing).rejects.toBeInstanceOf(StaleAuthorizationError);
+    const abort = new AbortController();
+    const cancelled = client
+      .forAccount(account)
+      .draft("old-subject", abort.signal);
+    abort.abort();
+    finish(null);
+    await expect(cancelled).rejects.toBeInstanceOf(StaleAuthorizationError);
+  });
+
+  it("retains authored text but invalidates it when the durable stream requires reset", async () => {
+    let next = changePage("1");
+    const client = new CollaborationClient(
+      transport({
+        listen: async () => () => {},
+        changesSince: async () => next,
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    const key = collaborationKeys.draft(account, "missing");
+    cache.setQueryData(key, { body: "User's retained text", generation: "1" });
+    next = { ...changePage("3"), reset_required: true };
+    await client.wake();
+    await Promise.resolve();
+    expect(cache.getQueryData(key)).toEqual({
+      body: "User's retained text",
+      generation: "1",
+    });
+    expect(cache.getQueryState(key)?.isInvalidated).toBe(true);
+    stop();
+    cache.clear();
+  });
+
+  it("binds local list/export arguments to the actor and invalidates only its authored projections", async () => {
+    let next = changePage("1");
+    const drafts = vi.fn().mockResolvedValue({ drafts: [], next_cursor: null });
+    const exportDraft = vi.fn().mockResolvedValue(false);
+    const client = new CollaborationClient(
+      transport({
+        drafts,
+        exportDraft,
+        listen: async () => () => {},
+        changesSince: async () => next,
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    const handle = client.forAccount(account);
+    await handle.drafts({ cursor: "cursor", limit: 50 });
+    expect(drafts).toHaveBeenCalledWith({
+      account_id: account.id,
+      cursor: "cursor",
+      limit: 50,
+    });
+    expect(await handle.exportDraft("missing", "7")).toBe(false);
+    expect(exportDraft).toHaveBeenCalledWith(account.id, "missing", "7");
+    const own = collaborationKeys.drafts(account, {
+      account_id: account.id,
+      cursor: null,
+      limit: 50,
+    });
+    const other = collaborationKeys.draft(
+      { ...account, id: "actor-b" },
+      "missing",
+    );
+    const remote = collaborationKeys.item(account, "provider");
+    for (const key of [own, other, remote]) cache.setQueryData(key, "data");
+    next = changePage("2", "1", [
+      { revision: "2", account_id: account.id, scope: "drafts", reset: false },
+    ]);
+    await client.wake();
+    expect(cache.getQueryState(own)?.isInvalidated).toBe(true);
+    expect(cache.getQueryState(other)?.isInvalidated).toBe(false);
+    expect(cache.getQueryState(remote)?.isInvalidated).toBe(false);
+    stop();
+    cache.clear();
   });
 });
