@@ -1,6 +1,143 @@
 use collaboration::{domain::*, error::ErrorCode, storage::Store};
 use sqlx::{Connection, Row, sqlite::SqliteConnectOptions};
 
+#[tokio::test]
+async fn credential_cutover_requires_staged_account_ownership_and_preserves_other_accounts() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::open(directory.path().join("remote.sqlite"))
+        .await
+        .unwrap();
+    for id in ["a", "b"] {
+        store
+            .stage_credential(id, &format!("credential:{id}"))
+            .await
+            .unwrap();
+        store
+            .commit_account_credential(account(id), &format!("credential:{id}"))
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        store
+            .stage_credential("a", "credential:b")
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::InvalidInput
+    );
+    store
+        .stage_credential("a", "credential:replacement")
+        .await
+        .unwrap();
+    let mut other = account("b");
+    other.authorization_epoch = "2".into();
+    assert_eq!(
+        store
+            .commit_account_credential(other, "credential:replacement")
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::InvalidInput
+    );
+    assert_eq!(
+        store
+            .commit_account_credential(account("a"), "credential:replacement")
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::StaleView
+    );
+    assert_eq!(
+        store.credential_reference("a").await.unwrap().as_deref(),
+        Some("credential:a")
+    );
+    let mut replacement = account("a");
+    replacement.authorization_epoch = "2".into();
+    store
+        .commit_account_credential(replacement, "credential:replacement")
+        .await
+        .unwrap();
+    let pending = store.due_credential_cleanup(i64::MAX, 32).await.unwrap();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].reference, "credential:a");
+    assert_eq!(
+        store.credential_reference("b").await.unwrap().as_deref(),
+        Some("credential:b")
+    );
+    assert_eq!(
+        store.credential_reference("a").await.unwrap().as_deref(),
+        Some("credential:replacement")
+    );
+    store.disconnect("a").await.unwrap();
+    assert!(store.credential_reference("a").await.unwrap().is_none());
+    assert_eq!(
+        store
+            .due_credential_cleanup(i64::MAX, 32)
+            .await
+            .unwrap()
+            .len(),
+        2
+    );
+}
+
+#[tokio::test]
+async fn credential_cleanup_admission_batches_and_retry_metadata_are_bounded() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::open(directory.path().join("remote.sqlite"))
+        .await
+        .unwrap();
+    for index in 0..128 {
+        store
+            .stage_credential("new-account", &format!("credential:{index}"))
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        store
+            .stage_credential("new-account", "credential:overflow")
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::Busy
+    );
+    assert_eq!(store.due_credential_cleanup(0, 8).await.unwrap().len(), 8);
+    for _ in 0..25 {
+        store
+            .defer_credential_cleanup("credential:0", 100)
+            .await
+            .unwrap();
+    }
+    let pending = store.due_credential_cleanup(100, 32).await.unwrap();
+    let reference = pending
+        .iter()
+        .find(|entry| entry.reference == "credential:0");
+    // Order by retry time excludes the deferred entry until earlier work drains.
+    assert!(reference.is_none());
+    for index in 1..128 {
+        store
+            .finish_credential_cleanup(&format!("credential:{index}"))
+            .await
+            .unwrap();
+    }
+    let pending = store.due_credential_cleanup(100, 32).await.unwrap();
+    assert_eq!(pending[0].attempts, 20);
+    assert!(
+        store
+            .due_credential_cleanup(99, 32)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    store
+        .finish_credential_cleanup("credential:0")
+        .await
+        .unwrap();
+    store
+        .stage_credential("new-account", "credential:capacity-restored")
+        .await
+        .unwrap();
+}
+
 fn account(id: &str) -> RemoteAccount {
     RemoteAccount {
         id: id.into(),

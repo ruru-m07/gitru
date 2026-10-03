@@ -167,48 +167,156 @@ impl Store {
         decode(&json.ok_or_else(not_found)?)
     }
 
+    /// Account metadata alone is useful for local fixtures. Native authentication
+    /// must use commit_account_credential so epoch and reference move together.
     pub async fn upsert_account(&self, account: RemoteAccount) -> Result<RemoteAccount> {
-        validate_identifier(&account.id)?;
-        validate_identifier(&account.actor_id)?;
-        let epoch = positive_revision(&account.authorization_epoch)?;
         let mut writer = self.inner.writer.lock().await;
         let mut tx = writer.begin().await.map_err(storage_error)?;
-        if let Some(row) = sqlx::query(
-            "SELECT authorization_epoch, provider, host, actor_id FROM accounts WHERE id=?",
-        )
-        .bind(&account.id)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(storage_error)?
-        {
-            let current: i64 = row.get("authorization_epoch");
-            if epoch <= current {
-                return Err(stale());
-            }
-            if row.get::<String, _>("provider") != tag(&account.provider)?
-                || row.get::<String, _>("host") != account.host
-                || row.get::<String, _>("actor_id") != account.actor_id
-            {
-                return Err(CollaborationError::invalid(
-                    "Account identity cannot be changed",
-                ));
-            }
-            clear_remote_cache(&mut tx, &account.id).await?;
+        upsert_account_in(&mut tx, &account).await?;
+        tx.commit().await.map_err(storage_error)?;
+        Ok(account)
+    }
+
+    /// Journal the fresh reference before any vault side effect. Failed/crashed
+    /// staging never changes the committed account authorization or credential.
+    pub async fn stage_credential(&self, account_id: &str, reference: &str) -> Result<()> {
+        validate_identifier(account_id)?;
+        validate_identifier(reference)?;
+        let mut writer = self.inner.writer.lock().await;
+        let mut tx = writer.begin().await.map_err(storage_error)?;
+        let pending: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM credential_cleanup")
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(storage_error)?;
+        if pending >= 128 {
+            return Err(CollaborationError::new(
+                ErrorCode::Busy,
+                "Credential cleanup is pending; unlock the credential store before reconnecting",
+            ));
         }
-        let provider = tag(&account.provider)?;
-        let state = tag(&account.state)?;
-        sqlx::query("INSERT INTO accounts(id,provider,host,actor_id,authorization_epoch,state,json) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET authorization_epoch=excluded.authorization_epoch,state=excluded.state,json=excluded.json")
-            .bind(&account.id).bind(provider).bind(&account.host).bind(&account.actor_id).bind(epoch).bind(state).bind(encode(&account)?)
-            .execute(&mut *tx).await.map_err(storage_error)?;
-        sqlx::query(
-            "UPDATE runtime_meta SET authorization_view=authorization_view+1 WHERE singleton=1",
+        let committed: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM account_credentials WHERE credential_ref=?)",
         )
+        .bind(reference)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(storage_error)?;
+        if committed {
+            return Err(CollaborationError::invalid(
+                "Credential staging requires a fresh reference",
+            ));
+        }
+        sqlx::query(
+            "INSERT INTO credential_cleanup(credential_ref,account_id,state) VALUES(?,?,'staged')",
+        )
+        .bind(reference)
+        .bind(account_id)
         .execute(&mut *tx)
         .await
         .map_err(storage_error)?;
-        record_change(&mut tx, &account.id, epoch, "account", true).await?;
+        #[cfg(test)]
+        crate::runtime::credential_crash_tests::checkpoint("during_stage");
+        tx.commit().await.map_err(storage_error)?;
+        Ok(())
+    }
+
+    /// Promote only a journaled, verified replacement. The old reference is
+    /// retired atomically with the authorization epoch and account cache reset.
+    pub async fn commit_account_credential(
+        &self,
+        account: RemoteAccount,
+        reference: &str,
+    ) -> Result<RemoteAccount> {
+        let mut writer = self.inner.writer.lock().await;
+        let mut tx = writer.begin().await.map_err(storage_error)?;
+        let staged: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM credential_cleanup WHERE credential_ref=? AND account_id=? AND state='staged')")
+            .bind(reference).bind(&account.id).fetch_one(&mut *tx).await.map_err(storage_error)?;
+        if !staged || account.state != AccountState::Active {
+            return Err(CollaborationError::invalid(
+                "Credential cutover requires a staged reference and active account",
+            ));
+        }
+        let previous: Option<String> =
+            sqlx::query_scalar("SELECT credential_ref FROM account_credentials WHERE account_id=?")
+                .bind(&account.id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(storage_error)?;
+        upsert_account_in(&mut tx, &account).await?;
+        sqlx::query("INSERT INTO account_credentials(account_id,credential_ref) VALUES(?,?) ON CONFLICT(account_id) DO UPDATE SET credential_ref=excluded.credential_ref")
+            .bind(&account.id).bind(reference).execute(&mut *tx).await.map_err(storage_error)?;
+        sqlx::query("DELETE FROM credential_cleanup WHERE credential_ref=?")
+            .bind(reference)
+            .execute(&mut *tx)
+            .await
+            .map_err(storage_error)?;
+        if let Some(previous) = previous {
+            retire_credential_in(&mut tx, &account.id, &previous).await?;
+        }
+        #[cfg(test)]
+        crate::runtime::credential_crash_tests::checkpoint("during_cutover");
         tx.commit().await.map_err(storage_error)?;
         Ok(account)
+    }
+
+    /// Native-only metadata. Never add this reference to an IPC/domain DTO.
+    pub async fn credential_reference(&self, account_id: &str) -> Result<Option<String>> {
+        sqlx::query_scalar("SELECT credential_ref FROM account_credentials WHERE account_id=?")
+            .bind(account_id)
+            .fetch_optional(&self.inner.readers)
+            .await
+            .map_err(storage_error)
+    }
+
+    pub async fn due_credential_cleanup(
+        &self,
+        now: i64,
+        limit: u32,
+    ) -> Result<Vec<crate::credentials::CredentialCleanup>> {
+        if !(1..=32).contains(&limit) {
+            return Err(CollaborationError::invalid(
+                "Invalid credential cleanup batch size",
+            ));
+        }
+        let rows = sqlx::query("SELECT credential_ref,attempts FROM credential_cleanup c WHERE next_retry_at<=? AND NOT EXISTS(SELECT 1 FROM account_credentials a WHERE a.credential_ref=c.credential_ref) ORDER BY next_retry_at,credential_ref LIMIT ?")
+            .bind(now).bind(limit).fetch_all(&self.inner.readers).await.map_err(storage_error)?;
+        Ok(rows
+            .into_iter()
+            .map(|row| crate::credentials::CredentialCleanup {
+                reference: row.get("credential_ref"),
+                attempts: row.get::<i64, _>("attempts") as u32,
+            })
+            .collect())
+    }
+
+    pub async fn finish_credential_cleanup(&self, reference: &str) -> Result<()> {
+        let mut writer = self.inner.writer.lock().await;
+        sqlx::query("DELETE FROM credential_cleanup WHERE credential_ref=? AND NOT EXISTS(SELECT 1 FROM account_credentials WHERE credential_ref=?)")
+            .bind(reference).bind(reference).execute(&mut *writer).await.map_err(storage_error)?;
+        Ok(())
+    }
+
+    pub async fn credential_cleanup(
+        &self,
+        reference: &str,
+    ) -> Result<Option<crate::credentials::CredentialCleanup>> {
+        let row = sqlx::query("SELECT credential_ref,attempts FROM credential_cleanup c WHERE credential_ref=? AND NOT EXISTS(SELECT 1 FROM account_credentials a WHERE a.credential_ref=c.credential_ref)")
+            .bind(reference).fetch_optional(&self.inner.readers).await.map_err(storage_error)?;
+        Ok(row.map(|row| crate::credentials::CredentialCleanup {
+            reference: row.get("credential_ref"),
+            attempts: row.get::<i64, _>("attempts") as u32,
+        }))
+    }
+
+    pub async fn defer_credential_cleanup(
+        &self,
+        reference: &str,
+        next_retry_at: i64,
+    ) -> Result<()> {
+        let mut writer = self.inner.writer.lock().await;
+        sqlx::query("UPDATE credential_cleanup SET attempts=min(attempts+1,20),next_retry_at=? WHERE credential_ref=?")
+            .bind(next_retry_at).bind(reference).execute(&mut *writer).await.map_err(storage_error)?;
+        Ok(())
     }
 
     pub async fn disconnect(&self, account_id: &str) -> Result<String> {
@@ -220,6 +328,16 @@ impl Store {
             .ok_or_else(CollaborationError::storage)?;
         account.authorization_epoch = epoch.to_string();
         account.state = AccountState::Disconnected;
+        let reference: Option<String> = sqlx::query_scalar(
+            "DELETE FROM account_credentials WHERE account_id=? RETURNING credential_ref",
+        )
+        .bind(account_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(storage_error)?;
+        if let Some(reference) = reference {
+            retire_credential_in(&mut tx, account_id, &reference).await?;
+        }
         clear_remote_cache(&mut tx, account_id).await?;
         sqlx::query(
             "UPDATE accounts SET authorization_epoch=?,state='disconnected',json=? WHERE id=?",
@@ -237,6 +355,8 @@ impl Store {
         .await
         .map_err(storage_error)?;
         let revision = record_change(&mut tx, account_id, epoch, "account", true).await?;
+        #[cfg(test)]
+        crate::runtime::credential_crash_tests::checkpoint("during_disconnect");
         tx.commit().await.map_err(storage_error)?;
         Ok(revision)
     }
@@ -921,6 +1041,59 @@ impl Store {
         tx.commit().await.map_err(storage_error)?;
         Ok(draft)
     }
+}
+
+async fn upsert_account_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    account: &RemoteAccount,
+) -> Result<()> {
+    validate_identifier(&account.id)?;
+    validate_identifier(&account.actor_id)?;
+    let epoch = positive_revision(&account.authorization_epoch)?;
+    if let Some(row) =
+        sqlx::query("SELECT authorization_epoch, provider, host, actor_id FROM accounts WHERE id=?")
+            .bind(&account.id)
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(storage_error)?
+    {
+        let current: i64 = row.get("authorization_epoch");
+        if epoch <= current {
+            return Err(stale());
+        }
+        if row.get::<String, _>("provider") != tag(&account.provider)?
+            || row.get::<String, _>("host") != account.host
+            || row.get::<String, _>("actor_id") != account.actor_id
+        {
+            return Err(CollaborationError::invalid(
+                "Account identity cannot be changed",
+            ));
+        }
+        clear_remote_cache(tx, &account.id).await?;
+    }
+    let provider = tag(&account.provider)?;
+    let state = tag(&account.state)?;
+    sqlx::query("INSERT INTO accounts(id,provider,host,actor_id,authorization_epoch,state,json) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET authorization_epoch=excluded.authorization_epoch,state=excluded.state,json=excluded.json")
+            .bind(&account.id).bind(provider).bind(&account.host).bind(&account.actor_id).bind(epoch).bind(state).bind(encode(account)?)
+            .execute(&mut **tx).await.map_err(storage_error)?;
+    sqlx::query(
+        "UPDATE runtime_meta SET authorization_view=authorization_view+1 WHERE singleton=1",
+    )
+    .execute(&mut **tx)
+    .await
+    .map_err(storage_error)?;
+    record_change(tx, &account.id, epoch, "account", true).await?;
+    Ok(())
+}
+
+async fn retire_credential_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    account_id: &str,
+    reference: &str,
+) -> Result<()> {
+    sqlx::query("INSERT INTO credential_cleanup(credential_ref,account_id,state) VALUES(?,?,'retired') ON CONFLICT(credential_ref) DO UPDATE SET state='retired',attempts=0,next_retry_at=0")
+        .bind(reference).bind(account_id).execute(&mut **tx).await.map_err(storage_error)?;
+    Ok(())
 }
 
 fn storage_error(_: sqlx::Error) -> CollaborationError {
