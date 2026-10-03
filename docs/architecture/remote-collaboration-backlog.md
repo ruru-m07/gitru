@@ -1137,3 +1137,29 @@ vault cutover and an explicitly repository-only profile. OAuth/PKCE, enterprise,
 Data Center and relay spikes stay separate. R101 must preserve conservative
 qualified absence and add independent facet/validator/head/epoch evidence, not
 rewrite existing paging or invent unsupported provider operations.
+
+
+### RURU-110 local implementation qualification — 3 October 2026
+
+GitLab.com manual PAT actor/member-project probes and a repository-only native
+profile now use the shared owned vault journal/cutover, immutable actor/installation
+identity, SQLite selection and resumable keyset feed. GitLab MR/issues/inbox/write
+facets remain explicitly Unsupported; accounts remain independent of cloud.
+A fixed main-only command is normally generated113, with every existing284 named
+Zod schema semantically unchanged. SDK/UI add a transient manual form and accurate
+provider/capability guidance. No migration changed (frozen0001..0007), and R106
+restore's v1/v2 acceptance ceiling remains separate.
+
+Independent tests/reviews drive fixes for long valid quota truncation,503/redirect
+Retry-After loss, unparseable extreme deadlines, proven-actor partial-probe quota
+loss and a picked worker bypassing a newly stored barrier. Quota merge is atomic
+under writer/current-epoch guards, including known inactive actors without grant
+reactivation; successful probe quota commits with credential promotion. Existing
+GitHub CLI/login/cancel/crash/cleanup behavior and authored cache/draft boundaries
+remain tested. Local qualification:285native+2existingignored,12frozenmigration,
+37focusedGitLab (six independent actual local HTTP/lifecycle cases),110SDK,299
+desktop (12 new GitLab cases), types/scopedBiome/frontend build, all-target
+collaboration Clippy and format pass. Synthetic fixtures do not qualify a live
+PAT, production vault or other platforms. Root still integrates the repaired
+R79 ancestor and qualifies caller/native GUI/package before PR publication.
+No PR is merged. See [R110 work note](./collaboration-work/RURU-110.md).

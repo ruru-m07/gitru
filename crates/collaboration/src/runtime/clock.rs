@@ -26,12 +26,17 @@ impl CollaborationRuntime {
             .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
     }
     pub(super) fn future_string(&self, seconds: u64) -> String {
+        // Durable deadlines are parsed as RFC3339 on restart. Chrono's own
+        // MAX_UTC has a six-digit year that its RFC3339 parser cannot reread.
+        let ceiling = DateTime::<Utc>::from_timestamp(253_402_300_799, 999_000_000)
+            .expect("last representable RFC3339 millisecond");
         self.clock
             .utc()
             .checked_add_signed(chrono::Duration::seconds(
                 seconds.min(i64::MAX as u64 / 1000) as i64,
             ))
-            .unwrap_or(DateTime::<Utc>::MAX_UTC)
+            .map(|value| value.min(ceiling))
+            .unwrap_or(ceiling)
             .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
     }
     pub(super) fn delay_until(&self, time: &str) -> Option<Duration> {

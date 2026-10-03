@@ -77,6 +77,7 @@ function fixture() {
       authorization_view: "1",
     }),
     connectGithub: unexpected,
+    connectGitlab: unexpected,
     connectGithubCli: unexpected,
     discoverGithubCli: unexpected,
     disconnect: vi.fn(async () => "2"),

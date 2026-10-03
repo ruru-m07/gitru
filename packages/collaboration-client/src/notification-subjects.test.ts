@@ -112,6 +112,7 @@ function fixture() {
       authorization_view: view,
     }),
     connectGithub: unexpected,
+    connectGitlab: unexpected,
     connectGithubCli: unexpected,
     discoverGithubCli: unexpected,
     disconnect: async () => "2",

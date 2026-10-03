@@ -121,6 +121,7 @@ impl CollaborationProvider for GithubProvider {
             login: bounded(actor.login, 255)?,
             display_name: actor.name.map(|name| bounded(name, 1024)).transpose()?,
             notifications_supported,
+            cooldown_seconds: None,
         })
     }
 
