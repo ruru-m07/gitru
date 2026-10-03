@@ -627,6 +627,18 @@ mod tests {
         format!(r#"[{{"state":"success","active":true,"host":"github.com","login":"{login}"}}]"#)
     }
 
+    fn only_fixture_account(discovery: GithubCliDiscovery) -> GithubCliAccount {
+        let mut accounts = discovery.accounts.into_iter();
+        let account = accounts
+            .next()
+            .expect("fixture discovery contains an account");
+        assert!(
+            accounts.next().is_none(),
+            "fixture discovery contains exactly one account"
+        );
+        account
+    }
+
     #[tokio::test]
     async fn discovery_returns_only_bounded_account_metadata_and_never_requests_a_token() {
         let runner = FixtureRunner::new(vec![
@@ -687,7 +699,7 @@ mod tests {
             output("fixture_secret\n"),
         ]);
         let cli = GithubCli::with_runner(runner.clone());
-        let candidate = cli.discover().await.accounts.remove(0);
+        let candidate = only_fixture_account(cli.discover().await);
         let (login, token) = cli.import(&candidate.id).await.unwrap();
         assert_eq!(login, "Actor");
         assert_eq!(token.expose(), "fixture_secret");
@@ -725,7 +737,7 @@ mod tests {
             matches!(cli.import("--user").await, Err(error) if error.code == ErrorCode::StaleView)
         );
         assert!(runner.calls.lock().unwrap().is_empty());
-        let candidate = cli.discover().await.accounts.remove(0);
+        let candidate = only_fixture_account(cli.discover().await);
         let current = cli
             .candidates
             .lock()
@@ -910,7 +922,7 @@ mod tests {
         };
         let first_version = write_version("first-version-gh", "actor", "first_fixture_secret");
         symlink(&first_version, &installation).unwrap();
-        let original = cli.discover().await.accounts.remove(0);
+        let original = only_fixture_account(cli.discover().await);
         assert_eq!(original.login, "actor");
         let second_version = write_version("second-version-gh", "another", "second_fixture_secret");
         std::fs::remove_file(&installation).unwrap();
@@ -923,7 +935,7 @@ mod tests {
             resolve_executable(&runner.candidates),
             Some(second_version.canonicalize().unwrap())
         );
-        let current = cli.discover().await.accounts.remove(0);
+        let current = only_fixture_account(cli.discover().await);
         assert_eq!(current.login, "another");
         let (login, token) = cli.import(&current.id).await.unwrap();
         assert_eq!(login, "another");
