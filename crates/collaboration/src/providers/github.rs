@@ -7,6 +7,7 @@ use super::{
 };
 use serde::Deserialize;
 mod issue_details;
+pub mod notification_subjects;
 mod pull_details;
 mod resource_details;
 
