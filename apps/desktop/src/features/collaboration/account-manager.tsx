@@ -1,4 +1,5 @@
 import {
+  type CapabilitySnapshot,
   collaboration,
   collaborationErrorMessage,
   type GithubCliAccount,
@@ -6,6 +7,7 @@ import {
 } from "@gitru/collaboration-client";
 import {
   useCollaborationAccounts,
+  useCollaborationCapabilities,
   useGithubCliAccounts,
 } from "@gitru/collaboration-client/react";
 import { Badge } from "@gitru/ui/components/badge";
@@ -33,10 +35,13 @@ import {
   type FormEvent,
   type MouseEvent,
   type ReactElement,
+  useEffect,
   useId,
   useRef,
   useState,
 } from "react";
+import { BitbucketIcon } from "@/components/svgs/bitbucket";
+import { GitlabIcon } from "@/components/svgs/gitlab-icon";
 import { openExternalUrlSafely } from "@/lib/open-external-url";
 import { requestAccountSettings } from "./account-dialog-events";
 
@@ -153,7 +158,10 @@ export function AccountManager() {
           </p>
         ))}
       {trusted ? (
-        <ConnectGithubForm />
+        <>
+          <ConnectGithubForm />
+          <ConnectGitlabForm />
+        </>
       ) : (
         <div className="space-y-3 rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">
           <p>Connected accounts are shared across tabs.</p>
@@ -161,8 +169,8 @@ export function AccountManager() {
         </div>
       )}
       <p className="break-words text-xs leading-relaxed text-muted-foreground">
-        Provider accounts work independently of Gitru cloud sign-in. GitLab and
-        Bitbucket connections are planned.
+        Provider accounts work independently of Gitru cloud sign-in. Bitbucket
+        connections are planned.
       </p>
     </div>
   );
@@ -181,13 +189,18 @@ function AccountRow({
   retry: boolean;
   onDisconnect: () => void;
 }) {
+  const capabilities = useCollaborationCapabilities(
+    account,
+    account.state === "active" && !account.notifications_supported,
+  );
+  const inboxMessage =
+    account.state === "active" && !account.notifications_supported
+      ? inboxCapabilityMessage(account, capabilities.data)
+      : null;
   return (
     <div className="min-w-0 rounded-lg border p-3">
       <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-        <Github
-          className="size-5 shrink-0 text-muted-foreground"
-          aria-hidden="true"
-        />
+        <AccountProviderIcon provider={account.provider} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">
             {account.display_name ?? account.login}{" "}
@@ -196,7 +209,7 @@ function AccountRow({
             </span>
           </p>
           <p className="truncate text-xs text-muted-foreground">
-            {account.host}
+            {accountProviderName(account.provider)} · {account.host}
           </p>
         </div>
         <Badge
@@ -229,13 +242,217 @@ function AccountRow({
           </Button>
         ) : null}
       </div>
-      {account.state === "active" && !account.notifications_supported ? (
-        <p className="mt-2 text-xs text-muted-foreground">
-          Repository access is connected. Reconnect with a credential that
-          supports inbox to sync notifications.
-        </p>
+      {inboxMessage ? (
+        <p className="mt-2 text-xs text-muted-foreground">{inboxMessage}</p>
       ) : null}
     </div>
+  );
+}
+
+function inboxCapabilityMessage(
+  account: RemoteAccount,
+  snapshot: CapabilitySnapshot | undefined,
+): string | null {
+  let baseUrl: string;
+  try {
+    baseUrl = new URL(
+      account.host.includes("://") ? account.host : `https://${account.host}`,
+    ).href;
+  } catch {
+    return null;
+  }
+  if (
+    !snapshot ||
+    snapshot.account_id !== account.id ||
+    snapshot.instance.provider !== account.provider ||
+    snapshot.instance.base_url !== baseUrl
+  )
+    return null;
+  const inbox = snapshot.facets.find((facet) => facet.facet === "inbox");
+  if (!inbox) return null;
+  if (inbox.state === "unsupported")
+    return "Inbox isn’t supported by this connection in Gitru.";
+  if (
+    inbox.state === "unavailable" &&
+    inbox.reason === "missing_scope" &&
+    snapshot.inbox_semantics !== "none"
+  )
+    return "Inbox needs additional token permissions. Reconnect with a credential that supports inbox to sync notifications.";
+  return null;
+}
+
+function accountProviderName(provider: RemoteAccount["provider"]) {
+  switch (provider) {
+    case "github":
+      return "GitHub";
+    case "gitlab":
+      return "GitLab";
+    case "bitbucket_cloud":
+      return "Bitbucket Cloud";
+    case "bitbucket_dc":
+      return "Bitbucket Data Center";
+  }
+}
+
+function AccountProviderIcon({
+  provider,
+}: {
+  provider: RemoteAccount["provider"];
+}) {
+  const props = {
+    className: "size-5 shrink-0 text-muted-foreground",
+    "aria-hidden": true as const,
+  };
+  switch (provider) {
+    case "github":
+      return <Github {...props} />;
+    case "gitlab":
+      return <GitlabIcon {...props} aria-labelledby={undefined} />;
+    case "bitbucket_cloud":
+    case "bitbucket_dc":
+      return <BitbucketIcon {...props} />;
+  }
+}
+
+export function ConnectGitlabForm() {
+  const trusted = isTrustedAccountWindow();
+  const tokenId = useId();
+  const tokenInput = useRef<HTMLInputElement>(null);
+  const connecting = useRef(false);
+  const alive = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [connected, setConnected] = useState<string | null>(null);
+  const [browserFailed, setBrowserFailed] = useState(false);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
+  async function connect(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (connecting.current || !isTrustedAccountWindow()) return;
+    const token = tokenInput.current?.value.trim() ?? "";
+    if (!token) return;
+    // Only the native credential command receives the transient password value.
+    if (tokenInput.current) tokenInput.current.value = "";
+    connecting.current = true;
+    setBusy(true);
+    setError(null);
+    setConnected(null);
+    try {
+      const account = await collaboration.connectGitlab(token);
+      if (alive.current) setConnected(account.login);
+    } catch (failure) {
+      if (alive.current)
+        setError(
+          typeof failure === "object" &&
+            failure !== null &&
+            "code" in failure &&
+            failure.code === "rate_limited"
+            ? "GitLab asked Gitru to wait. Try connecting again later."
+            : collaborationErrorMessage(failure),
+        );
+    } finally {
+      connecting.current = false;
+      if (alive.current) setBusy(false);
+    }
+  }
+
+  if (!trusted) return null;
+  return (
+    <form
+      className="min-w-0 space-y-3 rounded-xl border p-4"
+      onSubmit={connect}
+    >
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <GitlabIcon
+          className="size-4"
+          aria-hidden="true"
+          aria-labelledby={undefined}
+        />
+        Connect GitLab.com
+      </div>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        Connect with a personal access token to discover your repositories.
+        Merge requests, issues, and inbox aren’t supported for GitLab in Gitru
+        yet.
+      </p>
+      <Field name="gitlab-token">
+        <FieldLabel htmlFor={tokenId}>GitLab personal access token</FieldLabel>
+        <Input
+          id={tokenId}
+          ref={tokenInput}
+          name="gitlab-token"
+          type="password"
+          required
+          autoComplete="off"
+          placeholder="GitLab.com personal access token"
+          disabled={busy}
+          aria-invalid={Boolean(error)}
+          aria-describedby={`${tokenId}-help${error ? ` ${tokenId}-error` : ""}`}
+        />
+        <FieldDescription id={`${tokenId}-help`}>
+          Your token must allow reading your profile and member projects. For a
+          legacy token, use read_api and read_user. Gitru checks access before
+          connecting, then saves the token in your system credential store.
+        </FieldDescription>
+      </Field>
+      <Button
+        type="button"
+        variant="link"
+        size="xs"
+        className="px-0"
+        disabled={busy}
+        onClick={() => {
+          setBrowserFailed(false);
+          void openExternalUrlSafely(
+            "https://gitlab.com/-/user_settings/personal_access_tokens",
+          ).then(
+            (opened) => {
+              if (alive.current) setBrowserFailed(!opened);
+            },
+            () => {
+              if (alive.current) setBrowserFailed(true);
+            },
+          );
+        }}
+      >
+        <ExternalLink aria-hidden="true" />
+        Create a GitLab token
+      </Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <KeyRound className="size-3.5" aria-hidden="true" />
+          gitlab.com
+        </span>
+        <Button type="submit" size="sm" disabled={busy}>
+          <Plus aria-hidden="true" />
+          {busy ? "Connecting to GitLab…" : "Connect GitLab account"}
+        </Button>
+      </div>
+      {error ? (
+        <p
+          id={`${tokenId}-error`}
+          role="alert"
+          className="text-xs text-destructive-foreground"
+        >
+          {error}
+        </p>
+      ) : null}
+      {browserFailed ? (
+        <p role="alert" className="text-xs text-destructive-foreground">
+          Could not open your browser. Try again.
+        </p>
+      ) : null}
+      {connected ? (
+        <p role="status" className="text-xs text-success-foreground">
+          Connected to GitLab as {connected}. Choose repositories to sync.
+        </p>
+      ) : null}
+    </form>
   );
 }
 

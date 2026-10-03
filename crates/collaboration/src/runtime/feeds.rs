@@ -18,6 +18,7 @@ impl CollaborationRuntime {
             if account.authorization_epoch != job.account.authorization_epoch {
                 return Err(stale());
             }
+            self.ensure_provider_budget(&account).await?;
             self.require_feed(&account, kind).await?;
             if let Some(repository) = &job.repository {
                 let current = self.store.repository(&account.id, &repository.id).await?;
@@ -93,7 +94,10 @@ impl CollaborationRuntime {
             }
             self.require_feed(&current, kind).await?;
             self.ensure_demand_dispatch(job).await?;
-            let page = self
+            // A probe may publish a new account budget while this job waits for
+            // lifecycle/vault/native reads after the scheduler picked it.
+            self.ensure_provider_budget(&current).await?;
+            let fetched = self
                 .adapter_for_account(&current)
                 .await?
                 .fetch_page(
@@ -107,7 +111,22 @@ impl CollaborationRuntime {
                         last_modified: modified.take(),
                     },
                 )
-                .await?;
+                .await;
+            // A bounded/invalid response can still consume the account quota.
+            // Preserve that same-epoch observation before converting its safe
+            // error; no rejected page data or old-epoch grant can be published.
+            let page = match fetched {
+                Ok(page) => page,
+                Err(error) => {
+                    if let Some(seconds) = error
+                        .account_cooldown_seconds
+                        .filter(|seconds| *seconds > 0)
+                    {
+                        self.persist_rate_limit(&account, seconds, None).await?;
+                    }
+                    return Err(error.into());
+                }
+            };
             let not_modified = page.not_modified;
             if not_modified && (page_index != 0 || conditional.is_none()) {
                 return Err(CollaborationError::new(

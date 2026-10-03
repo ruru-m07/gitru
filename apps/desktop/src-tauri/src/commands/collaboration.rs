@@ -39,6 +39,7 @@ impl CollaborationState {
 pub(super) enum Operation {
     Accounts,
     ConnectGithub,
+    ConnectGitlab,
     DiscoverGithubCli,
     ConnectGithubCli,
     Disconnect,
@@ -73,6 +74,7 @@ impl Operation {
         matches!(
             self,
             Self::ConnectGithub
+                | Self::ConnectGitlab
                 | Self::DiscoverGithubCli
                 | Self::ConnectGithubCli
                 | Self::Disconnect
@@ -134,6 +136,16 @@ pub async fn collaboration_connect_github(
 ) -> Result<RemoteAccount, CollaborationError> {
     authorize(&view, Operation::ConnectGithub)?;
     state.get().await?.connect_github(token).await
+}
+
+#[tauri::command]
+pub async fn collaboration_connect_gitlab(
+    token: String,
+    view: Webview,
+    state: State<'_, CollaborationState>,
+) -> Result<RemoteAccount, CollaborationError> {
+    authorize(&view, Operation::ConnectGitlab)?;
+    state.get().await?.connect_gitlab(token).await
 }
 
 #[tauri::command]
@@ -348,6 +360,7 @@ mod tests {
     ];
     const CREDENTIAL_OPERATIONS: &[Operation] = &[
         Operation::ConnectGithub,
+        Operation::ConnectGitlab,
         Operation::DiscoverGithubCli,
         Operation::ConnectGithubCli,
         Operation::Disconnect,

@@ -81,6 +81,7 @@ impl CollaborationProvider for FakeProvider {
             login: "actor".into(),
             display_name: None,
             notifications_supported: false,
+            cooldown_seconds: None,
         })
     }
     async fn fetch_page(

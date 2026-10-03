@@ -25,6 +25,10 @@ mod detail_tests;
 mod details;
 mod feeds;
 #[cfg(test)]
+mod gitlab_probe_backoff_tests;
+#[cfg(test)]
+mod gitlab_tests;
+#[cfg(test)]
 mod notification_subject_tests;
 mod notification_subjects;
 mod scheduler;
@@ -149,7 +153,12 @@ impl CollaborationRuntime {
         candidate_id: &str,
     ) -> Result<RemoteAccount, CollaborationError> {
         let (expected_login, token) = self.github_cli.import(candidate_id).await?;
-        self.connect_owned_token(token, Some(expected_login)).await
+        self.connect_owned_token(
+            ProviderInstance::public(ProviderKind::Github),
+            token,
+            Some(expected_login),
+        )
+        .await
     }
 
     pub fn store(&self) -> &Arc<Store> {
@@ -198,11 +207,21 @@ impl CollaborationRuntime {
         let token = SecretToken::new(token).map_err(|_| {
             CollaborationError::invalid("Enter a valid GitHub personal access token")
         })?;
-        self.connect_owned_token(token, None).await
+        self.connect_owned_token(ProviderInstance::public(ProviderKind::Github), token, None)
+            .await
+    }
+
+    pub async fn connect_gitlab(&self, token: String) -> Result<RemoteAccount, CollaborationError> {
+        let token = SecretToken::new(token).map_err(|_| {
+            CollaborationError::invalid("Enter a valid GitLab personal access token")
+        })?;
+        self.connect_owned_token(ProviderInstance::public(ProviderKind::Gitlab), token, None)
+            .await
     }
 
     async fn connect_owned_token(
         &self,
+        instance: ProviderInstance,
         token: SecretToken,
         expected_login: Option<String>,
     ) -> Result<RemoteAccount, CollaborationError> {
@@ -211,7 +230,7 @@ impl CollaborationRuntime {
         let runtime = self.clone();
         tokio::spawn(async move {
             let result = runtime
-                .connect_github_token(token, expected_login.as_deref())
+                .connect_provider_token(instance, token, expected_login.as_deref())
                 .await;
             // Release the owned storage/runtime before notifying the requester
             // that completion has finished (also relevant to reopen tests).
@@ -222,17 +241,53 @@ impl CollaborationRuntime {
         .map_err(|_| vault_error())?
     }
 
-    async fn connect_github_token(
+    async fn connect_provider_token(
         &self,
+        instance: ProviderInstance,
         token: SecretToken,
         expected_login: Option<&str>,
     ) -> Result<RemoteAccount, CollaborationError> {
         let _lifecycle = self.lifecycle.lock().await;
         let _ = self.cleanup_credentials_locked().await;
-        let provider = self
-            .registry
-            .adapter(&ProviderInstance::public(ProviderKind::Github))?;
-        let verified = provider.probe(&token).await?;
+        // Only native fixed-provider wrappers supply this installation. The
+        // registry validates its exact binding; there is no family fallback.
+        let provider = self.registry.adapter(&instance)?;
+        let verified = match provider.probe_with_backoff(&token).await {
+            Ok(verified) => verified,
+            Err(failure) => {
+                if let Some(actor_id) = failure.verified_actor_id.as_deref()
+                    && let Some(delay) = failure
+                        .error
+                        .account_cooldown_seconds
+                        .into_iter()
+                        .chain(failure.error.retry_after_seconds)
+                        .filter(|seconds| *seconds > 0)
+                        .max()
+                    && let Some(known) =
+                        self.store
+                            .accounts()
+                            .await?
+                            .accounts
+                            .into_iter()
+                            .find(|account| {
+                                account.provider == instance.provider
+                                    && ProviderInstance::for_account(account)
+                                        .is_ok_and(|old| old == instance)
+                                    && account.actor_id == actor_id
+                            })
+                {
+                    // Consumption evidence belongs to this proven actor's
+                    // current epoch, even while disconnected/auth-required.
+                    // A rejected prospective token cannot revoke its grant.
+                    self.persist_rate_limit(&known, delay, None).await?;
+                }
+                return Err(failure.error.into());
+            }
+        };
+        let quota_deadline = verified
+            .cooldown_seconds
+            .filter(|seconds| *seconds > 0)
+            .map(|seconds| self.future_string(seconds));
         if expected_login.is_some_and(|expected| !verified.login.eq_ignore_ascii_case(expected)) {
             return Err(CollaborationError::new(
                 ErrorCode::StaleView,
@@ -246,8 +301,8 @@ impl CollaborationRuntime {
             .accounts
             .into_iter()
             .find(|account| {
-                account.provider == ProviderKind::Github
-                    && account.host == "github.com"
+                account.provider == instance.provider
+                    && ProviderInstance::for_account(account).is_ok_and(|old| old == instance)
                     && account.actor_id == verified.actor_id
             });
         let id = previous
@@ -272,8 +327,13 @@ impl CollaborationRuntime {
         credential_boundary!("after_vault_write");
         let account = RemoteAccount {
             id: id.clone(),
-            provider: ProviderKind::Github,
-            host: "github.com".to_string(),
+            provider: instance.provider,
+            host: instance
+                .base_url
+                .strip_prefix("https://")
+                .expect("registered HTTPS installation")
+                .trim_end_matches('/')
+                .to_string(),
             actor_id: verified.actor_id,
             login: verified.login,
             display_name: verified.display_name,
@@ -284,7 +344,7 @@ impl CollaborationRuntime {
         credential_boundary!("before_cutover");
         let account = match self
             .store
-            .commit_account_credential(account, &reference)
+            .commit_account_credential_with_quota(account, &reference, quota_deadline)
             .await
         {
             Ok(account) => account,
@@ -992,37 +1052,45 @@ impl CollaborationRuntime {
         let _ = self.changes.send(ChangeHint { revision });
     }
 
+    async fn ensure_provider_budget(
+        &self,
+        account: &RemoteAccount,
+    ) -> Result<(), CollaborationError> {
+        if let Some(scope) = self.store.scope_state(&account.id, "provider:rest").await?
+            && let Some(delay) = scope
+                .sync
+                .next_retry_at
+                .as_deref()
+                .and_then(|time| self.delay_until(time))
+        {
+            let mut error = CollaborationError::new(
+                ErrorCode::RateLimited,
+                "The provider account is waiting for its next permitted request",
+            );
+            error.retry_after_seconds = Some(
+                delay
+                    .as_secs()
+                    .saturating_add(u64::from(delay.subsec_nanos() > 0))
+                    .min(u32::MAX as u64) as u32,
+            );
+            return Err(error);
+        }
+        Ok(())
+    }
+
     async fn persist_rate_limit(
         &self,
         account: &RemoteAccount,
         delay: u64,
         error: Option<CollaborationError>,
     ) -> Result<(), CollaborationError> {
-        let proposed = self.future_string(delay);
-        let deadline = self
-            .store
-            .scope_state(&account.id, "provider:rest")
-            .await?
-            .and_then(|scope| scope.sync.next_retry_at)
-            .filter(|old| {
-                DateTime::parse_from_rfc3339(old)
-                    .ok()
-                    .zip(DateTime::parse_from_rfc3339(&proposed).ok())
-                    .is_some_and(|(old, next)| old > next)
-            })
-            .unwrap_or(proposed);
         let revision = self
             .store
-            .set_sync_status(
+            .merge_provider_budget(
                 &account.id,
                 &account.authorization_epoch,
-                "provider:rest",
-                SyncStatus {
-                    state: SyncState::RateLimited,
-                    last_success_at: None,
-                    next_retry_at: Some(deadline),
-                    error,
-                },
+                self.future_string(delay),
+                error,
             )
             .await?;
         self.publish(revision);

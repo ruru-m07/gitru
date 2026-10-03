@@ -234,6 +234,21 @@ impl Store {
         account: RemoteAccount,
         reference: &str,
     ) -> Result<RemoteAccount> {
+        self.commit_account_credential_with_quota(account, reference, None)
+            .await
+    }
+
+    /// A verified operation may consume the actor's quota before promotion.
+    /// Commit its deadline with the grant, so a crash cannot discard it.
+    pub(crate) async fn commit_account_credential_with_quota(
+        &self,
+        account: RemoteAccount,
+        reference: &str,
+        quota_deadline: Option<String>,
+    ) -> Result<RemoteAccount> {
+        if let Some(deadline) = &quota_deadline {
+            validate_provider_deadline(deadline)?;
+        }
         let mut writer = self.inner.writer.lock().await;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let staged: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM credential_cleanup WHERE credential_ref=? AND account_id=? AND state='staged')")
@@ -260,10 +275,41 @@ impl Store {
         if let Some(previous) = previous {
             retire_credential_in(&mut tx, &account.id, &previous).await?;
         }
+        if let Some(proposed) = quota_deadline {
+            provider_budget_in(
+                &mut tx,
+                &account.id,
+                &account.authorization_epoch,
+                proposed,
+                None,
+            )
+            .await?;
+        }
         #[cfg(test)]
         crate::runtime::credential_crash_tests::checkpoint("during_cutover");
         tx.commit().await.map_err(storage_error)?;
         Ok(account)
+    }
+
+    /// Budget consumption is independent of an actor's current authorization.
+    /// Merge it atomically, without admitting reads or changing private data.
+    pub(crate) async fn merge_provider_budget(
+        &self,
+        account_id: &str,
+        epoch: &str,
+        proposed: String,
+        error: Option<CollaborationError>,
+    ) -> Result<String> {
+        validate_provider_deadline(&proposed)?;
+        let mut writer = self.inner.writer.lock().await;
+        let mut tx = writer.begin().await.map_err(storage_error)?;
+        let account = account_in(&mut tx, account_id, false).await?;
+        if account.authorization_epoch != epoch {
+            return Err(stale());
+        }
+        let revision = provider_budget_in(&mut tx, account_id, epoch, proposed, error).await?;
+        tx.commit().await.map_err(storage_error)?;
+        Ok(revision)
     }
 
     /// Native-only metadata. Never add this reference to an IPC/domain DTO.
@@ -1591,6 +1637,64 @@ async fn account_in(
     }
     Ok(account)
 }
+fn validate_provider_deadline(deadline: &str) -> Result<()> {
+    if deadline.len() > 128 || chrono::DateTime::parse_from_rfc3339(deadline).is_err() {
+        return Err(CollaborationError::invalid(
+            "Invalid provider quota deadline",
+        ));
+    }
+    Ok(())
+}
+
+/// Both credential cutover and same-epoch observations hold the writer here.
+async fn provider_budget_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    account_id: &str,
+    epoch: &str,
+    proposed: String,
+    error: Option<CollaborationError>,
+) -> Result<String> {
+    let prior: Option<String> = sqlx::query_scalar(
+        "SELECT sync_json FROM sync_scopes WHERE account_id=? AND scope='provider:rest'",
+    )
+    .bind(account_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(storage_error)?;
+    let prior: Option<SyncStatus> = prior.as_deref().map(decode).transpose()?;
+    let retained = prior
+        .as_ref()
+        .and_then(|status| status.next_retry_at.as_ref())
+        .filter(|old| {
+            chrono::DateTime::parse_from_rfc3339(old)
+                .ok()
+                .zip(chrono::DateTime::parse_from_rfc3339(&proposed).ok())
+                .is_some_and(|(old, new)| old > new)
+        })
+        .cloned();
+    let status = SyncStatus {
+        state: SyncState::RateLimited,
+        last_success_at: prior
+            .as_ref()
+            .and_then(|status| status.last_success_at.clone()),
+        next_retry_at: Some(retained.clone().unwrap_or(proposed)),
+        // Retaining a longer existing barrier also retains its diagnostic when
+        // the new observation carries no error. Neither field revokes access.
+        error: error.or_else(|| retained.and_then(|_| prior.and_then(|status| status.error))),
+    };
+    sqlx::query("INSERT INTO sync_scopes(account_id,scope,run_id,coverage_json,sync_json) VALUES(?,'provider:rest',?,?,?) ON CONFLICT(account_id,scope) DO UPDATE SET sync_json=excluded.sync_json")
+        .bind(account_id).bind(Uuid::new_v4().to_string()).bind(encode(&missing_coverage())?).bind(encode(&status)?)
+        .execute(&mut **tx).await.map_err(storage_error)?;
+    record_change(
+        tx,
+        account_id,
+        positive_revision(epoch)?,
+        "provider:rest",
+        false,
+    )
+    .await
+}
+
 async fn epoch_in(tx: &mut Transaction<'_, Sqlite>, account_id: &str, epoch: &str) -> Result<()> {
     let account = account_in(tx, account_id, false).await?;
     if account.authorization_epoch != epoch || account.state != AccountState::Active {

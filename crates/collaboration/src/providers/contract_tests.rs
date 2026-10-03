@@ -86,6 +86,7 @@ impl CollaborationProvider for GitlabFixture {
             login: actor.username,
             display_name: actor.name,
             notifications_supported: false,
+            cooldown_seconds: None,
         })
     }
     async fn fetch_page(

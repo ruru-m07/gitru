@@ -3,6 +3,7 @@
 import type { InboxSemantics } from "@gitru/collaboration-client";
 import type {
   AccountSnapshot,
+  CapabilitySnapshot,
   CapabilityTarget,
   ContextCapabilityRequest,
   ContextFacetCapability,
@@ -30,6 +31,51 @@ export const fixtureAccounts: AccountSnapshot = {
   accounts: [fixtureAccount],
   revision: "10",
   authorization_view: "1",
+};
+
+export const fixtureGitlabAccount: RemoteAccount = {
+  ...fixtureAccount,
+  id: "fixture-gitlab-account",
+  provider: "gitlab",
+  host: "gitlab.com",
+  actor_id: "9007199254740993",
+  login: "gitlab-user",
+  display_name: "GitLab User",
+  notifications_supported: false,
+};
+export const fixtureGitlabCapabilities: CapabilitySnapshot = {
+  account_id: fixtureGitlabAccount.id,
+  instance: {
+    id: "gitlab:https://gitlab.com/",
+    provider: "gitlab",
+    base_url: "https://gitlab.com/",
+  },
+  inbox_semantics: "none",
+  revision: "10",
+  authorization_view: "1",
+  facets: (
+    [
+      "repositories",
+      "pull_requests",
+      "issues",
+      "inbox",
+      "pull_details",
+      "issue_details",
+      "comments",
+      "reviews",
+      "checks",
+      "merge",
+    ] as const
+  ).map((facet): CapabilitySnapshot["facets"][number] => ({
+    facet,
+    state: facet === "repositories" ? "supported" : "unsupported",
+    reason:
+      facet === "repositories"
+        ? null
+        : facet === "inbox"
+          ? "provider_semantics"
+          : "not_implemented",
+  })),
 };
 
 export function fixtureContextualCapabilities(
