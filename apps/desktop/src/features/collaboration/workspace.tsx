@@ -73,6 +73,41 @@ const icons = {
   notification: Bell,
 };
 
+const providerLabels: Record<RemoteAccount["provider"], string> = {
+  github: "GitHub",
+  gitlab: "GitLab",
+  bitbucket_cloud: "Bitbucket Cloud",
+  bitbucket_dc: "Bitbucket Data Center",
+};
+const publicInstances: Partial<Record<RemoteAccount["provider"], string>> = {
+  github: "github.com",
+  gitlab: "gitlab.com",
+  bitbucket_cloud: "bitbucket.org",
+};
+
+function accountPickerLabel(account: RemoteAccount): string {
+  let instance = "";
+  try {
+    const address = new URL(
+      account.host.includes("://") ? account.host : `https://${account.host}`,
+    );
+    if (
+      address.protocol === "https:" &&
+      !address.username &&
+      !address.password &&
+      !address.search &&
+      !address.hash
+    ) {
+      const authority = `${address.host}${address.pathname.replace(/\/$/, "")}`;
+      if (authority !== publicInstances[account.provider])
+        instance = ` (${authority})`;
+    }
+  } catch {
+    // Installation metadata is presentation only; malformed values add no label.
+  }
+  return `${providerLabels[account.provider]}${instance} · @${account.login}`;
+}
+
 export function CollaborationWorkspace({
   kind,
   target,
@@ -92,7 +127,7 @@ export function CollaborationWorkspace({
   const accountItems = useMemo(
     () =>
       connected.map((candidate) => ({
-        label: `@${candidate.login}`,
+        label: accountPickerLabel(candidate),
         value: candidate.id,
       })),
     [connected],
@@ -126,20 +161,24 @@ export function CollaborationWorkspace({
                 size="sm"
                 className="max-w-48"
                 aria-label="Provider account"
+                title={accountPickerLabel(account)}
               >
                 <SelectValue />
               </SelectTrigger>
               <SelectPopup>
-                {connected.map((candidate) => (
-                  <SelectItem key={candidate.id} value={candidate.id}>
-                    @{candidate.login}
+                {accountItems.map((candidate) => (
+                  <SelectItem key={candidate.value} value={candidate.value}>
+                    {candidate.label}
                   </SelectItem>
                 ))}
               </SelectPopup>
             </Select>
           ) : account ? (
-            <span className="truncate text-xs text-muted-foreground">
-              @{account.login}
+            <span
+              className="truncate text-xs text-muted-foreground"
+              title={accountPickerLabel(account)}
+            >
+              {accountPickerLabel(account)}
             </span>
           ) : null}
           <AccountSettingsButton />

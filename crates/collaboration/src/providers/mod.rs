@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod contract_tests;
 pub mod github;
+pub mod gitlab;
 mod registry;
 mod transport;
 
@@ -19,6 +20,8 @@ pub struct VerifiedAccount {
     pub login: String,
     pub display_name: Option<String>,
     pub notifications_supported: bool,
+    /// Quota observed while verifying operations, before account promotion.
+    pub cooldown_seconds: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -108,6 +111,14 @@ pub enum NotificationSubjectDiscovery {
     },
 }
 
+/// A failed prospective credential can carry quota evidence only after the
+/// adapter has proved its immutable actor. It is never authorization evidence.
+#[derive(Debug, Clone)]
+pub struct ProbeFailure {
+    pub error: ProviderError,
+    pub verified_actor_id: Option<String>,
+}
+
 /// Read-only contract for the first vertical slice. Writes must eventually use
 /// operation-specific durable outbox delivery; adapters do not offer raw HTTP.
 #[async_trait]
@@ -126,6 +137,15 @@ pub trait CollaborationProvider: Send + Sync + 'static {
         }
     }
     async fn probe(&self, token: &SecretToken) -> Result<VerifiedAccount, ProviderError>;
+    async fn probe_with_backoff(
+        &self,
+        token: &SecretToken,
+    ) -> Result<VerifiedAccount, ProbeFailure> {
+        self.probe(token).await.map_err(|error| ProbeFailure {
+            error,
+            verified_actor_id: None,
+        })
+    }
     async fn fetch_page(
         &self,
         token: &SecretToken,

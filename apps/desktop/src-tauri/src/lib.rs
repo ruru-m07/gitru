@@ -65,6 +65,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::collaboration::collaboration_accounts,
             commands::collaboration::collaboration_connect_github,
+            commands::collaboration::collaboration_connect_gitlab,
             commands::collaboration::collaboration_discover_github_cli,
             commands::collaboration::collaboration_connect_github_cli,
             commands::collaboration::collaboration_disconnect,

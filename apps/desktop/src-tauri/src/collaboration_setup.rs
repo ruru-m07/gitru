@@ -90,6 +90,9 @@ pub fn setup(app: &App) {
             let provider = collaboration::providers::github::GithubProvider::new()?;
             let mut registry = collaboration::providers::ProviderRegistry::default();
             registry.register(Arc::new(provider))?;
+            registry.register(Arc::new(
+                collaboration::providers::gitlab::GitlabProvider::new()?,
+            ))?;
             #[cfg(not(feature = "e2e"))]
             let vault = Arc::new(NativeVault {
                 service,

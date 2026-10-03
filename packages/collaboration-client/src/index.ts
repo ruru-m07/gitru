@@ -6,6 +6,7 @@ import {
   collaborationConfirmLocalLink,
   collaborationConnectGithub,
   collaborationConnectGithubCli,
+  collaborationConnectGitlab,
   collaborationContextualCapabilities,
   collaborationDemandActivity,
   collaborationDetail,
@@ -137,6 +138,7 @@ export const collaboration = new CollaborationClient({
   listenLocalChanges: (onWake) => listen("gitru://repository-changed", onWake),
   accounts: () => collaborationAccounts({}),
   connectGithub: (token) => collaborationConnectGithub({ token }),
+  connectGitlab: (token) => collaborationConnectGitlab({ token }),
   discoverGithubCli: () => collaborationDiscoverGithubCli({}),
   connectGithubCli: (candidateId) =>
     collaborationConnectGithubCli({ candidateId }),

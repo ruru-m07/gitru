@@ -93,27 +93,50 @@ impl CredentialVault for DurableVault {
     }
 }
 
-#[derive(Default)]
 struct TokenProvider {
     observed: StdMutex<Vec<String>>,
+    kind: ProviderKind,
+}
+impl Default for TokenProvider {
+    fn default() -> Self {
+        Self {
+            observed: StdMutex::default(),
+            kind: ProviderKind::Github,
+        }
+    }
 }
 #[async_trait]
 impl CollaborationProvider for TokenProvider {
     fn kind(&self) -> ProviderKind {
-        ProviderKind::Github
+        self.kind
     }
     fn profile(&self, account: &RemoteAccount) -> ProviderProfile {
-        ProviderProfile::read_only(
-            InboxSemantics::NativeNotifications,
-            account.notifications_supported,
-        )
+        if self.kind == ProviderKind::Gitlab {
+            let mut profile = ProviderProfile::read_only(InboxSemantics::None, false);
+            for capability in &mut profile.facets {
+                if capability.facet != ResourceFacet::Repositories {
+                    capability.state = CapabilityState::Unsupported;
+                    capability.reason = Some(CapabilityReason::NotImplemented);
+                }
+            }
+            profile
+        } else {
+            ProviderProfile::read_only(
+                InboxSemantics::NativeNotifications,
+                account.notifications_supported,
+            )
+        }
     }
     async fn probe(&self, token: &SecretToken) -> Result<VerifiedAccount, ProviderError> {
         Ok(VerifiedAccount {
             actor_id: "1".into(),
             login: "fixture-actor".into(),
             display_name: None,
-            notifications_supported: token.expose() == "replacement_fixture_token",
+            notifications_supported: self.kind == ProviderKind::Github
+                && token.expose() == "replacement_fixture_token",
+            cooldown_seconds: (self.kind == ProviderKind::Gitlab
+                && token.expose() == "quota_fixture_token")
+                .then_some(60),
         })
     }
     async fn fetch_page(
@@ -145,9 +168,23 @@ async fn runtime(
     Arc<TokenProvider>,
     CollaborationRuntime,
 ) {
+    runtime_for(root, ProviderKind::Github).await
+}
+async fn runtime_for(
+    root: &Path,
+    kind: ProviderKind,
+) -> (
+    Arc<Store>,
+    Arc<DurableVault>,
+    Arc<TokenProvider>,
+    CollaborationRuntime,
+) {
     let store = Arc::new(Store::open(root.join("remote.sqlite")).await.unwrap());
     let vault = Arc::new(DurableVault::new(root));
-    let provider = Arc::new(TokenProvider::default());
+    let provider = Arc::new(TokenProvider {
+        kind,
+        ..TokenProvider::default()
+    });
     let runtime = CollaborationRuntime::new(store.clone(), vault.clone(), provider.clone());
     (store, vault, provider, runtime)
 }
@@ -156,10 +193,18 @@ async fn seed_open(
     store: &Store,
     runtime: &CollaborationRuntime,
 ) -> (RemoteAccount, String, LocalDraft) {
-    let account = runtime
-        .connect_github("old_fixture_token".into())
-        .await
-        .unwrap();
+    seed_open_for(store, runtime, ProviderKind::Github).await
+}
+async fn seed_open_for(
+    store: &Store,
+    runtime: &CollaborationRuntime,
+    kind: ProviderKind,
+) -> (RemoteAccount, String, LocalDraft) {
+    let account = match kind {
+        ProviderKind::Gitlab => runtime.connect_gitlab("old_fixture_token".into()).await,
+        _ => runtime.connect_github("old_fixture_token".into()).await,
+    }
+    .unwrap();
     let reference = store
         .credential_reference(&account.id)
         .await
@@ -168,7 +213,12 @@ async fn seed_open(
     let draft = runtime
         .save_draft(LocalDraft {
             account_id: account.id.clone(),
-            subject_id: "github:issue:123".into(),
+            subject_id: if kind == ProviderKind::Gitlab {
+                "gitlab:issue:123"
+            } else {
+                "github:issue:123"
+            }
+            .into(),
             body: "unsent private text".into(),
             generation: "0".into(),
         })
@@ -192,6 +242,9 @@ async fn seed(root: &Path) -> (RemoteAccount, String, LocalDraft) {
 }
 
 async fn kill_at(root: &Path, boundary: &str, operation: &str) {
+    kill_at_for(root, boundary, operation, ProviderKind::Github).await
+}
+async fn kill_at_for(root: &Path, boundary: &str, operation: &str, kind: ProviderKind) {
     let marker = root.join("boundary-reached");
     // Keep the harness independent of concurrent Cargo builds in other worktrees.
     let binary = root.join(if cfg!(windows) {
@@ -226,6 +279,14 @@ async fn kill_at(root: &Path, boundary: &str, operation: &str) {
         .env("GITRU_CREDENTIAL_CRASH_MARKER", &marker)
         .env("GITRU_CREDENTIAL_CRASH_BOUNDARY", boundary)
         .env("GITRU_CREDENTIAL_CRASH_OPERATION", operation)
+        .env(
+            "GITRU_CREDENTIAL_CRASH_PROVIDER",
+            if kind == ProviderKind::Gitlab {
+                "gitlab"
+            } else {
+                "github"
+            },
+        )
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::inherit())
@@ -259,7 +320,13 @@ fn credential_crash_child() {
         .build()
         .unwrap()
         .block_on(async {
-            let (store, _, _, runtime) = runtime(&root).await;
+            let kind =
+                if std::env::var("GITRU_CREDENTIAL_CRASH_PROVIDER").as_deref() == Ok("gitlab") {
+                    ProviderKind::Gitlab
+                } else {
+                    ProviderKind::Github
+                };
+            let (store, _, _, runtime) = runtime_for(&root, kind).await;
             if std::env::var("GITRU_CREDENTIAL_CRASH_OPERATION").as_deref() == Ok("disconnect") {
                 let mut accounts = store.accounts().await.unwrap().accounts.into_iter();
                 let account = accounts
@@ -271,10 +338,18 @@ fn credential_crash_child() {
                 );
                 runtime.disconnect(&account.id).await.unwrap();
             } else {
-                runtime
-                    .connect_github("replacement_fixture_token".into())
-                    .await
-                    .unwrap();
+                let token = if std::env::var("GITRU_CREDENTIAL_CRASH_OPERATION").as_deref()
+                    == Ok("quota")
+                {
+                    "quota_fixture_token"
+                } else {
+                    "replacement_fixture_token"
+                };
+                match kind {
+                    ProviderKind::Gitlab => runtime.connect_gitlab(token.into()).await,
+                    _ => runtime.connect_github(token.into()).await,
+                }
+                .unwrap();
             }
         });
     panic!("requested crash boundary was not reached");
@@ -674,6 +749,296 @@ async fn cancelling_the_requester_cannot_abandon_a_delayed_vault_write() {
     assert_eq!(
         store.account(&old.id).await.unwrap().authorization_epoch,
         "2"
+    );
+    assert_eq!(vault.count(), 1);
+    assert!(
+        store
+            .due_credential_cleanup(i64::MAX, 32)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn gitlab_replacement_process_crashes_preserve_exact_grant_reference_and_private_drafts() {
+    for boundary in [
+        "before_stage",
+        "during_stage",
+        "after_stage",
+        "before_vault_write",
+        "after_vault_write",
+        "before_cutover",
+        "during_cutover",
+        "after_cutover",
+        "before_delete",
+        "after_delete",
+        "after_cleanup",
+    ] {
+        let directory = tempfile::tempdir().unwrap();
+        let (store, _, _, runtime) = runtime_for(directory.path(), ProviderKind::Gitlab).await;
+        let (old, old_ref, draft) = seed_open_for(&store, &runtime, ProviderKind::Gitlab).await;
+        store.close().await;
+        drop(runtime);
+        drop(store);
+        kill_at_for(directory.path(), boundary, "replace", ProviderKind::Gitlab).await;
+        let (store, vault, provider, runtime) =
+            runtime_for(directory.path(), ProviderKind::Gitlab).await;
+        let committed = store.account(&old.id).await.unwrap();
+        let promoted = matches!(
+            boundary,
+            "after_cutover" | "before_delete" | "after_delete" | "after_cleanup"
+        );
+        assert_eq!(committed.provider, ProviderKind::Gitlab);
+        assert_eq!(committed.host, "gitlab.com");
+        assert_eq!(
+            committed.authorization_epoch,
+            if promoted { "2" } else { "1" },
+            "{boundary}"
+        );
+        assert!(!committed.notifications_supported);
+        assert_eq!(
+            store.credential_reference(&old.id).await.unwrap().unwrap() == old_ref,
+            !promoted,
+            "{boundary}"
+        );
+        runtime.recover_credentials().await.unwrap();
+        assert_eq!(vault.count(), 1, "{boundary}");
+        assert!(
+            store
+                .due_credential_cleanup(i64::MAX, 32)
+                .await
+                .unwrap()
+                .is_empty(),
+            "{boundary}"
+        );
+        assert_eq!(
+            store.draft(&old.id, &draft.subject_id).await.unwrap(),
+            Some(draft),
+            "{boundary}"
+        );
+        assert_native_token(
+            &runtime,
+            &provider,
+            &committed,
+            if promoted {
+                "replacement_fixture_token"
+            } else {
+                "old_fixture_token"
+            },
+        )
+        .await;
+        if promoted {
+            assert_eq!(
+                store
+                    .begin_sync(&old.id, &old.authorization_epoch, "repositories")
+                    .await
+                    .unwrap_err()
+                    .code,
+                ErrorCode::StaleView
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn gitlab_first_connection_crashes_never_promote_an_uncommitted_secret() {
+    for boundary in [
+        "before_stage",
+        "during_stage",
+        "after_stage",
+        "before_vault_write",
+        "after_vault_write",
+        "before_cutover",
+        "during_cutover",
+        "after_cutover",
+    ] {
+        let directory = tempfile::tempdir().unwrap();
+        kill_at_for(directory.path(), boundary, "first", ProviderKind::Gitlab).await;
+        let (store, vault, provider, runtime) =
+            runtime_for(directory.path(), ProviderKind::Gitlab).await;
+        runtime.recover_credentials().await.unwrap();
+        let accounts = store.accounts().await.unwrap().accounts;
+        assert_eq!(
+            accounts.len(),
+            usize::from(boundary == "after_cutover"),
+            "{boundary}"
+        );
+        assert_eq!(vault.count(), accounts.len(), "{boundary}");
+        assert!(
+            store
+                .due_credential_cleanup(i64::MAX, 32)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        if let Some(account) = accounts.first() {
+            assert_native_token(&runtime, &provider, account, "replacement_fixture_token").await;
+        }
+    }
+}
+
+#[tokio::test]
+async fn gitlab_cancelled_requester_and_locked_cleanup_preserve_owned_cutover() {
+    let directory = tempfile::tempdir().unwrap();
+    let (store, vault, _, runtime) = runtime_for(directory.path(), ProviderKind::Gitlab).await;
+    let (old, old_ref, draft) = seed_open_for(&store, &runtime, ProviderKind::Gitlab).await;
+    vault.entered.notified().await;
+    vault.fail_delete.store(true, Ordering::SeqCst);
+    let barrier = Arc::new(std::sync::Barrier::new(2));
+    *vault.hold_write.lock().unwrap() = Some(barrier.clone());
+    let requester_runtime = runtime.clone();
+    let requester = tokio::spawn(async move {
+        requester_runtime
+            .connect_gitlab("replacement_fixture_token".into())
+            .await
+    });
+    vault.entered.notified().await;
+    requester.abort();
+    let cleanup_runtime = runtime.clone();
+    let cleanup = tokio::spawn(async move { cleanup_runtime.recover_credentials().await });
+    tokio::task::spawn_blocking(move || barrier.wait())
+        .await
+        .unwrap();
+    cleanup.await.unwrap().unwrap();
+    assert_eq!(
+        store.account(&old.id).await.unwrap().authorization_epoch,
+        "2"
+    );
+    assert_ne!(
+        store.credential_reference(&old.id).await.unwrap(),
+        Some(old_ref.clone())
+    );
+    assert_eq!(
+        store.draft(&old.id, &draft.subject_id).await.unwrap(),
+        Some(draft)
+    );
+    assert_eq!(vault.count(), 2);
+    let journal = store.credential_cleanup(&old_ref).await.unwrap().unwrap();
+    assert!(journal.attempts >= 1);
+    vault.fail_delete.store(false, Ordering::SeqCst);
+    store.defer_credential_cleanup(&old_ref, 0).await.unwrap();
+    runtime.recover_credentials().await.unwrap();
+    assert_eq!(vault.count(), 1);
+}
+
+#[tokio::test]
+async fn gitlab_probe_quota_is_atomic_with_cutover_and_never_shortens_retained_budget() {
+    for replacement in [false, true] {
+        let directory = tempfile::tempdir().unwrap();
+        let retained_deadline = if replacement {
+            let (store, _, _, runtime) = runtime_for(directory.path(), ProviderKind::Gitlab).await;
+            let (account, _, _) = seed_open_for(&store, &runtime, ProviderKind::Gitlab).await;
+            let deadline = runtime.future_string(3600);
+            store
+                .set_sync_status(
+                    &account.id,
+                    &account.authorization_epoch,
+                    "provider:rest",
+                    SyncStatus {
+                        state: SyncState::RateLimited,
+                        last_success_at: None,
+                        next_retry_at: Some(deadline.clone()),
+                        error: None,
+                    },
+                )
+                .await
+                .unwrap();
+            store.close().await;
+            drop(runtime);
+            drop(store);
+            Some(deadline)
+        } else {
+            None
+        };
+        kill_at_for(
+            directory.path(),
+            "after_cutover",
+            "quota",
+            ProviderKind::Gitlab,
+        )
+        .await;
+        let (store, vault, provider, runtime) =
+            runtime_for(directory.path(), ProviderKind::Gitlab).await;
+        let mut accounts = store.accounts().await.unwrap().accounts.into_iter();
+        let account = accounts.next().expect("promoted quota fixture account");
+        assert!(accounts.next().is_none());
+        assert_eq!(
+            account.authorization_epoch,
+            if replacement { "2" } else { "1" }
+        );
+        assert!(
+            store
+                .credential_reference(&account.id)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        let status = store
+            .scope_state(&account.id, "provider:rest")
+            .await
+            .unwrap()
+            .unwrap()
+            .sync;
+        assert_eq!(status.state, SyncState::RateLimited);
+        assert!(status.next_retry_at.is_some());
+        if let Some(retained) = retained_deadline {
+            assert_eq!(status.next_retry_at, Some(retained));
+        }
+        runtime.recover_credentials().await.unwrap();
+        assert_eq!(vault.count(), 1);
+        runtime
+            .refresh(RefreshRequest {
+                account_id: account.id,
+                repository_id: None,
+                kind: None,
+            })
+            .await
+            .unwrap();
+        assert!(!runtime.run_next().await);
+        assert!(!runtime.run_next().await);
+        assert!(
+            provider.observed.lock().unwrap().is_empty(),
+            "post-crash refresh obeys the committed probe quota"
+        );
+    }
+}
+
+#[tokio::test]
+async fn failed_gitlab_quota_publication_rolls_back_grant_epoch_reference_and_draft() {
+    use sqlx::{Connection, sqlite::SqliteConnectOptions};
+    let directory = tempfile::tempdir().unwrap();
+    let (store, vault, _, runtime) = runtime_for(directory.path(), ProviderKind::Gitlab).await;
+    let (old, old_ref, draft) = seed_open_for(&store, &runtime, ProviderKind::Gitlab).await;
+    let mut fault = sqlx::SqliteConnection::connect_with(
+        &SqliteConnectOptions::new().filename(directory.path().join("remote.sqlite")),
+    )
+    .await
+    .unwrap();
+    sqlx::query("CREATE TRIGGER fail_probe_quota BEFORE INSERT ON sync_scopes WHEN NEW.scope='provider:rest' BEGIN SELECT RAISE(ABORT,'synthetic quota failure'); END").execute(&mut fault).await.unwrap();
+    assert_eq!(
+        runtime
+            .connect_gitlab("quota_fixture_token".into())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::Storage
+    );
+    assert_eq!(store.account(&old.id).await.unwrap(), old);
+    assert_eq!(
+        store.credential_reference(&old.id).await.unwrap(),
+        Some(old_ref)
+    );
+    assert_eq!(
+        store.draft(&old.id, &draft.subject_id).await.unwrap(),
+        Some(draft)
+    );
+    assert!(
+        store
+            .scope_state(&old.id, "provider:rest")
+            .await
+            .unwrap()
+            .is_none()
     );
     assert_eq!(vault.count(), 1);
     assert!(

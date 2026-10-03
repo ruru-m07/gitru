@@ -77,6 +77,7 @@ function transport(
   return {
     accounts: unexpected,
     connectGithub: unexpected,
+    connectGitlab: unexpected,
     discoverGithubCli: unexpected,
     connectGithubCli: unexpected,
     disconnect: unexpected,
@@ -177,6 +178,81 @@ const itemQuery = {
 };
 
 describe("CollaborationClient", () => {
+  it("connects GitLab through its own transport and fences pending old-account projections after accepted cutover", async () => {
+    const gitlab: RemoteAccount = {
+      ...account,
+      id: "gitlab-account",
+      provider: "gitlab",
+      host: "gitlab.com",
+      actor_id: "9007199254740993",
+      login: account.login,
+      notifications_supported: false,
+    };
+    const delayed = deferred<ItemPage>();
+    const connectGitlab = vi.fn(async () => gitlab);
+    const client = new CollaborationClient(
+      transport({
+        connectGitlab,
+        accounts: async () => snapshot,
+        items: () => delayed.promise,
+        listen: async () => () => {},
+        changesSince: async () => changePage("1"),
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    await client.accounts();
+    const oldKey = collaborationKeys.item(account, "private-item");
+    cache.setQueryData(oldKey, { private: true });
+    const pending = client.forAccount(account).items(itemQuery);
+    expect(await client.connectGitlab("synthetic-gitlab-pat")).toEqual(gitlab);
+    expect(connectGitlab).toHaveBeenCalledExactlyOnceWith(
+      "synthetic-gitlab-pat",
+    );
+    expect(cache.getQueryData(oldKey)).toBeUndefined();
+    delayed.resolve(page);
+    await expect(pending).rejects.toBeInstanceOf(StaleAuthorizationError);
+    expect(gitlab.actor_id).toBe("9007199254740993");
+    expect(collaborationKeys.repositories(gitlab)).not.toEqual(
+      collaborationKeys.repositories(account),
+    );
+    stop();
+    cache.clear();
+  });
+
+  it("keeps current saved projections and pending reads when GitLab credential validation fails", async () => {
+    const delayed = deferred<ItemPage>();
+    const failure = { code: "permission_denied" };
+    const connectGitlab = vi.fn().mockRejectedValue(failure);
+    const client = new CollaborationClient(
+      transport({
+        connectGitlab,
+        accounts: async () => snapshot,
+        items: () => delayed.promise,
+        listen: async () => () => {},
+        changesSince: async () => changePage("1"),
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    await client.accounts();
+    const version = client.getVersion();
+    const key = collaborationKeys.item(account, "saved-item");
+    cache.setQueryData(key, { private: true });
+    const pending = client.forAccount(account).items(itemQuery);
+    await expect(client.connectGitlab("synthetic-rejected-pat")).rejects.toBe(
+      failure,
+    );
+    expect(client.getVersion()).toBe(version);
+    expect(cache.getQueryData(key)).toEqual({ private: true });
+    delayed.resolve(page);
+    await expect(pending).resolves.toEqual(page);
+    stop();
+    cache.clear();
+  });
+
   it("binds contextual requests to epoch and canonical target and cancels initial pending policy on same-epoch changes", async () => {
     const target: CapabilityTarget = {
       kind: "resource",

@@ -546,7 +546,7 @@ describe("cached PR and issue detail views", () => {
     await user.type(editor, " A unsaved addition");
     await user.click(screen.getByLabelText("Provider account"));
     await user.click(
-      await screen.findByRole("option", { name: "@other-user" }),
+      await screen.findByRole("option", { name: "GitHub · @other-user" }),
     );
     await user.click(await screen.findByText(fixtureItem.title));
     expect(

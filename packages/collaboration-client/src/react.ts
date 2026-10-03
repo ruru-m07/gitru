@@ -215,6 +215,14 @@ export function capabilitiesQueryOptions(account: RemoteAccount) {
   });
 }
 
+export function useCollaborationCapabilities(
+  account: RemoteAccount,
+  enabled = true,
+) {
+  useCollaborationVersion();
+  return useQuery({ ...capabilitiesQueryOptions(account), enabled });
+}
+
 export function resourceQueryOptions(
   account: RemoteAccount,
   locator: ResourceLocator,

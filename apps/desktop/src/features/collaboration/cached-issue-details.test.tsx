@@ -428,7 +428,7 @@ describe("cached issue detail authority", () => {
     await user.type(await screen.findByLabelText("Private draft"), " A edits");
     await user.click(screen.getByLabelText("Provider account"));
     await user.click(
-      await screen.findByRole("option", { name: "@other-user" }),
+      await screen.findByRole("option", { name: "GitHub · @other-user" }),
     );
     await user.click(await screen.findByText(issue.title));
     expect(
