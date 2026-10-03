@@ -4,6 +4,7 @@ pub mod domain;
 pub mod error;
 pub mod github_cli;
 pub mod providers;
+pub mod recovery;
 pub mod runtime;
 pub mod storage;
 
