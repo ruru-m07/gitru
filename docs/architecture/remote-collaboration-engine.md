@@ -1982,3 +1982,17 @@ large wrapped labels, actor isolation and explicit-save draft persistence. A
 label-height overlap found during native QA was fixed and the app rebuilt.
 No personal credential or live provider was used. Exact-head remote CI starts
 after publication; RURU-78 will stack its issue adapter on this frozen contract.
+
+
+### RURU-78 local qualification and shared detail delivery
+
+RURU-77 is published in draft [PR #150](https://github.com/ruru-m07/gitru/pull/150)
+at signed `7e282ad`, with exact-head remote CI running. The companion
+[RURU-78 work note](./collaboration-work/RURU-78.md) records the integrated GitHub
+issue endpoint and capability, eleven new mapper/HTTP/store cases, seven new UI
+cases and actual isolated native WKWebView issue/account/draft QA. Local totals
+are 154 native and 215 desktop passing tests; formatting/Clippy/types/lint and
+packaging pass. Shared schema 0005/IPC/view code is inherited unchanged. Issue
+endpoint identity rejects PR representations and retains field authority/304
+masks. Signed draft publication and remote CI remain separate from live provider
+qualification and merging. RURU-98's approved foreground lease contract follows.

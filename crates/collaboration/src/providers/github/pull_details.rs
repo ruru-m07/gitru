@@ -299,36 +299,39 @@ mod tests {
         assert_eq!(requests[1].1.as_deref(), Some("W/\"literal\""));
     }
     #[tokio::test]
-    async fn issue_detail_and_other_facets_never_dispatch_http() {
+    async fn notification_body_and_unimplemented_facets_never_dispatch_http() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
         let provider = GithubProvider::for_test_base(
             reqwest::Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap(),
         );
         let token = SecretToken::new("fixture".into()).unwrap();
-        let mut issue = request();
-        issue.subject.kind = RemoteItemKind::Issue;
+        let mut notification = request();
+        notification.subject.kind = RemoteItemKind::Notification;
         assert_eq!(
             provider
-                .profile(&issue.account)
-                .facet(ResourceFacet::IssueDetails)
-                .state,
-            CapabilityState::Unsupported
-        );
-        assert_eq!(
-            provider.fetch_detail(&token, issue).await.unwrap_err().kind,
-            ProviderErrorKind::Unsupported
-        );
-        let mut comments = request();
-        comments.facet = DetailFacet::Comments;
-        assert_eq!(
-            provider
-                .fetch_detail(&token, comments)
+                .fetch_detail(&token, notification)
                 .await
                 .unwrap_err()
                 .kind,
             ProviderErrorKind::Unsupported
         );
+        for facet in [
+            DetailFacet::Comments,
+            DetailFacet::Reviews,
+            DetailFacet::Checks,
+        ] {
+            let mut unimplemented = request();
+            unimplemented.facet = facet;
+            assert_eq!(
+                provider
+                    .fetch_detail(&token, unimplemented)
+                    .await
+                    .unwrap_err()
+                    .kind,
+                ProviderErrorKind::Unsupported
+            );
+        }
         assert_eq!(
             listener.accept().unwrap_err().kind(),
             std::io::ErrorKind::WouldBlock

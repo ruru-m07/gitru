@@ -6,6 +6,7 @@ use super::{
     *,
 };
 use serde::Deserialize;
+mod issue_details;
 mod pull_details;
 mod resource_details;
 
@@ -39,7 +40,10 @@ impl CollaborationProvider for GithubProvider {
             account.notifications_supported,
         );
         for facet in &mut profile.facets {
-            if facet.facet == ResourceFacet::PullDetails {
+            if matches!(
+                facet.facet,
+                ResourceFacet::PullDetails | ResourceFacet::IssueDetails
+            ) {
                 facet.state = CapabilityState::Supported;
                 facet.reason = None;
             }
@@ -52,16 +56,27 @@ impl CollaborationProvider for GithubProvider {
         token: &SecretToken,
         request: DetailRequest,
     ) -> Result<DetailPage, ProviderError> {
-        if request.subject.kind != RemoteItemKind::PullRequest {
-            return Err(ProviderError::new(ProviderErrorKind::Unsupported));
+        match &request.subject.kind {
+            RemoteItemKind::PullRequest => {
+                self.request_resource_details(
+                    token,
+                    request,
+                    resource_details::PULL_SOURCE,
+                    pull_details::normalize,
+                )
+                .await
+            }
+            RemoteItemKind::Issue => {
+                self.request_resource_details(
+                    token,
+                    request,
+                    issue_details::ISSUE_SOURCE,
+                    issue_details::normalize,
+                )
+                .await
+            }
+            RemoteItemKind::Notification => Err(ProviderError::new(ProviderErrorKind::Unsupported)),
         }
-        self.request_resource_details(
-            token,
-            request,
-            resource_details::PULL_SOURCE,
-            pull_details::normalize,
-        )
-        .await
     }
 
     async fn probe(&self, token: &SecretToken) -> Result<VerifiedAccount, ProviderError> {
