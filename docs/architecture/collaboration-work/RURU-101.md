@@ -177,3 +177,23 @@ belongs in R118 and must explicitly reconcile authoritative head evidence before
 production dispatch. Do not claim this conservative veto chooses a globally
 current server head or orders incomparable endpoint clocks. Record any remaining
 endpoint rollout boundary honestly; all such production facets remain Unsupported.
+
+## Captured dispatch and terminal intent fences — before correction
+
+Independent root-requested source review finds a bounded continuation dispatch
+gap: after a CurrentHead page captures headA/cursorA, accepted summary headB
+rotates stored traversal state. The next worker currently reconstructs subjectB
+but validates only metadata-versus-summary conflict, so absent Body metadata it
+can send cursorA with headB before commit rejects the old run. Add an actual
+runtime regression and make the pre-HTTP native validation compare the captured
+DetailLease with current installation, authorization view, run, cursor and
+explicit head proof in one read transaction. Preserve access/epoch checks and
+the conservative known metadata head veto. A stale continuation may not dispatch
+merely because a fresh subject can be read.
+
+The same review finds terminal repeated-drift cleanup uses an epoch-only demand
+stop. A rejected old response must not clear a newer same-epoch explicit intent
+after deselect/reselect or run/view rotation. Reproduce this race through exact
+lease state and fence terminal stop to the captured view/run/cursor as well.
+No general feed rewrite, wire DTO or production endpoint rollout is authorized.
+Keep history controls, qualified full traversal and private CAS assertions.
