@@ -34,8 +34,13 @@ schemas beyond the known v1/v2 policy rather than guessing about durable intent.
 
 The next parallel batch starts from the reviewed #146 commit: RURU-97 owns
 independent detail storage/hydration; RURU-100 owns contextual capabilities and
-their shared UI consumers. Both are In Progress with isolated worktrees and
-issue-specific design notes before major edits. Shared IPC generation is
+their shared UI consumers. RURU-97 is now In Review in
+[PR #147](https://github.com/ruru-m07/gitru/pull/147), stacked on #146. It passes
+114 native, 3 command-caller, 36 client and 177 desktop frontend tests, plus
+lint/types/Clippy; independent access and source-authority reviews are recorded
+in its work note. Production GitHub detail endpoints remain RURU-77/78.
+RURU-100 stays In Progress in its isolated worktree, with an issue-specific
+design note before major edits. Shared IPC generation is
 sequenced after the detail contract freezes. Account-only capability gating
 cannot complete RURU-100; repository/resource context and saved-read versus
 sync/write availability are required. Temporary network/quota errors retain
