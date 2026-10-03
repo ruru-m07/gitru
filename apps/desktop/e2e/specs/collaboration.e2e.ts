@@ -171,7 +171,12 @@ describe("packaged collaboration storage", () => {
           });
           stage = "mount child Accounts button";
           await waitFor(async () => {
-            const child = await request(childLabel);
+            // Native creation precedes the child's JS listener registration.
+            // An inspect emitted during startup can be lost; retry this
+            // read-only probe within the existing readiness deadline. Click
+            // actions below still run once and fail if they do not answer.
+            const child = await request(childLabel).catch(() => null);
+            if (!child) return null;
             return child.hasAccountsButton ? child : null;
           });
           stage = "navigate native child to Inbox";
