@@ -926,3 +926,11 @@ count, retention threshold, permission or production SDK change. If the child
 already caught up during preparation, fail rather than claim a pre-reset fence.
 Meaningful held-preparation/early-catchup controls and fresh combined retained
 execution must qualify this next fixture change; current historical passes do not.
+
+
+The frozen fixture also waits for the actual cached Body snapshot revision to reach
+the filled native revision after wake, while retaining the unchanged body hash,
+dirty editor, CAS conflict and reset assertions. Accepted wake already awaits the
+real bridge drain/apply/reset; this adds an explicit fresh-cache receipt before
+releasing the obsolete SDK-generation read. It does not assert older native data.
+Native peer review confirms no production SDK/storage/native change is required.
