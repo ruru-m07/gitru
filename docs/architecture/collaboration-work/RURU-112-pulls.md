@@ -74,8 +74,9 @@ ascending ids and page-local identity uniqueness prevent replay/reorder coverage
 Accept at most50 values/page and20 total accepted pages across scheduler yields,
 manual refresh and cold reopen. Reject self/multi-page loops before following the
 old target or applying its proposed current page. Complete only on actual terminal
-next absence; caps/loops/failed pages remain Partial and preserve authorized cached
-rows/drafts. A capped traversal stays capped until a future explicit restart/coverage
+next absence; caps/loops in an accepted unfinished traversal remain Partial and preserve
+authorized cached rows/drafts. A failed new first page preserves earlier historical
+coverage/validated_at with current SyncError; it never creates new completeness. A capped traversal stays capped until a future explicit restart/coverage
 policy, an intentional large-feed limitation; never claim total counts or offsets
 prove coverage. This does not establish a provider-atomic snapshot. No ETag/304
 semantics are invented. Quota-bearing mapping errors retain actual cooldown.
@@ -128,3 +129,25 @@ interest, compound identity isolation and private drafts. Full relevant frontend
 lint/types/build and native focused/workspace checks qualify the frozen source.
 Remote exact-head CI is recorded separately; synthetic qualification is not live
 provider/keyring validation. No generated hand edits or personal credential reads.
+
+
+## Actual integration failure and bounded shared correction
+
+First serial focused run:49 cases,45 pass and4 fail. All adapter and earlier
+repository controls pass. Two new actual malformed/conflicting singleton200+
+RetryAfter controls prove a production gap: Runtime detail fetch converts its
+ProviderError directly and drops account_cooldown_seconds, while feed fetch
+preserves that independent same-actor quota. This is not cache/access evidence.
+
+Before changing shared code, accept one bounded correction in runtime/details.rs:
+match failed detail receipts, persist a positive observed account cooldown through
+existing persist_rate_limit with captured account/authorization epoch, then convert
+the original safe error. Reuse native barriers; no new scheduler, retry policy,
+permission or access bypass. Old-epoch200/429 controls must remain green and unable
+to alter replacement/other actor data or quota. Keep both original red assertions.
+The other two failures were fixture assumptions: cold admission correctly refuses
+the persisted future retry before picking a job; failed new first page preserves
+historical coverage with SyncError. Their revised controls preserve actual HTTP,
+cached/draft/cursor/time assertions. Logs /tmp/gitru-ruru112-pulls-native-focused.log.
+Native owner additionally owns ONLY this shared detail error receipt correction;
+independent Runtime owner retains its assigned test files. Root serializes checks.

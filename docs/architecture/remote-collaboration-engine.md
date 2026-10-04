@@ -2467,3 +2467,14 @@ qualification; no provider credentials are read. No migration/scheduler/SDK
 production change is planned. R103/#157 latest9ef7148 repair is separately pushed
 with local all5 retained stages passing; its new remote matrix runs independently.
 No merge. First #160 remains unchanged while the new reviewable slice is prepared.
+
+
+R112 PR-read integration first49-case native run:45 passed,4 failed. Two actual
+HTTP singleton failures expose lost account cooldown during detail error conversion;
+[the signed work contract](./collaboration-work/RURU-112-pulls.md) now permits a
+bounded existing-barrier correction in runtime/details.rs. Original red quota
+assertions stay intact; old-epoch data/quota fencing remains required. Two fixture
+assumptions were corrected to actual cold-admission/historical-coverage semantics.
+Fresh post-fix qualification is pending. #1579ef7148 separately passes13/14 remote
+checks; retainedWindows now starts and passes5/6 main scenarios but fails actual
+retention-reset stale_view. Owned artifacts are under investigation; not qualified.
