@@ -8,6 +8,10 @@ import type {
   TauriServiceOptions,
 } from "@wdio/tauri-service";
 import { isolateCurrentProcessGitEnvironment } from "./git-environment";
+import {
+  assertHarnessQualification,
+  recordHarnessQualificationFailure,
+} from "./harness-qualification";
 import { HarnessScenarioResultSchema } from "./protocol/collaboration-harness";
 
 function required(name: string) {
@@ -148,15 +152,25 @@ export const config: WebdriverIO.Config = {
   logLevel: "info",
   bail: 1,
   waitforTimeout: 25_000,
-  connectionRetryTimeout: 10_000,
+  // One compiled scenario owns a bounded 160s program. The HTTP request must
+  // outlive its script deadline instead of abandoning a still-running program.
+  connectionRetryTimeout: 200_000,
   connectionRetryCount: 0,
   framework: "mocha",
   reporters: ["spec"],
   mochaOpts: { ui: "bdd", timeout: 190_000 },
   onPrepare: () => mkdirSync(artifacts, { recursive: true }),
+  onComplete: () => assertHarnessQualification(artifacts, runNonce, phase),
   afterTest: async (test, _context, result) => {
     if (result.passed) {
-      if (phase.startsWith("crash-")) await acknowledgeCrash();
+      if (phase.startsWith("crash-")) {
+        try {
+          await acknowledgeCrash();
+        } catch (error) {
+          recordHarnessQualificationFailure(artifacts, runNonce, phase);
+          throw error;
+        }
+      }
       return;
     }
     const name = test.title

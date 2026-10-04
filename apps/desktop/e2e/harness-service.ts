@@ -6,6 +6,7 @@ import { dirname, resolve } from "node:path";
 import TauriWorkerService, {
   launcher as TauriLauncher,
 } from "@wdio/tauri-service";
+import { SevereServiceError } from "webdriverio";
 import {
   captureHarnessProcess,
   HarnessProcessError,
@@ -16,6 +17,22 @@ import {
 } from "./harness-process";
 
 export default TauriWorkerService;
+
+function fatalLauncherError(
+  stage: "preparation" | "worker_start" | "completion",
+  cause: unknown,
+): InstanceType<typeof SevereServiceError> {
+  // WDIO logs and swallows ordinary service-hook errors. Its actual severe
+  // error keeps failures fatal, with a finite public reason and preserved cause.
+  const code =
+    cause instanceof HarnessProcessError
+      ? cause.code
+      : `launcher_${stage}_failure`;
+  const failure = new SevereServiceError(
+    `Retained harness ${stage} failed: ${code}`,
+  );
+  return Object.assign(failure, { code, cause });
+}
 
 type EmbeddedConfig = {
   appBinaryPath: string;
@@ -166,35 +183,46 @@ export class launcher extends TauriLauncher {
       try {
         await super.onComplete(1, args[0], []);
       } catch (cleanupError) {
-        throw new AggregateError(
-          [error, cleanupError],
-          "Retained launcher preparation and cleanup failed",
+        throw fatalLauncherError(
+          "preparation",
+          new AggregateError(
+            [error, cleanupError],
+            "Retained launcher preparation and cleanup failed",
+          ),
         );
       }
-      throw error;
+      throw fatalLauncherError("preparation", error);
     }
   }
 
   override async onWorkerStart(
     ...args: Parameters<TauriLauncher["onWorkerStart"]>
   ) {
-    await super.onWorkerStart(...args);
-    const owned = this.captureCurrent();
-    if (owned.input.phase === "main" || owned.input.phase === "restart") return;
-    if (this.crashMonitor)
-      throw new HarnessProcessError("duplicate_crash_worker");
-    // The original launcher can replace a failed embedded server in its worker
-    // health check. Capture that actual handle before binding the crash monitor.
-    this.crashStop = new AbortController();
-    this.crashMonitor = monitorHarnessCrash(owned, this.crashStop.signal).then(
-      () => undefined,
-      (error: unknown) => {
-        this.crashFailure =
-          error instanceof Error
-            ? error
-            : new HarnessProcessError("crash_monitor_failure");
-      },
-    );
+    try {
+      await super.onWorkerStart(...args);
+      const owned = this.captureCurrent();
+      if (owned.input.phase === "main" || owned.input.phase === "restart")
+        return;
+      if (this.crashMonitor)
+        throw new HarnessProcessError("duplicate_crash_worker");
+      // The original launcher can replace a failed embedded server in its worker
+      // health check. Capture that actual handle before binding the crash monitor.
+      this.crashStop = new AbortController();
+      this.crashMonitor = monitorHarnessCrash(
+        owned,
+        this.crashStop.signal,
+      ).then(
+        () => undefined,
+        (error: unknown) => {
+          this.crashFailure =
+            error instanceof Error
+              ? error
+              : new HarnessProcessError("crash_monitor_failure");
+        },
+      );
+    } catch (error) {
+      throw fatalLauncherError("worker_start", error);
+    }
   }
 
   override async onComplete(...args: Parameters<TauriLauncher["onComplete"]>) {
@@ -214,6 +242,9 @@ export class launcher extends TauriLauncher {
       );
     }
     if (failures.length)
-      throw new AggregateError(failures, "Retained harness launcher failed");
+      throw fatalLauncherError(
+        "completion",
+        new AggregateError(failures, "Retained harness launcher failed"),
+      );
   }
 }

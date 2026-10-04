@@ -502,3 +502,26 @@ harness-ID OS namespace and is never reset. A dependency startup failure before
 its child handle is registered uses the dependency's cleanup; it is not claimed
 as independently proven forced-exit ownership. See the
 accepted contract above.
+
+
+### First retained launch and runner failure corrections — 4 October 2026
+
+Signed checkpointdc97ef9 builds the actual macOS harness release. First native
+main launch creates its real secondary view, but WDIO cuts executeAsync off at
+10.002s because its HTTP timeout was10s while script/scenario bounds were190s/
+160s. Later null receipts are fallout; no scenario/crash success is claimed.
+Artifacts remain under `artifacts/e2e-harness/2026-10-04T08-20-28-598Z-19412`.
+Root aligns the transport deadline to200s and separates outer `runner.log` from
+the dependency-owned `wdio.log`, avoiding diagnostic truncation.
+
+Installed WDIO9.31.7 also swallows ordinary service-hook errors and afterTest
+rejections. The pinned launcher now promotes lifecycle failures to the actual
+SevereServiceError with finite public stage/code and preserved causes. Actual
+installed dispatcher regressions qualify fatal prepare/worker/complete behavior
+and an ordinary swallowed control; process helper cases now total39. A finite
+qualification-error receipt checked at user onComplete and the outer runner
+prevents swallowed crash-evidence failures from producing green qualification.
+Outer crash proof independently matches complete driver ack, phase, exact binary,
+PID/session/scenario/kind and observed SIGKILL. Two actual installed-hook/proof
+regressions pass. Production engine policy stays unchanged. Retained packaged
+rerun and normal packaged E2E remain open gates.

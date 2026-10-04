@@ -12,10 +12,12 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import OriginalWorkerService from "@wdio/tauri-service";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { SevereServiceError } from "webdriverio";
 import {
   type CrashDriverAck,
   captureHarnessProcess,
@@ -622,20 +624,118 @@ describe("pinned launcher integration", () => {
     delegated.complete.mockRejectedValueOnce(
       new Error("Own launcher cleanup failed"),
     );
-    await expect(instance.onPrepare({}, [])).rejects.toBeInstanceOf(
-      AggregateError,
-    );
+    const failure = await instance
+      .onPrepare({}, [])
+      .catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(SevereServiceError);
+    expect((failure as Error).cause).toBeInstanceOf(AggregateError);
+    expect(((failure as Error).cause as AggregateError).errors).toHaveLength(2);
     expect(delegated.complete).toHaveBeenCalledOnce();
   });
   it("delegates cleanup when the original launcher rejects during preparation", async () => {
     const value = await fixture("main");
     const { instance } = service(value);
     const kill = vi.spyOn(value.proc, "kill");
-    delegated.prepare.mockRejectedValueOnce(new Error("Own startup failed"));
-    await expect(instance.onPrepare({}, [])).rejects.toThrow(
-      "Own startup failed",
-    );
+    const cause = new Error("Own startup failed");
+    delegated.prepare.mockRejectedValueOnce(cause);
+    await expect(instance.onPrepare({}, [])).rejects.toMatchObject({
+      name: "SevereServiceError",
+      cause,
+    });
     expect(delegated.complete).toHaveBeenCalledExactlyOnceWith(1, {}, []);
     expect(kill).not.toHaveBeenCalled();
+  });
+
+  function installedHookDispatcher() {
+    // Execute the exact installed CLI dispatcher, including its private
+    // HookError class. This starts no WDIO workers/services or native apps and
+    // does not mirror the dependency's swallow-versus-reject logic in our code.
+    const require = createRequire(import.meta.url);
+    const cliDirectory = dirname(require.resolve("@wdio/cli"));
+    const metadata = JSON.parse(
+      readFileSync(join(cliDirectory, "../package.json"), "utf8"),
+    );
+    expect(metadata.version).toBe("9.31.7");
+    const source = readFileSync(join(cliDirectory, "index.js"), "utf8");
+    const start = source.indexOf(
+      "var HookError = class extends SevereServiceError {",
+    );
+    const end = source.indexOf("async function runLauncherHook(", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const log = { error: vi.fn(), debug: vi.fn() };
+    const runHook = new Function(
+      "SevereServiceError",
+      "log",
+      `${source.slice(start, end)}\nreturn runServiceHook;`,
+    )(SevereServiceError, log) as (
+      services: object[],
+      hook: string,
+      ...args: unknown[]
+    ) => Promise<void>;
+    return { runHook, log };
+  }
+  it("makes pinned ownership failure fatal through the actual installed WDIO dispatcher", async () => {
+    const { runHook, log } = installedHookDispatcher();
+    // The old ordinary-error behavior is an independent installed control.
+    await expect(
+      runHook(
+        [
+          {
+            onPrepare: async () => {
+              throw new Error("Ordinary fixture failure");
+            },
+          },
+        ],
+        "onPrepare",
+      ),
+    ).resolves.toBeUndefined();
+    expect(log.error).toHaveBeenCalledOnce();
+    const value = await fixture("main");
+    const { instance } = service(value, { embeddedProcesses: [] });
+    const kill = vi.spyOn(value.proc, "kill");
+    await expect(
+      runHook([instance], "onPrepare", {}, []),
+    ).rejects.toBeInstanceOf(SevereServiceError);
+    expect(delegated.complete).toHaveBeenCalledOnce();
+    expect(kill).not.toHaveBeenCalled();
+  });
+  it("makes actual stop-monitor failure fatal at installed onComplete while preserving cleanup", async () => {
+    const { runHook } = installedHookDispatcher();
+    const value = await fixture("main");
+    const { instance } = service(value);
+    await runHook([instance], "onPrepare", {}, []);
+    writeFileSync(
+      join(value.artifacts, "stop-driver.json"),
+      JSON.stringify({ run_nonce: randomUUID() }),
+    );
+    await vi.waitFor(() =>
+      expect(existsSync(join(value.artifacts, "driver-stop-error.json"))).toBe(
+        true,
+      ),
+    );
+    const kill = vi.spyOn(value.proc, "kill");
+    await expect(
+      runHook([instance], "onComplete", 0, {}, []),
+    ).rejects.toBeInstanceOf(SevereServiceError);
+    expect(delegated.complete).toHaveBeenCalledExactlyOnceWith(0, {}, []);
+    expect(kill).not.toHaveBeenCalled();
+    expect(existsSync(join(value.artifacts, "driver-stopped.json"))).toBe(
+      false,
+    );
+  });
+  it("makes original worker-start failure fatal through the installed dispatcher", async () => {
+    const { runHook } = installedHookDispatcher();
+    const value = await fixture("main");
+    const { instance } = service(value);
+    await runHook([instance], "onPrepare", {}, []);
+    delegated.workerStart.mockRejectedValueOnce(
+      new Error("Own health check failed"),
+    );
+    await expect(
+      runHook([instance], "onWorkerStart", "0-0", undefined),
+    ).rejects.toBeInstanceOf(SevereServiceError);
+    await runHook([instance], "onComplete", 1, {}, []);
+    expect(delegated.complete).toHaveBeenCalledExactlyOnceWith(1, {}, []);
   });
 });

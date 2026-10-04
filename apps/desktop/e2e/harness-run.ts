@@ -16,6 +16,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { isolatedGitEnvironment } from "./git-environment";
 import { harnessEnvironment } from "./harness-environment";
+import {
+  assertHarnessCrashProof,
+  assertHarnessQualification,
+} from "./harness-qualification";
 
 const desktop = resolve(import.meta.dirname, "..");
 const repository = resolve(desktop, "../..");
@@ -79,7 +83,9 @@ async function runPhase(
   const output = join(owned.root, "artifacts", name);
   const exported = join(artifacts, name);
   mkdirSync(output, { recursive: true, mode: 0o700 });
-  const log = createWriteStream(join(output, "wdio.log"), { flags: "wx" });
+  // tauri-service owns wdio.log in this directory. Give captured outer stdout
+  // a separate file so its diagnostic writer cannot truncate our stream.
+  const log = createWriteStream(join(output, "runner.log"), { flags: "wx" });
   const child = spawn(
     process.execPath,
     ["x", "wdio", "run", "e2e/wdio.harness.conf.ts"],
@@ -197,12 +203,9 @@ async function runPhase(
     throw new Error(`Retained driver phase ${name} exceeded its deadline`);
   if (exitCode !== 0)
     throw new Error(`Retained driver phase ${name} failed (${exitCode})`);
+  assertHarnessQualification(output, owned.runNonce, phase);
   if (phase.startsWith("crash-")) {
-    const proof = JSON.parse(
-      readFileSync(join(output, "process-exit.json"), "utf8"),
-    );
-    if (proof.run_nonce !== owned.runNonce)
-      throw new Error("Crash runner omitted its exact run-owned exit proof");
+    assertHarnessCrashProof(output, owned.runNonce, phase, binary);
   }
 }
 
