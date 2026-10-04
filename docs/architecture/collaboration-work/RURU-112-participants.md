@@ -1,8 +1,9 @@
 # RURU-112 — Bitbucket Cloud participant facet
 
-Status: **bounded pre-code contract accepted by root**, 4 October 2026. The
-participant implementation and forward migration are authorized within this
-contract. Root signs it before source changes start; qualification remains pending.
+Status: **locally qualified implementation**, 4 October 2026. Signed pre-code
+contracts383f6ac,938dab3 andc0b177a preceded their respective source corrections.
+Signed source63d9c6704b2a4f6e408fc5cea9f9cd737dfa4e9b is ready for a separate
+reviewable draft stack; exact new-head remote/platform CI remains pending.
 
 This supplements `remote-collaboration-engine.md`, `remote-collaboration-backlog.md`,
 `RURU-112.md` and `RURU-112-pulls.md`. Those documents retain the account/repository,
@@ -512,3 +513,100 @@ No frontend property is removed or weakened. Qualify fresh Bitbucket native test
 normal make typegen, actual public Branch fields and full desktop types/build;
 retain the failed logs. This is a bounded correction to the inherited parser name
 collision, not permission to hand-edit generated files or change Git behavior.
+
+
+## Implemented behavior and qualification
+
+Signed source:63d9c6704b2a4f6e408fc5cea9f9cd737dfa4e9b. The additive participant
+model, native adapter/Runtime/Store, contextual capability,0008 migration, normal
+generated IPC and common shown-panel renderer are implemented within this contract.
+RURU-112 remains In Progress for the subsequent Tasks slice. No remote writes.
+
+The mapper now validates singleton PR/destination UUID independently of unrelated
+mutable full_name, links, Body and parent-clock presentation. An actual HTTP case
+accepts valid participant facts alongside malformed unused presentation through
+the one fixed UUID route. Body/feed validation policy remains unchanged. Captured
+request bindings still fence held head/selection/authorization changes. Collection
+source clocks never borrow participation or parent timestamps; masks/individual
+validations distinguish omitted retained values, explicit optional null, and true/
+false/unknown flags. Missing/malformed/duplicate/oversized arrays cannot apply.
+
+The panel starts collapsed and does not query/admit Participants until explicitly
+opened with saved-read permission. It uses the ordinary SDK local query, native
+activity/visible demand, account/epoch scopes and bridge. Collapse releases its
+interest; offline saved reads and private drafts remain separate. It displays
+native facts, individual older observation times, partial/missing/known-empty
+sets, cached errors and retry evidence, without interpreting merge readiness.
+
+### Actual local gates
+
+-28/28 focused native cases:8 actual HTTP adapter,7 actual HTTP -> production
+ Runtime -> SQLite,6 public model/Store,2 private clock-family and5 frozen-v7
+ migration cases. These exercise valid[]/100 and rejected absence/null/101/
+ duplicates/invalid values, compound repository and actor identity, rename,
+ per-field retention, denied-facet isolation, epoch/quota/head/selection fencing
+ and cold reads with zero HTTP/vault calls; drafts/CAS remain exact.
+-759 top-level tests pass in the full default Rust workspace,3 ignored; filtered
+ child-process duplicate results are excluded. Collaboration accounts for408
+ passed/2 ignored, Git321, desktop15 and IPC15. This full run preceded the
+ equivalent private DTO rename; a fresh64/64 Bitbucket HTTP/Runtime unit gate
+ passes afterward. Fresh all-target Clippy with warnings denied and rustfmt
+ check pass on the final source.
+- The actual pinned SQLx0.9.0/bundled SQLite3.51.3 migration gate qualifies
+ verbatim rows across25 tables and historical ledger/checksums, FK preservation,
+ Body-only metadata constraints, rollback after the actual old parent drop,
+ normal immediate cold reopen and authored-generation CAS. Python3.54 mechanism
+ rehearsal is separate, superseded here by the pinned gate. Old JSON stays
+ unchanged; native:null is serialized after normal legacy decoding, not a DB
+ rewrite. The known R106 v1/v2 archive restore ceiling remains unchanged.
+-453 frontend tests/52 files pass on final generated bindings. Included are9
+ ordinary Workspace/SDK/bridge UI cases plus13 installed wire cases. The four
+ original payload/field-family controls were red before the generated refinement
+ and green afterward; flattened/unknown native tags and malformed booleans
+ remain rejected. Real generic native:null and native known false/null survive.
+ Full lint,5 type tasks (3 inherited cache hits; SDK/desktop fresh), production
+ frontend build and scoped generator Biome/diff checks pass.
+- Normal make typegen using installed0.4.2 generates114 commands. Source-derived
+ adjacent-tag/dependency/null corrections preserve all286 previous schemas,238
+ aliases,114 commands and1 event, adding only NativeDetailPayload/ParticipantUser/
+ ParticipantV1 schemas and aliases (289/241 total). The field-family refinement
+ derives the six names from Rust; Store remains the full admission authority.
+ The private BitbucketDefaultBranch rename removes the inherited generator name
+ collision; actual public Branch retains name/display_name/is_remote/is_detached.
+ No generated hand edits, public Git property removal or discovery wire change.
+
+Independent core/provider, generator and frontend reviews found the presentation
+coupling and invalid null-family test, both corrected and qualified above. A final
+wire guard review found no blocker, and preserved empty latest participant masks
+with retained participant validations. Qualified frontend output:5128 modules,
+5.96-second Vite phase. This build timing is not a cached-navigation benchmark.
+
+Logs remain in /tmp/gitru-ruru112-participants-*:
+native-focused-store, native-focused-http-runtime, native-workspace-tests,
+native-bitbucket-after-rename, native-qualified-clippy/format,
+typegen-initial/unqualified/tagged/final/branch-repaired, wire-family-red/green,
+frontend-qualified-tests/lint/types/build. Failed intermediate generation and
+pre-rename types/build logs remain; none is misreported as qualification.
+
+### Publication audit and evidence limits
+
+The live pre-publication audit confirms RURU-112 In Progress, no duplicate relation,
+only RURU-112 matching Participants under RURU-53, and no participant-head PR.
+Its three prerequisite implementations remain in the unmerged reviewed stack;
+#1611766a6e remains open on #160. Ownership/worktree/file-overlap checks preserve
+R103/R121/R106 and unrelated primary changes.
+
+Separately #161 exact1766a6e has all11 reported remote checks/statuses successful.
+#157 exact4054a6c has all14, including retained Linux/macOS/Windows; its prior
+failures and fresh local macOS crash proof remain separately recorded. Neither
+currently reports an exact-head CodeQL check, so no CodeQL pass is inferred.
+Those other heads do not qualify this new participant source,0008 migration or
+its UI on any remote platform. Exact participant-head remote CI remains pending.
+
+The UUID PR child route remains a documentation inference, not a live-provider
+qualification. No personal token/keyring/provider account or production platform
+vault was inspected. Ordinary mocked IPC UI, pinned native storage/HTTP tests,
+packaged CI and retained native fixtures are different evidence classes. The
+100-participant limit and later large-singleton policy remain explicit. R103's
+separate SDK listener fix must be preserved during later stack integration.
+Nothing is merged; Tasks need a separate pre-code contract and bounded slice.

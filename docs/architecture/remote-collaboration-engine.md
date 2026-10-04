@@ -2527,3 +2527,23 @@ build exposed a pinned-generator short-name collision between private Bitbucket
 discovery Branch and public Git Branch. The accepted work note limits repair to
 a private DTO rename, fresh normal generation/native checks and full types/build;
 no generated hand edits or dropped public Git properties. Publication waits.
+
+
+### RURU-112 typed participant slice qualified locally — 4 October 2026
+
+Signed source63d9c67 implements the common ParticipantV1 facet, Bitbucket singleton
+mapper, per-field saved evidence/identity fences, FK-preserving0008/frozen-v7
+recovery and opened-panel-only ordinary SDK/native interest.28 focused native
+cases and759 full default workspace top-level tests/3 ignored pass; full run
+preceded an equivalent private DTO rename with fresh64 Bitbucket cases afterward.
+Final all-target Clippy/fmt, normal typegen114,453 frontend/52files, lint/types/
+production build pass. Source-derived tag/dependency/null and field-family guards
+qualify original red wire controls; private BitbucketDefaultBranch avoids a real
+pinned-generator public Git Branch collision without changing wire fields.
+Full qualification, reviews and limits are in the
+[participant work note](./collaboration-work/RURU-112-participants.md). A separate
+draft stack on #161 is ready; its new-head remote CI remains independent/pending.
+R112 stays In Progress for Tasks; R106 restore ceiling and R121/R103 owners remain
+separate. #1611766a6e passes all11 reported remote checks; #1574054a6c all14
+including retained Linux/macOS/Windows. No unreported exact-head CodeQL/live-token/
+platform vault qualification or merge is inferred.
