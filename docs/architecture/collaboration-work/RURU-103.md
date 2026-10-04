@@ -967,3 +967,15 @@ for both main/child labels and unchanged unsubscribe; preserve all existing
 bridge, field/draft and native fixture assertions. No DTO/signature/schema change
 or typegen is needed. Frontend owner additionally owns SDK index.ts and a narrow
 transport regression file; root serializes a fresh compiled retained run.
+
+
+The catch-all also bypassed earlier Hold/Drop hint isolation. Earlier passing
+receipts prove native hint collection and later convergence, but do not establish
+that the child cache was unchanged while withheld. Before the final fixture edits,
+accept two finite observed controls: capture actual child Body/facet/cache-cursor
+baseline immediately before Hold; require it unchanged after all three real
+refreshes and before reverse delivery. Likewise require the pre-Drop Body/facet
+receipt unchanged after the real304 refresh and before explicit public wake.
+Retain dirty editor/CAS checks and every existing limit. Root authorizes frontend
+owner to add these assertions to the existing two executor files and ordering
+controls; no fake cursor, visibility, native event bus or production bridge change.
