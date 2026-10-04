@@ -2399,3 +2399,35 @@ Clippy-Dwarnings and formatting pass. Pre-fix red and final green logs:
 old failing CI is retained as history. The same private fix is integrated into
 R103 before its next retained native build. R106 coordinated shutdown/current-
 schema backup qualification remains open. No PR is merged.
+
+
+### RURU-112 bounded Bitbucket Cloud account slice started — 4 October 2026
+
+Live Linear/PR/worktree/dependency audit selected R112 after R111/#159 repaired
+`ebb8ae1` passes its exact Linux Rust job; its Windows packaged check remains
+separate. Reviewed R76/R100 prerequisites are unmerged. An isolated attached
+worktree on that head now owns the first repository-only account slice, with
+native adapter/runtime/test and SDK/UI work in parallel under disjoint paths.
+Signed pre-code contracts ee0edda/e9bd990/f1d1a14 live in
+[the R112 work note](./collaboration-work/RURU-112.md). R112 remains In Progress:
+PR summaries/Body and explicit native participant/task facets require later chunks.
+
+Current official Bitbucket sources confirm token-only Bearer API tokens and the
+removed native issue/app-password endpoints. The proposed fixed public connection
+uses existing native vault/actor/epoch cutover, no Gitru cloud or ambient credential
+lookup; only repository capability is supported in this slice. Workspace-to-member-
+repository opaque continuation state is account/epoch bound and bounded. Shared
+per-job page limits merely yield, so this private cursor persists continuation
+fingerprints and a20 accepted-page/20workspace limit across resumption/reopen.
+Exhaustion remains Partial without inferred absence; capped large accounts need a
+later explicit restart/coverage policy. Response-detected loops reject the page;
+bounded retries may refetch its current URL but never follow the repeated target.
+Username-only clone metadata is validated then discarded, not executed/persisted.
+
+At the frozen additive main-only command signature, normal make typegen passes114
+commands. Independent AST comparison preserves all285 prior schemas and adds only
+Bitbucket connect params. Adapter/UI implementation and qualification are underway;
+this record does not claim live provider, platform, completed R112 or publication.
+R103's repaired source is separately published in #157 atcce498b with fresh macOS
+retained proof and exact-head remote CI running; R121/#158 and R111/#159 stay review
+stacks. No merge is authorized or performed.
