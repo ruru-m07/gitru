@@ -875,6 +875,10 @@ impl NativeHarness {
             };
             view.show().map_err(|_| invalid())?;
             window.show().map_err(|_| invalid())?;
+            if window.is_minimized().map_err(|_| invalid())? {
+                window.unminimize().map_err(|_| invalid())?;
+            }
+            window.set_focus().map_err(|_| invalid())?;
             if !window.is_visible().unwrap_or(false) || window.is_minimized().unwrap_or(true) {
                 let _ = window.close();
                 return Err(invalid());
@@ -916,11 +920,23 @@ impl NativeHarness {
         if let Some(window) = app.get_window(&child.window_label) {
             window.close().map_err(|_| invalid())?;
         }
-        let mut projection = self.lock()?;
-        projection.child = None;
-        projection.hint_mode = HarnessHintMode::Normal;
-        projection.hints.clear();
-        Ok(())
+        {
+            let mut projection = self.lock()?;
+            projection.child = None;
+            projection.hint_mode = HarnessHintMode::Normal;
+            projection.hints.clear();
+        }
+        guard()?;
+        let main = app.get_window("main").ok_or_else(invalid)?;
+        main.show().map_err(|_| invalid())?;
+        if main.is_minimized().map_err(|_| invalid())? {
+            main.unminimize().map_err(|_| invalid())?;
+        }
+        main.set_focus().map_err(|_| invalid())?;
+        if !main.is_visible().unwrap_or(false) || main.is_minimized().unwrap_or(true) {
+            return Err(invalid());
+        }
+        guard()
     }
 }
 fn retain_hint(hints: &mut VecDeque<String>, revision: String) {

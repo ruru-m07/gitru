@@ -316,7 +316,35 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
         });
       return receipt.snapshot;
     }
+    async function visibleDocument(label: string) {
+      return wait(async () => {
+        // Window show/native active receipts do not prove WebKit's document
+        // visibility. Observe the actual document without overriding either
+        // its DOM suspension or its independently authoritative native owner.
+        const receipt = await request(label, { kind: "inspect-activity" });
+        if (receipt.outcome !== "accepted" || !receipt.activity)
+          throw new HarnessScenarioError({
+            kind: "action_rejected",
+            outcome:
+              receipt.outcome === "accepted" ? "failed" : receipt.outcome,
+            native_code:
+              receipt.failure?.kind === "native_error"
+                ? receipt.failure.code
+                : null,
+          });
+        return receipt.activity.document_visibility === "visible"
+          ? receipt.activity
+          : null;
+      });
+    }
     async function mount(label: string, actor: "primary" | "alternate") {
+      const mountingStage = stage;
+      stage =
+        label === "main"
+          ? "observe actual main document visibility before fixture mount"
+          : "observe actual child document visibility before fixture mount";
+      await visibleDocument(label);
+      stage = mountingStage;
       await requireSnapshot(label, { kind: "mount", actor });
       return keep(
         await wait(async () => {
@@ -643,6 +671,9 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
         if (current.child_label) await control("close_concurrent_child");
         stage = "detach main fixture before ordinary native tab host";
         await requireSnapshot("main", { kind: "detach" });
+        stage =
+          "observe actual main document visibility before ordinary host startup";
+        await visibleDocument("main");
         stage = "create ordinary first and second tab records";
         const first = useAppStore.getState().createTab({
           routePath: "/app/git",
@@ -1005,6 +1036,10 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
         stage = "remount both real owners behind the armed provider gate";
         await mount("main", "primary");
         await mount(label, "primary");
+        stage = "observe both actual SDK leases behind the armed provider gate";
+        await wait(async () =>
+          (await status()).core.demand_lease_count === 2 ? true : null,
+        );
         stage = "capture actual old provider response after due refresh";
         await core("advance_refresh");
         await providerGateHeld(provider);

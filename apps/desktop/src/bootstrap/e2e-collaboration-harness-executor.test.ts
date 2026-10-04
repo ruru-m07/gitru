@@ -295,6 +295,14 @@ describe("retained finite executor failure evidence", () => {
       label: request.label,
       outcome: "accepted",
       snapshot: {} as NonNullable<HarnessResult["snapshot"]>,
+      ...(request.action.kind === "inspect-activity"
+        ? {
+            activity: {
+              document_visibility: "visible" as const,
+              own_activity: { generation: "7", active: true },
+            },
+          }
+        : {}),
     }));
     native.navigate.mockRejectedValue({
       code: "not_ready",
@@ -329,6 +337,7 @@ async function orderingFixture() {
     "RURU-103 primary body phase one — π 🌱",
   );
   const mounted = new Set<string>();
+  const documentVisibility = new Map<string, "visible" | "hidden">();
   let manualLeases = 0;
   function setManualLeases(count: number) {
     manualLeases = count;
@@ -387,6 +396,15 @@ async function orderingFixture() {
         label: request.label,
         outcome: "accepted",
         snapshot,
+        ...(request.action.kind === "inspect-activity"
+          ? {
+              activity: {
+                document_visibility:
+                  documentVisibility.get(request.label) ?? "visible",
+                own_activity: { generation: "7", active: true },
+              },
+            }
+          : {}),
         ...(request.action.kind === "check-peer-authority"
           ? {
               authority: {
@@ -435,10 +453,125 @@ async function orderingFixture() {
     probe: { execute, inspect: vi.fn(), stop: vi.fn() },
     coreControl,
     setManualLeases,
+    documentVisibility,
   };
 }
 
 describe("retained finite executor scheduling order", () => {
+  it("does not start the ordinary tab host until the actual probe observes a visible main document", async () => {
+    const { probe, documentVisibility } = await orderingFixture();
+    vi.useFakeTimers();
+    documentVisibility.set("main", "hidden");
+    native.navigate.mockRejectedValue({ code: "not_ready" });
+    executor = await installCollaborationHarnessExecutor(probe);
+    const pending = executor.runScenario("normal-tab-lifecycle");
+    await vi.advanceTimersByTimeAsync(300);
+    expect(native.inspectOwner).toHaveBeenCalled();
+    expect(native.setOwner).toHaveBeenCalledWith({
+      ownerLabel: "main",
+      expectedGeneration: "7",
+      active: true,
+    });
+    expect(native.createTab).not.toHaveBeenCalled();
+    expect(native.navigate).not.toHaveBeenCalled();
+    expect(native.getAll).not.toHaveBeenCalled();
+    documentVisibility.set("main", "visible");
+    await vi.advanceTimersByTimeAsync(100);
+    const result = HarnessScenarioResultSchema.parse(await pending);
+    expect(result.stage).toBe(
+      "navigate main into the ordinary native tab host",
+    );
+    expect(result.failure).toEqual({ kind: "native_error", code: "not_ready" });
+    expect(native.createTab).toHaveBeenCalledTimes(2);
+    expect(native.navigate).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    "main",
+    "tab-webview:ruru103:child",
+  ])("keeps the fixture unmounted when %s remains DOM-hidden even with a native active owner", async (label) => {
+    const { probe, documentVisibility } = await orderingFixture();
+    vi.useFakeTimers();
+    documentVisibility.set(label, "hidden");
+    executor = await installCollaborationHarnessExecutor(probe);
+    const pending = executor.runScenario("disconnect");
+    await vi.advanceTimersByTimeAsync(25_100);
+    const result = HarnessScenarioResultSchema.parse(await pending);
+    expect(result.stage).toBe(
+      label === "main"
+        ? "observe actual main document visibility before fixture mount"
+        : "observe actual child document visibility before fixture mount",
+    );
+    expect(result.failure).toEqual({
+      kind: "settle_timeout",
+      last_action_outcome: null,
+    });
+    expect(
+      probe.execute.mock.calls.some(
+        ([request]) =>
+          request.label === label && request.action.kind === "mount",
+      ),
+    ).toBe(false);
+    expect(
+      result.failure_context?.activities.find(
+        (activity) => activity.label === label,
+      ),
+    ).toMatchObject({
+      document_visibility: "hidden",
+      native_owner: { active: true },
+    });
+    expect(
+      native.control.mock.calls.some(
+        ([input]) => input.request.core_action === "advance_refresh",
+      ),
+    ).toBe(false);
+  });
+
+  it("waits for actual admitted SDK leases after visible cached mounts before advancing the gated refresh", async () => {
+    const { probe, coreControl } = await orderingFixture();
+    vi.useFakeTimers();
+    let armed = false;
+    let leasesAdmitted = false;
+    native.status.mockImplementation(async () => {
+      const receipt = structuredClone(current);
+      if (armed && !leasesAdmitted) receipt.core.demand_lease_count = 0;
+      return receipt;
+    });
+    native.control.mockImplementation(async (input) => {
+      const receipt = await coreControl(input);
+      if (input.request.core_action === "arm_provider_gate") {
+        armed = true;
+        return { ...receipt, gate_id: "provider-gate" };
+      }
+      if (input.request.core_action === "advance_refresh") {
+        expect(leasesAdmitted).toBe(true);
+        throw { code: "provider" };
+      }
+      return receipt;
+    });
+    executor = await installCollaborationHarnessExecutor(probe);
+    const pending = executor.runScenario("disconnect");
+    await vi.advanceTimersByTimeAsync(300);
+    expect(armed).toBe(true);
+    expect(
+      probe.execute.mock.calls.filter(
+        ([request]) => request.action.kind === "mount",
+      ),
+    ).toHaveLength(4);
+    expect(
+      native.control.mock.calls.some(
+        ([input]) => input.request.core_action === "advance_refresh",
+      ),
+    ).toBe(false);
+    leasesAdmitted = true;
+    await vi.advanceTimersByTimeAsync(100);
+    const result = HarnessScenarioResultSchema.parse(await pending);
+    expect(result.stage).toBe(
+      "capture actual old provider response after due refresh",
+    );
+    expect(result.failure).toEqual({ kind: "native_error", code: "provider" });
+  });
+
   it("waits for a newly committed Body facet after Completed before the authority baseline", async () => {
     const { probe, coreControl, setManualLeases } = await orderingFixture();
     vi.useFakeTimers();
