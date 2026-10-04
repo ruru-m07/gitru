@@ -115,12 +115,43 @@ impl CapturedReadOwner {
         self.caller.validate().is_ok()
     }
     pub(crate) fn matches(&self, view: &Webview) -> bool {
-        let expected = self.caller.view.resources_table();
-        let observed = view.resources_table();
-        self.caller.view.label() == view.label()
-            && std::ptr::eq(&*expected, &*observed)
-            && self.current()
+        captured_resource_tables_match(
+            self.caller.view.label(),
+            view.label(),
+            || self.caller.view.resources_table(),
+            || view.resources_table(),
+            || self.current(),
+        )
     }
+}
+
+fn captured_resource_tables_match<'a, 'b, E, O, C>(
+    expected_label: &str,
+    observed_label: &str,
+    expected: E,
+    observed: O,
+    current: C,
+) -> bool
+where
+    E: FnOnce() -> std::sync::MutexGuard<'a, tauri::ResourceTable>,
+    O: FnOnce() -> std::sync::MutexGuard<'b, tauri::ResourceTable>,
+    C: FnOnce() -> bool,
+{
+    if expected_label != observed_label {
+        return false;
+    }
+    // Clones of the same Webview share a non-reentrant resource-table mutex.
+    // Keep only its stable allocation identity, dropping each guard before
+    // recapturing the other table or revalidating the native caller proof.
+    let expected_identity = {
+        let resources = expected();
+        std::ptr::from_ref(&*resources) as usize
+    };
+    let observed_identity = {
+        let resources = observed();
+        std::ptr::from_ref(&*resources) as usize
+    };
+    expected_identity == observed_identity && current()
 }
 
 pub(super) struct LocalReturnProof {
@@ -173,6 +204,82 @@ pub(crate) async fn dispose_harness_child_owner(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{mpsc, Arc, Mutex};
+    use std::time::Duration;
+
+    #[test]
+    fn shared_resource_identity_releases_native_mutex_before_recapture_and_current() {
+        // These are actual Tauri ResourceTable mutex guards. No native caller
+        // is fabricated; the test qualifies only matching and guard lifetimes.
+        let table = Arc::new(Mutex::new(tauri::ResourceTable::default()));
+        let expected = table.clone();
+        let (send, receive) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let matches = captured_resource_tables_match(
+                "tab-webview:owned",
+                "tab-webview:owned",
+                || expected.lock().unwrap(),
+                || table.lock().unwrap(),
+                || table.try_lock().is_ok(),
+            );
+            send.send(matches).unwrap();
+        });
+        assert!(receive
+            .recv_timeout(Duration::from_secs(1))
+            .expect("same native resource table matching must not lock itself"));
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn distinct_resource_tables_do_not_reuse_captured_identity() {
+        let expected = Mutex::new(tauri::ResourceTable::default());
+        let observed = Mutex::new(tauri::ResourceTable::default());
+        assert!(!captured_resource_tables_match(
+            "tab-webview:owned",
+            "tab-webview:owned",
+            || expected.lock().unwrap(),
+            || observed.lock().unwrap(),
+            || panic!("a different native identity must not reach the current proof"),
+        ));
+        assert!(expected.try_lock().is_ok());
+        assert!(observed.try_lock().is_ok());
+    }
+
+    #[test]
+    fn different_labels_are_rejected_before_reading_native_resource_tables() {
+        assert!(!captured_resource_tables_match(
+            "tab-webview:owned",
+            "tab-webview:other",
+            || panic!("foreign label must not capture an expected native table"),
+            || panic!("foreign label must not capture an observed native table"),
+            || panic!("foreign label must not reach the current proof"),
+        ));
+    }
+
+    #[test]
+    fn same_native_identity_cannot_replace_a_rejected_current_proof() {
+        let table = Arc::new(Mutex::new(tauri::ResourceTable::default()));
+        let expected = table.clone();
+        let (send, receive) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let matches = captured_resource_tables_match(
+                "tab-webview:owned",
+                "tab-webview:owned",
+                || expected.lock().unwrap(),
+                || table.lock().unwrap(),
+                || {
+                    assert!(table.try_lock().is_ok());
+                    false
+                },
+            );
+            send.send(matches).unwrap();
+        });
+        assert!(!receive
+            .recv_timeout(Duration::from_secs(1))
+            .expect("the current proof must execute after resource guards drop"));
+        worker.join().unwrap();
+    }
+
     #[test]
     fn controller_is_main_only_on_exact_compiled_native_origin() {
         for address in [

@@ -1368,3 +1368,31 @@ local collaboration snapshots, real Inbox child-to-host account dialog with exac
 tab restoration, and UI/Tauri/Rust/Git repository smoke flows. Actual log is
 `/tmp/gitru-ruru103-normal-e2e.log`. This is distinct from retained webview/crash
 qualification, whose complete corrected run and Linux/Windows CI remain pending.
+
+
+### Native captured-read lock regression and bound action settlement — 4 October 2026
+
+Third retained macOS runfede493 passes cold concurrent demand plus reload, normal
+tab lifecycle and peer authority. Reverse/dropped hints and monotonic Body/dirty
+editor observations also pass before a main edit receives the correct pre-IPC
+NotReady after a phase update. Fixed finite edit/save/read actions now settle only
+that NotReady within existing bounds; accepted mutations run once, all other
+errors remain failures.32 frontend cases/types/lint pass. Precise CAS substages
+will expose actual editor/save/conflict evidence in the next retained run.
+
+Disconnect's held local Body path then exceeds190s with no result receipt. Two
+source reviewers identify a self-deadlock in the new harness matcher: cloned
+webviews lock the same actual Tauri ResourceTable twice before entering the Held
+state/timer. A bounded real-thread regression reproduces the old timeout/exit101.
+Sequential lexical pointer snapshots release both guards before current caller
+revalidation, preserving exact label/resource identity/current proof. Four real
+ResourceTable mutex regressions qualify same/different allocation, label mismatch,
+guard drop before proof and stale proof rejection.30 native feature cases and
+feature Clippy/fmt pass; no production guard or IPC signature changes.
+
+A separate speculative core-status AuthRequired concern is rejected after source
+and existing regression review: inactive Store::detail already returns empty
+Unavailable evidence, and old-epoch held-response tests successfully release
+through post-disconnect status and assert committed Body evidence None. No blanket
+catch or core policy change is made. Actual retained proof remains incomplete;
+third-run artifacts are `artifacts/e2e-harness/2026-10-04T08-41-14-989Z-23734`.

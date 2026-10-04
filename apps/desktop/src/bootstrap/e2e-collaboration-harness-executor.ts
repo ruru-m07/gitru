@@ -36,6 +36,16 @@ import { sanitizeTabWebviewLabel } from "./runtime-utils";
 type Probe = Awaited<ReturnType<typeof installCollaborationHarnessProbe>>;
 type NativeHarnessAction = HarnessControlRequest["action"];
 type HarnessCoreAction = NonNullable<HarnessControlRequest["core_action"]>;
+type BoundAction = Extract<
+  HarnessAction,
+  { kind: "edit-draft" | "save-draft" | "read-item" | "read-body" }
+>;
+
+function requiresHarnessBinding(action: HarnessAction): action is BoundAction {
+  return ["edit-draft", "save-draft", "read-item", "read-body"].includes(
+    action.kind,
+  );
+}
 
 const BODY = {
   one: "RURU-103 primary body phase one — π 🌱",
@@ -130,13 +140,6 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
     return requester.request(label, action);
   }
 
-  const requireSnapshot = async (label: string, action: HarnessAction) => {
-    const receipt = await request(label, action);
-    if (receipt.outcome !== "accepted" || !receipt.snapshot)
-      throw new Error("The fixed document action was rejected");
-    return receipt.snapshot;
-  };
-
   async function activate(label: string) {
     // These are production native owner receipts. No generation/visibility
     // proof is manufactured by the renderer. Native creation has shown the
@@ -186,14 +189,23 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
     async function inspect(label: string) {
       return requireSnapshot(label, { kind: "inspect" });
     }
-    async function readWhenBound(label: string) {
+    async function requestWhenBound(label: string, action: BoundAction) {
       return wait(async () => {
-        const receipt = await request(label, { kind: "read-body" });
+        const receipt = await request(label, action);
         // A phase can publish its manifest before React commits the matching
-        // real account binding. NotReady is a pre-IPC fence, so retry only
-        // that outcome; never turn a timeout or failed read into stale proof.
+        // real account binding. NotReady precedes a DOM mutation/local IPC,
+        // so retry only that outcome. Accepted edits/saves run once; timeouts
+        // and failed/stale/denied receipts never count as a successful action.
         return receipt.outcome === "not_ready" ? null : receipt;
       });
+    }
+    async function requireSnapshot(label: string, action: HarnessAction) {
+      const receipt = requiresHarnessBinding(action)
+        ? await requestWhenBound(label, action)
+        : await request(label, action);
+      if (receipt.outcome !== "accepted" || !receipt.snapshot)
+        throw new Error("The fixed document action was rejected");
+      return receipt.snapshot;
     }
     async function mount(label: string, actor: "primary" | "alternate") {
       await requireSnapshot(label, { kind: "mount", actor });
@@ -377,16 +389,28 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
             : null;
         });
         await control("resume_hints");
-        stage = "preserve dirty text when another native view saves CAS";
+        stage = "edit main private draft after the current phase binds";
         const old = await inspect(label);
         await requireSnapshot("main", {
           kind: "edit-draft",
           variant: "first-edit",
         });
-        await wait(async () =>
-          (await inspect("main")).save_enabled ? true : null,
+        stage = "observe main authored text before saving native CAS";
+        const mainEditHash = await syntheticFingerprint(
+          HARNESS_DRAFT_EDITS["first-edit"],
         );
+        keep(
+          await wait(async () => {
+            const snapshot = await inspect("main");
+            return snapshot.save_enabled &&
+              snapshot.editor_hash === mainEditHash
+              ? snapshot
+              : null;
+          }),
+        );
+        stage = "save main private draft through native CAS";
         await requireSnapshot("main", { kind: "save-draft" });
+        stage = "observe child CAS conflict while retaining dirty text";
         const conflict = keep(
           await wait(async () => {
             const snapshot = await inspect(label);
@@ -421,7 +445,7 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
         require(oldReadGate);
         if (!oldReadGate)
           throw new Error("The native retained read gate is missing");
-        const oldRead = readWhenBound(label).then(
+        const oldRead = requestWhenBound(label, { kind: "read-body" }).then(
           (receipt) => receipt.outcome,
           () => "failed" as const,
         );
@@ -798,7 +822,7 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
         const local = (await control("arm_body_read")).gate_id;
         require(local);
         if (!local) throw new Error("The native read gate is missing");
-        const delayed = readWhenBound(label);
+        const delayed = requestWhenBound(label, { kind: "read-body" });
         // Install the handler before any rejection so no old-epoch result is
         // left as an unhandled promise while the other native operations run.
         const settled = delayed.then(

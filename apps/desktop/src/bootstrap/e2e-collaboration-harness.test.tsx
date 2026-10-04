@@ -20,6 +20,8 @@ const native = vi.hoisted(() => ({
   setOwner: vi.fn(async () => undefined),
   disposeOwner: vi.fn(async () => undefined),
   connect: vi.fn(async () => undefined),
+  edit: vi.fn(),
+  submit: vi.fn(),
 }));
 vi.mock("@tauri-apps/api/webview", () => ({
   getCurrentWebview: () => ({
@@ -55,11 +57,22 @@ vi.mock("../features/collaboration/saved-item-detail", async () => {
       const [text, setText] = useState("Synthetic authored editor");
       return (
         <article aria-label="Saved item detail">
-          <textarea
-            name="private-draft"
-            value={text}
-            onChange={(event) => setText(event.currentTarget.value)}
-          />
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              native.submit();
+            }}
+          >
+            <textarea
+              name="private-draft"
+              value={text}
+              onChange={(event) => {
+                native.edit(event.currentTarget.value);
+                setText(event.currentTarget.value);
+              }}
+            />
+            <button type="submit">Save draft</button>
+          </form>
         </article>
       );
     },
@@ -223,6 +236,46 @@ describe("retained probe document lifetime", () => {
       editor,
     );
     localRead.mockRestore();
+  });
+
+  it.each([
+    { kind: "edit-draft", variant: "first-edit" },
+    { kind: "save-draft" },
+  ] satisfies HarnessAction[])("keeps $kind free of DOM side effects until the current phase commits", async (action) => {
+    const source = fixture();
+    await act(async () => {
+      probe = await installCollaborationHarnessProbe(source.readManifest);
+      await probe.execute(source.request({ kind: "mount", actor: "primary" }));
+    });
+    await waitFor(() =>
+      expect(
+        document.querySelector('textarea[name="private-draft"]'),
+      ).not.toBeNull(),
+    );
+    const editor = document.querySelector('textarea[name="private-draft"]');
+    source.phase();
+    await act(async () => {
+      const first = await probe?.execute(source.request(action));
+      expect(first?.outcome).toBe("not_ready");
+      expect(native.edit).not.toHaveBeenCalled();
+      expect(native.submit).not.toHaveBeenCalled();
+    });
+    let second:
+      | Awaited<ReturnType<NonNullable<typeof probe>["execute"]>>
+      | undefined;
+    await act(async () => {
+      second = await probe?.execute(source.request(action));
+    });
+    expect(second?.outcome).toBe("accepted");
+    expect(
+      action.kind === "edit-draft" ? native.edit : native.submit,
+    ).toHaveBeenCalledOnce();
+    expect(
+      action.kind === "edit-draft" ? native.submit : native.edit,
+    ).not.toHaveBeenCalled();
+    expect(document.querySelector('textarea[name="private-draft"]')).toBe(
+      editor,
+    );
   });
 
   it("uses the same generated controller for a real child's authority check", async () => {
