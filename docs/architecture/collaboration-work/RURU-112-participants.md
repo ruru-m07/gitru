@@ -468,3 +468,29 @@ list used for scope invalidation where practical, retaining all existing policie
 Production SDK own-Webview listener from separate R1034054a6c is not inherited
 here; future stack integration must preserve that correction alongside SDK type
 exports. No retained/native/global-target qualification is borrowed for this slice.
+
+
+## Generated wire family guard decision — 4 October, before correction
+
+Independent frontend review found that the first null-payload wire control used
+a participant-only mask with native:null. That is an impossible Store-produced
+participant shape; structural Serde/Zod types alone do not reject the family mix.
+Acceptance6 requires a real generic null payload and disjoint payload/mask proof.
+
+Root accepts a bounded source-derived generated DetailEntry schema refinement:
+read the existing Rust DetailField::is_participant declaration, emit its six
+wire names, and require masks and field validations to belong to that family
+exactly when the typed participant payload is present. Generic native:null
+entries keep generic fields. No manually authored SDK schema or new renderer
+authority is introduced. The Store remains the semantic admission authority for
+identity, values, clocks, facet/source/binding, bounds and atomic publication;
+the wire guard additionally rejects the two impossible payload/family mixes.
+
+Replace the null control with an ordinary generic entry, add actual red controls
+for native:null plus participant fields and a native participant plus generic
+fields (including validations), then qualify normal make typegen and installed
+wire schemas. The current one-variant payload guard is intentionally bounded; a
+future task payload/field family must extend this source-derived check explicitly
+and qualify both existing families rather than silently treating every native
+payload as a participant. Rust source and generated command signatures remain
+unchanged. No platform or live provider claim follows from these wire controls.

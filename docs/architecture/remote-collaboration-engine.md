@@ -2508,3 +2508,14 @@ and native interest only when opened and supported. Tasks are a later bounded
 chunk; R112 stays In Progress. R1034054a6c is separately published after fresh
 all5 retained Mac stages pass; both new exact-head remote matrices remain pending.
 No source/IPC/migration qualification or live credentials/merge is claimed yet.
+
+
+Participant native/storage qualification passes28 focused and759 full default
+workspace top-level tests/3 ignored, with all-target Clippy/fmt. Independent wire
+review found an impossible native:null/participant-field test. The accepted
+[wire guard correction](./collaboration-work/RURU-112-participants.md) derives the
+family from Rust, rejects payload/mask/validation mixes and uses a real generic
+null control; installed generated wire qualification will rerun before delivery.
+Separately #1611766a6e passes all11 reported remote checks and #1574054a6c all14,
+including retained Linux/macOS/Windows. No exact-head CodeQL pass is inferred.
+Participant publication/new-head platform CI remain pending; no merge.
