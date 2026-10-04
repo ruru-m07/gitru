@@ -90,6 +90,10 @@ export type {
 export { StaleAuthorizationError } from "./authorization-fence";
 export * from "./client";
 export type { DemandAccount, DemandHandle } from "./demand-coordinator";
+export type {
+  NavigationInput,
+  NavigationScope,
+} from "./navigation-working-set";
 export type LocalLinkState =
   import("@gitru/commands").LocalRepositoryLink["state"];
 export type RemoteItemKind = import("@gitru/commands").ItemQuery["kind"];

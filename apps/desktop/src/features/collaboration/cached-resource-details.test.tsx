@@ -1,5 +1,6 @@
 import {
   collaboration,
+  collaborationKeys,
   type RemoteAccount,
   type RemoteItemKind,
 } from "@gitru/collaboration-client";
@@ -125,7 +126,7 @@ afterEach(() => {
   for (const cache of caches.splice(0)) cache.clear();
 });
 
-async function open(kind: RemoteItemKind = "pull_request") {
+async function mountList(kind: RemoteItemKind = "pull_request") {
   const cache = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -142,6 +143,11 @@ async function open(kind: RemoteItemKind = "pull_request") {
     </StrictMode>,
   );
   const user = userEvent.setup();
+  await screen.findByText(summary.title);
+  return { user, cache };
+}
+async function open(kind: RemoteItemKind = "pull_request") {
+  const { user, cache } = await mountList(kind);
   await user.click(await screen.findByText(summary.title));
   return {
     user,
@@ -149,6 +155,14 @@ async function open(kind: RemoteItemKind = "pull_request") {
     cache,
   };
 }
+const bodyKey = (subjectId = fixtureItem.id) =>
+  collaborationKeys.detail(fixtureAccount, {
+    account_id: fixtureAccount.id,
+    subject_id: subjectId,
+    facet: "body",
+    cursor: null,
+    limit: 50,
+  });
 async function change() {
   revision = String(Number(revision) + 1);
   await act(async () => {
@@ -165,6 +179,122 @@ function bodyAcquisitions() {
 }
 
 describe("cached PR and issue detail views", () => {
+  it("warms shared saved projections on pointer dwell and opens the ordinary detail from that cache", async () => {
+    const reads = vi.spyOn(collaboration.transport, "detail");
+    const hydrate = vi.spyOn(collaboration.transport, "hydrateDetail");
+    const { user, cache } = await mountList();
+    const row = screen.getByRole("button", {
+      name: new RegExp(fixtureItem.title),
+    });
+    await user.hover(row);
+    expect(row).toHaveAttribute("aria-pressed", "false");
+    expect(
+      screen.queryByRole("article", { name: "Saved item detail" }),
+    ).not.toBeInTheDocument();
+    await waitFor(() => expect(cache.getQueryData(bodyKey())).toEqual(body));
+    expect(reads).toHaveBeenCalledTimes(1);
+    expect(bodyAcquisitions()).toHaveLength(1);
+    await user.unhover(row);
+    await waitFor(() =>
+      expect(demands.release).toHaveBeenCalledWith({
+        request: expect.objectContaining({ lease_id: expect.any(String) }),
+      }),
+    );
+    await user.click(row);
+    expect(
+      await screen.findByText("Full cached resource description"),
+    ).toBeVisible();
+    expect(row).toHaveAttribute("aria-pressed", "true");
+    expect(reads).toHaveBeenCalledTimes(1);
+    expect(hydrate).not.toHaveBeenCalled();
+  });
+
+  it("uses ordinary keyboard focus/Enter without selecting on focus or reading private drafts speculatively", async () => {
+    const draftReads = vi.spyOn(collaboration.transport, "draft");
+    const { user, cache } = await mountList();
+    const row = screen.getByRole("button", {
+      name: new RegExp(fixtureItem.title),
+    });
+    await act(async () => {
+      row.focus();
+    });
+    expect(row.tabIndex).toBe(0);
+    expect(row).toHaveFocus();
+    await waitFor(() => expect(cache.getQueryData(bodyKey())).toEqual(body));
+    expect(row).toHaveAttribute("aria-pressed", "false");
+    expect(draftReads).not.toHaveBeenCalled();
+    await user.keyboard("{Enter}");
+    const editor = await screen.findByLabelText("Private draft");
+    const selectedDraftReads = draftReads.mock.calls.length;
+    await user.type(editor, "Keep my authored text");
+    await user.hover(row);
+    await user.unhover(row);
+    expect(editor).toHaveValue("Keep my authored text");
+    expect(
+      screen.getByRole("article", { name: "Saved item detail" }),
+    ).toBeVisible();
+    expect(draftReads).toHaveBeenCalledTimes(selectedDraftReads);
+  });
+
+  it("drops a held speculative Body on document hide and never revives it from late native IPC", async () => {
+    let resolve!: (value: DetailSnapshot) => void;
+    const reads = vi
+      .spyOn(collaboration.transport, "detail")
+      .mockImplementationOnce(
+        () =>
+          new Promise<DetailSnapshot>((finish) => {
+            resolve = finish;
+          }),
+      );
+    const { user, cache } = await mountList();
+    const row = screen.getByRole("button", {
+      name: new RegExp(fixtureItem.title),
+    });
+    await user.hover(row);
+    await waitFor(() => expect(reads).toHaveBeenCalledTimes(1));
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await act(async () => {
+      resolve(body);
+    });
+    expect(cache.getQueryData(bodyKey())).toBeUndefined();
+    expect(
+      screen.queryByRole("article", { name: "Saved item detail" }),
+    ).not.toBeInTheDocument();
+    await waitFor(() => expect(demands.release).toHaveBeenCalled());
+  });
+
+  it("cancels a held hover read when the ordinary saved search changes its feed region", async () => {
+    let resolve!: (value: DetailSnapshot) => void;
+    const reads = vi
+      .spyOn(collaboration.transport, "detail")
+      .mockImplementationOnce(
+        () =>
+          new Promise<DetailSnapshot>((finish) => {
+            resolve = finish;
+          }),
+      );
+    const { user, cache } = await mountList();
+    await user.hover(
+      screen.getByRole("button", { name: new RegExp(fixtureItem.title) }),
+    );
+    await waitFor(() => expect(reads).toHaveBeenCalledTimes(1));
+    await user.type(
+      screen.getByPlaceholderText("Search saved items…"),
+      "other",
+    );
+    await act(async () => {
+      resolve(body);
+    });
+    expect(cache.getQueryData(bodyKey())).toBeUndefined();
+    expect(
+      screen.queryByRole("article", { name: "Saved item detail" }),
+    ).not.toBeInTheDocument();
+    await waitFor(() => expect(demands.release).toHaveBeenCalled());
+  });
+
   it("retains one Body interest after an upgrade even when the saved description is fresh", async () => {
     body.metadata = null;
     const hydrate = mockTauriCommandResult("collaboration_hydrate_detail", {

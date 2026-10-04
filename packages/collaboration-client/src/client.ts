@@ -46,6 +46,12 @@ import {
   DemandCoordinator,
   type DemandTransport,
 } from "./demand-coordinator";
+import {
+  type NavigationInput,
+  type NavigationResource,
+  type NavigationScope,
+  NavigationWorkingSet,
+} from "./navigation-working-set";
 import { compareRevisions, RevisionBridge } from "./revision-bridge";
 
 export interface CollaborationTransport extends DemandTransport {
@@ -200,6 +206,7 @@ export class CollaborationClient {
   private bridge: RevisionBridge<CollaborationChange> | null = null;
   private queryClient: QueryClient | null = null;
   private readonly demands: DemandCoordinator;
+  private navigation: NavigationWorkingSet | null = null;
 
   constructor(readonly transport: CollaborationTransport) {
     this.demands = new DemandCoordinator(transport);
@@ -208,6 +215,18 @@ export class CollaborationClient {
   /** Ephemeral view interest; it never reads or hydrates provider data itself. */
   retainDemand(account: DemandAccount, target: DemandTarget) {
     return this.demands.retain(account, target);
+  }
+
+  /** Bounded speculative reads over the same local cache and authorization fences. */
+  navigationScope(input: NavigationInput): NavigationScope {
+    return (
+      this.navigation?.scope(input) ?? {
+        enter() {},
+        leave() {},
+        visit() {},
+        dispose() {},
+      }
+    );
   }
 
   subscribe = (listener: () => void) => {
@@ -473,6 +492,54 @@ export class CollaborationClient {
   installBridge(queryClient: QueryClient): () => void {
     if (this.bridge) return () => {};
     this.queryClient = queryClient;
+    const resourceTarget = (
+      resource: NavigationResource,
+    ): CapabilityTarget => ({
+      kind: "resource",
+      instance_id: resource.instanceId,
+      repository_id: null,
+      resource_id: resource.subjectId,
+      resource_kind: resource.kind,
+    });
+    const bodyQuery = (resource: NavigationResource) => ({
+      subject_id: resource.subjectId,
+      facet: "body" as const,
+      cursor: null,
+      limit: 50,
+    });
+    const navigation = new NavigationWorkingSet(queryClient, {
+      keys: (resource) => ({
+        context: collaborationKeys.contextualCapabilities(
+          resource.account,
+          resourceTarget(resource),
+        ),
+        item: collaborationKeys.item(resource.account, resource.subjectId),
+        body: collaborationKeys.detail(resource.account, {
+          ...bodyQuery(resource),
+          account_id: resource.account.id,
+        }),
+      }),
+      read: (resource, projection, signal) => {
+        const scoped = this.forAccount(resource.account);
+        if (projection === "context")
+          return scoped.contextualCapabilities(
+            resourceTarget(resource),
+            signal,
+          );
+        if (projection === "item")
+          return scoped.item(resource.subjectId, signal);
+        return scoped.detail(bodyQuery(resource), signal);
+      },
+      retain: (resource) =>
+        this.retainDemand(resource.account, {
+          kind: "detail",
+          repository_id: null,
+          subject_id: resource.subjectId,
+          facet: "body",
+        }),
+      observeActivity: (listener) => this.demands.observeActivity(listener),
+    });
+    this.navigation = navigation;
     const stopDeadlines = installCapabilityDeadlines(queryClient);
     let disposed = false;
     let stopLocalChanges: (() => void) | undefined;
@@ -520,6 +587,8 @@ export class CollaborationClient {
           await this.invalidateLocalLinks();
         for (const change of batch.changes) {
           if (change.reset) this.clearAccount(change.account_id);
+          else if (change.scope !== "drafts")
+            navigation.invalidate(change.account_id);
           for (const listener of this.changeListeners) listener(change);
           // TanStack preserves an initial fetch with no cached data during
           // invalidation. Cancel affected provider reads first so a late snapshot
@@ -555,6 +624,8 @@ export class CollaborationClient {
       disposed = true;
       stopLocalChanges?.();
       stopDeadlines();
+      navigation.stop();
+      if (this.navigation === navigation) this.navigation = null;
       this.demands.stop();
       bridge.stop();
       if (this.bridge === bridge) this.bridge = null;
@@ -580,6 +651,7 @@ export class CollaborationClient {
   }
 
   private clearAccount(accountId: string) {
+    this.navigation?.clear(accountId);
     this.demands.clear(accountId);
     this.fence.invalidate(LOCAL_LINKS_SCOPE);
     void this.queryClient?.cancelQueries({
@@ -599,6 +671,7 @@ export class CollaborationClient {
   }
 
   private resetLocalView() {
+    this.navigation?.clear();
     this.demands.clear();
     this.fence.invalidate();
     this.authorizationView = null;

@@ -13,6 +13,7 @@ import {
   useCollaborationItems,
   useCollaborationRepositories,
   useContextualCapabilities,
+  useNavigationPrefetch,
   useVisibleDemand,
 } from "@gitru/collaboration-client/react";
 import { Badge } from "@gitru/ui/components/badge";
@@ -828,6 +829,12 @@ function ItemFeed({
     canReadSaved(policy),
   );
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
+  const navigation = useNavigationPrefetch(
+    kind !== "notification" && instanceId && canReadSaved(policy)
+      ? { account, instanceId, kind }
+      : null,
+    JSON.stringify([repositoryId, state, search, cursor]),
+  );
   const Icon = icons[kind];
   const page = canReadSaved(policy) ? query.data : undefined;
   return (
@@ -923,7 +930,14 @@ function ItemFeed({
                   variant="ghost"
                   className="h-auto w-full justify-start gap-3 rounded-none border-b border-border px-5 py-3 text-left whitespace-normal"
                   aria-pressed={selectedItem === item.id}
-                  onClick={() => setSelectedItem(item.id)}
+                  onPointerEnter={() => navigation.enter(item.id, "pointer")}
+                  onPointerLeave={() => navigation.leave(item.id, "pointer")}
+                  onFocus={() => navigation.enter(item.id, "focus")}
+                  onBlur={() => navigation.leave(item.id, "focus")}
+                  onClick={() => {
+                    navigation.visit(item.id);
+                    setSelectedItem(item.id);
+                  }}
                 >
                   <Icon
                     className={`size-4 shrink-0 ${item.state === "open" || item.unread ? "text-success-foreground" : "text-muted-foreground"}`}

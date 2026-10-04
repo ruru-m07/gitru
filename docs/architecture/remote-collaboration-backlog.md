@@ -326,7 +326,7 @@ Acceptance criteria:
 
 ## RURU-121: Add bounded frontend prefetch and cached navigation
 
-Planning key: C07. Group: Read experience. Priority: High. State: Backlog.
+Planning key: C07. Group: Read experience. Priority: High. State: In Review (local qualification recorded below).
 Linear: [RURU-121](https://linear.app/catra/issue/RURU-121/add-bounded-frontend-prefetch-and-cached-navigation).
 Prerequisites: [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-98](https://linear.app/catra/issue/RURU-98/add-foreground-demand-leases-to-the-native-sync-scheduler), [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details).
 
@@ -334,9 +334,9 @@ Connect active views to native demand leases and prefetch a small working set on
 
 Acceptance criteria:
 
-- [ ] Cached list/detail navigation renders useful content without waiting for provider HTTP; missing data has a clear state.
-- [ ] Prefetch shares native jobs across webviews and respects a bounded count/byte/concurrency budget.
-- [ ] Hidden tabs drop urgency; large-list and keyboard tests prove demand/prefetch does not grow without bound.
+- [x] Cached list/detail navigation renders useful content without waiting for provider HTTP; missing data has a clear state.
+- [x] Prefetch shares native jobs across webviews and respects a bounded count/byte/concurrency budget.
+- [x] Hidden tabs drop urgency; large-list and keyboard tests prove demand/prefetch does not grow without bound.
 
 ## RURU-79: Resolve inbox notifications to cached PR and issue subjects
 
@@ -1274,3 +1274,33 @@ connector currently requires reauthentication. Local evidence does not replace
 new-head CI, live provider/vault or power-loss qualification. No PR is merged.
 R103's retained native-webview harness inherits this final source sequentially.
 See [R101 work note](./collaboration-work/RURU-101.md).
+
+
+### RURU-121 bounded cached navigation qualified locally — 4 October 2026
+
+Pointer dwell, keyboard focus and recent PR/issue navigation now warm the existing
+SDK/QueryClient projections and share the native ephemeral demand coordinator.
+Bounds are24 identities including retired pending reads, two concurrent local
+reads,16MiB estimated resident budget with4MiB active-read reservations,2MiB
+per-bundle admission, eight mounted scopes,150ms dwell and120s LRU/TTL. At most
+four speculative Body interests are admitted for5s; leaving, hidden activity or
+feed-region disposal releases urgency. Estimated accounting does not claim an
+exact heap bound. No provider HTTP, durable hydration or second durable cache is
+introduced; selected observers, private drafts and ordinary cache semantics stay
+with the existing detail path.
+
+Account/epoch/instance/subject/facet identity, real SDK fences, reset and revision
+invalidation suppress late private repopulation. Uncancellable native IPC keeps
+its count/byte/concurrency reservation until actual settlement. Selected pending
+or completed observers and newer cache values win over speculative completion.
+Notifications retain explicit subject resolution. Completed recent projections
+may remain within the bounded TTL after feed-region disposal; pending work cannot.
+
+Local evidence:429 desktop/SDK tests across48 files, full desktop/SDK Biome291
+files, SDK and desktop/E2E types, production frontend build and scoped whitespace
+checks pass. Tests use actual QueryClient/SDK observer races,10,000-row focus
+sweeps,200 body admissions, native lease lifecycle, offline missing/known-empty,
+reset/epoch/visibility fencing and ordinary coss pointer/focus/Enter consumers.
+No native package, live provider, exact JS heap or lower native priority claim is
+made by this slice. Its review PR is stacked on #156; remote checks qualify its
+own published head. No PR is merged. See [R121 work note](./collaboration-work/RURU-121.md).

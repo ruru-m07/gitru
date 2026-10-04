@@ -7,8 +7,12 @@ import type {
   ResourceLocator,
 } from "@gitru/commands";
 import { queryOptions, useQuery } from "@tanstack/react-query";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { collaboration, collaborationKeys } from "./index";
+import type {
+  NavigationInput,
+  NavigationScope,
+} from "./navigation-working-set";
 
 const localQueryPolicy = {
   networkMode: "always" as const,
@@ -27,6 +31,52 @@ export function useCollaborationVersion() {
     collaboration.getVersion,
     collaboration.getVersion,
   );
+}
+
+/** Events express intent; the Effect owns only the external scope lifetime. */
+export function useNavigationPrefetch(
+  input: NavigationInput | null,
+  region?: string,
+) {
+  const version = useCollaborationVersion();
+  const scope = useRef<NavigationScope | null>(null);
+  const account = input?.account;
+  const { id, actor_id, authorization_epoch, provider, host, state } =
+    account ?? {};
+  const instanceId = input?.instanceId;
+  const kind = input?.kind;
+  useEffect(() => {
+    if (!account || !instanceId || !kind) return;
+    const current = collaboration.navigationScope({
+      account,
+      instanceId,
+      kind,
+    });
+    scope.current = current;
+    return () => {
+      if (scope.current === current) scope.current = null;
+      current.dispose();
+    };
+    // Metadata changes do not recreate a resource scope; its identity is explicit.
+  }, [
+    id,
+    actor_id,
+    authorization_epoch,
+    provider,
+    host,
+    state,
+    instanceId,
+    kind,
+    version,
+    region,
+  ]);
+  return {
+    enter: (subjectId: string, source: "pointer" | "focus") =>
+      scope.current?.enter(subjectId, source),
+    leave: (subjectId: string, source: "pointer" | "focus") =>
+      scope.current?.leave(subjectId, source),
+    visit: (subjectId: string) => scope.current?.visit(subjectId),
+  };
 }
 
 /** View liveness only. Native owns due times, provider retries and all HTTP. */

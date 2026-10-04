@@ -26,6 +26,11 @@ export interface DemandHandle {
   subscribe(listener: (error: unknown | null) => void): () => void;
   release(): void;
 }
+export type DemandAvailability = {
+  generation: string | null;
+  /** null until native ownership is known; false also covers a hidden document. */
+  active: boolean | null;
+};
 
 type Entry = {
   key: string;
@@ -72,13 +77,43 @@ export class DemandCoordinator {
   private readonly expired = new Map<Entry, number>();
   private readiness = 0;
   private startupRepairing = false;
+  private readonly availabilityListeners = new Set<
+    (activity: DemandAvailability) => void
+  >();
 
   constructor(private readonly transport: DemandTransport) {}
 
   /** Installing a query bridge alone does not cause activity IPC. */
   attach() {
     this.attached = true;
-    if (this.entries.size) void this.start();
+    if (this.entries.size || this.availabilityListeners.size) void this.start();
+  }
+
+  /** Share the one authoritative webview lifecycle with local navigation work. */
+  observeActivity(listener: (activity: DemandAvailability) => void) {
+    this.availabilityListeners.add(listener);
+    listener(this.availability());
+    if (this.attached) void this.start();
+    return () => {
+      this.availabilityListeners.delete(listener);
+    };
+  }
+
+  private availability(): DemandAvailability {
+    return {
+      generation: this.activity?.generation ?? null,
+      active:
+        !this.attached || !this.visible
+          ? false
+          : this.activity
+            ? this.activity.active
+            : null,
+    };
+  }
+
+  private publishAvailability() {
+    const activity = this.availability();
+    for (const listener of this.availabilityListeners) listener(activity);
   }
 
   retain(account: DemandAccount, target: DemandTarget): DemandHandle {
@@ -195,6 +230,7 @@ export class DemandCoordinator {
     this.started = false;
     this.starting = false;
     this.activity = null;
+    this.publishAvailability();
     this.repairing = false;
     this.activityRepairVersion += 1;
     this.expiryRepairing = false;
@@ -225,6 +261,7 @@ export class DemandCoordinator {
     const session = this.session;
     this.visible =
       typeof document === "undefined" || document.visibilityState === "visible";
+    this.publishAvailability();
     try {
       const unlisten = await this.transport.listenDemandActivity((activity) => {
         if (this.attached && this.session === session)
@@ -256,6 +293,7 @@ export class DemandCoordinator {
       if (this.session !== session) return;
       this.visible = false;
       this.suspend();
+      this.publishAvailability();
     };
     const show = () => {
       if (this.session !== session || document.visibilityState !== "visible")
@@ -328,6 +366,7 @@ export class DemandCoordinator {
       return; // Native transitions always receive a new positive generation.
     const changed = this.activity?.generation !== activity.generation;
     this.activity = { ...activity };
+    this.publishAvailability();
     if (changed) {
       this.suspend();
       for (const entry of this.entries.values())
