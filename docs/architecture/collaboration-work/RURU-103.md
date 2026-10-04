@@ -979,3 +979,43 @@ receipt unchanged after the real304 refresh and before explicit public wake.
 Retain dirty editor/CAS checks and every existing limit. Root authorizes frontend
 owner to add these assertions to the existing two executor files and ordering
 controls; no fake cursor, visibility, native event bus or production bridge change.
+
+
+## Fresh target-aware retained qualification — 4 October 2026
+
+Signed source201005db7fe166b4b7df6fa19f49078ebf196a4f passes the new actual
+Tauri wire regression (two RED Any-target assertions before the SDK patch, then
+three GREEN wire cases) and17 executor cases. Full frontend535 passed/one
+Windows-only skip across57 files; full lint2/2, types5/5 and production desktop
+frontend5127 modules pass. Independent native peer confirms intentional global
+broadcast compatibility from pinned emitter source and finds no source blocker.
+No Rust command, DTO, migration, bridge/fence or deadline change in this repair;
+prior Rust unit/Clippy evidence remains prior evidence, not a newly rerun matrix.
+
+Fresh serialized native build+retained run exits0; all five stages exit0 in
+`artifacts/e2e-harness/2026-10-04T13-32-16-523Z-57720`. Binary SHA256
+13070937ff590eec44d7315b971c009fa1cca964c8158cc61e3419f1e9ec2699. All six
+main scenarios pass. The actual child Body/facet/cursor22 remains22 through three
+held refreshes until reverse delivery reaches28;28 remains unchanged during the
+dropped304 refresh until public wake reaches30. Real paging uses two reads and
+cursor331.4100 real writes finish before the local return gate begins; child
+cursor331/reset0/cacheBody30 remain unchanged until real wake applies
+ResetRequired4431/reset1/cacheBody4431. Held return then yields actual stale_view,
+with the new cache, dirty authored text and CAS conflict retained. Main owned
+PID57724/session5067f57b-e618-4946-acde-27da7b644a2c; cleanup succeeds.
+
+Before-commit owned SIGKILL PID57929/sessionffe57128-4089-4984-a537-37d77a53a773
+restarts as PID57985/session7f077f57-362c-4b0d-b706-8803235ae8b0; no committed
+Body existed at the crash, and fresh actual interest obtains facet21. After-commit
+owned SIGKILL PID58039/sessiond4289f24-fc4f-4893-a28d-7c10e60e8395 restarts as
+PID58110/sessionf48828ed-9427-45ff-9187-23a6e0707944; committed Body/facet20
+survives before interest with zero provider/vault calls. Both OS exit receipts
+confirm SIGKILL; actual sessions/PIDs differ. Logs
+`/tmp/gitru-ruru103-revision-native-retained.log` and frontend
+`/tmp/gitru-ruru103-revision-*.log`. No personal credentials or product namespace
+were inspected. The available desktop supplied actual visible-document receipts.
+
+This is fresh local macOS qualification only. Prior remote9ef7148 passes13/14
+with retained Windows failure; the qualified update is now ready to push to the
+existing #157, with a new exact-head remote matrix pending independently. No
+CodeQL/platform/live-provider/keyring pass is inferred and nothing is merged.

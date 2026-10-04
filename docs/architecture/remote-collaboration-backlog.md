@@ -1712,3 +1712,18 @@ Pinned Tauri catch-all EventTarget::Any receives main-targeted events too. The
 [signed bounded contract](./collaboration-work/RURU-103.md) permits an ordinary
 SDK own-Webview collaboration listener, preserving global broadcasts and all
 real catchup/reset/fence/deadline controls. No repair is remotely qualified yet.
+
+
+### RURU-103 revision target and retention repair qualified — 4 October 2026
+
+Signed201005db corrects ordinary SDK revision listener to actualWebview scope
+while preserving intentional global broadcasts. Wire regression is RED→GREEN;
+535 frontend tests/one platformskip, lint/types and production build pass. Fresh
+serialized retained Mac binary13070937 passes all6 main scenarios and both owned
+SIGKILL/fresh-session restart pairs (all5 stagesexit0). Actual childcache22/28
+stays unchanged until reverse/publicwake; real retention331→4431 ResetRequired
+fences a genuinely held return as stale_view while retaining dirty/CAS state.
+Full evidence/previous failure boundaries are in the [R103 work note](./collaboration-work/RURU-103.md).
+Publishing to existing #157; new exact-head remote CI remains pending separately
+from these local results. Previous9ef7148 retainedWindows failure is not labeled
+a new-head Windows pass. No merge or live credentials.
