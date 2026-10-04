@@ -221,3 +221,39 @@ read-only audit finds O_CLOEXEC and no descriptor clone/directory collision, but
 cannot attribute the initial conflict to a child. Keep immediate reopen fatal;
 no sleep/retry/global serialization or unproven production lock fix is added.
 Full combined rerun and exact remote platform qualification remain required.
+
+### RURU-101 integrated facet reconciliation qualification — 4 October2026
+
+Signed source1cb9bea integrates R110/#155725b9f2 and repaired R79/e6fe69e.
+Full combined native qualification completed3 October:311 cases pass, including
+165 library and146 integration cases, with two existing ignored subprocess
+helpers; all12 frozen-v1 migration cases and15 native caller/updater cases pass.
+Workspace all-target Clippy-Dwarnings and formatting pass. The one-off initial
+cold-reopen OS Busy does not recur in the combined run; weak ownership and fatal
+immediate reopen assertions remain. Its original cause is not claimed resolved.
+
+Normal make typegen regenerates113 commands; all285 existing named Zod schemas
+preserve normalized initializer semantics and public DTOs stay unchanged. After
+interruption, resumed4 October SDK110, actual SDK/desktop/E2E types, source binding
+lint and the285-schema comparison pass. Regenerated files are generator output,
+including ordering/cache metadata changes, not handwritten IPC. Native receipt,
+versioned stored provenance and finite field clocks remain private to the engine;
+frozen0001..0007 and R106's restore ceiling are unchanged.
+
+Independent source-backed regressions drive retained clocks through304/null
+observations, qualified full collection absence, continuation representation
+restart, current-head stale/metadata conflict veto, pre-HTTP captured lease/subject
+fences and exact old-job terminal cleanup. Historical Reviews and ordinary feed
+paging/absence/selected-cache/private CAS remain qualified controls. Full trusted
+enumeration is distinct from terminal delta/uncertain paging and whole_scope
+continues to mean validator coverage. No production Comments/Reviews/Checks
+adapter is enabled; future endpoint/head policies and live provider tests remain
+separate rollout tasks. No UI behavior or Tauri authority is expanded.
+
+A review PR is stacked on published R110/#155; this new head's remote CI starts
+at publication. ParentR110 Rust and packaged E2E on all three platforms plus
+CodeQL pass, while its Vercel API deployment status remains Pending and the
+connector currently requires reauthentication. Local evidence does not replace
+new-head CI, live provider/vault or power-loss qualification. No PR is merged.
+R103's retained native-webview harness inherits this final source sequentially.
+See [R101 work note](./RURU-101.md).
