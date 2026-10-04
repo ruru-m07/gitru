@@ -151,3 +151,49 @@ historical coverage with SyncError. Their revised controls preserve actual HTTP,
 cached/draft/cursor/time assertions. Logs /tmp/gitru-ruru112-pulls-native-focused.log.
 Native owner additionally owns ONLY this shared detail error receipt correction;
 independent Runtime owner retains its assigned test files. Root serializes checks.
+
+
+## Qualified implementation — 4 October 2026
+
+Signed source `6892db97bfc54c9d980ec0d47e9bf1bbe3c6c413` implements the
+contract in fourteen owned files. The original two failing detail-error quota
+assertions now pass without weakening them. Existing captured account/epoch
+barriers reject old-epoch success and 429 quota receipts; rejected singleton data
+does not gain Body, source, metadata or access authority. Discovery cursors retain
+the exact prior BTreeMap fingerprint encoding.
+
+Fresh serial native evidence:49/49 focused Bitbucket cases pass (17 earlier HTTP,
+15 new HTTP,7 earlier Runtime and10 new Runtime cases). Full default workspace
+passes731 top-level tests/three ignored:380 collaboration (234 library plus146
+integration),321 Git,15 native app and15 IPC. Counts exclude filtered child-process
+duplicates. All-target workspace Clippy with warnings denied, rustfmt and diff
+checks pass. Logs `/tmp/gitru-ruru112-pulls-native-focused-repaired.log`,
+`/tmp/gitru-ruru112-pulls-native-workspace-tests.log` and
+`/tmp/gitru-ruru112-pulls-native-clippy.log`. No later source edits.
+
+Frontend:438 tests/51 files pass, including21 focused account/PR cases (14 retained
+account/repository controls plus7 ordinary SDK/Workspace tests). Full lint2/2,
+types5/5 and production desktop frontend build5127 modules pass. Independent
+provider/frontend and native detail-quota review found no blocker. This slice
+changes no command signatures, DTOs or schema; inherited normally generated IPC
+remains intact and no generated files were hand-edited.
+
+Actual HTTP-to-Runtime/SQLite controls cover repo-local PR67 across two repositories
+and actors, stable UUID through rename, all states, bounded opaque continuation,
+loop/cap persistence through scheduler yield and cold reopen, exact raw Body
+omission/null/oversize/conflict, abbreviated/deleted fork refs, scoped403, private
+drafts, cold zero-HTTP/vault reads and replaced-account response/quota fencing.
+The held-singleton head-race producer uses an independent actual HTTP adapter plus
+Store PageCommit; Runtime dispatch itself is serial, so this is not two simultaneous
+Runtime dispatches. UI controls use ordinary SDK/bridge and generated IPC mocks,
+including Body-only interest, offline fields/drafts, account replacement, PR scope
+isolation and unavailable issue/inbox facets.
+
+Limits remain explicit: repository UUID child routing is a documented-hierarchy
+inference, not live-provider qualification;20 accepted pages is an intentional
+large-feed cap with Partial coverage, requiring a future explicit restart policy;
+failed new first pages preserve previous historical coverage/validated_at with a
+current SyncError rather than establishing fresh completeness. Participants/tasks,
+remote writes, issues/inbox and live credentials/keyring checks remain undelivered.
+R112 stays In Progress. Publication is a new draft stack on #160, with exact-head
+remote CI pending independently of these local results. Nothing is merged.

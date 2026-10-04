@@ -1424,3 +1424,19 @@ assumptions were corrected to actual cold-admission/historical-coverage semantic
 Fresh post-fix qualification is pending. #1579ef7148 separately passes13/14 remote
 checks; retainedWindows now starts and passes5/6 main scenarios but fails actual
 retention-reset stale_view. Owned artifacts are under investigation; not qualified.
+
+
+### RURU-112 PR reads qualified locally — 4 October 2026
+
+Signed source6892db97 implements Bitbucket all-state PR summaries and singleton
+raw Body/common metadata through existing local projections. The independent
+detail-error cooldown regression is repaired through captured account/epoch
+barriers, with both original red assertions green.49/49 focused native cases and
+731 full default workspace tests/three ignored pass; all-target Clippy/fmt pass.
+Frontend438/51files, lint/types and production build pass. Full evidence and
+coverage/routing/platform limits are in the [PR-read work note](./collaboration-work/RURU-112-pulls.md).
+A separate draft stack on #160 is ready for publication; remote exact-head CI is
+pending separately. R112 remains In Progress for explicit participant/task facets.
+#160968cd524 and #159ebb8ae1 each pass all11 reported checks. #1579ef7148 remains
+13/14 with retained Windows failing a bounded test-lifetime seam; its isolated
+fixture repair and fresh native qualification are underway. No merge.
