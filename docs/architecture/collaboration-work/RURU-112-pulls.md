@@ -63,6 +63,9 @@ state multiset; duplicates of other query keys or missing/added states remain
 invalid. Continue only bounded opaque same-origin/same-repo/same-route links;
 normalize equivalent bounded literal/lowercase/uppercase brace spelling and query
 ordering for SHA256 history, never different paths, credentials or filters.
+Preserve exact existing BTreeMap JSON fingerprint bytes for repository/workspace
+cursors written by #160. Only the new PR-list cursor uses a sorted state multiset;
+changing old fingerprint representation without migration would lose loop history.
 
 One dispatch fetches one page. Persist a versioned <=4096-byte cursor bound to
 account, positive canonical authorization epoch and repository UUID, last positive
