@@ -496,6 +496,18 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
         await wait(async () =>
           (await inspect(label)).editor_hash === dirty ? true : null,
         );
+        const beforeHeld = keep(
+          await wait(async () => {
+            const snapshot = await inspect(label);
+            return snapshot.body.status === "success" &&
+              !snapshot.body.fetching &&
+              snapshot.body.revision !== null &&
+              snapshot.facet_revision !== null &&
+              snapshot.editor_hash === dirty
+              ? snapshot
+              : null;
+          }),
+        );
         await control("hold_child_hints");
         await refresh("phase_one");
         await refresh("phase_two");
@@ -510,6 +522,16 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
             ? true
             : null;
         });
+        stage = "verify actual child cache is unchanged while hints are held";
+        const withheld = keep(await inspect(label));
+        require(
+          withheld.body.revision === beforeHeld.body.revision &&
+            withheld.facet_revision === beforeHeld.facet_revision &&
+            withheld.body_hash === beforeHeld.body_hash &&
+            withheld.metadata_hash === beforeHeld.metadata_hash &&
+            withheld.catchup.last_receipt === beforeHeld.catchup.last_receipt &&
+            withheld.editor_hash === dirty,
+        );
         stage = "deliver latest then older native hints";
         await control("deliver_child_hints_reverse");
         const final = await rendered(label, "two", finalRevision);
@@ -517,11 +539,24 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
         require(final.editor_hash === dirty);
         await control("resume_hints");
         stage = "recover dropped hints after an explicit public SDK wake";
+        const beforeDropped = keep(await inspect(label));
         await control("drop_child_hints");
-        const beforeDropped = await inspect(label);
         await refresh("phase_not_modified");
         const droppedFacet = current.core.committed_facet_revision;
         require(droppedFacet !== beforeDropped.facet_revision);
+        stage =
+          "verify actual child cache is unchanged while hints are dropped";
+        const withoutHints = keep(await inspect(label));
+        require(
+          withoutHints.body.revision === beforeDropped.body.revision &&
+            withoutHints.facet_revision === beforeDropped.facet_revision &&
+            withoutHints.body_hash === beforeDropped.body_hash &&
+            withoutHints.metadata_hash === beforeDropped.metadata_hash &&
+            withoutHints.catchup.last_receipt ===
+              beforeDropped.catchup.last_receipt &&
+            withoutHints.editor_hash === dirty,
+        );
+        stage = "recover dropped hints after an explicit public SDK wake";
         await requireSnapshot(label, { kind: "wake" });
         await wait(async () => {
           const snapshot = await inspect(label);

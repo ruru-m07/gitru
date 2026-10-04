@@ -462,6 +462,11 @@ async function orderingFixture() {
 async function retentionOrderingFixture({
   prematureCatchup = false,
   delayResetBodyCache = false,
+  leakHints = null,
+}: {
+  prematureCatchup?: boolean;
+  delayResetBodyCache?: boolean;
+  leakHints?: "hold" | "drop" | null;
 } = {}) {
   const { probe, coreControl } = await orderingFixture();
   const baseExecute = probe.execute.getMockImplementation();
@@ -616,6 +621,7 @@ async function retentionOrderingFixture({
         current.core.phase === "one" ? "one" : "two";
       if (current.hint_mode === "hold")
         current.held_hint_revisions.push(current.core.revision);
+      if (current.hint_mode === leakHints) catchUpChild();
     }
     if (coreAction === "fill_catchup") {
       current.core.revision = (BigInt(current.core.revision) + 300n).toString();
@@ -661,6 +667,32 @@ async function retentionOrderingFixture({
 }
 
 describe("retained finite executor scheduling order", () => {
+  it.each([
+    "hold",
+    "drop",
+  ] as const)("rejects observed child cache advancement while %s hints should be withheld", async (leakHints) => {
+    const fixture = await retentionOrderingFixture({ leakHints });
+    executor = await installCollaborationHarnessExecutor(fixture.probe);
+    const result = HarnessScenarioResultSchema.parse(
+      await executor.runScenario("hints-and-catchup"),
+    );
+    expect(result.outcome).toBe("failed");
+    expect(result.stage).toBe(
+      leakHints === "hold"
+        ? "verify actual child cache is unchanged while hints are held"
+        : "verify actual child cache is unchanged while hints are dropped",
+    );
+    expect(result.failure).toEqual({ kind: "assertion" });
+    expect(result.obsolete_reads?.retention_reset).toBeNull();
+    expect(current.local_reads).toHaveLength(0);
+    expect(
+      native.control.mock.calls.some(
+        ([input]) => input.request.core_action === "fill_retention",
+      ),
+    ).toBe(false);
+    expect(result.cleanup_failure).toBeNull();
+  });
+
   it("finishes slow retention preparation before starting either bounded held-read lifetime", async () => {
     const fixture = await retentionOrderingFixture();
     vi.useFakeTimers();

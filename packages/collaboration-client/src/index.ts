@@ -163,7 +163,10 @@ export const collaboration = new CollaborationClient({
   discoverNotificationSubject: (request) =>
     collaborationDiscoverNotificationSubject({ request }),
   listen: (onWake) =>
-    listen<{ revision: string }>("gitru:collaboration-change", onWake),
+    getCurrentWebview().listen<{ revision: string }>(
+      "gitru:collaboration-change",
+      onWake,
+    ),
 });
 
 export function installCollaborationBridge(
