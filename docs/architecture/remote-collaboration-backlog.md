@@ -1397,3 +1397,19 @@ Known-actor invalid-presentation quota regression is recorded red/green without
 credential staging/cache replacement. Full evidence and platform/live limitations
 are in [R112's work note](./collaboration-work/RURU-112.md). Publication and exact-
 head remote qualification remain separate. No live credentials or merge.
+
+
+### RURU-112 second bounded slice contract — 4 October 2026
+
+First account/repository draft #160 exact968cd524 passes all11 reported checks,
+including all-platform Rust/ordinary packaged E2E. R112 stays In Progress: PR and
+explicit participant/task facets remain. The next isolated stack accepts the
+[PR-summary/Body contract](./collaboration-work/RURU-112-pulls.md) before code.
+Compound repoUUID/local PR identity, exact all-state opaque pagination, durable20
+page/history bound, singleton rendered.description.raw authority, full-OID refs,
+and typed unsupported differences use the existing Runtime/SQLite/SDK. The stable
+UUID repository child route is explicitly a documentation inference until live
+qualification; no provider credentials are read. No migration/scheduler/SDK
+production change is planned. R103/#157 latest9ef7148 repair is separately pushed
+with local all5 retained stages passing; its new remote matrix runs independently.
+No merge. First #160 remains unchanged while the new reviewable slice is prepared.
