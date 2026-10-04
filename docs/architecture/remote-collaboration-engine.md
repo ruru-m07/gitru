@@ -2638,3 +2638,28 @@ retained job; previous published5efea64 Linux/macOS retained successes do not
 qualify the new source. Remote matrix restarts after publication. Live provider,
 production keyring, other platforms and power-loss behavior remain separate.
 No personal credentials or cloud account are inspected; no merge is performed.
+
+
+### Windows native-path identity follow-up — 4 October 2026
+
+Exact published #157 cce498b passes retained Linux/macOS and ordinary Windows
+E2E, but retained Windows job111420764848 fails native startup before any scenario
+with `Invalid native collaboration harness input`. Its owned artifact preserves
+`C:\\Users\\RUNNER~1\\AppData\\Local\\Temp` in the namespaced launch root.
+The job actually runs Bun1.3.0+b0a6feca; any earlier1.3.7 source assumption does
+not describe this job. Bun1.3.0's default Windows realpath walker preserves
+non-symlink DOS aliases; its native resolver uses uv_fs_realpath. See the exact
+[JS source](https://raw.githubusercontent.com/oven-sh/bun/bun-v1.3.0/src/js/node/fs.ts)
+and [native source](https://raw.githubusercontent.com/oven-sh/bun/bun-v1.3.0/src/bun.js/node/node_fs.zig).
+
+Signed source b5154effa039c7dab3a2b0accc7d9ca114a54786 resolves actual filesystem
+identity with realpathSync.native before restoring Rust's Windows namespace.
+Root/type/symlink/dev/ino/environment/actual-child guards remain strict. An actual
+resolver spy proves native selection; the owned Windows child regression exercises
+the real short alias when supplied by the host, proves matching filesystem identity
+and rejects alias spelling without signaling the child. It fabricates no DOS name
+or filesystem response. Full frontend523 tests pass/one Windows-only skip on macOS,
+plus full lint/types and diff checks. Logs:
+/tmp/gitru-ruru103-native-realpath-{focused-tests,final-tests,final-lint,final-types}.log.
+Fresh retained local qualification and exact-head remote Windows execution remain
+separate gates; this source audit is not a passing Windows scenario claim.

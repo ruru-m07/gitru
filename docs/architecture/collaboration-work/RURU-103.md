@@ -783,3 +783,51 @@ retained job; previous published5efea64 Linux/macOS retained successes do not
 qualify the new source. Remote matrix restarts after publication. Live provider,
 production keyring, other platforms and power-loss behavior remain separate.
 No personal credentials or cloud account are inspected; no merge is performed.
+
+
+### Windows native-path identity follow-up — 4 October 2026
+
+Exact published #157 cce498b passes retained Linux/macOS and ordinary Windows
+E2E, but retained Windows job111420764848 fails native startup before any scenario
+with `Invalid native collaboration harness input`. Its owned artifact preserves
+`C:\\Users\\RUNNER~1\\AppData\\Local\\Temp` in the namespaced launch root.
+The job actually runs Bun1.3.0+b0a6feca; any earlier1.3.7 source assumption does
+not describe this job. Bun1.3.0's default Windows realpath walker preserves
+non-symlink DOS aliases; its native resolver uses uv_fs_realpath. See the exact
+[JS source](https://raw.githubusercontent.com/oven-sh/bun/bun-v1.3.0/src/js/node/fs.ts)
+and [native source](https://raw.githubusercontent.com/oven-sh/bun/bun-v1.3.0/src/bun.js/node/node_fs.zig).
+
+Signed source b5154effa039c7dab3a2b0accc7d9ca114a54786 resolves actual filesystem
+identity with realpathSync.native before restoring Rust's Windows namespace.
+Root/type/symlink/dev/ino/environment/actual-child guards remain strict. An actual
+resolver spy proves native selection; the owned Windows child regression exercises
+the real short alias when supplied by the host, proves matching filesystem identity
+and rejects alias spelling without signaling the child. It fabricates no DOS name
+or filesystem response. Full frontend523 tests pass/one Windows-only skip on macOS,
+plus full lint/types and diff checks. Logs:
+/tmp/gitru-ruru103-native-realpath-{focused-tests,final-tests,final-lint,final-types}.log.
+Fresh retained local qualification and exact-head remote Windows execution remain
+separate gates; this source audit is not a passing Windows scenario claim.
+
+### Real surface preparation contract — 4 October 2026
+
+Fresh b5154ef retained run11-45-28-268Z-41161 uses the identical previously passing
+native binary SHA30db1b4a. Four main cases pass; normal first-surface observation and
+disconnect provider capture time out before crash phases. Both disconnect documents
+are actually DOM-hidden with native owners active, zero leases and an untouched
+armed provider gate. SDK hidden-document suspension is correct. The normal host's
+initial measurement waits requestAnimationFrame; hidden-page throttling fits its
+failure, but current diagnostics do not prove the exact host branch or OS trigger.
+
+Before additional fixture edits, adopt this bounded preparation contract: the
+private native fixture focuses its exact created child window after show, and
+restores/focuses its exact main window after closing that child. Use real Tauri
+window methods; no generic labels, new external controller, fabricated DOM state,
+production permission change or bypass of SDK/native hidden-owner admission.
+The executor observes actual document visibility through the existing finite
+probe before visibility-dependent mounts and normal-host startup. Preserve the
+existing deadlines, native generations, counter assertions and hidden controls.
+Pinned Tao0.35.2 set_focus activates the macOS application; show alone does not
+establish actual document visibility. Exact native/DOM receipts, fresh compiled
+execution and all crash stages must qualify the combined repair. The earlier
+passing artifact and source-only path inference are not new-head qualification.
