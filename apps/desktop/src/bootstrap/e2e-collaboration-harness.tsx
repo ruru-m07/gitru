@@ -3,11 +3,7 @@ import {
   collaboration,
   StaleAuthorizationError,
 } from "@gitru/collaboration-client";
-import {
-  detailQueryOptions,
-  itemQueryOptions,
-  useCollaborationAccounts,
-} from "@gitru/collaboration-client/react";
+import { useCollaborationAccounts } from "@gitru/collaboration-client/react";
 import type { HarnessViewManifest, RemoteAccount } from "@gitru/commands";
 import {
   collaborationConnectGithub,
@@ -293,22 +289,19 @@ export async function installCollaborationHarnessProbe(
       save.form.requestSubmit(save);
     } else if (action.kind === "read-item" || action.kind === "read-body") {
       if (!captured) throw { code: "not_ready" };
-      // Force one actual local query; query options retain the real SDK fence.
-      // No hydration/demand intent is added by these explicit probe reads.
-      if (action.kind === "read-item")
-        await queryClient.fetchQuery({
-          ...itemQueryOptions(captured.account, captured.subjectId),
-          staleTime: 0,
-        });
+      // Observe the actual local SDK completion. TanStack legitimately resolves
+      // reverted cached data after cancelling a refetch; that receipt cannot
+      // prove what happened to this held native read. The ordinary detail UI
+      // retains its real query/cache path and is inspected independently.
+      // These explicit reads add no hydration or foreground demand intent.
+      const local = collaboration.forAccount(captured.account);
+      if (action.kind === "read-item") await local.item(captured.subjectId);
       else
-        await queryClient.fetchQuery({
-          ...detailQueryOptions(captured.account, {
-            subject_id: captured.subjectId,
-            facet: "body",
-            cursor: null,
-            limit: 50,
-          }),
-          staleTime: 0,
+        await local.detail({
+          subject_id: captured.subjectId,
+          facet: "body",
+          cursor: null,
+          limit: 50,
         });
     }
     // React may commit after the action receipt. The driver waits on actual

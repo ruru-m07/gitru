@@ -1396,3 +1396,26 @@ Unavailable evidence, and old-epoch held-response tests successfully release
 through post-disconnect status and assert committed Body evidence None. No blanket
 catch or core policy change is made. Actual retained proof remains incomplete;
 third-run artifacts are `artifacts/e2e-harness/2026-10-04T08-41-14-989Z-23734`.
+
+
+### Explicit SDK completion after query cancellation — 4 October 2026
+
+The fourth retained macOS run at 36a5307 passes five main scenarios, including
+actual withheld-read disconnect. The hint scenario qualifies reversed/dropped
+hints, dirty draft preservation, an actual private-draft CAS conflict, 300 writes
+with a 256-row catch-up page and 4,100 writes producing ResetRequired. Its final
+obsolete-read assertion fails. Artifacts are
+`artifacts/e2e-harness/2026-10-04T08-56-17-023Z-25115`; crash phases did not run.
+
+Installed TanStack Query source and a real QueryClient regression establish that
+cancelling a cached refetch with revert enabled can resolve the prior cached value.
+That query completion cannot identify the held native read's final outcome.
+Explicit probe reads now call the existing account-scoped SDK directly, retaining
+its actual authorization fence and generated local transport. Ordinary UI hooks,
+QueryClient cache behavior and independent UI snapshot observations are unchanged.
+A second regression invalidates the actual singleton SDK fence during held
+transport and observes the real stale authorization outcome. Bounded result
+receipts now retain retention-reset and disconnect read outcomes before assertions;
+only stale_view or cancelled qualify. All 35 focused frontend cases, both desktop
+and E2E TypeScript checks, scoped lint and diff checks pass. Complete retained
+packaged main/crash/restart and Linux/Windows qualification remain pending.

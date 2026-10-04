@@ -109,6 +109,16 @@ describe("retained native collaboration synchronization", () => {
               "Native peer authority omitted exact denials or owner cleanup",
             );
         }
+        if (name === "hints-and-catchup" || name === "disconnect") {
+          const outcome =
+            name === "hints-and-catchup"
+              ? result.obsolete_reads?.retention_reset
+              : result.obsolete_reads?.disconnect;
+          if (outcome !== "stale_view" && outcome !== "cancelled")
+            throw new Error(
+              "Obsolete native SDK read did not carry an actual fence receipt",
+            );
+        }
       });
     }
   } else if (phase === "restart") {

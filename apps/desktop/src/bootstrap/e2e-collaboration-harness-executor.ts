@@ -20,6 +20,7 @@ import {
   HARNESS_RESULT_EVENT,
   type HarnessAction,
   type HarnessAuthorityEvidence,
+  type HarnessObsoleteReads,
   HarnessPeerLeaseSchema,
   type HarnessProbeSnapshot,
   type HarnessScenario,
@@ -159,6 +160,10 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
     running = true;
     const deadline = Date.now() + SCENARIO_TIMEOUT_MS;
     const observations: HarnessProbeSnapshot[] = [];
+    const obsoleteReads: HarnessObsoleteReads = {
+      retention_reset: null,
+      disconnect: null,
+    };
     let authority: HarnessAuthorityEvidence | null = null;
     let manualLease: DemandLeaseReceipt | null = null;
     let manualLeaseBaseline = 0;
@@ -447,7 +452,7 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
           throw new Error("The native retained read gate is missing");
         const oldRead = requestWhenBound(label, { kind: "read-body" }).then(
           (receipt) => receipt.outcome,
-          () => "failed" as const,
+          () => "request_failed" as const,
         );
         await wait(async () =>
           (await status()).local_reads.some(
@@ -474,6 +479,7 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
         stage = "fence an actual old local snapshot after retention reset";
         await control("release_local_read", null, oldReadGate);
         const oldReadOutcome = await oldRead;
+        obsoleteReads.retention_reset = oldReadOutcome;
         require(
           oldReadOutcome === "stale_view" || oldReadOutcome === "cancelled",
         );
@@ -827,7 +833,7 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
         // left as an unhandled promise while the other native operations run.
         const settled = delayed.then(
           (receipt) => receipt.outcome,
-          () => "failed" as const,
+          () => "request_failed" as const,
         );
         await wait(async () =>
           (await status()).local_reads.some(
@@ -848,6 +854,7 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
         await core("release_provider_gate", provider);
         await control("release_local_read", null, local);
         const obsoleteOutcome = await settled;
+        obsoleteReads.disconnect = obsoleteOutcome;
         require(
           obsoleteOutcome === "stale_view" || obsoleteOutcome === "cancelled",
         );
@@ -1017,6 +1024,7 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
       status: await status().catch(() => null),
       observations,
       authority,
+      obsolete_reads: obsoleteReads,
     } satisfies HarnessScenarioResult;
   }
 

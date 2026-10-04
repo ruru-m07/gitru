@@ -5,6 +5,7 @@ import {
   HARNESS_REQUEST_TIMEOUT_MS,
   HarnessActionSchema,
   HarnessAuthorityEvidenceSchema,
+  HarnessObsoleteReadsSchema,
   HarnessPeerLeaseSchema,
   type HarnessRequest,
   HarnessRequestSchema,
@@ -227,6 +228,30 @@ describe("retained collaboration renderer protocol", () => {
         main_renewed: false,
       }).checks.release_lease,
     ).toBe("accepted");
+  });
+
+  it("keeps obsolete read evidence explicit without accepting a failed request as a fence", () => {
+    expect(
+      HarnessObsoleteReadsSchema.parse({
+        retention_reset: "stale_view",
+        disconnect: "cancelled",
+      }),
+    ).toEqual({ retention_reset: "stale_view", disconnect: "cancelled" });
+    expect(
+      HarnessObsoleteReadsSchema.parse({
+        retention_reset: "request_failed",
+        disconnect: "accepted",
+      }).retention_reset,
+    ).toBe("request_failed");
+    for (const changed of [
+      { retention_reset: "timeout means stale", disconnect: null },
+      {
+        retention_reset: "stale_view",
+        disconnect: null,
+        raw_error: "private response",
+      },
+    ])
+      expect(HarnessObsoleteReadsSchema.safeParse(changed).success).toBe(false);
   });
 });
 

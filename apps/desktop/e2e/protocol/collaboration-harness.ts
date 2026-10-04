@@ -157,6 +157,17 @@ const actionOutcome = z.enum([
   "cancelled",
   "failed",
 ]);
+const obsoleteReadOutcome = z.union([
+  actionOutcome,
+  z.literal("request_failed"),
+]);
+export const HarnessObsoleteReadsSchema = z
+  .object({
+    retention_reset: obsoleteReadOutcome.nullable(),
+    disconnect: obsoleteReadOutcome.nullable(),
+  })
+  .strict();
+export type HarnessObsoleteReads = z.infer<typeof HarnessObsoleteReadsSchema>;
 export const HarnessAuthorityChecksSchema = z
   .object({
     controller: actionOutcome,
@@ -339,6 +350,7 @@ export const HarnessScenarioResultSchema = z
     ).nullable(),
     observations: z.array(HarnessProbeSnapshotSchema).max(32),
     authority: HarnessAuthorityEvidenceSchema.nullable().optional(),
+    obsolete_reads: HarnessObsoleteReadsSchema.optional(),
   })
   .strict();
 export type HarnessScenarioResult = z.infer<typeof HarnessScenarioResultSchema>;

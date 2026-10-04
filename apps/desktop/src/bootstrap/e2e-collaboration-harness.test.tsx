@@ -1,10 +1,12 @@
 import { webcrypto } from "node:crypto";
+import { collaboration } from "@gitru/collaboration-client";
+import { detailQueryOptions } from "@gitru/collaboration-client/react";
+import { QueryClient } from "@tanstack/react-query";
 import { act, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HarnessAction } from "../../e2e/protocol/collaboration-harness";
 import { fixtureAccount } from "../../tests/fixtures/collaboration";
 import { fixtureBody } from "../../tests/fixtures/resource-detail";
-import { queryClient } from "../state/core/state-manager";
 import { syntheticFingerprint } from "./e2e-collaboration-harness-observation";
 
 const native = vi.hoisted(() => ({
@@ -213,7 +215,7 @@ describe("retained probe document lifetime", () => {
     );
     const editor = document.querySelector('textarea[name="private-draft"]');
     const localRead = vi
-      .spyOn(queryClient, "fetchQuery")
+      .spyOn(collaboration.transport, "detail")
       .mockResolvedValue(fixtureBody());
     source.phase();
     let first:
@@ -236,6 +238,83 @@ describe("retained probe document lifetime", () => {
       editor,
     );
     localRead.mockRestore();
+  });
+
+  it("distinguishes actual TanStack cached cancellation from a held native SDK completion", async () => {
+    const client = new QueryClient();
+    const options = detailQueryOptions(fixtureAccount, {
+      subject_id: "fixture-subject",
+      facet: "body",
+      cursor: null,
+      limit: 50,
+    });
+    const cached = fixtureBody();
+    client.setQueryData(options.queryKey, cached);
+    let finish!: (body: ReturnType<typeof fixtureBody>) => void;
+    const nativeRead = vi
+      .spyOn(collaboration.transport, "detail")
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      );
+    try {
+      const refetch = client.fetchQuery({ ...options, staleTime: 0 });
+      await waitFor(() => expect(nativeRead).toHaveBeenCalledOnce());
+      await client.cancelQueries({ queryKey: options.queryKey, exact: true });
+      // Real TanStack reverts the query and resolves its old cached value. A
+      // fetchQuery acceptance is therefore not the held SDK completion proof.
+      await expect(refetch).resolves.toBe(cached);
+      finish(fixtureBody());
+    } finally {
+      nativeRead.mockRestore();
+      client.clear();
+    }
+  });
+
+  it("reports the real SDK fence error from an obsolete held native Body", async () => {
+    const source = fixture();
+    await act(async () => {
+      probe = await installCollaborationHarnessProbe(source.readManifest);
+      await probe.execute(source.request({ kind: "mount", actor: "primary" }));
+    });
+    await waitFor(() =>
+      expect(
+        document.querySelector('textarea[name="private-draft"]'),
+      ).not.toBeNull(),
+    );
+    let finish!: (body: ReturnType<typeof fixtureBody>) => void;
+    const nativeRead = vi
+      .spyOn(collaboration.transport, "detail")
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      );
+    const disconnect = vi
+      .spyOn(collaboration.transport, "disconnect")
+      .mockResolvedValue("2");
+    try {
+      const delayed = probe?.execute(source.request({ kind: "read-body" }));
+      await waitFor(() => expect(nativeRead).toHaveBeenCalledOnce());
+      // The unchanged singleton SDK invalidates its real fence. Only native
+      // transport I/O is a unit double; no stale result/error is fabricated.
+      await collaboration.disconnect(fixtureAccount.id);
+      finish(fixtureBody());
+      expect((await delayed)?.outcome).toBe("stale_view");
+      expect(nativeRead).toHaveBeenCalledExactlyOnceWith({
+        account_id: fixtureAccount.id,
+        subject_id: "fixture-subject",
+        facet: "body",
+        cursor: null,
+        limit: 50,
+      });
+    } finally {
+      nativeRead.mockRestore();
+      disconnect.mockRestore();
+    }
   });
 
   it.each([
