@@ -108,7 +108,10 @@ subject/head/access/source fences apply unchanged, including response races.
 
 Native owner: Bitbucket provider dispatch/profile/transport and new feeds/detail
 modules plus actual HTTP adapter tests. Independent test owner: new runtime
-resource-read tests and test-only registration. Frontend owner: token help copy
+resource-read tests, test-only registration and bounded adaptation of earlier
+repository fixtures to the newly admitted selected-repository PR feed. Preserve
+all earlier account/cursor/authority assertions; do not disable the production
+profile to suppress legitimate new work. Frontend owner: token help copy
 and ordinary Workspace/Detail tests. Root: contract/shared docs, serial integration,
 qualified signed commits and separate attached draft PR. No simultaneous Cargo;
 all native/typegen/build work uses the existing serial wrapper and shared target.
