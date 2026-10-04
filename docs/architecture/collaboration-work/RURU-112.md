@@ -177,3 +177,52 @@ comparison preserves all285 prior Zod schema initializers, adding only the
 Bitbucket connect-params schema. No generated file is hand-edited. Cursor audit
 found the shared per-job budget is not a traversal/loop guard; the private durable
 limits and response-loop retry boundary above were fixed before qualification.
+
+### First slice qualified for review — 4 October 2026
+
+Signed implementation source `4dad56345bf0f47d16ddf836bc8bf130d8d5f6e0` implements
+the account/repository contract above through the ordinary native runtime, vault,
+SQLite feed transactions, SDK account API and account dialog/repository picker.
+Repositories alone are supported; PRs/Body and explicit participants/tasks remain
+required later slices. R112 stays In Progress. No schema migration or second
+cache/scheduler/provider HTTP layer was added. Clone metadata is discarded.
+
+Actual synthetic HTTP adapter17 and Runtime/SQLite7 cases pass24/24. They cover
+identity/status/probe failures with no credential staging, Bearer transport,
+bounded malicious/opaque continuations, intermediate empty pages, full traversal,
+UUID rename continuity/selection, two actors with identical nicknames, late old-
+epoch200 and429 responses, authorization isolation and private drafts, historical
+authorized rows retained through loop/cap failures, and inert cold reads with zero
+HTTP/vault access. Durable cap/history persists across manual refresh and reopen;
+it does not promise complete coverage/rescan for capped large accounts.
+
+Provider and Runtime tests first reproduce a known-actor presentation error
+losing Retry-After quota after type/status/UUID proof. The private proof cutpoint
+now preserves that actor's quota without accepting malformed presentation,
+staging credentials or replacing old cached data. Invalid identity/type/status
+remain unproven. Red and green evidence:
+/tmp/gitru-ruru112-native-presentation-{red,focused}.log.
+
+Full default workspace passes706 top-level cases/three ignored: collaboration355
+(209 library and146 integration/migration, two ignored), Git321/one ignored,
+gitru15 and IPC15. The actual native caller policy includes the new main-only
+credential operation. Final workspace/all-target Clippy-Dwarnings, fmt and diff
+checks pass. Full workspace ran before an equivalent clone-validator let-chain
+style cleanup; fresh24 focused cases pass after it. Logs:
+/tmp/gitru-ruru112-native-{workspace-tests,workspace-clippy-final,
+bitbucket-final,fmt-final}.log.
+
+Full frontend/SDK/UI431 cases across50 files, repository lint/types and production
+frontend build pass. UI tests cover transient token clearing, trusted main-only
+controls, failed/successful cutover projection boundaries, local accounts/data and
+unsupported capabilities. Logs:
+/tmp/gitru-ruru112-frontend-final-{tests,lint,types,build}.log.
+Independent generated AST comparison preserves all285 prior schemas,237 aliases,
+113 commands and events; only Bitbucket connect schema/alias/command is added by
+normal make typegen114. No generated files are hand-edited. Native and frontend
+independent reviews found no remaining source blocker.
+
+The inherited #159 exact head ebb8ae1 now passes all11 reported remote checks.
+This slice's remote CI starts after publication and remains separate from local
+tests; actual live Bitbucket accounts, production keyring and other platforms
+were not inspected. R103's retained Windows repair is a separate PR/lane. No merge.

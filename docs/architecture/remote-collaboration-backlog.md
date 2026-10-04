@@ -1377,3 +1377,23 @@ this record does not claim live provider, platform, completed R112 or publicatio
 R103's repaired source is separately published in #157 atcce498b with fresh macOS
 retained proof and exact-head remote CI running; R121/#158 and R111/#159 stay review
 stacks. No merge is authorized or performed.
+
+### RURU-112 first account/repository slice qualified — 4 October 2026
+
+Signed source4dad563 implements manual token-only Bitbucket Cloud accounts and
+UUID member-repository discovery in the existing native vault/SQLite/scheduler,
+generated SDK command and ordinary account dialog/repository picker. Repositories
+alone are supported; PR/Body and explicit participants/tasks remain required and
+R112 stays In Progress. Durable20 accepted-page/20workspace/fingerprint caps retain
+Partial coverage/historical authorized rows across cold/manual resume; a capped
+large account still needs a later explicit restart/coverage policy.
+
+Actual HTTP17 plus Runtime/SQLite7 focused cases pass24; full default workspace706
+top-level tests/three ignored passes, including355 collaboration and native caller
+policy. Clippy/fmt and fresh24 after the equivalent style cleanup pass. Frontend431
+tests/50files, lint/types and production build pass. Normal typegen114 preserves
+all285 prior schemas,237 aliases,113 commands/events and adds only token connect.
+Known-actor invalid-presentation quota regression is recorded red/green without
+credential staging/cache replacement. Full evidence and platform/live limitations
+are in [R112's work note](./collaboration-work/RURU-112.md). Publication and exact-
+head remote qualification remain separate. No live credentials or merge.
