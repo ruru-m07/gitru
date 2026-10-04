@@ -3,7 +3,8 @@
 Status: locally qualified on macOS on 4 October 2026. The complete retained
 pipeline and separate normal packaged control pass. Final repository/feature
 checks pass; remote Linux/Windows CI and live platform/provider/vault checks
-remain separate. Reviewable stacked PR publication is next; nothing is merged.
+remain separate. Reviewable [draft PR #157](https://github.com/ruru-m07/gitru/pull/157) is open
+and attached, stacked on #156. Linear is In Review; nothing is merged.
 
 Attached worktree `/Users/ruru/.codex/worktrees/collab-ruru-103/gitru`, branch
 `ruru/ruru-103-native-sync-harness`, now inherits published R101/#156
@@ -681,3 +682,9 @@ R111 GitLab resource reads and R121 bounded navigation prefetch now progress in
 separate attached worktrees based on published R101/#156, with signed pre-code
 contracts and disjoint provider/runtime-test versus SDK/UI ownership. Their local
 checks and publication are still pending; no R103 fixture code is required by them.
+
+
+R103 delivery: [draft PR #157](https://github.com/ruru-m07/gitru/pull/157) is open
+and attached, stacked on #156. Linear RURU-103 is In Review. The qualified source
+and signed publication are retained; the initial remote matrix is running,
+including the three new retained packaged jobs. No merge was performed.
