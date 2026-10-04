@@ -136,6 +136,40 @@ function fixture() {
 }
 
 describe("retained probe document lifetime", () => {
+  it("observes actual document visibility and own native activity without setting host activity", async () => {
+    const source = fixture();
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    native.activity.mockResolvedValueOnce({
+      generation: "9007199254740993",
+      active: false,
+    });
+    await act(async () => {
+      probe = await installCollaborationHarnessProbe(source.readManifest);
+    });
+    const receipt = await probe?.execute(
+      source.request({ kind: "inspect-activity" }),
+    );
+    expect(receipt?.outcome).toBe("accepted");
+    expect(receipt?.activity).toEqual({
+      document_visibility: "hidden",
+      own_activity: { generation: "9007199254740993", active: false },
+    });
+    expect(native.activity).toHaveBeenCalledExactlyOnceWith({});
+    expect(native.setOwner).not.toHaveBeenCalled();
+    expect(native.control).not.toHaveBeenCalled();
+    expect(receipt?.snapshot?.mounted).toBe(false);
+  });
+
+  it("fences an old activity observation before reading native ownership", async () => {
+    const source = fixture();
+    await act(async () => {
+      probe = await installCollaborationHarnessProbe(source.readManifest);
+    });
+    const old = source.request({ kind: "inspect-activity" });
+    source.phase();
+    expect((await probe?.execute(old))?.outcome).toBe("stale_view");
+    expect(native.activity).not.toHaveBeenCalled();
+  });
   it("requires the actual native view label before creating renderer state", async () => {
     const wrong = fixture();
     native.label = "tab-webview:other";

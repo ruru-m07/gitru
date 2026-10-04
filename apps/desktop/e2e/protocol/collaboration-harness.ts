@@ -2,6 +2,7 @@
 
 import {
   DetailValueStateSchema,
+  ErrorCodeSchema,
   HarnessStatusSchema,
   type HarnessViewManifest,
 } from "@gitru/commands";
@@ -11,6 +12,7 @@ export const HARNESS_REQUEST_EVENT = "gitru:e2e-collaboration-harness:request";
 export const HARNESS_RESULT_EVENT = "gitru:e2e-collaboration-harness:result";
 export const HARNESS_MAX_PENDING = 8;
 export const HARNESS_REQUEST_TIMEOUT_MS = 10_000;
+export const HARNESS_DIAGNOSTIC_TIMEOUT_MS = 3_000;
 
 const nonce = z
   .string()
@@ -66,6 +68,7 @@ export function matchesHarnessPeerLease(
 
 export const HarnessActionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("inspect") }).strict(),
+  z.object({ kind: z.literal("inspect-activity") }).strict(),
   z.object({ kind: z.literal("mount"), actor: HarnessActorSchema }).strict(),
   z.object({ kind: z.literal("detach") }).strict(),
   z
@@ -157,6 +160,93 @@ const actionOutcome = z.enum([
   "cancelled",
   "failed",
 ]);
+export const HarnessFailureSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("native_error"), code: ErrorCodeSchema }).strict(),
+  z
+    .object({
+      kind: z.literal("action_rejected"),
+      outcome: actionOutcome.exclude(["accepted"]),
+      native_code: ErrorCodeSchema.nullable().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("settle_timeout"),
+      last_action_outcome: actionOutcome.nullable(),
+    })
+    .strict(),
+  z.object({ kind: z.literal("assertion") }).strict(),
+  z.object({ kind: z.literal("request_timeout") }).strict(),
+  z.object({ kind: z.literal("diagnostic_timeout") }).strict(),
+  z.object({ kind: z.literal("unclassified") }).strict(),
+]);
+export type HarnessFailure = z.infer<typeof HarnessFailureSchema>;
+
+/** Carries only a compiled category; error messages never enter artifacts. */
+export class HarnessScenarioError extends Error {
+  constructor(
+    readonly failure: HarnessFailure,
+    message = "The fixed retained scenario failed",
+  ) {
+    super(message);
+  }
+}
+
+export function classifyHarnessFailure(error: unknown): HarnessFailure {
+  if (error instanceof HarnessScenarioError) return error.failure;
+  if (error && typeof error === "object" && "code" in error) {
+    const code = ErrorCodeSchema.safeParse(error.code);
+    if (code.success) return { kind: "native_error", code: code.data };
+  }
+  return { kind: "unclassified" };
+}
+
+/** An observation may register a native owner; it never activates one. */
+export const HarnessActivitySchema = z
+  .object({ generation: decimal, active: z.boolean() })
+  .strict();
+export const HarnessDocumentActivitySchema = z
+  .object({
+    document_visibility: z.enum(["visible", "hidden"]),
+    own_activity: HarnessActivitySchema,
+  })
+  .strict();
+export type HarnessDocumentActivity = z.infer<
+  typeof HarnessDocumentActivitySchema
+>;
+
+/** Bounds observation latency even when native IPC cannot be cancelled. */
+export async function readHarnessDiagnostic<T>(
+  read: () => Promise<T>,
+  timeoutMs = HARNESS_DIAGNOSTIC_TIMEOUT_MS,
+): Promise<{ value: T | null; failure: HarnessFailure | null }> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<{
+    value: null;
+    failure: HarnessFailure;
+  }>((resolve) => {
+    timer = setTimeout(
+      () => resolve({ value: null, failure: { kind: "diagnostic_timeout" } }),
+      Math.min(HARNESS_DIAGNOSTIC_TIMEOUT_MS, Math.max(0, timeoutMs)),
+    );
+  });
+  try {
+    return await Promise.race([
+      Promise.resolve()
+        .then(read)
+        .then(
+          (value) => ({ value, failure: null }),
+          (error: unknown) => ({
+            value: null,
+            failure: classifyHarnessFailure(error),
+          }),
+        ),
+      timeout,
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 const obsoleteReadOutcome = z.union([
   actionOutcome,
   z.literal("request_failed"),
@@ -193,6 +283,8 @@ export const HarnessResultSchema = z
     outcome: actionOutcome,
     snapshot: HarnessProbeSnapshotSchema.nullable(),
     authority: HarnessAuthorityChecksSchema.optional(),
+    activity: HarnessDocumentActivitySchema.optional(),
+    failure: HarnessFailureSchema.optional(),
   })
   .strict();
 export type HarnessResult = z.infer<typeof HarnessResultSchema>;
@@ -287,7 +379,13 @@ export function createHarnessRequester({
           if (!pending.delete(request.request_id)) return;
           clearTimeout(timer);
           if (result) resolve(result);
-          else reject(new Error("Harness request did not complete"));
+          else
+            reject(
+              new HarnessScenarioError(
+                { kind: "request_timeout" },
+                "Harness request did not complete",
+              ),
+            );
         }
         pending.set(request.request_id, { request, finish });
         void transport.emit(request).catch(() => finish(null));
@@ -335,22 +433,52 @@ export type HarnessAuthorityEvidence = z.infer<
   typeof HarnessAuthorityEvidenceSchema
 >;
 
+const scenarioStatus = HarnessStatusSchema.refine(
+  (value) =>
+    value.core.actors.length <= 2 &&
+    value.core.calls.length <= 128 &&
+    value.core.gates.length <= 2 &&
+    value.local_reads.length <= 2 &&
+    value.held_hint_revisions.length <= 128,
+);
+export const HarnessFailureContextSchema = z
+  .object({
+    status: scenarioStatus.nullable(),
+    status_failure: HarnessFailureSchema.nullable(),
+    activities: z
+      .array(
+        z
+          .object({
+            label,
+            document_visibility: z.enum(["visible", "hidden"]).nullable(),
+            own_activity: HarnessActivitySchema.nullable(),
+            native_owner: HarnessActivitySchema.nullable(),
+            probe_failure: HarnessFailureSchema.nullable(),
+            owner_failure: HarnessFailureSchema.nullable(),
+          })
+          .strict(),
+      )
+      .max(4),
+  })
+  .strict();
+export type HarnessFailureContext = z.infer<typeof HarnessFailureContextSchema>;
+
 export const HarnessScenarioResultSchema = z
   .object({
     scenario: HarnessScenarioSchema,
     outcome: z.enum(["passed", "checkpoint", "failed"]),
     stage: z.string().min(1).max(160),
-    status: HarnessStatusSchema.refine(
-      (value) =>
-        value.core.actors.length <= 2 &&
-        value.core.calls.length <= 128 &&
-        value.core.gates.length <= 2 &&
-        value.local_reads.length <= 2 &&
-        value.held_hint_revisions.length <= 128,
-    ).nullable(),
+    status: scenarioStatus.nullable(),
     observations: z.array(HarnessProbeSnapshotSchema).max(32),
     authority: HarnessAuthorityEvidenceSchema.nullable().optional(),
     obsolete_reads: HarnessObsoleteReadsSchema.optional(),
+    failure: HarnessFailureSchema.nullable().optional(),
+    cleanup_failure: HarnessFailureSchema.nullable().optional(),
+    cleanup_stage: z
+      .enum(["release_native_lease", "restore_native_scenario"])
+      .nullable()
+      .optional(),
+    failure_context: HarnessFailureContextSchema.nullable().optional(),
   })
   .strict();
 export type HarnessScenarioResult = z.infer<typeof HarnessScenarioResultSchema>;

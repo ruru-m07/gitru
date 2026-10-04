@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { isolatedGitEnvironment } from "./git-environment";
 import { harnessEnvironment } from "./harness-environment";
+import { canonicalHarnessPath } from "./harness-paths";
 import {
   assertHarnessCrashProof,
   assertHarnessQualification,
@@ -32,7 +33,7 @@ const gitRepository = join(root, "repository");
 const target = process.env.CARGO_TARGET_DIR
   ? resolve(desktop, "src-tauri", process.env.CARGO_TARGET_DIR)
   : resolve(repository, "target");
-const binary = realpathSync(
+const binary = canonicalHarnessPath(
   process.env.GITRU_E2E_BINARY ??
     resolve(
       target,
@@ -77,7 +78,9 @@ function fixture(name: string) {
     }),
     { flag: "wx", mode: 0o600 },
   );
-  return { root: directory, runNonce };
+  // Keep outer Git paths in their Node spelling. Only the native collaboration
+  // subroot and its evidence use the exact canonical spelling Rust requires.
+  return { root: canonicalHarnessPath(directory), runNonce };
 }
 async function runPhase(
   name: string,

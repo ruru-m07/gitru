@@ -14,18 +14,23 @@ import {
 } from "@gitru/commands";
 import { getCurrentWebview, Webview } from "@tauri-apps/api/webview";
 import {
+  classifyHarnessFailure,
   createHarnessRequester,
   HARNESS_DRAFT_EDITS,
   HARNESS_REQUEST_EVENT,
   HARNESS_RESULT_EVENT,
   type HarnessAction,
   type HarnessAuthorityEvidence,
+  type HarnessFailure,
+  type HarnessFailureContext,
   type HarnessObsoleteReads,
   HarnessPeerLeaseSchema,
   type HarnessProbeSnapshot,
   type HarnessScenario,
+  HarnessScenarioError,
   type HarnessScenarioResult,
   HarnessScenarioSchema,
+  readHarnessDiagnostic,
 } from "../../e2e/protocol/collaboration-harness";
 import { requestAccountSettings } from "../features/collaboration/account-dialog-events";
 import { useAppStore } from "../store/use-app-store";
@@ -141,18 +146,6 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
     return requester.request(label, action);
   }
 
-  async function activate(label: string) {
-    // These are production native owner receipts. No generation/visibility
-    // proof is manufactured by the renderer. Native creation has shown the
-    // secondary window before the executor can reach this operation.
-    const owner = await collaborationInspectDemandOwner({ ownerLabel: label });
-    return collaborationSetDemandOwnerActivity({
-      ownerLabel: label,
-      expectedGeneration: owner.generation,
-      active: true,
-    });
-  }
-
   async function runScenario(input: HarnessScenario) {
     const scenario = HarnessScenarioSchema.parse(input);
     if (!alive || running)
@@ -170,17 +163,30 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
     let stage = "read native fixture";
     let checkpoint = false;
     let failed = false;
+    let failure: HarnessFailure | null = null;
+    let cleanupFailure: HarnessFailure | null = null;
+    let cleanupStage:
+      | "release_native_lease"
+      | "restore_native_scenario"
+      | null = null;
+    let failureContext: HarnessFailureContext | null = null;
     const normalTabIds = new Set<string>();
     let normalHostMounted = false;
 
     function require(condition: unknown) {
-      if (!condition) throw new Error("The finite scenario assertion failed");
+      if (!condition) throw new HarnessScenarioError({ kind: "assertion" });
     }
     function keep(snapshot: HarnessProbeSnapshot) {
       if (observations.length < 32) observations.push(snapshot);
       return snapshot;
     }
-    async function wait<T>(read: () => Promise<T | null>, cleanup = false) {
+    async function wait<T>(
+      read: () => Promise<T | null>,
+      cleanup = false,
+      lastActionOutcome?: () =>
+        | Awaited<ReturnType<typeof request>>["outcome"]
+        | null,
+    ) {
       const end = cleanup
         ? Date.now() + STEP_TIMEOUT_MS
         : Math.min(Date.now() + STEP_TIMEOUT_MS, deadline);
@@ -189,27 +195,125 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
         if (value !== null) return value;
         await new Promise((resolve) => window.setTimeout(resolve, 100));
       }
-      throw new Error("The fixed retained state did not settle");
+      throw new HarnessScenarioError({
+        kind: "settle_timeout",
+        last_action_outcome: lastActionOutcome?.() ?? null,
+      });
+    }
+    async function activate(label: string) {
+      // Production native owner receipts remain authoritative. A desired
+      // active host state cannot replace physical native availability.
+      const owner = await collaborationInspectDemandOwner({
+        ownerLabel: label,
+      });
+      const receipt = await collaborationSetDemandOwnerActivity({
+        ownerLabel: label,
+        expectedGeneration: owner.generation,
+        active: true,
+      });
+      // A real false→true transition issues a new native generation. The
+      // setter receipt, rather than the pre-set inspect, is authoritative.
+      if (receipt.active) return receipt;
+      return wait(async () => {
+        const actual = await collaborationInspectDemandOwner({
+          ownerLabel: label,
+        });
+        // Native show/host transitions can advance generation while waiting.
+        // An older replay never proves this setter's current owner is active.
+        require(BigInt(actual.generation) >= BigInt(receipt.generation));
+        return actual.active ? actual : null;
+      });
+    }
+    async function captureFailureContext(): Promise<HarnessFailureContext> {
+      const labels = [
+        ...new Set([
+          "main",
+          ...(current.child_label ? [current.child_label] : []),
+          ...normalLabels,
+        ]),
+      ].slice(0, 4);
+      // Failure-only observations run before detach, gate cancellation, or
+      // route cleanup. A native own getter may register an owner; none of
+      // these reads set activity or run inside authority counter assertions.
+      const [native, activities] = await Promise.all([
+        readHarnessDiagnostic(status),
+        Promise.all(
+          labels.map(async (label) => {
+            const [own, owner] = await Promise.all([
+              readHarnessDiagnostic(async () => {
+                const receipt = await request(label, {
+                  kind: "inspect-activity",
+                });
+                if (receipt.outcome !== "accepted" || !receipt.activity)
+                  throw new HarnessScenarioError({
+                    kind: "action_rejected",
+                    outcome:
+                      receipt.outcome === "accepted"
+                        ? "failed"
+                        : receipt.outcome,
+                    native_code:
+                      receipt.failure?.kind === "native_error"
+                        ? receipt.failure.code
+                        : null,
+                  });
+                return receipt.activity;
+              }),
+              readHarnessDiagnostic(() =>
+                collaborationInspectDemandOwner({ ownerLabel: label }),
+              ),
+            ]);
+            return {
+              label,
+              document_visibility:
+                own.value?.document_visibility ??
+                (label === "main" ? document.visibilityState : null),
+              own_activity: own.value?.own_activity ?? null,
+              native_owner: owner.value,
+              probe_failure: own.failure,
+              owner_failure: owner.failure,
+            };
+          }),
+        ),
+      ]);
+      return {
+        status: native.value,
+        status_failure: native.failure,
+        activities,
+      };
     }
     async function inspect(label: string) {
       return requireSnapshot(label, { kind: "inspect" });
     }
     async function requestWhenBound(label: string, action: BoundAction) {
-      return wait(async () => {
-        const receipt = await request(label, action);
-        // A phase can publish its manifest before React commits the matching
-        // real account binding. NotReady precedes a DOM mutation/local IPC,
-        // so retry only that outcome. Accepted edits/saves run once; timeouts
-        // and failed/stale/denied receipts never count as a successful action.
-        return receipt.outcome === "not_ready" ? null : receipt;
-      });
+      let lastOutcome: Awaited<ReturnType<typeof request>>["outcome"] | null =
+        null;
+      return wait(
+        async () => {
+          const receipt = await request(label, action);
+          lastOutcome = receipt.outcome;
+          // A phase can publish its manifest before React commits the matching
+          // real account binding. NotReady precedes a DOM mutation/local IPC,
+          // so retry only that outcome. Accepted edits/saves run once; timeouts
+          // and failed/stale/denied receipts never count as a successful action.
+          return receipt.outcome === "not_ready" ? null : receipt;
+        },
+        false,
+        () => lastOutcome,
+      );
     }
     async function requireSnapshot(label: string, action: HarnessAction) {
       const receipt = requiresHarnessBinding(action)
         ? await requestWhenBound(label, action)
         : await request(label, action);
       if (receipt.outcome !== "accepted" || !receipt.snapshot)
-        throw new Error("The fixed document action was rejected");
+        throw new HarnessScenarioError({
+          kind: "action_rejected",
+          outcome: receipt.outcome === "accepted" ? "failed" : receipt.outcome,
+          native_code:
+            receipt.failure?.kind === "native_error"
+              ? receipt.failure.code
+              : null,
+        });
       return receipt.snapshot;
     }
     async function mount(label: string, actor: "primary" | "alternate") {
@@ -293,10 +397,14 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
 
     try {
       await status();
-      if (scenario !== "restart" && !current.core.prepared)
+      if (scenario !== "restart" && !current.core.prepared) {
+        stage = "prepare synthetic primary account";
         await core("prepare_primary");
+      }
       require(current.core.prepared);
+      stage = "wake the real main SDK";
       await collaboration.wake();
+      stage = "activate the real native main demand owner";
       await activate("main");
 
       if (scenario === "concurrent-demand") {
@@ -531,9 +639,11 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
         require(fresh.document_nonce !== before.document_nonce);
         require(fresh.saved_draft_hash === before.saved_draft_hash);
       } else if (scenario === "normal-tab-lifecycle") {
-        stage = "close concurrent fixture before ordinary native tab host";
+        stage = "close actual concurrent secondary window";
         if (current.child_label) await control("close_concurrent_child");
+        stage = "detach main fixture before ordinary native tab host";
         await requireSnapshot("main", { kind: "detach" });
+        stage = "create ordinary first and second tab records";
         const first = useAppStore.getState().createTab({
           routePath: "/app/git",
           repositoryId: null,
@@ -546,11 +656,21 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
         });
         normalTabIds.add(first.id);
         normalTabIds.add(second.id);
+        stage = "select the ordinary first tab record";
         useAppStore.getState().activateTab(first.id);
+        stage = "navigate main into the ordinary native tab host";
         await router.navigate({ to: "/app", search: {}, replace: true });
         normalHostMounted = true;
-        async function normalLabel(tabId: string) {
+        async function normalLabel(
+          tabId: string,
+          slot: "first" | "second" | "replacement",
+        ) {
           const expected = sanitizeTabWebviewLabel(tabId);
+          stage = {
+            first: "observe actual first tab native surface",
+            second: "observe actual second tab native surface",
+            replacement: "observe actual replacement tab native surface",
+          }[slot];
           const issued = await wait(async () => {
             const actual = (await Webview.getAll()).find(
               (candidate) => candidate.label === expected,
@@ -561,6 +681,11 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
           // through the generated own-view manifest. This inventory only
           // bounds the renderer's diagnostic destinations.
           normalLabels.add(issued);
+          stage = {
+            first: "handshake with actual first tab document",
+            second: "handshake with actual second tab document",
+            replacement: "handshake with actual replacement tab document",
+          }[slot];
           await wait(async () => {
             const receipt = await request(issued, { kind: "inspect" }).catch(
               () => null,
@@ -569,8 +694,8 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
           });
           return issued;
         }
-        const firstLabel = await normalLabel(first.id);
-        const secondLabel = await normalLabel(second.id);
+        const firstLabel = await normalLabel(first.id, "first");
+        const secondLabel = await normalLabel(second.id, "second");
         stage = "ordinary selected child deactivates main demand";
         await wait(async () => {
           const main = await collaborationInspectDemandOwner({
@@ -581,6 +706,7 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
           });
           return !main.active && selected.active ? true : null;
         });
+        stage = "mount fixture in the actual selected first tab";
         const original = await mount(firstLabel, "primary");
         stage = "ordinary tab switch hides and fences prior owner";
         useAppStore.getState().activateTab(second.id);
@@ -593,6 +719,7 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
           });
           return !previous.active && selected.active ? true : null;
         });
+        stage = "mount fixture in the actual selected second tab";
         await mount(secondLabel, "primary");
         stage = "host Accounts modal suspends native selected interest";
         await requestAccountSettings();
@@ -614,6 +741,7 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
           (button) => button.querySelector(".sr-only")?.textContent === "Close",
         );
         require(close);
+        stage = "close host Accounts modal and restore selected owner";
         close?.click();
         await wait(async () =>
           (await collaborationInspectDemandOwner({ ownerLabel: secondLabel }))
@@ -621,16 +749,18 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
             ? true
             : null,
         );
-        stage = "ordinary host disposal recreates the same native label";
+        stage = "inspect ordinary first owner before host disposal";
         const prior = await collaborationInspectDemandOwner({
           ownerLabel: firstLabel,
         });
+        stage = "navigate out of the ordinary native tab host";
         await router.navigate({
           to: "/app/git",
           search: { embedded: 1 },
           replace: true,
         });
         normalHostMounted = false;
+        stage = "observe native disposal of both ordinary tab surfaces";
         await wait(async () =>
           (await Webview.getAll()).every(
             (candidate) => !normalLabels.has(candidate.label),
@@ -639,11 +769,14 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
             : null,
         );
         normalLabels.clear();
+        stage = "select the first tab record for host recreation";
         useAppStore.getState().activateTab(first.id);
+        stage = "navigate main into the recreated ordinary native host";
         await router.navigate({ to: "/app", search: {}, replace: true });
         normalHostMounted = true;
-        const replacement = await normalLabel(first.id);
+        const replacement = await normalLabel(first.id, "replacement");
         require(replacement === firstLabel);
+        stage = "observe active replacement native owner";
         await wait(async () =>
           (await collaborationInspectDemandOwner({ ownerLabel: replacement }))
             .active
@@ -653,7 +786,9 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
         const owner = await collaborationInspectDemandOwner({
           ownerLabel: replacement,
         });
+        stage = "require a fresh native generation for the replacement";
         require(owner.generation !== prior.generation);
+        stage = "mount recreated document and preserve its saved private draft";
         const recreated = await mount(replacement, "primary");
         require(recreated.document_nonce !== original.document_nonce);
         require(recreated.saved_draft_hash === original.saved_draft_hash);
@@ -669,26 +804,62 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
         normalLabels.delete(firstLabel);
       } else if (scenario === "authority") {
         const label = await child();
-        stage = "prepare one actual main lease for the manifest Body";
+        stage = "mount actual main Body before authority freshness warmup";
         await mount("main", "primary");
-        await wait(async () => {
-          const snapshot = await inspect("main");
-          return snapshot.body_value_state === "known" &&
-            !snapshot.body.fetching &&
-            snapshot.provider_visible
-            ? true
-            : null;
-        });
         const fixture = current.core.actors.find(
           (actor) => actor.slot === "primary",
         );
         require(fixture);
         if (!fixture) throw new Error("Native primary actor is missing");
+        stage = "observe real main Body demand before freshness warmup";
+        await wait(async () =>
+          (await status()).core.demand_lease_count === 1 ? true : null,
+        );
+        const prior = await status();
+        const completedBodyCalls = (receipt: typeof current) =>
+          receipt.core.calls.filter(
+            (call) =>
+              call.scenario_generation === prior.core.scenario_generation &&
+              call.slot === "primary" &&
+              call.authorization_epoch === fixture.authorization_epoch &&
+              call.facet === "body" &&
+              call.state === "completed",
+          ).length;
+        const priorCompleted = completedBodyCalls(prior);
+        stage =
+          "commit a fresh current-generation Body before peer counter baseline";
+        await core("advance_refresh");
+        const fresh = await wait(async () => {
+          const receipt = await status();
+          // The fake provider records Completed before SQLite applies the
+          // detail. Both the new call and changed committed Body facet are
+          // needed; cached-known/rendered state alone does not prove freshness.
+          return receipt.core.committed_facet_revision !== null &&
+            receipt.core.committed_facet_revision !==
+              prior.core.committed_facet_revision &&
+            completedBodyCalls(receipt) > priorCompleted
+            ? receipt
+            : null;
+        });
+        require(
+          fresh.core.committed_phase === "one" ||
+            fresh.core.committed_phase === "two",
+        );
+        stage =
+          "render the exact freshly committed Body before detaching authority interest";
+        await rendered(
+          "main",
+          fresh.core.committed_phase === "one" ? "one" : "two",
+          fresh.core.committed_facet_revision,
+        );
+        stage =
+          "detach normal SDK interest before acquiring the authority test lease";
         await requireSnapshot("main", { kind: "detach" });
         await wait(async () =>
           (await status()).core.demand_lease_count === 0 ? true : null,
         );
         manualLeaseBaseline = current.core.demand_lease_count;
+        stage = "prepare one actual main lease for the fresh manifest Body";
         const mainOwner = await collaborationInspectDemandOwner({
           ownerLabel: "main",
         });
@@ -818,13 +989,26 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
         const label = await child();
         await mount("main", "primary");
         const initial = await mount(label, "primary");
-        stage = "capture old provider and authorized local return";
+        stage =
+          "detach both SDK interests before disconnect phase and provider gate";
+        await requireSnapshot("main", { kind: "detach" });
+        await requireSnapshot(label, { kind: "detach" });
+        await wait(async () =>
+          (await status()).core.demand_lease_count === 0 ? true : null,
+        );
+        stage = "advance disconnect phase without any live Body lease";
         await core("phase_two");
+        stage = "arm old provider response before restoring SDK interest";
         const provider = (await core("arm_provider_gate")).gate_id;
         require(provider);
         if (!provider) throw new Error("The native provider gate is missing");
+        stage = "remount both real owners behind the armed provider gate";
+        await mount("main", "primary");
+        await mount(label, "primary");
+        stage = "capture actual old provider response after due refresh";
         await core("advance_refresh");
         await providerGateHeld(provider);
+        stage = "capture an authorized old local SDK return";
         const local = (await control("arm_body_read")).gate_id;
         require(local);
         if (!local) throw new Error("The native read gate is missing");
@@ -955,8 +1139,10 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
         await mount("main", "primary");
         await rendered("main", "one");
       }
-    } catch {
+    } catch (error) {
       failed = true;
+      failure = classifyHarnessFailure(error);
+      failureContext = await captureFailureContext();
     } finally {
       if (manualLease) {
         try {
@@ -974,8 +1160,14 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
             true,
           );
           if (authority) authority.lease_count_restored = true;
-        } catch {
-          stage = "release native-issued authority lease";
+        } catch (error) {
+          cleanupFailure = classifyHarnessFailure(error);
+          cleanupStage = "release_native_lease";
+          if (!failed) {
+            stage = "release native-issued authority lease";
+            failure = cleanupFailure;
+            failureContext = await captureFailureContext();
+          }
           failed = true;
         }
       }
@@ -1010,8 +1202,14 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
           await core("cancel_gates");
           await control("resume_hints");
           if (current.child_label) await control("close_concurrent_child");
-        } catch {
-          stage = failed ? `${stage}; cleanup` : "native scenario cleanup";
+        } catch (error) {
+          cleanupFailure ??= classifyHarnessFailure(error);
+          cleanupStage ??= "restore_native_scenario";
+          if (!failed) {
+            stage = "native scenario cleanup";
+            failure = cleanupFailure;
+            failureContext = await captureFailureContext();
+          }
           failed = true;
         }
       }
@@ -1025,6 +1223,10 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
       observations,
       authority,
       obsolete_reads: obsoleteReads,
+      failure,
+      cleanup_failure: cleanupFailure,
+      cleanup_stage: cleanupStage,
+      failure_context: failureContext,
     } satisfies HarnessScenarioResult;
   }
 

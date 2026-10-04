@@ -15,10 +15,11 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import OriginalWorkerService from "@wdio/tauri-service";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SevereServiceError } from "webdriverio";
+import { canonicalHarnessPath } from "./harness-paths";
 import {
   type CrashDriverAck,
   captureHarnessProcess,
@@ -77,7 +78,9 @@ async function fixture(
   phase: HarnessRunnerPhase = "crash-before-commit",
   ignoreTerminate = false,
 ): Promise<Fixture> {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "gitru-process-test-")));
+  const root = canonicalHarnessPath(
+    mkdtempSync(join(tmpdir(), "gitru-process-test-")),
+  );
   chmodSync(root, 0o700);
   const artifacts = join(root, "artifacts");
   mkdirSync(artifacts, { mode: 0o700 });
@@ -91,7 +94,7 @@ async function fixture(
     }),
     { mode: 0o600 },
   );
-  const binary = realpathSync(process.execPath);
+  const binary = canonicalHarnessPath(process.execPath);
   const proc = spawn(
     binary,
     [
@@ -406,7 +409,7 @@ describe("retained crash process ownership", () => {
     expect(() =>
       captureHarnessProcess({
         ...value.input,
-        artifactsDirectory: realpathSync(tmpdir()),
+        artifactsDirectory: canonicalHarnessPath(tmpdir()),
       }),
     ).toThrow("artifacts_outside_root");
     expect(kill).not.toHaveBeenCalled();
@@ -434,6 +437,49 @@ describe("retained crash process ownership", () => {
       symlinkSync(other, join(value.root, "crash-checkpoint.json"));
       acknowledgment(value);
       await rejectsWithoutKill(value, "unsafe_file");
+      expect(kill).not.toHaveBeenCalled();
+    },
+  );
+  it("rejects a lexical root alias before authorizing an actual owned child", async () => {
+    const value = await fixture();
+    const kill = vi.spyOn(value.proc, "kill");
+    const alias = `${value.root}${sep}.${sep}`;
+    expect(() =>
+      captureHarnessProcess({
+        ...value.input,
+        root: alias,
+        environment: {
+          ...value.input.environment,
+          GITRU_COLLABORATION_HARNESS_ROOT: alias,
+        },
+      }),
+    ).toThrow("noncanonical_path");
+    expect(kill).not.toHaveBeenCalled();
+  });
+  it.skipIf(process.platform !== "win32")(
+    "requires the Rust-compatible namespace for real Windows root and evidence paths",
+    async () => {
+      const value = await fixture();
+      expect(value.root.startsWith("\\\\?\\")).toBe(true);
+      expect(canonicalHarnessPath(value.root)).toBe(value.root);
+      const owned = captureHarnessProcess(value.input);
+      expect(owned.pid).toBe(value.proc.pid);
+      const ordinaryRoot = realpathSync.native(value.root);
+      const ordinaryArtifacts = realpathSync.native(value.artifacts);
+      expect(ordinaryRoot).not.toBe(value.root);
+      const kill = vi.spyOn(value.proc, "kill");
+      expect(() =>
+        captureHarnessProcess({
+          ...value.input,
+          root: ordinaryRoot,
+          artifactsDirectory: ordinaryArtifacts,
+          environment: {
+            ...value.input.environment,
+            GITRU_COLLABORATION_HARNESS_ROOT: ordinaryRoot,
+            GITRU_E2E_ARTIFACTS: ordinaryArtifacts,
+          },
+        }),
+      ).toThrow("unsafe_directory");
       expect(kill).not.toHaveBeenCalled();
     },
   );
@@ -843,7 +889,7 @@ describe("pinned launcher integration", () => {
 
 describe("installed driver dotenv isolation", () => {
   it("loads only the owned empty configured file instead of a fixture cwd .env", () => {
-    const root = realpathSync(
+    const root = canonicalHarnessPath(
       mkdtempSync(join(tmpdir(), "gitru-dotenv-test-")),
     );
     chmodSync(root, 0o700);
@@ -862,7 +908,7 @@ describe("installed driver dotenv isolation", () => {
       const dotenvConfig = cliRequire.resolve("dotenv/config");
       const invoke = (path?: string) => {
         const child = spawnSync(
-          realpathSync(process.execPath),
+          canonicalHarnessPath(process.execPath),
           [
             "-e",
             "require(process.argv[1]);process.stdout.write(JSON.stringify({sentinel:process.env.GITRU_TEST_DOTENV_SENTINEL==='task-only-sentinel',credential_variable_present:process.env.GH_TOKEN!==undefined}));",

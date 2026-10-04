@@ -21,6 +21,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { StrictMode, useLayoutEffect, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  classifyHarnessFailure,
   HARNESS_DRAFT_EDITS,
   HARNESS_MAX_PENDING,
   HARNESS_REQUEST_EVENT,
@@ -28,6 +29,7 @@ import {
   type HarnessAction,
   type HarnessActor,
   type HarnessAuthorityChecks,
+  type HarnessDocumentActivity,
   type HarnessRequest,
   HarnessRequestSchema,
   type HarnessResult,
@@ -172,6 +174,7 @@ export async function installCollaborationHarnessProbe(
   async function perform(action: HarnessAction) {
     const captured = binding;
     let authority: HarnessAuthorityChecks | undefined;
+    let activity: HarnessDocumentActivity | undefined;
     if (
       ["edit-draft", "save-draft", "read-item", "read-body"].includes(
         action.kind,
@@ -181,7 +184,15 @@ export async function installCollaborationHarnessProbe(
         captured.scenarioGeneration !== manifest.scenario_generation)
     )
       throw { code: "not_ready" };
-    if (action.kind === "mount") choose(action.actor);
+    if (action.kind === "inspect-activity") {
+      // Failure-only diagnostic observation. The generated own getter may
+      // register this document or refresh its already-requested activity using
+      // actual native availability; it never changes host desire explicitly.
+      activity = {
+        document_visibility: document.visibilityState,
+        own_activity: await collaborationDemandActivity({}),
+      };
+    } else if (action.kind === "mount") choose(action.actor);
     else if (action.kind === "detach") choose(null);
     else if (action.kind === "wake") await collaboration.wake();
     else if (action.kind === "check-control-authority") {
@@ -306,7 +317,7 @@ export async function installCollaborationHarnessProbe(
     }
     // React may commit after the action receipt. The driver waits on actual
     // read-only inspect receipts rather than forcing fake cache/UI state.
-    return { snapshot: await inspect(), authority };
+    return { snapshot: await inspect(), authority, activity };
   }
 
   async function execute(request: HarnessRequest): Promise<HarnessResult> {
@@ -341,7 +352,7 @@ export async function installCollaborationHarnessProbe(
         // not replace the authored editor for the same account and subject.
         choose(selection.actor);
       }
-      const { snapshot, authority } = await perform(request.action);
+      const { snapshot, authority, activity } = await perform(request.action);
       const after = await readManifest();
       if (
         !alive ||
@@ -365,9 +376,15 @@ export async function installCollaborationHarnessProbe(
         outcome: "accepted",
         snapshot,
         ...(authority ? { authority } : {}),
+        ...(activity ? { activity } : {}),
       });
     } catch (error) {
-      return { ...envelope, outcome: outcome(error), snapshot: null };
+      return {
+        ...envelope,
+        outcome: outcome(error),
+        snapshot: null,
+        failure: classifyHarnessFailure(error),
+      };
     } finally {
       inFlight.delete(request.request_id);
     }

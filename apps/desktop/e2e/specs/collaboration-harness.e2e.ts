@@ -47,7 +47,9 @@ async function scenario(name: HarnessScenario) {
     { encoding: "utf8", mode: 0o600 },
   );
   if (receipt.outcome === "failed")
-    throw new Error(`Retained scenario ${name} failed during ${receipt.stage}`);
+    throw new Error(
+      `Retained scenario ${name} failed during ${receipt.stage} (${receipt.failure?.kind ?? "unclassified"}${receipt.failure?.kind === "native_error" ? `:${receipt.failure.code}` : ""})`,
+    );
   // The executor/native wrappers have already validated this status. Keep a
   // non-null narrow type for the phase assertions after the strict receipt.
   if (!receipt.status) throw new Error("Retained scenario status is missing");

@@ -9,12 +9,12 @@ import {
   lstatSync,
   openSync,
   readSync,
-  realpathSync,
   renameSync,
   unlinkSync,
   writeSync,
 } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { canonicalHarnessPath } from "./harness-paths";
 
 export const HARNESS_APPLICATION_ID = "com.ruru.gitru.e2e.collaboration";
 export const HARNESS_CRASH_TIMEOUT_MS = 240_000;
@@ -149,7 +149,7 @@ function directory(path: string): Identity {
   if (
     !stat.isDirectory() ||
     stat.isSymbolicLink() ||
-    realpathSync(path) !== path
+    canonicalHarnessPath(path) !== path
   )
     fail("unsafe_directory");
   if (process.platform !== "win32" && (stat.mode & 0o077) !== 0)
@@ -164,7 +164,11 @@ function sameIdentity(path: string, expected: Identity) {
 function regular(path: string): Identity {
   if (!isAbsolute(path) || resolve(path) !== path) fail("noncanonical_path");
   const stat = lstatSync(path);
-  if (!stat.isFile() || stat.isSymbolicLink() || realpathSync(path) !== path)
+  if (
+    !stat.isFile() ||
+    stat.isSymbolicLink() ||
+    canonicalHarnessPath(path) !== path
+  )
     fail("unsafe_file");
   return { dev: stat.dev, ino: stat.ino };
 }
@@ -267,7 +271,7 @@ function validateCapture(owned: OwnedHarnessProcess) {
   if (
     typeof input.proc.spawnfile !== "string" ||
     input.proc.spawnfile !== input.binaryPath ||
-    realpathSync(input.proc.spawnfile) !== input.binaryPath ||
+    canonicalHarnessPath(input.proc.spawnfile) !== input.binaryPath ||
     identity.dev !== owned.binaryIdentity.dev ||
     identity.ino !== owned.binaryIdentity.ino
   )

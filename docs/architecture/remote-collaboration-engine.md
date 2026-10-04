@@ -2543,3 +2543,53 @@ R103 delivery: [draft PR #157](https://github.com/ruru-m07/gitru/pull/157) is op
 and attached, stacked on #156. Linear RURU-103 is In Review. The qualified source
 and signed publication are retained; the initial remote matrix is running,
 including the three new retained packaged jobs. No merge was performed.
+
+
+### RURU-103 remote Windows and subsequent local investigation — 4 October 2026
+
+Published5efea64 remote run37192175309 passes the new retained Linux/macOS jobs
+and ordinary Rust/packaged E2E on all three platforms. Retained Windows
+job111406556841 fails launcher preparation before any scenario after an actual
+spawn; its safe artifact does not expose a native exception. Source audit proves
+Bun/libuv canonical paths omit the Windows extended prefix that Rust retains.
+The runner/helper now resolve actual filesystem identities then use consistent
+namespaced Windows spelling for native roots/binaries/evidence; POSIX spelling,
+symlink/type/dev/ino/environment/actual-child ownership checks remain strict.
+Focused path/process/proof57 tests pass/one Windows-only case skipped locally,
+E2E types and scoped lint pass. This is not a local Windows execution claim.
+
+The first runner-only unchanged cbc8cfa macOS rerun fails concurrent-demand and
+disconnect before any new provider dispatch. The SDK separately reproduces a
+hidden-to-visible document transition while awaiting native event subscription;
+no DOM listener exists yet and the prior visibility sample stays false. Sampling
+again after listener installation fixes that source defect;113 SDK tests include
+three actual held-listener visibility controls. The new bb3b7d4 macOS executable
+passes concurrent-demand, catchup and reload but still fails normal-host startup,
+authority counter stability and disconnect provider capture. Current receipts
+cannot prove visibility as the previous run's cause or attribute legitimate
+background writes to denied peer calls. Full post-fix retained qualification is
+still open; historical c0e06bb qualification is not presented as new-head evidence.
+
+Failure diagnostics now preserve finite first-error classification, separate
+cleanup failure and bounded pre-cleanup actual document/native owner observations.
+Normal lifecycle substages distinguish route/inventory/handshake failures. Source
+review also identifies two fixture setup races: phase changes wake eligible live
+jobs before the next gate is armed, and known saved Body is not evidence that a
+manual foreground lease cannot refresh it. Counter assertions remain exact;
+actual committed-facet warmup and zero-lease phase/gate ordering are being qualified.
+No production native gate is weakened; no personal credentials/provider/vault used.
+Logs /tmp/gitru-ruru103-{windows-job,path-tests,path-retained-native,
+ demand-startup-tests,startup-retained-native,failure-diagnostics-tests}.log;
+safe failed artifacts09-59-15-158Z-37949 and10-11-07-212Z-72795 remain task-owned.
+R111/#159 and R121/#158 are separately published review slices on #156. No merge.
+
+
+Source fixes frozen before the next native build: finite activation consumes
+actual setter/inspector generations (false-to-true legitimately issues a newer
+native generation); hidden and older-replay controls remain enforced. Final
+frontend harness checks49/4 files and desktop/E2E types/lint pass. The production
+SDK visibility correction passes113 SDK cases. The inherited writer-lease fix
+from R111 is integrated verbatim; its331-case native qualification, deterministic
+pre-fix duplicate-descriptor Busy and preserved clone/final-owner assertions are
+recorded in R111. R103's feature/native package must qualify this combined source
+separately. No public DTO/signature change or hand-generated IPC occurs.

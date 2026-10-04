@@ -1,19 +1,25 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  classifyHarnessFailure,
   createHarnessRequester,
+  HARNESS_DIAGNOSTIC_TIMEOUT_MS,
   HARNESS_MAX_PENDING,
   HARNESS_REQUEST_TIMEOUT_MS,
   HarnessActionSchema,
   HarnessAuthorityEvidenceSchema,
+  HarnessFailureContextSchema,
+  HarnessFailureSchema,
   HarnessObsoleteReadsSchema,
   HarnessPeerLeaseSchema,
   type HarnessRequest,
   HarnessRequestSchema,
   HarnessResultSchema,
+  HarnessScenarioError,
   HarnessScenarioResultSchema,
   HarnessScenarioSchema,
   matchesHarnessPeerLease,
   matchesHarnessRequest,
+  readHarnessDiagnostic,
 } from "./collaboration-harness";
 
 const request = {
@@ -31,6 +37,83 @@ const receipt = {
 };
 
 describe("retained collaboration renderer protocol", () => {
+  it("classifies failures without persisting arbitrary exception text", () => {
+    expect(
+      classifyHarnessFailure({ code: "permission_denied", message: "private" }),
+    ).toEqual({ kind: "native_error", code: "permission_denied" });
+    expect(
+      classifyHarnessFailure(new Error("private provider response")),
+    ).toEqual({ kind: "unclassified" });
+    expect(classifyHarnessFailure({ code: "caller-selected-code" })).toEqual({
+      kind: "unclassified",
+    });
+    const failure = {
+      kind: "settle_timeout",
+      last_action_outcome: "not_ready",
+    } as const;
+    expect(
+      classifyHarnessFailure(new HarnessScenarioError(failure, "private")),
+    ).toEqual(failure);
+    expect(
+      HarnessFailureSchema.parse({
+        kind: "action_rejected",
+        outcome: "not_ready",
+        native_code: "not_ready",
+      }),
+    ).toEqual({
+      kind: "action_rejected",
+      outcome: "not_ready",
+      native_code: "not_ready",
+    });
+    for (const value of [
+      { kind: "native_error", code: "provider", message: "private" },
+      { kind: "assertion", stack: "private path" },
+      { kind: "action_rejected", outcome: "accepted" },
+      { kind: "settle_timeout", last_action_outcome: "timeout means stale" },
+    ])
+      expect(HarnessFailureSchema.safeParse(value).success).toBe(false);
+  });
+
+  it("bounds failure visibility and actual owner observations to four native labels", () => {
+    const activity = {
+      label: "main",
+      document_visibility: "hidden",
+      own_activity: { generation: "9007199254740993", active: false },
+      native_owner: { generation: "9007199254740993", active: false },
+      probe_failure: null,
+      owner_failure: null,
+    };
+    const context = {
+      status: null,
+      status_failure: null,
+      activities: [activity],
+    };
+    expect(
+      HarnessFailureContextSchema.parse(context).activities[0].native_owner
+        ?.generation,
+    ).toBe("9007199254740993");
+    for (const value of [
+      { ...context, activities: Array.from({ length: 5 }, () => activity) },
+      {
+        ...context,
+        activities: [{ ...activity, document_visibility: "pretend-visible" }],
+      },
+      {
+        ...context,
+        activities: [
+          { ...activity, own_activity: { generation: "1", active: "true" } },
+        ],
+      },
+      { ...context, activities: [{ ...activity, raw_error: "private" }] },
+    ])
+      expect(HarnessFailureContextSchema.safeParse(value).success).toBe(false);
+    expect(
+      HarnessActionSchema.safeParse({
+        kind: "inspect-activity",
+        owner_label: "arbitrary",
+      }).success,
+    ).toBe(false);
+  });
   it("keeps exact decimal generations and rejects caller programs or text", () => {
     expect(HarnessRequestSchema.parse(request).scenario_generation).toBe(
       "9007199254740993",
@@ -257,6 +340,36 @@ describe("retained collaboration renderer protocol", () => {
 
 describe("compiled main request lifetime", () => {
   afterEach(() => vi.useRealTimers());
+
+  it("bounds uncancellable diagnostic reads to three seconds and consumes late rejection", async () => {
+    vi.useFakeTimers();
+    let reject!: (error: unknown) => void;
+    const read = readHarnessDiagnostic(
+      () =>
+        new Promise<never>((_, fail) => {
+          reject = fail;
+        }),
+    );
+    await vi.advanceTimersByTimeAsync(HARNESS_DIAGNOSTIC_TIMEOUT_MS);
+    await expect(read).resolves.toEqual({
+      value: null,
+      failure: { kind: "diagnostic_timeout" },
+    });
+    reject(new Error("late private provider text"));
+    await Promise.resolve();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("records only native codes for rejected diagnostic observations", async () => {
+    await expect(
+      readHarnessDiagnostic(async () => {
+        throw { code: "storage", message: "private" };
+      }),
+    ).resolves.toEqual({
+      value: null,
+      failure: { kind: "native_error", code: "storage" },
+    });
+  });
 
   function fixture() {
     let listener: ((payload: unknown) => void) | null = null;
