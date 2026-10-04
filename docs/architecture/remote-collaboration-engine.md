@@ -2758,3 +2758,11 @@ count, retention threshold, permission or production SDK change. If the child
 already caught up during preparation, fail rather than claim a pre-reset fence.
 Meaningful held-preparation/early-catchup controls and fresh combined retained
 execution must qualify this next fixture change; current historical passes do not.
+
+
+R1035376f3b fresh retained Mac run rejects pre-arm catchup correctly: child
+cursor331→4431/reset0→1 despite nativeDrop filtering, both actual documentsvisible.
+Pinned Tauri catch-all EventTarget::Any receives main-targeted events too. The
+[signed bounded contract](./collaboration-work/RURU-103.md) permits an ordinary
+SDK own-Webview collaboration listener, preserving global broadcasts and all
+real catchup/reset/fence/deadline controls. No repair is remotely qualified yet.

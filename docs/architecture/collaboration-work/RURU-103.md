@@ -934,3 +934,36 @@ dirty editor, CAS conflict and reset assertions. Accepted wake already awaits th
 real bridge drain/apply/reset; this adds an explicit fresh-cache receipt before
 releasing the obsolete SDK-generation read. It does not assert older native data.
 Native peer review confirms no production SDK/storage/native change is required.
+
+
+## Retained target delivery failure and bounded SDK correction
+
+Fresh signed5376f3b binary SHA256
+54de3a062efcef8b5611e19684392e6070ee883bf4c63bf6f4e500501623f873
+run2026-10-04T13-16-49-739Z-55780 fails1/6 main scenarios at the new pre-arm
+retention assertion; no crash stages run. Task-owned PID55783/session
+d61ef798-bb15-4b2c-851e-6d06399f941d receipts prove child reads22→23, cursor331→4431
+and resets0→1 during FillRetention, with Drop hints, both documents actually
+visible and two demand leases. No local gate was armed and cleanup succeeded.
+This is not evidence of polling or a hidden desktop.
+
+Pinned JS API2.11.1 event.js defaults a listener without target to EventTarget::Any.
+Pinned Rust tauri2.11.1 event/listener.rs match_any_or_filter accepts Any even
+when an emitter targets another webview, and iterates all registered webviews.
+The ordinary SDK uses this catch-all for collaboration revision hints, so native
+fixture main-only hints also wake the supposedly withheld child. Own-webview
+listener semantics are documented in the official
+[Tauri Webview API](https://tauri.app/reference/javascript/api/namespacewebview/)
+and [event API](https://tauri.app/reference/javascript/api/namespaceevent/).
+
+Before production edits, accept the bounded transport correction: bind ONLY the
+ordinary SDK collaboration-change listener to the actual current Webview target
+through the documented API. Global app.emit broadcasts must still wake that
+listener; events targeted to another view must not. Do not alter RevisionBridge,
+authorization/view fences, event payloads, catchup receipts, native filtering,
+retention4100 writes or existing deadlines. Local Git hints and demand activity
+retain their existing behavior. Add an actual Tauri event-API boundary regression
+for both main/child labels and unchanged unsubscribe; preserve all existing
+bridge, field/draft and native fixture assertions. No DTO/signature/schema change
+or typegen is needed. Frontend owner additionally owns SDK index.ts and a narrow
+transport regression file; root serializes a fresh compiled retained run.
