@@ -18,6 +18,8 @@ mod identities;
 mod local_links;
 pub(crate) mod notification_subjects;
 mod resource_metadata;
+#[cfg(all(test, unix))]
+mod writer_lease_tests;
 
 use crate::{
     domain::*,
@@ -41,11 +43,26 @@ pub struct Store {
 }
 
 struct Inner {
-    // The OS releases this lease on process exit, including crashes. Keeping
-    // the file avoids unlink/recreate races between application instances.
-    _writer_lease: std::fs::File,
     writer: Mutex<SqliteConnection>,
     readers: SqlitePool,
+    // Drop connection handles before releasing the final writer owner's
+    // lease. Keeping the file avoids unlink/recreate races between instances.
+    _writer_lease: WriterLease,
+}
+
+struct WriterLease {
+    file: std::fs::File,
+}
+
+impl Drop for WriterLease {
+    fn drop(&mut self) {
+        // Closing only our descriptor can leave a Unix flock held by a
+        // concurrent fork until it executes. Explicitly release the lock
+        // when the final Inner owner drops, never when a Store clone closes.
+        // On failure, File drop still closes our descriptor; the OS also
+        // releases the lease on process exit, including crashes.
+        let _ = self.file.unlock();
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -118,9 +135,9 @@ impl Store {
             .map_err(storage_error)?;
         Ok(Self {
             inner: Arc::new(Inner {
-                _writer_lease: writer_lease,
                 writer: Mutex::new(writer),
                 readers,
+                _writer_lease: writer_lease,
             }),
         })
     }
@@ -1241,7 +1258,7 @@ async fn retire_credential_in(
 fn storage_error(_: sqlx::Error) -> CollaborationError {
     CollaborationError::storage()
 }
-fn acquire_writer_lease(path: &Path) -> Result<std::fs::File> {
+fn acquire_writer_lease(path: &Path) -> Result<WriterLease> {
     let mut name = path.as_os_str().to_os_string();
     name.push(".lock");
     let lock_path = std::path::PathBuf::from(name);
@@ -1266,7 +1283,7 @@ fn acquire_writer_lease(path: &Path) -> Result<std::fs::File> {
             .map_err(|_| CollaborationError::storage())?;
     }
     match lease.try_lock() {
-        Ok(()) => Ok(lease),
+        Ok(()) => Ok(WriterLease { file: lease }),
         Err(std::fs::TryLockError::WouldBlock) => Err(CollaborationError::new(
             ErrorCode::Busy,
             "Collaboration storage is already open in another application instance",

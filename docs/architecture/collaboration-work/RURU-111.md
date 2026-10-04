@@ -125,3 +125,34 @@ actual HTTP shapes preserve the known matching-head target-start control. After
 this correction the full collaboration suite still passes329/two ignored,
 focused HTTP14/14, workspace all-target Clippy-Dwarnings and formatting pass.
 Logs: /tmp/gitru-ruru111-async-head-{http,full,clippy,fmt-check}.log.
+
+
+### RURU-111 inherited Linux immediate-reopen repair — 4 October 2026
+
+Published5eab038 run37194446146 passes frontend/Clippy and macOS/Windows Rust;
+Linux job111413272739 fails the unchanged demand cold-reopen test at1228 with
+Busy immediately after close/drop. The same earlier one-off R101 boundary is now
+an actual repeated failure; it is not declared fixed by isolated local success.
+
+A deterministic actual-Store regression keeps a duplicated Unix file descriptor:
+reader close and a surviving Store clone remain Busy; after weak Inner proves all
+owners gone, the old raw File still blocks immediate reopen. A raw OS control
+confirms flock remains attached to the shared open file description across dup/
+fork until explicitly unlocked or all duplicates close. The exact process that
+may have inherited a descriptor in remote CI is not instrumented or claimed.
+
+A private WriterLease now explicitly unlocks only on final Inner destruction,
+with its field after writer/readers so their handles drop first. The stable lock
+inode, clone/close exclusivity, crash OS release and bootstrap failure/cancellation
+ownership stay intact. No early close unlock, sleeps, retry masking, schema/public
+API or original demand-test assertion changes occur. New tests also prove closing
+the old duplicate cannot release the reopened owner's independent lock.
+
+Focused raw/Store controls2/2, unchanged demand restart1/1 and existing ownership
+case1/1 pass. Full collaboration331/two ignored, workspace all-target
+Clippy-Dwarnings and formatting pass. Pre-fix red and final green logs:
+/tmp/gitru-ruru111-writer-lease-{baseline,red,green,demand,ownership,full,clippy,
+ fmt-check}.log. A new signed #159 head must qualify its own remote platforms;
+old failing CI is retained as history. The same private fix is integrated into
+R103 before its next retained native build. R106 coordinated shutdown/current-
+schema backup qualification remains open. No PR is merged.
