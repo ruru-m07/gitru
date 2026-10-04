@@ -109,37 +109,9 @@ async function acknowledgeCrash() {
     }),
     { flag: "wx", mode: 0o600 },
   );
-  const deadline = Date.now() + 15_000;
-  while (Date.now() < deadline) {
-    try {
-      const error = boundedJson(
-        resolve(artifacts, "process-exit-error.json"),
-        4096,
-      );
-      throw new Error(`Launch-owned crash failed: ${error.reason}`);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
-    try {
-      const proof = boundedJson(resolve(artifacts, "process-exit.json"), 4096);
-      if (
-        proof.run_nonce !== runNonce ||
-        proof.session_id !== checkpoint.session_id ||
-        proof.process_id !== checkpoint.process_id ||
-        proof.phase !== phase ||
-        proof.requested_signal !== "SIGKILL" ||
-        proof.observed_signal !== "SIGKILL"
-      )
-        throw new Error(
-          "Forced-exit proof belongs to a different native process",
-        );
-      return;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
-    await new Promise((done) => setTimeout(done, 100));
-  }
-  throw new Error("Launch-owned native hard exit was not observed");
+  // The launcher kills only after the successful worker has completed its
+  // WebDriver DELETE session. That removes driver context, not native views;
+  // killing inside afterTest would make normal session teardown fail.
 }
 
 export const config: WebdriverIO.Config = {

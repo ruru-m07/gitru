@@ -10,6 +10,7 @@ import {
   realpathSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
@@ -35,6 +36,7 @@ import HarnessWorkerService, {
 const delegated = vi.hoisted(() => ({
   prepare: vi.fn(),
   workerStart: vi.fn(),
+  workerEnd: vi.fn(),
   complete: vi.fn(),
 }));
 vi.mock("@wdio/tauri-service", () => ({
@@ -48,6 +50,9 @@ vi.mock("@wdio/tauri-service", () => ({
     }
     async onWorkerStart(...args: unknown[]) {
       await delegated.workerStart(...args);
+    }
+    async onWorkerEnd(...args: unknown[]) {
+      await delegated.workerEnd(...args);
     }
     async onComplete(...args: unknown[]) {
       await delegated.complete(...args);
@@ -186,6 +191,7 @@ afterEach(async () => {
   }
   delegated.prepare.mockReset();
   delegated.workerStart.mockReset();
+  delegated.workerEnd.mockReset();
   delegated.complete.mockReset();
 });
 
@@ -220,6 +226,31 @@ describe("retained crash process ownership", () => {
       );
     });
   }
+  for (const offset of [-16_000, 10_000]) {
+    it("rejects an expired or future crash acknowledgment without signalling", async () => {
+      const value = await fixture();
+      checkpoint(value);
+      acknowledgment(value);
+      const time = new Date(Date.now() + offset);
+      utimesSync(join(value.artifacts, "crash-driver-ack.json"), time, time);
+      await rejectsWithoutKill(value, "checkpoint_ack_expired");
+    });
+  }
+  it("refuses an expired monotonic before-commit window without signalling", async () => {
+    const value = await fixture();
+    checkpoint(value);
+    acknowledgment(value);
+    const kill = vi.spyOn(value.proc, "kill");
+    await expect(
+      monitorHarnessCrash(
+        captureHarnessProcess(value.input),
+        new AbortController().signal,
+        performance.now() - 1,
+      ),
+    ).rejects.toMatchObject({ code: "checkpoint_window_expired" });
+    expect(kill).not.toHaveBeenCalled();
+    expect(existsSync(join(value.artifacts, "process-exit.json"))).toBe(false);
+  });
   it("never treats a checkpoint without a passed driver acknowledgment as crash authorization", async () => {
     const value = await fixture();
     checkpoint(value);
@@ -609,13 +640,83 @@ describe("pinned launcher integration", () => {
     first.checkpoint.process_id = replacement.proc.pid!;
     checkpoint(first);
     acknowledgment(first);
-    await once(replacement.proc, "exit");
+    // Ack alone cannot kill while WDIO still needs its native driver for
+    // session teardown. Only the successful worker-end boundary authorizes it.
+    await new Promise((done) => setTimeout(done, 120));
+    expect(replacementKill).not.toHaveBeenCalled();
+    await instance.onWorkerEnd("0-0", 0, [], 0);
+    expect(delegated.workerEnd).toHaveBeenCalledExactlyOnceWith("0-0");
     await vi.waitFor(() =>
       expect(existsSync(join(first.artifacts, "process-exit.json"))).toBe(true),
     );
     expect(firstKill).not.toHaveBeenCalled();
     expect(replacementKill).toHaveBeenCalledExactlyOnceWith("SIGKILL");
     await instance.onComplete(0, {}, []);
+    expect(delegated.complete).toHaveBeenCalledOnce();
+  });
+  it("refuses a failed worker despite its passed checkpoint ack and preserves cleanup", async () => {
+    const value = await fixture();
+    const { instance } = service(value);
+    const kill = vi.spyOn(value.proc, "kill");
+    await instance.onPrepare({}, []);
+    await instance.onWorkerStart("0-0", undefined);
+    checkpoint(value);
+    acknowledgment(value);
+    await expect(instance.onWorkerEnd("0-0", 1, [], 0)).rejects.toMatchObject({
+      code: "crash_worker_failed",
+    });
+    await expect(instance.onComplete(1, {}, [])).rejects.toBeInstanceOf(
+      SevereServiceError,
+    );
+    expect(kill).not.toHaveBeenCalled();
+    expect(delegated.complete).toHaveBeenCalledOnce();
+    expect(existsSync(join(value.artifacts, "process-exit.json"))).toBe(false);
+  });
+  it("keeps the original monotonic worker-start bound when teardown finishes late", async () => {
+    const value = await fixture();
+    const { instance } = service(value);
+    const kill = vi.spyOn(value.proc, "kill");
+    await instance.onPrepare({}, []);
+    const clock = vi.spyOn(performance, "now").mockReturnValue(100);
+    await instance.onWorkerStart("0-0", undefined);
+    checkpoint(value);
+    acknowledgment(value);
+    // Starting a new deadline inside worker-end would incorrectly authorize
+    // this still-live exact process after its native hold could expire.
+    clock.mockReturnValue(45_101);
+    await expect(instance.onWorkerEnd("0-0", 0, [], 0)).rejects.toMatchObject({
+      code: "checkpoint_window_expired",
+    });
+    await expect(instance.onComplete(1, {}, [])).rejects.toBeInstanceOf(
+      SevereServiceError,
+    );
+    expect(kill).not.toHaveBeenCalled();
+    expect(delegated.complete).toHaveBeenCalledOnce();
+    expect(existsSync(join(value.artifacts, "process-exit.json"))).toBe(false);
+  });
+  it("requires crash proof at completion even if worker-end was never delivered", async () => {
+    const value = await fixture();
+    const { instance } = service(value);
+    const kill = vi.spyOn(value.proc, "kill");
+    await instance.onPrepare({}, []);
+    await expect(instance.onComplete(0, {}, [])).rejects.toBeInstanceOf(
+      SevereServiceError,
+    );
+    expect(kill).not.toHaveBeenCalled();
+    expect(delegated.complete).toHaveBeenCalledOnce();
+  });
+  it("makes original worker-end failures fatal through the installed dispatcher", async () => {
+    const { runHook } = installedHookDispatcher();
+    const value = await fixture("main");
+    const { instance } = service(value);
+    await runHook([instance], "onPrepare", {}, []);
+    delegated.workerEnd.mockRejectedValueOnce(new Error("Own teardown failed"));
+    await expect(
+      runHook([instance], "onWorkerEnd", "0-0", 0, [], 0),
+    ).rejects.toBeInstanceOf(SevereServiceError);
+    await expect(instance.onComplete(1, {}, [])).rejects.toBeInstanceOf(
+      SevereServiceError,
+    );
     expect(delegated.complete).toHaveBeenCalledOnce();
   });
   it("preserves a preparation failure together with a delegated cleanup failure", async () => {

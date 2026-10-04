@@ -2473,3 +2473,28 @@ receipts now retain retention-reset and disconnect read outcomes before assertio
 only stale_view or cancelled qualify. All 35 focused frontend cases, both desktop
 and E2E TypeScript checks, scoped lint and diff checks pass. Complete retained
 packaged main/crash/restart and Linux/Windows qualification remain pending.
+
+
+### Crash driver teardown boundary — 4 October 2026
+
+Signed 6e87965 now passes all six retained main scenarios in the actual macOS
+release binary. The retention-reset and disconnect receipts both observe real
+SDK stale authorization. The first before-commit fixture issues its real native
+checkpoint and the launch-owned exact process exits on SIGKILL with matching
+proof. WDIO still exits 1 because killing during afterTest removes its embedded
+server before normal DELETE session teardown. This run is incomplete, not a
+qualified crash/restart pass; artifacts are
+`artifacts/e2e-harness/2026-10-04T09-07-22-613Z-26124`.
+
+Installed WDIO 9.31.7 and embedded Rust driver 1.4.0 source confirm DELETE removes
+only a driver session map entry, leaving native views, collaboration work and
+SQLite alive. The launcher now kills the exact post-health-check captured app
+only at successful worker-end, before delegated native cleanup. afterTest writes
+only its strict passed acknowledgment. No connection error or nonzero exit is
+relabelled success. Completion requires matching crash proof and always delegates
+cleanup. A monotonic 45-second window from worker start conservatively precedes
+the before-commit provider gate's 60-second expiry; fresh acknowledgment is also
+bounded to 15 seconds with one millisecond filesystem rounding tolerance. Failed,
+missing, late, foreign or spontaneously exited workers cannot qualify a crash.
+Focused tests use real owned Node children, installed dispatcher behavior and
+failed/late teardown controls. Actual native crash/restart rerun remains pending.

@@ -15,11 +15,12 @@ import {
   monitorHarnessStop,
   type OwnedHarnessProcess,
 } from "./harness-process";
+import { assertHarnessCrashProof } from "./harness-qualification";
 
 export default TauriWorkerService;
 
 function fatalLauncherError(
-  stage: "preparation" | "worker_start" | "completion",
+  stage: "preparation" | "worker_start" | "worker_end" | "completion",
   cause: unknown,
 ): InstanceType<typeof SevereServiceError> {
   // WDIO logs and swallows ordinary service-hook errors. Its actual severe
@@ -81,6 +82,8 @@ export function inspectPinnedHarnessLauncher(
 }
 
 export class launcher extends TauriLauncher {
+  private crashOwned?: OwnedHarnessProcess;
+  private crashDeadline?: number;
   private crashStop?: AbortController;
   private crashMonitor?: Promise<void>;
   private crashFailure?: Error;
@@ -203,25 +206,69 @@ export class launcher extends TauriLauncher {
       const owned = this.captureCurrent();
       if (owned.input.phase === "main" || owned.input.phase === "restart")
         return;
-      if (this.crashMonitor)
+      if (this.crashOwned)
         throw new HarnessProcessError("duplicate_crash_worker");
-      // The original launcher can replace a failed embedded server in its worker
-      // health check. Capture that actual handle before binding the crash monitor.
-      this.crashStop = new AbortController();
-      this.crashMonitor = monitorHarnessCrash(
-        owned,
-        this.crashStop.signal,
-      ).then(
-        () => undefined,
-        (error: unknown) => {
-          this.crashFailure =
-            error instanceof Error
-              ? error
-              : new HarnessProcessError("crash_monitor_failure");
-        },
-      );
+      // The health check can replace a failed embedded server. Capture that
+      // exact handle now; only a successful, fully torn-down worker may kill it.
+      this.crashOwned = owned;
+      // A fresh crash fixture is prepared only by this worker. Starting the
+      // bound here guarantees its before-commit gate cannot reach its 60s expiry.
+      this.crashDeadline =
+        owned.input.phase === "crash-before-commit"
+          ? performance.now() + 45_000
+          : undefined;
     } catch (error) {
       throw fatalLauncherError("worker_start", error);
+    }
+  }
+
+  override async onWorkerEnd(
+    cid: string,
+    exitCode?: number,
+    _specs?: string[],
+    retries?: number,
+  ) {
+    try {
+      const owned = this.crashOwned;
+      if (owned) {
+        if (exitCode !== 0 || retries !== 0)
+          throw new HarnessProcessError("crash_worker_failed");
+        if (this.crashMonitor)
+          throw new HarnessProcessError("duplicate_crash_worker_end");
+        // Installed WDIO reaches this hook after DELETE session succeeds. The
+        // embedded driver's DELETE removes its session map entry only; native
+        // views, held provider response and SQLite remain alive. Always kill
+        // before delegated launcher cleanup can terminate the owned app.
+        this.crashStop = new AbortController();
+        this.crashMonitor = monitorHarnessCrash(
+          owned,
+          this.crashStop.signal,
+          this.crashDeadline,
+        ).then(
+          () => undefined,
+          (error: unknown) => {
+            this.crashFailure =
+              error instanceof Error
+                ? error
+                : new HarnessProcessError("crash_monitor_failure");
+          },
+        );
+        await this.crashMonitor;
+        if (this.crashFailure) throw this.crashFailure;
+        assertHarnessCrashProof(
+          owned.input.artifactsDirectory,
+          owned.input.runNonce,
+          owned.input.phase,
+          owned.input.binaryPath,
+        );
+      }
+      await super.onWorkerEnd(cid);
+    } catch (error) {
+      this.crashFailure =
+        error instanceof Error
+          ? error
+          : new HarnessProcessError("worker_end_failure");
+      throw fatalLauncherError("worker_end", error);
     }
   }
 
@@ -232,6 +279,22 @@ export class launcher extends TauriLauncher {
     const failures = [this.crashFailure, this.stopFailure].filter(
       (error): error is Error => error !== undefined,
     );
+    if (this.initial && this.initial.input.phase.startsWith("crash-")) {
+      try {
+        assertHarnessCrashProof(
+          this.initial.input.artifactsDirectory,
+          this.initial.input.runNonce,
+          this.initial.input.phase,
+          this.initial.input.binaryPath,
+        );
+      } catch (error) {
+        failures.push(
+          error instanceof Error
+            ? error
+            : new HarnessProcessError("missing_crash_proof"),
+        );
+      }
+    }
     try {
       await super.onComplete(...args);
     } catch (error) {

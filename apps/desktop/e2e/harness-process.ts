@@ -439,6 +439,7 @@ function killAndObserve(
 export async function monitorHarnessCrash(
   owned: OwnedHarnessProcess,
   signal: AbortSignal,
+  killDeadline?: number,
 ): Promise<HarnessProcessExitProof> {
   try {
     if (
@@ -446,7 +447,12 @@ export async function monitorHarnessCrash(
       owned.input.phase !== "crash-after-commit"
     )
       fail("invalid_crash_phase");
-    const deadline = performance.now() + HARNESS_CRASH_TIMEOUT_MS;
+    if (killDeadline !== undefined && !Number.isFinite(killDeadline))
+      fail("invalid_crash_deadline");
+    const deadline = Math.min(
+      performance.now() + HARNESS_CRASH_TIMEOUT_MS,
+      killDeadline ?? Number.POSITIVE_INFINITY,
+    );
     while (performance.now() < deadline) {
       if (signal.aborted) fail("monitor_stopped");
       validateOwnership(owned);
@@ -455,6 +461,14 @@ export async function monitorHarnessCrash(
         true,
       );
       if (acknowledgment !== undefined) {
+        // A delayed successful teardown must not outlive the held native gate.
+        // This private file is checked after bounded non-symlink JSON reading;
+        // no old/future acknowledgment can authorize a current forced crash.
+        const acknowledged = lstatSync(
+          join(owned.input.artifactsDirectory, "crash-driver-ack.json"),
+        );
+        const age = Date.now() - acknowledged.mtimeMs;
+        if (age < -1 || age > 15_000) fail("checkpoint_ack_expired");
         const verifiedAck = ack(acknowledgment);
         const observed = checkpoint(
           boundedJson(join(owned.input.root, "crash-checkpoint.json")),
@@ -470,6 +484,7 @@ export async function monitorHarnessCrash(
         )
           fail("checkpoint_ack_mismatch");
         if (signal.aborted) fail("monitor_stopped");
+        if (performance.now() >= deadline) fail("checkpoint_window_expired");
         const exit = await killAndObserve(owned);
         const proof: HarnessProcessExitProof = {
           ...verifiedAck,
@@ -486,7 +501,11 @@ export async function monitorHarnessCrash(
       }
       await waitPoll(signal);
     }
-    return fail("checkpoint_ack_timeout");
+    return fail(
+      killDeadline === undefined
+        ? "checkpoint_ack_timeout"
+        : "checkpoint_window_expired",
+    );
   } catch (error) {
     const failure =
       error instanceof HarnessProcessError
