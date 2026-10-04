@@ -43,6 +43,12 @@ const repositoryInfo = await Bun.file(
 const repositoryCommands = await Bun.file(
   new URL("crates/ipc/src/commands.rs", root),
 ).text();
+const harnessDomain = await Bun.file(
+  new URL("crates/collaboration/src/test_harness/domain.rs", root),
+).text();
+const nativeHarnessDomain = await Bun.file(
+  new URL("apps/desktop/src-tauri/src/collaboration_harness/domain.rs", root),
+).text();
 const output = new URL("packages/commands/src/types.ts", root);
 let generated = await Bun.file(output).text();
 const snake = (value: string) =>
@@ -57,6 +63,8 @@ const nativeOnlyTypes = new Set([
   "DetailEnumeration",
   "DetailHeadScope",
   "DetailReconciliation",
+  "HarnessCoreRequest",
+  "HarnessCoreReceipt",
 ]);
 
 for (const source of [
@@ -72,6 +80,8 @@ for (const source of [
   linkCommands,
   repositoryInfo,
   repositoryCommands,
+  harnessDomain,
+  nativeHarnessDomain,
 ]) {
   for (const match of source.matchAll(
     /#\[serde\(rename_all = "snake_case"\)\]\s*pub enum (\w+)\s*\{([^}]+)\}/g,
@@ -134,7 +144,19 @@ const eventsOutput = new URL("packages/commands/src/events.ts", root);
 const eventsFile = Bun.file(eventsOutput);
 if (await eventsFile.exists()) {
   const identifiers = new Set<string>();
+  // Feature-exclusive relays can emit the same typed event as production.
+  // The scanner ignores cfg and emits the exact listener twice. Collapse only
+  // identical definitions; differing payloads still fail the collision check.
+  const definitions = new Set<string>();
   let events = (await eventsFile.text()).replace(
+    /\/\*\*\n \* Listen for '[^\n]+' events[\s\S]*?export async function [^\s(]+\([\s\S]*?\n\}/g,
+    (definition) => {
+      if (definitions.has(definition)) return "";
+      definitions.add(definition);
+      return definition;
+    },
+  );
+  events = events.replace(
     /^export async function ([^\s(]+)(?=\s*\()/gm,
     (_, original: string) => {
       const identifier = original.replace(

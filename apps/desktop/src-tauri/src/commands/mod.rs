@@ -2,6 +2,8 @@ pub mod actions;
 pub mod branch;
 pub mod collaboration;
 pub mod collaboration_demand;
+#[cfg(feature = "collaboration-harness")]
+pub mod collaboration_harness;
 pub mod collaboration_local_links;
 pub mod collaboration_notification_subjects;
 pub mod commit;
@@ -12,4 +14,5 @@ pub mod pickaxe;
 pub mod rebase;
 pub mod security;
 pub mod stash;
+#[cfg(not(feature = "collaboration-harness"))]
 pub mod updater;

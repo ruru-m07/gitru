@@ -17,6 +17,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [features]
 default = []
 e2e = ["dep:tauri-plugin-wdio", "dep:tauri-plugin-wdio-webdriver"]
+collaboration-harness = ["e2e", "collaboration/test-harness"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -275,14 +275,18 @@ the embedded-driver limitation rather than claiming direct child WDIO control.
 
 ## Isolation, cleanup and runner
 
-Use a dedicated mkdtemp run directory containing app config/data, SQLite+WAL,
+Use a dedicated mkdtemp run directory containing collaboration SQLite+WAL,
 durable fake vault, exact Git config, checkpoint markers, logs and run.json.
 Validate canonical root/owned marker before native fixture setup; no symlink
 traversal or caller-supplied file path. Compile identifier and feature are fixed.
 Disable native keyring, GitHub CLI, cloud sign-in, updater requests and personal
 Git configuration. No production provider adapter exists in this lane. Persist
 only finite synthetic values. Restart retains its own DB/vault; reset/cleanup
-only visits known run-owned files. Never reuse/reset ordinary user AppData.
+only visits known run-owned files. Ordinary repository/preferences/window-state
+files use the fixed harness-ID OS namespace, which is distinct from personal
+`com.ruru.gitru` but shared across harness runs. The runner never resets or deletes
+unknown files there, and does not override HOME. This lane does not claim all
+application persistence is beneath the run root or a freshly cleared OS profile.
 
 The outer runner owns process launch identity and crash checkpoints; it must
 prove the target is the exact run-owned child executable before kill, and wait
@@ -410,3 +414,91 @@ native-only receipt fixtures to final R101 without changing its authority policy
 Actual logs `/tmp/gitru-ruru103-core-review-baseline.log` and
 `/tmp/gitru-ruru103-core-review-independent.log` qualify19 core cases; no personal
 credentials/config/vault or provider network were used.
+
+### Packaged crash coordination and source generation — 4 October 2026
+
+Root accepts a local WDIO service adapter around pinned tauri-service 1.4.0.
+Its launcher owns the actual spawned ChildProcess handles and their exact binary/
+run environment. A successful fixed checkpoint case writes a bounded driver ack;
+the afterTest hook waits for observed forced exit before driver session deletion.
+The launcher checks marker, nonce, native session/scenario/kind/PID and exact
+owned binary/handle, sends SIGKILL to that handle only, and records actual exit.
+No process enumeration, global PID kill, guessed path or swallowed failure is
+allowed. A new driver/app session reopens the same task-owned database and vault.
+Guard the pinned private-map shape and fail closed if the dependency changes.
+Independent helper tests qualify ownership refusal and force-exit mechanics;
+only the retained packaged lane qualifies the real native checkpoint/restart.
+The core reviewer now owns only new process helper/tests/local service files;
+root retains configuration/outer runner/activation/CI/docs ownership.
+
+Normal typegen now includes native/core fixture DTO sources, correct Serde enums
+and nullability, and three additive commands. The scanner sees both mutually
+exclusive typed event relays; the source correction collapses only exact duplicate
+listener definitions and continues rejecting different identifier collisions.
+No generated files are edited by hand. Main activation follows the existing
+bridge/root installation and imports fixtures only in the dedicated Vite mode.
+
+Vercel reconnection confirms parent R110/#155 exact-head deployment is READY with
+a completed build; its GitHub Vercel status remains stale pending. All14 other
+reported checks pass. R101/#156 is published and its own CI is still running.
+Neither the status mismatch nor local evidence authorizes a merge.
+
+R101/#156 exact head63e1197 subsequently passed all11 reported checks in CI run
+37185030333, including Rust and packaged E2E on Linux/macOS/Windows. No exact-head
+CodeQL run is reported, so none is assumed. All attached collaboration PR heads
+were rechecked: no failed reported checks; only R110's stale Vercel status remains
+pending despite its separately verified READY deployment.
+
+Independent TypeScript AST review compares all285 previous named Zod initializers
+against63e1197: zero removed/changed,26 additive fixture schemas. Generated116
+commands remain normal source-generated output. Native core19, native app26
+feature/15 default and frontend24 focused tests pass locally; default/feature
+Clippy and source formatting pass in their lanes. Actual packaged retained
+webviews, captured IPC returns and forced-process restart remain open gates.
+
+### Finite real-child authority extension — 4 October 2026
+
+Root accepts one additional compiled action carrying only the real main-issued
+lease UUID, literal owner main, native owner generation and primary actor/epoch.
+The child matches actor/epoch against its own native manifest, then uses its real
+native caller/current owner receipt to attempt foreign renewal/release, synthetic
+actor disconnect and fixed main owner inspect/activity/dispose. Each must return
+typed PermissionDenied; main's same lease remains renewable and is released in
+finally. Capture only finite outcomes and unchanged actor/epoch/revision/vault/
+call counters, never persist the opaque lease or arbitrary scope. No personal CLI
+token or credential inspection occurs. Production caller and lease guards remain
+unchanged; this exercises the actual generated IPC, rather than claiming existing
+core tests alone qualify every real-webview authority case.
+
+
+### RURU-103 integrated local checkpoint and current remote evidence — 4 October 2026
+
+R101/#156 head63e1197 passes all11 reported checks in run37185030333, including
+Rust and packaged E2E on Linux, macOS and Windows. No exact-head CodeQL run is
+reported. After Vercel reconnection, R110/#155 head725b9f2 deployment
+`dpl_6UXbMPbqvvj1Fd6RXKGtCFFMiBdU` is READY and its build completed3 October
+13:41:13Z; GitHub still reports its stale Vercel status Pending. The other14
+reported checks pass. No failed attached collaboration checks or duplicate PRs
+were found, and no merge is authorized.
+
+R103 inherits both exact published heads. Full `make verify` passes locally:
+477 frontend/SDK/UI tests across53 files, all repo lint/types, production desktop
+build, workspace Rust tests, formatting and default all-target Clippy. This
+includes28 focused frontend protocol/probe/observer cases,36 owned-process helper
+cases and2 environment-isolation cases. Additional feature lanes pass19 actual
+core cases and26 native app cases, with15 default native caller/updater cases;
+core/app feature Clippy also passes. Normal `make typegen` produces116 commands;
+independent AST comparison preserves all285 previous named Zod schemas and adds
+26 fixture schemas. Production built JS contains none of the fixture bootstrap
+markers. Frozen migrations and provider authority policy remain unchanged.
+
+The finite synthetic native controller, real query/SDK probe, pinned WDIO service
+adapter, owned-handle crash coordinator and separate three-platform CI lane are
+checkpointed before retained execution. These local tests do not yet qualify
+actual packaged shared webviews, captured IPC returns, hard-kill/restart or the
+normal packaged E2E lane on this head. Collaboration DB/vault/checkpoints live
+under each private run root; ordinary app/window persistence uses only the fixed
+harness-ID OS namespace and is never reset. A dependency startup failure before
+its child handle is registered uses the dependency's cleanup; it is not claimed
+as independently proven forced-exit ownership. See the
+accepted contract above.

@@ -221,7 +221,23 @@ pub async fn collaboration_item(
     state: State<'_, CollaborationState>,
 ) -> Result<ItemSnapshot, CollaborationError> {
     authorize(&view, Operation::Item)?;
-    state.get().await?.store().item(&account_id, &item_id).await
+    #[cfg(feature = "collaboration-harness")]
+    let proof = super::collaboration_harness::LocalReturnProof::capture(&view)?;
+    let snapshot = state
+        .get()
+        .await?
+        .store()
+        .item(&account_id, &item_id)
+        .await?;
+    #[cfg(feature = "collaboration-harness")]
+    proof
+        .hold(
+            crate::collaboration_harness::HarnessReadKind::Item,
+            &account_id,
+            &item_id,
+        )
+        .await?;
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -267,12 +283,23 @@ pub async fn collaboration_draft(
     state: State<'_, CollaborationState>,
 ) -> Result<Option<LocalDraft>, CollaborationError> {
     authorize(&view, Operation::Draft)?;
-    state
+    #[cfg(feature = "collaboration-harness")]
+    let proof = super::collaboration_harness::LocalReturnProof::capture(&view)?;
+    let snapshot = state
         .get()
         .await?
         .store()
         .draft(&account_id, &subject_id)
-        .await
+        .await?;
+    #[cfg(feature = "collaboration-harness")]
+    proof
+        .hold(
+            crate::collaboration_harness::HarnessReadKind::Draft,
+            &account_id,
+            &subject_id,
+        )
+        .await?;
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -318,7 +345,23 @@ pub async fn collaboration_detail(
     state: State<'_, CollaborationState>,
 ) -> Result<DetailSnapshot, CollaborationError> {
     authorize(&view, Operation::Detail)?;
-    state.get().await?.store().detail(query).await
+    #[cfg(feature = "collaboration-harness")]
+    let proof = super::collaboration_harness::LocalReturnProof::capture(&view)?;
+    #[cfg(feature = "collaboration-harness")]
+    let held_target = (query.facet == collaboration::DetailFacet::Body)
+        .then(|| (query.account_id.clone(), query.subject_id.clone()));
+    let snapshot = state.get().await?.store().detail(query).await?;
+    #[cfg(feature = "collaboration-harness")]
+    if let Some((account, subject)) = held_target {
+        proof
+            .hold(
+                crate::collaboration_harness::HarnessReadKind::Body,
+                &account,
+                &subject,
+            )
+            .await?;
+    }
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -328,6 +371,10 @@ pub async fn collaboration_hydrate_detail(
     state: State<'_, CollaborationState>,
 ) -> Result<RefreshReceipt, CollaborationError> {
     authorize(&view, Operation::HydrateDetail)?;
+    #[cfg(feature = "collaboration-harness")]
+    super::collaboration_harness::LocalReturnProof::capture(&view)?
+        .record_hydrate()
+        .await?;
     state.get().await?.hydrate_detail(request).await
 }
 

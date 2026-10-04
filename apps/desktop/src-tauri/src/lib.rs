@@ -12,20 +12,25 @@ use tauri::{App, Manager};
 use tauri_plugin_store::StoreExt;
 use tokio::sync::RwLock;
 
-#[cfg(feature = "e2e")]
+#[cfg(all(feature = "e2e", not(feature = "collaboration-harness")))]
 const E2E_RESET_ENV: &str = "GITRU_E2E_RESET";
-#[cfg(feature = "e2e")]
+#[cfg(all(feature = "e2e", not(feature = "collaboration-harness")))]
 const E2E_IDENTIFIER: &str = "com.ruru.gitru.e2e";
 
 #[cfg(target_os = "macos")]
 mod app_menu;
+#[cfg(feature = "collaboration-harness")]
+mod collaboration_harness;
+#[cfg(not(feature = "collaboration-harness"))]
 mod collaboration_setup;
 mod commands;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default()
-        .plugin(tauri_plugin_updater::Builder::new().build())
+    let builder = tauri::Builder::default();
+    #[cfg(not(feature = "collaboration-harness"))]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    let builder = builder
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
@@ -56,13 +61,22 @@ pub fn run() {
 
     builder
         .setup(|app| {
-            #[cfg(feature = "e2e")]
+            #[cfg(all(feature = "e2e", not(feature = "collaboration-harness")))]
             reset_e2e_state(app)?;
+            #[cfg(feature = "collaboration-harness")]
+            collaboration_harness::setup(app)?;
             setup_managers(app);
+            #[cfg(not(feature = "collaboration-harness"))]
             collaboration_setup::setup(app);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            #[cfg(feature = "collaboration-harness")]
+            commands::collaboration_harness::collaboration_harness_control,
+            #[cfg(feature = "collaboration-harness")]
+            commands::collaboration_harness::collaboration_harness_status,
+            #[cfg(feature = "collaboration-harness")]
+            commands::collaboration_harness::collaboration_harness_view_manifest,
             commands::collaboration::collaboration_accounts,
             commands::collaboration::collaboration_connect_github,
             commands::collaboration::collaboration_connect_gitlab,
@@ -169,7 +183,9 @@ pub fn run() {
             commands::rebase::rebase_update_todo,
             commands::rebase::rebase_set_commit_message,
             commands::rebase::rebase_resolve_conflict,
+            #[cfg(not(feature = "collaboration-harness"))]
             commands::updater::check_for_update_by_channel,
+            #[cfg(not(feature = "collaboration-harness"))]
             commands::updater::download_and_install_update_by_channel,
             // Session Navigation Commands
             ipc::commands::session_push_to_history,
@@ -182,7 +198,7 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-#[cfg(feature = "e2e")]
+#[cfg(all(feature = "e2e", not(feature = "collaboration-harness")))]
 fn reset_e2e_state(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     if std::env::var(E2E_RESET_ENV).as_deref() != Ok("1") {
         return Ok(());

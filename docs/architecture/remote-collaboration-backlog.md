@@ -1274,3 +1274,36 @@ connector currently requires reauthentication. Local evidence does not replace
 new-head CI, live provider/vault or power-loss qualification. No PR is merged.
 R103's retained native-webview harness inherits this final source sequentially.
 See [R101 work note](./collaboration-work/RURU-101.md).
+
+
+### RURU-103 integrated local checkpoint and current remote evidence — 4 October 2026
+
+R101/#156 head63e1197 passes all11 reported checks in run37185030333, including
+Rust and packaged E2E on Linux, macOS and Windows. No exact-head CodeQL run is
+reported. After Vercel reconnection, R110/#155 head725b9f2 deployment
+`dpl_6UXbMPbqvvj1Fd6RXKGtCFFMiBdU` is READY and its build completed3 October
+13:41:13Z; GitHub still reports its stale Vercel status Pending. The other14
+reported checks pass. No failed attached collaboration checks or duplicate PRs
+were found, and no merge is authorized.
+
+R103 inherits both exact published heads. Full `make verify` passes locally:
+477 frontend/SDK/UI tests across53 files, all repo lint/types, production desktop
+build, workspace Rust tests, formatting and default all-target Clippy. This
+includes28 focused frontend protocol/probe/observer cases,36 owned-process helper
+cases and2 environment-isolation cases. Additional feature lanes pass19 actual
+core cases and26 native app cases, with15 default native caller/updater cases;
+core/app feature Clippy also passes. Normal `make typegen` produces116 commands;
+independent AST comparison preserves all285 previous named Zod schemas and adds
+26 fixture schemas. Production built JS contains none of the fixture bootstrap
+markers. Frozen migrations and provider authority policy remain unchanged.
+
+The finite synthetic native controller, real query/SDK probe, pinned WDIO service
+adapter, owned-handle crash coordinator and separate three-platform CI lane are
+checkpointed before retained execution. These local tests do not yet qualify
+actual packaged shared webviews, captured IPC returns, hard-kill/restart or the
+normal packaged E2E lane on this head. Collaboration DB/vault/checkpoints live
+under each private run root; ordinary app/window persistence uses only the fixed
+harness-ID OS namespace and is never reset. A dependency startup failure before
+its child handle is registered uses the dependency's cleanup; it is not claimed
+as independently proven forced-exit ownership. See the
+[R103 work note](./collaboration-work/RURU-103.md) for the accepted contract.

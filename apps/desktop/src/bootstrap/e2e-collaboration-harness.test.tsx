@@ -1,0 +1,332 @@
+import { webcrypto } from "node:crypto";
+import { act, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { HarnessAction } from "../../e2e/protocol/collaboration-harness";
+import { fixtureAccount } from "../../tests/fixtures/collaboration";
+import { syntheticFingerprint } from "./e2e-collaboration-harness-observation";
+
+const native = vi.hoisted(() => ({
+  label: "main",
+  listen: vi.fn(async () => vi.fn()),
+  emitTo: vi.fn(async () => undefined),
+  control: vi.fn(async () => undefined),
+  activity: vi.fn(async () => ({ generation: "7", active: true })),
+  renew: vi.fn(async () => undefined),
+  release: vi.fn(async () => undefined),
+  disconnect: vi.fn(async () => undefined),
+  inspectOwner: vi.fn(async () => undefined),
+  setOwner: vi.fn(async () => undefined),
+  disposeOwner: vi.fn(async () => undefined),
+  connect: vi.fn(async () => undefined),
+}));
+vi.mock("@tauri-apps/api/webview", () => ({
+  getCurrentWebview: () => ({
+    label: native.label,
+    listen: native.listen,
+    emitTo: native.emitTo,
+  }),
+}));
+vi.mock("@gitru/commands", async (original) => ({
+  ...(await original<object>()),
+  collaborationHarnessControl: native.control,
+  collaborationDemandActivity: native.activity,
+  collaborationRenewDemand: native.renew,
+  collaborationReleaseDemand: native.release,
+  collaborationDisconnect: native.disconnect,
+  collaborationInspectDemandOwner: native.inspectOwner,
+  collaborationSetDemandOwnerActivity: native.setOwner,
+  collaborationDisposeDemandOwner: native.disposeOwner,
+  collaborationConnectGithub: native.connect,
+}));
+vi.mock("@gitru/collaboration-client/react", async (original) => ({
+  ...(await original<object>()),
+  useCollaborationAccounts: () => ({
+    data: { accounts: [fixtureAccount] },
+  }),
+}));
+// Unit lifecycle fixture only. The packaged lane mounts the actual component.
+// This isolates whether a new native phase accidentally replaces its editor.
+vi.mock("../features/collaboration/saved-item-detail", async () => {
+  const { useState } = await import("react");
+  return {
+    SavedItemDetail: () => {
+      const [text, setText] = useState("Synthetic authored editor");
+      return (
+        <article aria-label="Saved item detail">
+          <textarea
+            name="private-draft"
+            value={text}
+            onChange={(event) => setText(event.currentTarget.value)}
+          />
+        </article>
+      );
+    },
+  };
+});
+
+import { installCollaborationHarnessProbe } from "./e2e-collaboration-harness";
+
+let probe: Awaited<ReturnType<typeof installCollaborationHarnessProbe>> | null;
+beforeEach(() => {
+  vi.stubGlobal("crypto", webcrypto);
+  native.label = "main";
+  vi.clearAllMocks();
+  probe = null;
+});
+afterEach(async () => {
+  await act(async () => probe?.stop());
+});
+
+function fixture() {
+  let manifest = {
+    run_nonce: "run-103",
+    session_id: "session-103",
+    scenario_generation: "1",
+    webview_label: native.label,
+    role:
+      native.label === "main"
+        ? ("main" as const)
+        : ("concurrent_child" as const),
+    actors: [
+      {
+        slot: "primary" as const,
+        account_id: fixtureAccount.id,
+        authorization_epoch: fixtureAccount.authorization_epoch,
+        instance_id: "github:github.com",
+        repository_id: "fixture-repository",
+        subject_id: "fixture-subject",
+      },
+    ],
+  };
+  const readManifest = vi.fn(async () => structuredClone(manifest));
+  const request = (action: HarnessAction) => ({
+    run_nonce: manifest.run_nonce,
+    scenario_generation: manifest.scenario_generation,
+    request_id: crypto.randomUUID(),
+    label: native.label,
+    action,
+  });
+  return {
+    readManifest,
+    request,
+    phase() {
+      manifest = { ...manifest, scenario_generation: "2" };
+    },
+    retire() {
+      manifest = { ...manifest, session_id: "new-session-103" };
+    },
+  };
+}
+
+describe("retained probe document lifetime", () => {
+  it("requires the actual native view label before creating renderer state", async () => {
+    const wrong = fixture();
+    native.label = "tab-webview:other";
+    await expect(
+      installCollaborationHarnessProbe(wrong.readManifest),
+    ).rejects.toThrow("actual native view");
+    expect(
+      document.querySelector('[aria-label="Retained collaboration fixture"]'),
+    ).toBeNull();
+  });
+
+  it("keeps the same dirty editor when a provider phase changes its request fence", async () => {
+    const source = fixture();
+    await act(async () => {
+      probe = await installCollaborationHarnessProbe(source.readManifest);
+      await probe.execute(source.request({ kind: "mount", actor: "primary" }));
+    });
+    await waitFor(() =>
+      expect(
+        document.querySelector('textarea[name="private-draft"]'),
+      ).not.toBeNull(),
+    );
+    await act(async () => {
+      await probe?.execute(
+        source.request({ kind: "edit-draft", variant: "first-edit" }),
+      );
+    });
+    const before = await probe?.inspect();
+    const editor = document.querySelector('textarea[name="private-draft"]');
+    source.phase();
+    let receipt:
+      | Awaited<ReturnType<NonNullable<typeof probe>["execute"]>>
+      | undefined;
+    await act(async () => {
+      receipt = await probe?.execute(source.request({ kind: "inspect" }));
+    });
+    expect(receipt?.outcome).toBe("accepted");
+    expect(document.querySelector('textarea[name="private-draft"]')).toBe(
+      editor,
+    );
+    expect((await probe?.inspect())?.editor_hash).toBe(before?.editor_hash);
+    expect(before?.editor_hash).not.toBe(
+      await syntheticFingerprint("Synthetic authored editor"),
+    );
+  });
+
+  it("rejects old scenario and process incarnations without a DOM action", async () => {
+    const source = fixture();
+    await act(async () => {
+      probe = await installCollaborationHarnessProbe(source.readManifest);
+    });
+    const old = source.request({ kind: "mount", actor: "primary" });
+    source.phase();
+    expect((await probe?.execute(old))?.outcome).toBe("stale_view");
+    expect((await probe?.inspect())?.actor).toBeNull();
+    source.retire();
+    expect(
+      (
+        await probe?.execute(
+          source.request({ kind: "mount", actor: "primary" }),
+        )
+      )?.outcome,
+    ).toBe("stale_view");
+    expect((await probe?.inspect())?.actor).toBeNull();
+  });
+
+  it("uses the same generated controller for a real child's authority check", async () => {
+    native.label = "tab-webview:ruru103:actual-child";
+    native.control.mockRejectedValueOnce({ code: "permission_denied" });
+    const source = fixture();
+    await act(async () => {
+      probe = await installCollaborationHarnessProbe(source.readManifest);
+    });
+    const receipt = await probe?.execute(
+      source.request({ kind: "check-control-authority" }),
+    );
+    expect(receipt?.outcome).toBe("permission_denied");
+    expect(native.control).toHaveBeenCalledWith({
+      request: {
+        run_nonce: "run-103",
+        expected_generation: "1",
+        action: "core",
+        core_action: "cancel_gates",
+        gate_id: null,
+      },
+    });
+  });
+
+  it("forwards the bounded peer packet through generated calls using its own owner receipt", async () => {
+    native.label = "tab-webview:ruru103:actual-child";
+    for (const command of [
+      native.control,
+      native.renew,
+      native.release,
+      native.disconnect,
+      native.inspectOwner,
+      native.setOwner,
+      native.disposeOwner,
+      native.connect,
+    ])
+      command.mockRejectedValue({ code: "permission_denied" });
+    const source = fixture();
+    const peer = {
+      lease_id: "a8b2f06a-5d3e-40f7-9f98-aaf24112c2af",
+      owner_label: "main" as const,
+      owner_generation: "5",
+      account_id: fixtureAccount.id,
+      authorization_epoch: fixtureAccount.authorization_epoch,
+    };
+    await act(async () => {
+      probe = await installCollaborationHarnessProbe(source.readManifest);
+    });
+    const receipt = await probe?.execute(
+      source.request({ kind: "check-peer-authority", peer }),
+    );
+    expect(receipt?.outcome).toBe("accepted");
+    expect(Object.values(receipt?.authority ?? {})).toEqual(
+      Array(8).fill("permission_denied"),
+    );
+    expect(native.activity).toHaveBeenCalledExactlyOnceWith({});
+    expect(native.renew).toHaveBeenCalledExactlyOnceWith({
+      request: {
+        owner_generation: "7",
+        leases: [
+          {
+            lease_id: peer.lease_id,
+            account_id: peer.account_id,
+            authorization_epoch: peer.authorization_epoch,
+          },
+        ],
+      },
+    });
+    expect(native.release).toHaveBeenCalledExactlyOnceWith({
+      request: { lease_id: peer.lease_id },
+    });
+    expect(native.disconnect).toHaveBeenCalledExactlyOnceWith({
+      accountId: fixtureAccount.id,
+    });
+    expect(native.setOwner).toHaveBeenCalledExactlyOnceWith({
+      ownerLabel: "main",
+      expectedGeneration: "5",
+      active: false,
+    });
+    expect(native.disposeOwner).toHaveBeenCalledExactlyOnceWith({
+      ownerLabel: "main",
+      expectedGeneration: "5",
+    });
+    expect(native.connect).toHaveBeenCalledExactlyOnceWith({
+      token: "ruru103-synthetic-not-a-personal-token",
+    });
+    // These are protocol-boundary unit doubles, not native denial evidence.
+    // Preserve an unexpected actual acceptance for the packaged executor to
+    // fail rather than normalizing it into a passing denial.
+    native.release.mockResolvedValueOnce(undefined);
+    const unexpected = await probe?.execute(
+      source.request({ kind: "check-peer-authority", peer }),
+    );
+    expect(unexpected?.authority?.release_lease).toBe("accepted");
+  });
+
+  it("rejects a foreign actor or stale epoch before any peer credential/host call", async () => {
+    native.label = "tab-webview:ruru103:actual-child";
+    const source = fixture();
+    const peer = {
+      lease_id: "a8b2f06a-5d3e-40f7-9f98-aaf24112c2af",
+      owner_label: "main" as const,
+      owner_generation: "5",
+      account_id: fixtureAccount.id,
+      authorization_epoch: fixtureAccount.authorization_epoch,
+    };
+    await act(async () => {
+      probe = await installCollaborationHarnessProbe(source.readManifest);
+    });
+    for (const changed of [
+      { ...peer, account_id: "foreign-account" },
+      { ...peer, authorization_epoch: "2" },
+    ]) {
+      const receipt = await probe?.execute(
+        source.request({ kind: "check-peer-authority", peer: changed }),
+      );
+      expect(receipt?.outcome).toBe("permission_denied");
+      expect(receipt?.authority).toBeUndefined();
+    }
+    expect(native.activity).not.toHaveBeenCalled();
+    expect(native.renew).not.toHaveBeenCalled();
+    expect(native.disconnect).not.toHaveBeenCalled();
+    expect(native.setOwner).not.toHaveBeenCalled();
+    expect(native.connect).not.toHaveBeenCalled();
+  });
+
+  it("retires listener and rendered content once without adding a pagehide lease cleanup", async () => {
+    const source = fixture();
+    const remove = vi.fn();
+    native.listen.mockResolvedValueOnce(remove);
+    await act(async () => {
+      probe = await installCollaborationHarnessProbe(source.readManifest);
+    });
+    // An actual reload is allowed to lose JS cleanup, leaving native TTL to
+    // qualify cleanup. This harness must not add a fake lease-release hook.
+    window.dispatchEvent(new Event("pagehide"));
+    expect(remove).not.toHaveBeenCalled();
+    await act(async () => {
+      probe?.stop();
+      probe?.stop();
+    });
+    expect(remove).toHaveBeenCalledOnce();
+    expect(
+      document.querySelector('[aria-label="Retained collaboration fixture"]'),
+    ).toBeNull();
+  });
+});

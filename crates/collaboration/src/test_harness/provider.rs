@@ -478,6 +478,9 @@ impl CollaborationProvider for FixtureProvider {
             },
         });
         Ok(DetailPage {
+            // This fixture observes the single Body representation. It does
+            // not enumerate a child collection or bind Checks to a PR head.
+            reconciliation: DetailReconciliation::default(),
             body: if not_modified {
                 DetailValue::default()
             } else {
