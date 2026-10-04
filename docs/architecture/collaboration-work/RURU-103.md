@@ -831,3 +831,61 @@ Pinned Tao0.35.2 set_focus activates the macOS application; show alone does not
 establish actual document visibility. Exact native/DOM receipts, fresh compiled
 execution and all crash stages must qualify the combined repair. The earlier
 passing artifact and source-only path inference are not new-head qualification.
+
+
+### Real-surface and native-path repair qualification — 4 October 2026
+
+Signed source `dbed691b7ca9880db9f6695edc393fe7defcfee7` combines the actual
+Windows native resolver with private fixture window show/unminimize/focus and
+bounded actual DOM-visibility preconditions. Every visibility-dependent mount and
+ordinary host startup observes the real document first; disconnect observes two
+actual admitted SDK leases before advancing its gate. No fabricated visibility,
+production authority change, extended deadline or polling delay is introduced.
+Four new executor regressions preserve the hidden/native-active distinction,
+normal-host admission and actual lease ordering. Native fixture focus uses only
+its exact guarded child/main windows; projection locks are released before restore.
+
+The first freshly compiled combined run12-02-10-744Z-43546 passes authority but
+fails other cases while both actual documents remain hidden, with zero SDK leases.
+Cleanup succeeds; no crash stage runs. The user then confirms the desktop is
+available. An unchanged-source, unchanged-binary rerun passes all six main cases
+and both exact-owned SIGKILL/fresh-restart pairs, with all five driver stages zero:
+`artifacts/e2e-harness/2026-10-04T12-11-00-118Z-44210`.
+Native SHA256:
+`d226d6c88f93e03c5abb43b1aae7de92aee81239debafbdcf88e473729f606f3`.
+Before-commit owns PID44487/session23ab3d87-a91e-48f7-9fa4-d67dedffac15,
+restart PID44557/sessionf29b1244-891d-4364-a173-cb4b4624b1ee; checkpoint has no
+committed facet and fresh demand produces facet21. Committed-before-hint owns
+PID44610/sessionb939302c-2e21-4167-9782-4151e8c71087, restart
+PID44664/sessiondce54d86-0866-4bf7-9828-43c79818f958; facet20 survives with zero
+provider/vault reads before interest. Both retain draft generation1. Retention and
+disconnect reject actual obsolete reads; all eight peer denials preserve exact
+account, revision, owner, provider and vault counters, with main lease renewal and
+release successful. Ordinary tab creation, navigation, modal pause, disposal and
+recreation pass. Process crashes do not qualify power loss.
+
+The earlier hidden runs remain failure evidence. Their exact OS trigger was not
+recorded and is not inferred from the successful rerun. CUA could not bind the
+unbundled fixture executable; no GUI mutation or personal app was performed.
+Both ordinary and fixture lanes intentionally use unbundled binaries with pinned
+Tao Regular activation policy, so no packaging change is inferred from that tool
+binding limitation. SDK hidden-document suspension and native admission remain
+correctly enforced.
+
+Fresh checks on this repair: frontend527 passed/one Windows-only skip across56
+files; executor12/12; full repository lint/types; native feature app30/30; feature
+workspace all-target Clippy with warnings denied; formatting/diff; production
+frontend build. All403 default JavaScript assets exclude fixture executor/global
+and installer. The earlier9554cc3 full core/default workspace tests remain
+separate evidence for unchanged core, not freshly rerun counts for this repair.
+No Rust signature/public DTO changed; existing normal typegen evidence applies.
+Logs: /tmp/gitru-ruru103-surface-final-{tests,lint,types}.log,
+/tmp/gitru-ruru103-visible-{native-app-tests,native-clippy,native-fmt,
+default-build,retained-native}.log and
+/tmp/gitru-ruru103-available-desktop-retained.log.
+
+This is current-source local macOS qualification with synthetic provider/vault.
+The Windows short-alias native-path fix still requires new-head retained remote
+execution; old Linux/macOS successes and ordinary Windows E2E are distinct.
+Live provider, production keyring, platform and power-loss claims remain outside
+this evidence. No personal credentials inspected; no merge performed.
