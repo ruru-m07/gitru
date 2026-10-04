@@ -494,3 +494,21 @@ future task payload/field family must extend this source-derived check explicitl
 and qualify both existing families rather than silently treating every native
 payload as a participant. Rust source and generated command signatures remain
 unchanged. No platform or live provider claim follows from these wire controls.
+
+
+## Pinned generator name-collision repair — before source correction
+
+The post-guard full453 frontend tests pass, but final desktop types/build expose
+five real TypeScript errors: generated BranchSchema sometimes contains only name.
+Root traced this to the inherited private Bitbucket discovery Branch DTO sharing
+a short name with crates/git/models/branch.rs's public command Branch. The pinned
+generator selects definitions by that name; earlier successful generation selected
+the public shape, so schema-name inventory alone did not detect the shape loss.
+
+Root accepts renaming only the private discovery DTO to BitbucketDefaultBranch,
+including its internal mainbranch field type. Serde field names/data, routing,
+cursor fingerprints, discovery semantics and public Git Branch remain unchanged.
+No frontend property is removed or weakened. Qualify fresh Bitbucket native tests,
+normal make typegen, actual public Branch fields and full desktop types/build;
+retain the failed logs. This is a bounded correction to the inherited parser name
+collision, not permission to hand-edit generated files or change Git behavior.

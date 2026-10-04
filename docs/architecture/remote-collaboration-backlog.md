@@ -1465,3 +1465,11 @@ null control; installed generated wire qualification will rerun before delivery.
 Separately #1611766a6e passes all11 reported remote checks and #1574054a6c all14,
 including retained Linux/macOS/Windows. No exact-head CodeQL pass is inferred.
 Participant publication/new-head platform CI remain pending; no merge.
+
+
+The participant wire-family correction now passes all13 installed wire tests
+from the original four red controls;453 full frontend tests pass. Final types/
+build exposed a pinned-generator short-name collision between private Bitbucket
+discovery Branch and public Git Branch. The accepted work note limits repair to
+a private DTO rename, fresh normal generation/native checks and full types/build;
+no generated hand edits or dropped public Git properties. Publication waits.
