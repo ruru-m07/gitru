@@ -107,9 +107,24 @@ authorization epoch, feed kind and stage, with bounded pending workspace UUIDs,
 outer continuation and current repository continuation. Cap total encoded state
 at 4096 bytes; reject oversize input/output without establishing coverage. Prefer
 small limits for individual URLs so the aggregate remains bounded. Reject foreign
-account/epoch/stage/path, malformed UUIDs, duplicates and self-loops. Audit the
-shared feed's repeated-cursor/page budget before relying on it for longer cycles;
-if needed add bounded private continuation fingerprints. Capped/failed traversal
+account/epoch/stage/path, malformed UUIDs, duplicates and self-loops. The shared
+ten-page job budget only yields and resumes its durable cursor; it
+does not detect repeated continuations or cap a full traversal. Therefore the
+private cursor persists up to twenty accepted enumeration page receipts and full
+SHA-256 continuation fingerprints, with at most twenty seen workspace UUIDs and
+ten pending UUIDs. Individual URLs are limited to512 bytes; the serialized4096
+byte limit is still enforced. Reject known repeated current targets and cap
+exhaustion before HTTP across job resumption, manual refresh and cold reopen.
+A loop proposed by an HTTP response is detected before applying that page; the
+rejected page does not commit, so later bounded backoff may retry its current URL
+but must never follow the repeated target or erase accepted history. Failed HTTP
+attempts do not commit a page counter; existing bounded backoff remains
+authoritative. It does not promise a lifetime retry-count limit.
+The twentieth accepted page with remaining continuation commits Partial plus the
+exhausted cursor, never Complete. Resumption cannot erase history or reset its
+budget. This first slice deliberately cannot finish/rescan a capped large account
+until a later explicit traversal restart/coverage policy exists; saved authorized
+rows remain available and no absence is established. Capped/failed traversal
 retains prior authorized cached rows and does not infer deletion or full coverage.
 
 Existing feed transactions atomically apply rows, cursor and durable revision.
@@ -150,4 +165,9 @@ separate. Never inspect personal credentials for unattended validation.
 
 4 October: live issue/dependency/PR/worktree/file-overlap audit complete; official
 provider contract refreshed; managed worktree created; this pre-code contract
-records the bounded first slice. Implementation and validation remain pending.
+records the bounded first slice. Implementation and validation remain pending. Normal make typegen at the frozen
+additive command signature passes114 commands; independent TypeScript AST
+comparison preserves all285 prior Zod schema initializers, adding only the
+Bitbucket connect-params schema. No generated file is hand-edited. Cursor audit
+found the shared per-job budget is not a traversal/loop guard; the private durable
+limits and response-loop retry boundary above were fixed before qualification.
