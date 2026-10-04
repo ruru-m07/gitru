@@ -757,6 +757,7 @@ mod tests {
             metadata.source.observed_at = observed_at.into();
         }
         Ok(DetailCommit {
+            reconciliation: Default::default(),
             account_id: request.account.id.clone(),
             authorization_epoch: request.account.authorization_epoch.clone(),
             authorization_view: lease.authorization_view,

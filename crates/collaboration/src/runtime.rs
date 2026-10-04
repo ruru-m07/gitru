@@ -21,7 +21,7 @@ mod demand;
 #[cfg(test)]
 mod demand_tests;
 #[cfg(test)]
-mod detail_tests;
+pub(crate) mod detail_tests;
 mod details;
 mod feeds;
 #[cfg(test)]
@@ -67,6 +67,7 @@ struct Job {
     reason: scheduler::Admission,
     pages: usize,
     detail_lease: Option<DetailLease>,
+    detail_restarted: bool,
 }
 
 #[derive(Default)]

@@ -2172,6 +2172,28 @@ been merged. See [RURU-79's work note](./collaboration-work/RURU-79.md) for curr
 native proof, frontend and isolated QA evidence.
 
 
+### RURU-101 qualification lane — 3 October 2026
+
+Live dependency/PR/worktree overlap audit selects independent facet reconciliation
+qualification at R79/#154 `1a51a75`, in its own attached worktree.
+[R101's pre-code contract](./collaboration-work/RURU-101.md) requires a source-backed
+validator/overlap/absence/head policy and independent observable regressions before
+any storage correction; provider facets that are Unsupported remain so. R110's
+GitLab account/repository lane uses a separate checkout. Parent #154 currently has
+a real macOS Rust socket-fixture failure, which root repairs before publishing
+next PRs. Local checks, exact-head CI and live provider/vault gates stay distinct.
+No PR has been merged.
+
+
+R101 source audit establishes that `whole_scope` means validator authority, not
+full-enumeration absence. Six independent cases produce four actual gaps:
+collection clock loss after304, a nullable child timestamp erasing retained-field
+clock evidence, continuation representation drift qualifying absence, and current-
+head checks remaining fresh after an accepted new head. Full multipage absence
+and historical Reviews are green controls. The approved work note records narrow
+schema-free native receipt/provenance/field-clock corrections before source edits,
+with conservative legacy JSON and unchanged public DTOs/provider support.
+
 ### Next bounded lanes after RURU-79 review publication — 3 October 2026
 
 [R79/#154](https://github.com/ruru-m07/gitru/pull/154) is published at signed
@@ -2237,3 +2259,72 @@ Logs: `/tmp/gitru-ruru79-macos-ci-failure.log`,
 `/tmp/gitru-ruru79-accepted-socket-tests.log`,
 `/tmp/gitru-ruru79-accepted-socket-lib.log`,
 `/tmp/gitru-ruru79-accepted-socket-fmt.log`. No PR is merged.
+
+### RURU-110 integrated native qualification and review — 3 October 2026
+
+Signed native source719fb63 inherits the R79 socket repair; signed picker04af1e8
+adds provider-aware labels after actual same-login native QA. All285 native cases
+(two existing ignored helpers), all12 frozen-v1 migration cases,15 native caller/
+updater cases,110 SDK and final300 desktop cases pass. Normal113-command typegen
+preserves all284 existing named schema semantics. Actual desktop/E2E types,
+scoped Biome, production frontend build, workspace all-target Clippy-Dwarnings
+and format pass. Fresh macOS packaged E2E passes all3 cases/two specs after the
+picker correction, including real UI→Tauri→Rust→Git and child Accounts handoff.
+
+Dedicated e2e-feature app `com.ruru.gitru.ruru110.qa` disables native vault/CLI and
+uses task-only empty Git configuration. Final rebuilt executable SHA256
+`7e9f5e6f6995584ef8135e53fe18b1b734cc257bb0bdcef24291820a6fb8ee76` shows
+main-only manual GitLab PAT form through actual child handoff and dialog scrolling,
+distinct GitHub/GitLab labels, cached nested repositories and typed unsupported PR
+feed. Cold process reopen preserves GitLab-A selections2, GitLab-B0 and same-login
+GitHub0. Post-Quit readonly SQLite proof preserves six native repository identities,
+three private drafts generation1, zero credential refs/cleanup/automatic detail
+intent, and all three strict2099 provider barriers. No token was entered/submitted;
+no personal credentials/config/vault or live provider was inspected. Evidence:
+`/tmp/gitru-ruru110-qa/final-post-quit-evidence.json`, final source logs and
+`/tmp/gitru-ruru110-picker-packaged-e2e.log`.
+
+Parent R79/#154 repaired e6fe69e now passes all11 reported exact-head checks,
+including Rust and packaged E2E on Linux/macOS/Windows; final Windows cleanup
+completed2026-10-03T13:24:08Z. No exact-head CodeQL is reported. R110's own remote
+matrix starts on publication and is separate from local Mac/synthetic evidence.
+Live PAT/production vault, other platforms and power-loss gates remain distinct.
+No PR is merged. R101 facet qualification and R103 retained native-webview harness
+continue in separate attached worktrees; final shared source integration is
+sequential. See [R110 contract](./collaboration-work/RURU-110.md).
+
+### RURU-101 integrated facet reconciliation qualification — 4 October2026
+
+Signed source1cb9bea integrates R110/#155725b9f2 and repaired R79/e6fe69e.
+Full combined native qualification completed3 October:311 cases pass, including
+165 library and146 integration cases, with two existing ignored subprocess
+helpers; all12 frozen-v1 migration cases and15 native caller/updater cases pass.
+Workspace all-target Clippy-Dwarnings and formatting pass. The one-off initial
+cold-reopen OS Busy does not recur in the combined run; weak ownership and fatal
+immediate reopen assertions remain. Its original cause is not claimed resolved.
+
+Normal make typegen regenerates113 commands; all285 existing named Zod schemas
+preserve normalized initializer semantics and public DTOs stay unchanged. After
+interruption, resumed4 October SDK110, actual SDK/desktop/E2E types, source binding
+lint and the285-schema comparison pass. Regenerated files are generator output,
+including ordering/cache metadata changes, not handwritten IPC. Native receipt,
+versioned stored provenance and finite field clocks remain private to the engine;
+frozen0001..0007 and R106's restore ceiling are unchanged.
+
+Independent source-backed regressions drive retained clocks through304/null
+observations, qualified full collection absence, continuation representation
+restart, current-head stale/metadata conflict veto, pre-HTTP captured lease/subject
+fences and exact old-job terminal cleanup. Historical Reviews and ordinary feed
+paging/absence/selected-cache/private CAS remain qualified controls. Full trusted
+enumeration is distinct from terminal delta/uncertain paging and whole_scope
+continues to mean validator coverage. No production Comments/Reviews/Checks
+adapter is enabled; future endpoint/head policies and live provider tests remain
+separate rollout tasks. No UI behavior or Tauri authority is expanded.
+
+A review PR is stacked on published R110/#155; this new head's remote CI starts
+at publication. ParentR110 Rust and packaged E2E on all three platforms plus
+CodeQL pass, while its Vercel API deployment status remains Pending and the
+connector currently requires reauthentication. Local evidence does not replace
+new-head CI, live provider/vault or power-loss qualification. No PR is merged.
+R103's retained native-webview harness inherits this final source sequentially.
+See [R101 work note](./collaboration-work/RURU-101.md).

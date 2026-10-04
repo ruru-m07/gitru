@@ -1,6 +1,7 @@
 # RURU-110 — GitLab.com accounts and repository discovery
 
-Status: root-approved bounded implementation contract, saved before major code.
+Status: locally qualified implementation; review publication follows. The
+root-approved contract below was saved before major code.
 Live Linear RURU-110 is Backlog at selection (3 October 2026); R76/R95 blockers
 are implemented unmerged reviews. No duplicate PR exists. This attached worktree
 `/Users/ruru/.codex/worktrees/collab-ruru-110/gitru`, branch
@@ -215,3 +216,49 @@ collaboration Clippy and format pass. Synthetic fixtures do not qualify a live
 PAT, production vault or other platforms. Root still integrates the repaired
 R79 ancestor and qualifies caller/native GUI/package before PR publication.
 No PR is merged. See [R110 work note](./RURU-110.md).
+
+### Native account picker correction
+
+Actual dedicated macOS native QA confirms the child Accounts handoff reaches the
+main manual GitLab form, its long dialog scrolls to the complete form, and saved
+nested repositories/selection are isolated between two GitLab actors and a
+GitHub actor with the same login/native ID. This also exposes identical @login
+picker labels across provider families. The picker now presents provider plus
+login (and validated installation presentation when different), retaining exact
+account IDs and immutable query keys. An independent user-event regression
+proves the same-login switch cannot read GitHub items for the unsupported GitLab
+feed. Fifty focused desktop cases, actual desktop/E2E types and scoped Biome
+pass. Final rebuilt native UI and cold reopen qualification follow before review.
+
+### RURU-110 integrated native qualification and review — 3 October 2026
+
+Signed native source719fb63 inherits the R79 socket repair; signed picker04af1e8
+adds provider-aware labels after actual same-login native QA. All285 native cases
+(two existing ignored helpers), all12 frozen-v1 migration cases,15 native caller/
+updater cases,110 SDK and final300 desktop cases pass. Normal113-command typegen
+preserves all284 existing named schema semantics. Actual desktop/E2E types,
+scoped Biome, production frontend build, workspace all-target Clippy-Dwarnings
+and format pass. Fresh macOS packaged E2E passes all3 cases/two specs after the
+picker correction, including real UI→Tauri→Rust→Git and child Accounts handoff.
+
+Dedicated e2e-feature app `com.ruru.gitru.ruru110.qa` disables native vault/CLI and
+uses task-only empty Git configuration. Final rebuilt executable SHA256
+`7e9f5e6f6995584ef8135e53fe18b1b734cc257bb0bdcef24291820a6fb8ee76` shows
+main-only manual GitLab PAT form through actual child handoff and dialog scrolling,
+distinct GitHub/GitLab labels, cached nested repositories and typed unsupported PR
+feed. Cold process reopen preserves GitLab-A selections2, GitLab-B0 and same-login
+GitHub0. Post-Quit readonly SQLite proof preserves six native repository identities,
+three private drafts generation1, zero credential refs/cleanup/automatic detail
+intent, and all three strict2099 provider barriers. No token was entered/submitted;
+no personal credentials/config/vault or live provider was inspected. Evidence:
+`/tmp/gitru-ruru110-qa/final-post-quit-evidence.json`, final source logs and
+`/tmp/gitru-ruru110-picker-packaged-e2e.log`.
+
+Parent R79/#154 repaired e6fe69e now passes all11 reported exact-head checks,
+including Rust and packaged E2E on Linux/macOS/Windows; final Windows cleanup
+completed2026-10-03T13:24:08Z. No exact-head CodeQL is reported. R110's own remote
+matrix starts on publication and is separate from local Mac/synthetic evidence.
+Live PAT/production vault, other platforms and power-loss gates remain distinct.
+No PR is merged. R101 facet qualification and R103 retained native-webview harness
+continue in separate attached worktrees; final shared source integration is
+sequential. See [R110 contract](./RURU-110.md).

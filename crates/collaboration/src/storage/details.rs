@@ -1,9 +1,78 @@
 //! Independent facet observations and short, authorized local snapshots.
+use super::facet_reconciliation::{StoredEntry, StoredSource};
 use super::*;
-use crate::detail::*;
+use crate::{DetailSubjectBinding, detail::*};
 
 const MAX_DETAIL_ENTRIES: i64 = 5_000;
 const MAX_ENTRY_BODY_BYTES: usize = 65_536;
+
+pub(super) async fn invalidate_head_scopes_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    account: &RemoteAccount,
+    item: &RemoteItem,
+) -> Result<()> {
+    invalidate_declared_head_in(tx, account, &item.id, item.head_oid.as_deref()).await
+}
+
+pub(super) async fn invalidate_declared_head_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    account: &RemoteAccount,
+    subject: &str,
+    head: Option<&str>,
+) -> Result<()> {
+    let rows = sqlx::query("SELECT facet,source_json FROM detail_observations WHERE account_id=? AND subject_id=? AND facet<>'body' AND authorization_epoch=?")
+        .bind(&account.id).bind(subject).bind(&account.authorization_epoch).fetch_all(&mut **tx).await.map_err(storage_error)?;
+    for row in rows {
+        let source: StoredSource = decode(row.get("source_json"))?;
+        if source.traversal().is_none_or(|proof| {
+            proof.reconciliation.head_scope != DetailHeadScope::CurrentHead
+                || proof.head_oid.as_deref() == head
+        }) {
+            continue;
+        }
+        let facet: DetailFacet = decode(&format!("\"{}\"", row.get::<String, _>("facet")))?;
+        let scope = facet.scope(subject);
+        let stored = scope_in(tx, &account.id, &scope).await?.ok_or_else(stale)?;
+        let mut coverage = stored.coverage;
+        coverage.state = CoverageState::Partial;
+        coverage.remote_has_more = false;
+        sqlx::query("UPDATE detail_observations SET stale_at=? WHERE account_id=? AND subject_id=? AND facet=?")
+            .bind(chrono::Utc::now().to_rfc3339()).bind(&account.id).bind(subject).bind(tag(&facet)?).execute(&mut **tx).await.map_err(storage_error)?;
+        sqlx::query("UPDATE sync_scopes SET run_id=?,next_cursor=NULL,etag=NULL,coverage_json=?,data_revision=data_revision+1,sync_json=json_set(sync_json,'$.state','idle') WHERE account_id=? AND scope=?")
+            .bind(Uuid::new_v4().to_string()).bind(encode(&coverage)?).bind(&account.id).bind(&scope).execute(&mut **tx).await.map_err(storage_error)?;
+        record_change(
+            tx,
+            &account.id,
+            positive_revision(&account.authorization_epoch)?,
+            &scope,
+            false,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+async fn validate_declared_head_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    account: &RemoteAccount,
+    subject: &RemoteItem,
+    facet: DetailFacet,
+    reconciliation: Option<DetailReconciliation>,
+) -> Result<()> {
+    if facet != DetailFacet::Body
+        && reconciliation.is_some_and(|proof| proof.head_scope == DetailHeadScope::CurrentHead)
+        && super::resource_metadata::head_conflicts_in(
+            tx,
+            account,
+            &subject.id,
+            subject.head_oid.as_deref(),
+        )
+        .await?
+    {
+        return Err(stale());
+    }
+    Ok(())
+}
 
 #[derive(Serialize, Deserialize)]
 struct DetailCursor {
@@ -123,6 +192,30 @@ pub(crate) async fn detail_evidence_in(
         }
         evidence.facet_revision = Some(row.get("facet_revision"));
         evidence.source = Some(decode(row.get("source_json"))?);
+        let native: StoredSource = decode(row.get("source_json"))?;
+        let head_changed = if let Some(proof) = native
+            .traversal()
+            .filter(|proof| proof.reconciliation.head_scope == DetailHeadScope::CurrentHead)
+        {
+            let head: Option<String> = sqlx::query_scalar(
+                "SELECT json_extract(json,'$.head_oid') FROM items WHERE account_id=? AND id=?",
+            )
+            .bind(&account.id)
+            .bind(subject_id)
+            .fetch_one(&mut **tx)
+            .await
+            .map_err(storage_error)?;
+            head != proof.head_oid
+                || super::resource_metadata::head_conflicts_in(
+                    tx,
+                    account,
+                    subject_id,
+                    head.as_deref(),
+                )
+                .await?
+        } else {
+            false
+        };
         evidence.value_source = row
             .get::<Option<String>, _>("value_source_json")
             .map(|json| decode(&json))
@@ -134,6 +227,9 @@ pub(crate) async fn detail_evidence_in(
             .as_ref()
             .map(|s| s.coverage.clone())
             .unwrap_or_else(missing_coverage);
+        if facet != DetailFacet::Body && (native.traversal().is_none() || head_changed) {
+            evidence.coverage.state = CoverageState::Partial;
+        }
         evidence.availability = if evidence.coverage.state == CoverageState::Complete {
             DetailAvailability::Ready
         } else {
@@ -149,9 +245,10 @@ pub(crate) async fn detail_evidence_in(
             };
         }
         if evidence.coverage.validated_at.is_some() {
-            evidence.freshness = if evidence.stale_at.as_ref().is_some_and(|at| {
-                chrono::DateTime::parse_from_rfc3339(at).is_ok_and(|at| at > chrono::Utc::now())
-            }) {
+            evidence.freshness = if !head_changed
+                && evidence.stale_at.as_ref().is_some_and(|at| {
+                    chrono::DateTime::parse_from_rfc3339(at).is_ok_and(|at| at > chrono::Utc::now())
+                }) {
                 DetailFreshness::Fresh
             } else {
                 DetailFreshness::Stale
@@ -178,14 +275,15 @@ fn validate_value(value: &DetailValue) -> Result<()> {
     Ok(())
 }
 fn timestamp_valid(value: &str) -> bool {
-    chrono::DateTime::parse_from_rfc3339(value).is_ok()
+    value.len() <= 128 && chrono::DateTime::parse_from_rfc3339(value).is_ok()
 }
 
 fn merge_entry(
     mut incoming: DetailEntry,
-    previous: Option<DetailEntry>,
+    previous: Option<StoredEntry>,
     source: &DetailSource,
-) -> Result<DetailEntry> {
+    head: Option<&str>,
+) -> Result<StoredEntry> {
     validate_identifier(&incoming.id)?;
     validate_identifier(&incoming.provider_id)?;
     validate_value(&incoming.body)?;
@@ -212,71 +310,154 @@ fn merge_entry(
             text: None,
         };
     }
-    let mut result = previous.unwrap_or(DetailEntry {
-        id: incoming.id.clone(),
-        provider_id: incoming.provider_id.clone(),
-        author: None,
-        title: None,
-        state: None,
-        body: DetailValue::default(),
-        observed_body_state: DetailValueState::NotLoaded,
-        updated_at: None,
-        head_oid: None,
-        field_mask: vec![],
-        field_validations: vec![],
+    let mut saved = previous.unwrap_or_else(|| {
+        StoredEntry::from_entry(DetailEntry {
+            id: incoming.id.clone(),
+            provider_id: incoming.provider_id.clone(),
+            author: None,
+            title: None,
+            state: None,
+            body: DetailValue::default(),
+            observed_body_state: DetailValueState::NotLoaded,
+            updated_at: None,
+            head_oid: None,
+            field_mask: vec![],
+            field_validations: vec![],
+        })
     });
-    if result.provider_id != incoming.provider_id {
+    saved.initialize_legacy();
+    if saved.entry.provider_id != incoming.provider_id {
         return Err(invalid_detail());
     }
-    if incoming.field_mask.contains(&DetailField::UpdatedAt)
-        && result
+    let comparable = if incoming.field_mask.contains(&DetailField::UpdatedAt) {
+        incoming
             .updated_at
-            .as_ref()
-            .zip(incoming.updated_at.as_ref())
-            .is_some_and(|(old, new)| timestamp_older(new, old))
-        && result.field_validations.iter().any(|v| {
-            v.field == DetailField::UpdatedAt
-                && v.source == source.source
-                && v.adapter_version == source.adapter_version
-        })
-    {
-        return Ok(result);
-    }
-    result.observed_body_state = if incoming.field_mask.contains(&DetailField::Body) {
+            .as_deref()
+            .or(source.provider_updated_at.as_deref())
+    } else {
+        source.provider_updated_at.as_deref()
+    };
+    saved.entry.observed_body_state = if incoming.field_mask.contains(&DetailField::Body) {
         incoming.body.state
     } else {
         DetailValueState::NotLoaded
     };
     for field in &incoming.field_mask {
+        if saved.older(*field, comparable, source, head) {
+            continue;
+        }
         match field {
             DetailField::Body if incoming.body.state == DetailValueState::Known => {
-                result.body = incoming.body.clone()
+                saved.entry.body = incoming.body.clone()
             }
             DetailField::Body => {
-                if result.body.state != DetailValueState::Known {
-                    result.body = incoming.body.clone();
+                if saved.entry.body.state != DetailValueState::Known {
+                    saved.entry.body = incoming.body.clone();
                 }
                 continue;
             }
-            DetailField::Author => result.author = incoming.author.clone(),
-            DetailField::Title => result.title = incoming.title.clone(),
-            DetailField::State => result.state = incoming.state.clone(),
-            DetailField::UpdatedAt => result.updated_at = incoming.updated_at.clone(),
-            DetailField::HeadOid => result.head_oid = incoming.head_oid.clone(),
+            DetailField::Author => saved.entry.author = incoming.author.clone(),
+            DetailField::Title => saved.entry.title = incoming.title.clone(),
+            DetailField::State => saved.entry.state = incoming.state.clone(),
+            DetailField::UpdatedAt => saved.entry.updated_at = incoming.updated_at.clone(),
+            DetailField::HeadOid => saved.entry.head_oid = incoming.head_oid.clone(),
         }
-        result.field_validations.retain(|v| v.field != *field);
-        result.field_validations.push(DetailFieldValidation {
+        saved.observed(*field, comparable, source, head);
+        saved.entry.field_validations.retain(|v| v.field != *field);
+        saved.entry.field_validations.push(DetailFieldValidation {
             field: *field,
             validated_at: source.observed_at.clone(),
             source: source.source.clone(),
             adapter_version: source.adapter_version,
         });
     }
-    result.field_mask = incoming.field_mask;
-    Ok(result)
+    saved.entry.field_mask = incoming.field_mask;
+    Ok(saved)
+}
+
+/// A native read/cleanup belongs to this exact committed traversal state. Check
+/// after opening the transaction (and, for writes, acquiring the writer), so an
+/// obsolete page cannot be dispatched or clear an independently replaced intent.
+async fn validate_lease_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    account_id: &str,
+    epoch: &str,
+    subject_id: &str,
+    facet: DetailFacet,
+    lease: &DetailLease,
+) -> Result<RemoteItem> {
+    epoch_in(tx, account_id, epoch).await?;
+    let account = account_in(tx, account_id, true).await?;
+    let subject = subject_in(tx, account_id, subject_id).await?;
+    if facet.capability(&subject.kind).is_none() {
+        return Err(invalid_detail());
+    }
+    if metadata(tx).await?.1 != lease.authorization_view
+        || identities::instance_in(tx, &account).await?.id != lease.instance_id
+    {
+        return Err(stale());
+    }
+    let scope = facet.scope(subject_id);
+    let stored = scope_in(tx, account_id, &scope).await?.ok_or_else(stale)?;
+    let denied: bool =
+        sqlx::query_scalar("SELECT access_denied FROM sync_scopes WHERE account_id=? AND scope=?")
+            .bind(account_id)
+            .bind(&scope)
+            .fetch_one(&mut **tx)
+            .await
+            .map_err(storage_error)?;
+    if denied
+        || stored.run_id != lease.run_id
+        || stored.next_cursor != lease.next_cursor
+        || stored.etag != lease.etag
+    {
+        return Err(stale());
+    }
+    let source: Option<String> = sqlx::query_scalar("SELECT source_json FROM detail_observations WHERE account_id=? AND subject_id=? AND facet=? AND authorization_epoch=?")
+        .bind(account_id).bind(subject_id).bind(tag(&facet)?).bind(epoch).fetch_optional(&mut **tx).await.map_err(storage_error)?;
+    let source: Option<StoredSource> = source.map(|json| decode(&json)).transpose()?;
+    let proof = source.as_ref().and_then(StoredSource::traversal);
+    let reconciliation = lease.reconciliation.map(|value| {
+        if facet == DetailFacet::Body {
+            DetailReconciliation {
+                enumeration: DetailEnumeration::Uncertain,
+                ..value
+            }
+        } else {
+            value
+        }
+    });
+    if source.as_ref().map(|source| &source.source) != lease.source.as_ref()
+        || proof.map(|proof| proof.reconciliation) != reconciliation
+        || proof.is_some_and(|proof| {
+            proof.reconciliation.head_scope == DetailHeadScope::CurrentHead
+                && proof.head_oid != subject.head_oid
+        })
+    {
+        return Err(stale());
+    }
+    validate_declared_head_in(tx, &account, &subject, facet, reconciliation).await?;
+    Ok(subject)
 }
 
 impl Store {
+    pub(crate) async fn validate_detail_dispatch(
+        &self,
+        account_id: &str,
+        epoch: &str,
+        subject_id: &str,
+        facet: DetailFacet,
+        lease: &DetailLease,
+        binding: &DetailSubjectBinding,
+    ) -> Result<()> {
+        let mut tx = self.inner.readers.begin().await.map_err(storage_error)?;
+        let subject =
+            validate_lease_in(&mut tx, account_id, epoch, subject_id, facet, lease).await?;
+        super::resource_metadata::validate_binding_in(&mut tx, account_id, &subject, binding)
+            .await?;
+        tx.commit().await.map_err(storage_error)?;
+        Ok(())
+    }
     pub async fn detail_subject(&self, account_id: &str, subject_id: &str) -> Result<RemoteItem> {
         let mut tx = self.inner.readers.begin().await.map_err(storage_error)?;
         account_in(&mut tx, account_id, true).await?;
@@ -397,6 +578,21 @@ impl Store {
         if facet.capability(&subject.kind).is_none() {
             return Err(invalid_detail());
         }
+        let account = account_in(&mut tx, account_id, true).await?;
+        let source: Option<String> = sqlx::query_scalar("SELECT source_json FROM detail_observations WHERE account_id=? AND subject_id=? AND facet=?")
+            .bind(account_id).bind(subject_id).bind(tag(&facet)?).fetch_optional(&mut *tx).await.map_err(storage_error)?;
+        let source: Option<StoredSource> = source.map(|json| decode(&json)).transpose()?;
+        validate_declared_head_in(
+            &mut tx,
+            &account,
+            &subject,
+            facet,
+            source
+                .as_ref()
+                .and_then(StoredSource::traversal)
+                .map(|proof| proof.reconciliation),
+        )
+        .await?;
         sqlx::query("INSERT INTO detail_demand(account_id,subject_id,facet,authorization_epoch) VALUES(?,?,?,?) ON CONFLICT(account_id,subject_id,facet) DO UPDATE SET authorization_epoch=excluded.authorization_epoch,requested=1")
             .bind(account_id).bind(subject_id).bind(tag(&facet)?).bind(epoch).execute(&mut *tx).await.map_err(storage_error)?;
         let revision = record_change(
@@ -482,6 +678,23 @@ impl Store {
         tx.commit().await.map_err(storage_error)?;
         Ok(())
     }
+    /// Stop only the captured repeatedly drifting job, never a replacement read.
+    pub(crate) async fn stop_detail_reconciliation(
+        &self,
+        account_id: &str,
+        epoch: &str,
+        subject_id: &str,
+        facet: DetailFacet,
+        lease: &DetailLease,
+    ) -> Result<()> {
+        let mut writer = self.inner.writer.lock().await;
+        let mut tx = writer.begin().await.map_err(storage_error)?;
+        validate_lease_in(&mut tx, account_id, epoch, subject_id, facet, lease).await?;
+        sqlx::query("UPDATE detail_demand SET requested=0 WHERE account_id=? AND subject_id=? AND facet=? AND authorization_epoch=?")
+            .bind(account_id).bind(subject_id).bind(tag(&facet)?).bind(epoch).execute(&mut *tx).await.map_err(storage_error)?;
+        tx.commit().await.map_err(storage_error)?;
+        Ok(())
+    }
     pub async fn begin_detail(
         &self,
         account_id: &str,
@@ -499,9 +712,31 @@ impl Store {
         }
         let scope = facet.scope(subject_id);
         let old = scope_in(&mut tx, account_id, &scope).await?;
+        let source: Option<String> = sqlx::query_scalar("SELECT source_json FROM detail_observations WHERE account_id=? AND subject_id=? AND facet=?")
+            .bind(account_id).bind(subject_id).bind(tag(&facet)?).fetch_optional(&mut *tx).await.map_err(storage_error)?;
+        let source: Option<StoredSource> = source.map(|s| decode(&s)).transpose()?;
+        validate_declared_head_in(
+            &mut tx,
+            &account,
+            &subject,
+            facet,
+            source
+                .as_ref()
+                .and_then(StoredSource::traversal)
+                .map(|proof| proof.reconciliation),
+        )
+        .await?;
+        let comparable_scope = source
+            .as_ref()
+            .and_then(StoredSource::traversal)
+            .is_some_and(|proof| {
+                proof.reconciliation.head_scope != DetailHeadScope::CurrentHead
+                    || proof.head_oid == subject.head_oid
+            });
         let resume = old
             .as_ref()
-            .is_some_and(|s| s.coverage.state == CoverageState::Partial && s.next_cursor.is_some());
+            .is_some_and(|s| s.coverage.state == CoverageState::Partial && s.next_cursor.is_some())
+            && comparable_scope;
         let run_id = Uuid::new_v4().to_string();
         if resume {
             // Carry traversal membership into a new request generation. Any old
@@ -518,9 +753,11 @@ impl Store {
             .as_ref()
             .map(|s| s.coverage.clone())
             .unwrap_or_else(missing_coverage);
-        sqlx::query("INSERT INTO sync_scopes(account_id,scope,run_id,coverage_json,sync_json) VALUES(?,?,?,?,?) ON CONFLICT(account_id,scope) DO UPDATE SET run_id=excluded.run_id,sync_json=excluded.sync_json")
-            .bind(account_id).bind(&scope).bind(&run_id).bind(encode(&coverage)?).bind(encode(&sync)?).execute(&mut *tx).await.map_err(storage_error)?;
-        let source:Option<String>=sqlx::query_scalar("SELECT source_json FROM detail_observations WHERE account_id=? AND subject_id=? AND facet=?").bind(account_id).bind(subject_id).bind(tag(&facet)?).fetch_optional(&mut *tx).await.map_err(storage_error)?;
+        sqlx::query("INSERT INTO sync_scopes(account_id,scope,run_id,coverage_json,sync_json) VALUES(?,?,?,?,?) ON CONFLICT(account_id,scope) DO UPDATE SET run_id=excluded.run_id,sync_json=excluded.sync_json,next_cursor=?,etag=?")
+            .bind(account_id).bind(&scope).bind(&run_id).bind(encode(&coverage)?).bind(encode(&sync)?)
+            .bind(if resume {old.as_ref().and_then(|s|s.next_cursor.clone())} else {None})
+            .bind(if comparable_scope {old.as_ref().and_then(|s|s.etag.clone())} else {None})
+            .execute(&mut *tx).await.map_err(storage_error)?;
         record_change(
             &mut tx,
             account_id,
@@ -540,9 +777,15 @@ impl Store {
                 .and_then(|s| s.next_cursor.clone()),
             etag: old
                 .as_ref()
-                .filter(|s| s.coverage.state == CoverageState::Complete && !resume)
+                .filter(|s| {
+                    s.coverage.state == CoverageState::Complete && !resume && comparable_scope
+                })
                 .and_then(|s| s.etag.clone()),
-            source: source.map(|s| decode(&s)).transpose()?,
+            reconciliation: source
+                .as_ref()
+                .and_then(StoredSource::traversal)
+                .map(|p| p.reconciliation),
+            source: source.map(|s| s.source),
         };
         tx.commit().await.map_err(storage_error)?;
         Ok(result)
@@ -552,6 +795,40 @@ impl Store {
         let mut writer = self.inner.writer.lock().await;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let revision = apply_detail_in(&mut tx, page).await?;
+        tx.commit().await.map_err(storage_error)?;
+        Ok(revision)
+    }
+
+    /// A rejected representation cannot mutate truth. The runtime may separately
+    /// restart its exact still-current lease once, retaining cache and drafts.
+    pub(crate) async fn restart_detail_traversal(
+        &self,
+        account_id: &str,
+        epoch: &str,
+        subject_id: &str,
+        facet: DetailFacet,
+        lease: &DetailLease,
+    ) -> Result<String> {
+        let mut writer = self.inner.writer.lock().await;
+        let mut tx = writer.begin().await.map_err(storage_error)?;
+        validate_lease_in(&mut tx, account_id, epoch, subject_id, facet, lease).await?;
+        let scope = facet.scope(subject_id);
+        let stored = scope_in(&mut tx, account_id, &scope)
+            .await?
+            .ok_or_else(stale)?;
+        let mut coverage = stored.coverage;
+        coverage.state = CoverageState::Partial;
+        coverage.remote_has_more = false;
+        sqlx::query("UPDATE sync_scopes SET run_id=?,next_cursor=NULL,etag=NULL,coverage_json=? WHERE account_id=? AND scope=? AND run_id=?")
+            .bind(Uuid::new_v4().to_string()).bind(encode(&coverage)?).bind(account_id).bind(&scope).bind(&lease.run_id).execute(&mut *tx).await.map_err(storage_error)?;
+        let revision = record_change(
+            &mut tx,
+            account_id,
+            positive_revision(epoch)?,
+            &scope,
+            false,
+        )
+        .await?;
         tx.commit().await.map_err(storage_error)?;
         Ok(revision)
     }
@@ -629,20 +906,34 @@ pub(super) async fn apply_detail_in(
     }
     let previous=sqlx::query("SELECT body_json,source_json,value_source_json,stale_at FROM detail_observations WHERE account_id=? AND subject_id=? AND facet=?")
             .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).fetch_optional(&mut **tx).await.map_err(storage_error)?;
-    let previous_source: Option<DetailSource> = previous
+    let previous_native_source: Option<StoredSource> = previous
         .as_ref()
         .map(|r| decode(r.get("source_json")))
         .transpose()?;
+    let previous_source = previous_native_source.as_ref().map(|s| &s.source);
+    let native_source =
+        super::facet_reconciliation::source_for(&page, previous_native_source.as_ref())?;
+    validate_declared_head_in(
+        tx,
+        &account,
+        &subject,
+        page.facet,
+        Some(page.reconciliation),
+    )
+    .await?;
     let previous_value_source: Option<DetailSource> = previous
         .as_ref()
         .and_then(|r| r.get::<Option<String>, _>("value_source_json"))
         .map(|json| decode(&json))
         .transpose()?;
-    let ordering_source = if page.facet == DetailFacet::Body {
-        previous_value_source.as_ref()
-    } else {
-        previous_source.as_ref()
-    };
+    let same_head_context = native_source
+        .traversal()
+        .and_then(|proof| proof.head_oid.as_ref())
+        == previous_native_source
+            .as_ref()
+            .and_then(StoredSource::traversal)
+            .and_then(|proof| proof.head_oid.as_ref());
+    let ordering_source = previous_value_source.as_ref().filter(|_| same_head_context);
     if ordering_source.is_some_and(|old| {
         old.source == page.source.source
             && old.adapter_version == page.source.adapter_version
@@ -662,7 +953,7 @@ pub(super) async fn apply_detail_in(
             || page.body != DetailValue::default()
             || stored.coverage.state != CoverageState::Complete
             || stored.etag.is_none()
-            || previous_source.as_ref().is_none_or(|old| {
+            || previous_source.is_none_or(|old| {
                 old.source != page.source.source
                     || old.adapter_version != page.source.adapter_version
                     || old.field_mask != page.source.field_mask
@@ -686,7 +977,9 @@ pub(super) async fn apply_detail_in(
         let mut source = page.source.clone();
         if source.provider_updated_at.is_none()
             && let Some(old) = previous_value_source.as_ref().filter(|old| {
-                old.source == source.source && old.adapter_version == source.adapter_version
+                same_head_context
+                    && old.source == source.source
+                    && old.adapter_version == source.adapter_version
             })
         {
             source.provider_updated_at = old.provider_updated_at.clone();
@@ -726,7 +1019,14 @@ pub(super) async fn apply_detail_in(
         previous.as_ref().and_then(|r| r.get("stale_at"))
     };
     let coverage = Coverage {
-        state: if page.complete && validates {
+        state: if page.complete
+            && validates
+            && (page.facet == DetailFacet::Body
+                || native_source.traversal().is_some_and(|proof| {
+                    proof.starts_at_beginning
+                        && proof.reconciliation.enumeration == DetailEnumeration::FullEnumeration
+                }))
+        {
             CoverageState::Complete
         } else {
             CoverageState::Partial
@@ -743,7 +1043,7 @@ pub(super) async fn apply_detail_in(
     )
     .await?;
     sqlx::query("INSERT INTO detail_observations(account_id,subject_id,facet,authorization_epoch,facet_revision,body_json,source_json,value_source_json,observed_state,stale_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(account_id,subject_id,facet) DO UPDATE SET authorization_epoch=excluded.authorization_epoch,facet_revision=excluded.facet_revision,body_json=excluded.body_json,source_json=excluded.source_json,value_source_json=excluded.value_source_json,observed_state=excluded.observed_state,stale_at=excluded.stale_at")
-            .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&page.authorization_epoch).bind(&revision).bind(encode(&body)?).bind(encode(&page.source)?).bind(value_source.map(|s|encode(&s)).transpose()?).bind(tag(&observed_state)?).bind(stale_at).execute(&mut **tx).await.map_err(storage_error)?;
+            .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&page.authorization_epoch).bind(&revision).bind(encode(&body)?).bind(encode(&native_source)?).bind(value_source.map(|s|encode(&s)).transpose()?).bind(tag(&observed_state)?).bind(stale_at).execute(&mut **tx).await.map_err(storage_error)?;
     if page.facet == DetailFacet::Body {
         super::resource_metadata::apply_in(tx, &page, &subject.kind).await?;
     } else if page.metadata.is_some() {
@@ -752,11 +1052,25 @@ pub(super) async fn apply_detail_in(
     for incoming in page.entries {
         let old:Option<String>=sqlx::query_scalar("SELECT json FROM detail_entries WHERE account_id=? AND subject_id=? AND facet=? AND id=?")
                 .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&incoming.id).fetch_optional(&mut **tx).await.map_err(storage_error)?;
-        let entry = merge_entry(incoming, old.map(|s| decode(&s)).transpose()?, &page.source)?;
+        let entry = merge_entry(
+            incoming,
+            old.map(|s| decode(&s)).transpose()?,
+            &page.source,
+            native_source
+                .traversal()
+                .and_then(|proof| proof.head_oid.as_deref()),
+        )?;
         sqlx::query("INSERT INTO detail_entries(account_id,subject_id,facet,id,json,last_seen_run) VALUES(?,?,?,?,?,?) ON CONFLICT(account_id,subject_id,facet,id) DO UPDATE SET json=excluded.json,last_seen_run=excluded.last_seen_run")
-                .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&entry.id).bind(encode(&entry)?).bind(&page.run_id).execute(&mut **tx).await.map_err(storage_error)?;
+                .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&entry.entry.id).bind(encode(&entry)?).bind(&page.run_id).execute(&mut **tx).await.map_err(storage_error)?;
     }
-    if page.complete && !page.not_modified && page.facet != DetailFacet::Body {
+    if page.complete
+        && !page.not_modified
+        && page.facet != DetailFacet::Body
+        && native_source.traversal().is_some_and(|proof| {
+            proof.starts_at_beginning
+                && proof.reconciliation.enumeration == DetailEnumeration::FullEnumeration
+        })
+    {
         sqlx::query("DELETE FROM detail_entries WHERE account_id=? AND subject_id=? AND facet=? AND last_seen_run<>?")
                 .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&page.run_id).execute(&mut **tx).await.map_err(storage_error)?;
     }
@@ -782,7 +1096,8 @@ pub(super) async fn apply_detail_in(
     if validates {
         sync.last_success_at = Some(page.source.observed_at);
     }
-    let retain_validator = page.complete && page.whole_scope && validates;
+    let retain_validator =
+        page.complete && page.whole_scope && validates && coverage.state == CoverageState::Complete;
     sqlx::query("UPDATE sync_scopes SET next_cursor=?,etag=?,coverage_json=?,sync_json=?,access_denied=0,data_revision=data_revision+1 WHERE account_id=? AND scope=? AND run_id=?")
             .bind(&page.next_cursor).bind(if retain_validator { page.etag.or(if page.not_modified {stored.etag}else{None}) } else {None}).bind(encode(&coverage)?).bind(encode(&sync)?).bind(&page.account_id).bind(&scope).bind(&page.run_id).execute(&mut **tx).await.map_err(storage_error)?;
     if page.complete {

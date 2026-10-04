@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 mod contextual_capabilities;
 pub(crate) mod details;
+pub(crate) mod facet_reconciliation;
 mod identities;
 mod local_links;
 pub(crate) mod notification_subjects;

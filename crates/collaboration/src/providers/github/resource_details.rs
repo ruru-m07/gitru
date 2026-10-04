@@ -442,6 +442,7 @@ impl GithubProvider {
             .as_ref()
             .and_then(|m| m.source.provider_updated_at.clone());
         Ok(DetailPage {
+            reconciliation: Default::default(),
             body,
             metadata,
             entries: vec![],

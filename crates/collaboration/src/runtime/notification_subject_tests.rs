@@ -110,6 +110,7 @@ impl Provider {
 }
 fn body_page() -> DetailPage {
     DetailPage {
+        reconciliation: Default::default(),
         body: DetailValue {
             state: DetailValueState::Known,
             text: Some("cached point body".into()),

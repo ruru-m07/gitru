@@ -272,6 +272,7 @@ fn normalize_response(
     Ok(NotificationSubjectDiscovery::Verified {
         subject: Box::new(subject),
         detail: Box::new(DetailPage {
+            reconciliation: Default::default(),
             body,
             source: DetailSource {
                 source: source.into(),

@@ -69,6 +69,7 @@ pub struct DetailRequest {
 
 #[derive(Debug, Clone)]
 pub struct DetailPage {
+    pub reconciliation: crate::DetailReconciliation,
     pub body: DetailValue,
     pub metadata: Option<crate::ResourceMetadataObservation>,
     pub entries: Vec<DetailEntry>,

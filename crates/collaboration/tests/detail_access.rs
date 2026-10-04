@@ -114,6 +114,7 @@ async fn observation(
         .await
         .unwrap();
     DetailCommit {
+        reconciliation: DetailReconciliation::full_history(),
         metadata: None,
         subject_binding: None,
         account_id: account.into(),
