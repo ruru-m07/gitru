@@ -4,6 +4,7 @@ import { once } from "node:events";
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -19,7 +20,7 @@ import { dirname, join, sep } from "node:path";
 import OriginalWorkerService from "@wdio/tauri-service";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SevereServiceError } from "webdriverio";
-import { canonicalHarnessPath } from "./harness-paths";
+import { canonicalHarnessPath, nativeCanonicalSpelling } from "./harness-paths";
 import {
   type CrashDriverAck,
   captureHarnessProcess,
@@ -64,6 +65,7 @@ vi.mock("@wdio/tauri-service", () => ({
 // These are real, test-owned Node children. They qualify the ownership and
 // force-exit helper, not the native Tauri/process-restart scenario itself.
 type Fixture = {
+  createdRoot: string;
   root: string;
   artifacts: string;
   nonce: string;
@@ -78,9 +80,8 @@ async function fixture(
   phase: HarnessRunnerPhase = "crash-before-commit",
   ignoreTerminate = false,
 ): Promise<Fixture> {
-  const root = canonicalHarnessPath(
-    mkdtempSync(join(tmpdir(), "gitru-process-test-")),
-  );
+  const createdRoot = mkdtempSync(join(tmpdir(), "gitru-process-test-"));
+  const root = canonicalHarnessPath(createdRoot);
   chmodSync(root, 0o700);
   const artifacts = join(root, "artifacts");
   mkdirSync(artifacts, { mode: 0o700 });
@@ -107,6 +108,7 @@ async function fixture(
   );
   const current = { value: true };
   const value: Fixture = {
+    createdRoot,
     root,
     artifacts,
     nonce,
@@ -457,7 +459,7 @@ describe("retained crash process ownership", () => {
     expect(kill).not.toHaveBeenCalled();
   });
   it.skipIf(process.platform !== "win32")(
-    "requires the Rust-compatible namespace for real Windows root and evidence paths",
+    "requires OS canonical identity and namespace for real Windows root and evidence paths",
     async () => {
       const value = await fixture();
       expect(value.root.startsWith("\\\\?\\")).toBe(true);
@@ -468,6 +470,34 @@ describe("retained crash process ownership", () => {
       const ordinaryArtifacts = realpathSync.native(value.artifacts);
       expect(ordinaryRoot).not.toBe(value.root);
       const kill = vi.spyOn(value.proc, "kill");
+      const created = lstatSync(value.createdRoot);
+      const canonical = lstatSync(value.root);
+      expect({ dev: created.dev, ino: created.ino }).toEqual({
+        dev: canonical.dev,
+        ino: canonical.ino,
+      });
+      expect(canonicalHarnessPath(value.createdRoot)).toBe(value.root);
+      const alias = nativeCanonicalSpelling(value.createdRoot);
+      // The real CI temp base contains RUNNER~1. Exercise that actual alias
+      // whenever present; no guessed DOS name or fabricated filesystem result.
+      if (/[^\\]*~\d+(?:\\|$)/.test(value.createdRoot)) {
+        expect(alias).not.toBe(value.root);
+        expect(value.root).not.toMatch(/[^\\]*~\d+(?:\\|$)/);
+      }
+      if (alias !== value.root) {
+        expect(() =>
+          captureHarnessProcess({
+            ...value.input,
+            root: alias,
+            artifactsDirectory: join(alias, "artifacts"),
+            environment: {
+              ...value.input.environment,
+              GITRU_COLLABORATION_HARNESS_ROOT: alias,
+              GITRU_E2E_ARTIFACTS: join(alias, "artifacts"),
+            },
+          }),
+        ).toThrow("unsafe_directory");
+      }
       expect(() =>
         captureHarnessProcess({
           ...value.input,

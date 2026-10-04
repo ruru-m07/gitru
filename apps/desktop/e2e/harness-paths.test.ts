@@ -1,7 +1,7 @@
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { canonicalHarnessPath, nativeCanonicalSpelling } from "./harness-paths";
 
 describe("Rust-compatible canonical path spelling", () => {
@@ -39,10 +39,25 @@ describe("Rust-compatible canonical path spelling", () => {
       writeFileSync(file, "{}", { flag: "wx" });
       for (const path of [root, file]) {
         const canonical = canonicalHarnessPath(path);
-        expect(canonical).toBe(nativeCanonicalSpelling(realpathSync(path)));
+        expect(canonical).toBe(
+          nativeCanonicalSpelling(realpathSync.native(path)),
+        );
         expect(canonicalHarnessPath(canonical)).toBe(canonical);
       }
     } finally {
+      rmSync(root, { recursive: true });
+    }
+  });
+  it("uses the actual native identity resolver instead of the default path walker", () => {
+    const root = mkdtempSync(join(tmpdir(), "gitru-native-path-test-"));
+    const native = vi.spyOn(realpathSync, "native");
+    try {
+      const expected = nativeCanonicalSpelling(realpathSync.native(root));
+      native.mockClear();
+      expect(canonicalHarnessPath(root)).toBe(expected);
+      expect(native).toHaveBeenCalledExactlyOnceWith(root);
+    } finally {
+      native.mockRestore();
       rmSync(root, { recursive: true });
     }
   });

@@ -10,7 +10,8 @@ export function nativeCanonicalSpelling(
   return platform === "win32" ? win32.toNamespacedPath(canonical) : canonical;
 }
 
-/** Rust canonicalize retains the Windows extended prefix; libuv removes it. */
+/** Resolve OS identity, including DOS aliases, before restoring Rust's prefix.
+ * The default Windows realpath walker preserves non-symlink short names. */
 export function canonicalHarnessPath(path: string): string {
-  return nativeCanonicalSpelling(realpathSync(path));
+  return nativeCanonicalSpelling(realpathSync.native(path));
 }
