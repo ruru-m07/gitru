@@ -2,6 +2,7 @@ import { webcrypto } from "node:crypto";
 import type { HarnessStatus, HarnessViewManifest } from "@gitru/commands";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  HARNESS_DRAFT_EDITS,
   type HarnessProbeSnapshot,
   type HarnessRequest,
   type HarnessResult,
@@ -457,7 +458,282 @@ async function orderingFixture() {
   };
 }
 
+/** This models ordering receipts, not native storage or SDK fence behavior. */
+async function retentionOrderingFixture({
+  prematureCatchup = false,
+  delayResetBodyCache = false,
+} = {}) {
+  const { probe, coreControl } = await orderingFixture();
+  const baseExecute = probe.execute.getMockImplementation();
+  if (!baseExecute) throw new Error("The ordering probe is missing");
+  const childLabel = "tab-webview:ruru103:child";
+  async function fingerprint(value: string) {
+    const hash = await syntheticFingerprint(value);
+    if (!hash) throw new Error("The ordering fingerprint is missing");
+    return hash;
+  }
+  const hashes = {
+    one: await fingerprint("RURU-103 primary body phase one — π 🌱"),
+    two: await fingerprint("RURU-103 primary body phase two — λ 🌿"),
+    first: await fingerprint(HARNESS_DRAFT_EDITS["first-edit"]),
+    second: await fingerprint(HARNESS_DRAFT_EDITS["second-edit"]),
+  };
+  type Projection = {
+    phase: "one" | "two";
+    facet: string;
+    bodyRevision: string;
+    catchup: HarnessProbeSnapshot["catchup"];
+  };
+  const projections = new Map<string, Projection>();
+  const editors = new Map<string, string>();
+  let draftGeneration = "1";
+  let savedHash = hashes.one;
+  let catchupFilled = false;
+  let retentionFilled = false;
+  let completePreparation: (() => void) | null = null;
+  let preparationStarted: (() => void) | null = null;
+  const started = new Promise<void>((resolve) => {
+    preparationStarted = resolve;
+  });
+  const preparation = new Promise<void>((resolve) => {
+    completePreparation = resolve;
+  });
+  let completeRead: ((outcome: "stale_view" | "cancelled") => void) | null =
+    null;
+  let capturedReadRevision: string | null = null;
+
+  function projection(label: string) {
+    let value = projections.get(label);
+    if (!value) {
+      value = {
+        phase: "one",
+        facet: "18",
+        bodyRevision: "18",
+        catchup: {
+          reads: 1,
+          pages_with_more: 0,
+          resets: 0,
+          last_request: "0",
+          last_receipt: "18",
+        },
+      };
+      projections.set(label, value);
+    }
+    return value;
+  }
+  function catchUpChild() {
+    const value = projection(childLabel);
+    value.phase = current.core.committed_phase === "one" ? "one" : "two";
+    value.facet = current.core.committed_facet_revision ?? "18";
+    value.catchup.reads += 1;
+    value.catchup.last_request = value.catchup.last_receipt;
+    value.catchup.last_receipt = current.core.revision;
+    if (catchupFilled) {
+      value.catchup.pages_with_more += 1;
+      catchupFilled = false;
+    }
+    if (retentionFilled) {
+      value.catchup.resets += 1;
+      if (!delayResetBodyCache) value.bodyRevision = current.core.revision;
+      retentionFilled = false;
+    } else value.bodyRevision = current.core.revision;
+  }
+  probe.execute.mockImplementation(async (request) => {
+    const receipt = await baseExecute(request);
+    const value = projection(request.label);
+    if (request.action.kind === "edit-draft") {
+      editors.set(
+        request.label,
+        request.action.variant === "first-edit" ? hashes.first : hashes.second,
+      );
+    }
+    if (request.action.kind === "save-draft") {
+      savedHash = editors.get(request.label) ?? savedHash;
+      draftGeneration = "2";
+    }
+    if (request.action.kind === "wake" && request.label === childLabel)
+      catchUpChild();
+    if (request.action.kind === "read-body") {
+      events.push("retention:read-started");
+      capturedReadRevision = current.core.revision;
+      const gate = current.local_reads[0];
+      if (!gate || gate.state !== "armed")
+        throw new Error("The ordering read has no armed gate");
+      gate.state = "held";
+      const outcome = await new Promise<"stale_view" | "cancelled">(
+        (resolve) => {
+          completeRead = resolve;
+        },
+      );
+      return { ...receipt, outcome, snapshot: null };
+    }
+    if (request.label === "main") {
+      value.phase = current.core.committed_phase === "one" ? "one" : "two";
+      value.facet = current.core.committed_facet_revision ?? "18";
+    }
+    if (!receipt.snapshot) return receipt;
+    const editorHash = editors.get(request.label) ?? hashes.one;
+    return {
+      ...receipt,
+      snapshot: {
+        ...receipt.snapshot,
+        body: {
+          ...receipt.snapshot.body,
+          revision: value.bodyRevision,
+        },
+        facet_revision: value.facet,
+        body_hash: hashes[value.phase],
+        draft_generation: draftGeneration,
+        saved_draft_hash: savedHash,
+        editor_hash: editorHash,
+        save_enabled: editorHash !== savedHash && request.label === "main",
+        conflict_visible:
+          request.label === childLabel &&
+          draftGeneration === "2" &&
+          editorHash !== savedHash,
+        catchup: { ...value.catchup },
+      },
+    };
+  });
+  native.control.mockImplementation(async (input) => {
+    const receipt = await coreControl(input);
+    const { action, core_action: coreAction } = input.request;
+    if (action === "hold_child_hints") current.hint_mode = "hold";
+    if (action === "drop_child_hints") current.hint_mode = "drop";
+    if (action === "resume_hints") current.hint_mode = "normal";
+    if (action === "deliver_child_hints_reverse") catchUpChild();
+    if (coreAction?.startsWith("phase_"))
+      current.core.phase =
+        coreAction === "phase_one"
+          ? "one"
+          : coreAction === "phase_two"
+            ? "two"
+            : "not_modified";
+    if (coreAction === "advance_refresh") {
+      current.core.revision = (BigInt(current.core.revision) + 1n).toString();
+      current.core.committed_facet_revision = current.core.revision;
+      current.core.committed_phase =
+        current.core.phase === "one" ? "one" : "two";
+      if (current.hint_mode === "hold")
+        current.held_hint_revisions.push(current.core.revision);
+    }
+    if (coreAction === "fill_catchup") {
+      current.core.revision = (BigInt(current.core.revision) + 300n).toString();
+      catchupFilled = true;
+    }
+    if (coreAction === "fill_retention") {
+      preparationStarted?.();
+      await preparation;
+      current.core.revision = (
+        BigInt(current.core.revision) + 4100n
+      ).toString();
+      retentionFilled = true;
+      events.push("retention:preparation-completed");
+      if (prematureCatchup) catchUpChild();
+    }
+    let gateId: string | null = null;
+    if (action === "arm_body_read") {
+      gateId = "9a81a45c-813e-4463-a5ab-9c6a521ba60d";
+      current.local_reads.push({
+        gate_id: gateId,
+        scenario_generation: current.core.scenario_generation,
+        webview_label: childLabel,
+        kind: "body",
+        state: "armed",
+      });
+    }
+    if (action === "release_local_read") {
+      current.local_reads[0].state = "released";
+      completeRead?.("stale_view");
+    }
+    if (action === "cancel_local_reads") completeRead?.("cancelled");
+    return { ...receipt, status: structuredClone(current), gate_id: gateId };
+  });
+  return {
+    probe,
+    started,
+    completePreparation: () => completePreparation?.(),
+    completeBodyCache: () => {
+      projection(childLabel).bodyRevision = current.core.revision;
+    },
+    capturedReadRevision: () => capturedReadRevision,
+  };
+}
+
 describe("retained finite executor scheduling order", () => {
+  it("finishes slow retention preparation before starting either bounded held-read lifetime", async () => {
+    const fixture = await retentionOrderingFixture();
+    vi.useFakeTimers();
+    executor = await installCollaborationHarnessExecutor(fixture.probe);
+    const pending = executor.runScenario("hints-and-catchup");
+    await fixture.started;
+    await vi.advanceTimersByTimeAsync(16_000);
+    expect(current.local_reads).toHaveLength(0);
+    expect(events).not.toContain("retention:read-started");
+    expect(
+      native.control.mock.calls.some(
+        ([input]) => input.request.action === "arm_body_read",
+      ),
+    ).toBe(false);
+    fixture.completePreparation();
+    await vi.advanceTimersByTimeAsync(100);
+    const result = HarnessScenarioResultSchema.parse(await pending);
+    expect(result.outcome).toBe("passed");
+    expect(result.obsolete_reads?.retention_reset).toBe("stale_view");
+    expect(result.cleanup_failure).toBeNull();
+    expect(events.indexOf("retention:preparation-completed")).toBeLessThan(
+      events.indexOf("control:arm_body_read:none"),
+    );
+    expect(events.indexOf("retention:read-started")).toBeLessThan(
+      events.lastIndexOf("view:tab-webview:ruru103:child:wake"),
+    );
+    expect(fixture.capturedReadRevision()).toBe(current.core.revision);
+    expect(current.local_reads[0].state).toBe("released");
+  });
+
+  it("rejects premature child catchup after preparation before claiming a pre-reset read", async () => {
+    const fixture = await retentionOrderingFixture({ prematureCatchup: true });
+    executor = await installCollaborationHarnessExecutor(fixture.probe);
+    const pending = executor.runScenario("hints-and-catchup");
+    await fixture.started;
+    fixture.completePreparation();
+    const result = HarnessScenarioResultSchema.parse(await pending);
+    expect(result.outcome).toBe("failed");
+    expect(result.stage).toBe(
+      "prepare real retention overflow before capturing a local read",
+    );
+    expect(result.failure).toEqual({ kind: "assertion" });
+    expect(result.obsolete_reads?.retention_reset).toBeNull();
+    expect(events).not.toContain("retention:read-started");
+    expect(current.local_reads).toHaveLength(0);
+    expect(result.cleanup_failure).toBeNull();
+  });
+
+  it("keeps the held return gated until the actual Body cache catches up after ResetRequired", async () => {
+    const fixture = await retentionOrderingFixture({
+      delayResetBodyCache: true,
+    });
+    vi.useFakeTimers();
+    executor = await installCollaborationHarnessExecutor(fixture.probe);
+    const pending = executor.runScenario("hints-and-catchup");
+    await fixture.started;
+    fixture.completePreparation();
+    await vi.advanceTimersByTimeAsync(300);
+    expect(current.local_reads[0].state).toBe("held");
+    expect(events).toContain("retention:read-started");
+    expect(
+      native.control.mock.calls.some(
+        ([input]) => input.request.action === "release_local_read",
+      ),
+    ).toBe(false);
+    fixture.completeBodyCache();
+    await vi.advanceTimersByTimeAsync(100);
+    const result = HarnessScenarioResultSchema.parse(await pending);
+    expect(result.outcome).toBe("passed");
+    expect(result.obsolete_reads?.retention_reset).toBe("stale_view");
+    expect(current.local_reads[0].state).toBe("released");
+  });
+
   it("does not start the ordinary tab host until the actual probe observes a visible main document", async () => {
     const { probe, documentVisibility } = await orderingFixture();
     vi.useFakeTimers();

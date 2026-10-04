@@ -579,9 +579,24 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
               : null;
           }),
         );
-        stage =
-          "apply real retention ResetRequired without discarding authored text";
+        stage = "prepare real retention overflow before capturing a local read";
         const reset = await inspect(label);
+        const filledRevision = (await core("fill_retention")).status.core
+          .revision;
+        function requirePreResetCursor(snapshot: HarnessProbeSnapshot) {
+          require(
+            snapshot.catchup.resets === reset.catchup.resets &&
+              snapshot.catchup.last_receipt === reset.catchup.last_receipt &&
+              snapshot.catchup.last_receipt !== null &&
+              BigInt(snapshot.catchup.last_receipt) + 4096n <
+                BigInt(filledRevision),
+          );
+        }
+        // The real writes can take longer than a bounded held return. Prepare
+        // them first with child hints dropped; its actual bridge cursor must
+        // still precede the production retention floor before capturing a read.
+        requirePreResetCursor(keep(await inspect(label)));
+        stage = "capture an actual local read under the pre-reset SDK fence";
         const oldReadGate = (await control("arm_body_read")).gate_id;
         require(oldReadGate);
         if (!oldReadGate)
@@ -597,12 +612,18 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
             ? true
             : null,
         );
-        await core("fill_retention");
+        requirePreResetCursor(await inspect(label));
+        // The native snapshot may already carry the filled data revision. Its
+        // SDK generation was captured before the actual ResetRequired below.
+        stage =
+          "apply real retention ResetRequired without discarding authored text";
         await requireSnapshot(label, { kind: "wake" });
         const after = keep(
           await wait(async () => {
             const snapshot = await inspect(label);
             return snapshot.catchup.resets > reset.catchup.resets &&
+              snapshot.body.revision !== null &&
+              BigInt(snapshot.body.revision) >= BigInt(filledRevision) &&
               snapshot.body_hash === reset.body_hash &&
               snapshot.editor_hash === dirty &&
               snapshot.draft_generation === conflict.draft_generation &&
