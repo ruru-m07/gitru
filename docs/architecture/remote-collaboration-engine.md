@@ -2593,3 +2593,48 @@ from R111 is integrated verbatim; its331-case native qualification, deterministi
 pre-fix duplicate-descriptor Busy and preserved clone/final-owner assertions are
 recorded in R111. R103's feature/native package must qualify this combined source
 separately. No public DTO/signature change or hand-generated IPC occurs.
+
+
+### RURU-103 repaired-source local qualification — 4 October 2026
+
+Signed combined source `9554cc3f4b4481ae03be40d8e58068d115c2ab2b` passes the
+entire rebuilt macOS retained pipeline, not merely the historical executable.
+All six main cases and both forced-crash/fresh-restart pairs pass; every one of
+five driver stages exits zero. Before-commit SIGKILL owns PID20219 and restart
+PID20281; committed-before-hint SIGKILL owns PID20335 and restart PID20392.
+Each restart has its own native session UUID and retains its matching earlier
+checkpoint. Before-commit data is missing until fresh actual demand; committed
+Body/facet20 survives the after-commit restart before interest. Both actors keep
+private draft generation1; startup remains inert until real interest.
+
+Artifact run: `artifacts/e2e-harness/2026-10-04T10-39-36-631Z-19854`.
+Rebuilt native SHA256:
+`30db1b4ad5ecf07873e6552ebb43854ec398c4610c84324b3eb7b531dfb76031`.
+Retention reset and disconnect observe actual SDK `stale_view`; all eight peer
+operations observe permission denial with exact unchanged account, revision,
+owner, provider-call and vault-access evidence, plus successful main renewal and
+release. Normal public tab creation/navigation/disposal passes. Actual committed
+facet warmup and zero-lease phase/gate ordering remove the identified fixture
+setup races without relaxing native authority or counter assertions. Finite
+pre-cleanup diagnostics retain first failure and separate cleanup outcomes;
+activity inspection may register/refresh its requesting native owner and is not
+claimed to be mutation-free. Earlier failed artifacts remain historical evidence.
+
+Fresh full checks on this source pass: 522 frontend/SDK/UI tests across56 files,
+one Windows-only case skipped on macOS; repository lint/types; production frontend
+build; default workspace665 Rust tests/three ignored; feature collaboration332
+cases/two ignored; native feature30 cases; default and feature all-target workspace
+Clippy; formatting and diff checks. Default assets contain neither fixture executor
+global nor installer across403 JavaScript files. The earlier normal packaged macOS
+3-case control remains separately recorded, not rerun/new-source qualification.
+Logs: /tmp/gitru-ruru103-final-repair-{tests,lint,types,build,default-tests,
+default-clippy,native-tests,native-app-tests,native-clippy,native-fmt}.log and
+/tmp/gitru-ruru103-diagnostics-retained-native.log. No new Rust command signature
+or DTO changed in this repair; existing normal typegen evidence still applies.
+
+This qualifies the combined source locally on macOS with synthetic provider/vault
+fixtures. The Windows canonical-spelling repair still needs its actual remote
+retained job; previous published5efea64 Linux/macOS retained successes do not
+qualify the new source. Remote matrix restarts after publication. Live provider,
+production keyring, other platforms and power-loss behavior remain separate.
+No personal credentials or cloud account are inspected; no merge is performed.
