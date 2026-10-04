@@ -12,6 +12,8 @@ pub(super) enum Route {
     User,
     Workspaces,
     Repositories(String),
+    PullRequests(String),
+    PullRequest(String, u64),
 }
 
 pub(super) struct BitbucketHttp {
@@ -57,13 +59,26 @@ impl BitbucketHttp {
                 }
                 format!("repositories/%7B{workspace}%7D?role=member&pagelen=50")
             }
+            Route::PullRequests(repository) | Route::PullRequest(repository, _) => {
+                if super::canonical_uuid(repository)? != *repository {
+                    return Err(invalid());
+                }
+                let path = format!("repositories/%7B%7D/%7B{repository}%7D/pullrequests");
+                match route {
+                    Route::PullRequest(_, id) if *id > 0 => format!("{path}/{id}"),
+                    Route::PullRequests(_) => format!(
+                        "{path}?state=OPEN&state=MERGED&state=DECLINED&state=SUPERSEDED&pagelen=50&sort=id"
+                    ),
+                    _ => return Err(invalid()),
+                }
+            }
         };
         self.base.join(&relative).map_err(|_| invalid())
     }
 
     pub(super) fn continuation(&self, raw: &str, route: &Route) -> Result<Url, ProviderError> {
         let url = self.validate(raw, route)?;
-        if matches!(route, Route::User)
+        if matches!(route, Route::User | Route::PullRequest(..))
             || !url
                 .query_pairs()
                 .any(|(key, _)| matches!(key.as_ref(), "page" | "cursor" | "after" | "before"))
@@ -90,15 +105,15 @@ impl BitbucketHttp {
             return Err(invalid());
         }
         let expected = self.endpoint(route)?;
-        let same_path = url.path() == expected.path()
-            || match route {
-                Route::Repositories(workspace) => {
-                    url.path() == format!("{}repositories/{{{workspace}}}", self.base.path())
-                        || url.path()
-                            == format!("{}repositories/%7b{workspace}%7d", self.base.path())
-                }
-                _ => false,
-            };
+        // Only equivalent brace escaping is an alias; route identities and
+        // every other path byte remain fixed to native authority.
+        let braces = |path: &str| {
+            path.replace("%7B", "{")
+                .replace("%7b", "{")
+                .replace("%7D", "}")
+                .replace("%7d", "}")
+        };
+        let same_path = braces(url.path()) == braces(expected.path());
         if url.origin() != self.base.origin()
             || !url.username().is_empty()
             || url.password().is_some()
@@ -108,25 +123,36 @@ impl BitbucketHttp {
             return Err(invalid());
         }
         let mut pairs = BTreeMap::new();
+        let mut states = Vec::new();
         for (key, value) in url.query_pairs() {
             if key.len() > 32
                 || value.is_empty()
                 || value.len() > 256
                 || value.chars().any(char::is_control)
-                || pairs.insert(key.to_string(), value.to_string()).is_some()
             {
+                return Err(invalid());
+            }
+            if key == "state" && matches!(route, Route::PullRequests(_)) {
+                states.push(value.to_string());
+            } else if pairs.insert(key.to_string(), value.to_string()).is_some() {
+                return Err(invalid());
+            }
+        }
+        if matches!(route, Route::PullRequests(_)) {
+            states.sort();
+            if states != ["DECLINED", "MERGED", "OPEN", "SUPERSEDED"] {
                 return Err(invalid());
             }
         }
         for (key, value) in expected.query_pairs() {
-            if pairs.remove(key.as_ref()).as_deref() != Some(value.as_ref()) {
+            if key != "state" && pairs.remove(key.as_ref()).as_deref() != Some(value.as_ref()) {
                 return Err(invalid());
             }
         }
         if pairs
             .keys()
             .any(|key| !matches!(key.as_str(), "page" | "cursor" | "after" | "before"))
-            || (matches!(route, Route::User) && !pairs.is_empty())
+            || (matches!(route, Route::User | Route::PullRequest(..)) && !pairs.is_empty())
         {
             return Err(invalid());
         }
@@ -138,9 +164,19 @@ impl BitbucketHttp {
         let url = self.validate(raw, route)?;
         // Query ordering and percent-encoding aliases cannot evade the same
         // continuation fingerprint. Values remain opaque; no page is guessed.
-        let pairs: BTreeMap<_, _> = url.query_pairs().collect();
-        let encoded =
-            serde_json::to_vec(&(self.endpoint(route)?.path(), pairs)).map_err(|_| invalid())?;
+        let endpoint = self.endpoint(route)?;
+        let encoded = if matches!(route, Route::PullRequests(_)) {
+            // New PR cursors retain every repeated state in a sorted multiset.
+            let mut pairs: Vec<_> = url.query_pairs().collect();
+            pairs.sort();
+            serde_json::to_vec(&(endpoint.path(), pairs))
+        } else {
+            // Preserve the exact v1 discovery fingerprint bytes so persisted
+            // workspace/repository histories still reject their old targets.
+            let pairs: BTreeMap<_, _> = url.query_pairs().collect();
+            serde_json::to_vec(&(endpoint.path(), pairs))
+        }
+        .map_err(|_| invalid())?;
         Ok(format!("{:x}", Sha256::digest(encoded)))
     }
 

@@ -3,6 +3,8 @@ use super::*;
 use serde::Deserialize;
 
 mod discovery;
+mod feeds;
+mod resource_details;
 mod transport;
 use transport::{BitbucketHttp, Route, invalid, quota};
 
@@ -38,13 +40,20 @@ impl CollaborationProvider for BitbucketCloudProvider {
                 .into_iter()
                 .map(|facet| FacetCapability {
                     facet,
-                    state: if facet == ResourceFacet::Repositories {
+                    state: if matches!(
+                        facet,
+                        ResourceFacet::Repositories
+                            | ResourceFacet::PullRequests
+                            | ResourceFacet::PullDetails
+                    ) {
                         CapabilityState::Supported
                     } else {
                         CapabilityState::Unsupported
                     },
                     reason: match facet {
-                        ResourceFacet::Repositories => None,
+                        ResourceFacet::Repositories
+                        | ResourceFacet::PullRequests
+                        | ResourceFacet::PullDetails => None,
                         ResourceFacet::Issues | ResourceFacet::Inbox => {
                             Some(CapabilityReason::ProviderSemantics)
                         }
@@ -151,7 +160,19 @@ impl CollaborationProvider for BitbucketCloudProvider {
         token: &SecretToken,
         request: FeedRequest,
     ) -> Result<FetchPage, ProviderError> {
-        self.discover(token, request).await
+        match request.kind {
+            FeedKind::Repositories => self.discover(token, request).await,
+            FeedKind::PullRequests => self.resource_feed(token, request).await,
+            _ => Err(ProviderError::new(ProviderErrorKind::Unsupported)),
+        }
+    }
+
+    async fn fetch_detail(
+        &self,
+        token: &SecretToken,
+        request: DetailRequest,
+    ) -> Result<DetailPage, ProviderError> {
+        self.resource_details(token, request).await
     }
 }
 
@@ -190,3 +211,6 @@ pub(super) fn text(value: String, max: usize, empty: bool) -> Result<String, Pro
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod reads_tests;

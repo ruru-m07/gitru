@@ -517,9 +517,9 @@ export function ConnectBitbucketCloudForm() {
         Connect Bitbucket Cloud
       </div>
       <p className="text-xs leading-relaxed text-muted-foreground">
-        Connect with an API token to browse your repositories. Pull requests
-        aren’t supported yet. Issues and an inbox aren’t available for this
-        provider.
+        Connect with an API token to browse your repositories and pull requests.
+        Pull requests are read-only in Gitru. Issues and an inbox aren’t
+        available for this provider.
       </p>
       <Field name="bitbucket-cloud-token">
         <FieldLabel htmlFor={tokenId}>Bitbucket Cloud API token</FieldLabel>
@@ -538,8 +538,9 @@ export function ConnectBitbucketCloudForm() {
         <FieldDescription id={`${tokenId}-help`}>
           Create an API token with read:user:bitbucket,
           read:workspace:bitbucket, and read:repository:bitbucket permissions.
-          Gitru verifies your account before connecting, then saves the token in
-          your system credential store.
+          Add read:pullrequest:bitbucket to read pull requests. You can connect
+          without it to browse repositories. Gitru verifies your account before
+          connecting, then saves the token in your system credential store.
         </FieldDescription>
       </Field>
       <Button

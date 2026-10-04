@@ -250,7 +250,9 @@ impl BitbucketCloudProvider {
                         cursor.next(&self.http)?
                     }
                 }
-                Route::User => return Err(invalid()),
+                Route::User | Route::PullRequests(_) | Route::PullRequest(..) => {
+                    return Err(invalid());
+                }
             };
             Ok(FetchPage {
                 repositories: rows,
@@ -428,7 +430,7 @@ impl Repository {
     }
 }
 
-fn segment(value: &str) -> bool {
+pub(super) fn segment(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 255
         && !matches!(value, "." | "..")

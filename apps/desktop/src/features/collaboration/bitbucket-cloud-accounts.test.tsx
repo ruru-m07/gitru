@@ -184,7 +184,7 @@ function repositoryOnlyReads() {
 }
 
 describe("manual Bitbucket Cloud account connection", () => {
-  it("uses a token-only password form with the three repository scopes and no automatic credential lookup", () => {
+  it("keeps pull request permission optional in the token-only form without automatic credential lookup", () => {
     const discover = vi.spyOn(collaboration.transport, "discoverGithubCli");
     const connect = mockTauriCommandResult(
       "collaboration_connect_bitbucket_cloud",
@@ -199,8 +199,11 @@ describe("manual Bitbucket Cloud account connection", () => {
     expect(screen.getByText(/read:user:bitbucket/)).toHaveTextContent(
       /read:user:bitbucket, read:workspace:bitbucket, and read:repository:bitbucket/,
     );
+    expect(screen.getByText(/read:user:bitbucket/)).toHaveTextContent(
+      /Add read:pullrequest:bitbucket to read pull requests. You can connect without it to browse repositories./,
+    );
     expect(screen.getByText(/Connect with an API token/)).toHaveTextContent(
-      /Pull requests aren’t supported yet. Issues and an inbox aren’t available for this provider./,
+      /Pull requests are read-only in Gitru. Issues and an inbox aren’t available for this provider./,
     );
     expect(discover).not.toHaveBeenCalled();
     expect(connect).not.toHaveBeenCalled();

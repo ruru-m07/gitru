@@ -238,6 +238,17 @@ impl HttpFixture {
                                 }
                                 response(200, "", &serde_json::json!({"values":[item]}).to_string())
                             }
+                        } else if url.path() == format!("/2.0/repositories/%7B%7D/%7B{REPOSITORY}%7D/pullrequests") {
+                            // Selection now legitimately admits the PR feed. These
+                            // historical account/discovery cases use an actual
+                            // empty all-state terminal response, without disabling
+                            // the provider capability or changing discovery quotas.
+                            let mut states: Vec<_> = url.query_pairs().filter(|(key,_)| key == "state").map(|(_,value)|value.into_owned()).collect();
+                            states.sort_unstable();
+                            assert_eq!(states,["DECLINED","MERGED","OPEN","SUPERSEDED"]);
+                            assert_eq!(query.get("pagelen").map(String::as_str),Some("50"));
+                            assert_eq!(query.get("sort").map(String::as_str),Some("id"));
+                            response(200,"",r#"{"values":[]}"#)
                         } else if url.path().starts_with("/2.0/repositories/") {
                             assert!(target.to_ascii_lowercase().contains(&format!("%7b{WORKSPACE}%7d")));
                             assert_eq!(query.get("role").map(String::as_str), Some("member"));
@@ -438,6 +449,7 @@ async fn bitbucket_known_actor_invalid_presentation_keeps_quota_without_replacin
             .select_repository(&account.id, &original.id, true)
             .await
             .unwrap();
+        assert!(runtime.run_next().await); // Actual terminal all-state PR feed.
         let saved = draft(&runtime, &account).await;
         let rows_before = database.repositories(&account.id).await.unwrap();
         let scope_before = database
@@ -594,11 +606,19 @@ async fn bitbucket_uuid_rename_selection_and_private_draft_survive_inert_cold_re
         .select_repository(&account.id, &original.id, true)
         .await
         .unwrap();
+    assert!(runtime.run_next().await); // Actual terminal all-state PR feed.
     let saved = draft(&runtime, &account).await;
     fixture.mode(Mode::Renamed);
+    let refresh_calls = fixture.count();
     runtime.refresh(refresh(&account)).await.unwrap();
-    assert!(runtime.run_next().await);
-    assert!(runtime.run_next().await);
+    for _ in 0..3 {
+        assert!(runtime.run_next().await);
+    }
+    assert_eq!(
+        fixture.count(),
+        refresh_calls + 3,
+        "account refresh admits two discovery pages plus the selected PR feed"
+    );
     let renamed = database
         .repository(&account.id, &original.id)
         .await
@@ -808,6 +828,7 @@ async fn bitbucket_actual_permission_loss_and_replacement_never_cross_account_or
         .select_repository(&first.id, &repository.id, true)
         .await
         .unwrap();
+    assert!(runtime.run_next().await); // Actual terminal all-state PR feed.
     let saved = draft(&runtime, &first).await;
     let theirs = runtime
         .save_draft(LocalDraft {
@@ -820,7 +841,7 @@ async fn bitbucket_actual_permission_loss_and_replacement_never_cross_account_or
         .unwrap();
     fixture.mode(Mode::DeniedActorA);
     runtime.refresh(refresh(&first)).await.unwrap();
-    for _ in 0..2 {
+    for _ in 0..3 {
         assert!(runtime.run_next().await);
     }
     let denied = database.repositories(&first.id).await.unwrap();

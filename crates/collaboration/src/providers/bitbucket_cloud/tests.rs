@@ -5,16 +5,16 @@ use std::{
     time::{Duration, Instant},
 };
 
-const ACTOR: &str = "11111111-1111-4111-8111-111111111111";
-const W1: &str = "22222222-2222-4222-8222-222222222222";
-const W2: &str = "33333333-3333-4333-8333-333333333333";
-const REPO: &str = "44444444-4444-4444-8444-444444444444";
+pub(super) const ACTOR: &str = "11111111-1111-4111-8111-111111111111";
+pub(super) const W1: &str = "22222222-2222-4222-8222-222222222222";
+pub(super) const W2: &str = "33333333-3333-4333-8333-333333333333";
+pub(super) const REPO: &str = "44444444-4444-4444-8444-444444444444";
 
-fn token() -> SecretToken {
+pub(super) fn token() -> SecretToken {
     SecretToken::new("synthetic_bitbucket_token".into()).unwrap()
 }
 
-fn request() -> FeedRequest {
+pub(super) fn request() -> FeedRequest {
     FeedRequest {
         account: RemoteAccount {
             id: "fixture-account".into(),
@@ -35,23 +35,26 @@ fn request() -> FeedRequest {
     }
 }
 
-fn actor() -> serde_json::Value {
+pub(super) fn actor() -> serde_json::Value {
     serde_json::json!({"type":"user","uuid":format!("{{{ACTOR}}}"),"nickname":"same-nickname","display_name":"Δ actor","account_status":"active"})
 }
 
-fn workspace(id: &str, slug: &str) -> serde_json::Value {
+pub(super) fn workspace(id: &str, slug: &str) -> serde_json::Value {
     serde_json::json!({"type":"workspace_access","workspace":{"type":"workspace_base","uuid":format!("{{{id}}}"),"slug":slug}})
 }
 
-fn repository(workspace: &str, full_name: &str) -> serde_json::Value {
+pub(super) fn repository(workspace: &str, full_name: &str) -> serde_json::Value {
     serde_json::json!({"type":"repository","uuid":format!("{{{REPO}}}"),"scm":"git","name":"Δ repository","full_name":full_name,"workspace":{"type":"workspace","uuid":format!("{{{workspace}}}"),"slug":full_name.split('/').next().unwrap()},"links":{"html":{"href":format!("https://bitbucket.org/{full_name}/")},"clone":[{"name":"https","href":format!("https://username@bitbucket.org/{full_name}.git")},{"name":"ssh","href":format!("git@bitbucket.org:{full_name}.git")}]},"description":"first line\nsecond line","mainbranch":null})
 }
 
-fn collection(values: Vec<serde_json::Value>, next: Option<String>) -> serde_json::Value {
+pub(super) fn collection(
+    values: Vec<serde_json::Value>,
+    next: Option<String>,
+) -> serde_json::Value {
     serde_json::json!({"values":values,"next":next})
 }
 
-fn response(status: u16, headers: &str, body: &serde_json::Value) -> String {
+pub(super) fn response(status: u16, headers: &str, body: &serde_json::Value) -> String {
     let body = body.to_string();
     format!(
         "HTTP/1.1 {status} Fixture\r\nContent-Length: {}\r\nConnection: close\r\n{headers}\r\n{body}",
@@ -59,11 +62,11 @@ fn response(status: u16, headers: &str, body: &serde_json::Value) -> String {
     )
 }
 
-fn ok(body: serde_json::Value) -> String {
+pub(super) fn ok(body: serde_json::Value) -> String {
     response(200, "", &body)
 }
 
-fn server(
+pub(super) fn server(
     responses: impl FnOnce(&str) -> Vec<String>,
 ) -> (BitbucketCloudProvider, std::thread::JoinHandle<Vec<String>>) {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -113,7 +116,7 @@ fn server(
 }
 
 #[tokio::test]
-async fn actual_probe_uses_sensitive_bearer_uuid_routes_and_repository_only_profile() {
+async fn actual_probe_uses_sensitive_bearer_uuid_routes_without_requiring_pull_grant() {
     let (provider, calls) = server(|_| {
         vec![
             ok(actor()),
@@ -130,7 +133,12 @@ async fn actual_probe_uses_sensitive_bearer_uuid_routes_and_repository_only_prof
     for facet in profile.facets {
         assert_eq!(
             facet.state == CapabilityState::Supported,
-            facet.facet == ResourceFacet::Repositories
+            matches!(
+                facet.facet,
+                ResourceFacet::Repositories
+                    | ResourceFacet::PullRequests
+                    | ResourceFacet::PullDetails
+            )
         );
         if matches!(facet.facet, ResourceFacet::Issues | ResourceFacet::Inbox) {
             assert_eq!(facet.reason, Some(CapabilityReason::ProviderSemantics));
@@ -651,11 +659,7 @@ async fn actual_redirects_conditional_responses_and_body_bounds_do_not_expand_ht
 async fn resource_features_remain_explicitly_unsupported_without_http() {
     let (provider, calls) = server(|_| vec![]);
     calls.join().unwrap();
-    for kind in [
-        FeedKind::PullRequests,
-        FeedKind::Issues,
-        FeedKind::Notifications,
-    ] {
+    for kind in [FeedKind::Issues, FeedKind::Notifications] {
         let mut req = request();
         req.kind = kind;
         assert_eq!(

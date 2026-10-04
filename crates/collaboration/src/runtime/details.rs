@@ -215,7 +215,7 @@ impl CollaborationRuntime {
                     &binding,
                 )
                 .await?;
-            let mut page = adapter
+            let fetched = adapter
                 .fetch_detail(
                     &token,
                     DetailRequest {
@@ -228,7 +228,22 @@ impl CollaborationRuntime {
                         source: lease.source.clone(),
                     },
                 )
-                .await?;
+                .await;
+            // A rejected singleton can consume account quota without proving
+            // any Body, metadata or access. Keep that captured-epoch evidence
+            // before converting the safe provider error, as feed reads do.
+            let mut page = match fetched {
+                Ok(page) => page,
+                Err(error) => {
+                    if let Some(seconds) = error
+                        .account_cooldown_seconds
+                        .filter(|seconds| *seconds > 0)
+                    {
+                        self.persist_rate_limit(&account, seconds, None).await?;
+                    }
+                    return Err(error.into());
+                }
+            };
             // Receipt/validation time is engine owned, never the provider clock.
             page.source.observed_at = self.now_string();
             if let Some(metadata) = &mut page.metadata {
