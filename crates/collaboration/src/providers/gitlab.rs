@@ -1,6 +1,8 @@
-//! GitLab.com manual PAT verification and membership repository discovery only.
+//! GitLab.com manual PAT, member repositories and cached MR/issue reads.
 use super::*;
 use serde::Deserialize;
+mod feeds;
+mod resource_details;
 mod transport;
 use transport::{GitlabHttp, invalid, max_wait, positive_id, project_after, with_quota};
 
@@ -103,12 +105,12 @@ impl CollaborationProvider for GitlabProvider {
                 .into_iter()
                 .map(|facet| FacetCapability {
                     facet,
-                    state: if facet == ResourceFacet::Repositories {
+                    state: if implemented(facet) {
                         CapabilityState::Supported
                     } else {
                         CapabilityState::Unsupported
                     },
-                    reason: if facet == ResourceFacet::Repositories {
+                    reason: if implemented(facet) {
                         None
                     } else if facet == ResourceFacet::Inbox {
                         Some(CapabilityReason::ProviderSemantics)
@@ -184,14 +186,15 @@ impl CollaborationProvider for GitlabProvider {
         token: &SecretToken,
         request: FeedRequest,
     ) -> Result<FetchPage, ProviderError> {
-        if request.account.provider != ProviderKind::Gitlab
-            || request.account.host != "gitlab.com"
-            || request.kind != FeedKind::Repositories
+        if request.account.provider != ProviderKind::Gitlab || request.account.host != "gitlab.com"
         {
             return Err(ProviderError::new(ProviderErrorKind::Unsupported));
         }
         if request.account.state != AccountState::Active {
             return Err(ProviderError::new(ProviderErrorKind::Authentication));
+        }
+        if request.kind != FeedKind::Repositories {
+            return self.resource_feed(token, request).await;
         }
         if request.repository.is_some() {
             return Err(invalid());
@@ -201,6 +204,24 @@ impl CollaborationProvider for GitlabProvider {
         self.projects(token, &request.account.id, request.cursor.as_deref())
             .await
     }
+    async fn fetch_detail(
+        &self,
+        token: &SecretToken,
+        request: DetailRequest,
+    ) -> Result<DetailPage, ProviderError> {
+        self.resource_details(token, request).await
+    }
+}
+
+fn implemented(facet: ResourceFacet) -> bool {
+    matches!(
+        facet,
+        ResourceFacet::Repositories
+            | ResourceFacet::PullRequests
+            | ResourceFacet::Issues
+            | ResourceFacet::PullDetails
+            | ResourceFacet::IssueDetails
+    )
 }
 
 #[derive(Deserialize)]
@@ -281,5 +302,7 @@ fn bounded(value: String, max: usize) -> Result<String, ProviderError> {
     }
 }
 
+#[cfg(test)]
+pub(crate) mod reads_tests;
 #[cfg(test)]
 pub(crate) mod tests;

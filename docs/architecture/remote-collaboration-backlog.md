@@ -620,7 +620,7 @@ Acceptance criteria:
 
 ## RURU-111: Sync GitLab merge requests and issues through shared local queries
 
-Planning key: C28. Group: Provider rollout. Priority: Medium. State: Backlog.
+Planning key: C28. Group: Provider rollout. Priority: Medium. State: In Review (local qualification recorded below).
 Linear: [RURU-111](https://linear.app/catra/issue/RURU-111/sync-gitlab-merge-requests-and-issues-through-shared-local-queries).
 Prerequisites: [RURU-100](https://linear.app/catra/issue/RURU-100/drive-collaboration-ui-from-typed-resource-capabilities), [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-110](https://linear.app/catra/issue/RURU-110/connect-gitlab-accounts-and-discover-repositories).
 
@@ -628,9 +628,9 @@ Implement GitLab MR/issue summary and supported detail reads using ordinary coll
 
 Acceptance criteria:
 
-- [ ] Retain immutable native IDs, scoped IIDs/locators and provider facets while sharing local projections and queries.
-- [ ] Support progressive paging, independently cached details, offline restart and explicit capability/access states.
-- [ ] Divergent fixtures cover state transitions, transfers/renames, pagination and access loss with no GitLab branches in ordinary UI.
+- [x] Retain immutable native IDs, scoped IIDs/locators and provider facets while sharing local projections and queries.
+- [x] Support progressive paging, independently cached details, offline restart and explicit capability/access states.
+- [x] Divergent fixtures cover state transitions, transfers/renames, pagination and access loss with no GitLab branches in ordinary UI.
 
 ## RURU-127: Support GitLab todos with explicit inbox semantics
 
@@ -1274,3 +1274,43 @@ connector currently requires reauthentication. Local evidence does not replace
 new-head CI, live provider/vault or power-loss qualification. No PR is merged.
 R103's retained native-webview harness inherits this final source sequentially.
 See [R101 work note](./collaboration-work/RURU-101.md).
+
+
+### RURU-111 GitLab MR/issue reads qualified locally — 4 October 2026
+
+GitLab.com selected projects now synchronize all-state MR and issue summaries and
+independent singleton Body/common metadata through the existing native scheduler,
+SQLite, provider traits and ordinary shared detail UI. Immutable global IDs remain
+separate from project IIDs; numeric routes and bounded account/epoch/project/kind
+cursors preserve identity across renamed display paths and copied issue moves.
+Unconditional MR creation-order offset and issue ID keyset traversals fail partial
+on malformed/replayed/cross-scope paging; neither is claimed an atomic snapshot.
+List clocks do not validate Body. Omitted/null/empty/oversized descriptions and
+missing asynchronous MR diff references retain explicit states. GitLab inbox,
+discussions, approval/check facets, remote writes and self-hosted instances remain
+unsupported. No migration, public DTO or generated IPC signature changes occur.
+
+Local evidence: full collaboration329 passed/two ignored, workspace all-target
+Clippy-Dwarnings and format, complete frontend413 tests/48 files, repository lint,
+types including desktop/E2E/testing and production frontend build pass. Shared
+GitLab MR/issue UI tests preserve private drafts and use ephemeral detail demand
+without durable hydration. Actual synthetic HTTP-to-Runtime-to-SQLite regressions
+cover inert cold reopen, copied identities, concealed404 and late old-epoch cache/
+quota veto. No personal credentials, live provider or production vault was used.
+The review PR is stacked on #156; its remote platform checks qualify its own head.
+No PR is merged. See [R111 work note](./collaboration-work/RURU-111.md).
+
+Vercel reauthentication is resolved: #155's exact725b9f2 deployment
+`dpl_6UXbMPbqvvj1Fd6RXKGtCFFMiBdU` is READY with build completed3 October13:41:13Z,
+although its GitHub check still reports Pending. No check override or redeploy is
+claimed. #156's reported11 checks pass; no exact-head CodeQL is reported there.
+
+
+Final independent review found an async diff-reference missingness edge. Base now
+requires both the MR SHA and diff_refs.head_sha to be known, nonempty and equal
+before accepting start_sha. Missing, null, empty and mismatched heads leave Base
+Omitted while independently qualified Body/title/state remain available. Eight
+actual HTTP shapes preserve the known matching-head target-start control. After
+this correction the full collaboration suite still passes329/two ignored,
+focused HTTP14/14, workspace all-target Clippy-Dwarnings and formatting pass.
+Logs: /tmp/gitru-ruru111-async-head-{http,full,clippy,fmt-check}.log.
