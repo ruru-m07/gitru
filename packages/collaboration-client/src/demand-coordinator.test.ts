@@ -146,6 +146,51 @@ describe("ephemeral foreground SDK demand", () => {
   });
 
   it.each([
+    { initial: "hidden", current: "visible", expected: 1 },
+    { initial: "hidden", current: "hidden", expected: 0 },
+    { initial: "visible", current: "hidden", expected: 0 },
+  ] as const)("resamples actual document visibility across pending native subscription ($initial → $current)", async ({
+    initial,
+    current,
+    expected,
+  }) => {
+    const document = Object.assign(new EventTarget(), {
+      visibilityState: initial as DocumentVisibilityState,
+    });
+    const domListen = vi.spyOn(document, "addEventListener");
+    vi.stubGlobal("document", document);
+    vi.stubGlobal("window", new EventTarget());
+    const { coordinator, transport, unlisten } = fixture();
+    const subscription = deferred<typeof unlisten>();
+    transport.listenDemandActivity.mockImplementationOnce(
+      () => subscription.promise,
+    );
+    coordinator.attach();
+    coordinator.retain(account, target);
+    expect(transport.listenDemandActivity).toHaveBeenCalledTimes(1);
+    expect(domListen).not.toHaveBeenCalled();
+    document.visibilityState = current;
+    // This real DOM transition precedes listener installation. No extra event
+    // is delivered after subscription completion to repair stale local state.
+    document.dispatchEvent(new Event("visibilitychange"));
+    subscription.resolve(unlisten);
+    await flush();
+    expect(transport.demandActivity).toHaveBeenCalledTimes(1);
+    expect(domListen).toHaveBeenCalledExactlyOnceWith(
+      "visibilitychange",
+      expect.any(Function),
+    );
+    expect(transport.acquireDemand).toHaveBeenCalledTimes(expected);
+    if (expected)
+      expect(transport.acquireDemand.mock.calls[0][0].owner_generation).toBe(
+        "1",
+      );
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(transport.acquireDemand).toHaveBeenCalledTimes(expected);
+    expect(transport.demandActivity).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
     "release",
     "account-reset",
     "owner-replacement",

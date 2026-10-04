@@ -274,6 +274,12 @@ export class DemandCoordinator {
       this.unlisten = unlisten;
       this.started = true;
       this.installDomListeners(session);
+      // The document may have been shown/hidden while native event subscription
+      // was pending. Sample only after DOM listeners are installed so that an
+      // earlier transition cannot leave the local liveness gate stuck forever.
+      this.visible =
+        typeof document === "undefined" ||
+        document.visibilityState === "visible";
       // Events are already subscribed. A late initial snapshot cannot undo them.
       const activity = await this.transport.demandActivity();
       if (this.attached && this.session === session)

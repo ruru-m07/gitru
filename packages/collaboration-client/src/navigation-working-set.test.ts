@@ -395,44 +395,50 @@ describe("bounded navigation working set with actual SDK reads", () => {
     expect(cache.getQueryDefaults(bodyKey("issue:59"))).toEqual({});
   });
 
-  it("bounds resident Body bytes while admitting newer navigation and owns only eight scope descriptors", async () => {
-    const { manager, cache, transport } = fixture({
-      detail: vi.fn(async (query) =>
-        detail(query.subject_id, "x".repeat(400_000)),
-      ),
-    });
-    const scope = manager!.scope(input);
-    for (let i = 0; i < 200; i += 1) {
-      scope.visit(`issue:${i}`);
+  // This allocation/admission stress case traverses 200 large receipts. Its
+  // deadline covers slower CI CPUs; every count/byte/IPC assertion stays exact.
+  it(
+    "bounds resident Body bytes while admitting newer navigation and owns only eight scope descriptors",
+    { timeout: 15_000 },
+    async () => {
+      const { manager, cache, transport } = fixture({
+        detail: vi.fn(async (query) =>
+          detail(query.subject_id, "x".repeat(400_000)),
+        ),
+      });
+      const scope = manager!.scope(input);
+      for (let i = 0; i < 200; i += 1) {
+        scope.visit(`issue:${i}`);
+        await flush();
+        expect(manager!.stats().bytes).toBeLessThanOrEqual(limits.bytes);
+        expect(manager!.stats().entries).toBeLessThanOrEqual(limits.entries);
+        expect(manager!.stats().reads).toBeLessThanOrEqual(limits.reads);
+      }
+      expect(cache.getQueryData(bodyKey("issue:199"))).toBeDefined();
+      expect(cache.getQueryData(bodyKey("issue:0"))).toBeUndefined();
+      expect(cache.getQueryCache().getAll().length).toBeLessThanOrEqual(
+        limits.entries * 3,
+      );
+      const scopes = Array.from({ length: limits.scopes - 1 }, () =>
+        manager!.scope(input),
+      );
+      const rejected = manager!.scope(input);
+      const previous = vi.mocked(transport.contextualCapabilities).mock.calls
+        .length;
+      rejected.visit("issue:over-scope-limit");
       await flush();
-      expect(manager!.stats().bytes).toBeLessThanOrEqual(limits.bytes);
-      expect(manager!.stats().entries).toBeLessThanOrEqual(limits.entries);
-      expect(manager!.stats().reads).toBeLessThanOrEqual(limits.reads);
-    }
-    expect(cache.getQueryData(bodyKey("issue:199"))).toBeDefined();
-    expect(cache.getQueryData(bodyKey("issue:0"))).toBeUndefined();
-    expect(cache.getQueryCache().getAll().length).toBeLessThanOrEqual(
-      limits.entries * 3,
-    );
-    const scopes = Array.from({ length: limits.scopes - 1 }, () =>
-      manager!.scope(input),
-    );
-    const rejected = manager!.scope(input);
-    const previous = vi.mocked(transport.contextualCapabilities).mock.calls
-      .length;
-    rejected.visit("issue:over-scope-limit");
-    await flush();
-    expect(transport.contextualCapabilities).toHaveBeenCalledTimes(previous);
-    scopes[0].dispose();
-    const admitted = manager!.scope(input);
-    admitted.visit("issue:new-scope");
-    await flush();
-    expect(transport.contextualCapabilities).toHaveBeenCalledTimes(
-      previous + 1,
-    );
-    for (const retained of scopes) retained.dispose();
-    admitted.dispose();
-  });
+      expect(transport.contextualCapabilities).toHaveBeenCalledTimes(previous);
+      scopes[0].dispose();
+      const admitted = manager!.scope(input);
+      admitted.visit("issue:new-scope");
+      await flush();
+      expect(transport.contextualCapabilities).toHaveBeenCalledTimes(
+        previous + 1,
+      );
+      for (const retained of scopes) retained.dispose();
+      admitted.dispose();
+    },
+  );
 
   it("retires cached resource capability interest on a real QueryClient invalidation", async () => {
     const { manager, cache, transport } = fixture();

@@ -2358,3 +2358,26 @@ reset/epoch/visibility fencing and ordinary coss pointer/focus/Enter consumers.
 No native package, live provider, exact JS heap or lower native priority claim is
 made by this slice. Its review PR is stacked on #156; remote checks qualify its
 own published head. No PR is merged. See [R121 work note](./collaboration-work/RURU-121.md).
+
+
+### RURU-121 exact-head frontend CI repair — 4 October 2026
+
+Initial published #158 head1991748 fails only the200-large-receipt stress case in
+frontend job111411954423/run37194003075: Vitest's global5s default expires before
+all CPU/allocation admissions finish. It already took4303ms locally; under another
+complete local run it takes5689ms. A dedicated15s deadline on that stress test
+retains all200 inputs and every exact count/byte/IPC/LRU/scope assertion. Engine
+and provider deadlines, admission bounds and every other test remain unchanged.
+
+R103's independently reproduced SDK startup visibility defect is also propagated:
+a document can become visible while awaiting native activity subscription before
+DOM listeners exist. The coordinator now samples visibility after listener
+installation and before the native getter pumps; three held-listener tests cover
+hidden-to-visible, stays-hidden and visible-to-hidden, without an invented later
+event. Native generation/getter ordering and hidden admission remain intact.
+
+Final full local UI/SDK qualification includes the UI project:433 tests/49 files,
+full lint/testing config, SDK/desktop/E2E types and production frontend build pass.
+Logs: /tmp/gitru-ruru121-ci-repair-{tests,lint,types,build}.log. These results do not
+turn the old failed remote job green; a new signed head restarts its own matrix.
+R103's retained native suite is qualified separately. No PR is merged.
