@@ -2494,3 +2494,17 @@ pending separately. R112 remains In Progress for explicit participant/task facet
 #160968cd524 and #159ebb8ae1 each pass all11 reported checks. #1579ef7148 remains
 13/14 with retained Windows failing a bounded test-lifetime seam; its isolated
 fixture repair and fresh native qualification are underway. No merge.
+
+
+### RURU-112 participant-only contract accepted — 4 October 2026
+
+The [participant contract](./collaboration-work/RURU-112-participants.md) is accepted
+before source changes in an isolated managed stack on #1611766a6e. Common typed
+ParticipantV1 preserves native role/approval/state/action-date facts, independent
+field masks/clocks and immutable identity; no review/readiness overloading. A
+forward0008 rebuild preserves all four dependent detail tables with FKON and
+frozen-v7 upgrade/rollback/cold evidence. The panel acquires ordinary local query
+and native interest only when opened and supported. Tasks are a later bounded
+chunk; R112 stays In Progress. R1034054a6c is separately published after fresh
+all5 retained Mac stages pass; both new exact-head remote matrices remain pending.
+No source/IPC/migration qualification or live credentials/merge is claimed yet.
