@@ -349,3 +349,44 @@ R125/R107/R102 gates, not silently completed here.
   and [live R98](https://linear.app/catra/issue/RURU-98/add-foreground-demand-leases-to-the-native-sync-scheduler)
   were read without mutation. Repository architecture/backlog and R98 worknote
   supplied the implementation boundaries above.
+
+## Native wrapper and own-view manifest contract — 4 October2026
+
+Core control/status DTOs are frozen in test_harness/domain.rs. Root accepts a
+separate read-only generated own-view manifest getter: feature/run/identifier
+and exact local caller proof yield only run/session/scenario, actual caller label,
+finite Main/ConcurrentChild/NormalTab role and native actor descriptors. It grants
+no controller metrics or mutation authority. Control/status remain main-only.
+The core receives the real Tauri visibility probe at first shared-Arc construction;
+background starts only after prepared seeding or reopening prepared state.
+
+Root wrapper control is finite Core/CreateConcurrentChild/CloseConcurrentChild/
+ReloadConcurrentChild/HoldChildHints/DropChildHints/DeliverChildHintsReverse/
+ResumeHints/ArmItemRead/ArmBodyRead/ArmDraftRead/ReleaseLocalRead/CancelLocalReads/
+CheckpointBeforeCommit/CheckpointCommittedBeforeHint. Request contains run nonce,
+expected scenario generation, optional core action and native-issued gate ID;
+irrelevant parameters fail closed. Status contains core receipt, optional actual
+child label, finite hint mode, bounded held hints/local gates and checkpoint.
+Child manifest access never enables control, credential mutation or peer activity.
+
+Mount the existing SavedItemDetail/private editor using the document's existing
+QueryClient and singleton SDK. Observational changesSince instrumentation calls
+the original generated transport and returns the identical receipt, with bounded
+counters restored on teardown. It never fabricates cursors/snapshots/owners.
+Real current pending intent count is not a historical automatic-request metric;
+the native thin hydrate ingress must count actual authorized requests for that
+claim. Fake clock advances govern real runtime scheduling/lease expiry, while
+read-side wall-clock freshness remains real and is not relabeled as advanced.
+
+Committed-before-hint checkpoint requires held targeted hints plus actual public
+Store detail evidence matching a finite fixture phase/facet revision. BeforeCommit
+uses a genuinely held provider receipt, and the runner kills only its own exact
+process. No shared production publish hook or arbitrary observation callback is
+needed. Default release/dev compiles/registers none of these fixture commands.
+
+Ownership refinement: delegated native app owner owns new Tauri harness/controller
+and narrow feature gates/setup/read-return hooks, including native app Cargo/lib
+registration. Core owner owns only feature-gated core files; frontend owner owns
+new harness probe/protocol/spec files. Root owns generator/activation/config/
+external runner/CI/docs and final signed publication. Existing source DTOs,
+production operations and migration bytes remain unchanged.
