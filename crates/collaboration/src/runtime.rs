@@ -28,6 +28,8 @@ mod feeds;
 mod gitlab_probe_backoff_tests;
 #[cfg(test)]
 mod gitlab_tests;
+#[cfg(feature = "test-harness")]
+mod harness;
 #[cfg(test)]
 mod notification_subject_tests;
 mod notification_subjects;

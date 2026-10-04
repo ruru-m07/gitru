@@ -14,6 +14,8 @@ pub mod providers;
 pub mod resource_metadata;
 pub mod runtime;
 pub mod storage;
+#[cfg(feature = "test-harness")]
+pub mod test_harness;
 
 pub use contextual_capabilities::*;
 pub use demand::*;

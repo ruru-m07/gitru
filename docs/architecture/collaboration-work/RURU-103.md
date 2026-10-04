@@ -390,3 +390,23 @@ registration. Core owner owns only feature-gated core files; frontend owner owns
 new harness probe/protocol/spec files. Root owns generator/activation/config/
 external runner/CI/docs and final signed publication. Existing source DTOs,
 production operations and migration bytes remain unchanged.
+
+### Native core checkpoint and final-ancestor integration — 4 October2026
+
+The feature-only retained core constructs one actual Store/runtime, fixed provider,
+synthetic durable vault and injected scheduling/lease clock. Fourteen original
+core cases and five independent review regressions pass after resumption: real
+visibility loss prevents vault/dispatch, phase change cancels held old observation,
+cold reopen retains committed cache/ref/epoch/private CAS with no ephemeral
+interest, and interrupted preparation/lost marker refuse to reset existing data.
+Current pending-detail count remains distinct from historical authorized hydrate
+ingress. These are cold-close/synthetic proof, not actual hard-kill/power loss.
+
+Root checkpoints only frozen core source plus its feature/mod plumbing before
+integrating published R101/#15663e1197 (R110/#155725b9f2 inherited). Native app and
+frontend source lanes remain independently dirty/owned, with no PR claim until
+combined feature/production gates and real retained native scenarios pass. Adapt
+native-only receipt fixtures to final R101 without changing its authority policy.
+Actual logs `/tmp/gitru-ruru103-core-review-baseline.log` and
+`/tmp/gitru-ruru103-core-review-independent.log` qualify19 core cases; no personal
+credentials/config/vault or provider network were used.
