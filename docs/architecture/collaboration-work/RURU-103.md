@@ -889,3 +889,40 @@ The Windows short-alias native-path fix still requires new-head retained remote
 execution; old Linux/macOS successes and ordinary Windows E2E are distinct.
 Live provider, production keyring, platform and power-loss claims remain outside
 this evidence. No personal credentials inspected; no merge performed.
+
+
+### Exact-head Windows retention-return lifetime seam — 4 October 2026
+
+Published #1579ef7148 passes13/14 reported checks/statuses, including retained
+Linux/macOS and ordinary Windows E2E. RetainedWindows job111434742147,
+run37201765360, artifact2026-10-04T12-40-04-421Z-6136 now successfully launches
+under actualBun1.3.0+b0a6feca5; all6 main scenarios execute,5 pass. The earlier
+native short-alias setup rejection is gone on this head, but full Windows
+retained qualification is still failed. NativeSHA256
+`eef8f0e922525c7aae7b852cdce4d24a6c9e27122a4d88e1b8b364695c017252`.
+
+Only hints-and-catchup fails at release of the real held local Body snapshot after
+retention reset: generation6 gate2bedf9ba-a945-474c-aafd-8a3b552d4097 is TimedOut,
+and release_local_read rejects its terminal state with stale_view. Both documents
+are actually visible with active native owners and2SDK leases; dirty text/CAS and
+real ResetRequired are already observed at revision4431. Cleanup succeeds. No
+crash stages execute after main failure. Artifact has no individual control times,
+so exact FillRetention duration is not claimed. Source proves the held native15s
+return gate/child10s protocol currently span4100 sequential real Store::save_draft
+transactions plus reset/catchup. The lifetime seam is established by source order
+and terminal gate receipt, not inferred desktop availability.
+
+Before another fixture edit, accept bounded preparation: capture the child's real
+reset/cursor baseline while hints are dropped, perform the same4100 real writes
+BEFORE arming or starting its held Body read, then verify that actual child reset
+count/cursor have not advanced and remain behind the pruned native revision. Arm
+and capture the real SDK read under its unchanged pre-reset fence, observe Held,
+then wake the actual bridge, require ResetRequired and all dirty/CAS/cache controls,
+release within the existing bounds, and require actual stale_view/cancelled. The
+native query data revision may already equal the filled revision; the tested old
+property is the SDK authorization generation before ResetRequired, not older data.
+No fabrication, pre-accepted stale outcome, timeout increase, retry, reduced write
+count, retention threshold, permission or production SDK change. If the child
+already caught up during preparation, fail rather than claim a pre-reset fence.
+Meaningful held-preparation/early-catchup controls and fresh combined retained
+execution must qualify this next fixture change; current historical passes do not.
