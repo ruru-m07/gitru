@@ -4,6 +4,7 @@ use serde::Deserialize;
 
 mod discovery;
 mod feeds;
+mod participants;
 mod resource_details;
 mod transport;
 use transport::{BitbucketHttp, Route, invalid, quota};
@@ -45,6 +46,7 @@ impl CollaborationProvider for BitbucketCloudProvider {
                         ResourceFacet::Repositories
                             | ResourceFacet::PullRequests
                             | ResourceFacet::PullDetails
+                            | ResourceFacet::Participants
                     ) {
                         CapabilityState::Supported
                     } else {
@@ -53,7 +55,8 @@ impl CollaborationProvider for BitbucketCloudProvider {
                     reason: match facet {
                         ResourceFacet::Repositories
                         | ResourceFacet::PullRequests
-                        | ResourceFacet::PullDetails => None,
+                        | ResourceFacet::PullDetails
+                        | ResourceFacet::Participants => None,
                         ResourceFacet::Issues | ResourceFacet::Inbox => {
                             Some(CapabilityReason::ProviderSemantics)
                         }
@@ -172,7 +175,11 @@ impl CollaborationProvider for BitbucketCloudProvider {
         token: &SecretToken,
         request: DetailRequest,
     ) -> Result<DetailPage, ProviderError> {
-        self.resource_details(token, request).await
+        if request.facet == DetailFacet::Participants {
+            self.participants(token, request).await
+        } else {
+            self.resource_details(token, request).await
+        }
     }
 }
 
@@ -214,3 +221,6 @@ mod tests;
 
 #[cfg(test)]
 mod reads_tests;
+
+#[cfg(test)]
+mod participants_tests;

@@ -355,7 +355,7 @@ struct Repository {
     workspace: Workspace,
     links: Links,
     description: Option<String>,
-    mainbranch: Option<Branch>,
+    mainbranch: Option<BitbucketDefaultBranch>,
 }
 
 #[derive(Deserialize)]
@@ -373,7 +373,7 @@ struct CloneLink {
     href: String,
 }
 #[derive(Deserialize)]
-struct Branch {
+struct BitbucketDefaultBranch {
     name: String,
 }
 

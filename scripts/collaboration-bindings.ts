@@ -1,5 +1,6 @@
 // tauri-typegen 0.4 does not understand Serde rename_all, nullable Option,
-// or injected Webview. Apply source-derived corrections for collaboration DTOs.
+// adjacent-tag payload dependencies, or injected Webview. Apply source-derived
+// corrections for collaboration DTOs.
 // The generated package remains generated; Rust is the source of truth.
 const root = new URL("../", import.meta.url);
 const domain = await Bun.file(
@@ -10,6 +11,9 @@ const error = await Bun.file(
 ).text();
 const detail = await Bun.file(
   new URL("crates/collaboration/src/detail.rs", root),
+).text();
+const participants = await Bun.file(
+  new URL("crates/collaboration/src/participants.rs", root),
 ).text();
 const contextualCapabilities = await Bun.file(
   new URL("crates/collaboration/src/contextual_capabilities.rs", root),
@@ -59,10 +63,87 @@ const nativeOnlyTypes = new Set([
   "DetailReconciliation",
 ]);
 
+// The pinned generator flattens Serde tuple variants into string literals and
+// never visits their payload structs. Emit that missing graph from Rust before
+// applying the ordinary Option/null correction below. Deliberately fail on an
+// unsupported shape rather than inventing a renderer-owned wire model.
+const payloadStructs = new Map(
+  [...participants.matchAll(/pub struct (\w+)\s*\{([^}]+)\}/g)].map(
+    ([, name, body]) => [name, body] as const,
+  ),
+);
+const nativePayloadKinds = new Set<string>();
+for (const [, tag, content, name, body] of participants.matchAll(
+  /#\[serde\(tag = "([^"]+)", content = "([^"]+)"\)\]\s*pub enum (\w+)\s*\{([^}]+)\}/g,
+)) {
+  const dependencies: string[] = [];
+  const visiting = new Set<string>();
+  const emitted = new Set<string>();
+  const schemaFor = (rustType: string): string => {
+    const optional = rustType.match(/^Option<(.+)>$/);
+    if (optional) return `${schemaFor(optional[1])}.optional()`;
+    if (rustType === "String") return "z.string()";
+    if (rustType === "bool") return "z.boolean()";
+    if (!/^\w+$/.test(rustType))
+      throw new Error(`Unsupported tagged payload type ${rustType}`);
+    if (generated.includes(`export const ${rustType}Schema =`))
+      return `${rustType}Schema`;
+    if (emitted.has(rustType)) return `${rustType}Schema`;
+    if (visiting.has(rustType))
+      throw new Error(`Recursive tagged payload ${rustType}`);
+    const struct = payloadStructs.get(rustType);
+    if (!struct) throw new Error(`Missing tagged payload struct ${rustType}`);
+    visiting.add(rustType);
+    const fields = [...struct.matchAll(/pub (\w+): ([^,\n]+),/g)];
+    if (
+      !fields.length ||
+      struct.includes("#[") ||
+      fields.length !== [...struct.matchAll(/\bpub\b/g)].length
+    )
+      throw new Error(`Unsupported tagged payload fields ${rustType}`);
+    const properties = fields.map(
+      ([, field, type]) => `  ${field}: ${schemaFor(type.trim())},`,
+    );
+    dependencies.push(
+      `export const ${rustType}Schema = z.object({\n${properties.join("\n")}\n});\n\nexport type ${rustType} = z.infer<typeof ${rustType}Schema>;`,
+    );
+    visiting.delete(rustType);
+    emitted.add(rustType);
+    return `${rustType}Schema`;
+  };
+  const variants = [
+    ...body.matchAll(
+      /(?:#\[serde\(rename = "([^"]+)"\)\]\s*)?(\w+)\((\w+)\),/g,
+    ),
+  ];
+  const remainder = body
+    .replace(/(?:#\[serde\(rename = "([^"]+)"\)\]\s*)?(\w+)\((\w+)\),/g, "")
+    .trim();
+  if (!variants.length || remainder)
+    throw new Error(`Unsupported adjacent-tag variants ${name}`);
+  if (name === "NativeDetailPayload")
+    for (const [, renamed, variant] of variants)
+      nativePayloadKinds.add(renamed ?? variant);
+  const schemas = variants.map(
+    ([, renamed, variant, type]) =>
+      `z.object({ ${JSON.stringify(tag)}: z.literal(${JSON.stringify(renamed ?? variant)}), ${JSON.stringify(content)}: ${schemaFor(type)} })`,
+  );
+  const pattern = new RegExp(
+    `export const ${name}Schema = z\\.enum\\(\\[[^\\]]+\\]\\);`,
+  );
+  if (!pattern.test(generated))
+    throw new Error(`Missing flattened tagged schema ${name}`);
+  generated = generated.replace(
+    pattern,
+    `${dependencies.join("\n\n")}\n\nexport const ${name}Schema = z.discriminatedUnion(${JSON.stringify(tag)}, [${schemas.join(", ")}]);\n\nexport type ${name} = z.infer<typeof ${name}Schema>;`,
+  );
+}
+
 for (const source of [
   domain,
   error,
   detail,
+  participants,
   contextualCapabilities,
   resourceMetadata,
   demand,
@@ -118,6 +199,31 @@ for (const source of [
     generated = generated.replace(pattern, `$1${fields}$3`);
   }
 }
+// Only this native family is admitted today. Future families must qualify an
+// explicit guard extension rather than silently borrowing participant fields.
+if (nativePayloadKinds.size !== 1 || !nativePayloadKinds.has("participant.v1"))
+  throw new Error("Extend native detail field-family guards for this payload");
+const participantFamily = detail.match(
+  /fn is_participant\(self\) -> bool \{([\s\S]*?)\n    \}/,
+);
+if (!participantFamily)
+  throw new Error("Missing Rust participant field-family declaration");
+const participantFields = [
+  ...participantFamily[1].matchAll(/Self::(\w+)/g),
+].map(([, name]) => snake(name));
+if (
+  !participantFields.length ||
+  new Set(participantFields).size !== participantFields.length
+)
+  throw new Error("Invalid Rust participant field-family declaration");
+const entrySchema =
+  /(export const DetailEntrySchema = z\.object\(\{[\s\S]*?\n\}\));/;
+if (!entrySchema.test(generated))
+  throw new Error("Missing generated detail entry schema for family guard");
+generated = generated.replace(
+  entrySchema,
+  `const detailParticipantFields = new Set<string>(${JSON.stringify(participantFields)});\n\n$1.superRefine((entry, context) => {\n  const participant = entry.native !== null;\n  if (entry.field_mask.some((field) => detailParticipantFields.has(field) !== participant) || entry.field_validations.some((validation) => detailParticipantFields.has(validation.field) !== participant)) {\n    context.addIssue({ code: "custom", path: ["native"], message: "Detail entry fields do not match its native payload" });\n  }\n});`,
+);
 generated = generated.replace(
   /(export const Collaboration\w+ParamsSchema = z\.object\(\{)([\s\S]*?)(\n\}\);)/g,
   (_, open, fields, close) =>

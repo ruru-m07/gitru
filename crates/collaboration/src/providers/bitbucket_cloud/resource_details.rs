@@ -419,21 +419,7 @@ impl BitbucketCloudProvider {
         {
             return Err(ProviderError::new(ProviderErrorKind::Unsupported));
         }
-        let repository = repository_identity(&request.account, &request.repository)?;
-        let id = request
-            .subject
-            .number
-            .as_deref()
-            .and_then(positive_id)
-            .ok_or_else(invalid)?;
-        if request.cursor.is_some()
-            || request.subject.account_id != request.account.id
-            || request.subject.repository_id.as_ref() != Some(&request.repository.id)
-            || request.subject.provider_id != format!("{repository}:{id}")
-            || request.subject.id != format!("bitbucket_cloud:pull:{repository}:{id}")
-        {
-            return Err(invalid());
-        }
+        let (repository, id) = subject_identity(&request)?;
         let route = Route::PullRequest(repository.clone(), id);
         let response = self
             .http
@@ -463,4 +449,25 @@ impl BitbucketCloudProvider {
         })();
         result.map_err(|error| quota(error, response.cooldown))
     }
+}
+
+/// Shared singleton request identity; each facet still owns its own fields.
+pub(super) fn subject_identity(request: &DetailRequest) -> Result<(String, u64), ProviderError> {
+    let repository = repository_identity(&request.account, &request.repository)?;
+    let id = request
+        .subject
+        .number
+        .as_deref()
+        .and_then(positive_id)
+        .ok_or_else(invalid)?;
+    if request.cursor.is_some()
+        || request.subject.kind != RemoteItemKind::PullRequest
+        || request.subject.account_id != request.account.id
+        || request.subject.repository_id.as_ref() != Some(&request.repository.id)
+        || request.subject.provider_id != format!("{repository}:{id}")
+        || request.subject.id != format!("bitbucket_cloud:pull:{repository}:{id}")
+    {
+        return Err(invalid());
+    }
+    Ok((repository, id))
 }

@@ -17,6 +17,8 @@ use std::{
 };
 use tokio::sync::{Mutex, Notify, broadcast};
 #[cfg(test)]
+mod bitbucket_participants_tests;
+#[cfg(test)]
 mod bitbucket_resource_reads_tests;
 #[cfg(test)]
 mod bitbucket_tests;

@@ -55,6 +55,7 @@ export type {
   DetailBranch,
   DetailEntry,
   DetailEvidence,
+  DetailFieldValidation,
   DetailLabel,
   DetailMilestone,
   DetailQuery,
@@ -75,8 +76,11 @@ export type {
   LocalRepositoryLink,
   LocalTransportBinding,
   MetadataFieldEvidence,
+  NativeDetailPayload,
   NotificationSubjectQuery,
   NotificationSubjectSnapshot,
+  ParticipantUser,
+  ParticipantV1,
   ReleaseDemandRequest,
   RemoteAccount,
   RemoteItem,
@@ -95,6 +99,8 @@ export type LocalLinkState =
   import("@gitru/commands").LocalRepositoryLink["state"];
 export type RemoteItemKind = import("@gitru/commands").ItemQuery["kind"];
 export type DetailFacet = import("@gitru/commands").DetailQuery["facet"];
+export type DetailField =
+  import("@gitru/commands").DetailEntry["field_mask"][number];
 export type CapabilityObservation =
   import("@gitru/commands").ContextFacetCapability["observation"];
 export type ContextCapabilityReason = NonNullable<

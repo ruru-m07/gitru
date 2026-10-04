@@ -181,7 +181,7 @@ impl StoredEntry {
                 !head.is_empty() && head.len() <= 256 && !head.chars().any(char::is_control)
             })
     }
-    pub fn initialize_legacy(&mut self) {
+    pub fn initialize_legacy(&mut self, facet: DetailFacet) {
         if self.reconciliation_version != Some(VERSION) {
             self.field_clocks.clear();
             if self.reconciliation_version.is_none()
@@ -209,10 +209,10 @@ impl StoredEntry {
             }
         }
         if self.field_clocks.len() > 6
-            || self
-                .field_clocks
-                .iter()
-                .any(|clock| !Self::valid_clock(clock))
+            || self.field_clocks.iter().any(|clock| {
+                !Self::valid_clock(clock)
+                    || clock.field.is_participant() != (facet == DetailFacet::Participants)
+            })
             || self.field_clocks.iter().enumerate().any(|(i, clock)| {
                 self.field_clocks[..i]
                     .iter()
@@ -273,3 +273,7 @@ impl StoredEntry {
 #[cfg(test)]
 #[path = "facet_reconciliation_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "participant_reconciliation_tests.rs"]
+mod participant_tests;

@@ -306,6 +306,7 @@ fn applicable(target: &CapabilityTarget, facet: ResourceFacet) -> bool {
                     | ResourceFacet::Comments
                     | ResourceFacet::Reviews
                     | ResourceFacet::Checks
+                    | ResourceFacet::Participants
                     | ResourceFacet::Merge
             ),
             Some(ResourceKind::Issue) => matches!(
@@ -531,6 +532,7 @@ async fn facet_evidence(
         ResourceFacet::Comments => Some(DetailFacet::Comments),
         ResourceFacet::Reviews => Some(DetailFacet::Reviews),
         ResourceFacet::Checks => Some(DetailFacet::Checks),
+        ResourceFacet::Participants => Some(DetailFacet::Participants),
         _ => None,
     };
     if let Some(detail) = detail

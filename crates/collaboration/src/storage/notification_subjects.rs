@@ -11,8 +11,9 @@ const CURRENT: &str = "FROM notification_subject_selectors s JOIN accounts a ON 
 const IMMUTABLE_UNAMBIGUOUS: &str = "NOT EXISTS(SELECT 1 FROM resource_aliases own WHERE own.account_id=i.account_id AND own.instance_id=i.instance_id AND own.kind=i.kind AND own.entity_id=i.entity_id AND own.alias_kind='native' AND (EXISTS(SELECT 1 FROM resource_aliases other WHERE other.account_id=own.account_id AND other.instance_id=own.instance_id AND other.kind=own.kind AND other.alias_kind=own.alias_kind AND other.value=own.value AND other.repository_path=own.repository_path AND other.entity_id<>own.entity_id) OR EXISTS(SELECT 1 FROM pending_endpoint_aliases p JOIN resource_identities other ON other.account_id=p.account_id AND other.instance_id=p.instance_id AND other.kind=p.kind AND other.repository_provider_id=p.repository_provider_id AND other.number=p.number WHERE p.account_id=own.account_id AND p.instance_id=own.instance_id AND p.kind=own.kind AND p.native_identity=own.value AND own.repository_path='' AND other.entity_id<>own.entity_id)))";
 
 fn provenance_sql(select: &str) -> String {
+    let detail_scopes = super::details::scope_sql_list("i.entity_id");
     format!(
-        "{select} {CURRENT} AND s.account_id=i.account_id AND s.kind=i.kind AND s.instance_id=i.instance_id AND s.repository_provider_id=i.repository_provider_id AND s.number=i.number AND {IMMUTABLE_UNAMBIGUOUS} AND (SELECT count(*) FROM resource_identities c WHERE c.account_id=i.account_id AND c.instance_id=i.instance_id AND c.kind=i.kind AND c.repository_provider_id=i.repository_provider_id AND c.number=i.number)=1 AND NOT EXISTS(SELECT 1 FROM sync_scopes d WHERE d.account_id=i.account_id AND d.access_denied=1 AND d.scope IN ('repo:'||r.id||':'||i.kind,'detail:'||i.entity_id||':body','detail:'||i.entity_id||':comments','detail:'||i.entity_id||':reviews','detail:'||i.entity_id||':checks','notification_subject:'||s.notification_id))"
+        "{select} {CURRENT} AND s.account_id=i.account_id AND s.kind=i.kind AND s.instance_id=i.instance_id AND s.repository_provider_id=i.repository_provider_id AND s.number=i.number AND {IMMUTABLE_UNAMBIGUOUS} AND (SELECT count(*) FROM resource_identities c WHERE c.account_id=i.account_id AND c.instance_id=i.instance_id AND c.kind=i.kind AND c.repository_provider_id=i.repository_provider_id AND c.number=i.number)=1 AND NOT EXISTS(SELECT 1 FROM sync_scopes d WHERE d.account_id=i.account_id AND d.access_denied=1 AND d.scope IN ('repo:'||r.id||':'||i.kind,{detail_scopes},'notification_subject:'||s.notification_id))"
     )
 }
 
@@ -105,7 +106,7 @@ pub(super) async fn reconcile_in(
             .await
             .map_err(storage_error)?;
     if withdrawn {
-        sqlx::query("UPDATE sync_scopes SET run_id=?,next_cursor=NULL,etag=NULL WHERE account_id=? AND EXISTS(SELECT 1 FROM prior_notification_subjects p WHERE sync_scopes.scope IN ('detail:'||p.id||':body','detail:'||p.id||':comments','detail:'||p.id||':reviews','detail:'||p.id||':checks'))").bind(Uuid::new_v4().to_string()).bind(&account.id).execute(&mut **tx).await.map_err(storage_error)?;
+        sqlx::QueryBuilder::<Sqlite>::new(format!("UPDATE sync_scopes SET run_id=?,next_cursor=NULL,etag=NULL WHERE account_id=? AND EXISTS(SELECT 1 FROM prior_notification_subjects p WHERE sync_scopes.scope IN ({}))", super::details::scope_sql_list("p.id"))).build().bind(Uuid::new_v4().to_string()).bind(&account.id).execute(&mut **tx).await.map_err(storage_error)?;
         sqlx::query("UPDATE detail_demand SET requested=0 WHERE account_id=? AND subject_id IN(SELECT id FROM prior_notification_subjects)").bind(&account.id).execute(&mut **tx).await.map_err(storage_error)?;
         sqlx::query(
             "UPDATE runtime_meta SET authorization_view=authorization_view+1 WHERE singleton=1",

@@ -299,6 +299,7 @@ pub enum ResourceFacet {
     Comments,
     Reviews,
     Checks,
+    Participants,
     Merge,
 }
 
