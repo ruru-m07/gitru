@@ -83,7 +83,13 @@ Production HTTP is pooled, fixed to `https://api.bitbucket.org/2.0/`, uses a
 sensitive Authorization header, rejects credential-bearing/arbitrary host links,
 does not follow redirects, and enforces existing finite request/body limits.
 Validate provider-returned web/clone URLs and immutable workspace/repository UUIDs
-before applying any row. Repository name/full-name/path and workspace slug may
+before applying any row. Standard username-only HTTPS/SSH clone URL userinfo is
+allowed only as bounded input during fixed origin/path validation, then discarded;
+password-bearing clone URLs are rejected and no clone URL is executed, fetched or
+persisted. Web/API/continuation URLs permit no userinfo. This preserves documented
+username/static-token-user clone forms without retaining credentials. See the
+[clone guide](https://support.atlassian.com/bitbucket-cloud/docs/clone-a-git-repository/)
+and token usage guide above. Repository name/full-name/path and workspace slug may
 change without changing identity. Unexpected 304 is invalid; no ETag or Last-
 Modified consistency guarantee is assumed. Rolling-hour capacity/near-limit
 headers are not remaining-request counts. Actual 429/Retry-After and documented
