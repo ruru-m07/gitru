@@ -4,6 +4,7 @@ import {
   collaborationCapabilities,
   collaborationChangesSince,
   collaborationConfirmLocalLink,
+  collaborationConnectBitbucketCloud,
   collaborationConnectGithub,
   collaborationConnectGithubCli,
   collaborationConnectGitlab,
@@ -139,6 +140,8 @@ export const collaboration = new CollaborationClient({
   accounts: () => collaborationAccounts({}),
   connectGithub: (token) => collaborationConnectGithub({ token }),
   connectGitlab: (token) => collaborationConnectGitlab({ token }),
+  connectBitbucketCloud: (token) =>
+    collaborationConnectBitbucketCloud({ token }),
   discoverGithubCli: () => collaborationDiscoverGithubCli({}),
   connectGithubCli: (candidateId) =>
     collaborationConnectGithubCli({ candidateId }),

@@ -16,6 +16,8 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::{Mutex, Notify, broadcast};
+#[cfg(test)]
+mod bitbucket_tests;
 mod clock;
 mod demand;
 #[cfg(test)]
@@ -218,6 +220,20 @@ impl CollaborationRuntime {
         })?;
         self.connect_owned_token(ProviderInstance::public(ProviderKind::Gitlab), token, None)
             .await
+    }
+
+    pub async fn connect_bitbucket_cloud(
+        &self,
+        token: String,
+    ) -> Result<RemoteAccount, CollaborationError> {
+        let token = SecretToken::new(token)
+            .map_err(|_| CollaborationError::invalid("Enter a valid Bitbucket Cloud API token"))?;
+        self.connect_owned_token(
+            ProviderInstance::public(ProviderKind::BitbucketCloud),
+            token,
+            None,
+        )
+        .await
     }
 
     async fn connect_owned_token(

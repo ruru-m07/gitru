@@ -161,6 +161,7 @@ export function AccountManager() {
         <>
           <ConnectGithubForm />
           <ConnectGitlabForm />
+          <ConnectBitbucketCloudForm />
         </>
       ) : (
         <div className="space-y-3 rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">
@@ -169,8 +170,7 @@ export function AccountManager() {
         </div>
       )}
       <p className="break-words text-xs leading-relaxed text-muted-foreground">
-        Provider accounts work independently of Gitru cloud sign-in. Bitbucket
-        connections are planned.
+        Provider accounts work independently of Gitru cloud sign-in.
       </p>
     </div>
   );
@@ -449,6 +449,149 @@ export function ConnectGitlabForm() {
       {connected ? (
         <p role="status" className="text-xs text-success-foreground">
           Connected to GitLab as {connected}. Choose repositories to sync.
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
+export function ConnectBitbucketCloudForm() {
+  const trusted = isTrustedAccountWindow();
+  const tokenId = useId();
+  const tokenInput = useRef<HTMLInputElement>(null);
+  const connecting = useRef(false);
+  const alive = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [connected, setConnected] = useState<string | null>(null);
+  const [browserFailed, setBrowserFailed] = useState(false);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
+  async function connect(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (connecting.current || !isTrustedAccountWindow()) return;
+    const token = tokenInput.current?.value.trim() ?? "";
+    if (!token) return;
+    // Only the native credential command receives the transient password value.
+    if (tokenInput.current) tokenInput.current.value = "";
+    connecting.current = true;
+    setBusy(true);
+    setError(null);
+    setConnected(null);
+    try {
+      const account = await collaboration.connectBitbucketCloud(token);
+      if (alive.current) setConnected(account.login);
+    } catch (failure) {
+      if (alive.current)
+        setError(
+          typeof failure === "object" &&
+            failure !== null &&
+            "code" in failure &&
+            failure.code === "rate_limited"
+            ? "Bitbucket asked Gitru to wait. Try connecting again later."
+            : collaborationErrorMessage(failure),
+        );
+    } finally {
+      connecting.current = false;
+      if (alive.current) setBusy(false);
+    }
+  }
+
+  if (!trusted) return null;
+  return (
+    <form
+      className="min-w-0 space-y-3 rounded-xl border p-4"
+      onSubmit={connect}
+    >
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <BitbucketIcon
+          className="size-4"
+          aria-hidden="true"
+          aria-labelledby={undefined}
+        />
+        Connect Bitbucket Cloud
+      </div>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        Connect with an API token to browse your repositories. Pull requests
+        aren’t supported yet. Issues and an inbox aren’t available for this
+        provider.
+      </p>
+      <Field name="bitbucket-cloud-token">
+        <FieldLabel htmlFor={tokenId}>Bitbucket Cloud API token</FieldLabel>
+        <Input
+          id={tokenId}
+          ref={tokenInput}
+          name="bitbucket-cloud-token"
+          type="password"
+          required
+          autoComplete="off"
+          placeholder="Bitbucket Cloud API token"
+          disabled={busy}
+          aria-invalid={Boolean(error)}
+          aria-describedby={`${tokenId}-help${error ? ` ${tokenId}-error` : ""}`}
+        />
+        <FieldDescription id={`${tokenId}-help`}>
+          Create an API token with read:user:bitbucket,
+          read:workspace:bitbucket, and read:repository:bitbucket permissions.
+          Gitru verifies your account before connecting, then saves the token in
+          your system credential store.
+        </FieldDescription>
+      </Field>
+      <Button
+        type="button"
+        variant="link"
+        size="xs"
+        className="px-0"
+        disabled={busy}
+        onClick={() => {
+          setBrowserFailed(false);
+          void openExternalUrlSafely(
+            "https://support.atlassian.com/bitbucket-cloud/docs/create-an-api-token/",
+          ).then(
+            (opened) => {
+              if (alive.current) setBrowserFailed(!opened);
+            },
+            () => {
+              if (alive.current) setBrowserFailed(true);
+            },
+          );
+        }}
+      >
+        <ExternalLink aria-hidden="true" />
+        Create a Bitbucket API token
+      </Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <KeyRound className="size-3.5" aria-hidden="true" />
+          bitbucket.org
+        </span>
+        <Button type="submit" size="sm" disabled={busy}>
+          <Plus aria-hidden="true" />
+          {busy ? "Connecting to Bitbucket…" : "Connect Bitbucket account"}
+        </Button>
+      </div>
+      {error ? (
+        <p
+          id={`${tokenId}-error`}
+          role="alert"
+          className="text-xs text-destructive-foreground"
+        >
+          {error}
+        </p>
+      ) : null}
+      {browserFailed ? (
+        <p role="alert" className="text-xs text-destructive-foreground">
+          Could not open your browser. Try again.
+        </p>
+      ) : null}
+      {connected ? (
+        <p role="status" className="text-xs text-success-foreground">
+          Connected to Bitbucket as {connected}. Choose repositories to sync.
         </p>
       ) : null}
     </form>
