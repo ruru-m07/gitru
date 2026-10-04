@@ -108,6 +108,18 @@ describe("synthetic document observations", () => {
     expect((await observe()).body_hash).toBeNull();
   });
 
+  it("observes a real cold Body receipt before foreground hydration has run", async () => {
+    client.setQueryData(
+      bodyOptions().queryKey,
+      fixtureBody({ body: { state: "not_loaded", text: null } }),
+    );
+    const snapshot = await observe();
+    expect(snapshot.body.status).toBe("success");
+    expect(snapshot.body_value_state).toBe("not_loaded");
+    expect(snapshot.body_hash).toBeNull();
+    expect(snapshot.body.revision).not.toBeNull();
+  });
+
   it("reports current saved generation separately from retained unsaved editor text", async () => {
     const savedDraft: LocalDraft = {
       account_id: fixtureAccount.id,

@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import {
@@ -737,5 +737,63 @@ describe("pinned launcher integration", () => {
     ).rejects.toBeInstanceOf(SevereServiceError);
     await runHook([instance], "onComplete", 1, {}, []);
     expect(delegated.complete).toHaveBeenCalledExactlyOnceWith(1, {}, []);
+  });
+});
+
+describe("installed driver dotenv isolation", () => {
+  it("loads only the owned empty configured file instead of a fixture cwd .env", () => {
+    const root = realpathSync(
+      mkdtempSync(join(tmpdir(), "gitru-dotenv-test-")),
+    );
+    chmodSync(root, 0o700);
+    try {
+      // Both inputs are synthetic, task-owned files. The child receives no
+      // inherited environment and never starts WDIO or inspects a personal .env.
+      writeFileSync(
+        join(root, ".env"),
+        "GITRU_TEST_DOTENV_SENTINEL=task-only-sentinel\nGH_TOKEN=task-only-sentinel\n",
+        { flag: "wx", mode: 0o600 },
+      );
+      const configured = join(root, "driver.env");
+      writeFileSync(configured, "", { flag: "wx", mode: 0o600 });
+      const require = createRequire(import.meta.url);
+      const cliRequire = createRequire(require.resolve("@wdio/cli"));
+      const dotenvConfig = cliRequire.resolve("dotenv/config");
+      const invoke = (path?: string) => {
+        const child = spawnSync(
+          realpathSync(process.execPath),
+          [
+            "-e",
+            "require(process.argv[1]);process.stdout.write(JSON.stringify({sentinel:process.env.GITRU_TEST_DOTENV_SENTINEL==='task-only-sentinel',credential_variable_present:process.env.GH_TOKEN!==undefined}));",
+            dotenvConfig,
+          ],
+          {
+            cwd: root,
+            env: {
+              DOTENV_CONFIG_QUIET: "true",
+              ...(path ? { DOTENV_CONFIG_PATH: path } : {}),
+            },
+            encoding: "utf8",
+            timeout: 5000,
+            maxBuffer: 4096,
+          },
+        );
+        expect(child.error).toBeUndefined();
+        expect(child.status).toBe(0);
+        expect(child.signal).toBeNull();
+        return JSON.parse(child.stdout);
+      };
+      // The real installed module's unconfigured control reproduces the risk.
+      expect(invoke()).toEqual({
+        sentinel: true,
+        credential_variable_present: true,
+      });
+      expect(invoke(configured)).toEqual({
+        sentinel: false,
+        credential_variable_present: false,
+      });
+    } finally {
+      rmSync(root, { recursive: true });
+    }
   });
 });

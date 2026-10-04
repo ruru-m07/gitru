@@ -2384,3 +2384,41 @@ Outer crash proof independently matches complete driver ack, phase, exact binary
 PID/session/scenario/kind and observed SIGKILL. Two actual installed-hook/proof
 regressions pass. Production engine policy stays unchanged. Retained packaged
 rerun and normal packaged E2E remain open gates.
+
+
+### Bounded second retained receipts and isolation refinement — 4 October 2026
+
+Second native launch31996a6 produces complete bounded receipts: actual reload/
+recreation, normal public tab lifecycle and peer authority pass on macOS. Cold
+concurrent demand and hint catchup fail before their first observations; delayed
+local read during disconnect fails before the captured-return gate. These are
+open harness qualification failures, not engine or restart success. Evidence is
+retained at `artifacts/e2e-harness/2026-10-04T08-32-49-542Z-20754`. A source-backed
+probe schema incorrectly names cold DetailValueState unknown instead of actual
+not_loaded; the frontend owner is correcting this without changing production
+DTOs/fences. Preserve NotReady/old-binding safety around phase changes.
+
+The pinned CLI imports dotenv/config. Root forces it to a fresh task-owned empty
+driver.env, preventing cwd .env reload after the inherited-environment whitelist.
+An actual installed dotenv/config subprocess regression with entirely synthetic
+files qualifies the empty override against an unconfigured sentinel control;
+owned-process cases now total40. This change accesses no personal config. Normal
+packaged E2E is being checked separately while the probe correction proceeds.
+
+
+### Cold-state and React-binding regressions; normal package control — 4 October 2026
+
+The cold-cache observation test independently reproduces the prior ZodError and
+now uses generated DetailValueStateSchema, including real not_loaded. A probe
+regression proves a fresh native phase with an uncommitted React binding returns
+NotReady and performs zero local query calls, then reaches one real query-path
+call after commit while preserving the editor. The executor retries only that
+pre-IPC NotReady for its explicit gated reads; it never counts NotReady/timeout
+as captured stale/cancelled success or changes native/provider authority. All30
+focused frontend cases and desktop/E2E types/lint pass locally.
+
+Separate normal packaged macOS E2E passes all3 cases across2 specs on this source:
+local collaboration snapshots, real Inbox child-to-host account dialog with exact
+tab restoration, and UI/Tauri/Rust/Git repository smoke flows. Actual log is
+`/tmp/gitru-ruru103-normal-e2e.log`. This is distinct from retained webview/crash
+qualification, whose complete corrected run and Linux/Windows CI remain pending.

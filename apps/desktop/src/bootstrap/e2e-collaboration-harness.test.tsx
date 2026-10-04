@@ -3,6 +3,8 @@ import { act, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HarnessAction } from "../../e2e/protocol/collaboration-harness";
 import { fixtureAccount } from "../../tests/fixtures/collaboration";
+import { fixtureBody } from "../../tests/fixtures/resource-detail";
+import { queryClient } from "../state/core/state-manager";
 import { syntheticFingerprint } from "./e2e-collaboration-harness-observation";
 
 const native = vi.hoisted(() => ({
@@ -183,6 +185,44 @@ describe("retained probe document lifetime", () => {
       )?.outcome,
     ).toBe("stale_view");
     expect((await probe?.inspect())?.actor).toBeNull();
+  });
+
+  it("keeps a new phase local read fenced until React commits its real binding", async () => {
+    const source = fixture();
+    await act(async () => {
+      probe = await installCollaborationHarnessProbe(source.readManifest);
+      await probe.execute(source.request({ kind: "mount", actor: "primary" }));
+    });
+    await waitFor(() =>
+      expect(
+        document.querySelector('textarea[name="private-draft"]'),
+      ).not.toBeNull(),
+    );
+    const editor = document.querySelector('textarea[name="private-draft"]');
+    const localRead = vi
+      .spyOn(queryClient, "fetchQuery")
+      .mockResolvedValue(fixtureBody());
+    source.phase();
+    let first:
+      | Awaited<ReturnType<NonNullable<typeof probe>["execute"]>>
+      | undefined;
+    await act(async () => {
+      first = await probe?.execute(source.request({ kind: "read-body" }));
+      expect(first?.outcome).toBe("not_ready");
+      expect(localRead).not.toHaveBeenCalled();
+    });
+    let second:
+      | Awaited<ReturnType<NonNullable<typeof probe>["execute"]>>
+      | undefined;
+    await act(async () => {
+      second = await probe?.execute(source.request({ kind: "read-body" }));
+    });
+    expect(second?.outcome).toBe("accepted");
+    expect(localRead).toHaveBeenCalledOnce();
+    expect(document.querySelector('textarea[name="private-draft"]')).toBe(
+      editor,
+    );
+    localRead.mockRestore();
   });
 
   it("uses the same generated controller for a real child's authority check", async () => {

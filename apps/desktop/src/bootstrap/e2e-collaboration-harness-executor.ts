@@ -186,6 +186,15 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
     async function inspect(label: string) {
       return requireSnapshot(label, { kind: "inspect" });
     }
+    async function readWhenBound(label: string) {
+      return wait(async () => {
+        const receipt = await request(label, { kind: "read-body" });
+        // A phase can publish its manifest before React commits the matching
+        // real account binding. NotReady is a pre-IPC fence, so retry only
+        // that outcome; never turn a timeout or failed read into stale proof.
+        return receipt.outcome === "not_ready" ? null : receipt;
+      });
+    }
     async function mount(label: string, actor: "primary" | "alternate") {
       await requireSnapshot(label, { kind: "mount", actor });
       return keep(
@@ -412,7 +421,7 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
         require(oldReadGate);
         if (!oldReadGate)
           throw new Error("The native retained read gate is missing");
-        const oldRead = request(label, { kind: "read-body" }).then(
+        const oldRead = readWhenBound(label).then(
           (receipt) => receipt.outcome,
           () => "failed" as const,
         );
@@ -789,7 +798,7 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
         const local = (await control("arm_body_read")).gate_id;
         require(local);
         if (!local) throw new Error("The native read gate is missing");
-        const delayed = request(label, { kind: "read-body" });
+        const delayed = readWhenBound(label);
         // Install the handler before any rejection so no old-epoch result is
         // left as an unhandled promise while the other native operations run.
         const settled = delayed.then(

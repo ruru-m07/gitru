@@ -27,6 +27,7 @@ const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-${process.pid}`;
 const artifacts = resolve(repository, "artifacts/e2e-harness", id);
 const root = realpathSync(mkdtempSync(join(tmpdir(), "gitru-collaboration-")));
 const gitConfig = join(root, "global.gitconfig");
+const driverEnvironment = join(root, "driver.env");
 const gitRepository = join(root, "repository");
 const target = process.env.CARGO_TARGET_DIR
   ? resolve(desktop, "src-tauri", process.env.CARGO_TARGET_DIR)
@@ -48,6 +49,9 @@ const stages: Array<{
 const inheritedEnvironment = harnessEnvironment(process.env);
 mkdirSync(artifacts, { recursive: true });
 writeFileSync(gitConfig, "", { flag: "wx", mode: 0o600 });
+// The installed WDIO CLI imports dotenv/config. Its default cwd .env must not
+// reintroduce variables after our inherited-environment whitelist.
+writeFileSync(driverEnvironment, "", { flag: "wx", mode: 0o600 });
 const git = spawnSync("git", ["init", "--initial-branch=main", gitRepository], {
   env: isolatedGitEnvironment(gitConfig, {}, inheritedEnvironment),
   encoding: "utf8",
@@ -101,6 +105,7 @@ async function runPhase(
           GITRU_COLLABORATION_HARNESS_ROOT: owned.root,
           GITRU_COLLABORATION_HARNESS_RUN_NONCE: owned.runNonce,
           GITRU_COLLABORATION_HARNESS_PHASE: phase,
+          DOTENV_CONFIG_PATH: driverEnvironment,
         },
         inheritedEnvironment,
       ),

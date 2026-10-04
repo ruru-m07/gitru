@@ -1,6 +1,10 @@
 /** Finite renderer protocol. Imported only by the retained harness build/tests. */
 
-import { HarnessStatusSchema, type HarnessViewManifest } from "@gitru/commands";
+import {
+  DetailValueStateSchema,
+  HarnessStatusSchema,
+  type HarnessViewManifest,
+} from "@gitru/commands";
 import { z } from "zod";
 
 export const HARNESS_REQUEST_EVENT = "gitru:e2e-collaboration-harness:request";
@@ -130,9 +134,7 @@ export const HarnessProbeSnapshotSchema = z
     item: query,
     body: query,
     facet_revision: decimal.nullable(),
-    body_value_state: z
-      .enum(["unknown", "known", "omitted", "oversized"])
-      .nullable(),
+    body_value_state: DetailValueStateSchema.nullable(),
     body_hash: hash.nullable(),
     metadata_hash: hash.nullable(),
     draft_generation: decimal.nullable(),
