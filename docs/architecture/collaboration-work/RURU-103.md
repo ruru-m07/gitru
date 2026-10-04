@@ -1,14 +1,17 @@
-# RURU-103 — retained native multi-webview sync qualification proposal
+# RURU-103 — retained native multi-webview synchronization qualification
 
-Status: root-approved retained harness implementation contract, saved before
-major code on 3 October2026. Attached worktree
-`/Users/ruru/.codex/worktrees/collab-ruru-103/gitru`, branch
-`ruru/ruru-103-native-sync-harness`, starts at signed R110719fb63. R110 picker
-qualification and R101 captured-dispatch correction are still in progress in
-separate managed worktrees. Inherit their final signed source before combined
-qualification/publication; do not claim either unmerged blocker Done. Live Linear
-R103 is Backlog at selection, with no attached/open duplicate. Primary dev and
-unrelated work remain untouched.
+Status: locally qualified on macOS on 4 October 2026. The complete retained
+pipeline and separate normal packaged control pass. Final repository/feature
+checks pass; remote Linux/Windows CI and live platform/provider/vault checks
+remain separate. Reviewable stacked PR publication is next; nothing is merged.
+
+Attached worktree `/Users/ruru/.codex/worktrees/collab-ruru-103/gitru`, branch
+`ruru/ruru-103-native-sync-harness`, now inherits published R101/#156
+`63e11970838c3bca1710f16175886f117e95aabb` and R110/#155
+`725b9f242c13b153d9da42374a0f9c32e31a8348`. These prerequisites remain In Review.
+The original pre-code contract was saved on 3 October 2026 at R110719fb63;
+selection-time observations below are historical. The final evidence record at
+this document's end is authoritative. Primary dev and unrelated work are intact.
 
 Root accepts the bounded test-only architecture and acceptance cases below.
 This is a retained native qualification lane, with default production builds
@@ -639,3 +642,42 @@ bounded to 15 seconds with one millisecond filesystem rounding tolerance. Failed
 missing, late, foreign or spontaneously exited workers cannot qualify a crash.
 Focused tests use real owned Node children, installed dispatcher behavior and
 failed/late teardown controls. Actual native crash/restart rerun remains pending.
+
+
+### R103 retained local qualification completed — 4 October 2026
+
+Final signed runner source c0e06bb, with the release application built from
+6e87965, passes the entire retained macOS pipeline: six real native webview cases,
+before-commit forced crash, fresh restart, committed-before-hint forced crash and
+fresh restart. Both crashes carry exact launch-owned SIGKILL/observed-exit proof;
+both restarts use different native PIDs/session UUIDs on the same respective
+retained fixture. Before-commit reopen sees no saved Body before fresh interest;
+after-commit reopen sees the exact committed Body/facet revision before interest.
+Both actors retain their private drafts, with no phantom ephemeral/durable demand
+or provider calls before renewed interest. Retention reset and disconnect both
+carry actual SDK stale_view receipts. The default app's three packaged macOS E2E
+control cases also pass separately.
+
+Safe artifacts: `artifacts/e2e-harness/2026-10-04T09-17-51-218Z-27055`.
+Application SHA256: cbc8cfa2260d8ced4910d206041ed6dfe053d9ac226bc2c3dd1fe341ffdb1537.
+All five driver stages exit 0; passing owned fixture roots are cleaned. Ordinary
+preferences remain in the fixed harness-ID OS namespace and are never reset.
+No personal credentials, native keyring, GitHub CLI login, provider network or
+Gitru cloud sign-in are used. This qualifies process crash, not power loss or
+production provider/vault behavior.
+
+Final make verify passes: 497 frontend/SDK/UI cases across 54 files, repository
+lint/types/production desktop build, default workspace formatting/Clippy and
+663 Rust cases (three explicitly ignored). Additional feature validation passes
+330 collaboration cases (two ignored, including all 19 retained core cases),
+30 native app cases and workspace all-target feature Clippy. Normal typegen has
+116 commands; independent AST comparison preserves all 285 prior Zod schemas
+with 26 additive fixture schemas. Default built assets contain neither the
+retained executor global nor installer; generated finite schema literals can
+remain shared. Linux/Windows retained packaged jobs are newly wired and still
+require remote CI. No merge is authorized or performed.
+
+R111 GitLab resource reads and R121 bounded navigation prefetch now progress in
+separate attached worktrees based on published R101/#156, with signed pre-code
+contracts and disjoint provider/runtime-test versus SDK/UI ownership. Their local
+checks and publication are still pending; no R103 fixture code is required by them.
