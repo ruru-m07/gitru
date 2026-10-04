@@ -1493,3 +1493,20 @@ R112 stays In Progress for Tasks; R106 restore ceiling and R121/R103 owners rema
 separate. #1611766a6e passes all11 reported remote checks; #1574054a6c all14
 including retained Linux/macOS/Windows. No unreported exact-head CodeQL/live-token/
 platform vault qualification or merge is inferred.
+
+
+### RURU-112 Tasks contract accepted before code — 4 October 2026
+
+The [Tasks contract](./collaboration-work/RURU-112-tasks.md) defines the fourth
+bounded slice on attached #162 exactd2e9195. Independent provider/native reviews
+qualify the proposed approach before source: typed task.v1/TaskActor, twelve
+disjoint Task fields with generic/Participants still six, required own-task clocks,
+resolver identity before presentation, bounded opaque continuation and stable
+multi-page Uncertain. Only an initial valid page without next can declare complete
+within the observation; caps preserve Partial. FK-enabled0009/frozen-v8 recovery
+must preserve old participant/generic JSON, eight ledger rows and authored intent.
+Opened supported panel only, bounded local pagination and ordinary native demand;
+no writes/readiness/provider branches or R106 restore-policy change. R112 remains
+In Progress. Models/Store/migration, provider/HTTP/Runtime and frontend have clear
+file owners; root owns generated IPC/docs/serialized validation. No implementation
+qualification, new Task PR, live credentials or merge is claimed.
