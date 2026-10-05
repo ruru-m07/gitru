@@ -142,3 +142,22 @@ while lifecycle is held. Handshakes/actual counters, unchanged provider:rest
 deadline and existing obsolete-reply/privacy/fairness controls remain mandatory.
 Root signs before source; allow only test registration/fixture work to establish
 RED before production repair. Public baseline and scope limits remain unchanged.
+
+
+### Successful-probe observation clarification before RED/repair
+
+A successful connection separately captures quota_deadline after the probe and
+before staged/vault work, committing it atomically with credentials/account through
+commit_account_credential_with_quota. Normal refresh can seed its live barrier;
+a forward UTC jump during actual blocking vault.store may make that reconstruction
+miss the unexpired monotonic lower bound. This remains an unproven source risk.
+Fixture owner adds first-grant and same-actor replacement controls gated at that
+real vault boundary, with original durable deadline, stable account-map cardinality
+and no premature reads/vault loads. If executed RED proves it, Runtime owner may
+capture the Instant at the same post-probe receipt point, then scheduler-serialize
+Store credential+quota commit and max-install for returned accepted account.id.
+Install nothing on Err and release before existing failure cleanup, after_cutover
+checkpoint, scheduler reset/publish/refresh/retirement cleanup. No network/vault
+under scheduler; Store transaction/journal/crash checkpoints and credential cleanup
+remain unchanged. Existing rollback/after-cutover crash tests must pass. A shared
+helper-only repair cannot qualify this separate successful observation path.
