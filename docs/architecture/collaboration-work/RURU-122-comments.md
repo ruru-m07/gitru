@@ -188,3 +188,37 @@ first-page/current-page snapshots and100 cursor positions instead of100 body pag
 Private Body/editor mounting remains independent. The held-page2/changed-revision
 case must prove old rows hidden, page1 restored, singular demand and dirty editor
 retention. No source edits or execution evidence were supplied by that review.
+
+
+## Integration contract extension before repair — 5 October 2026
+
+Independent review found a reachable existing Runtime boundary gap: a valid held
+200 with positive account cooldown can fail Store admission after a same-epoch
+head, repository-selection or facet-access cut. The generic apply_detail error
+returned before persist_rate_limit and StaleView record_error intentionally does
+nothing. Provider correctly preserves quota, but sibling work could dispatch
+without that observed barrier. This violates the already accepted post-response
+quota rule; no comment data or access should be granted by a rejected response.
+Root additionally owns the narrow runtime/details.rs quota-boundary repair.
+Runtime fixture owner first adds actual held200 durable provider:rest plus cold
+sibling Body/noHTTP/no-vault assertions to establish a red regression. Independent
+review refines placement: persist positive captured-account/epoch cooldown once
+immediately after fetch Ok, before any conditional/page/Store/reconciliation
+validation. Remove redundant later drift/success persistence; keep success live
+scheduler cooldown and facet SyncStatus behavior. This also covers fallible
+secondary reconciliation after a rejected apply. Existing Store epoch fences
+reject obsolete responses before quota or truth can affect replacement/other
+actors. Quota revision changes neither authorized view nor facet/run/cursor and
+cannot grant access. Root also owns narrow updates to two existing UI controls
+whose eager Comments/read-button assumptions contradict the accepted disclosure:
+prove zero Comments read while closed and explicit fourth read on opening; retain
+unsupported Bitbucket zero-work and original Reviews/Checks/merge/draft checks.
+No schema/DTO/scheduler-policy/credential behavior expansion. Run the red control,
+then repaired focused tests and complete local gates; source freezes and reviews
+remain separate. Current focused21 native controls passed after synthetic typed
+seed source-family/binding repair, with production guards unchanged. Normal
+make typegen114 and independent AST inventory preserve291schemas/243aliases,
+114functions/1event/public Branch with zero public changes; only generator
+order/timestamp churn was discarded by restoring generated paths, no hand edits.
+Frontend26 focused real Workspace/SDK/bridge tests, scoped Biome and desktop types
+pass; full integration gates and publication remain pending.

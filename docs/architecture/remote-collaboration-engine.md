@@ -2608,3 +2608,14 @@ probe is distinct from private provider/token/vault/platform proof. Root seriali
 validation/generated IPC/publishing; provider, Runtime and UI have disjoint files.
 R122 stays In Progress for this slice and later activity/provider coverage; no
 comment implementation, new remote CI or production qualification is claimed yet.
+
+
+### Tasks exact-head remote matrix qualified — 5 October 2026
+
+Attached Tasks draft#163 exact signed2e4b8d5c57e5dd0bb7dd0cbef5e4f521a870e588
+passes all11 reported checks. [CI37268340457](https://github.com/ruru-m07/gitru/actions/runs/37268340457)
+passes frontend/lint/types/build, formatting/Clippy and Rust plus packaged E2E
+on Linux/macOS/Windows; final Windows E2E completed06:02:57UTC. Cloudflare,
+CodeRabbit and Vercel also pass. No exact-head CodeQL is reported. Local794Rust/
+473frontend remains separate from live private-provider/vault/new-panel native
+window or latency proof. R112 stays In Review and draft remains unmerged.
