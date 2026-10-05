@@ -3097,6 +3097,34 @@ native/latency proof, activity timeline/provider expansion or merge is inferred.
 R122 remains In Progress. R104 destructive retention awaits separate R99 recovery
 integration; bounded R102 independent-clock lifecycle audit is the next candidate.
 
+### RURU-103 exact-head remote and RURU-99 current-stack local qualification — 5 October 2026
+
+Draft [RURU-103 #157](https://github.com/ruru-m07/gitru/pull/157) at signed exact
+head `ba45cbda093b4b178a0937441c1718691ce92e60` passes all 14 reported checks in
+[run 37281997503](https://github.com/ruru-m07/gitru/actions/runs/37281997503):
+frontend, format/Clippy, Rust, ordinary packaged E2E and collaboration harness on
+Linux/macOS/Windows, plus Cloudflare, Vercel and CodeRabbit. No CodeQL check is
+reported. RURU-103 remains draft, In Review and unmerged.
+
+Existing RURU-99 draft #144 is integrated locally on that exact head. Normal
+typegen emits 119 commands, 322 schemas, 262 aliases and one event; independent
+AST comparison preserves the complete RURU-103 contract and adds only draft
+list/export definitions. A final source review found ordinary item and notification
+drafts still used the duplicate save-only editor; the signed bounded repair now
+routes every surface through the shared Copy/Export editor and adds a normal-detail
+generation-bound control.
+
+Fresh repaired-source qualification passes 645 frontend/one platform skip, 831
+Rust/three ignored, all lint/types/build/format/Clippy gates, 495 feature
+collaboration/two ignored and 34 feature-native cases. Ordinary packaged E2E
+passes three tests in `2026-10-05T09-23-07-938Z-94115`; the five-stage retained
+pipeline passes in `2026-10-05T09-25-00-937Z-96300` using binary SHA-256
+`b7278812f63e7173d374ae30cb77880728da0912d61929e40424bfe489414465`.
+Synthetic current-head native tests cover export safety; the earlier actual dialog
+QA remains ancestor evidence. No credential/live-provider/cloud account was
+inspected. RURU-99's new remote matrix remains pending publication, so destructive
+RURU-104 work does not start yet.
+
 
 ### Comments publication and RURU-102 clock contract — 5 October 2026
 

@@ -1,7 +1,7 @@
 # RURU-99 current-stack integration contract
 
-Status: signed pre-integration contract, 5 October 2026. No combined-tree
-qualification is claimed by this document.
+Status: current-stack source and local macOS qualification complete, 5 October
+2026. Publication and exact-head remote qualification remain separate gates.
 
 ## Frozen inputs and delivery shape
 
@@ -120,3 +120,54 @@ storage, IPC, provider access, automatic-save/send behavior or generated files.
 Rerun affected detail/notification/recovery tests, frontend lint/types, then the
 serialized default, feature and packaged gates required by the contract. The
 already green pre-correction runs do not qualify the repaired source.
+
+## Current-stack result
+
+Signed merge `6e8cc8da556f642db1a04ff549e72eda64a09127` integrates exact RURU-103
+head `ba45cbda093b4b178a0937441c1718691ce92e60` without rewriting the
+published RURU-99 history. Signed fixture repair `efe8708685a29cb9aae9e97ddecc9743d7f40aa7`
+keeps complete transports fail closed. Signed contract
+`ef8a406b825c83280da7fba6b5e516c1abd2dfda` records the final shared-editor
+defect before signed source repair `e0b565ce92c7381e8d4f97db28ff9d4c527f187a`: normal PR,
+issue and notification drafts now use the same Copy/Export editor as recovery,
+while the notification-specific label is retained and the duplicate save-only
+editor is removed.
+
+Normal `make typegen` emits 119 commands, 322 schemas, 262 aliases and one event.
+An independent AST comparison preserves all 117 commands, 317 schemas and 257
+aliases from RURU-103 exactly and adds only draft list/export definitions; the
+generated module imports every schema. Generated files were not edited by hand.
+
+Fresh qualification after the shared-editor repair passes:
+
+- The affected detail, notification and recovery set passes all 43 tests. The
+  normal-detail control copies current unsaved text, disables Export with a
+  Save-first message, then sends the exact subject and saved generation after Save.
+- Serialized `make verify` passes 645 frontend tests with one Windows-only skip
+  across 66 files, lint, types, a fresh 5,132-module desktop production build,
+  Rustfmt, all-target Clippy and 831 Rust tests with three ignored
+  (collaboration 476 with two ignored).
+- The feature lane passes 495 collaboration tests with two ignored, 34 native
+  app tests, and warnings-denied Clippy for both collaboration and the native app.
+- Ordinary packaged E2E passes both specs and all three tests in
+  `artifacts/e2e/2026-10-05T09-23-07-938Z-94115`.
+- The retained five-stage pipeline passes six main scenarios, both native crash
+  checkpoints and both fresh-process restarts in
+  `artifacts/e2e-harness/2026-10-05T09-25-00-937Z-96300`; every stage exits zero
+  using binary SHA-256
+  `b7278812f63e7173d374ae30cb77880728da0912d61929e40424bfe489414465`.
+
+The current native export tests use synthetic saved drafts and task-owned temporary
+destinations for exact UTF-8, cancellation, concurrent-generation capture,
+private replacement, symlink refusal and cleanup. The earlier packaged system-
+dialog QA remains evidence for the RURU-99 feature ancestor; it is not relabeled as
+an exact-current-head dialog run. Current ordinary and retained packaged runs do
+not inspect personal credentials, provider accounts, Gitru cloud accounts or live
+provider endpoints.
+
+RURU-103's prerequisite remote run 37281997503 separately passes all 14 reported
+checks at its signed exact head on Linux, macOS and Windows. RURU-99's historical
+11-check matrix still belongs only to published ancestor `eced62b`; the integrated
+head needs an ordinary push, PR base change to RURU-103 and a fresh remote matrix.
+No merge is authorized. RURU-104 remains blocked until this reviewable current-
+stack RURU-99 head is published and its checks are assessed.

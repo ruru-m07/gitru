@@ -93,3 +93,37 @@ The export uses the pinned Tauri dialog plugin's Rust callback API
 relying on a WKWebView Blob download.
 
 These are local results, with no remote CI or cross-platform dialog claim implied.
+
+## Current-stack integration qualification — 5 October 2026
+
+The existing review branch now contains signed RURU-103 exact head
+`ba45cbda093b4b178a0937441c1718691ce92e60` through merge
+`6e8cc8da556f642db1a04ff549e72eda64a09127`, plus
+the RURU-99 recovery/export history and bounded repairs. An independent final
+review caught that ordinary PR, issue and notification views still used a
+duplicate save-only editor. Signed repair
+`e0b565ce92c7381e8d4f97db28ff9d4c527f187a` consolidates them on the
+shared Copy/Export editor, preserves the notification label and adds a normal-
+detail generation-bound export control.
+
+Fresh post-repair local gates pass: 43 affected UI tests; full `make verify` with
+645 frontend/one platform skip across 66 files and 831 Rust/three ignored
+(collaboration 476/two ignored); complete lint, types, fresh production build,
+Rustfmt and all-target Clippy; feature tests 495 collaboration/two ignored plus
+34 native app cases and feature Clippy. Normal typegen emits 119 commands, 322
+schemas, 262 aliases and one event while an independent AST inventory preserves
+the entire RURU-103 public contract and adds only the two draft commands and five
+schema/alias families.
+
+Fresh ordinary packaged E2E passes all three cases in
+`artifacts/e2e/2026-10-05T09-23-07-938Z-94115`. Fresh retained native E2E passes
+all five stages in `artifacts/e2e-harness/2026-10-05T09-25-00-937Z-96300`, using
+binary SHA-256 `b7278812f63e7173d374ae30cb77880728da0912d61929e40424bfe489414465`.
+Current automated native export controls use only synthetic drafts and owned
+temporary paths. The earlier actual system-dialog QA remains ancestor evidence,
+not an exact-current-head dialog claim. No personal credential or live provider
+was inspected.
+
+RURU-103's exact-head run 37281997503 passes all 14 reported checks. RURU-99's
+old 11/11 matrix belongs to ancestor `eced62b`; publish/restack and fresh remote
+checks remain. RURU-99 stays In Review, draft and unmerged.

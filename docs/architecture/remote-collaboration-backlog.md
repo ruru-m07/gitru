@@ -2043,6 +2043,32 @@ native/latency proof, activity timeline/provider expansion or merge is inferred.
 R122 remains In Progress. R104 destructive retention awaits separate R99 recovery
 integration; bounded R102 independent-clock lifecycle audit is the next candidate.
 
+### RURU-103 exact-head remote and RURU-99 current-stack local qualification — 5 October 2026
+
+Draft [RURU-103 #157](https://github.com/ruru-m07/gitru/pull/157) exact signed
+`ba45cbda093b4b178a0937441c1718691ce92e60` passes all 14 reported checks in
+[run 37281997503](https://github.com/ruru-m07/gitru/actions/runs/37281997503),
+including Rust, ordinary packaged E2E and the collaboration harness on Linux,
+macOS and Windows. No CodeQL check is reported; RURU-103 remains In Review and
+unmerged.
+
+RURU-99 #144 is integrated locally on that head. Typegen emits 119 commands, 322
+schemas, 262 aliases and one event with no RURU-103 declaration removed or changed.
+Independent final review found and bounded one product defect: ordinary item and
+notification drafts still used the old save-only editor. Signed repair routes all
+surfaces through shared Copy/Export behavior and adds a generation-bound ordinary-
+detail regression.
+
+Fresh post-repair gates pass 645 frontend/one platform skip, 831 Rust/three
+ignored, lint/types/build/format/Clippy, 495 feature collaboration/two ignored and
+34 feature-native tests. Ordinary packaged E2E passes three tests in
+`2026-10-05T09-23-07-938Z-94115`; the complete five-stage retained run passes in
+`2026-10-05T09-25-00-937Z-96300` with binary SHA-256
+`b7278812f63e7173d374ae30cb77880728da0912d61929e40424bfe489414465`.
+Current native export automation uses synthetic drafts/owned temporary paths; old
+actual-dialog QA remains ancestor evidence. Publish/restack and exact-head remote
+CI are still required, so RURU-104 remains Backlog and no merge is authorized.
+
 
 ### Comments publication and RURU-102 clock contract — 5 October 2026
 
