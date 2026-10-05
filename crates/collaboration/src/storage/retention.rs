@@ -70,6 +70,11 @@ pub struct CacheMaintenanceReport {
     pub target_met: bool,
     pub skipped_busy: bool,
     pub checkpoint: Option<WalCheckpointResult>,
+    /// A checkpoint failure after the retention transaction committed.
+    pub checkpoint_error: Option<CollaborationError>,
+    /// A fresh usage-read failure after commit. `usage_after` then contains the
+    /// committed transaction snapshot, including authoritative logical totals.
+    pub usage_refresh_error: Option<CollaborationError>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -212,15 +217,25 @@ impl Store {
         } else if state.indexed_logical_bytes > policy.target_logical_bytes {
             outcome = evict_in(&mut tx, &state, &policy).await?;
         }
+        // Capture an authoritative post-mutation snapshot before commit. Once
+        // commit succeeds, later checkpoint/reporting failures must not turn a
+        // durable eviction into an all-or-nothing error for the caller.
+        let committed_usage = cache_usage_in(&mut tx, &self.inner.path).await?;
         tx.commit().await.map_err(storage_error)?;
         drop(writer);
 
-        let checkpoint = if policy.checkpoint_wal {
-            Some(self.checkpoint_wal_passive_if_writer_idle().await?)
+        let (checkpoint, checkpoint_error) = if policy.checkpoint_wal {
+            match self.checkpoint_wal_passive_if_writer_idle().await {
+                Ok(checkpoint) => (Some(checkpoint), None),
+                Err(error) => (None, Some(error)),
+            }
         } else {
-            None
+            (None, None)
         };
-        let usage_after = self.cache_usage().await?;
+        let (usage_after, usage_refresh_error) = match self.cache_usage().await {
+            Ok(usage) => (usage, None),
+            Err(error) => (committed_usage, Some(error)),
+        };
         let target_met = usage_after
             .logical_bytes
             .is_some_and(|bytes| bytes <= policy.target_logical_bytes);
@@ -235,6 +250,8 @@ impl Store {
             target_met,
             skipped_busy: false,
             checkpoint,
+            checkpoint_error,
+            usage_refresh_error,
         })
     }
 
@@ -657,6 +674,8 @@ fn busy_report(path: &Path) -> CacheMaintenanceReport {
         target_met: false,
         skipped_busy: true,
         checkpoint: None,
+        checkpoint_error: None,
+        usage_refresh_error: None,
     }
 }
 

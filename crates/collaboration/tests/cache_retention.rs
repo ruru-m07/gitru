@@ -1615,6 +1615,53 @@ async fn eviction_sqlite_abort_rolls_back_cascades_scope_fence_and_change_revisi
 }
 
 #[tokio::test]
+async fn committed_eviction_reports_a_post_commit_usage_refresh_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("cache.sqlite");
+    let store = Store::open(&path).await.unwrap();
+    let actor = seed(&store, "a").await;
+    complete_index(&store).await;
+    store
+        .apply_detail(commit(&store, &actor, DetailFacet::Body).await)
+        .await
+        .unwrap();
+    let before_revision = store.revision().await.unwrap().parse::<i64>().unwrap();
+    let mut connection = connect(&path).await;
+
+    // Closing the read pool leaves the owned writer available and deterministically
+    // fails only the fresh usage read after the maintenance transaction commits.
+    store.close().await;
+    let report = store
+        .run_cache_maintenance(CacheRetentionPolicy {
+            checkpoint_wal: false,
+            ..policy()
+        })
+        .await
+        .expect("A post-commit reporting failure must not hide durable eviction");
+
+    assert_eq!(report.evicted_facets, 1);
+    assert!(report.target_met);
+    assert_eq!(report.usage_after.logical_bytes, Some(0));
+    assert!(report.checkpoint.is_none());
+    assert!(report.checkpoint_error.is_none());
+    assert_eq!(
+        report.usage_refresh_error.as_ref().map(|error| &error.code),
+        Some(&ErrorCode::Storage)
+    );
+    assert_eq!(count(&mut connection, "detail_observations").await, 0);
+    assert_eq!(count(&mut connection, "cache_retention_entries").await, 0);
+    let (revision, coverage): (i64, String) = sqlx::query_as(
+        "SELECT (SELECT revision FROM runtime_meta WHERE singleton=1),json_extract(coverage_json,'$.state') FROM sync_scopes WHERE account_id='a' AND scope='detail:pull:body'",
+    )
+    .fetch_one(&mut connection)
+    .await
+    .unwrap();
+    assert!(revision > before_revision);
+    assert_eq!(coverage, "missing");
+    assert_integrity(&mut connection).await;
+}
+
+#[tokio::test]
 async fn noop_is_observation_and_passive_preserves_a_held_reader_then_makes_progress() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("cache.sqlite");

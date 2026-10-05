@@ -145,9 +145,9 @@ builds. On those builds observation reports `supported=false`; it must not run a
 PASSIVE checkpoint and disguise mutation as observation. Maintenance uses only
 `PRAGMA main.wal_checkpoint(PASSIVE)` after its bounded transaction commits.
 PASSIVE progress is recorded even when a long reader prevents all frames from
-being checkpointed; later maintenance can continue. A busy writer causes an
-immediate skip. This slice must not invoke FULL, RESTART or TRUNCATE checkpoints,
-`VACUUM`, or manual WAL/SHM sidecar deletion.
+being checkpointed; later maintenance can continue. A writer busy at maintenance
+admission causes an immediate skip. This slice must not invoke FULL, RESTART or
+TRUNCATE checkpoints, `VACUUM`, or manual WAL/SHM sidecar deletion.
 
 NOOP and PASSIVE run outside SQL transactions. After committing retention and
 dropping the application writer guard, checkpointing uses a dedicated connection
@@ -155,6 +155,15 @@ with zero busy timeout and a separate nonblocking maintenance guard. It therefor
 does not hold the application's writer mutex while doing checkpoint I/O. PASSIVE
 still has no frame/time limit; the report does not mislabel it as latency-bounded,
 and negative frame counts mean unavailable rather than zero.
+
+Retention captures `usage_after` inside the writer transaction before commit.
+After commit, PASSIVE checkpointing and a fresh physical-usage read are diagnostic
+work: either may fail without changing the successful maintenance result. The
+report exposes `checkpoint_error` and `usage_refresh_error`; when the latter is
+present, `usage_after` is the committed transaction snapshot, whose logical totals
+are authoritative while its physical file/page measurements are the last values
+observed before commit. This prevents a retry from treating durable eviction as
+an all-or-nothing failure while preserving safe storage diagnostics.
 
 This boundary avoids conflicting semantics with divergent RURU-106 backup/restore
 PR #145, whose verified snapshots and restore replacement own `VACUUM INTO` and
@@ -180,6 +189,8 @@ Focused real-SQLite tests must prove:
 - eviction produces Missing coverage, a targeted revision and a new run ID;
 - stale pre-eviction commits fail and a fresh lease can rehydrate normally;
 - an injected SQLite abort rolls back content, coverage, accounting and revisions;
+- a post-commit checkpoint or usage refresh failure remains visible in the report
+  without hiding already durable indexing or eviction;
 - interrupted/reopened indexing remains correct when newly accepted observations
   sort before or after the saved historical cursor;
 - a held read transaction remains usable while PASSIVE checkpoint returns bounded
@@ -209,14 +220,14 @@ truthful Missing publication, WAL observation and PASSIVE checkpointing. The
 public boundary remains the provider-independent Rust `Store`; this slice adds no
 Tauri command or frontend pin control.
 
-The real-SQLite `cache_retention` suite has 19 passing tests. It covers frozen
+The real-SQLite `cache_retention` suite has 20 passing tests. It covers frozen
 forward migration, aggregate triggers and cascades, accepted/304/metadata
 accounting, bounded index and eviction cursors, row and facet caps, pins and
 active-work protection, account isolation, draft/error preservation, run and
-revision fencing, injected rollback, cold-reopen ordering, and checkpoint
-progress with a retained reader. The ordinary collaboration unit and integration
-suites also pass, including 304 passed plus one subprocess-only ignored unit test
-in the crate's main unit target.
+revision fencing, injected rollback, post-commit reporting failure, cold-reopen
+ordering, and checkpoint progress with a retained reader. The ordinary
+collaboration unit and integration suites also pass, including 304 passed plus one
+subprocess-only ignored unit test in the crate's main unit target.
 
 Local validation on exact head `76f05eec9d888fba808e5071a32b39399881f050`:
 
