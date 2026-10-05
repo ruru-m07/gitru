@@ -1,4 +1,5 @@
 //! Typed provider observations; native participant state is not commit approval.
+use crate::tasks::TaskV1;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -6,6 +7,8 @@ use serde::{Deserialize, Serialize};
 pub enum NativeDetailPayload {
     #[serde(rename = "participant.v1")]
     ParticipantV1(ParticipantV1),
+    #[serde(rename = "task.v1")]
+    TaskV1(TaskV1),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

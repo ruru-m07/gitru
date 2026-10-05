@@ -300,6 +300,7 @@ pub enum ResourceFacet {
     Reviews,
     Checks,
     Participants,
+    Tasks,
     Merge,
 }
 

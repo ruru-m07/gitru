@@ -14,6 +14,7 @@ pub(super) enum Route {
     Repositories(String),
     PullRequests(String),
     PullRequest(String, u64),
+    Tasks(String, u64),
 }
 
 pub(super) struct BitbucketHttp {
@@ -59,13 +60,18 @@ impl BitbucketHttp {
                 }
                 format!("repositories/%7B{workspace}%7D?role=member&pagelen=50")
             }
-            Route::PullRequests(repository) | Route::PullRequest(repository, _) => {
+            Route::PullRequests(repository)
+            | Route::PullRequest(repository, _)
+            | Route::Tasks(repository, _) => {
                 if super::canonical_uuid(repository)? != *repository {
                     return Err(invalid());
                 }
                 let path = format!("repositories/%7B%7D/%7B{repository}%7D/pullrequests");
                 match route {
                     Route::PullRequest(_, id) if *id > 0 => format!("{path}/{id}"),
+                    Route::Tasks(_, id) if *id > 0 && *id <= i64::MAX as u64 => {
+                        format!("{path}/{id}/tasks?pagelen=50")
+                    }
                     Route::PullRequests(_) => format!(
                         "{path}?state=OPEN&state=MERGED&state=DECLINED&state=SUPERSEDED&pagelen=50&sort=id"
                     ),

@@ -268,10 +268,8 @@ pub(crate) async fn detail_evidence_in(
 }
 
 fn mask_valid(facet: DetailFacet, mask: &[DetailField]) -> bool {
-    mask.len() <= 6
-        && mask
-            .iter()
-            .all(|field| field.is_participant() == (facet == DetailFacet::Participants))
+    mask.len() <= facet.field_limit()
+        && mask.iter().all(|field| field.valid_for(facet))
         && mask
             .iter()
             .enumerate()
@@ -299,6 +297,9 @@ fn participant_text(value: &Option<String>, limit: usize, nonempty: bool) -> boo
 }
 
 fn validate_native(facet: DetailFacet, entry: &DetailEntry) -> Result<()> {
+    if facet == DetailFacet::Tasks {
+        return validate_task(entry);
+    }
     if facet != DetailFacet::Participants {
         return if entry.native.is_none() {
             Ok(())
@@ -334,6 +335,101 @@ fn validate_native(facet: DetailFacet, entry: &DetailEntry) -> Result<()> {
     Ok(())
 }
 
+fn validate_task_actor(actor: &crate::TaskActor) -> Result<()> {
+    validate_identifier(&actor.provider_id)?;
+    if actor.provider_id.chars().any(char::is_control)
+        || actor.kind.is_empty()
+        || actor.kind.len() > 128
+        || actor.kind.chars().any(char::is_control)
+        || !participant_text(&actor.login, 255, false)
+        || !participant_text(&actor.display_name, 1024, false)
+    {
+        return Err(invalid_detail());
+    }
+    Ok(())
+}
+
+fn validate_task(entry: &DetailEntry) -> Result<()> {
+    let Some(crate::NativeDetailPayload::TaskV1(task)) = &entry.native else {
+        return Err(invalid_detail());
+    };
+    validate_task_actor(&task.creator)?;
+    if let Some(resolver) = &task.resolved_by {
+        validate_task_actor(resolver)?;
+    }
+    validate_value(&task.content)?;
+    if entry.author.is_some()
+        || entry.title.is_some()
+        || entry.state.is_some()
+        || entry.body != DetailValue::default()
+        || entry.observed_body_state != DetailValueState::NotLoaded
+        || entry.updated_at.is_some()
+        || entry.head_oid.is_some()
+        || task.content.state == DetailValueState::Known && task.content.text.is_none()
+        || task
+            .content
+            .text
+            .as_ref()
+            .is_some_and(|text| text.len() > MAX_ENTRY_BODY_BYTES)
+        || !participant_text(&task.state, 128, true)
+        || [&task.created_at, &task.updated_at, &task.resolved_at]
+            .into_iter()
+            .any(|at| at.as_ref().is_some_and(|at| !timestamp_valid(at)))
+        || task.comment_id.as_ref().is_some_and(|id| {
+            id.parse::<i64>()
+                .ok()
+                .is_none_or(|value| value <= 0 || value.to_string() != *id)
+        })
+        || entry.field_mask.contains(&DetailField::TaskState) && task.state.is_none()
+        || entry.field_mask.contains(&DetailField::TaskCreatedAt) && task.created_at.is_none()
+        || entry.field_mask.contains(&DetailField::TaskUpdatedAt) && task.updated_at.is_none()
+        || entry.field_mask.contains(&DetailField::TaskPending) && task.pending.is_none()
+    {
+        return Err(invalid_detail());
+    }
+    Ok(())
+}
+
+fn validate_task_input(entry: &DetailEntry) -> Result<()> {
+    let Some(crate::NativeDetailPayload::TaskV1(task)) = &entry.native else {
+        return Err(invalid_detail());
+    };
+    // Normalize oversized Known text only after its incoming value shape is
+    // valid; a huge text member on Omitted must not become a valid Oversized.
+    validate_value(&task.content)?;
+    if ![
+        DetailField::TaskContent,
+        DetailField::TaskState,
+        DetailField::TaskCreatedAt,
+        DetailField::TaskUpdatedAt,
+    ]
+    .into_iter()
+    .all(|field| entry.field_mask.contains(&field))
+        || task.content.state == DetailValueState::NotLoaded
+        || task.observed_content_state != task.content.state
+        || task.resolved_by.is_some() && !entry.field_mask.contains(&DetailField::TaskResolver)
+        || [
+            DetailField::TaskResolverLogin,
+            DetailField::TaskResolverDisplayName,
+        ]
+        .into_iter()
+        .any(|field| entry.field_mask.contains(&field))
+            && !entry.field_mask.contains(&DetailField::TaskResolver)
+        || entry.field_mask.contains(&DetailField::TaskResolver)
+            && task.resolved_by.is_none()
+            && ![
+                DetailField::TaskResolverLogin,
+                DetailField::TaskResolverDisplayName,
+            ]
+            .into_iter()
+            .all(|field| entry.field_mask.contains(&field))
+        || !entry.field_validations.is_empty()
+    {
+        return Err(invalid_detail());
+    }
+    Ok(())
+}
+
 fn blank_native(native: &Option<crate::NativeDetailPayload>) -> Option<crate::NativeDetailPayload> {
     native.as_ref().map(|native| match native {
         crate::NativeDetailPayload::ParticipantV1(value) => {
@@ -347,6 +443,25 @@ fn blank_native(native: &Option<crate::NativeDetailPayload>) -> Option<crate::Na
                 approved: None,
                 state: None,
                 participated_at: None,
+            })
+        }
+        crate::NativeDetailPayload::TaskV1(value) => {
+            crate::NativeDetailPayload::TaskV1(crate::TaskV1 {
+                content: DetailValue::default(),
+                observed_content_state: DetailValueState::NotLoaded,
+                creator: crate::TaskActor {
+                    provider_id: value.creator.provider_id.clone(),
+                    kind: value.creator.kind.clone(),
+                    login: None,
+                    display_name: None,
+                },
+                state: None,
+                created_at: None,
+                updated_at: None,
+                pending: None,
+                resolved_at: None,
+                resolved_by: None,
+                comment_id: None,
             })
         }
     })
@@ -380,6 +495,64 @@ fn merge_native_field(
     Ok(())
 }
 
+fn task_actor_identity(actor: &Option<crate::TaskActor>) -> Option<(&str, &str)> {
+    actor
+        .as_ref()
+        .map(|actor| (actor.provider_id.as_str(), actor.kind.as_str()))
+}
+
+fn merge_task_field(
+    saved: &mut DetailEntry,
+    incoming: &DetailEntry,
+    field: DetailField,
+) -> Result<()> {
+    let (
+        Some(crate::NativeDetailPayload::TaskV1(saved)),
+        Some(crate::NativeDetailPayload::TaskV1(incoming)),
+    ) = (&mut saved.native, &incoming.native)
+    else {
+        return Err(invalid_detail());
+    };
+    match field {
+        DetailField::TaskContent => saved.content = incoming.content.clone(),
+        DetailField::TaskCreatorLogin => saved.creator.login = incoming.creator.login.clone(),
+        DetailField::TaskCreatorDisplayName => {
+            saved.creator.display_name = incoming.creator.display_name.clone()
+        }
+        DetailField::TaskState => saved.state = incoming.state.clone(),
+        DetailField::TaskCreatedAt => saved.created_at = incoming.created_at.clone(),
+        DetailField::TaskUpdatedAt => saved.updated_at = incoming.updated_at.clone(),
+        DetailField::TaskPending => saved.pending = incoming.pending,
+        DetailField::TaskResolvedAt => saved.resolved_at = incoming.resolved_at.clone(),
+        DetailField::TaskResolver => {
+            if task_actor_identity(&saved.resolved_by) != task_actor_identity(&incoming.resolved_by)
+            {
+                saved.resolved_by = incoming.resolved_by.as_ref().map(|actor| crate::TaskActor {
+                    provider_id: actor.provider_id.clone(),
+                    kind: actor.kind.clone(),
+                    login: None,
+                    display_name: None,
+                });
+            }
+        }
+        DetailField::TaskResolverLogin | DetailField::TaskResolverDisplayName => {
+            if let Some(saved) = &mut saved.resolved_by {
+                let Some(incoming) = &incoming.resolved_by else {
+                    return Err(invalid_detail());
+                };
+                if field == DetailField::TaskResolverLogin {
+                    saved.login = incoming.login.clone();
+                } else {
+                    saved.display_name = incoming.display_name.clone();
+                }
+            }
+        }
+        DetailField::TaskCommentId => saved.comment_id = incoming.comment_id.clone(),
+        _ => return Err(invalid_detail()),
+    }
+    Ok(())
+}
+
 fn merge_entry(
     facet: DetailFacet,
     mut incoming: DetailEntry,
@@ -390,6 +563,22 @@ fn merge_entry(
     validate_identifier(&incoming.id)?;
     validate_identifier(&incoming.provider_id)?;
     validate_value(&incoming.body)?;
+    if facet == DetailFacet::Tasks {
+        validate_task_input(&incoming)?;
+        if let Some(crate::NativeDetailPayload::TaskV1(task)) = &mut incoming.native
+            && task
+                .content
+                .text
+                .as_ref()
+                .is_some_and(|value| value.len() > MAX_ENTRY_BODY_BYTES)
+        {
+            task.content = DetailValue {
+                state: DetailValueState::Oversized,
+                text: None,
+            };
+            task.observed_content_state = DetailValueState::Oversized;
+        }
+    }
     if facet == DetailFacet::Participants && !incoming.field_validations.is_empty() {
         return Err(invalid_detail());
     }
@@ -435,14 +624,14 @@ fn merge_entry(
     });
     validate_native(facet, &saved.entry)?;
     if !mask_valid(facet, &saved.entry.field_mask)
-        || saved.entry.field_validations.len() > 6
+        || saved.entry.field_validations.len() > facet.field_limit()
         || saved
             .entry
             .field_validations
             .iter()
             .enumerate()
             .any(|(index, validation)| {
-                validation.field.is_participant() != (facet == DetailFacet::Participants)
+                !validation.field.valid_for(facet)
                     || saved.entry.field_validations[..index]
                         .iter()
                         .any(|old| old.field == validation.field)
@@ -457,26 +646,106 @@ fn merge_entry(
             Some(crate::NativeDetailPayload::ParticipantV1(old)),
             Some(crate::NativeDetailPayload::ParticipantV1(new)),
         ) => old.user.provider_id == new.user.provider_id,
+        (
+            Some(crate::NativeDetailPayload::TaskV1(old)),
+            Some(crate::NativeDetailPayload::TaskV1(new)),
+        ) => {
+            old.creator.provider_id == new.creator.provider_id
+                && old.creator.kind == new.creator.kind
+        }
         _ => false,
     };
     if saved.entry.provider_id != incoming.provider_id || !same_native_identity {
         return Err(invalid_detail());
     }
-    let comparable = if incoming.field_mask.contains(&DetailField::UpdatedAt) {
+    let comparable = if let Some(crate::NativeDetailPayload::TaskV1(task)) = &incoming.native {
+        task.updated_at.clone()
+    } else if incoming.field_mask.contains(&DetailField::UpdatedAt) {
         incoming
             .updated_at
-            .as_deref()
-            .or(source.provider_updated_at.as_deref())
+            .clone()
+            .or_else(|| source.provider_updated_at.clone())
     } else {
-        source.provider_updated_at.as_deref()
+        source.provider_updated_at.clone()
     };
     saved.entry.observed_body_state = if incoming.field_mask.contains(&DetailField::Body) {
         incoming.body.state
     } else {
         DetailValueState::NotLoaded
     };
+    if facet == DetailFacet::Tasks {
+        let (
+            Some(crate::NativeDetailPayload::TaskV1(old)),
+            Some(crate::NativeDetailPayload::TaskV1(new)),
+        ) = (&mut saved.entry.native, &incoming.native)
+        else {
+            return Err(invalid_detail());
+        };
+        old.observed_content_state = new.content.state;
+        // Resolver identity must be reconciled before presentations, regardless
+        // of the adapter's mask order. Old-person clocks cannot authorize names.
+        if incoming.field_mask.contains(&DetailField::TaskResolver)
+            && !saved.older(
+                DetailField::TaskResolver,
+                comparable.as_deref(),
+                source,
+                head,
+            )
+        {
+            let changed = match (&saved.entry.native, &incoming.native) {
+                (
+                    Some(crate::NativeDetailPayload::TaskV1(old)),
+                    Some(crate::NativeDetailPayload::TaskV1(new)),
+                ) => task_actor_identity(&old.resolved_by) != task_actor_identity(&new.resolved_by),
+                _ => return Err(invalid_detail()),
+            };
+            merge_task_field(&mut saved.entry, &incoming, DetailField::TaskResolver)?;
+            if changed {
+                saved.forget(&[
+                    DetailField::TaskResolverLogin,
+                    DetailField::TaskResolverDisplayName,
+                ]);
+            }
+            saved.observed(
+                DetailField::TaskResolver,
+                comparable.as_deref(),
+                source,
+                head,
+            );
+            saved
+                .entry
+                .field_validations
+                .retain(|v| v.field != DetailField::TaskResolver);
+            saved.entry.field_validations.push(DetailFieldValidation {
+                field: DetailField::TaskResolver,
+                validated_at: source.observed_at.clone(),
+                source: source.source.clone(),
+                adapter_version: source.adapter_version,
+            });
+        }
+        let same_resolver = match (&saved.entry.native, &incoming.native) {
+            (
+                Some(crate::NativeDetailPayload::TaskV1(old)),
+                Some(crate::NativeDetailPayload::TaskV1(new)),
+            ) => task_actor_identity(&old.resolved_by) == task_actor_identity(&new.resolved_by),
+            _ => return Err(invalid_detail()),
+        };
+        if !same_resolver {
+            incoming.field_mask.retain(|field| {
+                !matches!(
+                    field,
+                    DetailField::TaskResolver
+                        | DetailField::TaskResolverLogin
+                        | DetailField::TaskResolverDisplayName
+                )
+            });
+        }
+    }
     for field in &incoming.field_mask {
-        if saved.older(*field, comparable, source, head) {
+        if facet == DetailFacet::Tasks && *field == DetailField::TaskResolver {
+            continue;
+        }
+        if saved.older(*field, comparable.as_deref(), source, head) {
             continue;
         }
         match field {
@@ -497,9 +766,25 @@ fn merge_entry(
             field if field.is_participant() => {
                 merge_native_field(&mut saved.entry, &incoming, *field)?
             }
+            DetailField::TaskContent => {
+                let Some(crate::NativeDetailPayload::TaskV1(task)) = &mut saved.entry.native else {
+                    return Err(invalid_detail());
+                };
+                let Some(crate::NativeDetailPayload::TaskV1(observed)) = &incoming.native else {
+                    return Err(invalid_detail());
+                };
+                if observed.content.state != DetailValueState::Known {
+                    if task.content.state != DetailValueState::Known {
+                        task.content = observed.content.clone();
+                    }
+                    continue;
+                }
+                merge_task_field(&mut saved.entry, &incoming, *field)?;
+            }
+            field if field.is_task() => merge_task_field(&mut saved.entry, &incoming, *field)?,
             _ => return Err(invalid_detail()),
         }
-        saved.observed(*field, comparable, source, head);
+        saved.observed(*field, comparable.as_deref(), source, head);
         saved.entry.field_validations.retain(|v| v.field != *field);
         saved.entry.field_validations.push(DetailFieldValidation {
             field: *field,
@@ -1010,6 +1295,31 @@ pub(super) async fn apply_detail_in(
     {
         return Err(invalid_detail());
     }
+    if page.facet == DetailFacet::Tasks
+        && (page.entries.len() > 50
+            || page.source.field_mask.len() != 12
+            || page.source.provider_updated_at.is_some()
+            || page.reconciliation.head_scope != DetailHeadScope::SubjectHistory
+            || !matches!(
+                page.reconciliation.enumeration,
+                DetailEnumeration::Uncertain | DetailEnumeration::FullEnumeration
+            )
+            || page.reconciliation.enumeration == DetailEnumeration::FullEnumeration
+                && (page.request_cursor.is_some()
+                    || page.next_cursor.is_some()
+                    || !page.complete
+                    || !page.whole_scope)
+            || page.complete != page.next_cursor.is_none()
+            || page.subject_binding.is_none()
+            || page.metadata.is_some()
+            || page.etag.is_some()
+            || page.not_modified
+            || [&page.request_cursor, &page.next_cursor]
+                .into_iter()
+                .any(|cursor| cursor.as_ref().is_some_and(|cursor| cursor.len() > 4096)))
+    {
+        return Err(invalid_detail());
+    }
     if page.facet == DetailFacet::Participants {
         for (index, entry) in page.entries.iter().enumerate() {
             validate_native(page.facet, entry)?;
@@ -1022,6 +1332,17 @@ pub(super) async fn apply_detail_in(
                     || matches!(&prior.native, Some(crate::NativeDetailPayload::ParticipantV1(old))
                         if old.user.provider_id == value.user.provider_id)
             }) {
+                return Err(invalid_detail());
+            }
+        }
+    }
+    if page.facet == DetailFacet::Tasks {
+        for (index, entry) in page.entries.iter().enumerate() {
+            validate_task_input(entry)?;
+            if page.entries[..index]
+                .iter()
+                .any(|prior| prior.id == entry.id || prior.provider_id == entry.provider_id)
+            {
                 return Err(invalid_detail());
             }
         }

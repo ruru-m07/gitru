@@ -250,7 +250,10 @@ impl BitbucketCloudProvider {
                         cursor.next(&self.http)?
                     }
                 }
-                Route::User | Route::PullRequests(_) | Route::PullRequest(..) => {
+                Route::User
+                | Route::PullRequests(_)
+                | Route::PullRequest(..)
+                | Route::Tasks(..) => {
                     return Err(invalid());
                 }
             };

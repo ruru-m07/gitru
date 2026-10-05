@@ -67,7 +67,11 @@ describe("generated collaboration wire contract", () => {
         },
       ],
     };
-    expect(DetailEntrySchema.parse(entry).native?.value.approved).toBe(false);
+    const parsedNative = DetailEntrySchema.parse(entry).native;
+    expect(parsedNative?.kind).toBe("participant.v1");
+    if (parsedNative?.kind !== "participant.v1")
+      throw new Error("Expected typed participant");
+    expect(parsedNative.value.approved).toBe(false);
     const genericEntry = {
       ...entry,
       id: "github:comment:7",

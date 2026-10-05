@@ -6,6 +6,7 @@ mod discovery;
 mod feeds;
 mod participants;
 mod resource_details;
+mod tasks;
 mod transport;
 use transport::{BitbucketHttp, Route, invalid, quota};
 
@@ -47,6 +48,7 @@ impl CollaborationProvider for BitbucketCloudProvider {
                             | ResourceFacet::PullRequests
                             | ResourceFacet::PullDetails
                             | ResourceFacet::Participants
+                            | ResourceFacet::Tasks
                     ) {
                         CapabilityState::Supported
                     } else {
@@ -56,7 +58,8 @@ impl CollaborationProvider for BitbucketCloudProvider {
                         ResourceFacet::Repositories
                         | ResourceFacet::PullRequests
                         | ResourceFacet::PullDetails
-                        | ResourceFacet::Participants => None,
+                        | ResourceFacet::Participants
+                        | ResourceFacet::Tasks => None,
                         ResourceFacet::Issues | ResourceFacet::Inbox => {
                             Some(CapabilityReason::ProviderSemantics)
                         }
@@ -175,10 +178,10 @@ impl CollaborationProvider for BitbucketCloudProvider {
         token: &SecretToken,
         request: DetailRequest,
     ) -> Result<DetailPage, ProviderError> {
-        if request.facet == DetailFacet::Participants {
-            self.participants(token, request).await
-        } else {
-            self.resource_details(token, request).await
+        match request.facet {
+            DetailFacet::Participants => self.participants(token, request).await,
+            DetailFacet::Tasks => self.tasks(token, request).await,
+            _ => self.resource_details(token, request).await,
         }
     }
 }
@@ -224,3 +227,6 @@ mod reads_tests;
 
 #[cfg(test)]
 mod participants_tests;
+
+#[cfg(test)]
+mod tasks_tests;

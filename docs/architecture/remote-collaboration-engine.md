@@ -2564,3 +2564,25 @@ no writes/readiness/provider branches or R106 restore-policy change. R112 remain
 In Progress. Models/Store/migration, provider/HTTP/Runtime and frontend have clear
 file owners; root owns generated IPC/docs/serialized validation. No implementation
 qualification, new Task PR, live credentials or merge is claimed.
+
+
+### RURU-112 Tasks locally qualified — 5 October 2026
+
+The fourth bounded slice implements typed task.v1/TaskActor/twelve disjoint Task
+fields through existing native HTTP/Runtime/SQLite, source-generated SDK and the
+common collapsed/opened-only Tasks panel. Own-task clocks and resolver context
+preserve historical content, false/null/omission authority; stable multipage
+Uncertain and durable20-page history survive ten-page yield/cold/manual resume.
+Foreign-key-enabled0009 plus independent frozen-v8 controls preserve historical
+rows/ledger and rollback/draft CAS; original0001–0008 and R106 archive policy stay
+unchanged. Local50-row/100-cursor browsing and privacy cuts preserve private drafts.
+
+Focused40 native controls and full default Rust workspace794 top-level/3ignored
+(including collaboration443/2ignored), Clippy/fmt/diff pass. Frontend473/54files,
+full lint/types/prodbuild pass. Normal typegen114 preserves289 schemas/241aliases
+plus only2 new Task types,114 command functions/1event/publicGit Branch fields.
+Actual cap-fixture generation and Clippy guard findings were corrected, without
+weakening production fences or original controls. See
+[the Tasks work note](./collaboration-work/RURU-112-tasks.md) for commands and
+qualification limits. Signed stacked publication/its exact-head remote CI remain
+separate; live provider/vault/new native UI/CodeQL is not inferred. No merge.

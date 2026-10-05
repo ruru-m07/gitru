@@ -24,6 +24,7 @@ import {
   facetPolicy,
 } from "./capability-policy";
 import { NativeParticipantsPanel } from "./native-participants-panel";
+import { NativeTasksPanel } from "./native-tasks-panel";
 
 const facetLabels: Record<DetailFacet, string> = {
   body: "Full description",
@@ -31,6 +32,7 @@ const facetLabels: Record<DetailFacet, string> = {
   reviews: "Reviews",
   checks: "Checks",
   participants: "Participants",
+  tasks: "Tasks",
 };
 
 export function ResourceCapabilityPanels({
@@ -81,6 +83,20 @@ export function ResourceCapabilityPanels({
           account={account}
           subjectId={subjectId}
           policy={facetPolicy(snapshot, "participants")}
+        />
+      ) : null}
+      {kind === "pull_request" ? (
+        <NativeTasksPanel
+          key={JSON.stringify([
+            "tasks",
+            account.id,
+            account.actor_id,
+            account.authorization_epoch,
+            subjectId,
+          ])}
+          account={account}
+          subjectId={subjectId}
+          policy={facetPolicy(snapshot, "tasks")}
         />
       ) : null}
       {kind === "pull_request" ? (

@@ -1,6 +1,7 @@
 # RURU-112 — Bitbucket Cloud task observations
 
-Status: pre-code contract for the fourth bounded R112 slice. Read the shared
+Status: implemented and locally qualified fourth bounded R112 slice; publication
+and exact-head remote CI remain separate. Read the shared
 engine/backlog and R112 account, PR and participant notes first. The isolated
 managed branch `ruru/ruru-112-bitbucket-tasks` starts from attached draft #162,
 exact `d2e91957e28de36cc3f7d0ecb2eb6a5d0ea15dcd`. No merge is authorized.
@@ -237,3 +238,79 @@ three-family6/6/12 authority explicit, isolate own-task clocks from collection
 clocks, process accepted resolver identity before presentations, preserve stable
 Uncertain across continuation, and retain historical v8 negative admission.
 No source changes or validation were performed during that review.
+
+
+## Ancestor remote qualification — 4 October
+
+Participant #162 exactd2e91957e28de36cc3f7d0ecb2eb6a5d0ea15dcd now passes all11
+reported checks/statuses. CI37210699030 includes Rust and ordinary packaged E2E
+on Linux/macOS/Windows, frontend/Clippy/fmt; Windows E2E111461119358 completed
+15:20:34UTC. Cloudflare/CodeRabbit/Vercel also pass. No exact-head CodeQL is
+reported. This does not qualify new Tasks code/0009/native UI or live tokens.
+
+
+## Implementation and local qualification — 5 October 2026
+
+Typed task.v1/TaskActor and twelve disjoint Task fields now flow through the
+existing native provider, Runtime, SQLite, generated SDK and ordinary PR panel.
+Per-task updated_on clocks, immutable creator context and resolver-first merging
+preserve known false/null versus omission and reject older/mismatched evidence.
+The fixed UUID Tasks child route has bounded exact-origin continuation validation;
+mutable multipage traversal remains Uncertain, and the durable twenty-page budget
+survives the scheduler's ten-page yield, manual resume and two cold reopens.
+Capped collections retain Partial coverage and authorized history without extra
+HTTP. Single initial-page enumeration can reconcile explicit empty results.
+
+Forward0009 rebuilds the existing four facet tables with foreign keys enabled.
+Frozen independent v8 SQL/seed/checksums qualify exact historical rows across all
+25 tables and the eight applied ledger records, actual post-parent-drop rollback,
+immediate cold reopen, FK admission/enforcement and authored draft CAS. Published
+0001–0008 bytes and the R106 v1/v2 archive ceiling remain unchanged. Historical
+participant negative admission runs against the actual version8 migration set;
+its original upgrade, rollback and draft controls remain intact.
+
+The common collapsed Tasks disclosure reads and registers visible demand only
+when opened and supported. Native activity remains authoritative. It uses bounded
+50-row local keyset pages, a100-position cursor cap, safe text, validated actor
+presentations, a120-Unicode-scalar content heading and explicit Sync/Recheck.
+Authorization/actor/epoch/subject cuts suppress obsolete content without resetting
+the independent private editor. No provider-name branch, automatic hydration or
+remote resolution/write controls were added.
+
+Actual local gates:
+
+- Focused native task library20 (HTTP8, actual Runtime/SQLite9, private clocks3)
+  and Store/migration20 (Task Store9, frozen-v8 migration6, existing participant
+  migration5) pass. The final full default Rust workspace passes794 top-level
+  tests/three ignored, including443 collaboration tests/two ignored. All-target
+  workspace Clippy with-Dwarnings and final formatting/diff checks pass.
+- The original cap fixture incorrectly equated resumed request-generation IDs.
+  Store intentionally creates a fresh lease while carrying durable traversal
+  membership. The corrected test asserts fresh IDs plus exact10→20 page/history
+  continuity, cursor/coverage/rows/drafts and zero extra capped HTTP. Production
+  request-generation fencing was unchanged. Clippy also caught a fixture guard
+  held across await; lexical scoping fixed it without changing assertions.
+- Normal make typegen generates114 commands. An independent TypeScript AST
+  inventory preserves all289 prior schemas and241 aliases, adds only TaskActor
+  and TaskV1 (291/243), and permits only the five expected facet/field/payload/entry
+  schemas to change. All114 command functions, the one event function and public
+  Branch name/display_name/is_remote/is_detached remain unchanged.
+- Full frontend473 tests/54files, lint, types and the production desktop build
+  pass after final UI changes and normal generation. The make verify run completed
+  those frontend/build gates, then stopped on the fixture-only Clippy finding;
+  final Clippy and the full Rust workspace/fmt were run successfully after that
+  correction. No aggregate successful make verify execution is invented.
+
+Independent read-only native/migration and frontend/generator reviews found no
+reachable blocker. Reviews
+inspect source and fixture fidelity; actual local commands above provide execution
+evidence. Temporary validation logs are diagnostic conveniences, not durable
+artifacts; commands and test sources are reproducible evidence.
+
+This branch is ready for a scoped signed draft stacked on #162. Its own remote
+CI/platform matrix is pending separately from ancestor #162's all11 successful
+checks. Live Bitbucket UUID child routing/null policies, production credentials/
+vaults, actual Tasks native-window UI, navigation benchmarks and unreported CodeQL
+are not qualified. The capped-collection rescan policy, writes, enterprise/Data
+Center, R106 coordinated shutdown/current-schema archives and the separate R103
+own-Webview listener integration remain outside this slice. No merge is authorized.

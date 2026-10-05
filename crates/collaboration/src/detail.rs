@@ -14,16 +14,21 @@ pub enum DetailFacet {
     Reviews,
     Checks,
     Participants,
+    Tasks,
 }
 
 impl DetailFacet {
-    pub(crate) const ALL: [Self; 5] = [
+    pub(crate) const ALL: [Self; 6] = [
         Self::Body,
         Self::Comments,
         Self::Reviews,
         Self::Checks,
         Self::Participants,
+        Self::Tasks,
     ];
+    pub(crate) fn field_limit(self) -> usize {
+        if self == Self::Tasks { 12 } else { 6 }
+    }
     pub fn capability(self, kind: &RemoteItemKind) -> Option<ResourceFacet> {
         match (self, kind) {
             (Self::Body, RemoteItemKind::PullRequest) => Some(ResourceFacet::PullDetails),
@@ -34,6 +39,7 @@ impl DetailFacet {
             (Self::Reviews, RemoteItemKind::PullRequest) => Some(ResourceFacet::Reviews),
             (Self::Checks, RemoteItemKind::PullRequest) => Some(ResourceFacet::Checks),
             (Self::Participants, RemoteItemKind::PullRequest) => Some(ResourceFacet::Participants),
+            (Self::Tasks, RemoteItemKind::PullRequest) => Some(ResourceFacet::Tasks),
             _ => None,
         }
     }
@@ -44,6 +50,7 @@ impl DetailFacet {
             Self::Reviews => "reviews",
             Self::Checks => "checks",
             Self::Participants => "participants",
+            Self::Tasks => "tasks",
         }
     }
     pub fn scope(self, subject_id: &str) -> String {
@@ -62,6 +69,7 @@ impl DetailFacet {
                 "reviews" => Self::Reviews,
                 "checks" => Self::Checks,
                 "participants" => Self::Participants,
+                "tasks" => Self::Tasks,
                 _ => return None,
             },
         ))
@@ -107,6 +115,18 @@ pub enum DetailField {
     ParticipantApproved,
     ParticipantState,
     ParticipantParticipatedAt,
+    TaskContent,
+    TaskCreatorLogin,
+    TaskCreatorDisplayName,
+    TaskState,
+    TaskCreatedAt,
+    TaskUpdatedAt,
+    TaskPending,
+    TaskResolvedAt,
+    TaskResolver,
+    TaskResolverLogin,
+    TaskResolverDisplayName,
+    TaskCommentId,
 }
 
 impl DetailField {
@@ -120,6 +140,30 @@ impl DetailField {
                 | Self::ParticipantState
                 | Self::ParticipantParticipatedAt
         )
+    }
+    pub(crate) fn is_task(self) -> bool {
+        matches!(
+            self,
+            Self::TaskContent
+                | Self::TaskCreatorLogin
+                | Self::TaskCreatorDisplayName
+                | Self::TaskState
+                | Self::TaskCreatedAt
+                | Self::TaskUpdatedAt
+                | Self::TaskPending
+                | Self::TaskResolvedAt
+                | Self::TaskResolver
+                | Self::TaskResolverLogin
+                | Self::TaskResolverDisplayName
+                | Self::TaskCommentId
+        )
+    }
+    pub(crate) fn valid_for(self, facet: DetailFacet) -> bool {
+        match facet {
+            DetailFacet::Participants => self.is_participant(),
+            DetailFacet::Tasks => self.is_task(),
+            _ => !self.is_participant() && !self.is_task(),
+        }
     }
 }
 

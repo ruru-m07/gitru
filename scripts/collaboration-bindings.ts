@@ -15,6 +15,9 @@ const detail = await Bun.file(
 const participants = await Bun.file(
   new URL("crates/collaboration/src/participants.rs", root),
 ).text();
+const tasks = await Bun.file(
+  new URL("crates/collaboration/src/tasks.rs", root),
+).text();
 const contextualCapabilities = await Bun.file(
   new URL("crates/collaboration/src/contextual_capabilities.rs", root),
 ).text();
@@ -68,9 +71,9 @@ const nativeOnlyTypes = new Set([
 // applying the ordinary Option/null correction below. Deliberately fail on an
 // unsupported shape rather than inventing a renderer-owned wire model.
 const payloadStructs = new Map(
-  [...participants.matchAll(/pub struct (\w+)\s*\{([^}]+)\}/g)].map(
-    ([, name, body]) => [name, body] as const,
-  ),
+  [
+    ...`${participants}\n${tasks}`.matchAll(/pub struct (\w+)\s*\{([^}]+)\}/g),
+  ].map(([, name, body]) => [name, body] as const),
 );
 const nativePayloadKinds = new Set<string>();
 for (const [, tag, content, name, body] of participants.matchAll(
@@ -144,6 +147,7 @@ for (const source of [
   error,
   detail,
   participants,
+  tasks,
   contextualCapabilities,
   resourceMetadata,
   demand,
@@ -199,30 +203,52 @@ for (const source of [
     generated = generated.replace(pattern, `$1${fields}$3`);
   }
 }
-// Only this native family is admitted today. Future families must qualify an
-// explicit guard extension rather than silently borrowing participant fields.
-if (nativePayloadKinds.size !== 1 || !nativePayloadKinds.has("participant.v1"))
-  throw new Error("Extend native detail field-family guards for this payload");
-const participantFamily = detail.match(
-  /fn is_participant\(self\) -> bool \{([\s\S]*?)\n    \}/,
-);
-if (!participantFamily)
-  throw new Error("Missing Rust participant field-family declaration");
-const participantFields = [
-  ...participantFamily[1].matchAll(/Self::(\w+)/g),
-].map(([, name]) => snake(name));
+// Qualify every native family explicitly; enum growth cannot silently borrow
+// another payload's authority or widen ordinary entry limits.
 if (
-  !participantFields.length ||
-  new Set(participantFields).size !== participantFields.length
+  nativePayloadKinds.size !== 2 ||
+  !nativePayloadKinds.has("participant.v1") ||
+  !nativePayloadKinds.has("task.v1")
 )
-  throw new Error("Invalid Rust participant field-family declaration");
+  throw new Error("Extend native detail field-family guards for this payload");
+const familyFields = (name: string, maximum: number): string[] => {
+  const family = detail.match(
+    new RegExp(`fn is_${name}\\(self\\) -> bool \\{([\\s\\S]*?)\\n    \\}`),
+  );
+  if (!family) throw new Error(`Missing Rust ${name} field-family declaration`);
+  const fields = [...family[1].matchAll(/Self::(\w+)/g)].map(([, field]) =>
+    snake(field),
+  );
+  if (fields.length !== maximum || new Set(fields).size !== fields.length)
+    throw new Error(`Extend qualified Rust ${name} field-family bound`);
+  return fields;
+};
+const participantFields = familyFields("participant", 6);
+const taskFields = familyFields("task", 12);
+const fieldsEnum = detail.match(/pub enum DetailField\s*\{([^}]+)\}/);
+if (!fieldsEnum) throw new Error("Missing Rust detail field enum");
+const fields = fieldsEnum[1]
+  .split(",")
+  .map((field) => field.trim())
+  .filter(Boolean)
+  .map(snake);
+const nativeFields = new Set([...participantFields, ...taskFields]);
+const genericFields = fields.filter((field) => !nativeFields.has(field));
+if (
+  nativeFields.size !== 18 ||
+  genericFields.length !== 6 ||
+  fields.length !== 24 ||
+  new Set(fields).size !== fields.length ||
+  [...nativeFields].some((field) => !fields.includes(field))
+)
+  throw new Error("Extend qualified disjoint detail field families");
 const entrySchema =
   /(export const DetailEntrySchema = z\.object\(\{[\s\S]*?\n\}\));/;
 if (!entrySchema.test(generated))
   throw new Error("Missing generated detail entry schema for family guard");
 generated = generated.replace(
   entrySchema,
-  `const detailParticipantFields = new Set<string>(${JSON.stringify(participantFields)});\n\n$1.superRefine((entry, context) => {\n  const participant = entry.native !== null;\n  if (entry.field_mask.some((field) => detailParticipantFields.has(field) !== participant) || entry.field_validations.some((validation) => detailParticipantFields.has(validation.field) !== participant)) {\n    context.addIssue({ code: "custom", path: ["native"], message: "Detail entry fields do not match its native payload" });\n  }\n});`,
+  `const detailFieldFamilies = {\n  generic: new Set<string>(${JSON.stringify(genericFields)}),\n  "participant.v1": new Set<string>(${JSON.stringify(participantFields)}),\n  "task.v1": new Set<string>(${JSON.stringify(taskFields)}),\n};\n\n$1.superRefine((entry, context) => {\n  const family = detailFieldFamilies[entry.native?.kind ?? "generic"];\n  const validations = entry.field_validations.map((validation) => validation.field);\n  if (entry.field_mask.length > family.size || validations.length > family.size || new Set(entry.field_mask).size !== entry.field_mask.length || new Set(validations).size !== validations.length || entry.field_mask.some((field) => !family.has(field)) || validations.some((field) => !family.has(field))) {\n    context.addIssue({ code: "custom", path: ["native"], message: "Detail entry fields do not match its native payload" });\n  }\n});`,
 );
 generated = generated.replace(
   /(export const Collaboration\w+ParamsSchema = z\.object\(\{)([\s\S]*?)(\n\}\);)/g,

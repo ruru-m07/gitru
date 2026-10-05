@@ -15,6 +15,7 @@ pub mod providers;
 pub mod resource_metadata;
 pub mod runtime;
 pub mod storage;
+pub mod tasks;
 
 pub use contextual_capabilities::*;
 pub use demand::*;
@@ -28,3 +29,4 @@ pub use resource_metadata::*;
 pub use runtime::CollaborationRuntime;
 pub use storage::Store;
 pub use storage::notification_subjects::{NotificationDiscoveryIntent, NotificationDiscoveryLease};
+pub use tasks::*;

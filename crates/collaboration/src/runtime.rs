@@ -21,6 +21,8 @@ mod bitbucket_participants_tests;
 #[cfg(test)]
 mod bitbucket_resource_reads_tests;
 #[cfg(test)]
+mod bitbucket_tasks_tests;
+#[cfg(test)]
 mod bitbucket_tests;
 mod clock;
 mod demand;

@@ -90,6 +90,8 @@ export type {
   ResourceMetadataSnapshot,
   ResourceMetadataValues,
   ResourceResolution,
+  TaskActor,
+  TaskV1,
   TransportBindingRequest,
 } from "@gitru/commands";
 export { StaleAuthorizationError } from "./authorization-fence";

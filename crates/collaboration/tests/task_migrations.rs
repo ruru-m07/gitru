@@ -1,6 +1,6 @@
-//! Frozen v7 input qualifies the actual forward rebuild, independently of today's
+//! Frozen v8 input qualifies the actual forward rebuild, independently of today's
 //! DTO serializers. The injected fault uses the production SQLx transaction and
-//! production 0008 statements, not a second migration implementation.
+//! production 0009 statements, not a second migration implementation.
 use std::path::Path;
 
 use collaboration::{
@@ -14,18 +14,19 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous},
 };
 
-const V7_SQL: [&str; 7] = [
-    include_str!("fixtures/migrations/v7/0001_local_collaboration.sql"),
-    include_str!("fixtures/migrations/v7/0002_credential_cutover.sql"),
-    include_str!("fixtures/migrations/v7/0003_provider_identities.sql"),
-    include_str!("fixtures/migrations/v7/0004_detail_scopes.sql"),
-    include_str!("fixtures/migrations/v7/0005_resource_metadata.sql"),
-    include_str!("fixtures/migrations/v7/0006_local_repository_links.sql"),
-    include_str!("fixtures/migrations/v7/0007_notification_subjects.sql"),
+const V8_SQL: [&str; 8] = [
+    include_str!("fixtures/migrations/v8/0001_local_collaboration.sql"),
+    include_str!("fixtures/migrations/v8/0002_credential_cutover.sql"),
+    include_str!("fixtures/migrations/v8/0003_provider_identities.sql"),
+    include_str!("fixtures/migrations/v8/0004_detail_scopes.sql"),
+    include_str!("fixtures/migrations/v8/0005_resource_metadata.sql"),
+    include_str!("fixtures/migrations/v8/0006_local_repository_links.sql"),
+    include_str!("fixtures/migrations/v8/0007_notification_subjects.sql"),
+    include_str!("fixtures/migrations/v8/0008_participant_facets.sql"),
 ];
-const V7_SEED: &str = include_str!("fixtures/migrations/v7/seed.sql");
-const V7_CHECKSUMS: &str = include_str!("fixtures/migrations/v7/checksums.sha384");
-const V8_SQL: &str = include_str!("../migrations/0008_participant_facets.sql");
+const V8_SEED: &str = include_str!("fixtures/migrations/v8/seed.sql");
+const V8_CHECKSUMS: &str = include_str!("fixtures/migrations/v8/checksums.sha384");
+const V9_SQL: &str = include_str!("../migrations/0009_task_facets.sql");
 static CURRENT: Migrator = sqlx::migrate!("./migrations");
 
 // JSON strings are wrapped, not parsed or re-serialized. This compares the
@@ -80,13 +81,13 @@ async fn connect(path: &Path) -> SqliteConnection {
     connection
 }
 
-async fn frozen_v7(path: &Path) {
+async fn frozen_v8(path: &Path) {
     let mut connection = connect(path).await;
     let mut tx = connection.begin().await.unwrap();
-    for sql in V7_SQL {
+    for sql in V8_SQL {
         sqlx::raw_sql(sql).execute(&mut *tx).await.unwrap();
     }
-    sqlx::raw_sql(V7_SEED).execute(&mut *tx).await.unwrap();
+    sqlx::raw_sql(V8_SEED).execute(&mut *tx).await.unwrap();
     tx.commit().await.unwrap();
     assert_integrity(&mut connection).await;
     connection.close().await.unwrap();
@@ -225,15 +226,64 @@ async fn assert_cold_saved_reads(store: &Store) {
                 assert!(saved.metadata.is_none());
             }
         }
+        let participants = store
+            .detail(detail_query(account_id, DetailFacet::Participants))
+            .await
+            .unwrap();
+        assert_eq!(
+            participants.evidence.availability,
+            DetailAvailability::Ready
+        );
+        assert_eq!(
+            participants.evidence.coverage.state,
+            CoverageState::Complete
+        );
+        assert_eq!(participants.evidence.sync.state, SyncState::Offline);
+        assert_eq!(participants.entries.len(), 1);
+        let record = &participants.entries[0];
+        let Some(collaboration::NativeDetailPayload::ParticipantV1(value)) = &record.native else {
+            panic!("Frozen v8 typed participant survives normal cold reads")
+        };
+        assert_eq!(
+            value.user.provider_id,
+            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        );
+        assert_eq!(value.user.login.as_deref(), Some("same-name"));
+        assert_eq!(
+            value.user.display_name.as_deref(),
+            Some(format!("{account_id} saved participant café 🦀").as_str())
+        );
+        assert_eq!(value.role.as_deref(), Some("FUTURE_OBSERVER"));
+        assert_eq!(value.approved, Some(account_id == "b"));
+        assert_eq!(value.state, None);
+        assert_eq!(value.participated_at, None);
+        assert_eq!(record.field_mask.len(), 6);
+        assert_eq!(record.field_validations.len(), 6);
+        assert!(
+            record
+                .field_validations
+                .iter()
+                .all(|field| field.source == "frozen-v8/participants/v1")
+        );
+        let tasks = store
+            .detail(detail_query(account_id, DetailFacet::Tasks))
+            .await
+            .unwrap();
+        assert_eq!(tasks.evidence.availability, DetailAvailability::Missing);
+        assert!(
+            tasks.entries.is_empty(),
+            "A migration must not invent task observations"
+        );
     }
     let pending = store.pending_details().await.unwrap();
-    assert_eq!(pending.len(), 8);
+    assert_eq!(pending.len(), 10);
     for account in ["a", "b"] {
         for facet in [
             DetailFacet::Body,
             DetailFacet::Comments,
             DetailFacet::Reviews,
             DetailFacet::Checks,
+            DetailFacet::Participants,
         ] {
             assert!(pending.iter().any(|demand| {
                 demand.account_id == account
@@ -272,13 +322,13 @@ async fn assert_cold_saved_reads(store: &Store) {
 }
 
 #[test]
-fn frozen_v7_sql_and_applied_checksums_remain_immutable() {
-    let checksums: Vec<_> = V7_CHECKSUMS
+fn frozen_v8_sql_and_applied_checksums_remain_immutable() {
+    let checksums: Vec<_> = V8_CHECKSUMS
         .lines()
         .map(|line| line.split_once("  ").unwrap().0)
         .collect();
-    assert_eq!(checksums.len(), 8);
-    for (index, sql) in V7_SQL.iter().enumerate() {
+    assert_eq!(checksums.len(), 9);
+    for (index, sql) in V8_SQL.iter().enumerate() {
         let historical = format!("{:x}", Sha384::digest(sql));
         assert_eq!(historical, checksums[index]);
         let production = CURRENT
@@ -292,18 +342,39 @@ fn frozen_v7_sql_and_applied_checksums_remain_immutable() {
             index + 1
         );
     }
-    assert_eq!(format!("{:x}", Sha384::digest(V7_SEED)), checksums[7]);
+    assert_eq!(format!("{:x}", Sha384::digest(V8_SEED)), checksums[8]);
 }
 
 #[tokio::test]
-async fn frozen_v7_upgrade_preserves_every_row_and_immediate_cold_reads() {
+async fn frozen_v8_schema_rejects_tasks_before_the_forward_migration() {
     let temp = tempfile::tempdir().unwrap();
-    let path = temp.path().join("collaboration.db");
-    frozen_v7(&path).await;
+    let path = temp.path().join("historical-v8.db");
+    frozen_v8(&path).await;
     let mut connection = connect(&path).await;
     let before = snapshot(&mut connection).await;
     let before_ledger = ledger(&mut connection).await;
-    assert_eq!(before_ledger.len(), 7);
+    assert_eq!(before_ledger.len(), 8);
+    for sql in [
+        "INSERT INTO detail_observations VALUES ('a','historical-task','tasks','17','9110','{}','{}',NULL,'known',NULL)",
+        "INSERT INTO detail_demand VALUES ('a','historical-task','tasks','17',1)",
+    ] {
+        assert!(sqlx::query(sql).execute(&mut connection).await.is_err());
+    }
+    assert_eq!(snapshot(&mut connection).await, before);
+    assert_eq!(ledger(&mut connection).await, before_ledger);
+    assert_integrity(&mut connection).await;
+    connection.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn frozen_v8_upgrade_preserves_every_row_and_immediate_cold_reads() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("collaboration.db");
+    frozen_v8(&path).await;
+    let mut connection = connect(&path).await;
+    let before = snapshot(&mut connection).await;
+    let before_ledger = ledger(&mut connection).await;
+    assert_eq!(before_ledger.len(), 8);
     connection.close().await.unwrap();
 
     for _ in 0..2 {
@@ -314,7 +385,7 @@ async fn frozen_v7_upgrade_preserves_every_row_and_immediate_cold_reads() {
         let mut connection = connect(&path).await;
         assert_eq!(snapshot(&mut connection).await, before);
         let after_ledger = ledger(&mut connection).await;
-        assert_eq!(&after_ledger[..7], &before_ledger);
+        assert_eq!(&after_ledger[..8], &before_ledger);
         let applied: Vec<i64> =
             sqlx::query_scalar("SELECT version FROM _sqlx_migrations ORDER BY version")
                 .fetch_all(&mut connection)
@@ -328,12 +399,12 @@ async fn frozen_v7_upgrade_preserves_every_row_and_immediate_cold_reads() {
                 .collect::<Vec<_>>()
         );
         let checksum: Vec<u8> =
-            sqlx::query_scalar("SELECT checksum FROM _sqlx_migrations WHERE version=8")
+            sqlx::query_scalar("SELECT checksum FROM _sqlx_migrations WHERE version=9")
                 .fetch_one(&mut connection)
                 .await
                 .unwrap();
-        assert_eq!(checksum, Sha384::digest(V8_SQL).to_vec());
-        let leftovers: i64 = sqlx::query_scalar("SELECT count(*) FROM sqlite_schema WHERE type='table' AND (name LIKE 'detail%_v8' OR name='detail_facets_v8_guard')")
+        assert_eq!(checksum, Sha384::digest(V9_SQL).to_vec());
+        let leftovers: i64 = sqlx::query_scalar("SELECT count(*) FROM sqlite_schema WHERE type='table' AND (name LIKE 'detail%_v9' OR name='detail_facets_v9_guard')")
             .fetch_one(&mut connection).await.unwrap();
         assert_eq!(leftovers, 0);
         assert_integrity(&mut connection).await;
@@ -342,29 +413,29 @@ async fn frozen_v7_upgrade_preserves_every_row_and_immediate_cold_reads() {
 }
 
 #[tokio::test]
-async fn actual_participant_rebuild_rolls_back_after_old_parent_drop() {
+async fn actual_task_rebuild_rolls_back_after_old_parent_drop() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("collaboration.db");
-    frozen_v7(&path).await;
+    frozen_v8(&path).await;
     let mut connection = connect(&path).await;
     let before = snapshot(&mut connection).await;
     let before_schema = schema(&mut connection).await;
     let before_ledger = ledger(&mut connection).await;
     let boundary = "DROP TABLE detail_observations;";
-    assert_eq!(V8_SQL.matches(boundary).count(), 1);
-    let fault_sql = V8_SQL.replacen(
+    assert_eq!(V9_SQL.matches(boundary).count(), 1);
+    let fault_sql = V9_SQL.replacen(
         boundary,
-        "DROP TABLE detail_observations;\nINSERT INTO nonexistent_participant_migration_target VALUES (1);",
+        "DROP TABLE detail_observations;\nINSERT INTO nonexistent_task_migration_target VALUES (1);",
         1,
     );
     let mut migrations: Vec<_> = CURRENT
         .iter()
-        .filter(|migration| migration.version < 8)
+        .filter(|migration| migration.version < 9)
         .cloned()
         .collect();
     migrations.push(Migration::new(
-        8,
-        "participant facets injected boundary failure".into(),
+        9,
+        "task facets injected boundary failure".into(),
         MigrationType::Simple,
         AssertSqlSafe(fault_sql).into_sql_str(),
         false,
@@ -373,11 +444,11 @@ async fn actual_participant_rebuild_rolls_back_after_old_parent_drop() {
         .run_direct(None, &mut connection, false)
         .await
         .unwrap_err();
-    assert!(matches!(&error, MigrateError::ExecuteMigration(_, 8)));
+    assert!(matches!(&error, MigrateError::ExecuteMigration(_, 9)));
     assert!(
         error
             .to_string()
-            .contains("nonexistent_participant_migration_target")
+            .contains("nonexistent_task_migration_target")
     );
     assert_eq!(schema(&mut connection).await, before_schema);
     assert_eq!(snapshot(&mut connection).await, before);
@@ -397,29 +468,23 @@ async fn actual_participant_rebuild_rolls_back_after_old_parent_drop() {
 }
 
 #[tokio::test]
-async fn upgraded_schema_admits_participants_and_preserves_body_only_metadata_and_fks() {
+async fn upgraded_schema_admits_tasks_and_preserves_body_only_metadata_and_fks() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("collaboration.db");
-    frozen_v7(&path).await;
+    frozen_v8(&path).await;
+    let store = Store::open(&path).await.unwrap();
+    store.close().await;
+    drop(store);
     let mut connection = connect(&path).await;
-    let historical: Vec<_> = CURRENT
-        .iter()
-        .filter(|migration| migration.version <= 8)
-        .cloned()
-        .collect();
-    Migrator::with_migrations(historical)
-        .run_direct(None, &mut connection, false)
-        .await
-        .unwrap();
     // These direct writes exercise schema admission only; provider eligibility
     // and typed native payload admission are qualified by the core/runtime tests.
-    sqlx::raw_sql("INSERT INTO detail_observations VALUES ('a','schema-participant-subject','participants','17','9109','{}','{}',NULL,'known',NULL); INSERT INTO detail_entries VALUES ('a','schema-participant-subject','participants','schema-participant-entry','{}','schema-run'); INSERT INTO detail_demand VALUES ('a','schema-participant-subject','participants','17',1);")
+    sqlx::raw_sql("INSERT INTO detail_observations VALUES ('a','schema-task-subject','tasks','17','9109','{}','{}',NULL,'known',NULL); INSERT INTO detail_entries VALUES ('a','schema-task-subject','tasks','schema-task-entry','{}','schema-run'); INSERT INTO detail_demand VALUES ('a','schema-task-subject','tasks','17',1);")
         .execute(&mut connection).await.unwrap();
     for statement in [
-        "INSERT INTO detail_observations VALUES ('a','schema-task-subject','tasks','17','9110','{}','{}',NULL,'known',NULL)",
-        "INSERT INTO detail_demand VALUES ('a','schema-task-subject','tasks','17',1)",
+        "INSERT INTO detail_observations VALUES ('a','schema-future-subject','future_task','17','9110','{}','{}',NULL,'known',NULL)",
+        "INSERT INTO detail_demand VALUES ('a','schema-future-subject','future_task','17',1)",
         "INSERT INTO detail_demand VALUES ('a','bad-requested-subject','participants','17',2)",
-        "INSERT INTO detail_resource_metadata VALUES ('a','schema-participant-subject','participants','17','{}','{}')",
+        "INSERT INTO detail_resource_metadata VALUES ('a','schema-task-subject','tasks','17','{}','{}')",
         "INSERT INTO detail_entries VALUES ('a','missing-parent','participants','orphan-entry','{}','schema-run')",
         "INSERT INTO detail_observations VALUES ('missing-account','schema-subject','participants','17','9110','{}','{}',NULL,'known',NULL)",
     ] {
@@ -437,11 +502,15 @@ async fn upgraded_schema_admits_participants_and_preserves_body_only_metadata_an
             .is_err(),
         "Account RESTRICT relationships survive the rebuild"
     );
-    sqlx::query("DELETE FROM detail_observations WHERE account_id='a' AND subject_id='schema-participant-subject'")
-        .execute(&mut connection).await.unwrap();
+    sqlx::query(
+        "DELETE FROM detail_observations WHERE account_id='a' AND subject_id='schema-task-subject'",
+    )
+    .execute(&mut connection)
+    .await
+    .unwrap();
     assert_eq!(
         sqlx::query_scalar::<_, i64>(
-            "SELECT count(*) FROM detail_entries WHERE subject_id='schema-participant-subject'"
+            "SELECT count(*) FROM detail_entries WHERE subject_id='schema-task-subject'"
         )
         .fetch_one(&mut connection)
         .await
@@ -451,7 +520,7 @@ async fn upgraded_schema_admits_participants_and_preserves_body_only_metadata_an
     );
     assert_eq!(
         sqlx::query_scalar::<_, i64>(
-            "SELECT count(*) FROM detail_demand WHERE subject_id='schema-participant-subject'"
+            "SELECT count(*) FROM detail_demand WHERE subject_id='schema-task-subject'"
         )
         .fetch_one(&mut connection)
         .await
@@ -489,7 +558,7 @@ async fn upgraded_schema_admits_participants_and_preserves_body_only_metadata_an
 async fn frozen_draft_generations_keep_cas_after_upgrade_and_cold_reopen() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("collaboration.db");
-    frozen_v7(&path).await;
+    frozen_v8(&path).await;
     let store = Store::open(&path).await.unwrap();
     assert_cold_saved_reads(&store).await;
     let original = store.draft("a", "pull-request-67").await.unwrap().unwrap();
