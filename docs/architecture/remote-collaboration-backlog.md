@@ -1565,3 +1565,28 @@ on Linux/macOS/Windows; final Windows E2E completed06:02:57UTC. Cloudflare,
 CodeRabbit and Vercel also pass. No exact-head CodeQL is reported. Local794Rust/
 473frontend remains separate from live private-provider/vault/new-panel native
 window or latency proof. R112 stays In Review and draft remains unmerged.
+
+
+### RURU-122 first Comments slice locally qualified — 5 October 2026
+
+Read-only GitHub PR/issue conversations now use native immutable collection
+addressing, own-comment clocks and the existing generic Comments storage/schema.
+Strict all-Link/noRedirect/no304 admission, bounded50/20page continuation and
+stable multipageUncertain prevent invalid absence; cold/yield/explicit-retry caps
+persist. Common opened-only raw-text/local50row/100cursor/gc0 paging, revision and
+privacy fences preserve private Body draft/CAS and singular demand. Root also
+fixes a demonstrated held200 account-quota loss before Store/reconciliation
+validation: actual RED→GREEN proves same-epoch120s durable barrier/cold sibling
+zeroHTTP/vault, with obsolete-epoch200/429 controls intact.
+
+Final serialized make verify exits0:815 Rust passed/3ignored (collaboration464/
+2ignored),499 frontend/55files, lint/types/prodbuild and all-target Clippy/fmt.
+21 focused native and45 new+legacy Workspace controls pass. Normal typegen114
+preserves291schemas/243aliases/114functions/1event/Branch with zero public changes;
+generator-only timestamp/order churn restored, no hand edits. Independent reviews,
+real fixture/old-control corrections and qualification limits are in the
+[Comments work note](./collaboration-work/RURU-122-comments.md). Signed publication/
+new-head remote CI remain separate next gates; no private-provider/vault/new UI
+native/latency proof, activity timeline/provider expansion or merge is inferred.
+R122 remains In Progress. R104 destructive retention awaits separate R99 recovery
+integration; bounded R102 independent-clock lifecycle audit is the next candidate.

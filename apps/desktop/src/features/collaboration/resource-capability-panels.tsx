@@ -23,6 +23,7 @@ import {
   dispatchCapabilityIntent,
   facetPolicy,
 } from "./capability-policy";
+import { ConversationCommentsPanel } from "./conversation-comments-panel";
 import { NativeParticipantsPanel } from "./native-participants-panel";
 import { NativeTasksPanel } from "./native-tasks-panel";
 
@@ -52,7 +53,6 @@ export function ResourceCapabilityPanels({
       detail: "body",
       capability: kind === "pull_request" ? "pull_details" : "issue_details",
     },
-    { detail: "comments", capability: "comments" },
     ...(kind === "pull_request"
       ? [
           { detail: "reviews" as const, capability: "reviews" as const },
@@ -72,6 +72,19 @@ export function ResourceCapabilityPanels({
           snapshot={snapshot}
         />
       ))}
+      <ConversationCommentsPanel
+        key={JSON.stringify([
+          "comments",
+          account.id,
+          account.actor_id,
+          account.authorization_epoch,
+          subjectId,
+        ])}
+        account={account}
+        subjectId={subjectId}
+        authorizationView={snapshot?.authorization_view}
+        policy={facetPolicy(snapshot, "comments")}
+      />
       {kind === "pull_request" ? (
         <NativeParticipantsPanel
           key={JSON.stringify([

@@ -1,13 +1,15 @@
 # RURU-122 — Cached conversation comments, first bounded slice
 
-Status: pre-code contract, 5 October2026. Read the shared engine/backlog first.
+Status: first Comments slice implemented and locally qualified, 5 October2026.
+Read the shared engine/backlog first; activity/provider expansion is still open.
 Isolated managed `ruru/ruru-122-conversation-comments` starts from attached
-Tasks draft#163 exact2e4b8d5c57e5dd0bb7dd0cbef5e4f521a870e588. Live R122 is
-Backlog with no attachment/duplicate; R77/R78 prerequisites are In Review and
+Tasks draft#163 exact2e4b8d5c57e5dd0bb7dd0cbef5e4f521a870e588. At the pre-code audit, live R122 was
+Backlog with no attachment/duplicate; R77/R78 prerequisites were In Review and
 implemented in ancestry. Current collaboration PRs have no reported failed
 checks; #163's exact remote matrix is running, distinct from local qualification.
 Primary untracked architecture work and unrelated PRs remain untouched. This
-contract must be reviewed and signed before source changes.
+contract was reviewed and signed as5856378 before source changes. R122 is now
+In Progress; source publication and its new-head remote CI remain separate.
 
 ## Scope and current primary evidence
 
@@ -222,3 +224,70 @@ make typegen114 and independent AST inventory preserve291schemas/243aliases,
 order/timestamp churn was discarded by restoring generated paths, no hand edits.
 Frontend26 focused real Workspace/SDK/bridge tests, scoped Biome and desktop types
 pass; full integration gates and publication remain pending.
+
+
+## Local implementation qualification — 5 October 2026
+
+Implemented the bounded GitHub.com PR/issue Comments mapper/strict collection
+transport and existing generic saved rows, plus common disclosure, safe raw text,
+50-row local keysets/100 cursor positions, facet revision/privacy fences and
+singular opened-scope native demand. No public DTO/schema/migration/SDK runtime
+change; other providers retain their capability policy. Collection page20 commits
+its inert next21 before rejecting future dispatch; ten-page yield, explicit retry
+and two cold reopen controls preserve the cap and Partial/history. Multipage
+terminal pages retain unseen rows; only a valid initial singleton may reconcile
+absence. Parent/max-row clocks do not order individual comment fields.
+
+Executed evidence:
+
+- `cargo test -p collaboration --lib comments`: all21 focused tests pass (11
+  actual finite HTTP matrices,1 profile control,9 real Runtime/SQLite cases).
+  Cold saved reads perform zero HTTP/vault; PR/issue/two actors/native IDs,
+  rename refusal/recovery, own clocks, nullable user/omitted/oversized bodies,
+  source identity/lease/access barriers, empty/full versus uncertain, local51
+  keysets, durable20-page cap, positive invalid-response quota are exercised.
+- Added held200 +Retry-After120 Store-rejection regression. Executed RED failed
+  exactly at missing provider:rest before the repair. Early captured-epoch quota
+  persistence once after fetch Ok turns it GREEN for head/selection/facet-denial,
+  exact120s durable deadline and cold sibling Body blocked before HTTP/vault.
+  Existing obsolete-epoch200/429, other-actor, saved facet/draft controls pass.
+- Synthetic typed Participant/Task independent-control fixtures initially failed
+  Store admission; corrected their full source-field families and captured subject
+  binding while retaining sparse entry masks and all original assertions. No
+  production validation was weakened. Old unsupported-GitHub detail test removes
+  only its obsolete Comments member; Reviews/Checks expectations remain intact.
+- `make typegen` normally generates114 commands. Independent AST inventory
+  against exactTasks2e4b8d5 preserves291schemas/243aliases,114 command functions,
+ 1event and public Git Branch fields with zero changed/added public contracts.
+  Generator-only ordering/timestamp churn was restored, not hand edited.
+- All26 new real Workspace/SDK/bridge cases pass. They prove closed/unsupported
+  zero work,51 local rows/gc0/100 cursors, safe/null/retained states, snapshot
+  scope/facet/epoch/revision guards, held page/head refresh/error/actor/authview
+  cuts, physical activity, explicit Sync/Recheck/restart, singular demand and
+  independent dirty-editor/draft CAS. Real regression corrections require explicit
+  restart generation for a synchronous unchanged reread and a valid current
+  first-page receipt before admitting demand during an epoch cut.
+- Full frontend exposed3 old eager-Comments/always-present unsupported-button
+  assumptions. Narrow root updates retain original Reviews/Checks/merge/draft
+  controls and add closed zero-read/open fourth-read/known-empty and unsupported
+  zero-work assertions. All45 combined new+legacy controls pass; incorrect
+  testing-library role option typing/formatting was corrected.
+- Final serialized **`make verify` exits0**: all499 frontend tests/55files,
+  repository lint/types/production desktop build, Rust fmt/all-target Clippy with
+  -Dwarnings, and full default workspace **815 passed/3ignored** (collaboration
+ 464passed/2ignored). One successful filtered Git child-control result is excluded
+  from the top-level815 count. No failed Rust result. Diff check passes.
+
+Native/provider and UI/Runtime independent reviews found no remaining reachable
+blocker after the quota fix; reviews are read-only, executed validation is root's
+separate evidence. Root used the serialized native lane, frozen copyfile Bun
+installation and scoped generated compatibility inspection. Reproducible tests
+are committed source; temporary qualification logs are not repository artifacts.
+
+Limits: no live private GitHub/PAT/keyring, GitLab/Bitbucket comments, inline review
+threads, activity timeline, writes, enterprise/DC/relay or new Comments native
+window/latency benchmark qualification. Anonymous public immutable routing is
+separate limited evidence. Existing R103 own-Webview/native harness branch remains
+separate and must be integrated with its qualification preserved. R122 stays In
+Progress. Attached draft publication/new-head remote CI are the next gates; no
+merge or full R122 completion is claimed.

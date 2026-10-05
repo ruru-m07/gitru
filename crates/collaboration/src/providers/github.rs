@@ -6,6 +6,7 @@ use super::{
     *,
 };
 use serde::Deserialize;
+mod comments;
 mod issue_details;
 mod notification_subject_discovery;
 pub mod notification_subjects;
@@ -23,7 +24,7 @@ impl GithubProvider {
         })
     }
     #[cfg(test)]
-    pub(super) fn for_test_base(base: reqwest::Url) -> Self {
+    pub(crate) fn for_test_base(base: reqwest::Url) -> Self {
         Self {
             http: GithubHttp::for_test_base(base).expect("fixture transport"),
         }
@@ -68,7 +69,10 @@ impl CollaborationProvider for GithubProvider {
             if matches!(
                 facet.facet,
                 ResourceFacet::PullDetails | ResourceFacet::IssueDetails
-            ) {
+            ) || facet.facet == ResourceFacet::Comments
+                && account.provider == ProviderKind::Github
+                && account.host == "github.com"
+            {
                 facet.state = CapabilityState::Supported;
                 facet.reason = None;
             }
@@ -81,6 +85,9 @@ impl CollaborationProvider for GithubProvider {
         token: &SecretToken,
         request: DetailRequest,
     ) -> Result<DetailPage, ProviderError> {
+        if request.facet == DetailFacet::Comments {
+            return self.request_comments(token, request).await;
+        }
         match &request.subject.kind {
             RemoteItemKind::PullRequest => {
                 self.request_resource_details(
@@ -350,6 +357,9 @@ impl CollaborationProvider for GithubProvider {
         Ok(page)
     }
 }
+
+#[cfg(test)]
+mod comments_tests;
 
 fn notification_access(token: &SecretToken, scopes: &str) -> bool {
     // gh commonly stores an existing OAuth user token. It is not a PAT, but

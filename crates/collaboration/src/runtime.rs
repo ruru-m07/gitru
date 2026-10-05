@@ -33,6 +33,8 @@ pub(crate) mod detail_tests;
 mod details;
 mod feeds;
 #[cfg(test)]
+mod github_comments_tests;
+#[cfg(test)]
 mod gitlab_probe_backoff_tests;
 #[cfg(test)]
 mod gitlab_tests;

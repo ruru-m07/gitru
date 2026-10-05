@@ -390,7 +390,16 @@ describe("Bitbucket Cloud saved pull requests", () => {
       "Not merged",
     ])
       expect(header.queryByText(unsupported)).not.toBeInTheDocument();
-    for (const facet of ["comments", "reviews", "checks"]) {
+    expect(
+      detail.queryByRole("button", { name: "Sync comments" }),
+    ).not.toBeInTheDocument();
+    await user.click(detail.getByRole("button", { name: "Comments" }));
+    const comments = within(detail.getByRole("region", { name: "Comments" }));
+    expect(comments.getByText("Feature not supported")).toBeVisible();
+    expect(
+      comments.queryByRole("button", { name: "Sync comments" }),
+    ).not.toBeInTheDocument();
+    for (const facet of ["reviews", "checks"]) {
       const button = detail.getByRole("button", { name: `Sync ${facet}` });
       expect(button).toBeDisabled();
       await user.click(button);
