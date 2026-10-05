@@ -21,8 +21,9 @@ import {
   facetPolicy,
   resourceCapabilityTarget,
 } from "./capability-policy";
+import { SavedDraftEditor } from "./private-draft";
 import { ProviderLink } from "./provider-link";
-import { PrivateDraft, SavedItemDetail } from "./saved-item-detail";
+import { SavedItemDetail } from "./saved-item-detail";
 
 type SubjectBinding = {
   id: string;
@@ -346,7 +347,7 @@ function NotificationDraft({
       <p className="mt-2">
         This thread draft is separate from the subject’s private draft.
       </p>
-      <PrivateDraft
+      <SavedDraftEditor
         account={account}
         subjectId={notificationId}
         label="Private notification draft"

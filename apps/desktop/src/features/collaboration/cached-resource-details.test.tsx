@@ -419,6 +419,58 @@ describe("cached PR and issue detail views", () => {
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
   });
 
+  it("copies current detail text and exports only its saved generation", async () => {
+    mockTauriCommandResult("collaboration_draft", {
+      account_id: fixtureAccount.id,
+      subject_id: fixtureItem.id,
+      body: "Saved detail draft",
+      generation: "1",
+    });
+    const save = mockTauriCommand("collaboration_save_draft", (payload) => ({
+      ...(
+        payload as {
+          draft: {
+            account_id: string;
+            subject_id: string;
+            body: string;
+            generation: string;
+          };
+        }
+      ).draft,
+      generation: "2",
+    }));
+    const exportDraft = mockTauriCommandResult(
+      "collaboration_export_draft",
+      true,
+    );
+    const { user, detail } = await open();
+    const copy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+    const editor = await detail.findByLabelText("Private draft");
+    await user.type(editor, " with current edits");
+    await user.click(detail.getByRole("button", { name: "Copy draft text" }));
+    expect(copy).toHaveBeenCalledWith("Saved detail draft with current edits");
+    expect(
+      detail.getByRole("button", { name: "Export saved draft" }),
+    ).toBeDisabled();
+    expect(detail.getByText("Save changes before exporting.")).toBeVisible();
+    await user.click(detail.getByRole("button", { name: "Save draft" }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(
+        detail.getByRole("button", { name: "Export saved draft" }),
+      ).toBeEnabled(),
+    );
+    await user.click(
+      detail.getByRole("button", { name: "Export saved draft" }),
+    );
+    expect(exportDraft).toHaveBeenCalledExactlyOnceWith({
+      accountId: fixtureAccount.id,
+      subjectId: fixtureItem.id,
+      generation: "2",
+    });
+    expect(await detail.findByText("Saved draft exported.")).toBeVisible();
+  });
+
   it("uses one explicit durable intent only after the user requests Sync", async () => {
     const hydrate = mockTauriCommandResult("collaboration_hydrate_detail", {
       job_id: "manual-request",

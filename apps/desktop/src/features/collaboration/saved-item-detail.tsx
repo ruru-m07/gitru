@@ -1,23 +1,16 @@
 import {
-  collaboration,
   collaborationErrorMessage,
   type RemoteAccount,
   type RemoteItemKind,
 } from "@gitru/collaboration-client";
 import {
-  draftQueryOptions,
   useCollaborationDetail,
   useCollaborationItem,
   useContextualCapabilities,
   useVisibleDemand,
 } from "@gitru/collaboration-client/react";
-import type { LocalDraft } from "@gitru/commands";
 import { Button } from "@gitru/ui/components/button";
-import { Field, FieldLabel } from "@gitru/ui/components/field";
-import { Textarea } from "@gitru/ui/components/textarea";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
-import { type FormEvent, useId, useState } from "react";
 import { CapabilityBoundary, ReadOnlyCapability } from "./capability-boundary";
 import {
   canMaintainDemand,
@@ -26,6 +19,7 @@ import {
   feedFacet,
   resourceCapabilityTarget,
 } from "./capability-policy";
+import { SavedDraftEditor } from "./private-draft";
 import { ResourceCapabilityPanels } from "./resource-capability-panels";
 import { SelectedResourceHeader } from "./resource-metadata";
 
@@ -164,159 +158,7 @@ export function SavedItemDetail({
         kind={kind}
         snapshot={providerEnabled ? context.data : undefined}
       />
-      <PrivateDraft account={account} subjectId={itemId} />
+      <SavedDraftEditor account={account} subjectId={itemId} />
     </article>
-  );
-}
-
-export function PrivateDraft({
-  account,
-  subjectId,
-  label = "Private draft",
-}: {
-  account: RemoteAccount;
-  subjectId: string;
-  label?: string;
-}) {
-  const query = useQuery(draftQueryOptions(account, subjectId));
-  // This is authored editor initialization, scoped by the parent account and
-  // subject keys. A provider authorization reset may reread local drafts, but
-  // cannot discard an already mounted editor's text during that reread.
-  const [loaded, setLoaded] = useState<{ draft: LocalDraft | null } | null>(
-    () => (query.data === undefined ? null : { draft: query.data }),
-  );
-  if (query.data !== undefined && query.data !== loaded?.draft) {
-    setLoaded({ draft: query.data });
-  }
-  return (
-    <>
-      {query.isError ? (
-        <p role="alert" className="mt-6 text-xs text-destructive-foreground">
-          {collaborationErrorMessage(query.error)}
-        </p>
-      ) : null}
-      {loaded ? (
-        <DraftForm
-          account={account}
-          itemId={subjectId}
-          initialBody={loaded.draft?.body ?? ""}
-          generation={loaded.draft?.generation ?? "0"}
-          label={label}
-        />
-      ) : null}
-    </>
-  );
-}
-
-function DraftForm({
-  account,
-  itemId,
-  initialBody,
-  generation,
-  label,
-}: {
-  account: RemoteAccount;
-  itemId: string;
-  initialBody: string;
-  generation: string;
-  label: string;
-}) {
-  const draftId = useId();
-  const [body, setBody] = useState(initialBody);
-  const [savedBody, setSavedBody] = useState(initialBody);
-  const [draftGeneration, setDraftGeneration] = useState(generation);
-  const [previousBody, setPreviousBody] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const queryClient = useQueryClient();
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSaving(true);
-    setError(null);
-    try {
-      const draft = await collaboration
-        .forAccount(account)
-        .saveDraft({ subject_id: itemId, body, generation: draftGeneration });
-      queryClient.setQueryData(
-        draftQueryOptions(account, itemId).queryKey,
-        draft,
-      );
-      setDraftGeneration(draft.generation);
-      setSavedBody(draft.body);
-    } catch (failure) {
-      setError(collaborationErrorMessage(failure));
-    } finally {
-      setSaving(false);
-    }
-  }
-  return (
-    <form className="mt-6 space-y-3 border-t pt-4" onSubmit={save}>
-      <Field name="private-draft">
-        <FieldLabel htmlFor={draftId}>{label}</FieldLabel>
-        <Textarea
-          id={draftId}
-          name="private-draft"
-          value={body}
-          disabled={saving}
-          onChange={(event) => setBody(event.currentTarget.value)}
-          maxLength={100_000}
-          rows={4}
-          placeholder="Keep a draft here for later…"
-        />
-      </Field>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">
-          Saved on this device. Visible only to you.
-        </p>
-        <Button
-          type="submit"
-          size="sm"
-          variant="outline"
-          disabled={
-            saving || body === savedBody || generation !== draftGeneration
-          }
-        >
-          {saving ? "Saving…" : "Save draft"}
-        </Button>
-      </div>
-      {generation !== draftGeneration ? (
-        <div className="space-y-2 text-xs text-muted-foreground">
-          <p>
-            This draft changed in another tab. Your text is still here. Reload
-            the saved draft before saving again.
-          </p>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setPreviousBody(body);
-              setBody(initialBody);
-              setSavedBody(initialBody);
-              setDraftGeneration(generation);
-              setError(null);
-            }}
-          >
-            Reload saved draft
-          </Button>
-        </div>
-      ) : null}
-      {previousBody !== null ? (
-        <details className="text-xs text-muted-foreground">
-          <summary className="cursor-pointer">Your previous draft text</summary>
-          <Textarea
-            aria-label="Previous draft text"
-            className="mt-2"
-            value={previousBody}
-            readOnly
-            rows={4}
-          />
-        </details>
-      ) : null}
-      {error ? (
-        <p role="alert" className="text-xs text-destructive-foreground">
-          {error}
-        </p>
-      ) : null}
-    </form>
   );
 }

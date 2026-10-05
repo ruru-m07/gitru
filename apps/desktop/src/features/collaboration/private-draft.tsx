@@ -2,7 +2,6 @@ import {
   collaboration,
   collaborationErrorMessage,
   type RemoteAccount,
-  type RemoteItem,
 } from "@gitru/collaboration-client";
 import { draftQueryOptions } from "@gitru/collaboration-client/react";
 import { Button } from "@gitru/ui/components/button";
@@ -11,22 +10,14 @@ import { Textarea } from "@gitru/ui/components/textarea";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useId, useState } from "react";
 
-export function PrivateDraft({
-  account,
-  item,
-}: {
-  account: RemoteAccount;
-  item: RemoteItem;
-}) {
-  return <SavedDraftEditor account={account} subjectId={item.id} />;
-}
-
 export function SavedDraftEditor({
   account,
   subjectId,
+  label = "Private draft",
 }: {
   account: RemoteAccount;
   subjectId: string;
+  label?: string;
 }) {
   const query = useQuery(draftQueryOptions(account, subjectId));
   if (query.isPending) return null;
@@ -48,6 +39,7 @@ export function SavedDraftEditor({
         itemId={subjectId}
         initialBody={query.data?.body ?? ""}
         generation={query.data?.generation ?? "0"}
+        label={label}
       />
     </div>
   );
@@ -58,11 +50,13 @@ function DraftForm({
   itemId,
   initialBody,
   generation,
+  label,
 }: {
   account: RemoteAccount;
   itemId: string;
   initialBody: string;
   generation: string;
+  label: string;
 }) {
   const draftId = useId();
   const [body, setBody] = useState(initialBody);
@@ -132,7 +126,7 @@ function DraftForm({
   return (
     <form className="mt-6 space-y-3 border-t pt-4" onSubmit={save}>
       <Field name="private-draft">
-        <FieldLabel htmlFor={draftId}>Private draft</FieldLabel>
+        <FieldLabel htmlFor={draftId}>{label}</FieldLabel>
         <Textarea
           id={draftId}
           name="private-draft"
