@@ -1590,3 +1590,32 @@ new-head remote CI remain separate next gates; no private-provider/vault/new UI
 native/latency proof, activity timeline/provider expansion or merge is inferred.
 R122 remains In Progress. R104 destructive retention awaits separate R99 recovery
 integration; bounded R102 independent-clock lifecycle audit is the next candidate.
+
+
+### Comments publication and RURU-102 clock contract — 5 October 2026
+
+Attached draft[Comments#164](https://github.com/ruru-m07/gitru/pull/164) exact signed
+aab107dacf11e67216de602e42954a61e46c4423 is stacked on#163. Final local make verify
+passes815Rust/3ignored and499frontend plus lint/types/build/Clippy/fmt; its new CI
+is running separately with no failures. R122 stays In Progress for later activity/
+provider criteria. No merge or live private-provider/vault/new native UI proof.
+
+Fresh liveR102/R104/prerequisite/PR/worktree/ancestry audit selects a bounded R102
+independent-clock lifecycle slice on that exact frozen head. R98/R76 are inherited;
+R104's R99 recovery/export is a separate fork and absent, so destructive eviction
+is deferred. The[pre-code clock contract](./collaboration-work/RURU-102-clock-lifecycle.md)
+requires RED before source-risk repair, accepted-epoch live monotonic plus full
+persisted budgets, actual held dispatch boundaries, peer/reconnect/cold/long-wait
+controls and zero public contract changes. Real OS suspend/invalid-clock restart
+and separateR103 own-Webview integration are not claimed. Root serializes gates;
+production Runtime and new fixture have distinct file owners. No R102 source or
+qualification exists yet; review/sign before implementation.
+
+
+R102 pre-code peer review accepts serialized Store-epoch/live-map publication and
+both native pre-vault/final pre-HTTP checks; private per-dispatch local refusal
+classification preserves original quota instead of inventing observations after
+a clock jump. One existing account map slot, narrow three Job initialization
+seams, real rejected-probe lifecycle and explicit post-vault boundary controls;
+no public DTO/schema or fairness-policy changes. Signed contract precedes fixture
+RED/production repair, and no clock defect/qualification is claimed before execution.
