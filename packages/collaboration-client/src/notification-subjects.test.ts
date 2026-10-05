@@ -113,6 +113,7 @@ function fixture() {
     }),
     connectGithub: unexpected,
     connectGitlab: unexpected,
+    connectBitbucketCloud: unexpected,
     connectGithubCli: unexpected,
     discoverGithubCli: unexpected,
     disconnect: async () => "2",

@@ -9,6 +9,45 @@ const MAX_HEADER: usize = 8192;
 const MAX_REDIRECTS: usize = 3;
 pub(super) const PROJECT_QUERY: &str =
     "membership=true&pagination=keyset&order_by=id&sort=asc&per_page=50";
+pub(super) const MERGE_REQUEST_QUERY: &str =
+    "state=all&scope=all&order_by=created_at&sort=asc&per_page=50";
+pub(super) const ISSUE_QUERY: &str =
+    "state=all&scope=all&issue_type=issue&pagination=keyset&order_by=id&sort=asc&per_page=50";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ItemRoute {
+    MergeRequests,
+    Issues,
+}
+impl ItemRoute {
+    fn segment(self) -> &'static str {
+        match self {
+            Self::MergeRequests => "merge_requests",
+            Self::Issues => "issues",
+        }
+    }
+    fn query(self) -> &'static str {
+        match self {
+            Self::MergeRequests => MERGE_REQUEST_QUERY,
+            Self::Issues => ISSUE_QUERY,
+        }
+    }
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum FeedPosition {
+    Offset(u64),
+    Keyset {
+        cursor: Option<String>,
+        after: Option<u64>,
+    },
+}
+#[derive(Clone, Copy)]
+enum Operation {
+    User,
+    Projects,
+    Feed { project: u64, route: ItemRoute },
+    Detail,
+}
 
 pub(super) struct GitlabHttp {
     client: Client,
@@ -55,6 +94,112 @@ impl GitlabHttp {
         }
         Ok(url)
     }
+    pub(super) fn resource_feed(
+        &self,
+        project: u64,
+        route: ItemRoute,
+    ) -> Result<Url, ProviderError> {
+        if project == 0 {
+            return Err(invalid());
+        }
+        let mut url = self
+            .base
+            .join(&format!("projects/{project}/{}", route.segment()))
+            .map_err(|_| invalid())?;
+        url.set_query(Some(route.query()));
+        if route == ItemRoute::MergeRequests {
+            url.query_pairs_mut().append_pair("page", "1");
+        }
+        Ok(url)
+    }
+    pub(super) fn resource_detail(
+        &self,
+        project: u64,
+        iid: u64,
+        route: ItemRoute,
+    ) -> Result<Url, ProviderError> {
+        if project == 0 || iid == 0 {
+            return Err(invalid());
+        }
+        self.base
+            .join(&format!("projects/{project}/{}/{iid}", route.segment()))
+            .map_err(|_| invalid())
+    }
+    pub(super) fn resource_continuation(
+        &self,
+        raw: &str,
+        project: u64,
+        route: ItemRoute,
+    ) -> Result<Url, ProviderError> {
+        let url = self.check_resource_raw(raw)?;
+        if url.path() != self.resource_feed(project, route)?.path() {
+            return Err(invalid());
+        }
+        match feed_position(&url, route)? {
+            FeedPosition::Offset(page) if page > 1 => {}
+            FeedPosition::Keyset { cursor, after } if cursor.is_some() || after.is_some() => {}
+            _ => return Err(invalid()),
+        }
+        Ok(url)
+    }
+    // Resource cursors can contain an encoded opaque query value. Numeric
+    // routes remain literal; decoded query keys/values have a finite allowlist.
+    fn check_resource_raw(&self, raw: &str) -> Result<Url, ProviderError> {
+        if raw.len() > 2048
+            || raw.trim() != raw
+            || raw.chars().any(|c| c.is_control() || c.is_whitespace())
+            || raw.contains(['\\', '#'])
+            || raw.split('?').next().is_none_or(|path| {
+                path.contains('%') || path.split('/').any(|part| matches!(part, "." | ".."))
+            })
+        {
+            return Err(invalid());
+        }
+        let url = Url::parse(raw).map_err(|_| invalid())?;
+        if url.origin() != self.base.origin()
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.fragment().is_some()
+        {
+            return Err(invalid());
+        }
+        Ok(url)
+    }
+    fn operation(&self, url: &Url) -> Result<Operation, ProviderError> {
+        if *url == self.user() {
+            return Ok(Operation::User);
+        }
+        if url.path() == self.projects().path() {
+            project_after(url)?;
+            return Ok(Operation::Projects);
+        }
+        let prefix = format!("{}projects/", self.base.path());
+        let parts: Vec<_> = url
+            .path()
+            .strip_prefix(&prefix)
+            .ok_or_else(invalid)?
+            .split('/')
+            .collect();
+        let project = parts
+            .first()
+            .and_then(|v| positive_id(v))
+            .ok_or_else(invalid)?;
+        let route = match parts.get(1) {
+            Some(&"merge_requests") => ItemRoute::MergeRequests,
+            Some(&"issues") => ItemRoute::Issues,
+            _ => return Err(invalid()),
+        };
+        match parts.len() {
+            2 => {
+                feed_position(url, route)?;
+                Ok(Operation::Feed { project, route })
+            }
+            3 if parts.get(2).and_then(|v| positive_id(v)).is_some() && url.query().is_none() => {
+                Ok(Operation::Detail)
+            }
+            _ => Err(invalid()),
+        }
+    }
     fn check_raw(&self, raw: &str) -> Result<Url, ProviderError> {
         if raw.len() > 2048
             || raw.trim() != raw
@@ -75,7 +220,14 @@ impl GitlabHttp {
         Ok(url)
     }
     fn check_operation(&self, raw: &str, original: &Url) -> Result<Url, ProviderError> {
-        let url = self.check_raw(raw)?;
+        let url = if matches!(
+            self.operation(original)?,
+            Operation::User | Operation::Projects
+        ) {
+            self.check_raw(raw)?
+        } else {
+            self.check_resource_raw(raw)?
+        };
         if url.path() != original.path() || url.query() != original.query() {
             return Err(invalid());
         }
@@ -86,12 +238,7 @@ impl GitlabHttp {
         original: Url,
         token: &SecretToken,
     ) -> Result<Page, ProviderError> {
-        let projects = original.path() == self.projects().path();
-        if projects {
-            project_after(&original)?;
-        } else if original != self.user() {
-            return Err(invalid());
-        }
+        let operation = self.operation(&original)?;
         let mut url = self.check_operation(original.as_str(), &original)?;
         let mut observed_cooldown = None;
         // One whole operation deadline also bounds redirect chains and chunking.
@@ -189,7 +336,9 @@ impl GitlabHttp {
                         observed_cooldown,
                     ));
                 }
-                if status.is_server_error() {
+                if status.is_server_error()
+                    || matches!(status, StatusCode::REQUEST_TIMEOUT | StatusCode::CONFLICT)
+                {
                     return Err(ProviderError {
                         kind: ProviderErrorKind::Unavailable,
                         retry_after_seconds: retry,
@@ -205,11 +354,29 @@ impl GitlabHttp {
                     None => None,
                 };
                 if let Some(next) = &next {
-                    if !projects {
+                    let validated = match operation {
+                        Operation::Projects => self.continuation(next),
+                        Operation::Feed { project, route } => {
+                            self.resource_continuation(next, project, route)
+                        }
+                        _ => Err(invalid()),
+                    }
+                    .map_err(|e| with_quota(e, observed_cooldown))?;
+                    if let Operation::Feed { route, .. } = operation
+                        && (validated == original
+                            || match (
+                                feed_position(&original, route)?,
+                                feed_position(&validated, route)?,
+                            ) {
+                                (FeedPosition::Offset(current), FeedPosition::Offset(next)) => {
+                                    current.checked_add(1) != Some(next)
+                                }
+                                (FeedPosition::Keyset { .. }, FeedPosition::Keyset { .. }) => false,
+                                _ => true,
+                            })
+                    {
                         return Err(with_quota(invalid(), observed_cooldown));
                     }
-                    self.continuation(next)
-                        .map_err(|e| with_quota(e, observed_cooldown))?;
                 }
                 if response
                     .content_length()
@@ -251,6 +418,55 @@ pub(super) fn positive_id(raw: &str) -> Option<u64> {
     raw.parse::<u64>()
         .ok()
         .filter(|id| *id > 0 && id.to_string() == raw)
+}
+pub(super) fn feed_position(url: &Url, route: ItemRoute) -> Result<FeedPosition, ProviderError> {
+    let mut pairs = std::collections::HashMap::new();
+    for (key, value) in url.query_pairs() {
+        if pairs.insert(key.to_string(), value.to_string()).is_some() {
+            return Err(invalid());
+        }
+    }
+    for (key, value) in Url::parse(&format!("https://fixture.invalid/?{}", route.query()))
+        .map_err(|_| invalid())?
+        .query_pairs()
+    {
+        if pairs.remove(key.as_ref()).as_deref() != Some(value.as_ref()) {
+            return Err(invalid());
+        }
+    }
+    let position = match route {
+        ItemRoute::MergeRequests => FeedPosition::Offset(
+            pairs
+                .remove("page")
+                .as_deref()
+                .and_then(positive_id)
+                .ok_or_else(invalid)?,
+        ),
+        ItemRoute::Issues => {
+            let cursor = pairs.remove("cursor");
+            if cursor.as_ref().is_some_and(|v| {
+                v.is_empty()
+                    || v.len() > 1024
+                    || !v.bytes().all(|b| {
+                        b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'+' | b'/' | b'=')
+                    })
+            }) {
+                return Err(invalid());
+            }
+            let after = pairs
+                .remove("id_after")
+                .map(|v| positive_id(&v).ok_or_else(invalid))
+                .transpose()?;
+            if cursor.is_some() && after.is_some() {
+                return Err(invalid());
+            }
+            FeedPosition::Keyset { cursor, after }
+        }
+    };
+    if !pairs.is_empty() {
+        return Err(invalid());
+    }
+    Ok(position)
 }
 pub(super) fn project_after(url: &Url) -> Result<Option<u64>, ProviderError> {
     let mut pairs = std::collections::HashMap::new();

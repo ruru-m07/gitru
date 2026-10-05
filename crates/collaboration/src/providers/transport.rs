@@ -4,6 +4,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const MAX_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
 const MAX_REDIRECTS: usize = 3;
+const MAX_COLLECTION_URL: usize = 2048;
+const MAX_COLLECTION_LINK_BYTES: usize = 8192;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProviderErrorKind {
@@ -175,6 +177,240 @@ impl GithubHttp {
         let paths = [url.path().to_string()];
         self.get_policy(url, token, &HttpValidators::default(), &paths, true)
             .await
+    }
+
+    /// Conversation collections use a narrower policy than existing feeds and
+    /// point reads: their empty page must not acquire authority through a redirect
+    /// or through pagination evidence that was silently discarded.
+    pub(crate) fn check_collection_url(
+        &self,
+        raw: &str,
+        expected_path: &str,
+    ) -> Result<(Url, u64), ProviderError> {
+        let invalid = || ProviderError::new(ProviderErrorKind::InvalidResponse);
+        if raw.len() > MAX_COLLECTION_URL
+            || raw.chars().any(|c| c.is_control() || c.is_whitespace())
+            || raw.contains(['%', '\\', '#'])
+            || raw
+                .split('?')
+                .next()
+                .is_none_or(|path| path.split('/').any(|segment| matches!(segment, "." | "..")))
+        {
+            return Err(invalid());
+        }
+        let url = Url::parse(raw).map_err(|_| invalid())?;
+        self.check_url(&url)?;
+        if url.as_str() != raw || url.path() != expected_path {
+            return Err(invalid());
+        }
+        if url
+            .query()
+            .is_none_or(|query| query.split('&').any(str::is_empty))
+        {
+            return Err(invalid());
+        }
+        let mut per_page = false;
+        let mut page = None;
+        for (key, value) in url.query_pairs() {
+            match key.as_ref() {
+                "per_page" if !per_page && value == "50" => per_page = true,
+                "page" if page.is_none() => {
+                    let number = value.parse::<u64>().map_err(|_| invalid())?;
+                    if number == 0 || number.to_string() != value.as_ref() {
+                        return Err(invalid());
+                    }
+                    page = Some(number);
+                }
+                _ => return Err(invalid()),
+            }
+        }
+        if !per_page {
+            return Err(invalid());
+        }
+        Ok((url, page.unwrap_or(1)))
+    }
+
+    fn collection_next(
+        &self,
+        headers: &header::HeaderMap,
+        expected_path: &str,
+        current: u64,
+    ) -> Result<Option<String>, ProviderError> {
+        let invalid = || ProviderError::new(ProviderErrorKind::InvalidResponse);
+        let mut bytes = 0usize;
+        let mut links = std::collections::BTreeMap::new();
+        for value in headers.get_all(header::LINK).iter() {
+            let value = value.to_str().map_err(|_| invalid())?;
+            bytes = bytes.checked_add(value.len()).ok_or_else(invalid)?;
+            if value.is_empty() || bytes > MAX_COLLECTION_LINK_BYTES {
+                return Err(invalid());
+            }
+            for link in value.split(',') {
+                let (raw, parameters) = link
+                    .trim()
+                    .strip_prefix('<')
+                    .and_then(|link| link.split_once('>'))
+                    .ok_or_else(invalid)?;
+                let relation = parameters
+                    .trim()
+                    .strip_prefix(';')
+                    .map(str::trim)
+                    .and_then(|parameter| parameter.strip_prefix("rel=\""))
+                    .and_then(|parameter| parameter.strip_suffix('"'))
+                    .filter(|relation| matches!(*relation, "next" | "prev" | "first" | "last"))
+                    .ok_or_else(invalid)?;
+                let (_, page) = self.check_collection_url(raw, expected_path)?;
+                if links.insert(relation, (page, raw.to_string())).is_some() {
+                    return Err(invalid());
+                }
+            }
+        }
+        let next = links.get("next");
+        if next.is_some_and(|(page, _)| current.checked_add(1) != Some(*page))
+            || links
+                .get("prev")
+                .is_some_and(|(page, _)| current <= 1 || *page != current - 1)
+            || links.get("first").is_some_and(|(page, _)| *page != 1)
+            || links.get("last").is_some_and(|(page, _)| {
+                *page < current
+                    || *page > current && next.is_none()
+                    || *page == current && next.is_some()
+            })
+        {
+            return Err(invalid());
+        }
+        Ok(next.map(|(_, url)| url.clone()))
+    }
+
+    pub(crate) async fn get_collection(
+        &self,
+        url: Url,
+        token: &SecretToken,
+        expected_path: &str,
+        current: u64,
+    ) -> Result<HttpPage, ProviderError> {
+        let (url, page) = self.check_collection_url(url.as_str(), expected_path)?;
+        if current == 0 || current > 20 || page != current {
+            return Err(ProviderError::new(ProviderErrorKind::InvalidResponse));
+        }
+        let mut authorization =
+            header::HeaderValue::from_str(&format!("Bearer {}", token.expose()))
+                .map_err(|_| ProviderError::new(ProviderErrorKind::Authentication))?;
+        authorization.set_sensitive(true);
+        let mut observed_cooldown = None;
+        tokio::time::timeout(Duration::from_secs(20), async {
+            let mut response = self
+                .client
+                .get(url)
+                .header(header::AUTHORIZATION, authorization)
+                .header(header::ACCEPT, "application/vnd.github+json")
+                .header(header::USER_AGENT, "Gitru-Desktop")
+                .header("X-GitHub-Api-Version", "2026-03-10")
+                .send()
+                .await
+                .map_err(|error| {
+                    ProviderError::new(if error.is_connect() || error.is_timeout() {
+                        ProviderErrorKind::Offline
+                    } else {
+                        ProviderErrorKind::Unavailable
+                    })
+                })?;
+            let status = response.status();
+            let remaining = header_number(response.headers(), "x-ratelimit-remaining");
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let reset = header_number(response.headers(), "x-ratelimit-reset")
+                .map(|reset| reset.saturating_sub(now).max(1));
+            let primary_wait = (remaining == Some(0)).then(|| reset.unwrap_or(60));
+            let retry = header_number(response.headers(), "retry-after").map(|wait| wait.max(1));
+            let cooldown = primary_wait.into_iter().chain(retry).max();
+            observed_cooldown = cooldown;
+            let fail = |kind| ProviderError::new(kind).with_cooldown(cooldown);
+            if status.is_redirection() {
+                // Includes an unsolicited 304. This mode never sends validators.
+                return Err(fail(ProviderErrorKind::InvalidResponse));
+            }
+            if status == StatusCode::UNAUTHORIZED {
+                return Err(fail(ProviderErrorKind::Authentication));
+            }
+            if status == StatusCode::TOO_MANY_REQUESTS
+                || status == StatusCode::FORBIDDEN && cooldown.is_some()
+            {
+                let wait = cooldown.unwrap_or(60);
+                return Err(ProviderError {
+                    kind: ProviderErrorKind::RateLimited,
+                    retry_after_seconds: Some(wait),
+                    account_cooldown_seconds: Some(wait),
+                });
+            }
+            if status == StatusCode::NOT_FOUND || status == StatusCode::GONE {
+                return Err(fail(ProviderErrorKind::NotFound));
+            }
+            if status.is_server_error() || status == StatusCode::REQUEST_TIMEOUT {
+                return Err(fail(ProviderErrorKind::Unavailable));
+            }
+            if status != StatusCode::OK && status != StatusCode::FORBIDDEN {
+                return Err(fail(ProviderErrorKind::InvalidResponse));
+            }
+            let next_url = if status == StatusCode::OK {
+                self.collection_next(response.headers(), expected_path, current)
+                    .map_err(|error| error.with_cooldown(cooldown))?
+            } else {
+                None
+            };
+            if response
+                .content_length()
+                .is_some_and(|length| length > MAX_RESPONSE_BYTES as u64)
+            {
+                return Err(fail(ProviderErrorKind::InvalidResponse));
+            }
+            let mut body = Vec::new();
+            while let Some(chunk) = response
+                .chunk()
+                .await
+                .map_err(|_| fail(ProviderErrorKind::Unavailable))?
+            {
+                if chunk.len() > MAX_RESPONSE_BYTES.saturating_sub(body.len()) {
+                    return Err(fail(ProviderErrorKind::InvalidResponse));
+                }
+                body.extend_from_slice(&chunk);
+            }
+            if status == StatusCode::FORBIDDEN {
+                let limited = serde_json::from_slice::<serde_json::Value>(&body)
+                    .ok()
+                    .and_then(|value| {
+                        value
+                            .get("message")
+                            .and_then(serde_json::Value::as_str)
+                            .map(|message| message.to_ascii_lowercase().contains("rate limit"))
+                    })
+                    .unwrap_or(false);
+                return Err(if limited {
+                    ProviderError {
+                        kind: ProviderErrorKind::RateLimited,
+                        retry_after_seconds: Some(60),
+                        account_cooldown_seconds: Some(60),
+                    }
+                } else {
+                    fail(ProviderErrorKind::Permission)
+                });
+            }
+            Ok(HttpPage {
+                body,
+                not_modified: false,
+                validators: HttpValidators::default(),
+                next_url,
+                poll_interval_seconds: None,
+                cooldown_seconds: cooldown,
+                oauth_scopes: None,
+            })
+        })
+        .await
+        .map_err(|_| {
+            ProviderError::new(ProviderErrorKind::Offline).with_cooldown(observed_cooldown)
+        })?
     }
 
     async fn get_policy(

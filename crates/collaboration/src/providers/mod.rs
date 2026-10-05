@@ -1,5 +1,6 @@
 //! Adapters normalize provider resources; scheduling and persistence stay outside.
 
+pub mod bitbucket_cloud;
 #[cfg(test)]
 mod contract_tests;
 pub mod github;

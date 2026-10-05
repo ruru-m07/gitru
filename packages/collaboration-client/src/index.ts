@@ -4,6 +4,7 @@ import {
   collaborationCapabilities,
   collaborationChangesSince,
   collaborationConfirmLocalLink,
+  collaborationConnectBitbucketCloud,
   collaborationConnectGithub,
   collaborationConnectGithubCli,
   collaborationConnectGitlab,
@@ -54,6 +55,7 @@ export type {
   DetailBranch,
   DetailEntry,
   DetailEvidence,
+  DetailFieldValidation,
   DetailLabel,
   DetailMilestone,
   DetailQuery,
@@ -74,8 +76,11 @@ export type {
   LocalRepositoryLink,
   LocalTransportBinding,
   MetadataFieldEvidence,
+  NativeDetailPayload,
   NotificationSubjectQuery,
   NotificationSubjectSnapshot,
+  ParticipantUser,
+  ParticipantV1,
   ReleaseDemandRequest,
   RemoteAccount,
   RemoteItem,
@@ -85,6 +90,8 @@ export type {
   ResourceMetadataSnapshot,
   ResourceMetadataValues,
   ResourceResolution,
+  TaskActor,
+  TaskV1,
   TransportBindingRequest,
 } from "@gitru/commands";
 export { StaleAuthorizationError } from "./authorization-fence";
@@ -94,6 +101,8 @@ export type LocalLinkState =
   import("@gitru/commands").LocalRepositoryLink["state"];
 export type RemoteItemKind = import("@gitru/commands").ItemQuery["kind"];
 export type DetailFacet = import("@gitru/commands").DetailQuery["facet"];
+export type DetailField =
+  import("@gitru/commands").DetailEntry["field_mask"][number];
 export type CapabilityObservation =
   import("@gitru/commands").ContextFacetCapability["observation"];
 export type ContextCapabilityReason = NonNullable<
@@ -139,6 +148,8 @@ export const collaboration = new CollaborationClient({
   accounts: () => collaborationAccounts({}),
   connectGithub: (token) => collaborationConnectGithub({ token }),
   connectGitlab: (token) => collaborationConnectGitlab({ token }),
+  connectBitbucketCloud: (token) =>
+    collaborationConnectBitbucketCloud({ token }),
   discoverGithubCli: () => collaborationDiscoverGithubCli({}),
   connectGithubCli: (candidateId) =>
     collaborationConnectGithubCli({ candidateId }),

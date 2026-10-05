@@ -620,7 +620,7 @@ Acceptance criteria:
 
 ## RURU-111: Sync GitLab merge requests and issues through shared local queries
 
-Planning key: C28. Group: Provider rollout. Priority: Medium. State: Backlog.
+Planning key: C28. Group: Provider rollout. Priority: Medium. State: In Review (local qualification recorded below).
 Linear: [RURU-111](https://linear.app/catra/issue/RURU-111/sync-gitlab-merge-requests-and-issues-through-shared-local-queries).
 Prerequisites: [RURU-100](https://linear.app/catra/issue/RURU-100/drive-collaboration-ui-from-typed-resource-capabilities), [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-110](https://linear.app/catra/issue/RURU-110/connect-gitlab-accounts-and-discover-repositories).
 
@@ -628,9 +628,9 @@ Implement GitLab MR/issue summary and supported detail reads using ordinary coll
 
 Acceptance criteria:
 
-- [ ] Retain immutable native IDs, scoped IIDs/locators and provider facets while sharing local projections and queries.
-- [ ] Support progressive paging, independently cached details, offline restart and explicit capability/access states.
-- [ ] Divergent fixtures cover state transitions, transfers/renames, pagination and access loss with no GitLab branches in ordinary UI.
+- [x] Retain immutable native IDs, scoped IIDs/locators and provider facets while sharing local projections and queries.
+- [x] Support progressive paging, independently cached details, offline restart and explicit capability/access states.
+- [x] Divergent fixtures cover state transitions, transfers/renames, pagination and access loss with no GitLab branches in ordinary UI.
 
 ## RURU-127: Support GitLab todos with explicit inbox semantics
 
@@ -1727,3 +1727,403 @@ Full evidence/previous failure boundaries are in the [R103 work note](./collabor
 Publishing to existing #157; new exact-head remote CI remains pending separately
 from these local results. Previous9ef7148 retainedWindows failure is not labeled
 a new-head Windows pass. No merge or live credentials.
+
+### RURU-111 GitLab MR/issue reads qualified locally — 4 October 2026
+
+GitLab.com selected projects now synchronize all-state MR and issue summaries and
+independent singleton Body/common metadata through the existing native scheduler,
+SQLite, provider traits and ordinary shared detail UI. Immutable global IDs remain
+separate from project IIDs; numeric routes and bounded account/epoch/project/kind
+cursors preserve identity across renamed display paths and copied issue moves.
+Unconditional MR creation-order offset and issue ID keyset traversals fail partial
+on malformed/replayed/cross-scope paging; neither is claimed an atomic snapshot.
+List clocks do not validate Body. Omitted/null/empty/oversized descriptions and
+missing asynchronous MR diff references retain explicit states. GitLab inbox,
+discussions, approval/check facets, remote writes and self-hosted instances remain
+unsupported. No migration, public DTO or generated IPC signature changes occur.
+
+Local evidence: full collaboration329 passed/two ignored, workspace all-target
+Clippy-Dwarnings and format, complete frontend413 tests/48 files, repository lint,
+types including desktop/E2E/testing and production frontend build pass. Shared
+GitLab MR/issue UI tests preserve private drafts and use ephemeral detail demand
+without durable hydration. Actual synthetic HTTP-to-Runtime-to-SQLite regressions
+cover inert cold reopen, copied identities, concealed404 and late old-epoch cache/
+quota veto. No personal credentials, live provider or production vault was used.
+The review PR is stacked on #156; its remote platform checks qualify its own head.
+No PR is merged. See [R111 work note](./collaboration-work/RURU-111.md).
+
+Vercel reauthentication is resolved: #155's exact725b9f2 deployment
+`dpl_6UXbMPbqvvj1Fd6RXKGtCFFMiBdU` is READY with build completed3 October13:41:13Z,
+although its GitHub check still reports Pending. No check override or redeploy is
+claimed. #156's reported11 checks pass; no exact-head CodeQL is reported there.
+
+
+Final independent review found an async diff-reference missingness edge. Base now
+requires both the MR SHA and diff_refs.head_sha to be known, nonempty and equal
+before accepting start_sha. Missing, null, empty and mismatched heads leave Base
+Omitted while independently qualified Body/title/state remain available. Eight
+actual HTTP shapes preserve the known matching-head target-start control. After
+this correction the full collaboration suite still passes329/two ignored,
+focused HTTP14/14, workspace all-target Clippy-Dwarnings and formatting pass.
+Logs: /tmp/gitru-ruru111-async-head-{http,full,clippy,fmt-check}.log.
+
+
+### RURU-111 inherited Linux immediate-reopen repair — 4 October 2026
+
+Published5eab038 run37194446146 passes frontend/Clippy and macOS/Windows Rust;
+Linux job111413272739 fails the unchanged demand cold-reopen test at1228 with
+Busy immediately after close/drop. The same earlier one-off R101 boundary is now
+an actual repeated failure; it is not declared fixed by isolated local success.
+
+A deterministic actual-Store regression keeps a duplicated Unix file descriptor:
+reader close and a surviving Store clone remain Busy; after weak Inner proves all
+owners gone, the old raw File still blocks immediate reopen. A raw OS control
+confirms flock remains attached to the shared open file description across dup/
+fork until explicitly unlocked or all duplicates close. The exact process that
+may have inherited a descriptor in remote CI is not instrumented or claimed.
+
+A private WriterLease now explicitly unlocks only on final Inner destruction,
+with its field after writer/readers so their handles drop first. The stable lock
+inode, clone/close exclusivity, crash OS release and bootstrap failure/cancellation
+ownership stay intact. No early close unlock, sleeps, retry masking, schema/public
+API or original demand-test assertion changes occur. New tests also prove closing
+the old duplicate cannot release the reopened owner's independent lock.
+
+Focused raw/Store controls2/2, unchanged demand restart1/1 and existing ownership
+case1/1 pass. Full collaboration331/two ignored, workspace all-target
+Clippy-Dwarnings and formatting pass. Pre-fix red and final green logs:
+/tmp/gitru-ruru111-writer-lease-{baseline,red,green,demand,ownership,full,clippy,
+ fmt-check}.log. A new signed #159 head must qualify its own remote platforms;
+old failing CI is retained as history. The same private fix is integrated into
+R103 before its next retained native build. R106 coordinated shutdown/current-
+schema backup qualification remains open. No PR is merged.
+
+
+### RURU-112 bounded Bitbucket Cloud account slice started — 4 October 2026
+
+Live Linear/PR/worktree/dependency audit selected R112 after R111/#159 repaired
+`ebb8ae1` passes its exact Linux Rust job; its Windows packaged check remains
+separate. Reviewed R76/R100 prerequisites are unmerged. An isolated attached
+worktree on that head now owns the first repository-only account slice, with
+native adapter/runtime/test and SDK/UI work in parallel under disjoint paths.
+Signed pre-code contracts ee0edda/e9bd990/f1d1a14 live in
+[the R112 work note](./collaboration-work/RURU-112.md). R112 remains In Progress:
+PR summaries/Body and explicit native participant/task facets require later chunks.
+
+Current official Bitbucket sources confirm token-only Bearer API tokens and the
+removed native issue/app-password endpoints. The proposed fixed public connection
+uses existing native vault/actor/epoch cutover, no Gitru cloud or ambient credential
+lookup; only repository capability is supported in this slice. Workspace-to-member-
+repository opaque continuation state is account/epoch bound and bounded. Shared
+per-job page limits merely yield, so this private cursor persists continuation
+fingerprints and a20 accepted-page/20workspace limit across resumption/reopen.
+Exhaustion remains Partial without inferred absence; capped large accounts need a
+later explicit restart/coverage policy. Response-detected loops reject the page;
+bounded retries may refetch its current URL but never follow the repeated target.
+Username-only clone metadata is validated then discarded, not executed/persisted.
+
+At the frozen additive main-only command signature, normal make typegen passes114
+commands. Independent AST comparison preserves all285 prior schemas and adds only
+Bitbucket connect params. Adapter/UI implementation and qualification are underway;
+this record does not claim live provider, platform, completed R112 or publication.
+R103's repaired source is separately published in #157 atcce498b with fresh macOS
+retained proof and exact-head remote CI running; R121/#158 and R111/#159 stay review
+stacks. No merge is authorized or performed.
+
+### RURU-112 first account/repository slice qualified — 4 October 2026
+
+Signed source4dad563 implements manual token-only Bitbucket Cloud accounts and
+UUID member-repository discovery in the existing native vault/SQLite/scheduler,
+generated SDK command and ordinary account dialog/repository picker. Repositories
+alone are supported; PR/Body and explicit participants/tasks remain required and
+R112 stays In Progress. Durable20 accepted-page/20workspace/fingerprint caps retain
+Partial coverage/historical authorized rows across cold/manual resume; a capped
+large account still needs a later explicit restart/coverage policy.
+
+Actual HTTP17 plus Runtime/SQLite7 focused cases pass24; full default workspace706
+top-level tests/three ignored passes, including355 collaboration and native caller
+policy. Clippy/fmt and fresh24 after the equivalent style cleanup pass. Frontend431
+tests/50files, lint/types and production build pass. Normal typegen114 preserves
+all285 prior schemas,237 aliases,113 commands/events and adds only token connect.
+Known-actor invalid-presentation quota regression is recorded red/green without
+credential staging/cache replacement. Full evidence and platform/live limitations
+are in [R112's work note](./collaboration-work/RURU-112.md). Publication and exact-
+head remote qualification remain separate. No live credentials or merge.
+
+
+### RURU-112 second bounded slice contract — 4 October 2026
+
+First account/repository draft #160 exact968cd524 passes all11 reported checks,
+including all-platform Rust/ordinary packaged E2E. R112 stays In Progress: PR and
+explicit participant/task facets remain. The next isolated stack accepts the
+[PR-summary/Body contract](./collaboration-work/RURU-112-pulls.md) before code.
+Compound repoUUID/local PR identity, exact all-state opaque pagination, durable20
+page/history bound, singleton rendered.description.raw authority, full-OID refs,
+and typed unsupported differences use the existing Runtime/SQLite/SDK. The stable
+UUID repository child route is explicitly a documentation inference until live
+qualification; no provider credentials are read. No migration/scheduler/SDK
+production change is planned. R103/#157 latest9ef7148 repair is separately pushed
+with local all5 retained stages passing; its new remote matrix runs independently.
+No merge. First #160 remains unchanged while the new reviewable slice is prepared.
+
+
+R112 PR-read integration first49-case native run:45 passed,4 failed. Two actual
+HTTP singleton failures expose lost account cooldown during detail error conversion;
+[the signed work contract](./collaboration-work/RURU-112-pulls.md) now permits a
+bounded existing-barrier correction in runtime/details.rs. Original red quota
+assertions stay intact; old-epoch data/quota fencing remains required. Two fixture
+assumptions were corrected to actual cold-admission/historical-coverage semantics.
+Fresh post-fix qualification is pending. #1579ef7148 separately passes13/14 remote
+checks; retainedWindows now starts and passes5/6 main scenarios but fails actual
+retention-reset stale_view. Owned artifacts are under investigation; not qualified.
+
+
+### RURU-112 PR reads qualified locally — 4 October 2026
+
+Signed source6892db97 implements Bitbucket all-state PR summaries and singleton
+raw Body/common metadata through existing local projections. The independent
+detail-error cooldown regression is repaired through captured account/epoch
+barriers, with both original red assertions green.49/49 focused native cases and
+731 full default workspace tests/three ignored pass; all-target Clippy/fmt pass.
+Frontend438/51files, lint/types and production build pass. Full evidence and
+coverage/routing/platform limits are in the [PR-read work note](./collaboration-work/RURU-112-pulls.md).
+A separate draft stack on #160 is ready for publication; remote exact-head CI is
+pending separately. R112 remains In Progress for explicit participant/task facets.
+#160968cd524 and #159ebb8ae1 each pass all11 reported checks. #1579ef7148 remains
+13/14 with retained Windows failing a bounded test-lifetime seam; its isolated
+fixture repair and fresh native qualification are underway. No merge.
+
+
+### RURU-112 participant-only contract accepted — 4 October 2026
+
+The [participant contract](./collaboration-work/RURU-112-participants.md) is accepted
+before source changes in an isolated managed stack on #1611766a6e. Common typed
+ParticipantV1 preserves native role/approval/state/action-date facts, independent
+field masks/clocks and immutable identity; no review/readiness overloading. A
+forward0008 rebuild preserves all four dependent detail tables with FKON and
+frozen-v7 upgrade/rollback/cold evidence. The panel acquires ordinary local query
+and native interest only when opened and supported. Tasks are a later bounded
+chunk; R112 stays In Progress. R1034054a6c is separately published after fresh
+all5 retained Mac stages pass; both new exact-head remote matrices remain pending.
+No source/IPC/migration qualification or live credentials/merge is claimed yet.
+
+
+Participant native/storage qualification passes28 focused and759 full default
+workspace top-level tests/3 ignored, with all-target Clippy/fmt. Independent wire
+review found an impossible native:null/participant-field test. The accepted
+[wire guard correction](./collaboration-work/RURU-112-participants.md) derives the
+family from Rust, rejects payload/mask/validation mixes and uses a real generic
+null control; installed generated wire qualification will rerun before delivery.
+Separately #1611766a6e passes all11 reported remote checks and #1574054a6c all14,
+including retained Linux/macOS/Windows. No exact-head CodeQL pass is inferred.
+Participant publication/new-head platform CI remain pending; no merge.
+
+
+The participant wire-family correction now passes all13 installed wire tests
+from the original four red controls;453 full frontend tests pass. Final types/
+build exposed a pinned-generator short-name collision between private Bitbucket
+discovery Branch and public Git Branch. The accepted work note limits repair to
+a private DTO rename, fresh normal generation/native checks and full types/build;
+no generated hand edits or dropped public Git properties. Publication waits.
+
+
+### RURU-112 typed participant slice qualified locally — 4 October 2026
+
+Signed source63d9c67 implements the common ParticipantV1 facet, Bitbucket singleton
+mapper, per-field saved evidence/identity fences, FK-preserving0008/frozen-v7
+recovery and opened-panel-only ordinary SDK/native interest.28 focused native
+cases and759 full default workspace top-level tests/3 ignored pass; full run
+preceded an equivalent private DTO rename with fresh64 Bitbucket cases afterward.
+Final all-target Clippy/fmt, normal typegen114,453 frontend/52files, lint/types/
+production build pass. Source-derived tag/dependency/null and field-family guards
+qualify original red wire controls; private BitbucketDefaultBranch avoids a real
+pinned-generator public Git Branch collision without changing wire fields.
+Full qualification, reviews and limits are in the
+[participant work note](./collaboration-work/RURU-112-participants.md). A separate
+draft stack on #161 is ready; its new-head remote CI remains independent/pending.
+R112 stays In Progress for Tasks; R106 restore ceiling and R121/R103 owners remain
+separate. #1611766a6e passes all11 reported remote checks; #1574054a6c all14
+including retained Linux/macOS/Windows. No unreported exact-head CodeQL/live-token/
+platform vault qualification or merge is inferred.
+
+
+### RURU-112 Tasks contract accepted before code — 4 October 2026
+
+The [Tasks contract](./collaboration-work/RURU-112-tasks.md) defines the fourth
+bounded slice on attached #162 exactd2e9195. Independent provider/native reviews
+qualify the proposed approach before source: typed task.v1/TaskActor, twelve
+disjoint Task fields with generic/Participants still six, required own-task clocks,
+resolver identity before presentation, bounded opaque continuation and stable
+multi-page Uncertain. Only an initial valid page without next can declare complete
+within the observation; caps preserve Partial. FK-enabled0009/frozen-v8 recovery
+must preserve old participant/generic JSON, eight ledger rows and authored intent.
+Opened supported panel only, bounded local pagination and ordinary native demand;
+no writes/readiness/provider branches or R106 restore-policy change. R112 remains
+In Progress. Models/Store/migration, provider/HTTP/Runtime and frontend have clear
+file owners; root owns generated IPC/docs/serialized validation. No implementation
+qualification, new Task PR, live credentials or merge is claimed.
+
+
+### RURU-112 Tasks locally qualified — 5 October 2026
+
+The fourth bounded slice implements typed task.v1/TaskActor/twelve disjoint Task
+fields through existing native HTTP/Runtime/SQLite, source-generated SDK and the
+common collapsed/opened-only Tasks panel. Own-task clocks and resolver context
+preserve historical content, false/null/omission authority; stable multipage
+Uncertain and durable20-page history survive ten-page yield/cold/manual resume.
+Foreign-key-enabled0009 plus independent frozen-v8 controls preserve historical
+rows/ledger and rollback/draft CAS; original0001–0008 and R106 archive policy stay
+unchanged. Local50-row/100-cursor browsing and privacy cuts preserve private drafts.
+
+Focused40 native controls and full default Rust workspace794 top-level/3ignored
+(including collaboration443/2ignored), Clippy/fmt/diff pass. Frontend473/54files,
+full lint/types/prodbuild pass. Normal typegen114 preserves289 schemas/241aliases
+plus only2 new Task types,114 command functions/1event/publicGit Branch fields.
+Actual cap-fixture generation and Clippy guard findings were corrected, without
+weakening production fences or original controls. See
+[the Tasks work note](./collaboration-work/RURU-112-tasks.md) for commands and
+qualification limits. Signed stacked publication/its exact-head remote CI remain
+separate; live provider/vault/new native UI/CodeQL is not inferred. No merge.
+
+
+### RURU-112 publication and RURU-122 first contract — 5 October 2026
+
+Attached draft [Tasks#163](https://github.com/ruru-m07/gitru/pull/163) exact signed
+2e4b8d5c57e5dd0bb7dd0cbef5e4f521a870e588 is stacked on#162; R112 is In Review
+with all four bounded read-only slices published. Its new remote matrix is running,
+separate from local794Rust/473frontend and ancestor checks. No merge.
+
+Live R122/77/78/PR/worktree/file-overlap audit finds no duplicate conversation PR
+and implemented reviewed prerequisites in ancestry. New isolated managed
+ruru/ruru-122-conversation-comments owns the first GitHub PR/issue Comments slice.
+[Signed pre-code contract](./collaboration-work/RURU-122-comments.md) uses existing
+generic entries/DTO/schema with own-comment clocks, immutable numeric repository
+addressing, strict no-redirect/no304/all-Link boundary, operational50-row pages,
+durable20-page progression, singletonFull versus stable multipageUncertain, and
+opened-only revision-fenced local paging/singular native demand. Independent
+provider/schema and UI reviews completed before source. Anonymous public routing
+probe is distinct from private provider/token/vault/platform proof. Root serializes
+validation/generated IPC/publishing; provider, Runtime and UI have disjoint files.
+R122 stays In Progress for this slice and later activity/provider coverage; no
+comment implementation, new remote CI or production qualification is claimed yet.
+
+
+### Tasks exact-head remote matrix qualified — 5 October 2026
+
+Attached Tasks draft#163 exact signed2e4b8d5c57e5dd0bb7dd0cbef5e4f521a870e588
+passes all11 reported checks. [CI37268340457](https://github.com/ruru-m07/gitru/actions/runs/37268340457)
+passes frontend/lint/types/build, formatting/Clippy and Rust plus packaged E2E
+on Linux/macOS/Windows; final Windows E2E completed06:02:57UTC. Cloudflare,
+CodeRabbit and Vercel also pass. No exact-head CodeQL is reported. Local794Rust/
+473frontend remains separate from live private-provider/vault/new-panel native
+window or latency proof. R112 stays In Review and draft remains unmerged.
+
+
+### RURU-122 first Comments slice locally qualified — 5 October 2026
+
+Read-only GitHub PR/issue conversations now use native immutable collection
+addressing, own-comment clocks and the existing generic Comments storage/schema.
+Strict all-Link/noRedirect/no304 admission, bounded50/20page continuation and
+stable multipageUncertain prevent invalid absence; cold/yield/explicit-retry caps
+persist. Common opened-only raw-text/local50row/100cursor/gc0 paging, revision and
+privacy fences preserve private Body draft/CAS and singular demand. Root also
+fixes a demonstrated held200 account-quota loss before Store/reconciliation
+validation: actual RED→GREEN proves same-epoch120s durable barrier/cold sibling
+zeroHTTP/vault, with obsolete-epoch200/429 controls intact.
+
+Final serialized make verify exits0:815 Rust passed/3ignored (collaboration464/
+2ignored),499 frontend/55files, lint/types/prodbuild and all-target Clippy/fmt.
+21 focused native and45 new+legacy Workspace controls pass. Normal typegen114
+preserves291schemas/243aliases/114functions/1event/Branch with zero public changes;
+generator-only timestamp/order churn restored, no hand edits. Independent reviews,
+real fixture/old-control corrections and qualification limits are in the
+[Comments work note](./collaboration-work/RURU-122-comments.md). Signed publication/
+new-head remote CI remain separate next gates; no private-provider/vault/new UI
+native/latency proof, activity timeline/provider expansion or merge is inferred.
+R122 remains In Progress. R104 destructive retention awaits separate R99 recovery
+integration; bounded R102 independent-clock lifecycle audit is the next candidate.
+
+
+### Comments publication and RURU-102 clock contract — 5 October 2026
+
+Attached draft[Comments#164](https://github.com/ruru-m07/gitru/pull/164) exact signed
+aab107dacf11e67216de602e42954a61e46c4423 is stacked on#163. Final local make verify
+passes815Rust/3ignored and499frontend plus lint/types/build/Clippy/fmt; its new CI
+is running separately with no failures. R122 stays In Progress for later activity/
+provider criteria. No merge or live private-provider/vault/new native UI proof.
+
+Fresh liveR102/R104/prerequisite/PR/worktree/ancestry audit selects a bounded R102
+independent-clock lifecycle slice on that exact frozen head. R98/R76 are inherited;
+R104's R99 recovery/export is a separate fork and absent, so destructive eviction
+is deferred. The[pre-code clock contract](./collaboration-work/RURU-102-clock-lifecycle.md)
+requires RED before source-risk repair, accepted-epoch live monotonic plus full
+persisted budgets, actual held dispatch boundaries, peer/reconnect/cold/long-wait
+controls and zero public contract changes. Real OS suspend/invalid-clock restart
+and separateR103 own-Webview integration are not claimed. Root serializes gates;
+production Runtime and new fixture have distinct file owners. No R102 source or
+qualification exists yet; review/sign before implementation.
+
+
+R102 pre-code peer review accepts serialized Store-epoch/live-map publication and
+both native pre-vault/final pre-HTTP checks; private per-dispatch local refusal
+classification preserves original quota instead of inventing observations after
+a clock jump. One existing account map slot, narrow three Job initialization
+seams, real rejected-probe lifecycle and explicit post-vault boundary controls;
+no public DTO/schema or fairness-policy changes. Signed contract precedes fixture
+RED/production repair, and no clock defect/qualification is claimed before execution.
+
+
+### Comments exact-head remote matrix qualified — 5 October 2026
+
+Attached draft [Comments #164](https://github.com/ruru-m07/gitru/pull/164) at signed
+`aab107dacf11e67216de602e42954a61e46c4423` passes all 11 reported checks.
+[CI run 37272166940](https://github.com/ruru-m07/gitru/actions/runs/37272166940)
+passes frontend tests/lint/types/build, formatting/Clippy, Rust tests and packaged
+E2E on Linux/macOS/Windows; final Windows E2E completed 06:54:17 UTC. Cloudflare,
+CodeRabbit and Vercel also pass. No exact-head CodeQL is reported. Local 815 Rust/
+499 frontend remains separate from live private-provider/PAT/keyring, new Comments
+native-window behavior or latency. R122 stays In Progress for activity/provider
+criteria; draft remains unmerged.
+
+
+### RURU-102 bounded clock lifecycle locally qualified — 5 October 2026
+
+Actual independent-clock Runtime RED reproduced five failures out of ten before
+production repair. Accepted-epoch quota commit/live max-install now serialize
+with feed/detail dispatch checks; successful probes capture before vault cutover
+awaits, and local refusal preserves the original provider observation. Strengthened
+receipt-time capture plus both held feed/Body boundaries pass all ten controls.
+One final serialized make verify exits0:825 Rust/3ignored (collaboration474/2),
+499 frontend/55files, full lint/types/build/Clippy/fmt; desktop build is a valid
+Turbo cache hit. Credential crashes/rollback, fairness, long persisted budgets
+and Comments/privacy controls pass unchanged. Normal typegen114 plus independent
+AST inventory preserves291schemas/243aliases/114functions/1event/publicBranch
+with zero public changes; generator-only churn restored, no hand edits.
+
+See the [clock lifecycle work note](./collaboration-work/RURU-102-clock-lifecycle.md)
+for actual RED/GREEN commands, source boundaries and limits. R102 remains In
+Progress: notification discovery, broader family scheduling and clock-jump immunity
+above24h are separate. No new-head remote CI, OS suspend/live provider/platform
+vault/new native UI or merge qualification is inferred. R99 recovery and R103
+own-Webview/native integration remain separate forks to integrate explicitly.
+
+
+### Current-stack RURU-103 integration starts — 5 October 2026
+
+Attached draft [R102#165](https://github.com/ruru-m07/gitru/pull/165) now publishes
+exact signed36455f9fa72b46d7dd1c58e8d3368e08b598fc34 on Comments#164; its new CI
+is running separately from local825Rust/499frontend and ancestor164's11/11.
+R102 remains In Progress for broader criteria.
+
+Existing attached [R103#157](https://github.com/ruru-m07/gitru/pull/157) is draft
+and unmerged at4054a6c081aef47aeace489e01cc8c2cdcae1128, with all14 reported
+checks successful including retained and ordinary packaged E2E on three platforms.
+Live Linear remains In Review. Its own-Webview event listener and retained native
+lane were a separate fork; the signed
+[integration contract](./collaboration-work/RURU-103-stack-integration.md)
+now advances that existing PR onto exact165 through a signed local integration
+commit preserving published history. Both implementation/evidence histories above
+are retained. Textual merge/old14checks do not qualify the combined tree. Normal
+generation, independent AST/source review, default/feature/full/native retained
+checks and a fresh exact-head remote matrix are required before qualification.
+No credentials inspected or PR merged; destructive R104 still awaits R99 recovery.

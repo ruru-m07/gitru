@@ -69,6 +69,7 @@ export interface CollaborationTransport extends DemandTransport {
   accounts(): Promise<AccountSnapshot>;
   connectGithub(token: string): Promise<RemoteAccount>;
   connectGitlab(token: string): Promise<RemoteAccount>;
+  connectBitbucketCloud(token: string): Promise<RemoteAccount>;
   discoverGithubCli(): Promise<GithubCliDiscovery>;
   connectGithubCli(candidateId: string): Promise<RemoteAccount>;
   disconnect(accountId: string): Promise<string>;
@@ -438,6 +439,13 @@ export class CollaborationClient {
 
   async connectGitlab(token: string): Promise<RemoteAccount> {
     const account = await this.transport.connectGitlab(token);
+    this.resetLocalView();
+    await this.bridge?.wake();
+    return account;
+  }
+
+  async connectBitbucketCloud(token: string): Promise<RemoteAccount> {
+    const account = await this.transport.connectBitbucketCloud(token);
     this.resetLocalView();
     await this.bridge?.wake();
     return account;

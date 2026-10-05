@@ -78,6 +78,7 @@ function transport(
     accounts: unexpected,
     connectGithub: unexpected,
     connectGitlab: unexpected,
+    connectBitbucketCloud: unexpected,
     discoverGithubCli: unexpected,
     connectGithubCli: unexpected,
     disconnect: unexpected,
@@ -178,6 +179,123 @@ const itemQuery = {
 };
 
 describe("CollaborationClient", () => {
+  it("fences old Bitbucket repository reads after accepted reconnect while keeping UUID actors and epoch keys distinct", async () => {
+    const bitbucket: RemoteAccount = {
+      ...account,
+      id: "bitbucket-account-a",
+      provider: "bitbucket_cloud",
+      host: "bitbucket.org",
+      actor_id: "11111111-1111-4111-8111-111111111111",
+      notifications_supported: false,
+    };
+    const peer: RemoteAccount = {
+      ...bitbucket,
+      id: "bitbucket-account-b",
+      actor_id: "22222222-2222-4222-8222-222222222222",
+    };
+    const replacement = {
+      ...bitbucket,
+      authorization_epoch: "9007199254740994",
+    };
+    const repositories: RepositorySnapshot = {
+      repositories: [],
+      revision: "1",
+      authorization_view: "1",
+      coverage: page.coverage,
+      sync: page.sync,
+    };
+    const delayed = deferred<RepositorySnapshot>();
+    let connected = false;
+    const connectBitbucketCloud = vi.fn(async () => {
+      connected = true;
+      return replacement;
+    });
+    const client = new CollaborationClient(
+      transport({
+        connectBitbucketCloud,
+        accounts: async () => ({
+          ...snapshot,
+          accounts: [connected ? replacement : bitbucket, peer, account],
+        }),
+        repositories: () => delayed.promise,
+        listen: async () => () => {},
+        changesSince: async () => changePage("1"),
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    await client.accounts();
+    const key = collaborationKeys.repositories(bitbucket);
+    cache.setQueryData(key, repositories);
+    const pending = client.forAccount(bitbucket).repositories();
+    expect(
+      await client.connectBitbucketCloud("synthetic-bitbucket-api-token"),
+    ).toBe(replacement);
+    expect(connectBitbucketCloud).toHaveBeenCalledExactlyOnceWith(
+      "synthetic-bitbucket-api-token",
+    );
+    expect(cache.getQueryData(key)).toBeUndefined();
+    delayed.resolve(repositories);
+    await expect(pending).rejects.toBeInstanceOf(StaleAuthorizationError);
+    expect(replacement.actor_id).toBe(bitbucket.actor_id);
+    expect(replacement.authorization_epoch).toBe("9007199254740994");
+    expect((await client.accounts()).accounts).toEqual([
+      replacement,
+      peer,
+      account,
+    ]);
+    const keys = [bitbucket, replacement, peer, account].map((actor) =>
+      JSON.stringify(collaborationKeys.repositories(actor)),
+    );
+    expect(new Set(keys).size).toBe(4);
+    expect(peer.login).toBe(bitbucket.login);
+    stop();
+    cache.clear();
+  });
+
+  it("preserves cached repositories and an in-flight saved read when Bitbucket token verification fails", async () => {
+    const repositories: RepositorySnapshot = {
+      repositories: [],
+      revision: "1",
+      authorization_view: "1",
+      coverage: page.coverage,
+      sync: page.sync,
+    };
+    const delayed = deferred<RepositorySnapshot>();
+    const failure = { code: "permission_denied" };
+    const connectBitbucketCloud = vi.fn().mockRejectedValue(failure);
+    const client = new CollaborationClient(
+      transport({
+        connectBitbucketCloud,
+        accounts: async () => snapshot,
+        repositories: () => delayed.promise,
+        listen: async () => () => {},
+        changesSince: async () => changePage("1"),
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    await client.accounts();
+    const version = client.getVersion();
+    const key = collaborationKeys.repositories(account);
+    cache.setQueryData(key, repositories);
+    const pending = client.forAccount(account).repositories();
+    await expect(
+      client.connectBitbucketCloud("synthetic-rejected-api-token"),
+    ).rejects.toBe(failure);
+    expect(client.getVersion()).toBe(version);
+    expect(cache.getQueryData(key)).toBe(repositories);
+    delayed.resolve(repositories);
+    await expect(pending).resolves.toEqual(repositories);
+    expect(connectBitbucketCloud).toHaveBeenCalledExactlyOnceWith(
+      "synthetic-rejected-api-token",
+    );
+    stop();
+    cache.clear();
+  });
+
   it("connects GitLab through its own transport and fences pending old-account projections after accepted cutover", async () => {
     const gitlab: RemoteAccount = {
       ...account,

@@ -111,6 +111,7 @@ pub fn entry(id: &str) -> DetailEntry {
         head_oid: None,
         field_mask: vec![DetailField::Author, DetailField::Body],
         field_validations: vec![],
+        native: None,
     }
 }
 pub async fn commit(store: &Store, account: &RemoteAccount, facet: DetailFacet) -> DetailCommit {

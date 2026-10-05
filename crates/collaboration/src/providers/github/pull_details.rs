@@ -316,11 +316,7 @@ mod tests {
                 .kind,
             ProviderErrorKind::Unsupported
         );
-        for facet in [
-            DetailFacet::Comments,
-            DetailFacet::Reviews,
-            DetailFacet::Checks,
-        ] {
+        for facet in [DetailFacet::Reviews, DetailFacet::Checks] {
             let mut unimplemented = request();
             unimplemented.facet = facet;
             assert_eq!(

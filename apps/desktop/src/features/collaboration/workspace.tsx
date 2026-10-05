@@ -205,7 +205,7 @@ export function CollaborationWorkspace({
         </CollaborationStatePanel>
       ) : !account ? (
         <CollaborationStatePanel title="Bring your remote work into Gitru">
-          Connect a GitHub account using Accounts above, then choose
+          Connect a provider account using Accounts above, then choose
           repositories to sync. Your saved data will be available offline.
         </CollaborationStatePanel>
       ) : (
@@ -732,6 +732,7 @@ function RepositoryPicker({
             className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md p-1.5 hover:bg-accent"
           >
             <Checkbox
+              aria-label={repository.full_name}
               checked={repository.selected}
               disabled={busy !== null}
               onCheckedChange={(checked) => {

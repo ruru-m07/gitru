@@ -479,6 +479,19 @@ describe("ordinary collaboration workspace across provider policies", () => {
     expect(
       await screen.findByText("No checks were returned by the provider."),
     ).toBeVisible();
+    expect(detail).toHaveBeenCalledTimes(3);
+    expect(
+      detail.mock.calls.some(
+        ([payload]) =>
+          (payload as { query: { facet: string } }).query.facet === "comments",
+      ),
+    ).toBe(false);
+    await user.click(screen.getByRole("button", { name: "Comments" }));
+    expect(
+      await screen.findByText(
+        "No conversation comments were returned in the saved observation.",
+      ),
+    ).toBeVisible();
     expect(detail).toHaveBeenCalledTimes(4);
     expect(hydrate).not.toHaveBeenCalled();
     expect(

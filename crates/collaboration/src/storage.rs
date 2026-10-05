@@ -566,7 +566,7 @@ impl Store {
             // Reselecting the parent cannot make a pre-deselection detail lease
             // current again. Retain saved observations, but restart any partial
             // traversal rather than reusing its invalidated membership run.
-            sqlx::query("UPDATE sync_scopes SET run_id=?,next_cursor=NULL,etag=NULL WHERE account_id=? AND EXISTS(SELECT 1 FROM items i WHERE i.account_id=sync_scopes.account_id AND i.repository_id=? AND sync_scopes.scope IN ('detail:'||i.id||':body','detail:'||i.id||':comments','detail:'||i.id||':reviews','detail:'||i.id||':checks'))")
+            sqlx::QueryBuilder::<Sqlite>::new(format!("UPDATE sync_scopes SET run_id=?,next_cursor=NULL,etag=NULL WHERE account_id=? AND EXISTS(SELECT 1 FROM items i WHERE i.account_id=sync_scopes.account_id AND i.repository_id=? AND sync_scopes.scope IN ({}))", details::scope_sql_list("i.id"))).build()
                 .bind(Uuid::new_v4().to_string()).bind(account_id).bind(repository_id)
                 .execute(&mut *tx).await.map_err(storage_error)?;
         }

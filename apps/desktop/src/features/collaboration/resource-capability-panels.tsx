@@ -23,12 +23,17 @@ import {
   dispatchCapabilityIntent,
   facetPolicy,
 } from "./capability-policy";
+import { ConversationCommentsPanel } from "./conversation-comments-panel";
+import { NativeParticipantsPanel } from "./native-participants-panel";
+import { NativeTasksPanel } from "./native-tasks-panel";
 
 const facetLabels: Record<DetailFacet, string> = {
   body: "Full description",
   comments: "Comments",
   reviews: "Reviews",
   checks: "Checks",
+  participants: "Participants",
+  tasks: "Tasks",
 };
 
 export function ResourceCapabilityPanels({
@@ -48,7 +53,6 @@ export function ResourceCapabilityPanels({
       detail: "body",
       capability: kind === "pull_request" ? "pull_details" : "issue_details",
     },
-    { detail: "comments", capability: "comments" },
     ...(kind === "pull_request"
       ? [
           { detail: "reviews" as const, capability: "reviews" as const },
@@ -68,6 +72,46 @@ export function ResourceCapabilityPanels({
           snapshot={snapshot}
         />
       ))}
+      <ConversationCommentsPanel
+        key={JSON.stringify([
+          "comments",
+          account.id,
+          account.actor_id,
+          account.authorization_epoch,
+          subjectId,
+        ])}
+        account={account}
+        subjectId={subjectId}
+        authorizationView={snapshot?.authorization_view}
+        policy={facetPolicy(snapshot, "comments")}
+      />
+      {kind === "pull_request" ? (
+        <NativeParticipantsPanel
+          key={JSON.stringify([
+            account.id,
+            account.actor_id,
+            account.authorization_epoch,
+            subjectId,
+          ])}
+          account={account}
+          subjectId={subjectId}
+          policy={facetPolicy(snapshot, "participants")}
+        />
+      ) : null}
+      {kind === "pull_request" ? (
+        <NativeTasksPanel
+          key={JSON.stringify([
+            "tasks",
+            account.id,
+            account.actor_id,
+            account.authorization_epoch,
+            subjectId,
+          ])}
+          account={account}
+          subjectId={subjectId}
+          policy={facetPolicy(snapshot, "tasks")}
+        />
+      ) : null}
       {kind === "pull_request" ? (
         <section
           className="space-y-2 border-t pt-4"

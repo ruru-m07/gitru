@@ -78,6 +78,7 @@ function fixture() {
     }),
     connectGithub: unexpected,
     connectGitlab: unexpected,
+    connectBitbucketCloud: unexpected,
     connectGithubCli: unexpected,
     discoverGithubCli: unexpected,
     disconnect: vi.fn(async () => "2"),

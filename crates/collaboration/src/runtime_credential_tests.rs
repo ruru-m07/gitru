@@ -372,6 +372,7 @@ async fn assert_native_token(
             pages: 0,
             detail_lease: None,
             detail_restarted: false,
+            local_budget_refusal: false,
         })
         .await
         .unwrap();

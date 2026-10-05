@@ -135,15 +135,15 @@ fn read_clocks<'de, D: serde::Deserializer<'de>>(
     impl<'de> serde::de::Visitor<'de> for BoundedClocks {
         type Value = Vec<FieldClock>;
         fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            formatter.write_str("at most six native field clocks")
+            formatter.write_str("at most twelve native field clocks")
         }
         fn visit_seq<A: serde::de::SeqAccess<'de>>(
             self,
             mut sequence: A,
         ) -> std::result::Result<Self::Value, A::Error> {
-            let mut clocks = Vec::with_capacity(6);
+            let mut clocks = Vec::with_capacity(12);
             let mut invalid = false;
-            for _ in 0..6 {
+            for _ in 0..12 {
                 let Some(value) = sequence.next_element::<serde_json::Value>()? else {
                     return Ok(if invalid { vec![] } else { clocks });
                 };
@@ -181,7 +181,7 @@ impl StoredEntry {
                 !head.is_empty() && head.len() <= 256 && !head.chars().any(char::is_control)
             })
     }
-    pub fn initialize_legacy(&mut self) {
+    pub fn initialize_legacy(&mut self, facet: DetailFacet) {
         if self.reconciliation_version != Some(VERSION) {
             self.field_clocks.clear();
             if self.reconciliation_version.is_none()
@@ -208,11 +208,11 @@ impl StoredEntry {
                 }
             }
         }
-        if self.field_clocks.len() > 6
+        if self.field_clocks.len() > facet.field_limit()
             || self
                 .field_clocks
                 .iter()
-                .any(|clock| !Self::valid_clock(clock))
+                .any(|clock| !Self::valid_clock(clock) || !clock.field.valid_for(facet))
             || self.field_clocks.iter().enumerate().any(|(i, clock)| {
                 self.field_clocks[..i]
                     .iter()
@@ -268,8 +268,23 @@ impl StoredEntry {
             scope_head: head.map(str::to_owned),
         });
     }
+    pub fn forget(&mut self, fields: &[DetailField]) {
+        self.field_clocks
+            .retain(|clock| !fields.contains(&clock.field));
+        self.entry
+            .field_validations
+            .retain(|validation| !fields.contains(&validation.field));
+    }
 }
 
 #[cfg(test)]
 #[path = "facet_reconciliation_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "participant_reconciliation_tests.rs"]
+mod participant_tests;
+
+#[cfg(test)]
+#[path = "task_reconciliation_tests.rs"]
+mod task_tests;

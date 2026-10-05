@@ -12,10 +12,12 @@ import {
   collaborationItem,
   collaborationItems,
   collaborationResolveResource,
+  DetailEntrySchema,
   DetailSnapshotSchema,
   GithubCliDiscoverySchema,
   ItemPageSchema,
   ItemQuerySchema,
+  NativeDetailPayloadSchema,
   ResourceResolutionSchema,
 } from "@gitru/commands";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -25,6 +27,169 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 afterEach(() => invoke.mockReset());
 
 describe("generated collaboration wire contract", () => {
+  it("preserves the native adjacent participant tag, UUID identity, false and null without flattening provider states", () => {
+    const native = {
+      kind: "participant.v1",
+      value: {
+        user: {
+          provider_id: "44444444-4444-4444-8444-444444444444",
+          login: null,
+          display_name: null,
+        },
+        role: "FUTURE_REVIEWER",
+        approved: false,
+        state: "<future-provider-state>",
+        participated_at: null,
+      },
+    };
+    expect(
+      NativeDetailPayloadSchema.parse(JSON.parse(JSON.stringify(native))),
+    ).toEqual(native);
+    const entry = {
+      id: "bitbucket_cloud:participant:33333333-3333-4333-8333-333333333333:67:44444444-4444-4444-8444-444444444444",
+      provider_id:
+        "33333333-3333-4333-8333-333333333333:67:44444444-4444-4444-8444-444444444444",
+      author: null,
+      title: null,
+      state: null,
+      body: { state: "not_loaded", text: null },
+      observed_body_state: "not_loaded",
+      updated_at: null,
+      head_oid: null,
+      native,
+      field_mask: ["participant_approved", "participant_state"],
+      field_validations: [
+        {
+          field: "participant_approved",
+          validated_at: "2026-10-04T00:00:00Z",
+          source: "bitbucket.participants.v1",
+          adapter_version: 1,
+        },
+      ],
+    };
+    const parsedNative = DetailEntrySchema.parse(entry).native;
+    expect(parsedNative?.kind).toBe("participant.v1");
+    if (parsedNative?.kind !== "participant.v1")
+      throw new Error("Expected typed participant");
+    expect(parsedNative.value.approved).toBe(false);
+    const genericEntry = {
+      ...entry,
+      id: "github:comment:7",
+      provider_id: "7",
+      author: "fixture-comment-author",
+      body: { state: "known", text: "Saved generic comment" },
+      observed_body_state: "known",
+      native: null,
+      field_mask: ["body", "author"],
+      field_validations: ["body", "author"].map((field) => ({
+        field,
+        validated_at: "2026-10-04T00:00:00Z",
+        source: "fixture/comments/v1",
+        adapter_version: 1,
+      })),
+    };
+    expect(DetailEntrySchema.parse(genericEntry).native).toBeNull();
+    expect(DetailEntrySchema.parse(genericEntry).body.text).toBe(
+      "Saved generic comment",
+    );
+    expect(
+      NativeDetailPayloadSchema.parse({
+        ...native,
+        value: { ...native.value, state: null },
+      }).value.state,
+    ).toBeNull();
+    for (const bad of [
+      "participant.v1",
+      { kind: "participant.v2", value: native.value },
+      { kind: "participant.v1" },
+      { ...native, value: { ...native.value, approved: "false" } },
+      { ...native, value: { ...native.value, approved: 0 } },
+      { ...native, value: { ...native.value, user: null } },
+    ])
+      expect(NativeDetailPayloadSchema.safeParse(bad).success).toBe(false);
+    expect(
+      DetailEntrySchema.safeParse({
+        ...entry,
+        field_mask: ["invented_participant_field"],
+      }).success,
+    ).toBe(false);
+  });
+
+  it.each([
+    ["null payload", "mask"],
+    ["null payload", "validation"],
+    ["typed participant", "mask"],
+    ["typed participant", "validation"],
+  ] as const)("rejects an impossible %s paired with the other field family's %s", (payload, evidence) => {
+    const native =
+      payload === "null payload"
+        ? null
+        : {
+            kind: "participant.v1",
+            value: {
+              user: {
+                provider_id: "44444444-4444-4444-8444-444444444444",
+                login: null,
+                display_name: null,
+              },
+              role: null,
+              approved: false,
+              state: null,
+              participated_at: null,
+            },
+          };
+    const ownField = native ? "participant_approved" : "body";
+    const foreignField = native ? "body" : "participant_approved";
+    const entry = {
+      id: native
+        ? "bitbucket_cloud:participant:33333333-3333-4333-8333-333333333333:67:44444444-4444-4444-8444-444444444444"
+        : "github:comment:7",
+      provider_id: native
+        ? "33333333-3333-4333-8333-333333333333:67:44444444-4444-4444-8444-444444444444"
+        : "7",
+      author: null,
+      title: null,
+      state: null,
+      body: { state: "not_loaded", text: null },
+      observed_body_state: "not_loaded",
+      updated_at: null,
+      head_oid: null,
+      native,
+      field_mask: [evidence === "mask" ? foreignField : ownField],
+      field_validations: [
+        {
+          field: evidence === "validation" ? foreignField : ownField,
+          validated_at: "2026-10-04T00:00:00Z",
+          source: native ? "bitbucket.participants.v1" : "fixture/comments/v1",
+          adapter_version: 1,
+        },
+      ],
+    };
+    expect(DetailEntrySchema.safeParse(entry).success).toBe(false);
+  });
+
+  it("keeps participant saved reads and explicit hydration separate and epoch scoped through generated commands", async () => {
+    const query = {
+      account_id: "actor",
+      subject_id: "compound-repository-uuid:67",
+      facet: "participants" as const,
+      cursor: null,
+      limit: 100,
+    };
+    const request = {
+      account_id: "actor",
+      authorization_epoch: "9007199254740993",
+      subject_id: query.subject_id,
+      facet: "participants" as const,
+    };
+    invoke.mockResolvedValue({});
+    await collaborationDetail({ query });
+    await collaborationHydrateDetail({ request });
+    expect(invoke.mock.calls).toEqual([
+      ["collaboration_detail", { query }],
+      ["collaboration_hydrate_detail", { request }],
+    ]);
+  });
   it("preserves contextual targets, independent modes and observation states without injected webviews", async () => {
     const target = {
       kind: "resource" as const,

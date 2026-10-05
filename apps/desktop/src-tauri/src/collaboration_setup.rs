@@ -93,6 +93,9 @@ pub fn setup(app: &App) {
             registry.register(Arc::new(
                 collaboration::providers::gitlab::GitlabProvider::new()?,
             ))?;
+            registry.register(Arc::new(
+                collaboration::providers::bitbucket_cloud::BitbucketCloudProvider::new()?,
+            ))?;
             #[cfg(not(feature = "e2e"))]
             let vault = Arc::new(NativeVault {
                 service,

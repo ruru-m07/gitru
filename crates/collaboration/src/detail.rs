@@ -1,7 +1,8 @@
 //! Typed local detail observations. Summary endpoints have no authority here.
 use crate::resource_metadata::ResourceMetadataSnapshot;
 use crate::{
-    CapabilityReason, CollaborationError, Coverage, RemoteItemKind, ResourceFacet, SyncStatus,
+    CapabilityReason, CollaborationError, Coverage, NativeDetailPayload, RemoteItemKind,
+    ResourceFacet, SyncStatus,
 };
 use serde::{Deserialize, Serialize};
 
@@ -12,9 +13,22 @@ pub enum DetailFacet {
     Comments,
     Reviews,
     Checks,
+    Participants,
+    Tasks,
 }
 
 impl DetailFacet {
+    pub(crate) const ALL: [Self; 6] = [
+        Self::Body,
+        Self::Comments,
+        Self::Reviews,
+        Self::Checks,
+        Self::Participants,
+        Self::Tasks,
+    ];
+    pub(crate) fn field_limit(self) -> usize {
+        if self == Self::Tasks { 12 } else { 6 }
+    }
     pub fn capability(self, kind: &RemoteItemKind) -> Option<ResourceFacet> {
         match (self, kind) {
             (Self::Body, RemoteItemKind::PullRequest) => Some(ResourceFacet::PullDetails),
@@ -24,6 +38,8 @@ impl DetailFacet {
             }
             (Self::Reviews, RemoteItemKind::PullRequest) => Some(ResourceFacet::Reviews),
             (Self::Checks, RemoteItemKind::PullRequest) => Some(ResourceFacet::Checks),
+            (Self::Participants, RemoteItemKind::PullRequest) => Some(ResourceFacet::Participants),
+            (Self::Tasks, RemoteItemKind::PullRequest) => Some(ResourceFacet::Tasks),
             _ => None,
         }
     }
@@ -33,6 +49,8 @@ impl DetailFacet {
             Self::Comments => "comments",
             Self::Reviews => "reviews",
             Self::Checks => "checks",
+            Self::Participants => "participants",
+            Self::Tasks => "tasks",
         }
     }
     pub fn scope(self, subject_id: &str) -> String {
@@ -50,6 +68,8 @@ impl DetailFacet {
                 "comments" => Self::Comments,
                 "reviews" => Self::Reviews,
                 "checks" => Self::Checks,
+                "participants" => Self::Participants,
+                "tasks" => Self::Tasks,
                 _ => return None,
             },
         ))
@@ -89,6 +109,62 @@ pub enum DetailField {
     State,
     UpdatedAt,
     HeadOid,
+    ParticipantLogin,
+    ParticipantDisplayName,
+    ParticipantRole,
+    ParticipantApproved,
+    ParticipantState,
+    ParticipantParticipatedAt,
+    TaskContent,
+    TaskCreatorLogin,
+    TaskCreatorDisplayName,
+    TaskState,
+    TaskCreatedAt,
+    TaskUpdatedAt,
+    TaskPending,
+    TaskResolvedAt,
+    TaskResolver,
+    TaskResolverLogin,
+    TaskResolverDisplayName,
+    TaskCommentId,
+}
+
+impl DetailField {
+    pub(crate) fn is_participant(self) -> bool {
+        matches!(
+            self,
+            Self::ParticipantLogin
+                | Self::ParticipantDisplayName
+                | Self::ParticipantRole
+                | Self::ParticipantApproved
+                | Self::ParticipantState
+                | Self::ParticipantParticipatedAt
+        )
+    }
+    pub(crate) fn is_task(self) -> bool {
+        matches!(
+            self,
+            Self::TaskContent
+                | Self::TaskCreatorLogin
+                | Self::TaskCreatorDisplayName
+                | Self::TaskState
+                | Self::TaskCreatedAt
+                | Self::TaskUpdatedAt
+                | Self::TaskPending
+                | Self::TaskResolvedAt
+                | Self::TaskResolver
+                | Self::TaskResolverLogin
+                | Self::TaskResolverDisplayName
+                | Self::TaskCommentId
+        )
+    }
+    pub(crate) fn valid_for(self, facet: DetailFacet) -> bool {
+        match facet {
+            DetailFacet::Participants => self.is_participant(),
+            DetailFacet::Tasks => self.is_task(),
+            _ => !self.is_participant() && !self.is_task(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -112,6 +188,9 @@ pub struct DetailEntry {
     pub observed_body_state: DetailValueState,
     pub updated_at: Option<String>,
     pub head_oid: Option<String>,
+    /// Versioned native facts. Missing legacy JSON decodes as no native payload.
+    #[serde(default)]
+    pub native: Option<NativeDetailPayload>,
     pub field_mask: Vec<DetailField>,
     /// Engine-owned per-field validation; omitted fields retain their old time.
     pub field_validations: Vec<DetailFieldValidation>,

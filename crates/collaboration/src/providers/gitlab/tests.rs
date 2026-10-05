@@ -155,14 +155,21 @@ async fn projects_keep_large_ids_subgroups_unicode_and_server_keyset_continuatio
 }
 
 #[test]
-fn repository_only_profile_never_infers_future_permissions() {
+fn implemented_read_profile_never_infers_future_permissions() {
     let provider = GitlabProvider::new().unwrap();
     let profile = provider.profile(&request().account);
     assert_eq!(profile.inbox_semantics, InboxSemantics::None);
     for facet in super::super::FACETS {
         assert_eq!(
             profile.facet(facet).state,
-            if facet == ResourceFacet::Repositories {
+            if matches!(
+                facet,
+                ResourceFacet::Repositories
+                    | ResourceFacet::PullRequests
+                    | ResourceFacet::Issues
+                    | ResourceFacet::PullDetails
+                    | ResourceFacet::IssueDetails
+            ) {
                 CapabilityState::Supported
             } else {
                 CapabilityState::Unsupported
@@ -186,18 +193,12 @@ async fn unsupported_feed_detail_and_foreign_installation_make_zero_requests() {
         ))
         .unwrap(),
     );
-    for kind in [
-        FeedKind::PullRequests,
-        FeedKind::Issues,
-        FeedKind::Notifications,
-    ] {
-        let mut input = request();
-        input.kind = kind;
-        assert_eq!(
-            provider.fetch_page(&token(), input).await.unwrap_err().kind,
-            ProviderErrorKind::Unsupported
-        );
-    }
+    let mut input = request();
+    input.kind = FeedKind::Notifications;
+    assert_eq!(
+        provider.fetch_page(&token(), input).await.unwrap_err().kind,
+        ProviderErrorKind::Unsupported
+    );
     let mut input = request();
     input.account.host = "gitlab.company.invalid".into();
     assert_eq!(
@@ -208,7 +209,7 @@ async fn unsupported_feed_detail_and_foreign_installation_make_zero_requests() {
         account:request().account,
         repository:RemoteRepository {id:"gitlab:repository:1".into(),account_id:"gitlab-account".into(),provider_id:"1".into(),full_name:"a/b".into(),name:"b".into(),web_url:"https://gitlab.com/a/b".into(),description:None,default_branch:None,selected:true},
         subject:serde_json::from_value(serde_json::json!({"id":"gitlab:issue:2","account_id":"gitlab-account","provider_id":"2","kind":"issue","title":"future detail","body_omitted":false,"state":"open","updated_at":"2026-10-03T00:00:00Z"})).unwrap(),
-        facet:crate::DetailFacet::Body,cursor:None,etag:None,source:None,
+        facet:crate::DetailFacet::Comments,cursor:None,etag:None,source:None,
     };
     assert_eq!(
         provider

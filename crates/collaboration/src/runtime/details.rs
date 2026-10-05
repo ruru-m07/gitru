@@ -163,6 +163,7 @@ impl CollaborationRuntime {
                         "Reconnect this provider account",
                     )
                 })?;
+            self.ensure_provider_budget(&account, job).await?;
             let token = self.load_token(&reference).await?.ok_or_else(|| {
                 CollaborationError::new(ErrorCode::AuthRequired, "Reconnect this provider account")
             })?;
@@ -215,7 +216,8 @@ impl CollaborationRuntime {
                     &binding,
                 )
                 .await?;
-            let mut page = adapter
+            self.ensure_provider_budget(&current, job).await?;
+            let fetched = adapter
                 .fetch_detail(
                     &token,
                     DetailRequest {
@@ -228,7 +230,29 @@ impl CollaborationRuntime {
                         source: lease.source.clone(),
                     },
                 )
-                .await?;
+                .await;
+            // A rejected singleton can consume account quota without proving
+            // any Body, metadata or access. Keep that captured-epoch evidence
+            // before converting the safe provider error, as feed reads do.
+            let mut page = match fetched {
+                Ok(page) => page,
+                Err(error) => {
+                    if let Some(seconds) = error
+                        .account_cooldown_seconds
+                        .filter(|seconds| *seconds > 0)
+                    {
+                        self.persist_rate_limit(&account, seconds, None).await?;
+                    }
+                    return Err(error.into());
+                }
+            };
+            // Quota is an independent account observation. A rejected page or
+            // retired facet lease must not discard it; the Store still fences
+            // this write by the captured authorization epoch before publishing.
+            let cooldown = page.cooldown_seconds.unwrap_or(0);
+            if cooldown > 0 {
+                self.persist_rate_limit(&account, cooldown, None).await?;
+            }
             // Receipt/validation time is engine owned, never the provider clock.
             page.source.observed_at = self.now_string();
             if let Some(metadata) = &mut page.metadata {
@@ -241,7 +265,6 @@ impl CollaborationRuntime {
                 ));
             }
             let complete = page.not_modified || page.next_cursor.is_none();
-            let cooldown = page.cooldown_seconds.unwrap_or(0);
             let result = self
                 .store
                 .apply_detail(DetailCommit {
@@ -288,9 +311,6 @@ impl CollaborationRuntime {
                     self.publish(revision);
                     job.detail_restarted = true;
                     job.detail_lease = None;
-                    if cooldown > 0 {
-                        self.persist_rate_limit(&account, cooldown, None).await?;
-                    }
                     return Ok(cooldown == 0);
                 }
                 Err(error) if crate::storage::facet_reconciliation::is_drift(&error) => {
@@ -306,9 +326,6 @@ impl CollaborationRuntime {
                             &lease,
                         )
                         .await?;
-                    if cooldown > 0 {
-                        self.persist_rate_limit(&account, cooldown, None).await?;
-                    }
                     return Err(CollaborationError::new(
                         ErrorCode::Provider,
                         "Detail traversal changed repeatedly",
@@ -343,7 +360,6 @@ impl CollaborationRuntime {
                 }
             }
             if cooldown > 0 {
-                self.persist_rate_limit(&account, cooldown, None).await?;
                 let revision = self
                     .store
                     .set_sync_status(

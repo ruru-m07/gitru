@@ -163,6 +163,7 @@ fn entry(id: &str, text: &str) -> DetailEntry {
             DetailField::HeadOid,
         ],
         field_validations: vec![],
+        native: None,
     }
 }
 

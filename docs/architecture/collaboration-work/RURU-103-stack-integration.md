@@ -81,3 +81,66 @@ normal push and existing157 base/body/Linear updates record exact head, source
 ancestry, local results and fresh remote matrix separately. Keep attached existing
 157, inspect actual new CI failures before more work, and never merge PRs.
 R99 recovery/export integration still precedes destructive R104 retention.
+
+
+## Actual generated-import failure and accepted bounded repair
+
+Normal generation117 commands and independent AST comparison preserve all165
+schemas/aliases/functions, adding only the existing fixture definitions317/257/117/1.
+Full combined make verify then stops in frontend tests:31 files fail at import,
+33 pass,308 tests pass/1platform skip. Native payload injection inserts TaskV1Schema
+with eager DetailValueSchema/DetailValueStateSchema dependencies before their
+initialization. AST equality ignores declaration order; it does not prove module
+execution. This is an actual new integration failure, not a dismissed test.
+
+Before repair, root accepts a narrow source-generator correction: use the existing
+TypeScript parser to order generated exported schema declarations by their actual
+value dependencies after all Rust-derived corrections. Preserve every declaration/
+initializer/type/API token and ordinary helper/import statements; type-only order
+is irrelevant. Stable order for unrelated schemas; fail clearly on unsupported
+cycles/duplicate declarations rather than inventing new lazy wire schemas.
+Implement in a small scripts helper with meaningful shuffled native-payload
+regression and executable import qualification; never edit generated outputs.
+Root owns docs/normal generation/gates; generator owner owns only
+scripts/collaboration-bindings.ts and new scoped schema-order helper/test files.
+No command/model/schema/native/runtime/fairness change is authorized by this
+repair. Root reruns normal make typegen, complete baseline/qualified-fixture AST
+comparison, actual generated module import and full make verify. Default/feature/
+native pipeline remain required and unqualified until executed.
+
+
+## Actual combined-tree source/default qualification
+
+Normal generation plus source-order correction produces117commands,317schemas,
+257aliases and1event. Independent complete AST comparison preserves every165
+291schema/243alias/114command initializer/signature and all existing qualified
+fixture additions verbatim; Branch fields unchanged. Actual Bun module import
+executes317schemas successfully. Focused sorter tests initially reproduce the
+real module TDZ (6pass/1fail), then all7 pass after normal regeneration. The shuffled
+fixture executes local const temporal-dead-zone semantics; CommonJS export rewrites
+would mask that test, so root removed only synthetic fixture export modifiers
+before execution. No generated hand edits or new runtime wire semantics.
+
+Final combined `make verify` exits0 after correction:825Rust/3ignored
+(collaboration474/2),630frontend/1Windows-onlyskip/65files, full lint/types, fresh
+desktop production build (cache miss,7.43s Vite), Rustfmt/all-targetClippy. Separately
+serialized core test-harness feature493passed/2ignored and native collaboration-
+harness app30passed. Feature Clippy, ordinary packaged and fresh retained native
+pipeline remain pending. These gates qualify the combined byte tree before the
+subsequent test-only165followup; not a new remote matrix or native window pass.
+
+Independent source reviews preserve Runtime/Store exactly165 except the feature
+module, identical single WriterLease/currentTasks scopes, fixture/default cfg
+boundaries, own-Webview listener/visibility resample, both generator corrections
+and current frontend selectors. Independent sorter audit finds0parse errors,
+0eager schema forward references,0immediate-function invocations and only deferred
+detailFieldFamilies helper use in actual output. The sorter qualifies these finite
+generated shapes, not arbitrary executable plugin code.
+
+PR165 old36455f9remote frontend failed one immediate Body assertion during epoch
+refresh. Its published signed test-only correctiond08fa56 proves held replacement
+Body privacy/draft retention then awaits the current receipt; full499frontend/lint/
+types pass and fresh CI now has7success/4pending/no fail. Propagate that accepted
+correction into this existing review branch before final source/native delivery.
+Old failed-head and initial generator import failure remain evidence; neither is
+called passing. No credentials or PR merged.

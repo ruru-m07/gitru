@@ -1,7 +1,13 @@
-import { collaboration, collaborationKeys } from "@gitru/collaboration-client";
+import {
+  collaboration,
+  collaborationKeys,
+  type RemoteItemKind,
+} from "@gitru/collaboration-client";
 import type {
+  AcquireDemandRequest,
   CapabilitySnapshot,
   ContextCapabilityRequest,
+  DetailQuery,
   RemoteAccount,
 } from "@gitru/commands";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -12,16 +18,23 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   fixtureAccount,
   fixtureContextualCapabilities,
   fixtureGitlabAccount,
   fixtureGitlabCapabilities,
+  fixtureItem,
+  fixturePage,
   fixtureRepositories,
 } from "../../../tests/fixtures/collaboration";
+import {
+  fixtureBody,
+  fixtureMetadata,
+} from "../../../tests/fixtures/resource-detail";
 import { mockForegroundDemand } from "../../../tests/mocks/collaboration-demand";
 import {
   mockTauriCommand,
@@ -31,15 +44,18 @@ import { AccountManager, ConnectGitlabForm } from "./account-manager";
 import { CollaborationWorkspace } from "./workspace";
 
 const caches: QueryClient[] = [];
+const stops: Array<() => void> = [];
 afterEach(() => {
+  for (const stop of stops.splice(0)) stop();
   for (const cache of caches.splice(0)) cache.clear();
 });
 
-function mount(component: React.ReactNode) {
+function mount(component: React.ReactNode, bridge = false) {
   const cache = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   caches.push(cache);
+  if (bridge) stops.push(collaboration.installBridge(cache));
   return {
     ...render(
       <QueryClientProvider client={cache}>{component}</QueryClientProvider>,
@@ -62,6 +78,152 @@ function managerMocks(
     status: "not_installed",
     accounts: [],
   });
+}
+
+function commonGitlabReads(kind: Exclude<RemoteItemKind, "notification">) {
+  const pull = kind === "pull_request";
+  const providerId = pull ? "9007199254741993" : "9007199254742993";
+  const repository = {
+    ...fixtureRepositories.repositories[0],
+    id: "gitlab:repo:9007199254740993",
+    account_id: fixtureGitlabAccount.id,
+    provider_id: "9007199254740993",
+    full_name: "group/subgroup/日本語-project",
+    web_url: "https://gitlab.com/group/subgroup/project",
+  };
+  const summary = {
+    ...fixtureItem,
+    id: `gitlab:${pull ? "pull" : "issue"}:${providerId}`,
+    account_id: fixtureGitlabAccount.id,
+    repository_id: repository.id,
+    provider_id: providerId,
+    kind,
+    number: "67",
+    title: `GitLab saved ${pull ? "MR" : "issue"} summary`,
+    body: "Older GitLab list description",
+    web_url: `${repository.web_url}/-/${pull ? "merge_requests" : "issues"}/67`,
+    head_oid: pull ? "a".repeat(40) : null,
+    is_draft: pull ? true : null,
+  };
+  const metadata = fixtureMetadata(kind);
+  metadata.values = {
+    ...metadata.values,
+    title: `GitLab authoritative ${pull ? "MR" : "issue"} header`,
+    state: "open",
+    state_reason: null,
+    web_url: summary.web_url,
+    author: {
+      provider_id: "9007199254743993",
+      login: "gitlab-detail-author",
+      web_url: null,
+    },
+    labels: [{ provider_id: null, name: "workflow::ready", color: null }],
+    assignees: [
+      {
+        provider_id: "9007199254744993",
+        login: "gitlab-assignee",
+        web_url: null,
+      },
+    ],
+    milestone: { ...metadata.values.milestone!, title: "GitLab milestone" },
+    is_draft: pull ? true : null,
+    head: pull
+      ? { name: "feature/local", oid: "a".repeat(40), repository: null }
+      : null,
+    base: null,
+    merged_at: null,
+  };
+  const body = fixtureBody({
+    subject_id: summary.id,
+    metadata,
+    body: {
+      state: "known",
+      text: `Independent cached GitLab ${kind} description Δ`,
+    },
+  });
+  body.evidence.authorization_epoch = fixtureGitlabAccount.authorization_epoch;
+  body.evidence.sync = { ...fixturePage.sync, state: "offline" };
+  const demand = mockForegroundDemand();
+  vi.spyOn(collaboration.transport, "listen").mockResolvedValue(() => {});
+  vi.spyOn(collaboration.transport, "listenLocalChanges").mockResolvedValue(
+    () => {},
+  );
+  mockTauriCommandResult("collaboration_changes_since", {
+    revision: "10",
+    authorization_view: "1",
+    changes: [],
+    has_more: false,
+    reset_required: false,
+  });
+  mockTauriCommandResult(
+    "collaboration_accounts",
+    savedAccounts([fixtureGitlabAccount]),
+  );
+  mockTauriCommandResult("collaboration_repositories", {
+    ...fixtureRepositories,
+    repositories: [repository],
+  });
+  const items = mockTauriCommandResult("collaboration_items", {
+    ...fixturePage,
+    items: [summary],
+  });
+  mockTauriCommandResult("collaboration_item", {
+    item: summary,
+    revision: "10",
+    authorization_view: "1",
+  });
+  const detail = mockTauriCommand("collaboration_detail", (payload) => {
+    const { query } = payload as { query: DetailQuery };
+    expect(query).toMatchObject({
+      account_id: fixtureGitlabAccount.id,
+      subject_id: summary.id,
+      facet: "body",
+    });
+    return body;
+  });
+  mockTauriCommandResult("collaboration_draft", {
+    account_id: fixtureGitlabAccount.id,
+    subject_id: summary.id,
+    body: "Private GitLab authored text",
+    generation: "3",
+  });
+  mockTauriCommand("collaboration_contextual_capabilities", (payload) => {
+    const { request } = payload as { request: ContextCapabilityRequest };
+    expect(request.account_id).toBe(fixtureGitlabAccount.id);
+    const snapshot = fixtureContextualCapabilities(
+      fixtureGitlabAccount,
+      request.target,
+      "none",
+    );
+    return {
+      ...snapshot,
+      facets: snapshot.facets.map((facet) => {
+        const implemented = [
+          "repositories",
+          "pull_requests",
+          "issues",
+          "pull_details",
+          "issue_details",
+        ].includes(facet.facet);
+        const access = implemented
+          ? { state: "supported" as const, reason: null }
+          : facet.saved_read;
+        return {
+          ...facet,
+          saved_read: access,
+          synchronize: access,
+          observation: implemented ? ("complete" as const) : facet.observation,
+        };
+      }),
+    };
+  });
+  const hydrate = mockTauriCommandResult("collaboration_hydrate_detail", {
+    job_id: "must-not-admit",
+  });
+  const refresh = mockTauriCommandResult("collaboration_refresh", {
+    job_id: "must-not-refresh",
+  });
+  return { summary, metadata, body, detail, items, demand, hydrate, refresh };
 }
 
 describe("manual GitLab account connection", () => {
@@ -249,6 +411,91 @@ describe("manual GitLab account connection", () => {
 });
 
 describe("provider capability presentation", () => {
+  it.each([
+    "pull_request",
+    "issue",
+  ] as const)("renders supported GitLab %s cached Body and common metadata through the ordinary workspace", async (kind) => {
+    const fixture = commonGitlabReads(kind);
+    const user = userEvent.setup();
+    const { cache } = mount(<CollaborationWorkspace kind={kind} />, true);
+    await act(async () => collaboration.wake());
+    const row = await screen.findByRole("button", {
+      name: new RegExp(fixture.summary.title),
+    });
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled();
+    expect(row).toHaveAttribute("aria-pressed", "false");
+    await user.click(row);
+    const selected = within(
+      await screen.findByRole("article", { name: "Saved item detail" }),
+    );
+    expect(await selected.findByText(fixture.body.body.text!)).toBeVisible();
+    expect(
+      await selected.findByRole("heading", {
+        name: fixture.metadata.values.title!,
+      }),
+    ).toBeVisible();
+    expect(selected.queryByText(fixture.summary.body!)).not.toBeInTheDocument();
+    const header = within(
+      selected.getByLabelText("Selected resource metadata"),
+    );
+    expect(header.getByText("workflow::ready")).toBeVisible();
+    expect(header.getByText("@gitlab-assignee")).toBeVisible();
+    expect(header.getByText("GitLab milestone")).toBeVisible();
+    expect(header.getByText(/@gitlab-detail-author/)).toBeVisible();
+    expect(header.getByText("#67")).toBeVisible();
+    if (kind === "pull_request") {
+      expect(header.getByText("Draft")).toBeVisible();
+      expect(header.getByText("feature/local")).toBeVisible();
+      expect(header.getByText("a".repeat(40))).toBeVisible();
+      expect(header.getByText("No branch reference")).toBeVisible();
+      expect(
+        selected.getByRole("button", {
+          name: "Merge pull request unavailable",
+        }),
+      ).toBeDisabled();
+    } else {
+      expect(header.queryByText("Draft")).not.toBeInTheDocument();
+      expect(header.queryByText("Head branch / SHA")).not.toBeInTheDocument();
+    }
+    expect(await selected.findByLabelText("Private draft")).toHaveValue(
+      "Private GitLab authored text",
+    );
+    expect(fixture.items).toHaveBeenCalledWith({
+      query: expect.objectContaining({
+        account_id: fixtureGitlabAccount.id,
+        kind,
+      }),
+    });
+    expect(fixture.detail).toHaveBeenCalledTimes(1);
+    expect(
+      cache.getQueryData(
+        collaborationKeys.detail(fixtureGitlabAccount, {
+          account_id: fixtureGitlabAccount.id,
+          subject_id: fixture.summary.id,
+          facet: "body",
+          cursor: null,
+          limit: 50,
+        }),
+      ),
+    ).toEqual(fixture.body);
+    await waitFor(() => {
+      const bodyDemands = fixture.demand.acquire.mock.calls.filter(
+        ([payload]) =>
+          (payload as { request: AcquireDemandRequest }).request.target.kind ===
+          "detail",
+      );
+      expect(bodyDemands).toHaveLength(1);
+      expect(bodyDemands[0][0]).toMatchObject({
+        request: {
+          account_id: fixtureGitlabAccount.id,
+          target: { subject_id: fixture.summary.id, facet: "body" },
+        },
+      });
+    });
+    expect(fixture.hydrate).not.toHaveBeenCalled();
+    expect(fixture.refresh).not.toHaveBeenCalled();
+  });
+
   it("identifies GitLab and its unsupported inbox without a false reconnect promise", async () => {
     managerMocks();
     mount(<AccountManager />);
@@ -379,12 +626,15 @@ describe("provider capability presentation", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps repository selection available while GitLab issue reads and automatic feed intents remain unsupported", async () => {
+  it("honors a declared repository-only GitLab capability fixture without admitting unsupported issue reads or feed intents", async () => {
     const demand = mockForegroundDemand();
     mockTauriCommandResult(
       "collaboration_accounts",
       savedAccounts([fixtureGitlabAccount]),
     );
+    // This historical declaration deliberately excludes reads, independently of
+    // the current adapter's supported MR/issue capabilities exercised above.
+    const declaredRepositoryOnly = fixtureGitlabCapabilities;
     mockTauriCommand("collaboration_contextual_capabilities", (payload) => {
       const { request } = payload as { request: ContextCapabilityRequest };
       const snapshot = fixtureContextualCapabilities(
@@ -395,7 +645,7 @@ describe("provider capability presentation", () => {
       return {
         ...snapshot,
         facets: snapshot.facets.map((facet) => {
-          const declaration = fixtureGitlabCapabilities.facets.find(
+          const declaration = declaredRepositoryOnly.facets.find(
             (entry) => entry.facet === facet.facet,
           )!;
           const access = {

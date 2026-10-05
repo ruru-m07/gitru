@@ -1,4 +1,7 @@
 //! Synthetic second-provider qualification; no production credential or API.
+#[path = "gitlab_resource_reads_tests.rs"]
+mod resource_reads_tests;
+
 use super::*;
 use crate::{
     credentials::CredentialError,
@@ -385,6 +388,10 @@ async fn actual_keyset_resume_rename_selection_and_complete_absence_use_shared_s
                 "",
                 &serde_json::json!([project(2, "group/second")]).to_string(),
             ),
+            // Selecting a repository now admits its actual common MR/issue
+            // feeds. Drain those before this repository-only reconciliation.
+            response(200, "", "[]"),
+            response(200, "", "[]"),
             response(
                 200,
                 "",
@@ -450,19 +457,25 @@ async fn actual_keyset_resume_rename_selection_and_complete_absence_use_shared_s
         .select_repository(&account.id, &repository.id, true)
         .await
         .unwrap();
+    assert!(runtime.run_next().await);
+    assert!(runtime.run_next().await);
     let before = database
         .scope_state(&account.id, "repositories")
         .await
         .unwrap()
         .unwrap();
-    assert!(
-        database
-            .scope_state(&account.id, &format!("repo:{}:pull_request", repository.id))
+    for kind in ["pull_request", "issue"] {
+        let scope = database
+            .scope_state(&account.id, &format!("repo:{}:{kind}", repository.id))
             .await
             .unwrap()
-            .is_none()
-    );
-    runtime.refresh(refresh(&account)).await.unwrap();
+            .unwrap();
+        assert_eq!(scope.coverage.state, CoverageState::Complete);
+    }
+    runtime
+        .enqueue(account.clone(), None, FeedKind::Repositories, true)
+        .await
+        .unwrap();
     assert!(runtime.run_next().await);
     let renamed = database
         .repository(&account.id, &repository.id)
@@ -472,7 +485,10 @@ async fn actual_keyset_resume_rename_selection_and_complete_absence_use_shared_s
     assert_eq!(renamed.full_name, "renamed/sub/project");
     assert_eq!(renamed.provider_id, "1");
     assert_eq!(before.coverage.state, CoverageState::Complete);
-    runtime.refresh(refresh(&account)).await.unwrap();
+    runtime
+        .enqueue(account.clone(), None, FeedKind::Repositories, true)
+        .await
+        .unwrap();
     assert!(runtime.run_next().await);
     assert_eq!(
         database
@@ -484,7 +500,10 @@ async fn actual_keyset_resume_rename_selection_and_complete_absence_use_shared_s
         2,
         "one complete absence is not retirement"
     );
-    runtime.refresh(refresh(&account)).await.unwrap();
+    runtime
+        .enqueue(account.clone(), None, FeedKind::Repositories, true)
+        .await
+        .unwrap();
     assert!(runtime.run_next().await);
     assert!(
         database
@@ -501,8 +520,11 @@ async fn actual_keyset_resume_rename_selection_and_complete_absence_use_shared_s
             .is_err()
     );
     let calls = task.join().unwrap();
-    assert_eq!(calls.len(), 7);
+    assert_eq!(calls.len(), 9);
     assert!(calls[3].contains("id_after=1"));
+    assert!(calls[4].starts_with("GET /api/v4/projects/1/merge_requests?"));
+    assert!(calls[5].starts_with("GET /api/v4/projects/1/issues?"));
+    assert!(calls[6].starts_with("GET /api/v4/projects?"));
 }
 
 #[tokio::test]

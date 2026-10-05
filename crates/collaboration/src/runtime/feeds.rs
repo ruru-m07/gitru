@@ -18,7 +18,6 @@ impl CollaborationRuntime {
             if account.authorization_epoch != job.account.authorization_epoch {
                 return Err(stale());
             }
-            self.ensure_provider_budget(&account).await?;
             self.require_feed(&account, kind).await?;
             if let Some(repository) = &job.repository {
                 let current = self.store.repository(&account.id, &repository.id).await?;
@@ -37,6 +36,7 @@ impl CollaborationRuntime {
                         "Reconnect this provider account",
                     )
                 })?;
+            self.ensure_provider_budget(&account, job).await?;
             let token = self.load_token(&reference).await?.ok_or_else(|| {
                 CollaborationError::new(ErrorCode::AuthRequired, "Reconnect this provider account")
             })?;
@@ -96,10 +96,9 @@ impl CollaborationRuntime {
             self.ensure_demand_dispatch(job).await?;
             // A probe may publish a new account budget while this job waits for
             // lifecycle/vault/native reads after the scheduler picked it.
-            self.ensure_provider_budget(&current).await?;
-            let fetched = self
-                .adapter_for_account(&current)
-                .await?
+            let adapter = self.adapter_for_account(&current).await?;
+            self.ensure_provider_budget(&current, job).await?;
+            let fetched = adapter
                 .fetch_page(
                     &token,
                     FeedRequest {
