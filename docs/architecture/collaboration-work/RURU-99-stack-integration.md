@@ -98,3 +98,25 @@ fail-closed transport objects using their existing `unexpected` function. This
 must not make a provider call, add a permissive default, change the production
 transport interface or alter any source behavior. Rerun type checks and the full
 serialized gate from the signed integration head plus a signed scoped repair.
+
+## Final shared-editor review failure and bounded correction
+
+The combined tree passes the default and feature test/build gates, ordinary
+packaged E2E and the retained five-stage native pipeline, but an independent
+source review finds one product blocker before publication. RURU-99 adds Copy and
+native Export to `private-draft.tsx`, and draft recovery uses that editor. Normal
+issue and pull-request details still render the older save-only `PrivateDraft`
+declared inside `saved-item-detail.tsx`; notification drafts import the same
+duplicate. Those normal surfaces therefore omit both actions and violate the
+accepted shared-editor contract even though recovery tests pass.
+
+Accept one bounded frontend correction before result documentation: give the
+shared `SavedDraftEditor` its existing optional label input, use it from normal
+saved-item details and notification drafts, preserve the notification-specific
+label, and delete the duplicate save-only editor. Add a normal-detail regression
+that proves current text is copied, unsaved text disables Export with the Save
+first hint, and the saved generation is sent to native Export. Do not change
+storage, IPC, provider access, automatic-save/send behavior or generated files.
+Rerun affected detail/notification/recovery tests, frontend lint/types, then the
+serialized default, feature and packaged gates required by the contract. The
+already green pre-correction runs do not qualify the repaired source.
