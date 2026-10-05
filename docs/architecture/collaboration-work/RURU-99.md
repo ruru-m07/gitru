@@ -125,5 +125,11 @@ not an exact-current-head dialog claim. No personal credential or live provider
 was inspected.
 
 RURU-103's exact-head run 37281997503 passes all 14 reported checks. RURU-99's
-old 11/11 matrix belongs to ancestor `eced62b`; publish/restack and fresh remote
-checks remain. RURU-99 stays In Review, draft and unmerged.
+old 11/11 matrix belongs to ancestor `eced62b`. The integrated implementation was
+published and restacked without a force push as signed exact head
+`b39b55f501e2207cea8e39de77fc267eb465ede0`. Exact-head run 37291579988 passes
+all 11 Actions jobs across Linux, macOS and Windows plus Cloudflare, Vercel and
+CodeRabbit, for 14 reported green checks; no CodeQL check is reported. This
+evidence-only documentation commit requires a final exact-head matrix before
+dependent destructive retention work starts. RURU-99 stays In Review, draft and
+unmerged.

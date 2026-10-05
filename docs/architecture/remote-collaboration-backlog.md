@@ -2066,8 +2066,14 @@ ignored, lint/types/build/format/Clippy, 495 feature collaboration/two ignored a
 `2026-10-05T09-25-00-937Z-96300` with binary SHA-256
 `b7278812f63e7173d374ae30cb77880728da0912d61929e40424bfe489414465`.
 Current native export automation uses synthetic drafts/owned temporary paths; old
-actual-dialog QA remains ancestor evidence. Publish/restack and exact-head remote
-CI are still required, so RURU-104 remains Backlog and no merge is authorized.
+actual-dialog QA remains ancestor evidence. The integrated implementation was
+published without rewriting history as signed exact head
+`b39b55f501e2207cea8e39de77fc267eb465ede0`, and #144 now targets RURU-103.
+[Run 37291579988](https://github.com/ruru-m07/gitru/actions/runs/37291579988)
+passes all 11 Actions jobs across Linux, macOS and Windows plus Cloudflare, Vercel
+and CodeRabbit, for 14 reported green checks; no CodeQL check is reported. This
+evidence-only record needs its own final exact-head matrix before RURU-104 starts;
+RURU-99 remains draft/unmerged and no merge is authorized.
 
 
 ### Comments publication and RURU-102 clock contract — 5 October 2026

@@ -167,7 +167,13 @@ provider endpoints.
 
 RURU-103's prerequisite remote run 37281997503 separately passes all 14 reported
 checks at its signed exact head on Linux, macOS and Windows. RURU-99's historical
-11-check matrix still belongs only to published ancestor `eced62b`; the integrated
-head needs an ordinary push, PR base change to RURU-103 and a fresh remote matrix.
-No merge is authorized. RURU-104 remains blocked until this reviewable current-
-stack RURU-99 head is published and its checks are assessed.
+11-check matrix still belongs only to published ancestor `eced62b`.
+
+The integrated implementation was then published without rewriting history as
+exact signed head `b39b55f501e2207cea8e39de77fc267eb465ede0`, with PR #144 retargeted
+to RURU-103. Exact-head run 37291579988 passes all 11 GitHub Actions jobs:
+frontend, format/Clippy, Rust, ordinary packaged E2E and the retained collaboration
+harness on Linux, macOS and Windows. Cloudflare, Vercel and CodeRabbit also pass,
+for 14 reported green checks; no CodeQL check is reported. This evidence-only
+record changes the PR head again and therefore requires its own final exact-head
+matrix before dependent destructive retention work begins. No merge is authorized.

@@ -3122,8 +3122,13 @@ pipeline passes in `2026-10-05T09-25-00-937Z-96300` using binary SHA-256
 `b7278812f63e7173d374ae30cb77880728da0912d61929e40424bfe489414465`.
 Synthetic current-head native tests cover export safety; the earlier actual dialog
 QA remains ancestor evidence. No credential/live-provider/cloud account was
-inspected. RURU-99's new remote matrix remains pending publication, so destructive
-RURU-104 work does not start yet.
+inspected. The integrated implementation was then published as signed exact head
+`b39b55f501e2207cea8e39de77fc267eb465ede0`, with #144 retargeted to RURU-103.
+[Run 37291579988](https://github.com/ruru-m07/gitru/actions/runs/37291579988)
+passes all 11 Actions jobs across Linux, macOS and Windows plus Cloudflare, Vercel
+and CodeRabbit, for 14 reported green checks; no CodeQL check is reported. This
+evidence-only record changes the PR head and needs a final exact-head matrix before
+destructive RURU-104 work begins.
 
 
 ### Comments publication and RURU-102 clock contract — 5 October 2026
