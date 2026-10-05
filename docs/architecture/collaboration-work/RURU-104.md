@@ -1,7 +1,8 @@
 # RURU-104 bounded detail retention and WAL maintenance contract
 
-Status: signed pre-implementation contract, 5 October 2026. No implementation
-or qualification is claimed by this document.
+Status: implemented and locally qualified, 5 October 2026. Review branch
+`ruru/ruru-104-cache-retention` remains stacked on the draft RURU-99 branch and
+is not merged.
 
 ## Frozen input and delivery shape
 
@@ -197,3 +198,42 @@ After focused tests, run Rustfmt, warnings-denied collaboration Clippy, the full
 collaboration suite, migration suites, normal `make typegen` with a clean generated
 diff, serialized `make verify`, and the repository's packaged E2E gates. Record
 actual counts and limitations here before publishing a reviewable draft PR.
+
+## Implemented slice and qualification
+
+Commits `100c31f` and `76f05ee` implement and qualify the native slice described
+above. Migration `0010_cache_retention.sql` adds the pin, accounting and bounded
+cursor state. Shared detail reconciliation updates the ledger in the same
+transaction, and `storage::retention` owns bounded indexing, protected eviction,
+truthful Missing publication, WAL observation and PASSIVE checkpointing. The
+public boundary remains the provider-independent Rust `Store`; this slice adds no
+Tauri command or frontend pin control.
+
+The real-SQLite `cache_retention` suite has 19 passing tests. It covers frozen
+forward migration, aggregate triggers and cascades, accepted/304/metadata
+accounting, bounded index and eviction cursors, row and facet caps, pins and
+active-work protection, account isolation, draft/error preservation, run and
+revision fencing, injected rollback, cold-reopen ordering, and checkpoint
+progress with a retained reader. The ordinary collaboration unit and integration
+suites also pass, including 304 passed plus one subprocess-only ignored unit test
+in the crate's main unit target.
+
+Local validation on exact head `76f05eec9d888fba808e5071a32b39399881f050`:
+
+- `make verify` passed on macOS: frontend tests, Biome, TypeScript checks, the
+  desktop frontend build, Rustfmt, warnings-denied workspace Clippy and the full
+  Rust workspace tests;
+- `make typegen` completed for 119 commands and produced no API addition for this
+  storage-only slice; the generator rewrote timestamps/declaration order, so that
+  non-semantic generated churn was discarded rather than committed; and
+- `make test-e2e` built the packaged macOS binary and passed both spec files:
+  two collaboration-storage/account-window scenarios and one Git UI/Tauri/Rust
+  repository smoke scenario; and
+- no personal credential, live provider account or Gitru cloud account was read.
+
+The retained collaboration-harness E2E job, remote multi-platform CI and CodeQL
+are separate gates and are not claimed by the local results. The synthetic
+fixture proves bounded logical-byte and WAL behavior; a release-scale database/WAL
+growth benchmark, automatic maintenance cadence, physical compaction,
+summary/identity eviction, frontend controls and outbox protection remain
+follow-up work exactly as scoped above.
