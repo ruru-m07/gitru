@@ -43,13 +43,24 @@ and one account's pin cannot protect or reveal another account's same-named item
 accepted observation revision. It references `detail_observations` with cascading
 deletion. Every newly accepted detail commit updates its accounting row inside the
 same writer transaction after entry reconciliation, so a crash cannot publish
-content without its accounting or vice versa.
+content without its accounting or vice versa. The hook belongs inside shared
+`details::apply_detail_in`, including notification-subject discovery paths that do
+not call the public `Store::apply_detail` wrapper. Summary-driven head invalidation
+can rewrite cached Body metadata, so that transaction also refreshes the Body
+accounting row after its metadata mutation.
 
-`cache_retention_state` stores the bounded historical-index keyset cursor and an
-`index_complete` flag. Maintenance indexes at most 128 legacy facets per call.
+`cache_retention_state` stores the bounded historical-index keyset cursor, a
+numeric-revision-plus-primary-key eviction scan cursor, aggregate indexed logical
+bytes/facet count, and an `index_complete` flag. Insert/update/delete triggers on
+the accounting ledger maintain those aggregates, including cascading cache resets,
+so maintenance never needs an unbounded whole-ledger `SUM`. Maintenance indexes at
+most 128 legacy facets per call and computes byte lengths in SQL without decoding
+provider JSON.
 Eviction is disabled until a prior call has established complete accounting; a
 call that finishes the historical index returns without evicting. Empty/new
 databases may complete indexing immediately, still preserving that phase boundary.
+Before completion, usage is explicitly incomplete/unknown rather than reporting
+the indexed prefix as the whole cache.
 
 The byte metric is intentionally logical rather than a claim about exact SQLite
 page ownership: it sums persisted observation, source, value-source, entry and
@@ -77,8 +88,18 @@ oversized caller values cannot disable the hard caps or cause unbounded work.
 Maintenance uses `try_lock` on the single local writer. If interactive storage
 work owns it, maintenance reports `skipped_busy` and returns rather than queuing
 behind the write. Candidate selection and protection are rechecked inside the
-writer transaction. Oldest accounted detail facets are considered first and a
-call stops at the byte target or hard batch cap.
+writer transaction. Each call examines at most 128 raw ledger rows before testing
+protection, using a durable keyset cursor ordered by numeric accepted revision and
+the account/subject/facet key. Reaching the end wraps the next call to the oldest
+row, so protected prefixes cannot cause an unbounded eligibility scan and newly
+unpinned rows are eventually reconsidered.
+
+A call evicts at most 32 parent facets and at most 5,000 associated child-entry
+rows in total. The existing per-facet 5,000-entry ceiling makes one maximum facet a
+known unit of work; additional candidates are deferred when the remaining row
+budget is insufficient. Oldest accounted facets are considered first and the call
+stops at the byte target or either hard cap. Protected/ineligible bytes can leave
+the cache above target and the report states that explicitly.
 
 ## Eviction safety and observable state
 
@@ -113,12 +134,23 @@ added to the protection tests before any summary/identity eviction is enabled.
 
 ## WAL contract
 
-Observation uses `PRAGMA main.wal_checkpoint(NOOP)`. Maintenance uses only
+Observation uses `PRAGMA main.wal_checkpoint(NOOP)` only when the opened SQLite
+version supports that mode (SQLite 3.51 or newer). The pinned bundled build is
+3.51.3, but the existing WAL-reset gate also accepts older patched 3.44/3.50
+builds. On those builds observation reports `supported=false`; it must not run a
+PASSIVE checkpoint and disguise mutation as observation. Maintenance uses only
 `PRAGMA main.wal_checkpoint(PASSIVE)` after its bounded transaction commits.
 PASSIVE progress is recorded even when a long reader prevents all frames from
 being checkpointed; later maintenance can continue. A busy writer causes an
 immediate skip. This slice must not invoke FULL, RESTART or TRUNCATE checkpoints,
 `VACUUM`, or manual WAL/SHM sidecar deletion.
+
+NOOP and PASSIVE run outside SQL transactions. After committing retention and
+dropping the application writer guard, checkpointing uses a dedicated connection
+with zero busy timeout and a separate nonblocking maintenance guard. It therefore
+does not hold the application's writer mutex while doing checkpoint I/O. PASSIVE
+still has no frame/time limit; the report does not mislabel it as latency-bounded,
+and negative frame counts mean unavailable rather than zero.
 
 This boundary avoids conflicting semantics with divergent RURU-106 backup/restore
 PR #145, whose verified snapshots and restore replacement own `VACUUM INTO` and
@@ -133,14 +165,19 @@ meaning.
 Focused real-SQLite tests must prove:
 
 - one call never indexes or evicts beyond its hard caps;
+- protected candidate prefixes advance only the bounded scan cursor, eventually
+  wrap, and never trigger a full eligibility or aggregate scan;
 - eviction cannot begin while historical accounting is incomplete;
-- accepted detail writes update accounting transactionally;
+- accepted detail writes, complete-enumeration pruning, 304 validation and
+  summary-driven Body metadata invalidation update accounting transactionally;
 - pins, requested demand and syncing scopes are protected and account-isolated;
 - drafts, identities, aliases, links and credential evidence remain byte-for-byte
   unchanged across maintenance;
 - eviction produces Missing coverage, a targeted revision and a new run ID;
 - stale pre-eviction commits fail and a fresh lease can rehydrate normally;
 - an injected SQLite abort rolls back content, coverage, accounting and revisions;
+- interrupted/reopened indexing remains correct when newly accepted observations
+  sort before or after the saved historical cursor;
 - a held read transaction remains usable while PASSIVE checkpoint returns bounded
   partial progress, followed by further progress after the reader closes; and
 - migration from the frozen historical fixtures preserves all existing data and
