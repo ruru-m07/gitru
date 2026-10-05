@@ -1,15 +1,19 @@
 import {
+  type ContextFacetCapability,
+  type ContextualCapabilitySnapshot,
   collaboration,
   collaborationErrorMessage,
+  type InboxSemantics,
   type RemoteAccount,
   type RemoteItemKind,
   type RemoteRepository,
 } from "@gitru/collaboration-client";
 import {
   useCollaborationAccounts,
-  useCollaborationItem,
   useCollaborationItems,
   useCollaborationRepositories,
+  useContextualCapabilities,
+  useVisibleDemand,
 } from "@gitru/collaboration-client/react";
 import { Badge } from "@gitru/ui/components/badge";
 import { Button } from "@gitru/ui/components/button";
@@ -23,7 +27,6 @@ import {
   SelectValue,
 } from "@gitru/ui/components/select";
 import {
-  ArrowLeft,
   Bell,
   ChevronLeft,
   ChevronRight,
@@ -33,12 +36,30 @@ import {
   RefreshCw,
   Search,
 } from "lucide-react";
-import { useDeferredValue, useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import PageLayout from "@/components/page-layout";
 import { AccountSettingsButton } from "./account-manager";
+import {
+  CapabilityBoundary,
+  ReadOnlyCapability,
+  SynchronizationAvailability,
+} from "./capability-boundary";
+import {
+  accountCapabilityTarget,
+  canMaintainDemand,
+  canReadSaved,
+  canSynchronize,
+  dispatchCapabilityIntent,
+  facetPolicy,
+  feedFacet,
+  inboxPresentation,
+  repositoryCapabilityTarget,
+} from "./capability-policy";
 import { DraftRecovery } from "./draft-recovery";
-import { PrivateDraft } from "./private-draft";
-import { ProviderLink } from "./provider-link";
+import { OpenLocalCloneButton } from "./local-clone-picker";
+import type { LocalLinkRouteTarget } from "./local-link-navigation";
+import { NotificationSubjectView } from "./notification-subject-view";
+import { SavedItemDetail } from "./saved-item-detail";
 import { CollaborationStatePanel } from "./state-panel";
 import { SyncIndicator } from "./sync-indicator";
 
@@ -53,29 +74,88 @@ const icons = {
   notification: Bell,
 };
 
-export function CollaborationWorkspace({ kind }: { kind: RemoteItemKind }) {
+const providerLabels: Record<RemoteAccount["provider"], string> = {
+  github: "GitHub",
+  gitlab: "GitLab",
+  bitbucket_cloud: "Bitbucket Cloud",
+  bitbucket_dc: "Bitbucket Data Center",
+};
+const publicInstances: Partial<Record<RemoteAccount["provider"], string>> = {
+  github: "github.com",
+  gitlab: "gitlab.com",
+  bitbucket_cloud: "bitbucket.org",
+};
+
+function accountPickerLabel(account: RemoteAccount): string {
+  let instance = "";
+  try {
+    const address = new URL(
+      account.host.includes("://") ? account.host : `https://${account.host}`,
+    );
+    if (
+      address.protocol === "https:" &&
+      !address.username &&
+      !address.password &&
+      !address.search &&
+      !address.hash
+    ) {
+      const authority = `${address.host}${address.pathname.replace(/\/$/, "")}`;
+      if (authority !== publicInstances[account.provider])
+        instance = ` (${authority})`;
+    }
+  } catch {
+    // Installation metadata is presentation only; malformed values add no label.
+  }
+  return `${providerLabels[account.provider]}${instance} · @${account.login}`;
+}
+
+export function CollaborationWorkspace({
+  kind,
+  target,
+}: {
+  kind: RemoteItemKind;
+  target?: LocalLinkRouteTarget;
+}) {
   const accounts = useCollaborationAccounts();
   const [accountId, setAccountId] = useState<string | null>(null);
   const [recoverDrafts, setRecoverDrafts] = useState(false);
-  const connected =
-    accounts.data?.accounts.filter(
-      (account) => account.state !== "disconnected",
-    ) ?? [];
-  const account =
-    connected.find((candidate) => candidate.id === accountId) ??
-    connected.find((candidate) => candidate.state === "active") ??
-    connected[0];
+  const connected = useMemo(
+    () =>
+      accounts.data?.accounts.filter(
+        (account) => account.state !== "disconnected",
+      ) ?? [],
+    [accounts.data],
+  );
+  const accountItems = useMemo(
+    () =>
+      connected.map((candidate) => ({
+        label: accountPickerLabel(candidate),
+        value: candidate.id,
+      })),
+    [connected],
+  );
+  const account = target
+    ? connected.find(
+        (candidate) =>
+          candidate.id === target.account_id &&
+          candidate.authorization_epoch === target.authorization_epoch &&
+          candidate.state === "active",
+      )
+    : (connected.find((candidate) => candidate.id === accountId) ??
+      connected.find((candidate) => candidate.state === "active") ??
+      connected[0]);
   return (
     <PageLayout className="min-w-0">
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b px-5 py-3">
-        <h1 className="text-base font-semibold">{labels[kind]}</h1>
+        {kind === "notification" && account ? (
+          <InboxHeading account={account} />
+        ) : (
+          <h1 className="text-base font-semibold">{labels[kind]}</h1>
+        )}
         <div className="flex min-w-0 items-center gap-2">
-          {!recoverDrafts && connected.length > 1 && account ? (
+          {!recoverDrafts && !target && connected.length > 1 && account ? (
             <Select
-              items={connected.map((candidate) => ({
-                label: `@${candidate.login}`,
-                value: candidate.id,
-              }))}
+              items={accountItems}
               value={account.id}
               onValueChange={setAccountId}
             >
@@ -83,30 +163,36 @@ export function CollaborationWorkspace({ kind }: { kind: RemoteItemKind }) {
                 size="sm"
                 className="max-w-48"
                 aria-label="Provider account"
+                title={accountPickerLabel(account)}
               >
                 <SelectValue />
               </SelectTrigger>
               <SelectPopup>
-                {connected.map((candidate) => (
-                  <SelectItem key={candidate.id} value={candidate.id}>
-                    @{candidate.login}
+                {accountItems.map((candidate) => (
+                  <SelectItem key={candidate.value} value={candidate.value}>
+                    {candidate.label}
                   </SelectItem>
                 ))}
               </SelectPopup>
             </Select>
           ) : !recoverDrafts && account ? (
-            <span className="truncate text-xs text-muted-foreground">
-              @{account.login}
+            <span
+              className="truncate text-xs text-muted-foreground"
+              title={accountPickerLabel(account)}
+            >
+              {accountPickerLabel(account)}
             </span>
           ) : null}
-          <Button
-            size="sm"
-            variant={recoverDrafts ? "secondary" : "ghost"}
-            aria-pressed={recoverDrafts}
-            onClick={() => setRecoverDrafts((value) => !value)}
-          >
-            Drafts
-          </Button>
+          {!target ? (
+            <Button
+              size="sm"
+              variant={recoverDrafts ? "secondary" : "ghost"}
+              aria-pressed={recoverDrafts}
+              onClick={() => setRecoverDrafts((value) => !value)}
+            >
+              Drafts
+            </Button>
+          ) : null}
           <AccountSettingsButton />
         </div>
       </header>
@@ -124,68 +210,204 @@ export function CollaborationWorkspace({ kind }: { kind: RemoteItemKind }) {
         >
           {collaborationErrorMessage(accounts.error)}
         </CollaborationStatePanel>
-      ) : recoverDrafts ? (
+      ) : !target && recoverDrafts ? (
         <DraftRecovery accounts={accounts.data?.accounts ?? []} />
+      ) : target && !account ? (
+        <CollaborationStatePanel title="Linked account unavailable">
+          Reconnect and open this link again from Local Git. No other account
+          has been selected.
+        </CollaborationStatePanel>
       ) : !account ? (
         <CollaborationStatePanel title="Bring your remote work into Gitru">
-          Connect a GitHub account using Accounts above, then choose
+          Connect a provider account using Accounts above, then choose
           repositories to sync. Your saved data will be available offline.
         </CollaborationStatePanel>
-      ) : account.state === "auth_required" ? (
-        <CollaborationStatePanel title="Reconnect your account">
-          Open Accounts to connect a new token for @{account.login}.
-        </CollaborationStatePanel>
-      ) : kind === "notification" && !account.notifications_supported ? (
-        <CollaborationStatePanel title="Inbox access is not connected">
-          This credential can access repositories. Connect a classic GitHub
-          token with notifications or repo access, or a GitHub CLI account with
-          inbox access.
-        </CollaborationStatePanel>
       ) : (
-        <AccountWorkspace
-          key={`${account.id}:${account.authorization_epoch}:${kind}`}
+        <AccountContextWorkspace
+          key={`${account.id}:${account.actor_id}:${kind}`}
           account={account}
           kind={kind}
+          target={target}
         />
       )}
     </PageLayout>
   );
 }
 
-function AccountWorkspace({
+function InboxHeading({ account }: { account: RemoteAccount }) {
+  const context = useContextualCapabilities(account, accountCapabilityTarget);
+  return (
+    <h1 className="text-base font-semibold">
+      {inboxPresentation(context.data?.inbox_semantics ?? "none").title}
+    </h1>
+  );
+}
+
+function AccountContextWorkspace({
   account,
   kind,
+  target,
 }: {
   account: RemoteAccount;
   kind: RemoteItemKind;
+  target?: LocalLinkRouteTarget;
 }) {
-  const repositories = useCollaborationRepositories(account);
+  const context = useContextualCapabilities(account, accountCapabilityTarget);
+  const [metadata, setMetadata] = useState<{
+    instanceId: string;
+    semantics: InboxSemantics;
+  } | null>(() =>
+    context.data
+      ? {
+          instanceId: context.data.instance.id,
+          semantics: context.data.inbox_semantics,
+        }
+      : null,
+  );
+  if (
+    context.data &&
+    (metadata?.instanceId !== context.data.instance.id ||
+      metadata.semantics !== context.data.inbox_semantics)
+  ) {
+    setMetadata({
+      instanceId: context.data.instance.id,
+      semantics: context.data.inbox_semantics,
+    });
+  }
+  if (target && !context.data)
+    return (
+      <CollaborationStatePanel
+        title={
+          context.isError
+            ? "Linked installation unavailable"
+            : "Reading linked installation"
+        }
+      >
+        {context.isError
+          ? collaborationErrorMessage(context.error)
+          : "Waiting for current saved account access."}
+      </CollaborationStatePanel>
+    );
+  if (target && context.data && context.data.instance.id !== target.instance_id)
+    return (
+      <CollaborationStatePanel title="Linked installation unavailable">
+        Open this link again from Local Git.
+      </CollaborationStatePanel>
+    );
+  return (
+    <AccountWorkspace
+      account={account}
+      kind={kind}
+      target={target}
+      snapshot={context.data}
+      instanceId={metadata?.instanceId ?? null}
+      semantics={metadata?.semantics ?? null}
+      contextError={
+        context.isError ? collaborationErrorMessage(context.error) : undefined
+      }
+    />
+  );
+}
+
+function AccountWorkspace({
+  account,
+  kind,
+  target,
+  snapshot,
+  instanceId,
+  semantics,
+  contextError,
+}: {
+  account: RemoteAccount;
+  kind: RemoteItemKind;
+  target?: LocalLinkRouteTarget;
+  snapshot: ContextualCapabilitySnapshot | undefined;
+  instanceId: string | null;
+  semantics: InboxSemantics | null;
+  contextError: string | undefined;
+}) {
+  const repositoryPolicy = facetPolicy(snapshot, "repositories");
+  const repositories = useCollaborationRepositories(
+    account,
+    canReadSaved(repositoryPolicy),
+  );
+  const inbox = inboxPresentation(semantics ?? "none");
+  const [observedSemantics, setObservedSemantics] = useState(semantics);
   const [manageRepositories, setManageRepositories] = useState(false);
-  const [repositoryId, setRepositoryId] = useState<string | null>(null);
+  const [repositoryId, setRepositoryId] = useState<string | null>(
+    target?.repository_id ?? null,
+  );
   const [search, setSearch] = useState("");
   const searchValue = useDeferredValue(search.trim());
   const [state, setState] = useState<string | null>(
-    kind === "notification" ? "unread" : "open",
+    kind === "notification" ? inbox.initialState : "open",
   );
+  if (semantics !== observedSemantics) {
+    setObservedSemantics(semantics);
+    if (kind === "notification") setState(inbox.initialState);
+  }
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const selected =
     repositories.data?.repositories.filter(
       (repository) => repository.selected,
     ) ?? [];
-  const selectedRepositoryId = selected.some(
-    (repository) => repository.id === repositoryId,
-  )
-    ? repositoryId
-    : null;
+  const linkedRepository =
+    target && canReadSaved(repositoryPolicy)
+      ? repositories.data?.repositories.find(
+          (repository) => repository.id === target.repository_id,
+        )
+      : undefined;
+  const selectedRepositoryId = target
+    ? target.repository_id
+    : selected.some((repository) => repository.id === repositoryId)
+      ? repositoryId
+      : null;
+  const context = useContextualCapabilities(
+    account,
+    selectedRepositoryId && instanceId
+      ? repositoryCapabilityTarget(instanceId, selectedRepositoryId)
+      : accountCapabilityTarget,
+  );
+  const policy = facetPolicy(context.data, feedFacet[kind]);
+  useVisibleDemand({
+    account,
+    target: {
+      kind: "repositories",
+      repository_id: null,
+      subject_id: null,
+      facet: null,
+    },
+    enabled: account.state === "active" && canMaintainDemand(repositoryPolicy),
+  });
+  useVisibleDemand({
+    account,
+    target: {
+      kind:
+        kind === "notification"
+          ? "inbox"
+          : kind === "pull_request"
+            ? "pull_requests"
+            : "issues",
+      repository_id: kind === "notification" ? null : selectedRepositoryId,
+      subject_id: null,
+      facet: null,
+    },
+    enabled: account.state === "active" && canMaintainDemand(policy),
+  });
 
-  async function refresh() {
+  async function refresh(recheck = false) {
     setRefreshing(true);
     setRefreshError(null);
     try {
-      await collaboration
-        .forAccount(account)
-        .refresh({ repository_id: selectedRepositoryId, kind });
+      await dispatchCapabilityIntent(
+        policy,
+        recheck ? "recheck_access" : "synchronize",
+        () =>
+          collaboration
+            .forAccount(account)
+            .refresh({ repository_id: selectedRepositoryId, kind }),
+      );
     } catch (error) {
       setRefreshError(collaborationErrorMessage(error));
     } finally {
@@ -195,10 +417,7 @@ function AccountWorkspace({
 
   const filterItems =
     kind === "notification"
-      ? [
-          { label: "Unread", value: "unread" },
-          { label: "All saved", value: "all" },
-        ]
+      ? inbox.filters
       : [
           { label: "Open", value: "open" },
           { label: "Closed", value: "closed" },
@@ -208,8 +427,42 @@ function AccountWorkspace({
           { label: "All states", value: "all" },
         ];
 
+  if (target && !repositories.isPending && !linkedRepository)
+    return (
+      <CollaborationStatePanel title="Linked repository unavailable">
+        This exact saved repository is missing or inaccessible. Open its link
+        again from Local Git.
+      </CollaborationStatePanel>
+    );
   return (
     <>
+      {target && linkedRepository && !linkedRepository.selected ? (
+        <div className="space-y-2 border-b p-5">
+          <p className="text-sm">
+            {linkedRepository.full_name} is not selected for synchronization.
+            This view stays scoped to that repository.
+          </p>
+          <Button
+            size="sm"
+            disabled={refreshing || !canReadSaved(repositoryPolicy)}
+            onClick={() => {
+              if (!canReadSaved(repositoryPolicy)) return;
+              setRefreshing(true);
+              setRefreshError(null);
+              void collaboration
+                .forAccount(account)
+                .selectRepository(linkedRepository.id, true)
+                .then(() => collaboration.wake())
+                .catch((failure) =>
+                  setRefreshError(collaborationErrorMessage(failure)),
+                )
+                .finally(() => setRefreshing(false));
+            }}
+          >
+            Select this repository
+          </Button>
+        </div>
+      ) : null}
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-5 py-3">
         <div className="relative min-w-32 flex-1 max-w-sm">
           <Input
@@ -227,6 +480,7 @@ function AccountWorkspace({
           />
         </div>
         <Select
+          key={`${kind}:${semantics ?? "unknown"}`}
           items={filterItems}
           value={state ?? "all"}
           onValueChange={(value) => setState(value === "all" ? null : value)}
@@ -255,6 +509,7 @@ function AccountWorkspace({
                 value: repository.id,
               })),
             ]}
+            disabled={!!target}
             value={selectedRepositoryId ?? "all"}
             onValueChange={(value) =>
               setRepositoryId(value === "all" ? null : value)
@@ -277,19 +532,21 @@ function AccountWorkspace({
             </SelectPopup>
           </Select>
         ) : null}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setManageRepositories((value) => !value)}
-          aria-expanded={manageRepositories}
-        >
-          <FolderGit2 aria-hidden="true" />
-          Repositories
-        </Button>
+        {!target ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setManageRepositories((value) => !value)}
+            aria-expanded={manageRepositories}
+          >
+            <FolderGit2 aria-hidden="true" />
+            Repositories
+          </Button>
+        ) : null}
         <Button
           variant="outline"
           size="sm"
-          disabled={refreshing}
+          disabled={refreshing || !canSynchronize(policy)}
           onClick={() => {
             void refresh();
           }}
@@ -297,6 +554,18 @@ function AccountWorkspace({
           <RefreshCw aria-hidden="true" />
           Refresh
         </Button>
+        {canReadSaved(policy) && policy?.can_recheck_access ? (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={refreshing}
+            onClick={() => {
+              void refresh(true);
+            }}
+          >
+            Recheck access
+          </Button>
+        ) : null}
       </div>
       {refreshError ? (
         <p
@@ -306,39 +575,72 @@ function AccountWorkspace({
           {refreshError}
         </p>
       ) : null}
-      {manageRepositories || (kind !== "notification" && !selected.length) ? (
-        <RepositoryPicker account={account} />
+      {!target &&
+      (manageRepositories || (kind !== "notification" && !selected.length)) ? (
+        <RepositoryPicker account={account} policy={repositoryPolicy} />
       ) : null}
-      {kind === "notification" || selected.length ? (
-        <ItemFeed
-          key={`${kind}:${selectedRepositoryId}:${state}:${searchValue}`}
-          account={account}
-          kind={kind}
-          repositoryId={selectedRepositoryId}
-          repositories={repositories.data?.repositories ?? []}
-          state={state}
-          search={searchValue}
-          refresh={refresh}
-          refreshing={refreshing}
-        />
-      ) : (
-        <CollaborationStatePanel title="Choose repositories to sync">
-          Select repositories above. Pull requests and issues will appear here
-          as they sync.
-        </CollaborationStatePanel>
-      )}
+      {selectedRepositoryId &&
+      instanceId &&
+      canReadSaved(repositoryPolicy) &&
+      (target
+        ? !!linkedRepository
+        : selected.some(
+            (repository) => repository.id === selectedRepositoryId,
+          )) ? (
+        <div className="px-5 py-2">
+          <OpenLocalCloneButton
+            account={account}
+            instanceId={instanceId}
+            repositoryId={selectedRepositoryId}
+          />
+        </div>
+      ) : null}
+      <ReadOnlyCapability policy={policy} />
+      <div className="px-5">
+        <SynchronizationAvailability policy={policy} />
+      </div>
+      <ItemFeed
+        key={`${kind}:${repositoryId}:${state}:${searchValue}`}
+        account={account}
+        kind={kind}
+        instanceId={instanceId}
+        policy={policy}
+        contextPending={context.isPending}
+        contextError={
+          contextError ??
+          (context.isError
+            ? collaborationErrorMessage(context.error)
+            : undefined)
+        }
+        recheck={() => {
+          void refresh(true);
+        }}
+        repositoryId={selectedRepositoryId}
+        repositories={repositories.data?.repositories ?? []}
+        state={state}
+        search={searchValue}
+        refresh={refresh}
+        refreshing={refreshing}
+      />
     </>
   );
 }
 
-function RepositoryPicker({ account }: { account: RemoteAccount }) {
-  const query = useCollaborationRepositories(account);
+function RepositoryPicker({
+  account,
+  policy,
+}: {
+  account: RemoteAccount;
+  policy: ContextFacetCapability | undefined;
+}) {
+  const query = useCollaborationRepositories(account, canReadSaved(policy));
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const matchingRepositories =
-    query.data?.repositories.filter((repository) =>
-      repository.full_name.toLowerCase().includes(filter.toLowerCase()),
+    (canReadSaved(policy) ? query.data?.repositories : undefined)?.filter(
+      (repository) =>
+        repository.full_name.toLowerCase().includes(filter.toLowerCase()),
     ) ?? [];
   const repositories = matchingRepositories.slice(0, 100);
 
@@ -346,9 +648,14 @@ function RepositoryPicker({ account }: { account: RemoteAccount }) {
     setBusy("discovery");
     setError(null);
     try {
-      await collaboration
-        .forAccount(account)
-        .refresh({ repository_id: null, kind: null });
+      await dispatchCapabilityIntent(
+        policy,
+        policy?.can_recheck_access ? "recheck_access" : "synchronize",
+        () =>
+          collaboration
+            .forAccount(account)
+            .refresh({ repository_id: null, kind: null }),
+      );
     } catch (failure) {
       setError(collaborationErrorMessage(failure));
     } finally {
@@ -357,6 +664,7 @@ function RepositoryPicker({ account }: { account: RemoteAccount }) {
   }
 
   async function select(repository: RemoteRepository, checked: boolean) {
+    if (!canReadSaved(policy)) return;
     setBusy(repository.id);
     setError(null);
     try {
@@ -387,16 +695,32 @@ function RepositoryPicker({ account }: { account: RemoteAccount }) {
         <Button
           size="sm"
           variant="outline"
-          disabled={busy !== null}
+          disabled={
+            busy !== null ||
+            (!canSynchronize(policy) && !policy?.can_recheck_access)
+          }
           onClick={() => {
             void discover();
           }}
         >
           <RefreshCw aria-hidden="true" />
-          Discover repositories
+          {policy?.can_recheck_access
+            ? "Recheck repository access"
+            : "Discover repositories"}
         </Button>
       </div>
-      {query.data ? (
+      {!canReadSaved(policy) ? (
+        <CapabilityBoundary
+          policy={policy}
+          recheck={() => {
+            void discover();
+          }}
+          busy={busy !== null}
+        >
+          {null}
+        </CapabilityBoundary>
+      ) : null}
+      {canReadSaved(policy) && query.data ? (
         <div className="mt-2">
           <SyncIndicator
             state={query.data.sync.state}
@@ -422,6 +746,7 @@ function RepositoryPicker({ account }: { account: RemoteAccount }) {
             className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md p-1.5 hover:bg-accent"
           >
             <Checkbox
+              aria-label={repository.full_name}
               checked={repository.selected}
               disabled={busy !== null}
               onCheckedChange={(checked) => {
@@ -466,9 +791,19 @@ function ItemFeed({
   search,
   refresh,
   refreshing,
+  instanceId,
+  policy,
+  contextPending,
+  contextError,
+  recheck,
 }: {
   account: RemoteAccount;
   kind: RemoteItemKind;
+  instanceId: string | null;
+  policy: ContextFacetCapability | undefined;
+  contextPending: boolean;
+  contextError: string | undefined;
+  recheck: () => void;
   repositoryId: string | null;
   repositories: RemoteRepository[];
   state: string | null;
@@ -495,17 +830,21 @@ function ItemFeed({
     [account.id, kind, repositoryId],
   );
   const cursor = cursors[cursors.length - 1] ?? null;
-  const query = useCollaborationItems(account, {
-    kind,
-    repository_id: repositoryId,
-    state,
-    search: search || null,
-    cursor,
-    limit: 50,
-  });
+  const query = useCollaborationItems(
+    account,
+    {
+      kind,
+      repository_id: repositoryId,
+      state,
+      search: search || null,
+      cursor,
+      limit: 50,
+    },
+    canReadSaved(policy),
+  );
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const Icon = icons[kind];
-  const page = query.data;
+  const page = canReadSaved(policy) ? query.data : undefined;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-2">
@@ -516,7 +855,13 @@ function ItemFeed({
         </span>
         {page ? (
           <SyncIndicator
-            state={page.sync.state}
+            state={
+              policy?.synchronize.reason === "temporarily_unavailable"
+                ? policy.sync.state
+                : page.sync.state === "rate_limited" && canSynchronize(policy)
+                  ? "idle"
+                  : page.sync.state
+            }
             validatedAt={page.coverage.validated_at}
             partial={page.coverage.state === "partial"}
           />
@@ -530,99 +875,123 @@ function ItemFeed({
           {collaborationErrorMessage(page.sync.error)}
         </p>
       ) : null}
-      {query.isPending ? (
-        <CollaborationStatePanel title="Loading saved activity">
-          This view reads the data saved on your device.
-        </CollaborationStatePanel>
-      ) : query.isError ? (
-        <CollaborationStatePanel
-          title="Could not load this view"
-          action="Reload saved items"
-          onAction={() => {
-            if (cursor !== null) setCursors([null]);
-            else void query.refetch();
-          }}
-        >
-          {collaborationErrorMessage(query.error)}
-        </CollaborationStatePanel>
-      ) : page && !page.items.length ? (
-        <CollaborationStatePanel
-          title={
-            page.coverage.state === "missing"
-              ? "Not synced yet"
-              : page.coverage.state === "partial" || search
-                ? "No saved matches"
-                : "Nothing here yet"
-          }
-          offline={page.sync.state === "offline"}
-          action="Refresh activity"
-          onAction={() => {
-            void refresh();
-          }}
-          busy={refreshing}
-        >
-          {page.coverage.state === "missing"
-            ? "Refresh to bring recent activity onto this device."
-            : page.coverage.state === "partial"
-              ? "Some history has not been synced. Refresh to check for more activity."
-              : search
-                ? "Search covers saved items. Try another search or refresh to bring in recent activity."
-                : "There are no saved items matching the selected filters."}
-        </CollaborationStatePanel>
-      ) : (
+      <div
+        className={`grid min-h-0 flex-1 ${selectedItem ? "md:grid-cols-2" : "grid-cols-1"}`}
+      >
         <div
-          className={`grid min-h-0 flex-1 ${selectedItem ? "md:grid-cols-2" : "grid-cols-1"}`}
+          className={`min-w-0 overflow-y-auto ${selectedItem ? "hidden md:block" : ""}`}
         >
-          <div
-            className={`min-w-0 overflow-y-auto ${selectedItem ? "hidden md:block" : ""}`}
-          >
-            {page?.items.map((item) => (
-              <Button
-                key={item.id}
-                variant="ghost"
-                className="h-auto w-full justify-start gap-3 rounded-none border-b border-border px-5 py-3 text-left whitespace-normal"
-                aria-pressed={selectedItem === item.id}
-                onClick={() => setSelectedItem(item.id)}
-              >
-                <Icon
-                  className={`size-4 shrink-0 ${item.state === "open" || item.unread ? "text-success-foreground" : "text-muted-foreground"}`}
-                  aria-hidden="true"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="line-clamp-2 break-words text-sm font-medium">
-                    {item.title}
-                  </p>
-                  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                    <span className="truncate max-w-60">
-                      {repositories.find(
-                        (repository) => repository.id === item.repository_id,
-                      )?.full_name ??
-                        item.reason ??
-                        "GitHub"}
-                    </span>
-                    {item.number ? <span>#{item.number}</span> : null}
-                    {item.author ? <span>@{item.author}</span> : null}
-                    <span>{item.state}</span>
+          {!canReadSaved(policy) ? (
+            <CapabilityBoundary
+              policy={policy}
+              pending={contextPending}
+              error={contextError}
+              recheck={recheck}
+              busy={refreshing}
+            >
+              {null}
+            </CapabilityBoundary>
+          ) : query.isPending ? (
+            <CollaborationStatePanel title="Loading saved activity">
+              This view reads the data saved on your device.
+            </CollaborationStatePanel>
+          ) : query.isError ? (
+            <CollaborationStatePanel
+              title="Could not load this view"
+              action="Reload saved items"
+              onAction={() => {
+                if (cursor !== null) setCursors([null]);
+                else void query.refetch();
+              }}
+            >
+              {collaborationErrorMessage(query.error)}
+            </CollaborationStatePanel>
+          ) : page && !page.items.length ? (
+            <CollaborationStatePanel
+              title={
+                page.coverage.state === "missing"
+                  ? "Not synced yet"
+                  : page.coverage.state === "partial" || search
+                    ? "No saved matches"
+                    : "Nothing here yet"
+              }
+              offline={page.sync.state === "offline"}
+              action={canSynchronize(policy) ? "Refresh activity" : undefined}
+              onAction={() => {
+                void refresh();
+              }}
+              busy={refreshing}
+            >
+              {page.coverage.state === "missing"
+                ? "Refresh to bring recent activity onto this device."
+                : page.coverage.state === "partial"
+                  ? "Some history has not been synced. Refresh to check for more activity."
+                  : search
+                    ? "Search covers saved items. Try another search or refresh to bring in recent activity."
+                    : "There are no saved items matching the selected filters."}
+            </CollaborationStatePanel>
+          ) : (
+            <div>
+              {page?.items.map((item) => (
+                <Button
+                  key={item.id}
+                  variant="ghost"
+                  className="h-auto w-full justify-start gap-3 rounded-none border-b border-border px-5 py-3 text-left whitespace-normal"
+                  aria-pressed={selectedItem === item.id}
+                  onClick={() => setSelectedItem(item.id)}
+                >
+                  <Icon
+                    className={`size-4 shrink-0 ${item.state === "open" || item.unread ? "text-success-foreground" : "text-muted-foreground"}`}
+                    aria-hidden="true"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="line-clamp-2 break-words text-sm font-medium">
+                      {item.title}
+                    </p>
+                    <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                      <span className="truncate max-w-60">
+                        {repositories.find(
+                          (repository) => repository.id === item.repository_id,
+                        )?.full_name ??
+                          item.reason ??
+                          "Provider activity"}
+                      </span>
+                      {item.number ? <span>#{item.number}</span> : null}
+                      {item.author ? <span>@{item.author}</span> : null}
+                      <span>{item.state}</span>
+                    </div>
                   </div>
-                </div>
-                {item.is_draft ? (
-                  <Badge variant="outline" size="sm">
-                    Draft
-                  </Badge>
-                ) : null}
-              </Button>
-            ))}
-          </div>
-          {selectedItem ? (
-            <ItemDetail
+                  {item.is_draft ? (
+                    <Badge variant="outline" size="sm">
+                      Draft
+                    </Badge>
+                  ) : null}
+                </Button>
+              ))}
+            </div>
+          )}
+        </div>
+        {selectedItem && instanceId ? (
+          kind === "notification" ? (
+            <NotificationSubjectView
+              key={selectedItem}
+              account={account}
+              notificationId={selectedItem}
+              instanceId={instanceId}
+              close={() => setSelectedItem(null)}
+            />
+          ) : (
+            <SavedItemDetail
               key={selectedItem}
               account={account}
               itemId={selectedItem}
+              kind={kind}
+              instanceId={instanceId}
               close={() => setSelectedItem(null)}
             />
-          ) : null}
-        </div>
-      )}
+          )
+        ) : null}
+      </div>
       {page &&
       (page.next_cursor ||
         cursors.length > 1 ||
@@ -660,7 +1029,7 @@ function ItemFeed({
             <Button
               size="sm"
               variant="outline"
-              disabled={refreshing}
+              disabled={refreshing || !canSynchronize(policy)}
               onClick={() => {
                 void refresh();
               }}
@@ -672,80 +1041,4 @@ function ItemFeed({
       ) : null}
     </div>
   );
-}
-
-function ItemDetail({
-  account,
-  itemId,
-  close,
-}: {
-  account: RemoteAccount;
-  itemId: string;
-  close: () => void;
-}) {
-  const query = useCollaborationItem(account, itemId);
-  const item = query.data?.item;
-  return (
-    <article
-      className="min-w-0 overflow-y-auto border-l p-5"
-      aria-label="Saved item detail"
-    >
-      <Button variant="ghost" size="sm" onClick={close} className="mb-4">
-        <ArrowLeft aria-hidden="true" />
-        Back to list
-      </Button>
-      {query.isPending ? (
-        <p role="status" className="text-sm text-muted-foreground">
-          Loading saved detail…
-        </p>
-      ) : query.isError ? (
-        <p role="alert" className="text-sm text-destructive-foreground">
-          {collaborationErrorMessage(query.error)}
-        </p>
-      ) : item ? (
-        <>
-          <div className="mb-3 flex flex-wrap gap-2">
-            <Badge variant="outline">{item.state}</Badge>
-            {item.number ? (
-              <span className="text-xs text-muted-foreground">
-                #{item.number}
-              </span>
-            ) : null}
-            {item.is_draft ? <Badge variant="outline">Draft</Badge> : null}
-          </div>
-          <h2 className="break-words text-lg font-semibold leading-snug">
-            {item.title}
-          </h2>
-          <p className="mt-2 text-xs text-muted-foreground">
-            {item.author ? `@${item.author} · ` : ""}Updated{" "}
-            {formatDate(item.updated_at)}
-          </p>
-          <div className="my-4">
-            <ProviderLink url={item.web_url} />
-          </div>
-          <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-            {item.body ??
-              (item.body_omitted
-                ? "This description is not saved on this device. Open the provider to read it."
-                : "This saved item has no description.")}
-          </div>
-          <PrivateDraft account={account} item={item} />
-        </>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          This item is no longer available in your saved view.
-        </p>
-      )}
-    </article>
-  );
-}
-
-function formatDate(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? "date unavailable"
-    : date.toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      });
 }

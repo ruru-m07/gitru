@@ -1,0 +1,31 @@
+{
+  "id": 9007199254740997,
+  "number": 67,
+  "url": "https://api.github.com/repos/fixture/project/pulls/67",
+  "html_url": "https://github.com/fixture/project/pull/67",
+  "title": "A verified notification pull request",
+  "body": "# Saved pull request\n\nSynthetic provider content.",
+  "state": "closed",
+  "merged": true,
+  "merged_at": "2026-10-03T12:00:00Z",
+  "updated_at": "2026-10-03T12:00:00Z",
+  "draft": false,
+  "user": {
+    "id": 9007199254740999,
+    "login": "fixture-author",
+    "html_url": "https://github.com/fixture-author"
+  },
+  "labels": [],
+  "assignees": [],
+  "milestone": null,
+  "head": {"ref": "feature", "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "repo": null},
+  "base": {
+    "ref": "main",
+    "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "repo": {
+      "id": 9007199254741021,
+      "full_name": "fixture/project",
+      "html_url": "https://github.com/fixture/project"
+    }
+  }
+}

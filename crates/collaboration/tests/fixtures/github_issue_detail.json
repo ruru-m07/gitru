@@ -1,0 +1,45 @@
+{
+  "id": 9007199254740997,
+  "number": 68,
+  "url": "https://api.github.com/repos/fixture/project/issues/68",
+  "repository_url": "https://api.github.com/repos/fixture/project",
+  "html_url": "https://github.com/fixture/project/issues/68",
+  "title": "Keep issue metadata available after restart",
+  "body": "# Cached issue\n\nThis is a synthetic authoritative description.\n\n- Preserve saved text\n- Keep field absence explicit\n",
+  "state": "closed",
+  "state_reason": "completed",
+  "user": {
+    "id": 9007199254740999,
+    "login": "fixture-author",
+    "avatar_url": "https://avatars.githubusercontent.com/u/9007199254740999",
+    "html_url": "https://github.com/fixture-author"
+  },
+  "labels": [
+    {
+      "id": 9007199254741001,
+      "name": "offline",
+      "description": null,
+      "color": "bb3344"
+    },
+    "name-only-label"
+  ],
+  "assignees": [
+    {
+      "id": 9007199254741003,
+      "login": "fixture-assignee",
+      "avatar_url": "https://avatars.githubusercontent.com/u/9007199254741003",
+      "html_url": "https://github.com/fixture-assignee"
+    }
+  ],
+  "milestone": {
+    "id": 9007199254741005,
+    "number": 2,
+    "title": "Fixture release",
+    "state": "open",
+    "html_url": "https://github.com/fixture/project/milestone/2",
+    "due_on": null
+  },
+  "created_at": "2026-10-01T12:00:00Z",
+  "updated_at": "2026-10-03T12:00:00Z",
+  "closed_at": "2026-10-03T12:00:00Z"
+}

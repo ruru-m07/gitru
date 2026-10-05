@@ -17,6 +17,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [features]
 default = []
 e2e = ["dep:tauri-plugin-wdio", "dep:tauri-plugin-wdio-webdriver"]
+collaboration-harness = ["e2e", "collaboration/test-harness"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -42,6 +43,7 @@ tauri-plugin-log = "2"
 log = "0.4"
 url = "2"
 tempfile = "3"
+uuid = { version = "1", features = ["v4"] }
 tauri-plugin-wdio = { version = "=1.4.0", optional = true }
 tauri-plugin-wdio-webdriver = { version = "=1.4.0", optional = true }
 

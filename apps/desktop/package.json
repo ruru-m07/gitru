@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "NODE_ENV=production && tsc && vite build",
     "build:e2e": "tsc && vite build --mode e2e",
+    "build:e2e:harness": "tsc && vite build --mode e2e-collaboration-harness",
     "preview": "vite preview",
     "lint": "biome check .",
     "check-types": "tsc --noEmit && tsc --noEmit --project e2e/tsconfig.json",
@@ -15,6 +16,9 @@
     "e2e:build": "tauri build --no-bundle --features e2e --config src-tauri/tauri.e2e.conf.json",
     "e2e:test": "bun run e2e/run.ts",
     "e2e": "bun run e2e:build && bun run e2e:test",
+    "e2e:harness:build": "tauri build --no-bundle --features collaboration-harness --config src-tauri/tauri.harness.conf.json",
+    "e2e:harness:test": "bun run e2e/harness-run.ts",
+    "e2e:harness": "bun run e2e:harness:build && bun run e2e:harness:test",
     "tauri": "tauri"
   },
   "dependencies": {

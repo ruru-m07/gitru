@@ -68,3 +68,20 @@ update existing PR #144 and Linear RURU-99 with exact head/base/results, attach 
 duplicate artifact, and inspect actual new CI failures before more work. Keep the
 PR draft and unmerged. Only a qualified published RURU-99 current-stack head may
 unblock the first bounded RURU-104 retention slice.
+
+## Actual generated inventory test failure and bounded correction
+
+Normal combined typegen succeeds with 119 commands. Independent AST comparison
+finds zero missing or changed RURU-103 declarations and exactly five new schemas,
+five aliases and two commands for the RURU-99 draft page/query/summary and command
+parameters. The generated module imports and exposes 322 schemas. Focused frontend
+tests then report 51 passes and one failure: the RURU-103 executable-import
+regression still hard-codes the prior 317-schema inventory. Draft recovery and
+workspace tests independently pass all 27 cases.
+
+Accept one test-only correction before further gates: update that finite expected
+inventory from 317 to 322 and make its title independent of the old count. Keep
+the executable `TaskV1Schema` assertion and all stable-order/cycle/duplicate tests
+unchanged. Do not weaken the source generator, replace the exact count with a
+range, or change generated/runtime/native/UI behavior. Rerun the complete focused
+set after the correction; this RED does not qualify the combined tree.

@@ -1,5 +1,11 @@
-import { disposeRepoContextOwner } from "@gitru/commands";
+import {
+  collaborationDisposeDemandOwner,
+  collaborationInspectDemandOwner,
+  collaborationSetDemandOwnerActivity,
+  disposeRepoContextOwner,
+} from "@gitru/commands";
 import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
+import { listen } from "@tauri-apps/api/event";
 import { Webview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -46,6 +52,33 @@ let latestHostBounds: HostBounds | null = null;
 let activeHostOwner: HostOwner | null = null;
 let closingWebviews: Promise<void> = Promise.resolve();
 let visibilityWork: Promise<unknown> = Promise.resolve();
+let nativeReadinessVersion = 0;
+let pendingDemandActivation: {
+  tab: WorkspaceTab;
+  bounds: HostBounds;
+  owner: HostOwner;
+  readinessVersion: number;
+} | null = null;
+
+const retryPendingDemand = () => {
+  const pending = pendingDemandActivation;
+  if (!pending || pending.readinessVersion >= nativeReadinessVersion) return;
+  pendingDemandActivation = null;
+  if (
+    activeHostOwner !== pending.owner ||
+    tabWebviewsSuspended ||
+    desiredActiveTabId !== pending.tab.id ||
+    visibleTabId !== pending.tab.id
+  )
+    return;
+  // One readiness-triggered retry; errors do not turn this into polling.
+  void activateTabWebview(
+    pending.tab,
+    pending.bounds,
+    pending.owner,
+    true,
+  ).catch(() => {});
+};
 
 // Native child views sit above the host DOM. Serialize visibility changes so a
 // delayed show cannot cover a host-owned dialog after suspension has completed.
@@ -53,6 +86,46 @@ const changeVisibility = <T,>(operation: () => Promise<T>): Promise<T> => {
   const work = visibilityWork.then(operation, operation);
   visibilityWork = work.catch(() => {});
   return work;
+};
+
+const demandFailureCode = (error: unknown): string | undefined =>
+  typeof error === "object" && error !== null && "code" in error
+    ? String(error.code)
+    : undefined;
+
+const setDemandActivity = async (ownerLabel: string, active: boolean) => {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const current = await collaborationInspectDemandOwner({ ownerLabel });
+      await collaborationSetDemandOwnerActivity({
+        ownerLabel,
+        expectedGeneration: current.generation,
+        active,
+      });
+      return;
+    } catch (error) {
+      const code = demandFailureCode(error);
+      // No runtime/view exists yet, so there is no active interest to revoke.
+      if (!active && (code === "not_ready" || code === "not_found")) return;
+      // A native visibility fence can advance generation during the local IPC.
+      if (code === "stale_view" && attempt === 0) continue;
+      throw error;
+    }
+  }
+};
+
+const disposeDemandOwner = async (ownerLabel: string) => {
+  await setDemandActivity(ownerLabel, false);
+  try {
+    const current = await collaborationInspectDemandOwner({ ownerLabel });
+    await collaborationDisposeDemandOwner({
+      ownerLabel,
+      expectedGeneration: current.generation,
+    });
+  } catch (error) {
+    const code = demandFailureCode(error);
+    if (code !== "not_ready" && code !== "not_found") throw error;
+  }
 };
 
 const getRoutePathname = (routePath: string) => {
@@ -103,7 +176,13 @@ const updateManagedBounds = async (
 
 const closeManagedWebview = async (entry: ManagedWebview) => {
   try {
-    await entry.webview.close();
+    try {
+      await disposeDemandOwner(entry.webview.label);
+    } finally {
+      // Closing the native surface is also a demand fence if IPC revocation
+      // failed; never leave an abandoned view alive during host disposal.
+      await entry.webview.close();
+    }
   } finally {
     await Promise.allSettled([
       disposeRepoContextOwner({ ownerId: entry.ownerId }),
@@ -114,6 +193,7 @@ const closeManagedWebview = async (entry: ManagedWebview) => {
 const hideUnlessActive = async (entry: ManagedWebview) => {
   await changeVisibility(async () => {
     if (tabWebviewsSuspended || entry.tabId !== desiredActiveTabId) {
+      await setDemandActivity(entry.webview.label, false);
       await entry.webview.hide();
     }
   });
@@ -185,6 +265,11 @@ const ensureTabWebview = async (
       });
       return null;
     }
+
+    // A previous close may have succeeded while demand disposal failed. Reset
+    // its native incarnation before this label becomes physically visible again.
+    await disposeDemandOwner(label);
+    if (activeHostOwner !== owner || tabWebviewsSuspended) return null;
 
     let webview: Webview;
     try {
@@ -300,8 +385,10 @@ const activateTabWebview = async (
   tab: WorkspaceTab,
   bounds: HostBounds,
   owner: HostOwner,
+  readinessRetry = false,
 ) => {
   if (activeHostOwner !== owner) return;
+  pendingDemandActivation = null;
   desiredActiveTabId = tab.id;
   latestHostBounds = bounds;
   liveTabIds.add(tab.id);
@@ -313,26 +400,53 @@ const activateTabWebview = async (
   await changeVisibility(async () => {
     if (activeHostOwner !== owner) return;
     if (tabWebviewsSuspended || desiredActiveTabId !== tab.id) {
+      await setDemandActivity(entry.webview.label, false);
       await entry.webview.hide();
       return;
     }
     const previousEntry = visibleTabId
       ? managedWebviews.get(visibleTabId)
       : null;
+    if (previousEntry && previousEntry.tabId !== tab.id) {
+      await setDemandActivity(previousEntry.webview.label, false);
+    }
+    await setDemandActivity("main", false);
     // Reveal first so warm switches never expose the empty host between tabs.
     await entry.webview.show();
     if (activeHostOwner !== owner) {
       // An already-started native show can outlive cleanup. Hide its old
       // surface unless a current host has deliberately adopted that entry.
-      if (entry.hostOwner === owner) await entry.webview.hide().catch(() => {});
+      if (entry.hostOwner === owner) {
+        await setDemandActivity(entry.webview.label, false);
+        await entry.webview.hide().catch(() => {});
+      }
       return;
     }
     // Suspension/tab selection may change while the native show is pending.
     if (tabWebviewsSuspended || desiredActiveTabId !== tab.id) {
+      await setDemandActivity(entry.webview.label, false);
       await entry.webview.hide();
       return;
     }
     visibleTabId = tab.id;
+    const readinessVersion = nativeReadinessVersion;
+    try {
+      await setDemandActivity(entry.webview.label, true);
+    } catch (error) {
+      if (demandFailureCode(error) !== "not_ready") throw error;
+      if (!readinessRetry) {
+        pendingDemandActivation = { tab, bounds, owner, readinessVersion };
+        // Also cover readiness delivered while the bounded command was pending.
+        retryPendingDemand();
+      }
+      return;
+    }
+    if (tabWebviewsSuspended || desiredActiveTabId !== tab.id) {
+      await setDemandActivity(entry.webview.label, false);
+      await entry.webview.hide();
+      visibleTabId = null;
+      return;
+    }
     if (previousEntry && previousEntry.tabId !== tab.id) {
       await previousEntry.webview.hide();
     }
@@ -355,6 +469,7 @@ export async function setTabWebviewsSuspended(
     );
     await changeVisibility(async () => {
       if (!tabWebviewsSuspended) return;
+      await setDemandActivity("main", false);
       // Include native surfaces that survived a host HMR/remount and have not
       // yet been adopted into managedWebviews. Credentials stay in the host.
       const nativeViews = await Webview.getAll();
@@ -367,7 +482,10 @@ export async function setTabWebviewsSuspended(
       const hidden = await Promise.allSettled(
         nativeViews
           .filter((view) => view.label.startsWith(TAB_WEBVIEW_LABEL_PREFIX))
-          .map((view) => view.hide()),
+          .map(async (view) => {
+            await setDemandActivity(view.label, false);
+            await view.hide();
+          }),
       );
       // Drain every hide before permitting resume: an older pending hide must
       // not finish after restoration and leave the selected tab invisible.
@@ -384,6 +502,8 @@ export async function setTabWebviewsSuspended(
   const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId);
   if (owner && activeTab && bounds) {
     await activateTabWebview(activeTab, bounds, owner);
+  } else {
+    await changeVisibility(() => setDemandActivity("main", true));
   }
 }
 
@@ -432,6 +552,7 @@ const resizeManagedWebviews = async (bounds: HostBounds, owner: HostOwner) => {
 };
 
 const cleanupAllWebviews = () => {
+  pendingDemandActivation = null;
   latestHostBounds = null;
   desiredActiveTabId = null;
   visibleTabId = null;
@@ -481,12 +602,28 @@ export default function WebviewTabHost() {
     hostOwnerRef.current = owner;
     activeHostOwner = owner;
     latestHostBounds = null;
+    let stopped = false;
+    let stopReadiness: (() => void) | null = null;
+    void listen("gitru:collaboration-change", () => {
+      if (stopped || activeHostOwner !== owner) return;
+      nativeReadinessVersion += 1;
+      retryPendingDemand();
+    })
+      .then((unlisten) => {
+        if (stopped) unlisten();
+        else stopReadiness = unlisten;
+      })
+      .catch(() => {});
     if (pendingCleanupTimer !== null) {
       window.clearTimeout(pendingCleanupTimer);
       pendingCleanupTimer = null;
     }
 
     return () => {
+      stopped = true;
+      stopReadiness?.();
+      if (pendingDemandActivation?.owner === owner)
+        pendingDemandActivation = null;
       if (activeHostOwner !== owner) return;
       // Dialog completion can release suspension after this host disappears.
       // Fence it immediately, even before delayed native cleanup has run.

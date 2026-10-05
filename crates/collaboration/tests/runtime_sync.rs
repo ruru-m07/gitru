@@ -64,6 +64,12 @@ impl CollaborationProvider for FakeProvider {
     fn kind(&self) -> ProviderKind {
         ProviderKind::Github
     }
+    fn profile(&self, account: &RemoteAccount) -> ProviderProfile {
+        ProviderProfile::read_only(
+            InboxSemantics::NativeNotifications,
+            account.notifications_supported,
+        )
+    }
     async fn probe(&self, token: &SecretToken) -> Result<VerifiedAccount, ProviderError> {
         Ok(VerifiedAccount {
             actor_id: if token.expose() == "different_actor" {
@@ -75,6 +81,7 @@ impl CollaborationProvider for FakeProvider {
             login: "actor".into(),
             display_name: None,
             notifications_supported: false,
+            cooldown_seconds: None,
         })
     }
     async fn fetch_page(
@@ -116,6 +123,8 @@ impl CollaborationProvider for FakeProvider {
         Ok(FetchPage {
             repositories,
             items: Vec::new(),
+            endpoint_aliases: Vec::new(),
+            notification_subjects: vec![],
             next_cursor: (page < self.pages)
                 .then(|| format!("https://api.github.com/user/repos?page={}", page + 1)),
             etag: Some(format!("etag-{page}")),
@@ -163,12 +172,17 @@ async fn reauthentication_preserves_identity_and_isolates_different_actors() {
     assert_eq!(first.id, second.id);
     assert_ne!(first.authorization_epoch, second.authorization_epoch);
     assert_ne!(first.id, other.id);
+    let second_ref = store
+        .credential_reference(&second.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(
-        vault.load(&second.id).unwrap().unwrap().expose(),
+        vault.load(&second_ref).unwrap().unwrap().expose(),
         "replacement_token"
     );
     runtime.disconnect(&second.id).await.unwrap();
-    assert!(vault.load(&second.id).unwrap().is_none());
+    assert!(vault.load(&second_ref).unwrap().is_none());
     assert_eq!(
         store.account(&second.id).await.unwrap().state,
         AccountState::Disconnected
@@ -183,7 +197,12 @@ async fn reauthentication_preserves_identity_and_isolates_different_actors() {
             .await
             .is_err()
     );
-    assert!(vault.load(&other.id).unwrap().is_some());
+    let other_ref = store
+        .credential_reference(&other.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(vault.load(&other_ref).unwrap().is_some());
 }
 
 #[tokio::test]
@@ -210,6 +229,9 @@ async fn capped_bootstrap_resumes_committed_cursor_and_run_instead_of_restarting
             .is_some_and(|scope| {
                 scope.coverage.state == CoverageState::Partial
                     && scope.sync.state == SyncState::Idle
+                    // Each committed page now yields an idle checkpoint. Wait
+                    // for the actual activation cap, rather than the first page.
+                    && scope.next_cursor.as_ref().is_some_and(|cursor| cursor.ends_with("page=11"))
             })
     })
     .await;
@@ -516,12 +538,17 @@ async fn cli_discovery_is_metadata_only_and_explicit_import_reuses_native_accoun
     assert_eq!(account.login, "actor");
     assert_eq!(account.state, AccountState::Active);
     assert_eq!(account.authorization_epoch, "1");
+    let reference = store
+        .credential_reference(&account.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(
         vault
             .tokens
             .lock()
             .unwrap()
-            .get(&account.id)
+            .get(&reference)
             .unwrap()
             .expose(),
         "gho_fixture_secret"

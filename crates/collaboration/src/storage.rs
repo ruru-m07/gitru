@@ -11,6 +11,16 @@ use sqlx::{
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+mod contextual_capabilities;
+pub(crate) mod details;
+pub(crate) mod facet_reconciliation;
+mod identities;
+mod local_links;
+pub(crate) mod notification_subjects;
+mod resource_metadata;
+#[cfg(all(test, unix))]
+mod writer_lease_tests;
+
 use crate::{
     domain::*,
     error::{CollaborationError, ErrorCode},
@@ -33,11 +43,26 @@ pub struct Store {
 }
 
 struct Inner {
-    // The OS releases this lease on process exit, including crashes. Keeping
-    // the file avoids unlink/recreate races between application instances.
-    _writer_lease: std::fs::File,
     writer: Mutex<SqliteConnection>,
     readers: SqlitePool,
+    // Drop connection handles before releasing the final writer owner's
+    // lease. Keeping the file avoids unlink/recreate races between instances.
+    _writer_lease: WriterLease,
+}
+
+struct WriterLease {
+    file: std::fs::File,
+}
+
+impl Drop for WriterLease {
+    fn drop(&mut self) {
+        // Closing only our descriptor can leave a Unix flock held by a
+        // concurrent fork until it executes. Explicitly release the lock
+        // when the final Inner owner drops, never when a Store clone closes.
+        // On failure, File drop still closes our descriptor; the OS also
+        // releases the lease on process exit, including crashes.
+        let _ = self.file.unlock();
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -118,9 +143,9 @@ impl Store {
             .map_err(storage_error)?;
         Ok(Self {
             inner: Arc::new(Inner {
-                _writer_lease: writer_lease,
                 writer: Mutex::new(writer),
                 readers,
+                _writer_lease: writer_lease,
             }),
         })
     }
@@ -175,48 +200,202 @@ impl Store {
         decode(&json.ok_or_else(not_found)?)
     }
 
+    /// Account metadata alone is useful for local fixtures. Native authentication
+    /// must use commit_account_credential so epoch and reference move together.
     pub async fn upsert_account(&self, account: RemoteAccount) -> Result<RemoteAccount> {
-        validate_identifier(&account.id)?;
-        validate_identifier(&account.actor_id)?;
-        let epoch = positive_revision(&account.authorization_epoch)?;
         let mut writer = self.inner.writer.lock().await;
         let mut tx = writer.begin().await.map_err(storage_error)?;
-        if let Some(row) = sqlx::query(
-            "SELECT authorization_epoch, provider, host, actor_id FROM accounts WHERE id=?",
-        )
-        .bind(&account.id)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(storage_error)?
-        {
-            let current: i64 = row.get("authorization_epoch");
-            if epoch <= current {
-                return Err(stale());
-            }
-            if row.get::<String, _>("provider") != tag(&account.provider)?
-                || row.get::<String, _>("host") != account.host
-                || row.get::<String, _>("actor_id") != account.actor_id
-            {
-                return Err(CollaborationError::invalid(
-                    "Account identity cannot be changed",
-                ));
-            }
-            clear_remote_cache(&mut tx, &account.id).await?;
+        upsert_account_in(&mut tx, &account).await?;
+        tx.commit().await.map_err(storage_error)?;
+        Ok(account)
+    }
+
+    /// Journal the fresh reference before any vault side effect. Failed/crashed
+    /// staging never changes the committed account authorization or credential.
+    pub async fn stage_credential(&self, account_id: &str, reference: &str) -> Result<()> {
+        validate_identifier(account_id)?;
+        validate_identifier(reference)?;
+        let mut writer = self.inner.writer.lock().await;
+        let mut tx = writer.begin().await.map_err(storage_error)?;
+        let pending: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM credential_cleanup")
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(storage_error)?;
+        if pending >= 128 {
+            return Err(CollaborationError::new(
+                ErrorCode::Busy,
+                "Credential cleanup is pending; unlock the credential store before reconnecting",
+            ));
         }
-        let provider = tag(&account.provider)?;
-        let state = tag(&account.state)?;
-        sqlx::query("INSERT INTO accounts(id,provider,host,actor_id,authorization_epoch,state,json) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET authorization_epoch=excluded.authorization_epoch,state=excluded.state,json=excluded.json")
-            .bind(&account.id).bind(provider).bind(&account.host).bind(&account.actor_id).bind(epoch).bind(state).bind(encode(&account)?)
-            .execute(&mut *tx).await.map_err(storage_error)?;
-        sqlx::query(
-            "UPDATE runtime_meta SET authorization_view=authorization_view+1 WHERE singleton=1",
+        let committed: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM account_credentials WHERE credential_ref=?)",
         )
+        .bind(reference)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(storage_error)?;
+        if committed {
+            return Err(CollaborationError::invalid(
+                "Credential staging requires a fresh reference",
+            ));
+        }
+        sqlx::query(
+            "INSERT INTO credential_cleanup(credential_ref,account_id,state) VALUES(?,?,'staged')",
+        )
+        .bind(reference)
+        .bind(account_id)
         .execute(&mut *tx)
         .await
         .map_err(storage_error)?;
-        record_change(&mut tx, &account.id, epoch, "account", true).await?;
+        #[cfg(test)]
+        crate::runtime::credential_crash_tests::checkpoint("during_stage");
+        tx.commit().await.map_err(storage_error)?;
+        Ok(())
+    }
+
+    /// Promote only a journaled, verified replacement. The old reference is
+    /// retired atomically with the authorization epoch and account cache reset.
+    pub async fn commit_account_credential(
+        &self,
+        account: RemoteAccount,
+        reference: &str,
+    ) -> Result<RemoteAccount> {
+        self.commit_account_credential_with_quota(account, reference, None)
+            .await
+    }
+
+    /// A verified operation may consume the actor's quota before promotion.
+    /// Commit its deadline with the grant, so a crash cannot discard it.
+    pub(crate) async fn commit_account_credential_with_quota(
+        &self,
+        account: RemoteAccount,
+        reference: &str,
+        quota_deadline: Option<String>,
+    ) -> Result<RemoteAccount> {
+        if let Some(deadline) = &quota_deadline {
+            validate_provider_deadline(deadline)?;
+        }
+        let mut writer = self.inner.writer.lock().await;
+        let mut tx = writer.begin().await.map_err(storage_error)?;
+        let staged: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM credential_cleanup WHERE credential_ref=? AND account_id=? AND state='staged')")
+            .bind(reference).bind(&account.id).fetch_one(&mut *tx).await.map_err(storage_error)?;
+        if !staged || account.state != AccountState::Active {
+            return Err(CollaborationError::invalid(
+                "Credential cutover requires a staged reference and active account",
+            ));
+        }
+        let previous: Option<String> =
+            sqlx::query_scalar("SELECT credential_ref FROM account_credentials WHERE account_id=?")
+                .bind(&account.id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(storage_error)?;
+        upsert_account_in(&mut tx, &account).await?;
+        sqlx::query("INSERT INTO account_credentials(account_id,credential_ref) VALUES(?,?) ON CONFLICT(account_id) DO UPDATE SET credential_ref=excluded.credential_ref")
+            .bind(&account.id).bind(reference).execute(&mut *tx).await.map_err(storage_error)?;
+        sqlx::query("DELETE FROM credential_cleanup WHERE credential_ref=?")
+            .bind(reference)
+            .execute(&mut *tx)
+            .await
+            .map_err(storage_error)?;
+        if let Some(previous) = previous {
+            retire_credential_in(&mut tx, &account.id, &previous).await?;
+        }
+        if let Some(proposed) = quota_deadline {
+            provider_budget_in(
+                &mut tx,
+                &account.id,
+                &account.authorization_epoch,
+                proposed,
+                None,
+            )
+            .await?;
+        }
+        #[cfg(test)]
+        crate::runtime::credential_crash_tests::checkpoint("during_cutover");
         tx.commit().await.map_err(storage_error)?;
         Ok(account)
+    }
+
+    /// Budget consumption is independent of an actor's current authorization.
+    /// Merge it atomically, without admitting reads or changing private data.
+    pub(crate) async fn merge_provider_budget(
+        &self,
+        account_id: &str,
+        epoch: &str,
+        proposed: String,
+        error: Option<CollaborationError>,
+    ) -> Result<String> {
+        validate_provider_deadline(&proposed)?;
+        let mut writer = self.inner.writer.lock().await;
+        let mut tx = writer.begin().await.map_err(storage_error)?;
+        let account = account_in(&mut tx, account_id, false).await?;
+        if account.authorization_epoch != epoch {
+            return Err(stale());
+        }
+        let revision = provider_budget_in(&mut tx, account_id, epoch, proposed, error).await?;
+        tx.commit().await.map_err(storage_error)?;
+        Ok(revision)
+    }
+
+    /// Native-only metadata. Never add this reference to an IPC/domain DTO.
+    pub async fn credential_reference(&self, account_id: &str) -> Result<Option<String>> {
+        sqlx::query_scalar("SELECT credential_ref FROM account_credentials WHERE account_id=?")
+            .bind(account_id)
+            .fetch_optional(&self.inner.readers)
+            .await
+            .map_err(storage_error)
+    }
+
+    pub async fn due_credential_cleanup(
+        &self,
+        now: i64,
+        limit: u32,
+    ) -> Result<Vec<crate::credentials::CredentialCleanup>> {
+        if !(1..=32).contains(&limit) {
+            return Err(CollaborationError::invalid(
+                "Invalid credential cleanup batch size",
+            ));
+        }
+        let rows = sqlx::query("SELECT credential_ref,attempts FROM credential_cleanup c WHERE next_retry_at<=? AND NOT EXISTS(SELECT 1 FROM account_credentials a WHERE a.credential_ref=c.credential_ref) ORDER BY next_retry_at,credential_ref LIMIT ?")
+            .bind(now).bind(limit).fetch_all(&self.inner.readers).await.map_err(storage_error)?;
+        Ok(rows
+            .into_iter()
+            .map(|row| crate::credentials::CredentialCleanup {
+                reference: row.get("credential_ref"),
+                attempts: row.get::<i64, _>("attempts") as u32,
+            })
+            .collect())
+    }
+
+    pub async fn finish_credential_cleanup(&self, reference: &str) -> Result<()> {
+        let mut writer = self.inner.writer.lock().await;
+        sqlx::query("DELETE FROM credential_cleanup WHERE credential_ref=? AND NOT EXISTS(SELECT 1 FROM account_credentials WHERE credential_ref=?)")
+            .bind(reference).bind(reference).execute(&mut *writer).await.map_err(storage_error)?;
+        Ok(())
+    }
+
+    pub async fn credential_cleanup(
+        &self,
+        reference: &str,
+    ) -> Result<Option<crate::credentials::CredentialCleanup>> {
+        let row = sqlx::query("SELECT credential_ref,attempts FROM credential_cleanup c WHERE credential_ref=? AND NOT EXISTS(SELECT 1 FROM account_credentials a WHERE a.credential_ref=c.credential_ref)")
+            .bind(reference).fetch_optional(&self.inner.readers).await.map_err(storage_error)?;
+        Ok(row.map(|row| crate::credentials::CredentialCleanup {
+            reference: row.get("credential_ref"),
+            attempts: row.get::<i64, _>("attempts") as u32,
+        }))
+    }
+
+    pub async fn defer_credential_cleanup(
+        &self,
+        reference: &str,
+        next_retry_at: i64,
+    ) -> Result<()> {
+        let mut writer = self.inner.writer.lock().await;
+        sqlx::query("UPDATE credential_cleanup SET attempts=min(attempts+1,20),next_retry_at=? WHERE credential_ref=?")
+            .bind(next_retry_at).bind(reference).execute(&mut *writer).await.map_err(storage_error)?;
+        Ok(())
     }
 
     pub async fn disconnect(&self, account_id: &str) -> Result<String> {
@@ -228,6 +407,16 @@ impl Store {
             .ok_or_else(CollaborationError::storage)?;
         account.authorization_epoch = epoch.to_string();
         account.state = AccountState::Disconnected;
+        let reference: Option<String> = sqlx::query_scalar(
+            "DELETE FROM account_credentials WHERE account_id=? RETURNING credential_ref",
+        )
+        .bind(account_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(storage_error)?;
+        if let Some(reference) = reference {
+            retire_credential_in(&mut tx, account_id, &reference).await?;
+        }
         clear_remote_cache(&mut tx, account_id).await?;
         sqlx::query(
             "UPDATE accounts SET authorization_epoch=?,state='disconnected',json=? WHERE id=?",
@@ -245,6 +434,8 @@ impl Store {
         .await
         .map_err(storage_error)?;
         let revision = record_change(&mut tx, account_id, epoch, "account", true).await?;
+        #[cfg(test)]
+        crate::runtime::credential_crash_tests::checkpoint("during_disconnect");
         tx.commit().await.map_err(storage_error)?;
         Ok(revision)
     }
@@ -313,6 +504,41 @@ impl Store {
         tx.commit().await.map_err(storage_error)?;
         Ok(repository)
     }
+    pub(crate) async fn demand_repositories(
+        &self,
+        account_id: &str,
+        after_id: Option<&str>,
+    ) -> Result<Vec<RemoteRepository>> {
+        let mut tx = self.inner.readers.begin().await.map_err(storage_error)?;
+        account_in(&mut tx, account_id, true).await?;
+        let mut result = vec![];
+        for after in [after_id, None] {
+            let mut sql = sqlx::QueryBuilder::<Sqlite>::new(
+                "SELECT r.json,r.selected FROM repositories r WHERE r.account_id=",
+            );
+            sql.push_bind(account_id)
+                .push(" AND r.selected=1 AND ")
+                .push(VISIBLE_REPOSITORY);
+            if let Some(id) = after {
+                sql.push(" AND r.id>").push_bind(id);
+            }
+            sql.push(" ORDER BY r.id LIMIT 16");
+            let rows = sql
+                .build()
+                .fetch_all(&mut *tx)
+                .await
+                .map_err(storage_error)?;
+            result = rows
+                .iter()
+                .map(repository_from_row)
+                .collect::<Result<Vec<_>>>()?;
+            if !result.is_empty() || after.is_none() {
+                break;
+            }
+        }
+        tx.commit().await.map_err(storage_error)?;
+        Ok(result)
+    }
 
     pub async fn select_repository(
         &self,
@@ -345,6 +571,12 @@ impl Store {
                     .await
                     .map_err(storage_error)?;
             }
+            // Reselecting the parent cannot make a pre-deselection detail lease
+            // current again. Retain saved observations, but restart any partial
+            // traversal rather than reusing its invalidated membership run.
+            sqlx::QueryBuilder::<Sqlite>::new(format!("UPDATE sync_scopes SET run_id=?,next_cursor=NULL,etag=NULL WHERE account_id=? AND EXISTS(SELECT 1 FROM items i WHERE i.account_id=sync_scopes.account_id AND i.repository_id=? AND sync_scopes.scope IN ({}))", details::scope_sql_list("i.id"))).build()
+                .bind(Uuid::new_v4().to_string()).bind(account_id).bind(repository_id)
+                .execute(&mut *tx).await.map_err(storage_error)?;
         }
         let revision = record_change(
             &mut tx,
@@ -368,13 +600,7 @@ impl Store {
             return Err(CollaborationError::invalid("Search text is too long"));
         }
         let mut tx = self.inner.readers.begin().await.map_err(storage_error)?;
-        let account = account_in(&mut tx, &query.account_id, true).await?;
-        if query.kind == RemoteItemKind::Notification && !account.notifications_supported {
-            return Err(CollaborationError::new(
-                ErrorCode::Unsupported,
-                "This credential does not support provider notifications",
-            ));
-        }
+        account_in(&mut tx, &query.account_id, true).await?;
         let (revision, authorization_view) = metadata(&mut tx).await?;
         let projection_view = query_projection_view(&mut tx, &query).await?;
         let mut fingerprint = query.clone();
@@ -429,9 +655,12 @@ impl Store {
                     "read" => {
                         sql.push(" AND json_extract(items.json,'$.unread')=0");
                     }
+                    "pending" | "done" => {
+                        sql.push(" AND items.state=").push_bind(state);
+                    }
                     _ => {
                         return Err(CollaborationError::invalid(
-                            "Unsupported notification disposition filter",
+                            "Unsupported inbox disposition filter",
                         ));
                     }
                 }
@@ -500,9 +729,24 @@ impl Store {
         let mut tx = self.inner.readers.begin().await.map_err(storage_error)?;
         account_in(&mut tx, account_id, true).await?;
         let (revision, authorization_view) = metadata(&mut tx).await?;
-        let json: Option<String> = sqlx::query_scalar("SELECT i.json FROM items i WHERE i.account_id=? AND i.id=? AND (i.kind='notification' OR EXISTS(SELECT 1 FROM repositories r WHERE r.account_id=i.account_id AND r.id=i.repository_id AND r.selected=1)) AND NOT EXISTS(SELECT 1 FROM sync_scopes s WHERE s.account_id=i.account_id AND s.scope=CASE WHEN i.kind='notification' THEN 'notifications' ELSE 'repo:'||i.repository_id||':'||i.kind END AND s.access_denied=1) AND (i.kind='notification' OR NOT EXISTS(SELECT 1 FROM sync_scopes s JOIN scope_membership m ON m.account_id=s.account_id AND m.scope=s.scope WHERE s.account_id=i.account_id AND s.scope='repositories' AND s.access_denied=1 AND m.entity_id=i.repository_id))")
-            .bind(account_id).bind(item_id).fetch_optional(&mut *tx).await.map_err(storage_error)?;
-        let item = json.as_ref().map(|s| decode(s)).transpose()?;
+        let json: Option<String> =
+            sqlx::query_scalar("SELECT json FROM items WHERE account_id=? AND id=?")
+                .bind(account_id)
+                .bind(item_id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(storage_error)?;
+        let mut item: Option<RemoteItem> = json.as_ref().map(|s| decode(s)).transpose()?;
+        if let Some(value) = &item {
+            let kind = match value.kind {
+                RemoteItemKind::PullRequest => ResourceKind::PullRequest,
+                RemoteItemKind::Issue => ResourceKind::Issue,
+                RemoteItemKind::Notification => ResourceKind::Notification,
+            };
+            if !identities::accessible(&mut tx, account_id, item_id, kind).await? {
+                item = None;
+            }
+        }
         tx.commit().await.map_err(storage_error)?;
         Ok(ItemSnapshot {
             item,
@@ -544,8 +788,17 @@ impl Store {
     }
 
     pub async fn apply_page(&self, page: PageCommit) -> Result<String> {
+        self.apply_page_with_notification_subjects(page, vec![])
+            .await
+    }
+
+    pub async fn apply_page_with_notification_subjects(
+        &self,
+        page: PageCommit,
+        observations: Vec<crate::NotificationSubjectObservation>,
+    ) -> Result<String> {
         validate_scope(&page.scope)?;
-        if page.repositories.len() + page.items.len() > 100 {
+        if page.repositories.len() + page.items.len() + page.endpoint_aliases.len() > 100 {
             return Err(CollaborationError::invalid(
                 "Provider page exceeds the write batch limit",
             ));
@@ -555,7 +808,11 @@ impl Store {
                 "Completed traversal cannot have a continuation",
             ));
         }
-        if page.not_modified && (!page.items.is_empty() || !page.repositories.is_empty()) {
+        if page.not_modified
+            && (!page.items.is_empty()
+                || !page.repositories.is_empty()
+                || !page.endpoint_aliases.is_empty())
+        {
             return Err(CollaborationError::invalid(
                 "Unmodified response cannot contain observations",
             ));
@@ -563,6 +820,8 @@ impl Store {
         let mut writer = self.inner.writer.lock().await;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         epoch_in(&mut tx, &page.account_id, &page.authorization_epoch).await?;
+        let account = account_in(&mut tx, &page.account_id, true).await?;
+        notification_subjects::capture_in(&mut tx, &page.account_id).await?;
         ensure_selected_scope(&mut tx, &page.account_id, &page.scope).await?;
         let stored = scope_in(&mut tx, &page.account_id, &page.scope)
             .await?
@@ -584,6 +843,7 @@ impl Store {
                 ));
             }
             validate_identifier(&repository.id)?;
+            identities::repository_in(&mut tx, &account, repository).await?;
             sqlx::query("INSERT INTO repositories(account_id,id,provider_id,full_name,selected,json) VALUES(?,?,?,?,?,?) ON CONFLICT(account_id,id) DO UPDATE SET provider_id=excluded.provider_id,full_name=excluded.full_name,json=excluded.json")
                 .bind(&page.account_id).bind(&repository.id).bind(&repository.provider_id).bind(&repository.full_name).bind(repository.selected).bind(encode(repository)?)
                 .execute(&mut *tx).await.map_err(storage_error)?;
@@ -622,8 +882,10 @@ impl Store {
                     .fetch_optional(&mut *tx)
                     .await
                     .map_err(storage_error)?;
+            let mut previous_head = None;
             if let Some(previous) = previous {
                 let previous: RemoteItem = decode(&previous)?;
+                previous_head = previous.head_oid.clone();
                 // Provider timestamps are comparable for this list projection.
                 // Missing detail fields from a summary never erase cached detail.
                 if timestamp_older(&item.updated_at, &previous.updated_at) {
@@ -641,6 +903,14 @@ impl Store {
                     item.is_draft = previous.is_draft;
                 }
             }
+            identities::item_in(&mut tx, &account, &item).await?;
+            resource_metadata::invalidate_head_in(
+                &mut tx,
+                &account,
+                &item,
+                previous_head.as_deref(),
+            )
+            .await?;
             sqlx::query("INSERT INTO items(account_id,id,repository_id,kind,state,updated_at,json) VALUES(?,?,?,?,?,?,?) ON CONFLICT(account_id,id) DO UPDATE SET repository_id=excluded.repository_id,kind=excluded.kind,state=excluded.state,updated_at=excluded.updated_at,json=excluded.json")
                 .bind(&page.account_id).bind(&item.id).bind(&item.repository_id).bind(tag(&item.kind)?).bind(&item.state).bind(&item.updated_at).bind(encode(&item)?)
                 .execute(&mut *tx).await.map_err(storage_error)?;
@@ -667,6 +937,10 @@ impl Store {
                 .map_err(storage_error)?;
             seen(&mut tx, &page, &item.id).await?;
         }
+        for alias in &page.endpoint_aliases {
+            identities::endpoint_in(&mut tx, &account, alias, &page.scope).await?;
+        }
+        notification_subjects::observe_in(&mut tx, &account, &page, &observations).await?;
         // Two completed traversals establish observed feed absence. Keep the
         // canonical row: a list miss never proves deletion or denied access.
         // Partial traversals cannot hide previous membership. A 304 leaves the
@@ -723,6 +997,7 @@ impl Store {
         sqlx::query("UPDATE sync_scopes SET next_cursor=?,etag=?,last_modified=?,coverage_json=?,sync_json=?,access_denied=0,completed_run_id=CASE WHEN ? THEN ? ELSE completed_run_id END WHERE account_id=? AND scope=?")
             .bind(page.next_cursor).bind(etag).bind(last_modified).bind(encode(&coverage)?).bind(encode(&sync)?).bind(page.complete).bind(&page.run_id).bind(&page.account_id).bind(&page.scope)
             .execute(&mut *tx).await.map_err(storage_error)?;
+        notification_subjects::reconcile_in(&mut tx, &account).await?;
         let revision = record_change(
             &mut tx,
             &page.account_id,
@@ -753,6 +1028,7 @@ impl Store {
         let mut writer = self.inner.writer.lock().await;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         epoch_in(&mut tx, account_id, epoch).await?;
+        notification_subjects::capture_in(&mut tx, account_id).await?;
         ensure_selected_scope(&mut tx, account_id, scope).await?;
         if status.state == SyncState::AuthRequired {
             // Authentication revocation fences *all* provider content and old
@@ -814,6 +1090,8 @@ impl Store {
             .await
             .map_err(storage_error)?;
         }
+        let account = account_in(&mut tx, account_id, true).await?;
+        notification_subjects::reconcile_in(&mut tx, &account).await?;
         let revision =
             record_change(&mut tx, account_id, positive_revision(epoch)?, scope, reset).await?;
         tx.commit().await.map_err(storage_error)?;
@@ -993,10 +1271,64 @@ impl Store {
     }
 }
 
+async fn upsert_account_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    account: &RemoteAccount,
+) -> Result<()> {
+    validate_identifier(&account.id)?;
+    validate_identifier(&account.actor_id)?;
+    let epoch = positive_revision(&account.authorization_epoch)?;
+    if let Some(row) =
+        sqlx::query("SELECT authorization_epoch, provider, host, actor_id FROM accounts WHERE id=?")
+            .bind(&account.id)
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(storage_error)?
+    {
+        let current: i64 = row.get("authorization_epoch");
+        if epoch <= current {
+            return Err(stale());
+        }
+        if row.get::<String, _>("provider") != tag(&account.provider)?
+            || row.get::<String, _>("host") != account.host
+            || row.get::<String, _>("actor_id") != account.actor_id
+        {
+            return Err(CollaborationError::invalid(
+                "Account identity cannot be changed",
+            ));
+        }
+        clear_remote_cache(tx, &account.id).await?;
+    }
+    let provider = tag(&account.provider)?;
+    let state = tag(&account.state)?;
+    sqlx::query("INSERT INTO accounts(id,provider,host,actor_id,authorization_epoch,state,json) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET authorization_epoch=excluded.authorization_epoch,state=excluded.state,json=excluded.json")
+            .bind(&account.id).bind(provider).bind(&account.host).bind(&account.actor_id).bind(epoch).bind(state).bind(encode(account)?)
+            .execute(&mut **tx).await.map_err(storage_error)?;
+    identities::bind_account_in(tx, account).await?;
+    sqlx::query(
+        "UPDATE runtime_meta SET authorization_view=authorization_view+1 WHERE singleton=1",
+    )
+    .execute(&mut **tx)
+    .await
+    .map_err(storage_error)?;
+    record_change(tx, &account.id, epoch, "account", true).await?;
+    Ok(())
+}
+
+async fn retire_credential_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    account_id: &str,
+    reference: &str,
+) -> Result<()> {
+    sqlx::query("INSERT INTO credential_cleanup(credential_ref,account_id,state) VALUES(?,?,'retired') ON CONFLICT(credential_ref) DO UPDATE SET state='retired',attempts=0,next_retry_at=0")
+        .bind(reference).bind(account_id).execute(&mut **tx).await.map_err(storage_error)?;
+    Ok(())
+}
+
 fn storage_error(_: sqlx::Error) -> CollaborationError {
     CollaborationError::storage()
 }
-fn acquire_writer_lease(path: &Path) -> Result<std::fs::File> {
+fn acquire_writer_lease(path: &Path) -> Result<WriterLease> {
     let mut name = path.as_os_str().to_os_string();
     name.push(".lock");
     let lock_path = std::path::PathBuf::from(name);
@@ -1021,7 +1353,7 @@ fn acquire_writer_lease(path: &Path) -> Result<std::fs::File> {
             .map_err(|_| CollaborationError::storage())?;
     }
     match lease.try_lock() {
-        Ok(()) => Ok(lease),
+        Ok(()) => Ok(WriterLease { file: lease }),
         Err(std::fs::TryLockError::WouldBlock) => Err(CollaborationError::new(
             ErrorCode::Busy,
             "Collaboration storage is already open in another application instance",
@@ -1332,7 +1664,11 @@ fn validate_scope(scope: &str) -> Result<()> {
     if scope == "repositories"
         || scope == "notifications"
         || scope == "provider:rest"
+        || scope
+            .strip_prefix(notification_subjects::PREFIX)
+            .is_some_and(|id| validate_identifier(id).is_ok())
         || repository_from_scope(scope).is_some()
+        || crate::DetailFacet::from_scope(scope).is_some()
     {
         Ok(())
     } else {
@@ -1389,6 +1725,64 @@ async fn account_in(
     }
     Ok(account)
 }
+fn validate_provider_deadline(deadline: &str) -> Result<()> {
+    if deadline.len() > 128 || chrono::DateTime::parse_from_rfc3339(deadline).is_err() {
+        return Err(CollaborationError::invalid(
+            "Invalid provider quota deadline",
+        ));
+    }
+    Ok(())
+}
+
+/// Both credential cutover and same-epoch observations hold the writer here.
+async fn provider_budget_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    account_id: &str,
+    epoch: &str,
+    proposed: String,
+    error: Option<CollaborationError>,
+) -> Result<String> {
+    let prior: Option<String> = sqlx::query_scalar(
+        "SELECT sync_json FROM sync_scopes WHERE account_id=? AND scope='provider:rest'",
+    )
+    .bind(account_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(storage_error)?;
+    let prior: Option<SyncStatus> = prior.as_deref().map(decode).transpose()?;
+    let retained = prior
+        .as_ref()
+        .and_then(|status| status.next_retry_at.as_ref())
+        .filter(|old| {
+            chrono::DateTime::parse_from_rfc3339(old)
+                .ok()
+                .zip(chrono::DateTime::parse_from_rfc3339(&proposed).ok())
+                .is_some_and(|(old, new)| old > new)
+        })
+        .cloned();
+    let status = SyncStatus {
+        state: SyncState::RateLimited,
+        last_success_at: prior
+            .as_ref()
+            .and_then(|status| status.last_success_at.clone()),
+        next_retry_at: Some(retained.clone().unwrap_or(proposed)),
+        // Retaining a longer existing barrier also retains its diagnostic when
+        // the new observation carries no error. Neither field revokes access.
+        error: error.or_else(|| retained.and_then(|_| prior.and_then(|status| status.error))),
+    };
+    sqlx::query("INSERT INTO sync_scopes(account_id,scope,run_id,coverage_json,sync_json) VALUES(?,'provider:rest',?,?,?) ON CONFLICT(account_id,scope) DO UPDATE SET sync_json=excluded.sync_json")
+        .bind(account_id).bind(Uuid::new_v4().to_string()).bind(encode(&missing_coverage())?).bind(encode(&status)?)
+        .execute(&mut **tx).await.map_err(storage_error)?;
+    record_change(
+        tx,
+        account_id,
+        positive_revision(epoch)?,
+        "provider:rest",
+        false,
+    )
+    .await
+}
+
 async fn epoch_in(tx: &mut Transaction<'_, Sqlite>, account_id: &str, epoch: &str) -> Result<()> {
     let account = account_in(tx, account_id, false).await?;
     if account.authorization_epoch != epoch || account.state != AccountState::Active {
@@ -1401,16 +1795,12 @@ async fn ensure_selected_scope(
     account_id: &str,
     scope: &str,
 ) -> Result<()> {
-    if scope == "notifications"
-        && !account_in(tx, account_id, true)
-            .await?
-            .notifications_supported
-    {
-        return Err(CollaborationError::new(
-            ErrorCode::Unsupported,
-            "This credential does not support provider notifications",
-        ));
+    if let Some((subject, _)) = crate::DetailFacet::from_scope(scope) {
+        details::subject_in(tx, account_id, subject).await?;
     }
+    // Storage enforces actor/epoch/scope visibility. Provider functionality is
+    // checked by the registry at admission and dispatch, including non-native
+    // inboxes such as to-dos which have no GitHub notification grant flag.
     if let Some(repository_id) = repository_from_scope(scope) {
         let mut sql = sqlx::QueryBuilder::<Sqlite>::new(
             "SELECT r.selected FROM repositories r WHERE r.account_id=",
@@ -1457,6 +1847,10 @@ fn repository_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<RemoteRepository
 }
 async fn clear_remote_cache(tx: &mut Transaction<'_, Sqlite>, account_id: &str) -> Result<()> {
     for sql in [
+        "DELETE FROM notification_subject_discovery WHERE account_id=?",
+        "DELETE FROM notification_subject_selectors WHERE account_id=?",
+        "DELETE FROM detail_demand WHERE account_id=?",
+        "DELETE FROM detail_observations WHERE account_id=?",
         "DELETE FROM items_fts WHERE account_id=?",
         "DELETE FROM items WHERE account_id=?",
         // Provider quota is metadata, not private provider content. A reconnect

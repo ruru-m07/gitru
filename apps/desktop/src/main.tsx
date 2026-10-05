@@ -7,7 +7,10 @@ import { enableDevDiagnostics } from "./bootstrap/runtime-utils";
 import { redirectToLastPage } from "./bootstrap/session-restore";
 import "./app.css";
 
-if (import.meta.env.MODE === "e2e") {
+if (
+  import.meta.env.MODE === "e2e" ||
+  import.meta.env.MODE === "e2e-collaboration-harness"
+) {
   // Embedded WebDriver can retain Base UI transition nodes after they close
   // and treats a starting popup as hidden. Scope the workaround to those
   // portal lifecycle states so the rest of the app keeps its real motion.
@@ -32,7 +35,8 @@ if (import.meta.env.MODE === "e2e") {
   `;
   document.head.append(style);
   await import("@wdio/tauri-plugin");
-  await import("./bootstrap/e2e-collaboration");
+  if (import.meta.env.MODE === "e2e")
+    await import("./bootstrap/e2e-collaboration");
 }
 
 try {
@@ -46,6 +50,22 @@ const rootElement = document.getElementById("root");
 if (rootElement && !rootElement.innerHTML) {
   const root = ReactDOM.createRoot(rootElement);
   root.render(<AppRoot />);
+}
+
+if (import.meta.env.MODE === "e2e-collaboration-harness") {
+  const { collaborationHarnessViewManifest } = await import("@gitru/commands");
+  const { installCollaborationHarnessProbe } = await import(
+    "./bootstrap/e2e-collaboration-harness"
+  );
+  const readManifest = () => collaborationHarnessViewManifest({});
+  const probe = await installCollaborationHarnessProbe(readManifest);
+  const manifest = await readManifest();
+  if (manifest.role === "main") {
+    const { installCollaborationHarnessExecutor } = await import(
+      "./bootstrap/e2e-collaboration-harness-executor"
+    );
+    await installCollaborationHarnessExecutor(probe);
+  }
 }
 
 if (enableDevDiagnostics()) {

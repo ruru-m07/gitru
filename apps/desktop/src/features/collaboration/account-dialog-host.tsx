@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { setTabWebviewsSuspended } from "@/components/webview-tab-host";
 import { ACCOUNT_SETTINGS_OPEN_EVENT } from "./account-dialog-events";
 import { AccountManager, isTrustedAccountWindow } from "./account-manager";
+import { LocalTransportSettings } from "./local-transport-settings";
 
 // Effect owners prevent an old listener/unmount cleanup from releasing a newer
 // acquisition during StrictMode, HMR or a close/reopen race.
@@ -148,7 +149,7 @@ function MainAccountDialogHost() {
         }}
       >
         <DialogPopup
-          className="sm:max-w-xl max-h-[85vh] overflow-y-auto motion-reduce:transition-none"
+          className="sm:max-w-xl grid-rows-[auto_minmax(0,1fr)] max-h-[calc(100dvh-3rem)] overflow-hidden sm:max-h-[calc(80dvh-2rem)] motion-reduce:transition-none"
           finalFocus={false}
         >
           <DialogHeader>
@@ -158,7 +159,16 @@ function MainAccountDialogHost() {
               notifications into Gitru.
             </DialogDescription>
           </DialogHeader>
-          {open ? <AccountManager /> : null}
+          {open ? (
+            <div
+              className="min-h-0 overflow-y-auto overscroll-contain"
+              role="region"
+              aria-label="Account and repository settings"
+            >
+              <AccountManager />
+              <LocalTransportSettings />
+            </div>
+          ) : null}
         </DialogPopup>
       </Dialog>
     </>

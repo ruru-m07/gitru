@@ -1,8 +1,10 @@
 //! Local reads are separate commands from network refresh intents.
 use collaboration::{
-    AccountSnapshot, ChangePage, CollaborationError, CollaborationRuntime, DraftPage, DraftQuery,
-    ErrorCode, GithubCliDiscovery, ItemPage, ItemQuery, ItemSnapshot, LocalDraft, RefreshReceipt,
-    RefreshRequest, RemoteAccount, RepositorySnapshot,
+    AccountSnapshot, CapabilitySnapshot, ChangePage, CollaborationError, CollaborationRuntime,
+    ContextCapabilityRequest, ContextualCapabilitySnapshot, DetailQuery, DetailSnapshot, DraftPage,
+    DraftQuery, ErrorCode, GithubCliDiscovery, HydrateDetailRequest, ItemPage, ItemQuery,
+    ItemSnapshot, LocalDraft, RefreshReceipt, RefreshRequest, RemoteAccount, RepositorySnapshot,
+    ResourceLocator, ResourceResolution,
 };
 use std::sync::Arc;
 use tauri::{State, Webview};
@@ -15,10 +17,13 @@ mod draft_export;
 pub struct CollaborationState {
     pub runtime: OnceCell<Result<Arc<CollaborationRuntime>, CollaborationError>>,
     draft_export: tokio::sync::Mutex<()>,
+    pub(super) demand_hosts: tokio::sync::Mutex<std::collections::HashMap<String, bool>>,
+    pub(super) local_link_previews: super::collaboration_local_links::LocalLinkPreviews,
+    pub(super) webview_lifetimes: super::collaboration_local_links::NativeWebviewLifetimes,
 }
 
 impl CollaborationState {
-    async fn get(&self) -> Result<&Arc<CollaborationRuntime>, CollaborationError> {
+    pub(super) async fn get(&self) -> Result<&Arc<CollaborationRuntime>, CollaborationError> {
         // Initialization starts during setup. A bounded wait makes startup reads
         // resilient without blocking the app shell or requiring network access.
         for _ in 0..100 {
@@ -35,9 +40,11 @@ impl CollaborationState {
 }
 
 #[derive(Clone, Copy)]
-enum Operation {
+pub(super) enum Operation {
     Accounts,
     ConnectGithub,
+    ConnectGitlab,
+    ConnectBitbucketCloud,
     DiscoverGithubCli,
     ConnectGithubCli,
     Disconnect,
@@ -51,6 +58,22 @@ enum Operation {
     Draft,
     Drafts,
     ExportDraft,
+    Capabilities,
+    ContextualCapabilities,
+    ResolveResource,
+    Detail,
+    HydrateDetail,
+    DemandActivity,
+    AcquireDemand,
+    RenewDemand,
+    ReleaseDemand,
+    InspectDemandOwner,
+    SetDemandOwner,
+    DisposeDemandOwner,
+    LocalLinks,
+    TransportBindings,
+    NotificationSubject,
+    DiscoverNotificationSubject,
 }
 
 impl Operation {
@@ -58,14 +81,20 @@ impl Operation {
         matches!(
             self,
             Self::ConnectGithub
+                | Self::ConnectGitlab
+                | Self::ConnectBitbucketCloud
                 | Self::DiscoverGithubCli
                 | Self::ConnectGithubCli
                 | Self::Disconnect
+                | Self::InspectDemandOwner
+                | Self::SetDemandOwner
+                | Self::DisposeDemandOwner
+                | Self::TransportBindings
         )
     }
 }
 
-fn authorize(view: &Webview, operation: Operation) -> Result<(), CollaborationError> {
+pub(super) fn authorize(view: &Webview, operation: Operation) -> Result<(), CollaborationError> {
     let url = view.url().map_err(|_| denied())?;
     if !caller_allowed(view.label(), &url, operation) {
         return Err(denied());
@@ -73,17 +102,22 @@ fn authorize(view: &Webview, operation: Operation) -> Result<(), CollaborationEr
     Ok(())
 }
 
-fn caller_allowed(label: &str, url: &url::Url, operation: Operation) -> bool {
-    let local = matches!(
-        (url.scheme(), url.host_str()),
-        ("tauri", Some("localhost"))
-            | ("https", Some("tauri.localhost"))
-            | ("http", Some("tauri.localhost"))
-    ) || (cfg!(debug_assertions)
+pub(super) fn caller_allowed(label: &str, url: &url::Url, operation: Operation) -> bool {
+    let production = url.port().is_none()
+        && matches!(
+            (url.scheme(), url.host_str()),
+            ("tauri", Some("localhost"))
+                | ("https", Some("tauri.localhost"))
+                | ("http", Some("tauri.localhost"))
+        );
+    let development = cfg!(debug_assertions)
         && url.scheme() == "http"
         && matches!(url.host_str(), Some("localhost" | "127.0.0.1"))
-        && url.port() == Some(1420));
-    local && (label == "main" || (!operation.requires_main() && label.starts_with("tab-webview:")))
+        && url.port() == Some(1420);
+    url.username().is_empty()
+        && url.password().is_none()
+        && (production || development)
+        && (label == "main" || (!operation.requires_main() && label.starts_with("tab-webview:")))
 }
 
 fn denied() -> CollaborationError {
@@ -110,6 +144,26 @@ pub async fn collaboration_connect_github(
 ) -> Result<RemoteAccount, CollaborationError> {
     authorize(&view, Operation::ConnectGithub)?;
     state.get().await?.connect_github(token).await
+}
+
+#[tauri::command]
+pub async fn collaboration_connect_gitlab(
+    token: String,
+    view: Webview,
+    state: State<'_, CollaborationState>,
+) -> Result<RemoteAccount, CollaborationError> {
+    authorize(&view, Operation::ConnectGitlab)?;
+    state.get().await?.connect_gitlab(token).await
+}
+
+#[tauri::command]
+pub async fn collaboration_connect_bitbucket_cloud(
+    token: String,
+    view: Webview,
+    state: State<'_, CollaborationState>,
+) -> Result<RemoteAccount, CollaborationError> {
+    authorize(&view, Operation::ConnectBitbucketCloud)?;
+    state.get().await?.connect_bitbucket_cloud(token).await
 }
 
 #[tauri::command]
@@ -185,7 +239,23 @@ pub async fn collaboration_item(
     state: State<'_, CollaborationState>,
 ) -> Result<ItemSnapshot, CollaborationError> {
     authorize(&view, Operation::Item)?;
-    state.get().await?.store().item(&account_id, &item_id).await
+    #[cfg(feature = "collaboration-harness")]
+    let proof = super::collaboration_harness::LocalReturnProof::capture(&view)?;
+    let snapshot = state
+        .get()
+        .await?
+        .store()
+        .item(&account_id, &item_id)
+        .await?;
+    #[cfg(feature = "collaboration-harness")]
+    proof
+        .hold(
+            crate::collaboration_harness::HarnessReadKind::Item,
+            &account_id,
+            &item_id,
+        )
+        .await?;
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -231,11 +301,58 @@ pub async fn collaboration_draft(
     state: State<'_, CollaborationState>,
 ) -> Result<Option<LocalDraft>, CollaborationError> {
     authorize(&view, Operation::Draft)?;
-    state
+    #[cfg(feature = "collaboration-harness")]
+    let proof = super::collaboration_harness::LocalReturnProof::capture(&view)?;
+    let snapshot = state
         .get()
         .await?
         .store()
         .draft(&account_id, &subject_id)
+        .await?;
+    #[cfg(feature = "collaboration-harness")]
+    proof
+        .hold(
+            crate::collaboration_harness::HarnessReadKind::Draft,
+            &account_id,
+            &subject_id,
+        )
+        .await?;
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub async fn collaboration_contextual_capabilities(
+    request: ContextCapabilityRequest,
+    view: Webview,
+    state: State<'_, CollaborationState>,
+) -> Result<ContextualCapabilitySnapshot, CollaborationError> {
+    authorize(&view, Operation::ContextualCapabilities)?;
+    state.get().await?.contextual_capabilities(request).await
+}
+
+#[tauri::command]
+pub async fn collaboration_capabilities(
+    account_id: String,
+    view: Webview,
+    state: State<'_, CollaborationState>,
+) -> Result<CapabilitySnapshot, CollaborationError> {
+    authorize(&view, Operation::Capabilities)?;
+    state.get().await?.capabilities(&account_id).await
+}
+
+#[tauri::command]
+pub async fn collaboration_resolve_resource(
+    account_id: String,
+    locator: ResourceLocator,
+    view: Webview,
+    state: State<'_, CollaborationState>,
+) -> Result<ResourceResolution, CollaborationError> {
+    authorize(&view, Operation::ResolveResource)?;
+    state
+        .get()
+        .await?
+        .store()
+        .resolve_resource(&account_id, locator)
         .await
 }
 
@@ -290,6 +407,46 @@ pub async fn collaboration_export_draft(
     .await
 }
 
+#[tauri::command]
+pub async fn collaboration_detail(
+    query: DetailQuery,
+    view: Webview,
+    state: State<'_, CollaborationState>,
+) -> Result<DetailSnapshot, CollaborationError> {
+    authorize(&view, Operation::Detail)?;
+    #[cfg(feature = "collaboration-harness")]
+    let proof = super::collaboration_harness::LocalReturnProof::capture(&view)?;
+    #[cfg(feature = "collaboration-harness")]
+    let held_target = (query.facet == collaboration::DetailFacet::Body)
+        .then(|| (query.account_id.clone(), query.subject_id.clone()));
+    let snapshot = state.get().await?.store().detail(query).await?;
+    #[cfg(feature = "collaboration-harness")]
+    if let Some((account, subject)) = held_target {
+        proof
+            .hold(
+                crate::collaboration_harness::HarnessReadKind::Body,
+                &account,
+                &subject,
+            )
+            .await?;
+    }
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub async fn collaboration_hydrate_detail(
+    request: HydrateDetailRequest,
+    view: Webview,
+    state: State<'_, CollaborationState>,
+) -> Result<RefreshReceipt, CollaborationError> {
+    authorize(&view, Operation::HydrateDetail)?;
+    #[cfg(feature = "collaboration-harness")]
+    super::collaboration_harness::LocalReturnProof::capture(&view)?
+        .record_hydrate()
+        .await?;
+    state.get().await?.hydrate_detail(request).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::{caller_allowed, Operation};
@@ -306,12 +463,32 @@ mod tests {
         Operation::Draft,
         Operation::Drafts,
         Operation::ExportDraft,
+        Operation::Capabilities,
+        Operation::ContextualCapabilities,
+        Operation::ResolveResource,
+        Operation::Detail,
+        Operation::HydrateDetail,
+        Operation::DemandActivity,
+        Operation::AcquireDemand,
+        Operation::RenewDemand,
+        Operation::ReleaseDemand,
+        Operation::LocalLinks,
+        Operation::NotificationSubject,
+        Operation::DiscoverNotificationSubject,
     ];
     const CREDENTIAL_OPERATIONS: &[Operation] = &[
         Operation::ConnectGithub,
+        Operation::ConnectGitlab,
+        Operation::ConnectBitbucketCloud,
         Operation::DiscoverGithubCli,
         Operation::ConnectGithubCli,
         Operation::Disconnect,
+        Operation::TransportBindings,
+    ];
+    const HOST_OPERATIONS: &[Operation] = &[
+        Operation::InspectDemandOwner,
+        Operation::SetDemandOwner,
+        Operation::DisposeDemandOwner,
     ];
 
     #[test]
@@ -327,7 +504,7 @@ mod tests {
     #[test]
     fn credential_commands_remain_restricted_to_the_main_local_webview() {
         let app = url::Url::parse("tauri://localhost/app/pulls").unwrap();
-        for &operation in CREDENTIAL_OPERATIONS {
+        for &operation in CREDENTIAL_OPERATIONS.iter().chain(HOST_OPERATIONS) {
             assert!(caller_allowed("main", &app, operation));
             assert!(!caller_allowed("tab-webview:1", &app, operation));
             assert!(!caller_allowed("other", &app, operation));
@@ -341,11 +518,57 @@ mod tests {
             "https://tauri.localhost.evil.com",
             "file:///tmp/page.html",
             "http://localhost:3000",
+            "tauri://localhost:1420/app/pulls",
+            "https://tauri.localhost:4445/app/pulls",
+            "http://tauri.localhost:1420/app/pulls",
+            "tauri://actor@localhost/app/pulls",
+            "https://actor:secret@tauri.localhost/app/pulls",
+            "http://actor@localhost:1420/app/pulls",
         ] {
             let url = url::Url::parse(url).unwrap();
-            for &operation in DOMAIN_OPERATIONS.iter().chain(CREDENTIAL_OPERATIONS) {
+            for &operation in DOMAIN_OPERATIONS
+                .iter()
+                .chain(CREDENTIAL_OPERATIONS)
+                .chain(HOST_OPERATIONS)
+            {
                 assert!(!caller_allowed("main", &url, operation));
                 assert!(!caller_allowed("tab-webview:1", &url, operation));
+            }
+        }
+    }
+
+    #[test]
+    fn configured_native_origins_and_the_explicit_debug_origin_remain_usable() {
+        for address in [
+            "tauri://localhost/app/pulls",
+            "https://tauri.localhost/app/pulls",
+            "http://tauri.localhost/app/pulls",
+        ] {
+            let app = url::Url::parse(address).unwrap();
+            for operation in [Operation::SetDemandOwner, Operation::TransportBindings] {
+                assert!(caller_allowed("main", &app, operation));
+                assert!(!caller_allowed("tab-webview:1", &app, operation));
+            }
+            for operation in [Operation::AcquireDemand, Operation::LocalLinks] {
+                assert!(caller_allowed("tab-webview:1", &app, operation));
+            }
+        }
+        for address in [
+            "http://localhost:1420/app/pulls",
+            "http://127.0.0.1:1420/app/pulls",
+        ] {
+            let app = url::Url::parse(address).unwrap();
+            for operation in [Operation::SetDemandOwner, Operation::TransportBindings] {
+                assert_eq!(
+                    caller_allowed("main", &app, operation),
+                    cfg!(debug_assertions)
+                );
+            }
+            for operation in [Operation::AcquireDemand, Operation::LocalLinks] {
+                assert_eq!(
+                    caller_allowed("tab-webview:1", &app, operation),
+                    cfg!(debug_assertions)
+                );
             }
         }
     }

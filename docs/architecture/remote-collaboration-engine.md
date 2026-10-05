@@ -994,7 +994,7 @@ silently use a different actor's token to fill an inbox.
 | --- | --- | --- |
 | GitHub.com | Manual PAT; optional import of an existing GitHub CLI account | Confirmed product decision: Gitru does not initiate OAuth/device login. Verify the actor and actual credential capabilities; an existing CLI credential may itself be OAuth |
 | GitHub Enterprise | PAT first or tested registered flow | Host/version/policy/device support; separate registration may be required |
-| GitLab | External browser public-client code + PKCE; PAT fallback | App registration on instance; device flow only on tested supported versions |
+| GitLab.com | Direct manual PAT with actor and repository-operation probes | Initial R110 rollout; OAuth/PKCE and self-hosted trust remain later separately qualified strategies |
 | Bitbucket Cloud | Current API token initially; optional confidential OAuth broker | No established secretless native OAuth flow in examined docs; never ship consumer secret |
 | Bitbucket Data Center | PAT/admin-configured integration initially | OAuth/PKCE/secret requirements and capabilities verified per version |
 
@@ -1381,7 +1381,7 @@ Verify:
 - SQLite bundles the tested WAL fix/FTS features on Linux/macOS/Windows.
 - A committed intent and snapshot revision survive crash/restart.
 - Vault failures and account isolation are reproducible without real credentials.
-- Direct GitHub PAT/explicit CLI import and GitLab public-client registration paths are viable;
+- Direct GitHub PAT/explicit CLI import and GitLab PAT operation probes are viable;
   notification token and Bitbucket auth restrictions are explicit.
 
 Gate: record spike results and final dependency/auth choices here. Prototype code
@@ -1436,7 +1436,8 @@ a tested head guard.
 
 ### Phase 5 — GitLab abstraction validation
 
-Implement GitLab MR/issues/todos, discussions/approvals facets, and public-client
+Start GitLab.com with PAT actor verification and repositories (R110), then add
+MR/issues/todos and discussions/approvals facets; optional public-client
 auth against selected supported versions. Add enterprise instance configuration,
 registration, and private-host trust controls according to product priority.
 
@@ -1746,6 +1747,51 @@ personal CLI credentials were inspected and no remote CI run was created.
 
 ### Foundation publication and continuation (2026-10-03)
 
+Current continuation adds [PR #147](https://github.com/ruru-m07/gitru/pull/147),
+RURU-97, on the reviewed provider-registry branch, and
+[PR #149](https://github.com/ruru-m07/gitru/pull/149), RURU-100, stacked on #147.
+Both issues are In Review. Independent detail facets
+now have cache-only queries, explicit epoch-bound coalesced hydration, bounded
+paging/restart intent and atomic source/coverage/access/revision metadata.
+Known null/empty, missing, omitted, oversized and partial observations remain
+distinct. Retained body authority survives omitted/oversized and timestamp-free
+304 responses; deselect/reselect cannot revive an old facet lease. A metadata-only
+accessor shares the caller's SQLite snapshot for contextual capability reads.
+Local validation passes 114 collaboration, 3 command-caller, 36 client and 177
+desktop frontend tests, types/lint/Clippy/formatting, and the 9 CLI cases after
+the ancestor fixture correction. Independent storage and runtime/client reviews
+are accepted. Production GitHub detail endpoints/UI remain RURU-77/78, the next
+read experience chunks. RURU-100's atomic account/repository/resource policies,
+shared local deadline coordinator and ordinary workspace/sidebar consumers
+pass 127 native, 44 SDK, 193 desktop and 3 caller-policy tests, scoped types/lint,
+build/Clippy/formatting, both independent reviews and native synthetic fixture QA.
+Same-actor grant refresh retains private text and inspected CAS; actor/subject
+switching resets the buffer. RURU-99's separate editor/recovery extraction needs
+narrow merge reconciliation. Migration 0004 adds rebuildable
+details; RURU-106's restore policy still refuses unreviewed schemas 0003/0004.
+These are published review stacks, not merged or release-qualified features.
+
+Eight scoped draft PRs are published: #141 foundation, #142 credential cutover,
+#143 migration recovery, #144 saved draft recovery, #145 backup/recovery native
+core, #146 registry, #147 independent details and #149 contextual capabilities.
+RURU-106 remains In Progress. The exact `c215389` foundation head passes frontend,
+Clippy/formatting, Linux/macOS/Windows Rust, all CodeQL analyses and Linux/macOS
+packaged E2E; Windows packaged E2E remained pending when recorded. Test-only
+checked iteration repairs newly reported synthetic `Vec::remove` logging-model
+alerts in #142/#147 without suppression, while retaining exact-one fixture and
+original content assertions. These signed descendant heads have restarted CI;
+completed ancestor checks do not qualify a child's current head. The hourly
+continuation checks live issue dependencies, overlap and CI before proceeding.
+
+A later #147 Linux run captured OS code 26 (`Text file busy`) at the inherited
+credential crash-test snapshot spawn. Fixture audit/review corrected the only
+two parent-written executable snapshots (RURU-95 and RURU-106) with waited Unix
+child writers; no retries, test serialization or production change is introduced.
+The observed error and source-inferred descriptor mechanism are distinguished
+in the work notes. The signed repairs are propagated through the review stacks;
+the current RURU-100 native suite again passes 127 tests. Fresh exact-head
+Linux/platform and security checks remain pending.
+
 The foundation received independent native and frontend review with no new
 blocking findings. `make verify` passed on macOS on 3 October, including the
 194 frontend tests, workspace lint/type checks, production frontend build,
@@ -1779,9 +1825,11 @@ Each branch records its design and evidence in
 separate gate. Foundation CI exposed an initial child-probe readiness race and
 four CLI fixture `Vec::remove` logging-model alerts; scoped test fixes passed
 local packaged E2E/CLI checks and the exact-head remote matrix was restarted.
-No production credential logging or rule suppression was introduced. Default
-CodeQL only scans PRs targeting default/protected `dev`, so stacked children need
-fresh exact-head security scans when retargeted to `dev` before merge.
+No production credential logging or rule suppression was introduced.
+Exact-head dynamic CodeQL runs have now been observed on stacked children
+#142, #143, #146 and #147. Each merge still requires every relevant analysis to
+complete and zero relevant alerts on the exact proposed head. Do not infer a
+policy change from the observed run availability or reuse an ancestor's scan.
 
 CI follow-up: production migrations and frozen SQL fixtures now explicitly use
 LF in Git attributes, preserving SQLx checksums and literal text on Windows.
@@ -1847,9 +1895,10 @@ Those lanes are published in separate draft PRs based on #143:
   open. Core policy deliberately refuses v3/unknown/outbox schemas. The parallel
   stacks do not yet form a release-qualified combined backup feature.
 
-The next batch implements RURU-97 independent detail storage/hydration and
-RURU-100 contextual capability consumers from the reviewed #146 commit. These
-are In Progress and record their contracts before major edits. Detail coverage
+This batch adds RURU-97 independent detail storage/hydration in draft #147 and
+RURU-100 contextual capability consumers from the reviewed #146 contract.
+RURU-97 is In Review; RURU-100 remains In Progress. Both record their contracts
+before major edits. Detail coverage
 is separate from summary coverage; local reads never initiate provider HTTP.
 Contextual capabilities distinguish authorized saved reads, remote sync and
 remote writes across account/repository/resource targets. Temporary network or
@@ -1857,6 +1906,44 @@ quota errors must not hide still-authorized cached content; access denial does.
 Private draft recovery stays independent. Shared IPC generation is sequenced
 after the detail contract freezes. Publication authorizes review; no PR is
 merged without user authorization.
+
+RURU-100's complete contextual slice is locally implemented atop the signed
+RURU-97 contract. Its separate native reader captures account/repository/resource
+ownership, authorization, visibility, detail evidence and both facet/account
+quota barriers in one SQLite snapshot. Saved reads, synchronization and remote
+writes remain distinct; every remote write is explicitly unsupported. The
+ordinary workspace and sidebar use typed policy/inbox semantics, with shared
+unsupported/denied/missing/read-only boundaries and private drafts outside
+provider gates. One bridge-owned local deadline timer repairs eligibility after
+cooldown expiry. Local evidence passes 127 collaboration, 44 SDK and 193 desktop
+tests, including actual authorization-reset/CAS and pending-query races; both
+independent reviews accepted the source. Native fixture QA and final publication
+gates are recorded in [RURU-100's work note](./collaboration-work/RURU-100.md).
+RURU-99's separately published authored recovery/editor extraction still needs a
+narrow merge reconciliation preserving recovery/copy/export and its own CAS
+rules. Remote CI/security and live-account qualification remain separate gates.
+
+### Resource description and metadata contract (2026-10-03)
+
+RURU-77 and RURU-78 now implement cached PR and issue details from #149's signed
+`6799e6d` head in isolated managed worktrees. Their approved common contract is
+recorded before implementation in [RURU-77's work note](./collaboration-work/RURU-77.md).
+The existing Body facet owns one resource endpoint; description and typed
+metadata publish atomically under the same native dispatch and authorization
+fences. Migration 0005 is additive rebuildable metadata storage. Each field keeps
+its saved source clock, validation time and latest observation; absent/null/empty/
+oversized values remain distinct. Matching conditional responses validate only
+fields known in their preceding representation. Selected detail headers can
+project authorized endpoint values without implying fresh list membership.
+
+The PR adapter and common native contract are one lane; the issue mapper and
+synthetic fixtures are another. A single frontend owner consumes the frozen
+generated contract, avoiding competing common UI or schema changes. Validation,
+publication and live provider qualification are pending for these slices. Live
+CI is now green for every reported check on all eight published heads, including
+Rust and packaged E2E on Linux/macOS/Windows. Five report completed CodeQL
+analyses (#141/#142/#143/#146/#147); no current exact-head run is observed for
+#144/#145/#149, which retain that separate security gate. No PR has been merged.
 
 ### Linear implementation backlog (2026-10-03)
 
@@ -1883,3 +1970,1259 @@ Record accepted architecture changes, phase completion evidence, unresolved
 integration gates, and tested provider/server/dependency versions here. Do not
 mark a phase complete from a demo or local-only result while its acceptance gates
 remain unresolved.
+
+
+### RURU-77 local qualification
+
+The shared cached resource metadata contract and GitHub pull detail endpoint
+are locally complete in the signed review lane. [RURU-77's work note](./collaboration-work/RURU-77.md)
+records 143 native, 51 SDK, 208 desktop and three caller-policy passing tests,
+forward migration 0005, generated IPC and accepted independent reviews. Actual
+isolated macOS WKWebView QA verifies immediate cached metadata, known-null body,
+large wrapped labels, actor isolation and explicit-save draft persistence. A
+label-height overlap found during native QA was fixed and the app rebuilt.
+No personal credential or live provider was used. Exact-head remote CI starts
+after publication; RURU-78 will stack its issue adapter on this frozen contract.
+
+
+### RURU-78 local qualification and shared detail delivery
+
+RURU-77 is published in draft [PR #150](https://github.com/ruru-m07/gitru/pull/150)
+at signed `7e282ad`, with exact-head remote CI running. The companion
+[RURU-78 work note](./collaboration-work/RURU-78.md) records the integrated GitHub
+issue endpoint and capability, eleven new mapper/HTTP/store cases, seven new UI
+cases and actual isolated native WKWebView issue/account/draft QA. Local totals
+are 154 native and 215 desktop passing tests; formatting/Clippy/types/lint and
+packaging pass. Shared schema 0005/IPC/view code is inherited unchanged. Issue
+endpoint identity rejects PR representations and retains field authority/304
+masks. Signed draft publication and remote CI remain separate from live provider
+qualification and merging. RURU-98's approved foreground lease contract follows.
+
+
+### RURU-98 implementation contract
+
+[RURU-98](./collaboration-work/RURU-98.md) is the next bounded scheduler slice,
+starting from signed cached PR details #150. Native-issued, caller-owned
+45-second activity leases coalesce visible list/detail demand; a 15-second SDK
+heartbeat renews liveness without provider polling or durable automatic intent.
+Native host visibility/close/window gates fence owners. One committed HTTP page
+is the scheduling quantum, with preserved traversal checkpoints, weighted
+interactive/reconciliation and account rotation, bounded queue reservations and
+strict persisted quota/retry/poll barriers. Manual Sync remains explicit durable
+intent. The approved work note defines deterministic lifecycle, saturation,
+offline and fairness acceptance; implementation and qualification are pending.
+
+
+### Exact-head read-detail CI checkpoint — 3 October 2026
+
+Signed PR [#150](https://github.com/ruru-m07/gitru/pull/150) (`7e282ad`) and
+[#151](https://github.com/ruru-m07/gitru/pull/151) (`863967f`) each pass all 11
+reported checks, including three-platform Rust and packaged desktop E2E. No
+exact-head CodeQL check is reported; security and production provider/vault
+qualification remain separate. Both remain open and unmerged. RURU-98 lease/page
+fairness integration and RURU-96 native local-link integration are in progress
+in isolated worktrees with saved contracts.
+
+
+### RURU-98 local qualification checkpoint — 3 October 2026
+
+Foreground demand now uses caller/session/account/scope-bound ephemeral leases,
+native activity/visibility/expiry fences and one bounded SDK heartbeat. Automatic
+interest creates no durable detail intent; manual Sync remains explicit. The
+single native worker yields at committed pages, preserves traversal checkpoints,
+rotates accounts/scopes and reserves selected-detail capacity while guaranteeing
+reconciliation turns. Native cadence and persisted provider/retry/quota deadlines
+control eligibility; renewals cannot reset those barriers. Same-label failed
+close-disposal and slow-start readiness are fenced and tested.
+
+Local159 native/82 SDK/223 desktop tests,6 caller cases, types/lint/Clippy/fmt,
+normal103-command generation, frontend build and actual isolated two-native-tab
+macOS QA pass. Post-Quit SQLite confirms zero automatic durable detail demand,
+zero credentials, preserved metadata/drafts and strict cooldowns. Detailed bounds,
+review findings/fixes and evidence are in [RURU-98's work note](./collaboration-work/RURU-98.md).
+Signed draft publication/remote CI is the next step; live provider/vault and
+R102/R103/R121 gates remain distinct. RURU-96 native links and SDK/UI navigation
+continue in an isolated sibling worktree; no partial link UI is claimed complete.
+No PR has been merged.
+
+
+### RURU-98 restack onto cached issue details — 3 October 2026
+
+The two signed RURU-98 commits from published PR #152 head `9046322` are replayed
+onto signed RURU-78/PR #151 `863967f`, inheriting GitHub issue details. Both
+chronicles remain intact. The only code-range adjustment is a test-only issue
+omission case that now proves one account/epoch/subject Body lease across two
+revisions and zero automatic durable hydration, preserving its cached text and
+staleness assertions. Runtime, schema and generated command contracts are
+unchanged.
+
+Combined local validation passes 170 collaboration, 6 caller, 82 SDK and 230
+desktop cases, including 12 frozen migration and 7 focused issue-view cases;
+types/Biome/workspace Clippy/formatting pass. Full evidence and old-head versus
+new-head qualification boundaries are in [RURU-98's work note](./collaboration-work/RURU-98.md).
+All 11 reported remote checks passed on the old `9046322` head only. Parent
+review/publication and the new exact-head matrix remain pending; prior native
+macOS QA is not represented as a rerun of this combined branch. No merge occurs.
+
+### RURU-96 implementation contract
+
+[RURU-96's work note](./collaboration-work/RURU-96.md) records the next independent
+local-clone link slice before implementation. Native Rust enumerates bounded,
+credential-safe effective Git remotes and matches only exact configured provider
+instances/transport aliases. User-confirmed links preserve durable local and
+immutable remote IDs with CAS/proof/access fences; migration 0006 retains authored
+intent independently of provider cache. Actual inspect/change/remove, ambiguity
+choices and navigation both ways are required before completion. No Git remote,
+branch, provider demand or credential is changed by cached navigation. Conditional
+enterprise and physical directory relocation remain separate scope.
+
+
+### RURU-96 local qualification and stack integration
+
+RURU-96 implements bounded safe Git observations, explicit account/endpoint
+choices, durable authored links and transport mapping CAS, actual settings and
+navigation in both directions. [Its work note](./collaboration-work/RURU-96.md)
+records 172 native, nine caller, 61 SDK and 249 desktop passing tests plus real
+isolated macOS clone-import/link/change/remove/mapping/restart QA. UI findings
+were fixed and rebuilt; four authored drafts and strict quota barriers remain
+intact with zero credential records. This synthetic qualification is separate
+from remote/platform/security/live-account and schema0006 recovery gates.
+
+The review stack is being aligned to R78 → R98 → R96 before R79 storage starts.
+RURU-98 PR152 old signed head9046322 passed all11reported checks including all
+three native/E2E platforms, with no exact-head CodeQL reported. Its signed local
+restack onto R78 includes 170 native/82SDK/230desktop passing checks; new-head
+remote CI awaits publication. No PR is merged, and generated IPC is regenerated
+only after the combined native command/source contract freezes.
+
+
+### RURU-96 combined review publication checkpoint — 3 October 2026
+
+The review stack now follows R78/#151 → R98/#152 (`2d415938`) → R96. Authored
+local clone/account/endpoint links, explicit transport mapping settings and cached
+navigation are qualified together with the native foreground scheduler. The
+[RURU-96 work note](./collaboration-work/RURU-96.md) records 188 collaboration,
+11 caller, 93 SDK and 264 desktop tests, types/lint/workspace Clippy/formatting,
+normal110-command generation and a fresh combined native macOS GUI check. Cold
+saved routes, two duplicate-name clones, mapped SSH push actor scope and main-host
+settings suspension/resume all pass. Post-Quit preserves three authored links,
+one mapping, four drafts and strict cooldowns with zero credentials or automatic
+durable detail intent. R106's recovery ceiling remains unchanged.
+
+R96's signed draft publication targets #152; its own exact-head CI is pending.
+At this checkpoint #152's restacked head passes reported frontend, native
+formatting and all three Rust platforms plus Linux/macOS packaged E2E; Windows
+packaged E2E is still running. No exact-head CodeQL is reported. No PR has been
+merged. R79's reviewed parser stage remains isolated; SQL0007 may begin only once
+this actual0006 ancestor is established, with strict notified-subject provenance
+and explicit finite identity discovery as recorded in its approved work note.
+
+
+### RURU-79 notified-subject integration — 3 October 2026
+
+RURU-79 now implements the recorded contract atop R96/#153's actual signed
+repair `0eb71a5` (inherited by signed merge `ab958df`). Forward0007 adds only
+rebuildable selector/discovery state and indexed immutable-alias lookups;
+previous migration bytes and R106's conservative recovery ceiling are unchanged.
+A cache-only account/instance/immutable-parent/kind/number resolver opens PR/issue
+Body and metadata immediately. Only current, non-denied inbox provenance grants
+that exact subject independently of local repository selection. All hidden
+canonical claims and contradictory immutable Native representation targets take
+part in ambiguity. Mutable path/web aliases after a rename and several distinct
+issue-side aliases naming one PR do not create false conflicts.
+
+Notification membership/denial withdrawal fences pending detail/discovery and
+provider projections atomically, preserving private drafts and their generations.
+Existing independently selected cached detail remains readable after discovery
+absence; actual discovery denial still wins. The old absence-versus-denial
+regression remains unchanged. Shared item/detail/context/demand predicates and
+point commit recheck the same grant rather than creating a second access policy.
+
+Explicit identity discovery has durable finite intent (16/account,64/process,
+three attempts per generation), one HTTP worker and strict persisted REST/retry
+barriers. It accepts no renderer URL or native ID. PR responses prove immutable
+parent via their own base repository; named-only issue responses remain typed
+IdentityUnverified. Unsolicited304 cannot bootstrap identity/content. Verified
+identity, aliases, bounded summary and shared Body/metadata publish in one point
+transaction without feed membership, cursor, selection or mark-read writes.
+Same-epoch stale responses may preserve consumed account quota only; stale
+subject/error/denial/intent effects and old epochs remain fenced.
+
+Normal112-command generation adds eight named schemas and changes no existing
+schema semantics. Local evidence passes249 collaboration tests (two existing
+ignored subprocess helpers), all12 frozen-v1 migration cases,11 collaboration
+caller/lifetime tests (15 complete desktop-native package tests),106 SDK and287
+desktop tests. Workspace all-target Clippy and native formatting pass. Fresh isolated macOS
+QA and cold restart pass with six separate authored drafts, both parents
+unselected, eight unchanged unread notifications, zero credentials and one
+strictly paused explicit intent (attempts0). Fresh packaged macOS E2E passes all three cases; review publication and
+exact-head remote CI are tracked on the linked RURU-79 and attached PR. Independent adversarial review
+reproduced and repaired older-selector rollback, immutable representation
+ambiguity, and a missing provider:rest subscription dependency. The shared
+frontend retains canonical private draft CAS separately from historical thread
+drafts and acknowledges explicit durable read receipts. Read experience never
+silently selects a repository or marks a notification read.
+
+R96 repaired head `0eb71a5` now passes all11 reported checks, including
+Linux/macOS/Windows packaged E2E and all three Rust platforms; the final Windows
+E2E check completed2026-10-03T12:11:26Z. R98 head `2d415938` passes all11 reported checks. Neither reports
+exact-head CodeQL. R79 is locally qualified for review; live provider/vault and platform/security
+qualifications remain distinct from its exact-head remote CI. No PR has
+been merged. See [RURU-79's work note](./collaboration-work/RURU-79.md) for current
+native proof, frontend and isolated QA evidence.
+
+
+### RURU-101 qualification lane — 3 October 2026
+
+Live dependency/PR/worktree overlap audit selects independent facet reconciliation
+qualification at R79/#154 `1a51a75`, in its own attached worktree.
+[R101's pre-code contract](./collaboration-work/RURU-101.md) requires a source-backed
+validator/overlap/absence/head policy and independent observable regressions before
+any storage correction; provider facets that are Unsupported remain so. R110's
+GitLab account/repository lane uses a separate checkout. Parent #154 currently has
+a real macOS Rust socket-fixture failure, which root repairs before publishing
+next PRs. Local checks, exact-head CI and live provider/vault gates stay distinct.
+No PR has been merged.
+
+
+R101 source audit establishes that `whole_scope` means validator authority, not
+full-enumeration absence. Six independent cases produce four actual gaps:
+collection clock loss after304, a nullable child timestamp erasing retained-field
+clock evidence, continuation representation drift qualifying absence, and current-
+head checks remaining fresh after an accepted new head. Full multipage absence
+and historical Reviews are green controls. The approved work note records narrow
+schema-free native receipt/provenance/field-clock corrections before source edits,
+with conservative legacy JSON and unchanged public DTOs/provider support.
+
+### Next bounded lanes after RURU-79 review publication — 3 October 2026
+
+[R79/#154](https://github.com/ruru-m07/gitru/pull/154) is published at signed
+`1a51a75a0f122c1e41288a9b6b6ca09421a38025`, stacked on repaired R96/#153.
+Its exact-head remote matrix is running; local249 native/106SDK/287desktop,
+frozen migration12, caller11, isolated native cold restart and packaged macOS
+E2E3 pass. Parent R96 and R98 each pass all11 reported checks; CodeQL/live
+provider/platform recovery gates remain distinct. No PR is merged.
+
+Live Linear, PR, worktree and file-overlap audit selects R110 GitLab.com accounts/
+repositories and an independent R101 facet reconciliation qualification lane.
+Both begin in attached isolated worktrees at the actual R79 head, preserving its
+shared scheduler/access/cache contracts; implementation blockers are reviewed
+ancestors, not silently marked Done. [R110's contract](./collaboration-work/RURU-110.md)
+records direct PAT operation probes, fixed installation trust, the existing owned
+vault cutover and an explicitly repository-only profile. OAuth/PKCE, enterprise,
+Data Center and relay spikes stay separate. R101 must preserve conservative
+qualified absence and add independent facet/validator/head/epoch evidence, not
+rewrite existing paging or invent unsupported provider operations.
+
+
+### RURU-110 local implementation qualification — 3 October 2026
+
+GitLab.com manual PAT actor/member-project probes and a repository-only native
+profile now use the shared owned vault journal/cutover, immutable actor/installation
+identity, SQLite selection and resumable keyset feed. GitLab MR/issues/inbox/write
+facets remain explicitly Unsupported; accounts remain independent of cloud.
+A fixed main-only command is normally generated113, with every existing284 named
+Zod schema semantically unchanged. SDK/UI add a transient manual form and accurate
+provider/capability guidance. No migration changed (frozen0001..0007), and R106
+restore's v1/v2 acceptance ceiling remains separate.
+
+Independent tests/reviews drive fixes for long valid quota truncation,503/redirect
+Retry-After loss, unparseable extreme deadlines, proven-actor partial-probe quota
+loss and a picked worker bypassing a newly stored barrier. Quota merge is atomic
+under writer/current-epoch guards, including known inactive actors without grant
+reactivation; successful probe quota commits with credential promotion. Existing
+GitHub CLI/login/cancel/crash/cleanup behavior and authored cache/draft boundaries
+remain tested. Local qualification:285native+2existingignored,12frozenmigration,
+37focusedGitLab (six independent actual local HTTP/lifecycle cases),110SDK,299
+desktop (12 new GitLab cases), types/scopedBiome/frontend build, all-target
+collaboration Clippy and format pass. Synthetic fixtures do not qualify a live
+PAT, production vault or other platforms. Root still integrates the repaired
+R79 ancestor and qualifies caller/native GUI/package before PR publication.
+No PR is merged. See [R110 work note](./collaboration-work/RURU-110.md).
+
+### Exact-head remote CI repair — 3 October 2026
+
+Published R79/#154 `1a51a75` passes frontend/lint/types/build, Clippy, Linux
+Rust and packaged Linux/macOS E2E in run37122670576; Windows is still running.
+The macOS Rust job111201717043 fails two synthetic HTTP fixture cases at
+notification_subject_discovery/tests.rs345 with Darwin WouldBlock35. The
+nonblocking listener's flag is inherited by accepted sockets on that platform;
+read timeout does not turn them blocking. The test helper now explicitly makes
+the accepted socket blocking before the existing bounded read timeout. No
+production HTTP behavior, deadline, assertion or CI ordering is changed.
+
+Local correction: all16 focused notification-discovery adapter cases and all120
+collaboration library cases pass (one existing subprocess-entrypoint ignored);
+workspace formatting passes. Previously qualified GUI/package evidence remains
+on its recorded executable; fresh remote checks qualify the repaired PR head.
+Logs: `/tmp/gitru-ruru79-macos-ci-failure.log`,
+`/tmp/gitru-ruru79-accepted-socket-tests.log`,
+`/tmp/gitru-ruru79-accepted-socket-lib.log`,
+`/tmp/gitru-ruru79-accepted-socket-fmt.log`. No PR is merged.
+
+### RURU-110 integrated native qualification and review — 3 October 2026
+
+Signed native source719fb63 inherits the R79 socket repair; signed picker04af1e8
+adds provider-aware labels after actual same-login native QA. All285 native cases
+(two existing ignored helpers), all12 frozen-v1 migration cases,15 native caller/
+updater cases,110 SDK and final300 desktop cases pass. Normal113-command typegen
+preserves all284 existing named schema semantics. Actual desktop/E2E types,
+scoped Biome, production frontend build, workspace all-target Clippy-Dwarnings
+and format pass. Fresh macOS packaged E2E passes all3 cases/two specs after the
+picker correction, including real UI→Tauri→Rust→Git and child Accounts handoff.
+
+Dedicated e2e-feature app `com.ruru.gitru.ruru110.qa` disables native vault/CLI and
+uses task-only empty Git configuration. Final rebuilt executable SHA256
+`7e9f5e6f6995584ef8135e53fe18b1b734cc257bb0bdcef24291820a6fb8ee76` shows
+main-only manual GitLab PAT form through actual child handoff and dialog scrolling,
+distinct GitHub/GitLab labels, cached nested repositories and typed unsupported PR
+feed. Cold process reopen preserves GitLab-A selections2, GitLab-B0 and same-login
+GitHub0. Post-Quit readonly SQLite proof preserves six native repository identities,
+three private drafts generation1, zero credential refs/cleanup/automatic detail
+intent, and all three strict2099 provider barriers. No token was entered/submitted;
+no personal credentials/config/vault or live provider was inspected. Evidence:
+`/tmp/gitru-ruru110-qa/final-post-quit-evidence.json`, final source logs and
+`/tmp/gitru-ruru110-picker-packaged-e2e.log`.
+
+Parent R79/#154 repaired e6fe69e now passes all11 reported exact-head checks,
+including Rust and packaged E2E on Linux/macOS/Windows; final Windows cleanup
+completed2026-10-03T13:24:08Z. No exact-head CodeQL is reported. R110's own remote
+matrix starts on publication and is separate from local Mac/synthetic evidence.
+Live PAT/production vault, other platforms and power-loss gates remain distinct.
+No PR is merged. R101 facet qualification and R103 retained native-webview harness
+continue in separate attached worktrees; final shared source integration is
+sequential. See [R110 contract](./collaboration-work/RURU-110.md).
+
+### RURU-101 integrated facet reconciliation qualification — 4 October2026
+
+Signed source1cb9bea integrates R110/#155725b9f2 and repaired R79/e6fe69e.
+Full combined native qualification completed3 October:311 cases pass, including
+165 library and146 integration cases, with two existing ignored subprocess
+helpers; all12 frozen-v1 migration cases and15 native caller/updater cases pass.
+Workspace all-target Clippy-Dwarnings and formatting pass. The one-off initial
+cold-reopen OS Busy does not recur in the combined run; weak ownership and fatal
+immediate reopen assertions remain. Its original cause is not claimed resolved.
+
+Normal make typegen regenerates113 commands; all285 existing named Zod schemas
+preserve normalized initializer semantics and public DTOs stay unchanged. After
+interruption, resumed4 October SDK110, actual SDK/desktop/E2E types, source binding
+lint and the285-schema comparison pass. Regenerated files are generator output,
+including ordering/cache metadata changes, not handwritten IPC. Native receipt,
+versioned stored provenance and finite field clocks remain private to the engine;
+frozen0001..0007 and R106's restore ceiling are unchanged.
+
+Independent source-backed regressions drive retained clocks through304/null
+observations, qualified full collection absence, continuation representation
+restart, current-head stale/metadata conflict veto, pre-HTTP captured lease/subject
+fences and exact old-job terminal cleanup. Historical Reviews and ordinary feed
+paging/absence/selected-cache/private CAS remain qualified controls. Full trusted
+enumeration is distinct from terminal delta/uncertain paging and whole_scope
+continues to mean validator coverage. No production Comments/Reviews/Checks
+adapter is enabled; future endpoint/head policies and live provider tests remain
+separate rollout tasks. No UI behavior or Tauri authority is expanded.
+
+A review PR is stacked on published R110/#155; this new head's remote CI starts
+at publication. ParentR110 Rust and packaged E2E on all three platforms plus
+CodeQL pass, while its Vercel API deployment status remains Pending and the
+connector currently requires reauthentication. Local evidence does not replace
+new-head CI, live provider/vault or power-loss qualification. No PR is merged.
+R103's retained native-webview harness inherits this final source sequentially.
+See [R101 work note](./collaboration-work/RURU-101.md).
+
+
+### RURU-103 integrated local checkpoint and current remote evidence — 4 October 2026
+
+R101/#156 head63e1197 passes all11 reported checks in run37185030333, including
+Rust and packaged E2E on Linux, macOS and Windows. No exact-head CodeQL run is
+reported. After Vercel reconnection, R110/#155 head725b9f2 deployment
+`dpl_6UXbMPbqvvj1Fd6RXKGtCFFMiBdU` is READY and its build completed3 October
+13:41:13Z; GitHub still reports its stale Vercel status Pending. The other14
+reported checks pass. No failed attached collaboration checks or duplicate PRs
+were found, and no merge is authorized.
+
+R103 inherits both exact published heads. Full `make verify` passes locally:
+477 frontend/SDK/UI tests across53 files, all repo lint/types, production desktop
+build, workspace Rust tests, formatting and default all-target Clippy. This
+includes28 focused frontend protocol/probe/observer cases,36 owned-process helper
+cases and2 environment-isolation cases. Additional feature lanes pass19 actual
+core cases and26 native app cases, with15 default native caller/updater cases;
+core/app feature Clippy also passes. Normal `make typegen` produces116 commands;
+independent AST comparison preserves all285 previous named Zod schemas and adds
+26 fixture schemas. Production built JS contains none of the fixture bootstrap
+markers. Frozen migrations and provider authority policy remain unchanged.
+
+The finite synthetic native controller, real query/SDK probe, pinned WDIO service
+adapter, owned-handle crash coordinator and separate three-platform CI lane are
+checkpointed before retained execution. These local tests do not yet qualify
+actual packaged shared webviews, captured IPC returns, hard-kill/restart or the
+normal packaged E2E lane on this head. Collaboration DB/vault/checkpoints live
+under each private run root; ordinary app/window persistence uses only the fixed
+harness-ID OS namespace and is never reset. A dependency startup failure before
+its child handle is registered uses the dependency's cleanup; it is not claimed
+as independently proven forced-exit ownership. See the
+[R103 work note](./collaboration-work/RURU-103.md) for the accepted contract.
+
+
+### First retained launch and runner failure corrections — 4 October 2026
+
+Signed checkpointdc97ef9 builds the actual macOS harness release. First native
+main launch creates its real secondary view, but WDIO cuts executeAsync off at
+10.002s because its HTTP timeout was10s while script/scenario bounds were190s/
+160s. Later null receipts are fallout; no scenario/crash success is claimed.
+Artifacts remain under `artifacts/e2e-harness/2026-10-04T08-20-28-598Z-19412`.
+Root aligns the transport deadline to200s and separates outer `runner.log` from
+the dependency-owned `wdio.log`, avoiding diagnostic truncation.
+
+Installed WDIO9.31.7 also swallows ordinary service-hook errors and afterTest
+rejections. The pinned launcher now promotes lifecycle failures to the actual
+SevereServiceError with finite public stage/code and preserved causes. Actual
+installed dispatcher regressions qualify fatal prepare/worker/complete behavior
+and an ordinary swallowed control; process helper cases now total39. A finite
+qualification-error receipt checked at user onComplete and the outer runner
+prevents swallowed crash-evidence failures from producing green qualification.
+Outer crash proof independently matches complete driver ack, phase, exact binary,
+PID/session/scenario/kind and observed SIGKILL. Two actual installed-hook/proof
+regressions pass. Production engine policy stays unchanged. Retained packaged
+rerun and normal packaged E2E remain open gates.
+
+
+### Bounded second retained receipts and isolation refinement — 4 October 2026
+
+Second native launch31996a6 produces complete bounded receipts: actual reload/
+recreation, normal public tab lifecycle and peer authority pass on macOS. Cold
+concurrent demand and hint catchup fail before their first observations; delayed
+local read during disconnect fails before the captured-return gate. These are
+open harness qualification failures, not engine or restart success. Evidence is
+retained at `artifacts/e2e-harness/2026-10-04T08-32-49-542Z-20754`. A source-backed
+probe schema incorrectly names cold DetailValueState unknown instead of actual
+not_loaded; the frontend owner is correcting this without changing production
+DTOs/fences. Preserve NotReady/old-binding safety around phase changes.
+
+The pinned CLI imports dotenv/config. Root forces it to a fresh task-owned empty
+driver.env, preventing cwd .env reload after the inherited-environment whitelist.
+An actual installed dotenv/config subprocess regression with entirely synthetic
+files qualifies the empty override against an unconfigured sentinel control;
+owned-process cases now total40. This change accesses no personal config. Normal
+packaged E2E is being checked separately while the probe correction proceeds.
+
+
+### Cold-state and React-binding regressions; normal package control — 4 October 2026
+
+The cold-cache observation test independently reproduces the prior ZodError and
+now uses generated DetailValueStateSchema, including real not_loaded. A probe
+regression proves a fresh native phase with an uncommitted React binding returns
+NotReady and performs zero local query calls, then reaches one real query-path
+call after commit while preserving the editor. The executor retries only that
+pre-IPC NotReady for its explicit gated reads; it never counts NotReady/timeout
+as captured stale/cancelled success or changes native/provider authority. All30
+focused frontend cases and desktop/E2E types/lint pass locally.
+
+Separate normal packaged macOS E2E passes all3 cases across2 specs on this source:
+local collaboration snapshots, real Inbox child-to-host account dialog with exact
+tab restoration, and UI/Tauri/Rust/Git repository smoke flows. Actual log is
+`/tmp/gitru-ruru103-normal-e2e.log`. This is distinct from retained webview/crash
+qualification, whose complete corrected run and Linux/Windows CI remain pending.
+
+
+### Native captured-read lock regression and bound action settlement — 4 October 2026
+
+Third retained macOS runfede493 passes cold concurrent demand plus reload, normal
+tab lifecycle and peer authority. Reverse/dropped hints and monotonic Body/dirty
+editor observations also pass before a main edit receives the correct pre-IPC
+NotReady after a phase update. Fixed finite edit/save/read actions now settle only
+that NotReady within existing bounds; accepted mutations run once, all other
+errors remain failures.32 frontend cases/types/lint pass. Precise CAS substages
+will expose actual editor/save/conflict evidence in the next retained run.
+
+Disconnect's held local Body path then exceeds190s with no result receipt. Two
+source reviewers identify a self-deadlock in the new harness matcher: cloned
+webviews lock the same actual Tauri ResourceTable twice before entering the Held
+state/timer. A bounded real-thread regression reproduces the old timeout/exit101.
+Sequential lexical pointer snapshots release both guards before current caller
+revalidation, preserving exact label/resource identity/current proof. Four real
+ResourceTable mutex regressions qualify same/different allocation, label mismatch,
+guard drop before proof and stale proof rejection.30 native feature cases and
+feature Clippy/fmt pass; no production guard or IPC signature changes.
+
+A separate speculative core-status AuthRequired concern is rejected after source
+and existing regression review: inactive Store::detail already returns empty
+Unavailable evidence, and old-epoch held-response tests successfully release
+through post-disconnect status and assert committed Body evidence None. No blanket
+catch or core policy change is made. Actual retained proof remains incomplete;
+third-run artifacts are `artifacts/e2e-harness/2026-10-04T08-41-14-989Z-23734`.
+
+
+### Explicit SDK completion after query cancellation — 4 October 2026
+
+The fourth retained macOS run at 36a5307 passes five main scenarios, including
+actual withheld-read disconnect. The hint scenario qualifies reversed/dropped
+hints, dirty draft preservation, an actual private-draft CAS conflict, 300 writes
+with a 256-row catch-up page and 4,100 writes producing ResetRequired. Its final
+obsolete-read assertion fails. Artifacts are
+`artifacts/e2e-harness/2026-10-04T08-56-17-023Z-25115`; crash phases did not run.
+
+Installed TanStack Query source and a real QueryClient regression establish that
+cancelling a cached refetch with revert enabled can resolve the prior cached value.
+That query completion cannot identify the held native read's final outcome.
+Explicit probe reads now call the existing account-scoped SDK directly, retaining
+its actual authorization fence and generated local transport. Ordinary UI hooks,
+QueryClient cache behavior and independent UI snapshot observations are unchanged.
+A second regression invalidates the actual singleton SDK fence during held
+transport and observes the real stale authorization outcome. Bounded result
+receipts now retain retention-reset and disconnect read outcomes before assertions;
+only stale_view or cancelled qualify. All 35 focused frontend cases, both desktop
+and E2E TypeScript checks, scoped lint and diff checks pass. Complete retained
+packaged main/crash/restart and Linux/Windows qualification remain pending.
+
+
+### Crash driver teardown boundary — 4 October 2026
+
+Signed 6e87965 now passes all six retained main scenarios in the actual macOS
+release binary. The retention-reset and disconnect receipts both observe real
+SDK stale authorization. The first before-commit fixture issues its real native
+checkpoint and the launch-owned exact process exits on SIGKILL with matching
+proof. WDIO still exits 1 because killing during afterTest removes its embedded
+server before normal DELETE session teardown. This run is incomplete, not a
+qualified crash/restart pass; artifacts are
+`artifacts/e2e-harness/2026-10-04T09-07-22-613Z-26124`.
+
+Installed WDIO 9.31.7 and embedded Rust driver 1.4.0 source confirm DELETE removes
+only a driver session map entry, leaving native views, collaboration work and
+SQLite alive. The launcher now kills the exact post-health-check captured app
+only at successful worker-end, before delegated native cleanup. afterTest writes
+only its strict passed acknowledgment. No connection error or nonzero exit is
+relabelled success. Completion requires matching crash proof and always delegates
+cleanup. A monotonic 45-second window from worker start conservatively precedes
+the before-commit provider gate's 60-second expiry; fresh acknowledgment is also
+bounded to 15 seconds with one millisecond filesystem rounding tolerance. Failed,
+missing, late, foreign or spontaneously exited workers cannot qualify a crash.
+Focused tests use real owned Node children, installed dispatcher behavior and
+failed/late teardown controls. Actual native crash/restart rerun remains pending.
+
+
+### R103 retained local qualification completed — 4 October 2026
+
+Final signed runner source c0e06bb, with the release application built from
+6e87965, passes the entire retained macOS pipeline: six real native webview cases,
+before-commit forced crash, fresh restart, committed-before-hint forced crash and
+fresh restart. Both crashes carry exact launch-owned SIGKILL/observed-exit proof;
+both restarts use different native PIDs/session UUIDs on the same respective
+retained fixture. Before-commit reopen sees no saved Body before fresh interest;
+after-commit reopen sees the exact committed Body/facet revision before interest.
+Both actors retain their private drafts, with no phantom ephemeral/durable demand
+or provider calls before renewed interest. Retention reset and disconnect both
+carry actual SDK stale_view receipts. The default app's three packaged macOS E2E
+control cases also pass separately.
+
+Safe artifacts: `artifacts/e2e-harness/2026-10-04T09-17-51-218Z-27055`.
+Application SHA256: cbc8cfa2260d8ced4910d206041ed6dfe053d9ac226bc2c3dd1fe341ffdb1537.
+All five driver stages exit 0; passing owned fixture roots are cleaned. Ordinary
+preferences remain in the fixed harness-ID OS namespace and are never reset.
+No personal credentials, native keyring, GitHub CLI login, provider network or
+Gitru cloud sign-in are used. This qualifies process crash, not power loss or
+production provider/vault behavior.
+
+Final make verify passes: 497 frontend/SDK/UI cases across 54 files, repository
+lint/types/production desktop build, default workspace formatting/Clippy and
+663 Rust cases (three explicitly ignored). Additional feature validation passes
+330 collaboration cases (two ignored, including all 19 retained core cases),
+30 native app cases and workspace all-target feature Clippy. Normal typegen has
+116 commands; independent AST comparison preserves all 285 prior Zod schemas
+with 26 additive fixture schemas. Default built assets contain neither the
+retained executor global nor installer; generated finite schema literals can
+remain shared. Linux/Windows retained packaged jobs are newly wired and still
+require remote CI. No merge is authorized or performed.
+
+R111 GitLab resource reads and R121 bounded navigation prefetch now progress in
+separate attached worktrees based on published R101/#156, with signed pre-code
+contracts and disjoint provider/runtime-test versus SDK/UI ownership. Their local
+checks and publication are still pending; no R103 fixture code is required by them.
+
+
+R103 delivery: [draft PR #157](https://github.com/ruru-m07/gitru/pull/157) is open
+and attached, stacked on #156. Linear RURU-103 is In Review. The qualified source
+and signed publication are retained; the initial remote matrix is running,
+including the three new retained packaged jobs. No merge was performed.
+
+
+### RURU-103 remote Windows and subsequent local investigation — 4 October 2026
+
+Published5efea64 remote run37192175309 passes the new retained Linux/macOS jobs
+and ordinary Rust/packaged E2E on all three platforms. Retained Windows
+job111406556841 fails launcher preparation before any scenario after an actual
+spawn; its safe artifact does not expose a native exception. Source audit proves
+Bun/libuv canonical paths omit the Windows extended prefix that Rust retains.
+The runner/helper now resolve actual filesystem identities then use consistent
+namespaced Windows spelling for native roots/binaries/evidence; POSIX spelling,
+symlink/type/dev/ino/environment/actual-child ownership checks remain strict.
+Focused path/process/proof57 tests pass/one Windows-only case skipped locally,
+E2E types and scoped lint pass. This is not a local Windows execution claim.
+
+The first runner-only unchanged cbc8cfa macOS rerun fails concurrent-demand and
+disconnect before any new provider dispatch. The SDK separately reproduces a
+hidden-to-visible document transition while awaiting native event subscription;
+no DOM listener exists yet and the prior visibility sample stays false. Sampling
+again after listener installation fixes that source defect;113 SDK tests include
+three actual held-listener visibility controls. The new bb3b7d4 macOS executable
+passes concurrent-demand, catchup and reload but still fails normal-host startup,
+authority counter stability and disconnect provider capture. Current receipts
+cannot prove visibility as the previous run's cause or attribute legitimate
+background writes to denied peer calls. Full post-fix retained qualification is
+still open; historical c0e06bb qualification is not presented as new-head evidence.
+
+Failure diagnostics now preserve finite first-error classification, separate
+cleanup failure and bounded pre-cleanup actual document/native owner observations.
+Normal lifecycle substages distinguish route/inventory/handshake failures. Source
+review also identifies two fixture setup races: phase changes wake eligible live
+jobs before the next gate is armed, and known saved Body is not evidence that a
+manual foreground lease cannot refresh it. Counter assertions remain exact;
+actual committed-facet warmup and zero-lease phase/gate ordering are being qualified.
+No production native gate is weakened; no personal credentials/provider/vault used.
+Logs /tmp/gitru-ruru103-{windows-job,path-tests,path-retained-native,
+ demand-startup-tests,startup-retained-native,failure-diagnostics-tests}.log;
+safe failed artifacts09-59-15-158Z-37949 and10-11-07-212Z-72795 remain task-owned.
+R111/#159 and R121/#158 are separately published review slices on #156. No merge.
+
+
+Source fixes frozen before the next native build: finite activation consumes
+actual setter/inspector generations (false-to-true legitimately issues a newer
+native generation); hidden and older-replay controls remain enforced. Final
+frontend harness checks49/4 files and desktop/E2E types/lint pass. The production
+SDK visibility correction passes113 SDK cases. The inherited writer-lease fix
+from R111 is integrated verbatim; its331-case native qualification, deterministic
+pre-fix duplicate-descriptor Busy and preserved clone/final-owner assertions are
+recorded in R111. R103's feature/native package must qualify this combined source
+separately. No public DTO/signature change or hand-generated IPC occurs.
+
+
+### RURU-103 repaired-source local qualification — 4 October 2026
+
+Signed combined source `9554cc3f4b4481ae03be40d8e58068d115c2ab2b` passes the
+entire rebuilt macOS retained pipeline, not merely the historical executable.
+All six main cases and both forced-crash/fresh-restart pairs pass; every one of
+five driver stages exits zero. Before-commit SIGKILL owns PID20219 and restart
+PID20281; committed-before-hint SIGKILL owns PID20335 and restart PID20392.
+Each restart has its own native session UUID and retains its matching earlier
+checkpoint. Before-commit data is missing until fresh actual demand; committed
+Body/facet20 survives the after-commit restart before interest. Both actors keep
+private draft generation1; startup remains inert until real interest.
+
+Artifact run: `artifacts/e2e-harness/2026-10-04T10-39-36-631Z-19854`.
+Rebuilt native SHA256:
+`30db1b4ad5ecf07873e6552ebb43854ec398c4610c84324b3eb7b531dfb76031`.
+Retention reset and disconnect observe actual SDK `stale_view`; all eight peer
+operations observe permission denial with exact unchanged account, revision,
+owner, provider-call and vault-access evidence, plus successful main renewal and
+release. Normal public tab creation/navigation/disposal passes. Actual committed
+facet warmup and zero-lease phase/gate ordering remove the identified fixture
+setup races without relaxing native authority or counter assertions. Finite
+pre-cleanup diagnostics retain first failure and separate cleanup outcomes;
+activity inspection may register/refresh its requesting native owner and is not
+claimed to be mutation-free. Earlier failed artifacts remain historical evidence.
+
+Fresh full checks on this source pass: 522 frontend/SDK/UI tests across56 files,
+one Windows-only case skipped on macOS; repository lint/types; production frontend
+build; default workspace665 Rust tests/three ignored; feature collaboration332
+cases/two ignored; native feature30 cases; default and feature all-target workspace
+Clippy; formatting and diff checks. Default assets contain neither fixture executor
+global nor installer across403 JavaScript files. The earlier normal packaged macOS
+3-case control remains separately recorded, not rerun/new-source qualification.
+Logs: /tmp/gitru-ruru103-final-repair-{tests,lint,types,build,default-tests,
+default-clippy,native-tests,native-app-tests,native-clippy,native-fmt}.log and
+/tmp/gitru-ruru103-diagnostics-retained-native.log. No new Rust command signature
+or DTO changed in this repair; existing normal typegen evidence still applies.
+
+This qualifies the combined source locally on macOS with synthetic provider/vault
+fixtures. The Windows canonical-spelling repair still needs its actual remote
+retained job; previous published5efea64 Linux/macOS retained successes do not
+qualify the new source. Remote matrix restarts after publication. Live provider,
+production keyring, other platforms and power-loss behavior remain separate.
+No personal credentials or cloud account are inspected; no merge is performed.
+
+
+### Windows native-path identity follow-up — 4 October 2026
+
+Exact published #157 cce498b passes retained Linux/macOS and ordinary Windows
+E2E, but retained Windows job111420764848 fails native startup before any scenario
+with `Invalid native collaboration harness input`. Its owned artifact preserves
+`C:\\Users\\RUNNER~1\\AppData\\Local\\Temp` in the namespaced launch root.
+The job actually runs Bun1.3.0+b0a6feca; any earlier1.3.7 source assumption does
+not describe this job. Bun1.3.0's default Windows realpath walker preserves
+non-symlink DOS aliases; its native resolver uses uv_fs_realpath. See the exact
+[JS source](https://raw.githubusercontent.com/oven-sh/bun/bun-v1.3.0/src/js/node/fs.ts)
+and [native source](https://raw.githubusercontent.com/oven-sh/bun/bun-v1.3.0/src/bun.js/node/node_fs.zig).
+
+Signed source b5154effa039c7dab3a2b0accc7d9ca114a54786 resolves actual filesystem
+identity with realpathSync.native before restoring Rust's Windows namespace.
+Root/type/symlink/dev/ino/environment/actual-child guards remain strict. An actual
+resolver spy proves native selection; the owned Windows child regression exercises
+the real short alias when supplied by the host, proves matching filesystem identity
+and rejects alias spelling without signaling the child. It fabricates no DOS name
+or filesystem response. Full frontend523 tests pass/one Windows-only skip on macOS,
+plus full lint/types and diff checks. Logs:
+/tmp/gitru-ruru103-native-realpath-{focused-tests,final-tests,final-lint,final-types}.log.
+Fresh retained local qualification and exact-head remote Windows execution remain
+separate gates; this source audit is not a passing Windows scenario claim.
+
+
+### Real-surface and native-path repair qualification — 4 October 2026
+
+Signed source `dbed691b7ca9880db9f6695edc393fe7defcfee7` combines the actual
+Windows native resolver with private fixture window show/unminimize/focus and
+bounded actual DOM-visibility preconditions. Every visibility-dependent mount and
+ordinary host startup observes the real document first; disconnect observes two
+actual admitted SDK leases before advancing its gate. No fabricated visibility,
+production authority change, extended deadline or polling delay is introduced.
+Four new executor regressions preserve the hidden/native-active distinction,
+normal-host admission and actual lease ordering. Native fixture focus uses only
+its exact guarded child/main windows; projection locks are released before restore.
+
+The first freshly compiled combined run12-02-10-744Z-43546 passes authority but
+fails other cases while both actual documents remain hidden, with zero SDK leases.
+Cleanup succeeds; no crash stage runs. The user then confirms the desktop is
+available. An unchanged-source, unchanged-binary rerun passes all six main cases
+and both exact-owned SIGKILL/fresh-restart pairs, with all five driver stages zero:
+`artifacts/e2e-harness/2026-10-04T12-11-00-118Z-44210`.
+Native SHA256:
+`d226d6c88f93e03c5abb43b1aae7de92aee81239debafbdcf88e473729f606f3`.
+Before-commit owns PID44487/session23ab3d87-a91e-48f7-9fa4-d67dedffac15,
+restart PID44557/sessionf29b1244-891d-4364-a173-cb4b4624b1ee; checkpoint has no
+committed facet and fresh demand produces facet21. Committed-before-hint owns
+PID44610/sessionb939302c-2e21-4167-9782-4151e8c71087, restart
+PID44664/sessiondce54d86-0866-4bf7-9828-43c79818f958; facet20 survives with zero
+provider/vault reads before interest. Both retain draft generation1. Retention and
+disconnect reject actual obsolete reads; all eight peer denials preserve exact
+account, revision, owner, provider and vault counters, with main lease renewal and
+release successful. Ordinary tab creation, navigation, modal pause, disposal and
+recreation pass. Process crashes do not qualify power loss.
+
+The earlier hidden runs remain failure evidence. Their exact OS trigger was not
+recorded and is not inferred from the successful rerun. CUA could not bind the
+unbundled fixture executable; no GUI mutation or personal app was performed.
+Both ordinary and fixture lanes intentionally use unbundled binaries with pinned
+Tao Regular activation policy, so no packaging change is inferred from that tool
+binding limitation. SDK hidden-document suspension and native admission remain
+correctly enforced.
+
+Fresh checks on this repair: frontend527 passed/one Windows-only skip across56
+files; executor12/12; full repository lint/types; native feature app30/30; feature
+workspace all-target Clippy with warnings denied; formatting/diff; production
+frontend build. All403 default JavaScript assets exclude fixture executor/global
+and installer. The earlier9554cc3 full core/default workspace tests remain
+separate evidence for unchanged core, not freshly rerun counts for this repair.
+No Rust signature/public DTO changed; existing normal typegen evidence applies.
+Logs: /tmp/gitru-ruru103-surface-final-{tests,lint,types}.log,
+/tmp/gitru-ruru103-visible-{native-app-tests,native-clippy,native-fmt,
+default-build,retained-native}.log and
+/tmp/gitru-ruru103-available-desktop-retained.log.
+
+This is current-source local macOS qualification with synthetic provider/vault.
+The Windows short-alias native-path fix still requires new-head retained remote
+execution; old Linux/macOS successes and ordinary Windows E2E are distinct.
+Live provider, production keyring, platform and power-loss claims remain outside
+this evidence. No personal credentials inspected; no merge performed.
+
+
+### Exact-head Windows retention-return lifetime seam — 4 October 2026
+
+Published #1579ef7148 passes13/14 reported checks/statuses, including retained
+Linux/macOS and ordinary Windows E2E. RetainedWindows job111434742147,
+run37201765360, artifact2026-10-04T12-40-04-421Z-6136 now successfully launches
+under actualBun1.3.0+b0a6feca5; all6 main scenarios execute,5 pass. The earlier
+native short-alias setup rejection is gone on this head, but full Windows
+retained qualification is still failed. NativeSHA256
+`eef8f0e922525c7aae7b852cdce4d24a6c9e27122a4d88e1b8b364695c017252`.
+
+Only hints-and-catchup fails at release of the real held local Body snapshot after
+retention reset: generation6 gate2bedf9ba-a945-474c-aafd-8a3b552d4097 is TimedOut,
+and release_local_read rejects its terminal state with stale_view. Both documents
+are actually visible with active native owners and2SDK leases; dirty text/CAS and
+real ResetRequired are already observed at revision4431. Cleanup succeeds. No
+crash stages execute after main failure. Artifact has no individual control times,
+so exact FillRetention duration is not claimed. Source proves the held native15s
+return gate/child10s protocol currently span4100 sequential real Store::save_draft
+transactions plus reset/catchup. The lifetime seam is established by source order
+and terminal gate receipt, not inferred desktop availability.
+
+Before another fixture edit, accept bounded preparation: capture the child's real
+reset/cursor baseline while hints are dropped, perform the same4100 real writes
+BEFORE arming or starting its held Body read, then verify that actual child reset
+count/cursor have not advanced and remain behind the pruned native revision. Arm
+and capture the real SDK read under its unchanged pre-reset fence, observe Held,
+then wake the actual bridge, require ResetRequired and all dirty/CAS/cache controls,
+release within the existing bounds, and require actual stale_view/cancelled. The
+native query data revision may already equal the filled revision; the tested old
+property is the SDK authorization generation before ResetRequired, not older data.
+No fabrication, pre-accepted stale outcome, timeout increase, retry, reduced write
+count, retention threshold, permission or production SDK change. If the child
+already caught up during preparation, fail rather than claim a pre-reset fence.
+Meaningful held-preparation/early-catchup controls and fresh combined retained
+execution must qualify this next fixture change; current historical passes do not.
+
+
+R1035376f3b fresh retained Mac run rejects pre-arm catchup correctly: child
+cursor331→4431/reset0→1 despite nativeDrop filtering, both actual documentsvisible.
+Pinned Tauri catch-all EventTarget::Any receives main-targeted events too. The
+[signed bounded contract](./collaboration-work/RURU-103.md) permits an ordinary
+SDK own-Webview collaboration listener, preserving global broadcasts and all
+real catchup/reset/fence/deadline controls. No repair is remotely qualified yet.
+
+
+### RURU-103 revision target and retention repair qualified — 4 October 2026
+
+Signed201005db corrects ordinary SDK revision listener to actualWebview scope
+while preserving intentional global broadcasts. Wire regression is RED→GREEN;
+535 frontend tests/one platformskip, lint/types and production build pass. Fresh
+serialized retained Mac binary13070937 passes all6 main scenarios and both owned
+SIGKILL/fresh-session restart pairs (all5 stagesexit0). Actual childcache22/28
+stays unchanged until reverse/publicwake; real retention331→4431 ResetRequired
+fences a genuinely held return as stale_view while retaining dirty/CAS state.
+Full evidence/previous failure boundaries are in the [R103 work note](./collaboration-work/RURU-103.md).
+Publishing to existing #157; new exact-head remote CI remains pending separately
+from these local results. Previous9ef7148 retainedWindows failure is not labeled
+a new-head Windows pass. No merge or live credentials.
+
+### RURU-111 GitLab MR/issue reads qualified locally — 4 October 2026
+
+GitLab.com selected projects now synchronize all-state MR and issue summaries and
+independent singleton Body/common metadata through the existing native scheduler,
+SQLite, provider traits and ordinary shared detail UI. Immutable global IDs remain
+separate from project IIDs; numeric routes and bounded account/epoch/project/kind
+cursors preserve identity across renamed display paths and copied issue moves.
+Unconditional MR creation-order offset and issue ID keyset traversals fail partial
+on malformed/replayed/cross-scope paging; neither is claimed an atomic snapshot.
+List clocks do not validate Body. Omitted/null/empty/oversized descriptions and
+missing asynchronous MR diff references retain explicit states. GitLab inbox,
+discussions, approval/check facets, remote writes and self-hosted instances remain
+unsupported. No migration, public DTO or generated IPC signature changes occur.
+
+Local evidence: full collaboration329 passed/two ignored, workspace all-target
+Clippy-Dwarnings and format, complete frontend413 tests/48 files, repository lint,
+types including desktop/E2E/testing and production frontend build pass. Shared
+GitLab MR/issue UI tests preserve private drafts and use ephemeral detail demand
+without durable hydration. Actual synthetic HTTP-to-Runtime-to-SQLite regressions
+cover inert cold reopen, copied identities, concealed404 and late old-epoch cache/
+quota veto. No personal credentials, live provider or production vault was used.
+The review PR is stacked on #156; its remote platform checks qualify its own head.
+No PR is merged. See [R111 work note](./collaboration-work/RURU-111.md).
+
+Vercel reauthentication is resolved: #155's exact725b9f2 deployment
+`dpl_6UXbMPbqvvj1Fd6RXKGtCFFMiBdU` is READY with build completed3 October13:41:13Z,
+although its GitHub check still reports Pending. No check override or redeploy is
+claimed. #156's reported11 checks pass; no exact-head CodeQL is reported there.
+
+
+Final independent review found an async diff-reference missingness edge. Base now
+requires both the MR SHA and diff_refs.head_sha to be known, nonempty and equal
+before accepting start_sha. Missing, null, empty and mismatched heads leave Base
+Omitted while independently qualified Body/title/state remain available. Eight
+actual HTTP shapes preserve the known matching-head target-start control. After
+this correction the full collaboration suite still passes329/two ignored,
+focused HTTP14/14, workspace all-target Clippy-Dwarnings and formatting pass.
+Logs: /tmp/gitru-ruru111-async-head-{http,full,clippy,fmt-check}.log.
+
+
+### RURU-111 inherited Linux immediate-reopen repair — 4 October 2026
+
+Published5eab038 run37194446146 passes frontend/Clippy and macOS/Windows Rust;
+Linux job111413272739 fails the unchanged demand cold-reopen test at1228 with
+Busy immediately after close/drop. The same earlier one-off R101 boundary is now
+an actual repeated failure; it is not declared fixed by isolated local success.
+
+A deterministic actual-Store regression keeps a duplicated Unix file descriptor:
+reader close and a surviving Store clone remain Busy; after weak Inner proves all
+owners gone, the old raw File still blocks immediate reopen. A raw OS control
+confirms flock remains attached to the shared open file description across dup/
+fork until explicitly unlocked or all duplicates close. The exact process that
+may have inherited a descriptor in remote CI is not instrumented or claimed.
+
+A private WriterLease now explicitly unlocks only on final Inner destruction,
+with its field after writer/readers so their handles drop first. The stable lock
+inode, clone/close exclusivity, crash OS release and bootstrap failure/cancellation
+ownership stay intact. No early close unlock, sleeps, retry masking, schema/public
+API or original demand-test assertion changes occur. New tests also prove closing
+the old duplicate cannot release the reopened owner's independent lock.
+
+Focused raw/Store controls2/2, unchanged demand restart1/1 and existing ownership
+case1/1 pass. Full collaboration331/two ignored, workspace all-target
+Clippy-Dwarnings and formatting pass. Pre-fix red and final green logs:
+/tmp/gitru-ruru111-writer-lease-{baseline,red,green,demand,ownership,full,clippy,
+ fmt-check}.log. A new signed #159 head must qualify its own remote platforms;
+old failing CI is retained as history. The same private fix is integrated into
+R103 before its next retained native build. R106 coordinated shutdown/current-
+schema backup qualification remains open. No PR is merged.
+
+
+### RURU-112 bounded Bitbucket Cloud account slice started — 4 October 2026
+
+Live Linear/PR/worktree/dependency audit selected R112 after R111/#159 repaired
+`ebb8ae1` passes its exact Linux Rust job; its Windows packaged check remains
+separate. Reviewed R76/R100 prerequisites are unmerged. An isolated attached
+worktree on that head now owns the first repository-only account slice, with
+native adapter/runtime/test and SDK/UI work in parallel under disjoint paths.
+Signed pre-code contracts ee0edda/e9bd990/f1d1a14 live in
+[the R112 work note](./collaboration-work/RURU-112.md). R112 remains In Progress:
+PR summaries/Body and explicit native participant/task facets require later chunks.
+
+Current official Bitbucket sources confirm token-only Bearer API tokens and the
+removed native issue/app-password endpoints. The proposed fixed public connection
+uses existing native vault/actor/epoch cutover, no Gitru cloud or ambient credential
+lookup; only repository capability is supported in this slice. Workspace-to-member-
+repository opaque continuation state is account/epoch bound and bounded. Shared
+per-job page limits merely yield, so this private cursor persists continuation
+fingerprints and a20 accepted-page/20workspace limit across resumption/reopen.
+Exhaustion remains Partial without inferred absence; capped large accounts need a
+later explicit restart/coverage policy. Response-detected loops reject the page;
+bounded retries may refetch its current URL but never follow the repeated target.
+Username-only clone metadata is validated then discarded, not executed/persisted.
+
+At the frozen additive main-only command signature, normal make typegen passes114
+commands. Independent AST comparison preserves all285 prior schemas and adds only
+Bitbucket connect params. Adapter/UI implementation and qualification are underway;
+this record does not claim live provider, platform, completed R112 or publication.
+R103's repaired source is separately published in #157 atcce498b with fresh macOS
+retained proof and exact-head remote CI running; R121/#158 and R111/#159 stay review
+stacks. No merge is authorized or performed.
+
+### RURU-112 first account/repository slice qualified — 4 October 2026
+
+Signed source4dad563 implements manual token-only Bitbucket Cloud accounts and
+UUID member-repository discovery in the existing native vault/SQLite/scheduler,
+generated SDK command and ordinary account dialog/repository picker. Repositories
+alone are supported; PR/Body and explicit participants/tasks remain required and
+R112 stays In Progress. Durable20 accepted-page/20workspace/fingerprint caps retain
+Partial coverage/historical authorized rows across cold/manual resume; a capped
+large account still needs a later explicit restart/coverage policy.
+
+Actual HTTP17 plus Runtime/SQLite7 focused cases pass24; full default workspace706
+top-level tests/three ignored passes, including355 collaboration and native caller
+policy. Clippy/fmt and fresh24 after the equivalent style cleanup pass. Frontend431
+tests/50files, lint/types and production build pass. Normal typegen114 preserves
+all285 prior schemas,237 aliases,113 commands/events and adds only token connect.
+Known-actor invalid-presentation quota regression is recorded red/green without
+credential staging/cache replacement. Full evidence and platform/live limitations
+are in [R112's work note](./collaboration-work/RURU-112.md). Publication and exact-
+head remote qualification remain separate. No live credentials or merge.
+
+
+### RURU-112 second bounded slice contract — 4 October 2026
+
+First account/repository draft #160 exact968cd524 passes all11 reported checks,
+including all-platform Rust/ordinary packaged E2E. R112 stays In Progress: PR and
+explicit participant/task facets remain. The next isolated stack accepts the
+[PR-summary/Body contract](./collaboration-work/RURU-112-pulls.md) before code.
+Compound repoUUID/local PR identity, exact all-state opaque pagination, durable20
+page/history bound, singleton rendered.description.raw authority, full-OID refs,
+and typed unsupported differences use the existing Runtime/SQLite/SDK. The stable
+UUID repository child route is explicitly a documentation inference until live
+qualification; no provider credentials are read. No migration/scheduler/SDK
+production change is planned. R103/#157 latest9ef7148 repair is separately pushed
+with local all5 retained stages passing; its new remote matrix runs independently.
+No merge. First #160 remains unchanged while the new reviewable slice is prepared.
+
+
+R112 PR-read integration first49-case native run:45 passed,4 failed. Two actual
+HTTP singleton failures expose lost account cooldown during detail error conversion;
+[the signed work contract](./collaboration-work/RURU-112-pulls.md) now permits a
+bounded existing-barrier correction in runtime/details.rs. Original red quota
+assertions stay intact; old-epoch data/quota fencing remains required. Two fixture
+assumptions were corrected to actual cold-admission/historical-coverage semantics.
+Fresh post-fix qualification is pending. #1579ef7148 separately passes13/14 remote
+checks; retainedWindows now starts and passes5/6 main scenarios but fails actual
+retention-reset stale_view. Owned artifacts are under investigation; not qualified.
+
+
+### RURU-112 PR reads qualified locally — 4 October 2026
+
+Signed source6892db97 implements Bitbucket all-state PR summaries and singleton
+raw Body/common metadata through existing local projections. The independent
+detail-error cooldown regression is repaired through captured account/epoch
+barriers, with both original red assertions green.49/49 focused native cases and
+731 full default workspace tests/three ignored pass; all-target Clippy/fmt pass.
+Frontend438/51files, lint/types and production build pass. Full evidence and
+coverage/routing/platform limits are in the [PR-read work note](./collaboration-work/RURU-112-pulls.md).
+A separate draft stack on #160 is ready for publication; remote exact-head CI is
+pending separately. R112 remains In Progress for explicit participant/task facets.
+#160968cd524 and #159ebb8ae1 each pass all11 reported checks. #1579ef7148 remains
+13/14 with retained Windows failing a bounded test-lifetime seam; its isolated
+fixture repair and fresh native qualification are underway. No merge.
+
+
+### RURU-112 participant-only contract accepted — 4 October 2026
+
+The [participant contract](./collaboration-work/RURU-112-participants.md) is accepted
+before source changes in an isolated managed stack on #1611766a6e. Common typed
+ParticipantV1 preserves native role/approval/state/action-date facts, independent
+field masks/clocks and immutable identity; no review/readiness overloading. A
+forward0008 rebuild preserves all four dependent detail tables with FKON and
+frozen-v7 upgrade/rollback/cold evidence. The panel acquires ordinary local query
+and native interest only when opened and supported. Tasks are a later bounded
+chunk; R112 stays In Progress. R1034054a6c is separately published after fresh
+all5 retained Mac stages pass; both new exact-head remote matrices remain pending.
+No source/IPC/migration qualification or live credentials/merge is claimed yet.
+
+
+Participant native/storage qualification passes28 focused and759 full default
+workspace top-level tests/3 ignored, with all-target Clippy/fmt. Independent wire
+review found an impossible native:null/participant-field test. The accepted
+[wire guard correction](./collaboration-work/RURU-112-participants.md) derives the
+family from Rust, rejects payload/mask/validation mixes and uses a real generic
+null control; installed generated wire qualification will rerun before delivery.
+Separately #1611766a6e passes all11 reported remote checks and #1574054a6c all14,
+including retained Linux/macOS/Windows. No exact-head CodeQL pass is inferred.
+Participant publication/new-head platform CI remain pending; no merge.
+
+
+The participant wire-family correction now passes all13 installed wire tests
+from the original four red controls;453 full frontend tests pass. Final types/
+build exposed a pinned-generator short-name collision between private Bitbucket
+discovery Branch and public Git Branch. The accepted work note limits repair to
+a private DTO rename, fresh normal generation/native checks and full types/build;
+no generated hand edits or dropped public Git properties. Publication waits.
+
+
+### RURU-112 typed participant slice qualified locally — 4 October 2026
+
+Signed source63d9c67 implements the common ParticipantV1 facet, Bitbucket singleton
+mapper, per-field saved evidence/identity fences, FK-preserving0008/frozen-v7
+recovery and opened-panel-only ordinary SDK/native interest.28 focused native
+cases and759 full default workspace top-level tests/3 ignored pass; full run
+preceded an equivalent private DTO rename with fresh64 Bitbucket cases afterward.
+Final all-target Clippy/fmt, normal typegen114,453 frontend/52files, lint/types/
+production build pass. Source-derived tag/dependency/null and field-family guards
+qualify original red wire controls; private BitbucketDefaultBranch avoids a real
+pinned-generator public Git Branch collision without changing wire fields.
+Full qualification, reviews and limits are in the
+[participant work note](./collaboration-work/RURU-112-participants.md). A separate
+draft stack on #161 is ready; its new-head remote CI remains independent/pending.
+R112 stays In Progress for Tasks; R106 restore ceiling and R121/R103 owners remain
+separate. #1611766a6e passes all11 reported remote checks; #1574054a6c all14
+including retained Linux/macOS/Windows. No unreported exact-head CodeQL/live-token/
+platform vault qualification or merge is inferred.
+
+
+### RURU-112 Tasks contract accepted before code — 4 October 2026
+
+The [Tasks contract](./collaboration-work/RURU-112-tasks.md) defines the fourth
+bounded slice on attached #162 exactd2e9195. Independent provider/native reviews
+qualify the proposed approach before source: typed task.v1/TaskActor, twelve
+disjoint Task fields with generic/Participants still six, required own-task clocks,
+resolver identity before presentation, bounded opaque continuation and stable
+multi-page Uncertain. Only an initial valid page without next can declare complete
+within the observation; caps preserve Partial. FK-enabled0009/frozen-v8 recovery
+must preserve old participant/generic JSON, eight ledger rows and authored intent.
+Opened supported panel only, bounded local pagination and ordinary native demand;
+no writes/readiness/provider branches or R106 restore-policy change. R112 remains
+In Progress. Models/Store/migration, provider/HTTP/Runtime and frontend have clear
+file owners; root owns generated IPC/docs/serialized validation. No implementation
+qualification, new Task PR, live credentials or merge is claimed.
+
+
+### RURU-112 Tasks locally qualified — 5 October 2026
+
+The fourth bounded slice implements typed task.v1/TaskActor/twelve disjoint Task
+fields through existing native HTTP/Runtime/SQLite, source-generated SDK and the
+common collapsed/opened-only Tasks panel. Own-task clocks and resolver context
+preserve historical content, false/null/omission authority; stable multipage
+Uncertain and durable20-page history survive ten-page yield/cold/manual resume.
+Foreign-key-enabled0009 plus independent frozen-v8 controls preserve historical
+rows/ledger and rollback/draft CAS; original0001–0008 and R106 archive policy stay
+unchanged. Local50-row/100-cursor browsing and privacy cuts preserve private drafts.
+
+Focused40 native controls and full default Rust workspace794 top-level/3ignored
+(including collaboration443/2ignored), Clippy/fmt/diff pass. Frontend473/54files,
+full lint/types/prodbuild pass. Normal typegen114 preserves289 schemas/241aliases
+plus only2 new Task types,114 command functions/1event/publicGit Branch fields.
+Actual cap-fixture generation and Clippy guard findings were corrected, without
+weakening production fences or original controls. See
+[the Tasks work note](./collaboration-work/RURU-112-tasks.md) for commands and
+qualification limits. Signed stacked publication/its exact-head remote CI remain
+separate; live provider/vault/new native UI/CodeQL is not inferred. No merge.
+
+
+### RURU-112 publication and RURU-122 first contract — 5 October 2026
+
+Attached draft [Tasks#163](https://github.com/ruru-m07/gitru/pull/163) exact signed
+2e4b8d5c57e5dd0bb7dd0cbef5e4f521a870e588 is stacked on#162; R112 is In Review
+with all four bounded read-only slices published. Its new remote matrix is running,
+separate from local794Rust/473frontend and ancestor checks. No merge.
+
+Live R122/77/78/PR/worktree/file-overlap audit finds no duplicate conversation PR
+and implemented reviewed prerequisites in ancestry. New isolated managed
+ruru/ruru-122-conversation-comments owns the first GitHub PR/issue Comments slice.
+[Signed pre-code contract](./collaboration-work/RURU-122-comments.md) uses existing
+generic entries/DTO/schema with own-comment clocks, immutable numeric repository
+addressing, strict no-redirect/no304/all-Link boundary, operational50-row pages,
+durable20-page progression, singletonFull versus stable multipageUncertain, and
+opened-only revision-fenced local paging/singular native demand. Independent
+provider/schema and UI reviews completed before source. Anonymous public routing
+probe is distinct from private provider/token/vault/platform proof. Root serializes
+validation/generated IPC/publishing; provider, Runtime and UI have disjoint files.
+R122 stays In Progress for this slice and later activity/provider coverage; no
+comment implementation, new remote CI or production qualification is claimed yet.
+
+
+### Tasks exact-head remote matrix qualified — 5 October 2026
+
+Attached Tasks draft#163 exact signed2e4b8d5c57e5dd0bb7dd0cbef5e4f521a870e588
+passes all11 reported checks. [CI37268340457](https://github.com/ruru-m07/gitru/actions/runs/37268340457)
+passes frontend/lint/types/build, formatting/Clippy and Rust plus packaged E2E
+on Linux/macOS/Windows; final Windows E2E completed06:02:57UTC. Cloudflare,
+CodeRabbit and Vercel also pass. No exact-head CodeQL is reported. Local794Rust/
+473frontend remains separate from live private-provider/vault/new-panel native
+window or latency proof. R112 stays In Review and draft remains unmerged.
+
+
+### RURU-122 first Comments slice locally qualified — 5 October 2026
+
+Read-only GitHub PR/issue conversations now use native immutable collection
+addressing, own-comment clocks and the existing generic Comments storage/schema.
+Strict all-Link/noRedirect/no304 admission, bounded50/20page continuation and
+stable multipageUncertain prevent invalid absence; cold/yield/explicit-retry caps
+persist. Common opened-only raw-text/local50row/100cursor/gc0 paging, revision and
+privacy fences preserve private Body draft/CAS and singular demand. Root also
+fixes a demonstrated held200 account-quota loss before Store/reconciliation
+validation: actual RED→GREEN proves same-epoch120s durable barrier/cold sibling
+zeroHTTP/vault, with obsolete-epoch200/429 controls intact.
+
+Final serialized make verify exits0:815 Rust passed/3ignored (collaboration464/
+2ignored),499 frontend/55files, lint/types/prodbuild and all-target Clippy/fmt.
+21 focused native and45 new+legacy Workspace controls pass. Normal typegen114
+preserves291schemas/243aliases/114functions/1event/Branch with zero public changes;
+generator-only timestamp/order churn restored, no hand edits. Independent reviews,
+real fixture/old-control corrections and qualification limits are in the
+[Comments work note](./collaboration-work/RURU-122-comments.md). Signed publication/
+new-head remote CI remain separate next gates; no private-provider/vault/new UI
+native/latency proof, activity timeline/provider expansion or merge is inferred.
+R122 remains In Progress. R104 destructive retention awaits separate R99 recovery
+integration; bounded R102 independent-clock lifecycle audit is the next candidate.
+
+
+### Comments publication and RURU-102 clock contract — 5 October 2026
+
+Attached draft[Comments#164](https://github.com/ruru-m07/gitru/pull/164) exact signed
+aab107dacf11e67216de602e42954a61e46c4423 is stacked on#163. Final local make verify
+passes815Rust/3ignored and499frontend plus lint/types/build/Clippy/fmt; its new CI
+is running separately with no failures. R122 stays In Progress for later activity/
+provider criteria. No merge or live private-provider/vault/new native UI proof.
+
+Fresh liveR102/R104/prerequisite/PR/worktree/ancestry audit selects a bounded R102
+independent-clock lifecycle slice on that exact frozen head. R98/R76 are inherited;
+R104's R99 recovery/export is a separate fork and absent, so destructive eviction
+is deferred. The[pre-code clock contract](./collaboration-work/RURU-102-clock-lifecycle.md)
+requires RED before source-risk repair, accepted-epoch live monotonic plus full
+persisted budgets, actual held dispatch boundaries, peer/reconnect/cold/long-wait
+controls and zero public contract changes. Real OS suspend/invalid-clock restart
+and separateR103 own-Webview integration are not claimed. Root serializes gates;
+production Runtime and new fixture have distinct file owners. No R102 source or
+qualification exists yet; review/sign before implementation.
+
+
+R102 pre-code peer review accepts serialized Store-epoch/live-map publication and
+both native pre-vault/final pre-HTTP checks; private per-dispatch local refusal
+classification preserves original quota instead of inventing observations after
+a clock jump. One existing account map slot, narrow three Job initialization
+seams, real rejected-probe lifecycle and explicit post-vault boundary controls;
+no public DTO/schema or fairness-policy changes. Signed contract precedes fixture
+RED/production repair, and no clock defect/qualification is claimed before execution.
+
+
+### Comments exact-head remote matrix qualified — 5 October 2026
+
+Attached draft [Comments #164](https://github.com/ruru-m07/gitru/pull/164) at signed
+`aab107dacf11e67216de602e42954a61e46c4423` passes all 11 reported checks.
+[CI run 37272166940](https://github.com/ruru-m07/gitru/actions/runs/37272166940)
+passes frontend tests/lint/types/build, formatting/Clippy, Rust tests and packaged
+E2E on Linux/macOS/Windows; final Windows E2E completed 06:54:17 UTC. Cloudflare,
+CodeRabbit and Vercel also pass. No exact-head CodeQL is reported. Local 815 Rust/
+499 frontend remains separate from live private-provider/PAT/keyring, new Comments
+native-window behavior or latency. R122 stays In Progress for activity/provider
+criteria; draft remains unmerged.
+
+
+### RURU-102 bounded clock lifecycle locally qualified — 5 October 2026
+
+Actual independent-clock Runtime RED reproduced five failures out of ten before
+production repair. Accepted-epoch quota commit/live max-install now serialize
+with feed/detail dispatch checks; successful probes capture before vault cutover
+awaits, and local refusal preserves the original provider observation. Strengthened
+receipt-time capture plus both held feed/Body boundaries pass all ten controls.
+One final serialized make verify exits0:825 Rust/3ignored (collaboration474/2),
+499 frontend/55files, full lint/types/build/Clippy/fmt; desktop build is a valid
+Turbo cache hit. Credential crashes/rollback, fairness, long persisted budgets
+and Comments/privacy controls pass unchanged. Normal typegen114 plus independent
+AST inventory preserves291schemas/243aliases/114functions/1event/publicBranch
+with zero public changes; generator-only churn restored, no hand edits.
+
+See the [clock lifecycle work note](./collaboration-work/RURU-102-clock-lifecycle.md)
+for actual RED/GREEN commands, source boundaries and limits. R102 remains In
+Progress: notification discovery, broader family scheduling and clock-jump immunity
+above24h are separate. No new-head remote CI, OS suspend/live provider/platform
+vault/new native UI or merge qualification is inferred. R99 recovery and R103
+own-Webview/native integration remain separate forks to integrate explicitly.
+
+
+### Current-stack RURU-103 integration starts — 5 October 2026
+
+Attached draft [R102#165](https://github.com/ruru-m07/gitru/pull/165) now publishes
+exact signed36455f9fa72b46d7dd1c58e8d3368e08b598fc34 on Comments#164; its new CI
+is running separately from local825Rust/499frontend and ancestor164's11/11.
+R102 remains In Progress for broader criteria.
+
+Existing attached [R103#157](https://github.com/ruru-m07/gitru/pull/157) is draft
+and unmerged at4054a6c081aef47aeace489e01cc8c2cdcae1128, with all14 reported
+checks successful including retained and ordinary packaged E2E on three platforms.
+Live Linear remains In Review. Its own-Webview event listener and retained native
+lane were a separate fork; the signed
+[integration contract](./collaboration-work/RURU-103-stack-integration.md)
+now advances that existing PR onto exact165 through a signed local integration
+commit preserving published history. Both implementation/evidence histories above
+are retained. Textual merge/old14checks do not qualify the combined tree. Normal
+generation, independent AST/source review, default/feature/full/native retained
+checks and a fresh exact-head remote matrix are required before qualification.
+No credentials inspected or PR merged; destructive R104 still awaits R99 recovery.
+
+### R102 remote fixture timing correction — 5 October 2026
+
+Published165 exact36455f9 remote frontend job111653744289 fails one of499 tests
+on an immediate Body visibility assertion after only observing Comments close
+during same-actor epoch cutover. Actual lint/types/build independently pass. A
+controlled replacement Body local-read gate proves old Body remains fenced while
+waiting, dirty draft survives, and new receipt restores Body; old Comments rejection/
+eviction and demand/no-hydration checks remain. Test-only source correction passes
+focused1control, full499frontend/55files, lint/types. No production/native/generation/
+bundle source changed; earlier825Rust and build gates remain separately attributed.
+Fresh signed head/remote matrix is next; failed36455f9 is not labeled green.
+
+
+### R102 remote qualification and R103 current-stack local qualification — 5 October 2026
+
+R102 draft [#165](https://github.com/ruru-m07/gitru/pull/165) at exact signed
+`d08fa56c2bf0399b7f1a1fe5fd3ecbd03f9e1fc4` passes all 11 reported checks in
+[CI run 37278725328](https://github.com/ruru-m07/gitru/actions/runs/37278725328),
+including frontend, Rust and packaged E2E on Linux/macOS/Windows plus Cloudflare,
+CodeRabbit and Vercel. Final Windows E2E completed at 07:52:16 UTC. No exact-head
+CodeQL check is reported. R102 remains In Progress for its broader scheduling and
+notification criteria and is unmerged.
+
+Existing draft R103 [#157](https://github.com/ruru-m07/gitru/pull/157) is locally
+integrated on that R102 head at signed
+`8c8068b5e2c7022477c80a31f0667903b9ba1912`. Normal typegen produces 117 commands,
+317 schemas, 257 aliases and one event while preserving the complete R102 public
+contract. A source-generator value-dependency ordering repair prevents an actual
+combined-module temporal-dead-zone failure and is covered by seven tests.
+
+Fresh serialized local qualification passes default `make verify` with 825 Rust/
+3 ignored and 630 frontend/one Windows-only skip across 65 files plus lint, types,
+fresh build, format and all-target Clippy; feature tests pass 493 collaboration/
+2 ignored, 30 native app tests and feature Clippy. Ordinary packaged E2E passes
+three tests. The retained five-stage run passes six main scenarios and both real
+crash/restart pairs using binary SHA-256
+`3b36b25b9a002685cfac0dfe19e636dc0a08761f358939dfa3401277b5d388d0`.
+See the [integration record](./collaboration-work/RURU-103-stack-integration.md).
+
+This R103 evidence is local macOS evidence at the integrated source head. The old
+14/14 remote matrix belongs to the earlier R103 ancestor; a new exact-head matrix
+is required after publishing the restacked draft. No personal credential, live
+provider, Gitru cloud account, keyring, other-platform, CodeQL or merge result is
+inferred. R99 recovery/export continues to precede destructive R104 retention.

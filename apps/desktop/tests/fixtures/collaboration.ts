@@ -1,8 +1,16 @@
 /** Sanitized deterministic test fixtures. Never imported by production code. */
+
+import type { InboxSemantics } from "@gitru/collaboration-client";
 import type {
   AccountSnapshot,
+  CapabilitySnapshot,
+  CapabilityTarget,
+  ContextCapabilityRequest,
+  ContextFacetCapability,
+  ContextualCapabilitySnapshot,
   GithubCliDiscovery,
   ItemPage,
+  RemoteAccount,
   RemoteItem,
   RepositorySnapshot,
 } from "@gitru/commands";
@@ -24,6 +32,118 @@ export const fixtureAccounts: AccountSnapshot = {
   revision: "10",
   authorization_view: "1",
 };
+
+export const fixtureGitlabAccount: RemoteAccount = {
+  ...fixtureAccount,
+  id: "fixture-gitlab-account",
+  provider: "gitlab",
+  host: "gitlab.com",
+  actor_id: "9007199254740993",
+  login: "gitlab-user",
+  display_name: "GitLab User",
+  notifications_supported: false,
+};
+export const fixtureGitlabCapabilities: CapabilitySnapshot = {
+  account_id: fixtureGitlabAccount.id,
+  instance: {
+    id: "gitlab:https://gitlab.com/",
+    provider: "gitlab",
+    base_url: "https://gitlab.com/",
+  },
+  inbox_semantics: "none",
+  revision: "10",
+  authorization_view: "1",
+  facets: (
+    [
+      "repositories",
+      "pull_requests",
+      "issues",
+      "inbox",
+      "pull_details",
+      "issue_details",
+      "comments",
+      "reviews",
+      "checks",
+      "merge",
+    ] as const
+  ).map((facet): CapabilitySnapshot["facets"][number] => ({
+    facet,
+    state: facet === "repositories" ? "supported" : "unsupported",
+    reason:
+      facet === "repositories"
+        ? null
+        : facet === "inbox"
+          ? "provider_semantics"
+          : "not_implemented",
+  })),
+};
+
+export function fixtureContextualCapabilities(
+  account: RemoteAccount = fixtureAccount,
+  target: CapabilityTarget = {
+    kind: "account",
+    instance_id: null,
+    repository_id: null,
+    resource_id: null,
+    resource_kind: null,
+  },
+  semantics: InboxSemantics = "native_notifications",
+): ContextualCapabilitySnapshot {
+  const facets = [
+    "repositories",
+    "pull_requests",
+    "issues",
+    "inbox",
+    "pull_details",
+    "issue_details",
+    "comments",
+    "reviews",
+    "checks",
+    "merge",
+  ] as const;
+  return {
+    account_id: account.id,
+    authorization_epoch: account.authorization_epoch,
+    instance: {
+      id: `${account.provider}:${new URL(account.host.includes("://") ? account.host : `https://${account.host}`).href}`,
+      provider: account.provider,
+      base_url: new URL(
+        account.host.includes("://") ? account.host : `https://${account.host}`,
+      ).href,
+    },
+    target,
+    inbox_semantics: semantics,
+    revision: "10",
+    authorization_view: "1",
+    facets: facets.map((facet): ContextFacetCapability => {
+      const implemented =
+        ["repositories", "pull_requests", "issues", "inbox"].includes(facet) &&
+        (facet !== "inbox" || semantics !== "none");
+      const access = {
+        state: implemented ? ("supported" as const) : ("unsupported" as const),
+        reason: implemented
+          ? null
+          : facet === "inbox"
+            ? ("provider_semantics" as const)
+            : ("not_implemented" as const),
+      };
+      return {
+        facet,
+        saved_read: access,
+        synchronize: access,
+        remote_write: { state: "unsupported", reason: "not_implemented" },
+        observation: implemented ? "partial" : "unknown",
+        sync: {
+          state: "idle",
+          last_success_at: null,
+          next_retry_at: null,
+          error: null,
+        },
+        can_recheck_access: false,
+      };
+    }),
+  };
+}
 export const fixtureGithubCli: GithubCliDiscovery = {
   status: "available",
   accounts: [
@@ -116,6 +236,10 @@ export function installCollaborationPreviewBoundary() {
     switch (command) {
       case "collaboration_accounts":
         return fixtureAccounts;
+      case "collaboration_contextual_capabilities": {
+        const request = input?.request as ContextCapabilityRequest;
+        return fixtureContextualCapabilities(fixtureAccount, request.target);
+      }
       case "collaboration_discover_github_cli":
         return fixtureGithubCli;
       case "collaboration_connect_github_cli":
