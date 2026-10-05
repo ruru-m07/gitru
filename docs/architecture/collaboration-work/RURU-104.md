@@ -34,9 +34,12 @@ must not perform an unbounded historical backfill while opening a user's databas
 
 `cache_pins` stores `(account_id, instance_id, entity_id, kind, pinned_revision)`.
 Its key is the account/instance/canonical entity identity; its foreign key includes
-the identity kind and accepts only pull requests and issues. A pin is authored,
-durable local state. It survives disconnect, cache rebuilding and process restart,
-and one account's pin cannot protect or reveal another account's same-named item.
+the existing three-column identity primary key, while constant-time insert/update
+triggers verify that the stored kind matches that exact parent and accepts only
+pull requests and issues. This avoids building an unbounded identity index while
+opening an existing database. A pin is authored, durable local state. It survives
+disconnect, cache rebuilding and process restart, and one account's pin cannot
+protect or reveal another account's same-named item.
 
 `cache_retention_entries` stores one accounting row per
 `(account_id, subject_id, facet)`, with logical JSON/blob bytes and the last
