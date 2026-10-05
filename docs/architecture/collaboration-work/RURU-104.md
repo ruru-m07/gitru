@@ -248,9 +248,15 @@ Local validation on exact head `fc6ca98feda85c9cbbc845d20635a553d987d37a`:
   repository smoke scenario; and
 - no personal credential, live provider account or Gitru cloud account was read.
 
-The retained collaboration-harness E2E job, remote multi-platform CI and CodeQL
-are separate gates and are not claimed by the local results. The synthetic
-fixture proves bounded logical-byte and WAL behavior; a release-scale database/WAL
-growth benchmark, automatic maintenance cadence, physical compaction,
-summary/identity eviction, frontend controls and outbox protection remain
-follow-up work exactly as scoped above.
+Remote CI on signed source-and-evidence head
+`218ac2ada12038fb76a941e1641f008e6f20af91` passes all 14 reported contexts:
+frontend, Rustfmt/Clippy, Rust tests, packaged desktop E2E and the retained
+collaboration harness on Ubuntu, macOS and Windows, plus Cloudflare, Vercel and
+CodeRabbit. The draft is clean and mergeable. GitHub emitted no exact-head CodeQL
+context for this stacked PR, so CodeQL remains unclaimed rather than inferred.
+
+The synthetic fixture proves bounded logical-byte and WAL behavior; a
+release-scale database/WAL growth benchmark, automatic maintenance cadence,
+physical compaction, summary/identity eviction, frontend controls and outbox
+protection remain follow-up work exactly as scoped above. Live provider,
+credential-vault and Gitru-cloud behavior was not exercised.
