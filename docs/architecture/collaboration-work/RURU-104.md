@@ -212,10 +212,11 @@ actual counts and limitations here before publishing a reviewable draft PR.
 
 ## Implemented slice and qualification
 
-Commits `100c31f` and `76f05ee` implement and qualify the native slice described
-above. Migration `0010_cache_retention.sql` adds the pin, accounting and bounded
-cursor state. Shared detail reconciliation updates the ledger in the same
-transaction, and `storage::retention` owns bounded indexing, protected eviction,
+Commits `100c31f`, `76f05ee` and `fc6ca98` implement, qualify and harden the
+native slice described above. Migration `0010_cache_retention.sql` adds the pin,
+accounting and bounded cursor state. Shared detail reconciliation updates the
+ledger in the same transaction, and `storage::retention` owns bounded indexing,
+protected eviction,
 truthful Missing publication, WAL observation and PASSIVE checkpointing. The
 public boundary remains the provider-independent Rust `Store`; this slice adds no
 Tauri command or frontend pin control.
@@ -229,15 +230,20 @@ ordering, and checkpoint progress with a retained reader. The ordinary
 collaboration unit and integration suites also pass, including 304 passed plus one
 subprocess-only ignored unit test in the crate's main unit target.
 
-Local validation on exact head `76f05eec9d888fba808e5071a32b39399881f050`:
+Local validation on exact head `fc6ca98feda85c9cbbc845d20635a553d987d37a`:
 
-- `make verify` passed on macOS: frontend tests, Biome, TypeScript checks, the
+- the focused real-SQLite retention suite passed 20/20 after the post-commit
+  reporting repair;
+- `make verify` passed on macOS after that repair: 645 frontend tests with one
+  intentional platform skip, Biome, TypeScript checks, the
   desktop frontend build, Rustfmt, warnings-denied workspace Clippy and the full
   Rust workspace tests;
-- `make typegen` completed for 119 commands and produced no API addition for this
+- on predecessor `76f05eec9d888fba808e5071a32b39399881f050`, `make typegen`
+  completed for 119 commands and produced no API addition for this
   storage-only slice; the generator rewrote timestamps/declaration order, so that
   non-semantic generated churn was discarded rather than committed; and
-- `make test-e2e` built the packaged macOS binary and passed both spec files:
+- on the same predecessor, `make test-e2e` built the packaged macOS binary and
+  passed both spec files:
   two collaboration-storage/account-window scenarios and one Git UI/Tauri/Rust
   repository smoke scenario; and
 - no personal credential, live provider account or Gitru cloud account was read.
