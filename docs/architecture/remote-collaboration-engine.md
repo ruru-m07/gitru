@@ -2708,3 +2708,16 @@ Progress: notification discovery, broader family scheduling and clock-jump immun
 above24h are separate. No new-head remote CI, OS suspend/live provider/platform
 vault/new native UI or merge qualification is inferred. R99 recovery and R103
 own-Webview/native integration remain separate forks to integrate explicitly.
+
+
+### R102 remote fixture timing correction — 5 October 2026
+
+Published165 exact36455f9 remote frontend job111653744289 fails one of499 tests
+on an immediate Body visibility assertion after only observing Comments close
+during same-actor epoch cutover. Actual lint/types/build independently pass. A
+controlled replacement Body local-read gate proves old Body remains fenced while
+waiting, dirty draft survives, and new receipt restores Body; old Comments rejection/
+eviction and demand/no-hydration checks remain. Test-only source correction passes
+focused1control, full499frontend/55files, lint/types. No production/native/generation/
+bundle source changed; earlier825Rust and build gates remain separately attributed.
+Fresh signed head/remote matrix is next; failed36455f9 is not labeled green.

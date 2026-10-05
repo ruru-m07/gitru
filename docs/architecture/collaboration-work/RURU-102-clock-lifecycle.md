@@ -238,3 +238,34 @@ remote successes do not qualify this new head's CI, live providers/platform vaul
 new native UI, OS suspend, notification discovery or full-duration clock-jump
 immunity above24h. R102 stays In Progress for broader criteria. Signed publication
 is the next gate; no PR merge.
+
+
+### Actual new-head remote frontend failure — 5 October 2026
+
+Published draft165 exact36455f9 has a failed frontend check in CI37276232069,
+job111653744289. Actual job logs show498/499 frontend tests pass; the Comments
+same-actor epoch-cut fixture immediately queries Saved Body text after observing
+only its separate disclosure close. Remote lint/types/build succeed independently.
+This is separate from the R103 newly generated-module import failure. Do not
+label it flaky or infer a production defect before controlled boundary evidence.
+
+Accepted bounded follow-up: fixture owner may edit only conversation-comments.test.tsx
+to establish a controlled held new-epoch Body acquisition, verify old data remains
+fenced during that wait, retain all old Comments rejection/private dirty editor/CAS
+assertions, and await the authoritative new Body receipt before asserting eventual
+visibility. No production change unless the controlled case demonstrates a real
+breach and root records an expanded contract. Root runs focused/full frontend,
+scoped signed commit/push and exact-head remote CI; earlier local825/499 and older
+16411/11 do not make failed165green. Native clock source/gates unchanged.
+
+
+Root controlled fixture qualification confirms the expected authorization refresh
+sequence: while the actual replacement Body local read is held, old Body text is
+absent and dirty authored text remains; releasing the new receipt restores visible
+Body. The held old Comments page stays rejected/evicted, epoch-scoped single demand
+and no implicit save/hydration assertions remain. Production source is unchanged.
+Focused same-actor control passes1/25filtered; full frontend499/55files, lint and
+types all pass after the test-only change. Earlier native825/3ignored, typegen114
+and build qualification belong to unchanged production; not rerun/recounted here.
+Actual failed remote165 remains failure evidence; signed scoped follow-up and a
+fresh exact-head matrix are required before calling the PR green.
