@@ -2586,3 +2586,25 @@ weakening production fences or original controls. See
 [the Tasks work note](./collaboration-work/RURU-112-tasks.md) for commands and
 qualification limits. Signed stacked publication/its exact-head remote CI remain
 separate; live provider/vault/new native UI/CodeQL is not inferred. No merge.
+
+
+### RURU-112 publication and RURU-122 first contract — 5 October 2026
+
+Attached draft [Tasks#163](https://github.com/ruru-m07/gitru/pull/163) exact signed
+2e4b8d5c57e5dd0bb7dd0cbef5e4f521a870e588 is stacked on#162; R112 is In Review
+with all four bounded read-only slices published. Its new remote matrix is running,
+separate from local794Rust/473frontend and ancestor checks. No merge.
+
+Live R122/77/78/PR/worktree/file-overlap audit finds no duplicate conversation PR
+and implemented reviewed prerequisites in ancestry. New isolated managed
+ruru/ruru-122-conversation-comments owns the first GitHub PR/issue Comments slice.
+[Signed pre-code contract](./collaboration-work/RURU-122-comments.md) uses existing
+generic entries/DTO/schema with own-comment clocks, immutable numeric repository
+addressing, strict no-redirect/no304/all-Link boundary, operational50-row pages,
+durable20-page progression, singletonFull versus stable multipageUncertain, and
+opened-only revision-fenced local paging/singular native demand. Independent
+provider/schema and UI reviews completed before source. Anonymous public routing
+probe is distinct from private provider/token/vault/platform proof. Root serializes
+validation/generated IPC/publishing; provider, Runtime and UI have disjoint files.
+R122 stays In Progress for this slice and later activity/provider coverage; no
+comment implementation, new remote CI or production qualification is claimed yet.
