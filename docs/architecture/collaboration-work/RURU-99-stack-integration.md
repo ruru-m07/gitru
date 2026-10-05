@@ -85,3 +85,16 @@ the executable `TaskV1Schema` assertion and all stable-order/cycle/duplicate tes
 unchanged. Do not weaken the source generator, replace the exact count with a
 range, or change generated/runtime/native/UI behavior. Rerun the complete focused
 set after the correction; this RED does not qualify the combined tree.
+
+The corrected focused generator/client set passes all 52 tests and the desktop
+draft/workspace set passes all 27 tests. The first full `make verify` then passes
+all 644 frontend tests with one platform skip and full lint, but stops at client
+type checking: the existing complete transport fixtures in `local-links.test.ts`
+and `notification-subjects.test.ts` do not declare the two new draft list/export
+methods. No runtime test fails and no Rust/build gate runs after that stop.
+
+Accept a second test-fixture-only correction: add both methods to those two
+fail-closed transport objects using their existing `unexpected` function. This
+must not make a provider call, add a permissive default, change the production
+transport interface or alter any source behavior. Rerun type checks and the full
+serialized gate from the signed integration head plus a signed scoped repair.

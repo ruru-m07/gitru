@@ -89,6 +89,8 @@ function fixture() {
     refresh: unexpected,
     saveDraft: unexpected,
     draft: unexpected,
+    drafts: unexpected,
+    exportDraft: unexpected,
     capabilities: unexpected,
     contextualCapabilities: unexpected,
     resolveResource: unexpected,
