@@ -2139,3 +2139,30 @@ eviction and demand/no-hydration checks remain. Test-only source correction pass
 focused1control, full499frontend/55files, lint/types. No production/native/generation/
 bundle source changed; earlier825Rust and build gates remain separately attributed.
 Fresh signed head/remote matrix is next; failed36455f9 is not labeled green.
+
+
+### R102 remote qualification and R103 current-stack local qualification — 5 October 2026
+
+R102 draft [#165](https://github.com/ruru-m07/gitru/pull/165) exact signed
+`d08fa56c2bf0399b7f1a1fe5fd3ecbd03f9e1fc4` passes all 11 reported checks in
+[CI run 37278725328](https://github.com/ruru-m07/gitru/actions/runs/37278725328),
+including frontend, Rust and packaged E2E on Linux/macOS/Windows. No exact-head
+CodeQL check is reported. Keep R102 In Progress and unmerged because notification
+discovery, broader family scheduling and clock-jump work remain separate criteria.
+
+R103 draft [#157](https://github.com/ruru-m07/gitru/pull/157) is locally integrated
+on that head at signed `8c8068b5e2c7022477c80a31f0667903b9ba1912`.
+Normal typegen emits 117 commands, 317 schemas, 257 aliases and one event, preserving
+the R102 public contract. The combined tree passes default `make verify` with
+825 Rust/3 ignored and 630 frontend/one Windows-only skip, all lint/types/build/
+format/Clippy gates, feature tests 493 collaboration/2 ignored plus 30 native app
+tests and feature Clippy, ordinary packaged E2E, and every stage of a fresh retained
+crash/restart run. The exact evidence and source-generator ordering repair are in
+the [stack integration note](./collaboration-work/RURU-103-stack-integration.md).
+
+Next: sign the result documentation, ordinary-push the existing R103 branch,
+change its base to R102, update its review text and run a new exact-head remote
+matrix. The original R103 ancestor's 14/14 checks do not qualify this head. Keep
+R103 In Review and unmerged; no live-provider, personal credential, keyring,
+other-platform or CodeQL result is inferred. Integrate R99 recovery/export before
+starting destructive R104 retention.

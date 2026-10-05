@@ -3193,3 +3193,36 @@ eviction and demand/no-hydration checks remain. Test-only source correction pass
 focused1control, full499frontend/55files, lint/types. No production/native/generation/
 bundle source changed; earlier825Rust and build gates remain separately attributed.
 Fresh signed head/remote matrix is next; failed36455f9 is not labeled green.
+
+
+### R102 remote qualification and R103 current-stack local qualification — 5 October 2026
+
+R102 draft [#165](https://github.com/ruru-m07/gitru/pull/165) at exact signed
+`d08fa56c2bf0399b7f1a1fe5fd3ecbd03f9e1fc4` passes all 11 reported checks in
+[CI run 37278725328](https://github.com/ruru-m07/gitru/actions/runs/37278725328),
+including frontend, Rust and packaged E2E on Linux/macOS/Windows plus Cloudflare,
+CodeRabbit and Vercel. Final Windows E2E completed at 07:52:16 UTC. No exact-head
+CodeQL check is reported. R102 remains In Progress for its broader scheduling and
+notification criteria and is unmerged.
+
+Existing draft R103 [#157](https://github.com/ruru-m07/gitru/pull/157) is locally
+integrated on that R102 head at signed
+`8c8068b5e2c7022477c80a31f0667903b9ba1912`. Normal typegen produces 117 commands,
+317 schemas, 257 aliases and one event while preserving the complete R102 public
+contract. A source-generator value-dependency ordering repair prevents an actual
+combined-module temporal-dead-zone failure and is covered by seven tests.
+
+Fresh serialized local qualification passes default `make verify` with 825 Rust/
+3 ignored and 630 frontend/one Windows-only skip across 65 files plus lint, types,
+fresh build, format and all-target Clippy; feature tests pass 493 collaboration/
+2 ignored, 30 native app tests and feature Clippy. Ordinary packaged E2E passes
+three tests. The retained five-stage run passes six main scenarios and both real
+crash/restart pairs using binary SHA-256
+`3b36b25b9a002685cfac0dfe19e636dc0a08761f358939dfa3401277b5d388d0`.
+See the [integration record](./collaboration-work/RURU-103-stack-integration.md).
+
+This R103 evidence is local macOS evidence at the integrated source head. The old
+14/14 remote matrix belongs to the earlier R103 ancestor; a new exact-head matrix
+is required after publishing the restacked draft. No personal credential, live
+provider, Gitru cloud account, keyring, other-platform, CodeQL or merge result is
+inferred. R99 recovery/export continues to precede destructive R104 retention.

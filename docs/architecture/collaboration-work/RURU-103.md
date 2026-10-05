@@ -1019,3 +1019,30 @@ This is fresh local macOS qualification only. Prior remote9ef7148 passes13/14
 with retained Windows failure; the qualified update is now ready to push to the
 existing #157, with a new exact-head remote matrix pending independently. No
 CodeQL/platform/live-provider/keyring pass is inferred and nothing is merged.
+
+
+## Current-stack integration qualification — 5 October 2026
+
+R103 is now integrated locally on signed R102 head
+`d08fa56c2bf0399b7f1a1fe5fd3ecbd03f9e1fc4` at signed merge head
+`8c8068b5e2c7022477c80a31f0667903b9ba1912`. The integration preserves R102's
+provider, Tasks, Comments, clock and privacy behavior, the R103 own-Webview event
+target, startup visibility resample and all retained recovery fixtures. A real
+combined-tree generated-module temporal-dead-zone failure was repaired in the
+source generator with stable value-dependency ordering and seven regression tests;
+normal typegen now produces 117 commands, 317 schemas, 257 aliases and one event.
+
+Fresh serialized local gates pass: default `make verify` reports 825 Rust/3 ignored
+and 630 frontend/one Windows-only skip across 65 files plus lint, types, build,
+format and all-target Clippy; the feature lane reports 493 collaboration/2 ignored,
+30 native app tests and feature Clippy. Ordinary packaged E2E passes both spec files
+and three tests. The fresh retained five-stage pipeline passes six main scenarios,
+both real crash checkpoints and both fresh-process restarts using binary SHA-256
+`3b36b25b9a002685cfac0dfe19e636dc0a08761f358939dfa3401277b5d388d0`.
+Exact artifacts and generation/source audit evidence are recorded in the
+[stack integration note](./RURU-103-stack-integration.md).
+
+This is exact-head local macOS evidence. The old 14/14 remote matrix belongs to
+the original published R103 ancestor. A new remote matrix is required after the
+existing draft PR is restacked and pushed. No live provider, personal credential,
+keyring, Gitru cloud account, CodeQL, other-platform or merge result is inferred.

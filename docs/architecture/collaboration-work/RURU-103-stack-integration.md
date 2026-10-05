@@ -151,3 +151,40 @@ same-actor epoch case passes in this combined tree, and full frontend validation
 passes 630 tests with one Windows-only skip across 65 files, plus lint and type
 checks. This result covers the source tree before its fresh packaged/native
 builds; remote checks for both PR heads remain separate.
+
+
+## Final local qualification on the current stack — 5 October 2026
+
+The signed integration head `8c8068b5e2c7022477c80a31f0667903b9ba1912`
+contains the current R102 head and the retained R103 implementation without
+rewriting the existing published history. Normal `make typegen` emits 117 commands,
+317 schemas, 257 aliases and one event. Independent AST comparison preserves all
+114 commands, 291 schemas, 243 aliases, the event and public `Branch` fields from
+R102; the only additions are the three feature-gated harness commands and their
+26 schemas and 14 aliases. The generated module imports all 317 schemas without a
+temporal-dead-zone failure. Generated files were not edited by hand.
+
+The final serialized default `make verify` exits zero with 825 Rust tests passed
+and three ignored (collaboration 474/2), 630 frontend tests passed and one
+Windows-only skip across 65 files, full lint and type checks, a fresh desktop
+production build, Rustfmt and all-target Clippy. The feature lane separately
+passes 493 collaboration tests with two ignored, 30 native app tests and feature
+Clippy. The focused R102 epoch replacement control and the full 630-test frontend
+suite pass after integrating its test-only timing correction.
+
+The ordinary packaged desktop run passes both spec files and all three tests in
+`artifacts/e2e/2026-10-05T07-55-13-449Z-52562`. The fresh retained pipeline uses
+binary SHA-256 `3b36b25b9a002685cfac0dfe19e636dc0a08761f358939dfa3401277b5d388d0`
+and passes every owned stage in
+`artifacts/e2e-harness/2026-10-05T07-59-36-355Z-54899`: six main scenarios, the
+before-commit crash checkpoint and fresh restart, and the after-commit crash
+checkpoint and fresh restart. Every stage exits zero, uses distinct owned sessions,
+and completes on an available visible macOS desktop. No personal credential,
+provider account, Gitru cloud account or live provider endpoint was inspected.
+
+These results qualify local macOS behavior at the exact integrated source head.
+They do not qualify other platforms, live providers, keyrings, CodeQL or remote CI.
+The existing draft PR must be rebased as a stack by changing its base to R102,
+pushed by ordinary fast-forward, and independently pass a new exact-head remote
+matrix. R103 remains In Review and unmerged. R99 recovery/export still precedes
+destructive R104 retention work.
