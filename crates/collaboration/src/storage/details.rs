@@ -1594,5 +1594,12 @@ pub(super) async fn apply_detail_in(
         sqlx::query("UPDATE detail_demand SET requested=0 WHERE account_id=? AND subject_id=? AND facet=? AND authorization_epoch=?")
                 .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&page.authorization_epoch).execute(&mut **tx).await.map_err(storage_error)?;
     }
+    super::retention::refresh_detail_accounting_in(
+        tx,
+        &page.account_id,
+        &page.subject_id,
+        &tag(&page.facet)?,
+    )
+    .await?;
     Ok(revision)
 }

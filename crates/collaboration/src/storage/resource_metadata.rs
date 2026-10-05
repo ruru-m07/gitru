@@ -427,5 +427,6 @@ pub(super) async fn invalidate_head_in(
         false,
     )
     .await?;
+    super::retention::refresh_detail_accounting_in(tx, &account.id, &item.id, "body").await?;
     Ok(())
 }

@@ -1,6 +1,10 @@
 //! The durable, account-scoped read model. All writes share one owner; reads
 //! never touch a provider and use short SQLite snapshots.
-use std::{path::Path, sync::Arc, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
@@ -18,6 +22,7 @@ mod identities;
 mod local_links;
 pub(crate) mod notification_subjects;
 mod resource_metadata;
+pub mod retention;
 #[cfg(all(test, unix))]
 mod writer_lease_tests;
 
@@ -45,6 +50,9 @@ pub struct Store {
 struct Inner {
     writer: Mutex<SqliteConnection>,
     readers: SqlitePool,
+    path: PathBuf,
+    maintenance: Mutex<()>,
+    noop_wal_checkpoint_supported: bool,
     // Drop connection handles before releasing the final writer owner's
     // lease. Keeping the file avoids unlink/recreate races between instances.
     _writer_lease: WriterLease,
@@ -145,6 +153,9 @@ impl Store {
             inner: Arc::new(Inner {
                 writer: Mutex::new(writer),
                 readers,
+                path: path.to_path_buf(),
+                maintenance: Mutex::new(()),
+                noop_wal_checkpoint_supported: sqlite_version_at_least(&version, (3, 51, 0)),
                 _writer_lease: writer_lease,
             }),
         })
@@ -1451,6 +1462,13 @@ fn fixed_sqlite_version(version: &str) -> bool {
         && ((parts[0], parts[1], parts[2]) >= (3, 51, 3)
             || parts[..2] == [3, 50] && parts[2] >= 7
             || parts[..2] == [3, 44] && parts[2] >= 6)
+}
+fn sqlite_version_at_least(version: &str, minimum: (u32, u32, u32)) -> bool {
+    let parts: Vec<u32> = version
+        .split('.')
+        .filter_map(|part| part.parse().ok())
+        .collect();
+    parts.len() == 3 && (parts[0], parts[1], parts[2]) >= minimum
 }
 fn missing_coverage() -> Coverage {
     Coverage {
