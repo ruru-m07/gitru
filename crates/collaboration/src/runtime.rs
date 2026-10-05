@@ -25,6 +25,8 @@ mod bitbucket_tasks_tests;
 #[cfg(test)]
 mod bitbucket_tests;
 mod clock;
+#[cfg(test)]
+mod clock_lifecycle_tests;
 mod demand;
 #[cfg(test)]
 mod demand_tests;
@@ -76,6 +78,7 @@ struct Job {
     pages: usize,
     detail_lease: Option<DetailLease>,
     detail_restarted: bool,
+    local_budget_refusal: bool,
 }
 
 #[derive(Default)]
@@ -309,10 +312,10 @@ impl CollaborationRuntime {
                 return Err(failure.error.into());
             }
         };
-        let quota_deadline = verified
+        let quota_observation = verified
             .cooldown_seconds
             .filter(|seconds| *seconds > 0)
-            .map(|seconds| self.future_string(seconds));
+            .map(|seconds| self.capture_provider_budget(seconds));
         if expected_login.is_some_and(|expected| !verified.login.eq_ignore_ascii_case(expected)) {
             return Err(CollaborationError::new(
                 ErrorCode::StaleView,
@@ -367,11 +370,28 @@ impl CollaborationRuntime {
             notifications_supported: verified.notifications_supported,
         };
         credential_boundary!("before_cutover");
-        let account = match self
-            .store
-            .commit_account_credential_with_quota(account, &reference, quota_deadline)
-            .await
-        {
+        let committed = {
+            // Publish the accepted probe budget to live dispatch checks before
+            // releasing scheduler serialization. Vault work is already done.
+            let mut scheduler = self.scheduler.lock().await;
+            let result = self
+                .store
+                .commit_account_credential_with_quota(
+                    account,
+                    &reference,
+                    quota_observation
+                        .as_ref()
+                        .map(|(deadline, _)| deadline.clone()),
+                )
+                .await;
+            if let Ok(account) = &result
+                && let Some((_, deadline)) = &quota_observation
+            {
+                Self::install_provider_cooldown(&mut scheduler, &account.id, *deadline);
+            }
+            result
+        };
+        let account = match committed {
             Ok(account) => account,
             Err(error) => {
                 let _ = self.cleanup_credentials_locked().await;
@@ -816,6 +836,7 @@ impl CollaborationRuntime {
         let Some(mut job) = self.scheduler.lock().await.pick(self.now()) else {
             return false;
         };
+        job.local_budget_refusal = false;
         for scope in ["provider:rest".to_string(), job.scope.clone()] {
             if let Ok(Some(state)) = self.store.scope_state(&job.account.id, &scope).await
                 && let Some(delay) = state
@@ -1013,7 +1034,7 @@ impl CollaborationRuntime {
         {
             self.publish(revision);
         }
-        if error.code == ErrorCode::RateLimited {
+        if error.code == ErrorCode::RateLimited && !job.local_budget_refusal {
             let _ = self
                 .persist_rate_limit(&job.account, delay, Some(error.clone()))
                 .await;
@@ -1080,14 +1101,26 @@ impl CollaborationRuntime {
     async fn ensure_provider_budget(
         &self,
         account: &RemoteAccount,
+        job: &mut Job,
     ) -> Result<(), CollaborationError> {
-        if let Some(scope) = self.store.scope_state(&account.id, "provider:rest").await?
-            && let Some(delay) = scope
-                .sync
-                .next_retry_at
-                .as_deref()
-                .and_then(|time| self.delay_until(time))
-        {
+        // Serialize the check with accepted durable writes and live installation.
+        // The full persisted deadline is reread after every bounded live wake.
+        let scheduler = self.scheduler.lock().await;
+        let durable = self
+            .store
+            .scope_state(&account.id, "provider:rest")
+            .await?
+            .and_then(|scope| scope.sync.next_retry_at)
+            .as_deref()
+            .and_then(|time| self.delay_until(time));
+        let live = scheduler
+            .account_cooldowns
+            .get(&account.id)
+            .and_then(|deadline| deadline.checked_duration_since(self.now()))
+            .filter(|delay| !delay.is_zero());
+        let delay = live.into_iter().chain(durable).max();
+        drop(scheduler);
+        if let Some(delay) = delay {
             let mut error = CollaborationError::new(
                 ErrorCode::RateLimited,
                 "The provider account is waiting for its next permitted request",
@@ -1098,9 +1131,24 @@ impl CollaborationRuntime {
                     .saturating_add(u64::from(delay.subsec_nanos() > 0))
                     .min(u32::MAX as u64) as u32,
             );
+            // This is a local admission refusal, not another quota observation.
+            job.local_budget_refusal = true;
             return Err(error);
         }
         Ok(())
+    }
+
+    fn capture_provider_budget(&self, delay: u64) -> (String, Instant) {
+        let live = self.deadline_after(delay);
+        (self.future_string(delay), live)
+    }
+
+    fn install_provider_cooldown(scheduler: &mut Scheduler, account_id: &str, deadline: Instant) {
+        scheduler
+            .account_cooldowns
+            .entry(account_id.to_string())
+            .and_modify(|old| *old = (*old).max(deadline))
+            .or_insert(deadline);
     }
 
     async fn persist_rate_limit(
@@ -1109,15 +1157,16 @@ impl CollaborationRuntime {
         delay: u64,
         error: Option<CollaborationError>,
     ) -> Result<(), CollaborationError> {
-        let revision = self
-            .store
-            .merge_provider_budget(
-                &account.id,
-                &account.authorization_epoch,
-                self.future_string(delay),
-                error,
-            )
-            .await?;
+        let (proposed, deadline) = self.capture_provider_budget(delay);
+        let revision = {
+            let mut scheduler = self.scheduler.lock().await;
+            let revision = self
+                .store
+                .merge_provider_budget(&account.id, &account.authorization_epoch, proposed, error)
+                .await?;
+            Self::install_provider_cooldown(&mut scheduler, &account.id, deadline);
+            revision
+        };
         self.publish(revision);
         Ok(())
     }

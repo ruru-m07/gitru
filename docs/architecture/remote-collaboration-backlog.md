@@ -1619,3 +1619,38 @@ a clock jump. One existing account map slot, narrow three Job initialization
 seams, real rejected-probe lifecycle and explicit post-vault boundary controls;
 no public DTO/schema or fairness-policy changes. Signed contract precedes fixture
 RED/production repair, and no clock defect/qualification is claimed before execution.
+
+
+### Comments exact-head remote matrix qualified — 5 October 2026
+
+Attached draft [Comments #164](https://github.com/ruru-m07/gitru/pull/164) at signed
+`aab107dacf11e67216de602e42954a61e46c4423` passes all 11 reported checks.
+[CI run 37272166940](https://github.com/ruru-m07/gitru/actions/runs/37272166940)
+passes frontend tests/lint/types/build, formatting/Clippy, Rust tests and packaged
+E2E on Linux/macOS/Windows; final Windows E2E completed 06:54:17 UTC. Cloudflare,
+CodeRabbit and Vercel also pass. No exact-head CodeQL is reported. Local 815 Rust/
+499 frontend remains separate from live private-provider/PAT/keyring, new Comments
+native-window behavior or latency. R122 stays In Progress for activity/provider
+criteria; draft remains unmerged.
+
+
+### RURU-102 bounded clock lifecycle locally qualified — 5 October 2026
+
+Actual independent-clock Runtime RED reproduced five failures out of ten before
+production repair. Accepted-epoch quota commit/live max-install now serialize
+with feed/detail dispatch checks; successful probes capture before vault cutover
+awaits, and local refusal preserves the original provider observation. Strengthened
+receipt-time capture plus both held feed/Body boundaries pass all ten controls.
+One final serialized make verify exits0:825 Rust/3ignored (collaboration474/2),
+499 frontend/55files, full lint/types/build/Clippy/fmt; desktop build is a valid
+Turbo cache hit. Credential crashes/rollback, fairness, long persisted budgets
+and Comments/privacy controls pass unchanged. Normal typegen114 plus independent
+AST inventory preserves291schemas/243aliases/114functions/1event/publicBranch
+with zero public changes; generator-only churn restored, no hand edits.
+
+See the [clock lifecycle work note](./collaboration-work/RURU-102-clock-lifecycle.md)
+for actual RED/GREEN commands, source boundaries and limits. R102 remains In
+Progress: notification discovery, broader family scheduling and clock-jump immunity
+above24h are separate. No new-head remote CI, OS suspend/live provider/platform
+vault/new native UI or merge qualification is inferred. R99 recovery and R103
+own-Webview/native integration remain separate forks to integrate explicitly.

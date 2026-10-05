@@ -163,6 +163,7 @@ impl CollaborationRuntime {
                         "Reconnect this provider account",
                     )
                 })?;
+            self.ensure_provider_budget(&account, job).await?;
             let token = self.load_token(&reference).await?.ok_or_else(|| {
                 CollaborationError::new(ErrorCode::AuthRequired, "Reconnect this provider account")
             })?;
@@ -215,6 +216,7 @@ impl CollaborationRuntime {
                     &binding,
                 )
                 .await?;
+            self.ensure_provider_budget(&current, job).await?;
             let fetched = adapter
                 .fetch_detail(
                     &token,

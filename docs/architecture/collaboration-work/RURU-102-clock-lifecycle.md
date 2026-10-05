@@ -1,6 +1,6 @@
 # RURU-102 — Independent-clock quota lifecycle, first bounded slice
 
-Status: pre-code contract,5October2026. Read shared engine/backlog first.
+Status: first bounded slice locally qualified, 5 October 2026. Read shared engine/backlog first.
 Isolated managed ruru/ruru-102-clock-lifecycle starts attached Comments#164 exact
 signed aab107dacf11e67216de602e42954a61e46c4423. Live R102 is Backlog with no
 attachment/duplicate; R98/R76 are In Review and their actual heads are ancestors.
@@ -161,3 +161,80 @@ checkpoint, scheduler reset/publish/refresh/retirement cleanup. No network/vault
 under scheduler; Store transaction/journal/crash checkpoints and credential cleanup
 remain unchanged. Existing rollback/after-cutover crash tests must pass. A shared
 helper-only repair cannot qualify this separate successful observation path.
+
+
+### Explicit qualification limits from final source review
+
+The new dispatch cutpoints cover feeds and detail facets. Notification subject
+point discovery currently uses its separate wall-time Store admission after vault;
+shared live installation improves scheduler picks but cannot qualify an already
+picked discovery worker. Preserve its existing evidence/privacy fences and record
+that separate follow-up. Also, current deadline_after caps Instant capture at24h:
+a longer48h observation with UTC jumped beyond its full durable deadline can
+outlive that live cap. Existing48h/extreme controls qualify valid-wall recovery;
+this first slice does not claim full-duration clock-jump immunity above24h. No
+source finding here is presented as an executed failure before its own RED.
+
+
+### Actual baseline RED — 5 October 2026
+
+Root serialized `cargo test -p collaboration --lib clock_lifecycle -- --nocapture`
+against unchanged production plus test registration compiled clean and ran ten
+independent-clock controls: five passed, five failed. Failures demonstrate absent
+live accepted-budget installation, picked feed work passing pre-vault and post-vault
+checks, successful probe quota losing its captured live bound while vault.store
+is held, and reconnect losing the account map slot after forward UTC. The feed
+loop fails before its Body variant; Body remains unqualified until GREEN executes
+the complete loop. Existing new backward-clock peer/no-spin, auth/permanent error,
+obsolete held adapter reply, failed SQLite acceptance and cold valid-UTC/cache/draft
+CAS controls pass. No compile repair or production weakening preceded RED.
+
+Root log `/tmp/gitru-r102-clock-red.log` is transient evidence; committed fixtures
+make the reproduction durable. Production owner now implements the signed narrow
+contract; no repaired-source or full-workspace result is claimed yet.
+
+
+### Repaired-source qualification — 5 October 2026
+
+Shared provider-budget capture now records UTC and monotonic proposals before
+awaiting scheduler/Store. Accepted captured-epoch writes and live max-install
+share scheduler serialization, with no install on obsolete or failed acceptance.
+Successful probe capture occurs before staged/vault work; credential and quota
+still commit atomically, with accepted live publication before scheduler unlock.
+Cleanup and crash checkpoints remain outside that lock. Feed/detail checks are
+immediately before vault load and final provider fetch. A private per-pick marker
+distinguishes local refusal solely to avoid fabricating provider:rest observations;
+existing scope retry handling and fairness policy remain intact.
+
+Root serialized repaired `cargo test -p collaboration --lib clock_lifecycle --
+--nocapture`: all ten pass. Both feed and Body variants execute in the held
+lifecycle/pre-vault and post-vault loops. Independent review strengthened the
+successful probe control before GREEN: the held real vault.store advances
+monotonic time by 37 seconds and UTC by 600, requiring the original receipt-time
+Instant+120 (83 seconds remaining), for both first grant and same-actor replacement.
+The original five-failure RED preceded production repair; the stronger assertion
+was added afterward and is GREEN evidence, not a separate claimed baseline RED.
+
+Final serialized `make verify` exits 0 in one run: **825 Rust passed / 3 ignored**
+(474 collaboration / 2 ignored), **499 frontend passed / 55 files**, full
+lint/types/desktop build, Rust formatting and all-target Clippy with warnings
+denied. Counts exclude the one successful nested filtered Git subprocess control.
+Credential process crashes, quota-publication rollback/atomic cutover, existing
+fair account arbitration, long-provider/cold durable budgets and Comments
+held-rejection/obsolete-epoch/privacy controls pass unchanged. Desktop build is a
+valid Turbo cache hit; no fresh production-bundle compilation is inferred.
+
+Normal `make typegen` produces 114 commands; independent complete TypeScript AST
+inventory against signed Comments#164 preserves 291 schemas, 243 aliases, 114
+command functions, one event and public Branch fields, with no API addition/change/
+removal. Generator-only order/timestamp churn was restored through Git; no hand
+edits. Independent concrete fixture/production reviews find no remaining blocker.
+
+Root logs: `/tmp/gitru-r102-clock-red.log`, `...clock-green.log`, `...typegen.log`,
+`...bindings-audit.log`, `...final-verify.log`. Committed fixtures are reproducible;
+these transient logs are not shipping assets. No public/schema/migration/dependency/
+SDK/UI or fairness-policy changes. This local result and ancestor164's 11 reported
+remote successes do not qualify this new head's CI, live providers/platform vaults,
+new native UI, OS suspend, notification discovery or full-duration clock-jump
+immunity above24h. R102 stays In Progress for broader criteria. Signed publication
+is the next gate; no PR merge.
