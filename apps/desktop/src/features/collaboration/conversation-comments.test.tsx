@@ -1036,13 +1036,23 @@ describe("cached conversation comments through the ordinary workspace", () => {
     const reads = boundary([resource]);
     const ordinaryRead = reads.detail.getMockImplementation()!;
     let finish!: (snapshot: DetailSnapshot) => void;
+    let finishBody!: () => void;
+    let holdReplacementBody = false;
     reads.detail.mockImplementation((payload) => {
       const { query } = payload as { query: DetailQuery };
-      return query.facet === "comments" && query.cursor !== null
-        ? new Promise<DetailSnapshot>((resolve) => {
-            finish = resolve;
-          })
-        : ordinaryRead(payload);
+      if (query.facet === "comments" && query.cursor !== null)
+        return new Promise<DetailSnapshot>((resolve) => {
+          finish = resolve;
+        });
+      if (query.facet === "body" && holdReplacementBody) {
+        const snapshot = ordinaryRead(payload);
+        return new Promise<DetailSnapshot>((resolve) => {
+          finishBody = () => {
+            void Promise.resolve(snapshot).then(resolve);
+          };
+        });
+      }
+      return ordinaryRead(payload);
     });
     const oldSnapshot = {
       ...resource.comments,
@@ -1061,6 +1071,7 @@ describe("cached conversation comments through the ordinary workspace", () => {
       panel().getByRole("button", { name: "Next saved comments" }),
     );
     await waitFor(() => expect(finish).toBeDefined());
+    holdReplacementBody = true;
     reads.epoch(resource);
     await act(async () => collaboration.wake());
     await waitFor(() =>
@@ -1069,13 +1080,24 @@ describe("cached conversation comments through the ordinary workspace", () => {
         "false",
       ),
     );
+    await waitFor(() => expect(finishBody).toBeDefined());
+    expect(
+      article.queryByText("Saved Body first-user"),
+    ).not.toBeInTheDocument();
     await act(async () => finish(oldSnapshot));
     expect(panel().queryByText("Saved comment 51")).not.toBeInTheDocument();
     expect(cache.getQueryData(oldKey)).toBeUndefined();
     expect(article.getByLabelText("Private draft")).toHaveValue(
       "Private first-user keep after reconnect",
     );
-    expect(article.getByText("Saved Body first-user")).toBeVisible();
+    expect(
+      article.queryByText("Saved Body first-user"),
+    ).not.toBeInTheDocument();
+    await act(async () => finishBody());
+    expect(await article.findByText("Saved Body first-user")).toBeVisible();
+    expect(article.getByLabelText("Private draft")).toHaveValue(
+      "Private first-user keep after reconnect",
+    );
     await user.click(panel().getByRole("button", { name: "Comments" }));
     expect(await panel().findByText("Saved comment 1")).toBeVisible();
     await waitFor(() =>

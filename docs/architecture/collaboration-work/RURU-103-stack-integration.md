@@ -144,3 +144,10 @@ types pass and fresh CI now has7success/4pending/no fail. Propagate that accepte
 correction into this existing review branch before final source/native delivery.
 Old failed-head and initial generator import failure remain evidence; neither is
 called passing. No credentials or PR merged.
+
+The signed R102 test-only follow-up `d08fa56c2bf0399b7f1a1fe5fd3ecbd03f9e1fc4`
+is now integrated without changing native production code. The controlled
+same-actor epoch case passes in this combined tree, and full frontend validation
+passes 630 tests with one Windows-only skip across 65 files, plus lint and type
+checks. This result covers the source tree before its fresh packaged/native
+builds; remote checks for both PR heads remain separate.
