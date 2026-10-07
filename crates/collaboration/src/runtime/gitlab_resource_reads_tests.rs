@@ -555,11 +555,14 @@ async fn actual_gitlab_common_reads_capabilities_and_independent_body_survive_co
     assert_eq!(detail.saved_read.state, CapabilityState::Supported);
     assert_eq!(detail.observation, CapabilityObservation::Complete);
     assert_eq!(detail.remote_write.state, CapabilityState::Unsupported);
-    for facet in [
-        ResourceFacet::Comments,
-        ResourceFacet::Reviews,
-        ResourceFacet::Merge,
-    ] {
+    let reviews = capabilities
+        .facets
+        .iter()
+        .find(|facet| facet.facet == ResourceFacet::Reviews)
+        .unwrap();
+    assert_eq!(reviews.saved_read.state, CapabilityState::Supported);
+    assert_eq!(reviews.remote_write.state, CapabilityState::Unsupported);
+    for facet in [ResourceFacet::Comments, ResourceFacet::Merge] {
         assert_eq!(
             capabilities
                 .facets

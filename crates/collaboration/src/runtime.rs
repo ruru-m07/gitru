@@ -1634,3 +1634,6 @@ fn vault_error() -> CollaborationError {
 #[cfg(test)]
 #[path = "runtime_credential_tests.rs"]
 pub(crate) mod credential_crash_tests;
+
+#[cfg(test)]
+mod gitlab_reviews_tests;

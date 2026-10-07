@@ -449,6 +449,7 @@ fn thread_comment(
             }),
             provider_outdated: None,
             provider_resolved: None,
+            native: None,
         })),
         field_mask: THREAD_FIELDS.into(),
         field_validations: vec![],

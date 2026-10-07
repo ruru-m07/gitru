@@ -99,6 +99,8 @@ pub struct ReviewThreadV1 {
     pub provider_outdated: Option<bool>,
     /// Provider-reported only. `None` means unavailable or unsupported.
     pub provider_resolved: Option<bool>,
+    /// Typed provider position/note evidence; it does not replace a common anchor.
+    pub native: Option<Box<crate::ReviewThreadNativeV1>>,
 }
 
 #[derive(Debug, Clone)]

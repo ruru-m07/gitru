@@ -467,6 +467,10 @@ fn validate_review(facet: DetailFacet, entry: &DetailEntry) -> Result<()> {
             || !timestamp_valid(&thread.created_at)
             || !timestamp_valid(&thread.updated_at)
             || !anchor_valid
+            || thread
+                .native
+                .as_deref()
+                .is_some_and(|native| !native.is_valid())
             || entry.author != thread.author.as_ref().and_then(|actor| actor.login.clone())
             || entry.updated_at.as_ref() != Some(&thread.updated_at)
             || entry.head_oid.as_ref() != Some(&thread.context.head_oid)
@@ -1957,6 +1961,15 @@ pub(super) async fn apply_detail_in(
     let scope = page.facet.scope(&page.subject_id);
     epoch_in(tx, &page.account_id, &page.authorization_epoch).await?;
     let account = account_in(tx, &page.account_id, true).await?;
+    if account.provider != ProviderKind::Gitlab
+        && page.entries.iter().any(|entry| {
+            matches!(&entry.native,
+            Some(crate::NativeDetailPayload::ReviewThreadV1(thread)) if thread.native.is_some())
+        })
+    {
+        return Err(invalid_detail());
+    }
+
     let subject = subject_in(tx, &page.account_id, &page.subject_id).await?;
     if let Some(binding) = &page.subject_binding {
         super::resource_metadata::validate_binding_in(tx, &page.account_id, &subject, binding)

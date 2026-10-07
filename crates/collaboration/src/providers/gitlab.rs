@@ -6,6 +6,7 @@ mod commits;
 mod feeds;
 mod files;
 mod resource_details;
+mod reviews;
 mod transport;
 use transport::{GitlabHttp, invalid, max_wait, positive_id, project_after, with_quota};
 
@@ -247,6 +248,13 @@ impl CollaborationProvider for GitlabProvider {
     ) -> Result<PullFileRangeValidationResult, ProviderError> {
         self.request_pull_file_range(token, request).await
     }
+    async fn fetch_reviews(
+        &self,
+        token: &SecretToken,
+        request: crate::ReviewRequest,
+    ) -> Result<DetailPage, ProviderError> {
+        self.request_reviews(token, request).await
+    }
     async fn fetch_checks(
         &self,
         token: &SecretToken,
@@ -274,6 +282,7 @@ fn implemented(facet: ResourceFacet) -> bool {
             | ResourceFacet::IssueDetails
             | ResourceFacet::PullCommits
             | ResourceFacet::PullFiles
+            | ResourceFacet::Reviews
             | ResourceFacet::Checks
     )
 }

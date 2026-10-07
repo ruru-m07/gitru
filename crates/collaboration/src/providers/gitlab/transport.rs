@@ -53,6 +53,8 @@ enum Operation {
     PullFiles { project: u64, iid: u64, page: u64 },
     SelectedPullFile { project: u64, iid: u64, page: u64 },
     CommitStatuses { project: u64, page: u64 },
+    Discussions { project: u64, iid: u64, page: u64 },
+    Approvals,
 }
 
 pub(super) struct GitlabHttp {
@@ -130,6 +132,50 @@ impl GitlabHttp {
         }
         self.base
             .join(&format!("projects/{project}/{}/{iid}", route.segment()))
+            .map_err(|_| invalid())
+    }
+    pub(super) fn discussions(&self, project: u64, iid: u64) -> Result<Url, ProviderError> {
+        if project == 0 || iid == 0 {
+            return Err(invalid());
+        }
+        let mut url = self
+            .base
+            .join(&format!(
+                "projects/{project}/merge_requests/{iid}/discussions"
+            ))
+            .map_err(|_| invalid())?;
+        url.query_pairs_mut()
+            .append_pair("per_page", "50")
+            .append_pair("page", "1");
+        Ok(url)
+    }
+    pub(super) fn discussion_continuation(
+        &self,
+        raw: &str,
+        project: u64,
+        iid: u64,
+        expected_page: u64,
+    ) -> Result<Url, ProviderError> {
+        let url = self.check_resource_raw(raw)?;
+        if self.operation(&url)?
+            != (Operation::Discussions {
+                project,
+                iid,
+                page: expected_page,
+            })
+        {
+            return Err(invalid());
+        }
+        Ok(url)
+    }
+    pub(super) fn approvals(&self, project: u64, iid: u64) -> Result<Url, ProviderError> {
+        if project == 0 || iid == 0 {
+            return Err(invalid());
+        }
+        self.base
+            .join(&format!(
+                "projects/{project}/merge_requests/{iid}/approvals"
+            ))
             .map_err(|_| invalid())
     }
     pub(super) fn pull_commits(&self, project: u64, iid: u64) -> Result<Url, ProviderError> {
@@ -306,6 +352,19 @@ impl GitlabHttp {
             .first()
             .and_then(|v| positive_id(v))
             .ok_or_else(invalid)?;
+        if parts.len() == 4 && parts.get(1) == Some(&"merge_requests") {
+            let iid = parts
+                .get(2)
+                .and_then(|value| positive_id(value))
+                .ok_or_else(invalid)?;
+            if parts.get(3) == Some(&"discussions") {
+                let page = pull_file_page(url, project, iid, "50")?;
+                return Ok(Operation::Discussions { project, iid, page });
+            }
+            if parts.get(3) == Some(&"approvals") && url.query().is_none() {
+                return Ok(Operation::Approvals);
+            }
+        }
         if parts.len() == 4
             && parts.get(1) == Some(&"merge_requests")
             && parts.get(3) == Some(&"commits")
@@ -537,6 +596,13 @@ impl GitlabHttp {
                         Operation::Feed { project, route } => {
                             self.resource_continuation(next, project, route)
                         }
+                        Operation::Discussions { project, iid, page } => self
+                            .discussion_continuation(
+                                next,
+                                project,
+                                iid,
+                                page.checked_add(1).ok_or_else(invalid)?,
+                            ),
                         Operation::PullCommits { project, iid, page } => self
                             .pull_commit_continuation(
                                 next,
@@ -861,4 +927,105 @@ pub(super) fn max_wait(a: Option<u64>, b: Option<u64>) -> Option<u64> {
 }
 pub(super) fn invalid() -> ProviderError {
     ProviderError::new(ProviderErrorKind::InvalidResponse)
+}
+
+#[cfg(test)]
+mod review_route_tests {
+    use super::*;
+    use crate::providers::gitlab::tests::{response, server};
+
+    #[test]
+    fn numeric_review_routes_pin_collection_and_exact_page() {
+        let http = GitlabHttp::new().unwrap();
+        assert_eq!(
+            http.discussions(23, 7).unwrap().as_str(),
+            "https://gitlab.com/api/v4/projects/23/merge_requests/7/discussions?per_page=50&page=1"
+        );
+        assert_eq!(
+            http.approvals(23, 7).unwrap().as_str(),
+            "https://gitlab.com/api/v4/projects/23/merge_requests/7/approvals"
+        );
+        assert!(http.discussions(0, 7).is_err());
+        assert!(http.approvals(23, 0).is_err());
+        let expected =
+            "https://gitlab.com/api/v4/projects/23/merge_requests/7/discussions?per_page=50&page=2";
+        assert!(http.discussion_continuation(expected, 23, 7, 2).is_ok());
+        assert!(http.discussion_continuation(
+            "https://gitlab.com/api/v4/projects/23/merge_requests/7/discussions?id=23&merge_request_iid=7&per_page=50&page=2", 23, 7, 2).is_ok());
+        for raw in [
+            expected.replace("gitlab.com", "other.invalid"),
+            expected.replace("/23/", "/24/"),
+            expected.replace("/7/", "/8/"),
+            expected.replace("discussions", "commits"),
+            expected.replace("page=2", "page=1"),
+            expected.replace("per_page=50", "per_page=100"),
+            format!("{expected}&page=2"),
+            format!("{expected}&token=forbidden"),
+            expected.replace("/23/", "/%32%33/"),
+            expected.replace("https://", "https://user@"),
+            format!("{expected}#fragment"),
+        ] {
+            assert!(
+                http.discussion_continuation(&raw, 23, 7, 2).is_err(),
+                "{raw}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn discussion_http_continuations_and_approvals_use_native_routes() {
+        let (provider, calls) = server(|base| {
+            vec![
+                response(
+                    200,
+                    &format!(
+                        "Link: <{base}projects/23/merge_requests/7/discussions?per_page=50&page=2>; rel=\"next\"\r\n"
+                    ),
+                    "[]",
+                ),
+                response(200, "", "{}"),
+            ]
+        });
+        let token = SecretToken::new("synthetic_review_token".into()).unwrap();
+        let first = provider
+            .http
+            .get(provider.http.discussions(23, 7).unwrap(), &token)
+            .await
+            .unwrap();
+        assert!(first.next.is_some());
+        let last = provider
+            .http
+            .get(provider.http.approvals(23, 7).unwrap(), &token)
+            .await
+            .unwrap();
+        assert!(last.next.is_none());
+        let paths = calls.join().unwrap();
+        assert!(paths[0].starts_with(
+            "GET /api/v4/projects/23/merge_requests/7/discussions?per_page=50&page=1 "
+        ));
+        assert!(paths[1].starts_with("GET /api/v4/projects/23/merge_requests/7/approvals "));
+    }
+
+    #[tokio::test]
+    async fn review_routes_refuse_hostile_links_and_preserve_observed_quota() {
+        let (provider, calls) = server(|_| {
+            vec![response(
+                200,
+                "Link: <https://other.invalid/private>; rel=\"next\"\r\nRateLimit-Remaining: 0\r\n",
+                "[]",
+            )]
+        });
+        let error = provider
+            .http
+            .get(
+                provider.http.discussions(23, 7).unwrap(),
+                &SecretToken::new("synthetic_review_token".into()).unwrap(),
+            )
+            .await
+            .err()
+            .unwrap();
+        assert_eq!(error.kind, ProviderErrorKind::InvalidResponse);
+        assert!(error.account_cooldown_seconds.is_some());
+        assert_eq!(calls.join().unwrap().len(), 1);
+    }
 }

@@ -44,6 +44,7 @@ const thread = {
   anchor: null,
   provider_outdated: null,
   provider_resolved: false,
+  native: null,
 };
 
 function validation(field: string) {

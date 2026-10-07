@@ -26,6 +26,9 @@ const tasks = await Bun.file(
 const checks = await Bun.file(
   new URL("crates/collaboration/src/checks.rs", root),
 ).text();
+const reviewNative = await Bun.file(
+  new URL("crates/collaboration/src/review_native.rs", root),
+).text();
 const reviews = await Bun.file(
   new URL("crates/collaboration/src/reviews.rs", root),
 ).text();
@@ -124,14 +127,14 @@ const nativeOnlyTypes = new Set([
 // unsupported shape rather than inventing a renderer-owned wire model.
 const payloadStructs = new Map(
   [
-    ...`${participants}\n${tasks}\n${checks}\n${reviews}`.matchAll(
+    ...`${participants}\n${tasks}\n${checks}\n${reviews}\n${reviewNative}`.matchAll(
       /pub struct (\w+)\s*\{([^}]+)\}/g,
     ),
   ].map(([, name, body]) => [name, body] as const),
 );
 const payloadEnums = new Map(
   [
-    ...`${participants}\n${tasks}\n${checks}\n${reviews}`.matchAll(
+    ...`${participants}\n${tasks}\n${checks}\n${reviews}\n${reviewNative}`.matchAll(
       /#\[serde\(rename_all = "snake_case"\)\]\s*pub enum (\w+)\s*\{([^}]+)\}/g,
     ),
   ].map(
@@ -146,7 +149,13 @@ const payloadEnums = new Map(
   ),
 );
 const nativePayloadKinds = new Set<string>();
-for (const [, tag, content, name, body] of participants.matchAll(
+for (const [
+  ,
+  tag,
+  content,
+  name,
+  body,
+] of `${reviewNative}\n${participants}`.matchAll(
   /#\[serde\(tag = "([^"]+)", content = "([^"]+)"\)\]\s*pub enum (\w+)\s*\{([^}]+)\}/g,
 )) {
   const dependencies: string[] = [];
@@ -155,6 +164,9 @@ for (const [, tag, content, name, body] of participants.matchAll(
   const schemaFor = (rustType: string): string => {
     const optional = rustType.match(/^Option<(.+)>$/);
     if (optional) return `${schemaFor(optional[1])}.optional()`;
+    const boxed = rustType.match(/^Box<(.+)>$/);
+    if (boxed) return schemaFor(boxed[1]);
+    rustType = rustType.replace(/^crate::/, "");
     if (rustType === "String") return "z.string()";
     if (rustType === "bool") return "z.boolean()";
     if (
@@ -232,12 +244,11 @@ for (const [, tag, content, name, body] of participants.matchAll(
   const pattern = new RegExp(
     `export const ${name}Schema = z\\.enum\\(\\[[^\\]]+\\]\\);`,
   );
-  if (!pattern.test(generated))
-    throw new Error(`Missing flattened tagged schema ${name}`);
-  generated = generated.replace(
-    pattern,
-    `${dependencies.join("\n\n")}\n\nexport const ${name}Schema = z.discriminatedUnion(${JSON.stringify(tag)}, [${schemas.join(", ")}]);\n\nexport type ${name} = z.infer<typeof ${name}Schema>;`,
-  );
+  const declaration = `${dependencies.join("\n\n")}\n\nexport const ${name}Schema = z.discriminatedUnion(${JSON.stringify(tag)}, [${schemas.join(", ")}]);\n\nexport type ${name} = z.infer<typeof ${name}Schema>;`;
+  if (pattern.test(generated))
+    generated = generated.replace(pattern, declaration);
+  else if (name === "ReviewThreadNativeV1") generated += `\n\n${declaration}`;
+  else throw new Error(`Missing flattened tagged schema ${name}`);
 }
 
 // The pull-file boundary uses explicit unknown facts, plus source-specific
@@ -297,6 +308,7 @@ for (const source of [
   tasks,
   checks,
   reviews,
+  reviewNative,
   contextualCapabilities,
   resourceMetadata,
   demand,

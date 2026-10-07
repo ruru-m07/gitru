@@ -186,11 +186,59 @@ export const KeySchema = "key";
     const generated = await import("@gitru/commands");
     expect(
       Object.keys(generated).filter((name) => name.endsWith("Schema")),
-    ).toHaveLength(426);
+    ).toHaveLength(431);
     expect(
       generated.TaskV1Schema.shape.content.parse({ state: "known", text: "" }),
     ).toEqual({ state: "known", text: "" });
     expect(generated.NativeDetailPayloadSchema.options).toHaveLength(5);
+  });
+
+  it("parses boxed native GitLab review position evidence without flattening its provider tag", async () => {
+    const generated = await import("@gitru/commands");
+    const value = {
+      provider: "gitlab",
+      value: {
+        note_type: "DiffNote",
+        system: false,
+        individual_note: false,
+        resolvable: null,
+        resolved_at: null,
+        resolved_by: null,
+        observed_note_count: 51,
+        retained_note_count: 50,
+        position: {
+          position_type: "image",
+          base_oid: "a".repeat(40),
+          start_oid: "b".repeat(40),
+          head_oid: null,
+          old_path: null,
+          new_path: "image.png",
+          old_line: null,
+          new_line: null,
+          line_range: null,
+          width: 1920,
+          height: 1080,
+          x: "12.75",
+          y: "-0.5",
+        },
+      },
+    };
+    expect(generated.ReviewThreadNativeV1Schema.parse(value)).toEqual(value);
+    expect(
+      generated.ReviewThreadNativeV1Schema.safeParse({
+        ...value,
+        provider: "github",
+      }).success,
+    ).toBe(false);
+    expect(
+      generated.ReviewThreadNativeV1Schema.safeParse({
+        ...value,
+        value: {
+          ...value.value,
+          position: { ...value.value.position, x: 12.75 },
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it("parses the nullable pull-commit cache and local-navigation wire contract", async () => {

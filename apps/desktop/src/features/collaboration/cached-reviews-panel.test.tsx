@@ -127,6 +127,7 @@ function thread(id: string, commit: string | null = headOid): DetailEntry {
         },
         provider_outdated: null,
         provider_resolved: null,
+        native: null,
       },
     },
     field_mask: ["body", "author", "updated_at", "head_oid", "review_thread"],
