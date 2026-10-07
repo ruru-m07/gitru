@@ -1033,6 +1033,7 @@ describe("CollaborationClient", () => {
     ] as const;
     const exactGreen: DetailSnapshot = {
       subject_id: "pull",
+      pending_intent: null,
       body: { state: "not_loaded", text: null },
       metadata: null,
       entries: [

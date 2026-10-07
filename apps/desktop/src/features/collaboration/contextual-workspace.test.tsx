@@ -10,7 +10,7 @@ import type {
   DetailSnapshot,
 } from "@gitru/commands";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -598,11 +598,13 @@ describe("ordinary collaboration workspace across provider policies", () => {
       await screen.findByText(/This description is saved locally/),
     ).toBeVisible();
     expect(screen.getByRole("button", { name: "Refresh" })).toBeDisabled();
-    for (const name of [
-      "Sync reviews",
-      "Sync checks",
-      "Merge pull request unavailable",
-    ]) {
+    await user.click(screen.getByRole("button", { name: "Reviews" }));
+    const reviews = within(screen.getByRole("region", { name: "Reviews" }));
+    expect(reviews.getByText("Feature not supported")).toBeVisible();
+    expect(
+      reviews.queryByRole("button", { name: "Sync reviews" }),
+    ).not.toBeInTheDocument();
+    for (const name of ["Sync checks", "Merge pull request unavailable"]) {
       const button = screen.getByRole("button", { name });
       expect(button).toBeDisabled();
       await user.click(button);
@@ -714,11 +716,18 @@ describe("ordinary collaboration workspace across provider policies", () => {
           facet: DetailSnapshot["evidence"]["facet"];
         };
       };
+      const metadata = query.facet === "body" ? fixtureMetadata() : null;
+      if (metadata?.values.head)
+        metadata.values.head.repository = {
+          provider_id: "source-345",
+          full_name: "example-user/engine",
+          web_url: null,
+        };
       const value: DetailSnapshot = {
         pending_intent: null,
 
         subject_id: query.subject_id,
-        metadata: query.facet === "body" ? fixtureMetadata() : null,
+        metadata,
         body: {
           state: query.facet === "body" ? "known" : "not_loaded",
           text: query.facet === "body" ? text : null,
@@ -761,15 +770,23 @@ describe("ordinary collaboration workspace across provider policies", () => {
     await mount(<CollaborationWorkspace kind="pull_request" />);
     await user.click(await screen.findByText(fixtureItem.title));
     expect(await screen.findByText(message)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Reviews" }));
     expect(
-      await screen.findByText("No reviews were returned by the provider."),
+      await screen.findByText(
+        "No review decisions were returned in this saved observation.",
+      ),
+    ).toBeVisible();
+    expect(
+      await screen.findByText(
+        "No inline discussions were returned in this saved observation.",
+      ),
     ).toBeVisible();
     expect(
       await screen.findByText(
         "The provider returned no checks for this exact head.",
       ),
     ).toBeVisible();
-    expect(detail).toHaveBeenCalledTimes(3);
+    expect(detail).toHaveBeenCalledTimes(4);
     expect(
       detail.mock.calls.some(
         ([payload]) =>
@@ -782,7 +799,7 @@ describe("ordinary collaboration workspace across provider policies", () => {
         "No conversation comments were returned in the saved observation.",
       ),
     ).toBeVisible();
-    expect(detail).toHaveBeenCalledTimes(4);
+    expect(detail).toHaveBeenCalledTimes(5);
     expect(hydrate).not.toHaveBeenCalled();
     expect(
       screen.getByRole("button", { name: "Merge pull request unavailable" }),

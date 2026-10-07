@@ -360,7 +360,8 @@ function participantKey(resource: Saved) {
 describe("saved native participant disclosure in the ordinary workspace", () => {
   it("reads only when opened, distinguishes false/null/unknown/retained fields and releases its sole interest without losing a dirty draft", async () => {
     const future = participant(peerParticipantUuid);
-    future.native!.value.state = "<script>future-state</script>";
+    if (future.native?.kind !== "participant.v1") throw new Error("fixture");
+    future.native.value.state = "<script>future-state</script>";
     const resource = saved(account, [participant(), future]);
     resource.participants.evidence.sync.error = {
       code: "provider",

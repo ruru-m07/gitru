@@ -130,15 +130,20 @@ const payloadStructs = new Map(
   ].map(([, name, body]) => [name, body] as const),
 );
 const payloadEnums = new Map(
-  [...`${participants}\n${tasks}\n${checks}\n${reviews}`.matchAll(
-    /#\[serde\(rename_all = "snake_case"\)\]\s*pub enum (\w+)\s*\{([^}]+)\}/g,
-  )].map(([, name, body]) => [
-    name,
-    body
-      .split(",")
-      .map((variant) => variant.trim())
-      .filter(Boolean),
-  ] as const),
+  [
+    ...`${participants}\n${tasks}\n${checks}\n${reviews}`.matchAll(
+      /#\[serde\(rename_all = "snake_case"\)\]\s*pub enum (\w+)\s*\{([^}]+)\}/g,
+    ),
+  ].map(
+    ([, name, body]) =>
+      [
+        name,
+        body
+          .split(",")
+          .map((variant) => variant.trim())
+          .filter(Boolean),
+      ] as const,
+  ),
 );
 const nativePayloadKinds = new Set<string>();
 for (const [, tag, content, name, body] of participants.matchAll(
@@ -152,7 +157,11 @@ for (const [, tag, content, name, body] of participants.matchAll(
     if (optional) return `${schemaFor(optional[1])}.optional()`;
     if (rustType === "String") return "z.string()";
     if (rustType === "bool") return "z.boolean()";
-    if (["u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64", "usize"].includes(rustType))
+    if (
+      ["u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64", "usize"].includes(
+        rustType,
+      )
+    )
       return "z.number()";
     if (!/^\w+$/.test(rustType))
       throw new Error(`Unsupported tagged payload type ${rustType}`);
@@ -422,7 +431,7 @@ if (!entrySchema.test(generated))
   throw new Error("Missing generated detail entry schema for family guard");
 generated = generated.replace(
   entrySchema,
-  `const detailFieldFamilies = {\n  generic: new Set<string>(${JSON.stringify(genericFields)}),\n  "participant.v1": new Set<string>(${JSON.stringify(participantFields)}),\n  "task.v1": new Set<string>(${JSON.stringify(taskFields)}),\n  "check.v1": new Set<string>(${JSON.stringify(checkFields)}),\n  "review.v1": new Set<string>(${JSON.stringify(reviewSummaryFields)}),\n  "review_thread.v1": new Set<string>(${JSON.stringify(reviewThreadFields)}),\n};\n\n$1.superRefine((entry, context) => {\n  const family = detailFieldFamilies[entry.native?.kind ?? "generic"];\n  const validations = entry.field_validations.map((validation) => validation.field);\n  const invalidCheckEvidence = entry.native?.kind === "check.v1" && (entry.field_mask.length !== 2 || !entry.field_mask.includes("check") || !entry.field_mask.includes("head_oid") || validations.length !== 2 || !validations.includes("check") || !validations.includes("head_oid"));\n  if (invalidCheckEvidence || entry.field_mask.length > family.size || validations.length > family.size || new Set(entry.field_mask).size !== entry.field_mask.length || new Set(validations).size !== validations.length || entry.field_mask.some((field) => !family.has(field)) || validations.some((field) => !family.has(field))) {\n    context.addIssue({ code: "custom", path: ["native"], message: "Detail entry fields do not match its native payload" });\n  }\n});`,
+  `const detailFieldFamilies = {\n  generic: new Set<string>(${JSON.stringify(genericFields)}),\n  "participant.v1": new Set<string>(${JSON.stringify(participantFields)}),\n  "task.v1": new Set<string>(${JSON.stringify(taskFields)}),\n  "check.v1": new Set<string>(${JSON.stringify(checkFields)}),\n  "review.v1": new Set<string>(${JSON.stringify(reviewSummaryFields)}),\n  "review_thread.v1": new Set<string>(${JSON.stringify(reviewThreadFields)}),\n};\n\n$1.superRefine((entry, context) => {\n  const family = detailFieldFamilies[entry.native?.kind ?? "generic"];\n  const mask = new Set<string>(entry.field_mask);\n  const validations = entry.field_validations.map((validation) => validation.field);\n  const validated = new Set<string>(validations);\n  const exactNativeEvidence = entry.native?.kind === "check.v1" || entry.native?.kind === "review.v1" || entry.native?.kind === "review_thread.v1";\n  const invalidExactEvidence = exactNativeEvidence && (mask.size !== family.size || validated.size !== family.size || [...family].some((field) => !mask.has(field) || !validated.has(field)));\n  if (invalidExactEvidence || entry.field_mask.length > family.size || validations.length > family.size || mask.size !== entry.field_mask.length || validated.size !== validations.length || entry.field_mask.some((field) => !family.has(field)) || validations.some((field) => !family.has(field))) {\n    context.addIssue({ code: "custom", path: ["native"], message: "Detail entry fields do not match its native payload" });\n  }\n});`,
 );
 generated = generated.replace(
   /(export const Collaboration\w+ParamsSchema = z\.object\(\{)([\s\S]*?)(\n\}\);)/g,

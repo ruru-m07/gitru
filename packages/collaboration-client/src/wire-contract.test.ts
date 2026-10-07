@@ -133,12 +133,14 @@ describe("generated collaboration wire contract", () => {
     expect(DetailEntrySchema.parse(genericEntry).body.text).toBe(
       "Saved generic comment",
     );
-    expect(
-      NativeDetailPayloadSchema.parse({
-        ...native,
-        value: { ...native.value, state: null },
-      }).value.state,
-    ).toBeNull();
+    const parsedWithoutState = NativeDetailPayloadSchema.parse({
+      ...native,
+      value: { ...native.value, state: null },
+    });
+    expect(parsedWithoutState.kind).toBe("participant.v1");
+    if (parsedWithoutState.kind !== "participant.v1")
+      throw new Error("Expected typed participant");
+    expect(parsedWithoutState.value.state).toBeNull();
     for (const bad of [
       "participant.v1",
       { kind: "participant.v2", value: native.value },

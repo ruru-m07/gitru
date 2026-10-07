@@ -401,11 +401,15 @@ describe("Bitbucket Cloud saved pull requests", () => {
     expect(
       comments.queryByRole("button", { name: "Sync comments" }),
     ).not.toBeInTheDocument();
-    for (const facet of ["reviews", "checks"]) {
-      const button = detail.getByRole("button", { name: `Sync ${facet}` });
-      expect(button).toBeDisabled();
-      await user.click(button);
-    }
+    await user.click(detail.getByRole("button", { name: "Reviews" }));
+    const reviews = within(detail.getByRole("region", { name: "Reviews" }));
+    expect(reviews.getByText("Feature not supported")).toBeVisible();
+    expect(
+      reviews.queryByRole("button", { name: "Sync reviews" }),
+    ).not.toBeInTheDocument();
+    const checks = detail.getByRole("button", { name: "Sync checks" });
+    expect(checks).toBeDisabled();
+    await user.click(checks);
     const merge = detail.getByRole("button", {
       name: "Merge pull request unavailable",
     });

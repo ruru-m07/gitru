@@ -96,12 +96,25 @@ export function SavedItemDetail({
   const bodyHeadEvidence = bodyData?.metadata?.fields.find(
     (field) => field.field === "head",
   );
+  const bodyBaseEvidence = bodyData?.metadata?.fields.find(
+    (field) => field.field === "base",
+  );
   const bodyContext =
     bodyHeadEvidence?.saved_state === "known" &&
+    bodyBaseEvidence?.saved_state === "known" &&
     bodyData?.metadata?.values.head?.oid &&
+    bodyData.metadata.values.base?.oid &&
+    bodyData.metadata.values.base.repository?.provider_id &&
+    bodyData.metadata.values.head.repository?.provider_id &&
     bodyData.evidence.facet_revision
       ? {
+          baseOid: bodyData.metadata.values.base.oid,
           headOid: bodyData.metadata.values.head.oid,
+          baseRepositoryProviderId:
+            bodyData.metadata.values.base.repository.provider_id,
+          sourceRepositoryProviderId:
+            bodyData.metadata.values.head.repository.provider_id,
+          metadataFacetRevision: bodyData.evidence.facet_revision,
           facetRevision: bodyData.evidence.facet_revision,
         }
       : null;

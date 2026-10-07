@@ -14,6 +14,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { CachedChecksPanel } from "./cached-checks-panel";
 import {
+  CachedReviewsPanel,
+  type PullReviewContext,
+} from "./cached-reviews-panel";
+import {
   CapabilityBoundary,
   ReadOnlyCapability,
   SynchronizationAvailability,
@@ -34,6 +38,8 @@ const facetLabels: Record<DetailFacet, string> = {
   body: "Full description",
   comments: "Comments",
   reviews: "Reviews",
+  review_summaries: "Review decisions",
+  review_threads: "Inline discussion",
   checks: "Checks",
   participants: "Participants",
   tasks: "Tasks",
@@ -56,7 +62,7 @@ export function ResourceCapabilityPanels({
   snapshot: ContextualCapabilitySnapshot | undefined;
   instanceId: string;
   repositoryId: string | null;
-  bodyContext: { headOid: string; facetRevision: string } | null;
+  bodyContext: PullReviewContext | null;
 }) {
   if (kind === "notification") return null;
   const facets: Array<{ detail: DetailFacet; capability: ResourceFacet }> = [
@@ -64,9 +70,6 @@ export function ResourceCapabilityPanels({
       detail: "body",
       capability: kind === "pull_request" ? "pull_details" : "issue_details",
     },
-    ...(kind === "pull_request"
-      ? [{ detail: "reviews" as const, capability: "reviews" as const }]
-      : []),
   ];
   return (
     <div className="mt-6 space-y-4">
@@ -80,6 +83,24 @@ export function ResourceCapabilityPanels({
           snapshot={snapshot}
         />
       ))}
+      {kind === "pull_request" ? (
+        <CachedReviewsPanel
+          key={JSON.stringify([
+            "reviews",
+            account.id,
+            account.actor_id,
+            account.authorization_epoch,
+            subjectId,
+            bodyContext?.metadataFacetRevision ?? null,
+            bodyContext?.headOid ?? null,
+          ])}
+          account={account}
+          subjectId={subjectId}
+          authorizationView={snapshot?.authorization_view}
+          policy={facetPolicy(snapshot, "reviews")}
+          bodyContext={bodyContext}
+        />
+      ) : null}
       {kind === "pull_request" ? (
         <CachedChecksPanel
           key={JSON.stringify([

@@ -192,6 +192,87 @@ impl CollaborationProvider for Provider {
         }
         Ok(page)
     }
+
+    async fn fetch_reviews(
+        &self,
+        token: &SecretToken,
+        request: ReviewRequest,
+    ) -> Result<DetailPage, ProviderError> {
+        let facet = request.detail.facet;
+        let context = request.context;
+        let mut page = self.fetch_detail(token, request.detail).await?;
+        page.reconciliation = DetailReconciliation {
+            enumeration: DetailEnumeration::FullEnumeration,
+            head_scope: DetailHeadScope::CurrentHead,
+        };
+        page.etag = None;
+        page.source.field_mask = match facet {
+            DetailFacet::ReviewSummaries => vec![
+                DetailField::Body,
+                DetailField::Author,
+                DetailField::State,
+                DetailField::UpdatedAt,
+                DetailField::HeadOid,
+                DetailField::Review,
+            ],
+            DetailFacet::ReviewThreads => vec![
+                DetailField::Body,
+                DetailField::Author,
+                DetailField::UpdatedAt,
+                DetailField::HeadOid,
+                DetailField::ReviewThread,
+            ],
+            _ => panic!("review fixture received unrelated facet"),
+        };
+        for entry in &mut page.entries {
+            entry.title = None;
+            entry.observed_body_state = entry.body.state;
+            entry.updated_at = Some("2026-10-08T00:01:00Z".into());
+            entry.head_oid = Some(context.head_oid.clone());
+            entry.field_mask = page.source.field_mask.clone();
+            entry.field_validations.clear();
+            entry.native = Some(match facet {
+                DetailFacet::ReviewSummaries => {
+                    entry.state = Some("APPROVED".into());
+                    NativeDetailPayload::ReviewV1(ReviewV1 {
+                        context: context.clone(),
+                        reviewer: Some(ReviewActor {
+                            provider_id: "8".into(),
+                            login: entry.author.clone(),
+                            display_name: None,
+                        }),
+                        decision: ReviewDecision::Approved,
+                        provider_state: "APPROVED".into(),
+                        reviewed_commit_oid: Some(context.head_oid.clone()),
+                        submitted_at: entry.updated_at.clone(),
+                    })
+                }
+                DetailFacet::ReviewThreads => {
+                    entry.state = None;
+                    NativeDetailPayload::ReviewThreadV1(ReviewThreadV1 {
+                        context: context.clone(),
+                        thread_id: entry.provider_id.clone(),
+                        root_comment_id: Some(entry.provider_id.clone()),
+                        comment_id: entry.provider_id.clone(),
+                        parent_comment_id: None,
+                        review_id: None,
+                        author: Some(ReviewActor {
+                            provider_id: "9".into(),
+                            login: entry.author.clone(),
+                            display_name: None,
+                        }),
+                        created_at: "2026-10-08T00:00:00Z".into(),
+                        updated_at: entry.updated_at.clone().unwrap(),
+                        anchor: None,
+                        provider_outdated: None,
+                        provider_resolved: None,
+                    })
+                }
+                _ => unreachable!(),
+            });
+        }
+        Ok(page)
+    }
 }
 async fn fixture(
     path: &std::path::Path,
@@ -1379,6 +1460,73 @@ async fn exact_head_checks_reopen_from_sqlite_without_provider_or_vault_access()
     assert_eq!(
         cached.check_aggregate(Some(HEAD_A)),
         saved.check_aggregate(Some(HEAD_A))
+    );
+    assert_eq!(unopened_provider.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(vault.loads.load(Ordering::SeqCst), loads);
+}
+
+#[tokio::test]
+async fn exact_context_reviews_reopen_from_sqlite_without_provider_or_vault_access() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("reviews.sqlite");
+    let provider = Arc::new(Provider::new(1));
+    let (runtime, vault, actor) = fixture(&path, provider.clone()).await;
+    save_current_pull_head(&runtime, &actor, HEAD_A).await;
+
+    for facet in [DetailFacet::ReviewSummaries, DetailFacet::ReviewThreads] {
+        runtime.hydrate_detail(demand(&actor, facet)).await.unwrap();
+        assert!(runtime.run_next().await);
+        let saved = runtime
+            .store
+            .detail(fixtures::query("a", facet))
+            .await
+            .unwrap();
+        assert_eq!(saved.entries.len(), 1, "{saved:#?}");
+        assert_eq!(saved.evidence.availability, DetailAvailability::Ready);
+        assert_eq!(saved.evidence.coverage.state, CoverageState::Complete);
+        let native_context = match saved.entries[0].native.as_ref().unwrap() {
+            NativeDetailPayload::ReviewV1(review) => &review.context,
+            NativeDetailPayload::ReviewThreadV1(thread) => &thread.context,
+            _ => panic!("review fixture persisted a foreign native family"),
+        };
+        assert_eq!(native_context.head_oid, HEAD_A);
+        assert_eq!(native_context.base_oid, BASE);
+        assert_eq!(native_context.base_repository_provider_id, "1");
+        assert_eq!(native_context.source_repository_provider_id, "1");
+    }
+    assert_eq!(provider.calls.load(Ordering::SeqCst), 2);
+    let summaries = runtime
+        .store
+        .detail(fixtures::query("a", DetailFacet::ReviewSummaries))
+        .await
+        .unwrap();
+    let threads = runtime
+        .store
+        .detail(fixtures::query("a", DetailFacet::ReviewThreads))
+        .await
+        .unwrap();
+    let loads = vault.loads.load(Ordering::SeqCst);
+    runtime.store.close().await.unwrap();
+    drop(runtime);
+
+    let reopened = Arc::new(Store::open(&path).await.unwrap());
+    let unopened_provider = Arc::new(Provider::new(1));
+    let restarted = CollaborationRuntime::new(reopened, vault.clone(), unopened_provider.clone());
+    assert_eq!(
+        restarted
+            .store
+            .detail(fixtures::query("a", DetailFacet::ReviewSummaries))
+            .await
+            .unwrap(),
+        summaries
+    );
+    assert_eq!(
+        restarted
+            .store
+            .detail(fixtures::query("a", DetailFacet::ReviewThreads))
+            .await
+            .unwrap(),
+        threads
     );
     assert_eq!(unopened_provider.calls.load(Ordering::SeqCst), 0);
     assert_eq!(vault.loads.load(Ordering::SeqCst), loads);
