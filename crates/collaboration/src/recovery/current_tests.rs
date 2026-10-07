@@ -366,7 +366,7 @@ async fn frozen_v14_command_history_migrates_and_preserves_terminal_receipts() {
     // Materialize exactly the pre-0015 schema with production-sealed v1 bytes.
     // The separate migration fixture pins all 0001..0014 SQL/checksums.
     let mut db = connect(&backup, false).await.unwrap();
-    sqlx::raw_sql("DROP TRIGGER command_delivery_admitted; DROP TABLE delivery_resolutions; DROP TABLE delivery_attempt_context; DROP TABLE command_delivery; DROP TRIGGER quarantined_attempt_refused; DROP TABLE command_recovery_quarantine; DROP TABLE recovery_meta; DELETE FROM _sqlx_migrations WHERE version>=15;").execute(&mut db).await.unwrap();
+    sqlx::raw_sql("DROP INDEX command_delivery_pending; DROP INDEX command_delivery_target_order; DROP INDEX command_delivery_active_accounts; DROP TRIGGER command_delivery_admitted; DROP TABLE delivery_resolutions; DROP TABLE delivery_attempt_context; DROP TABLE command_delivery; DROP TRIGGER quarantined_attempt_refused; DROP TABLE command_recovery_quarantine; DROP TABLE recovery_meta; DELETE FROM _sqlx_migrations WHERE version>=15;").execute(&mut db).await.unwrap();
     assert_eq!(verify(&mut db).await.unwrap(), 14);
     db.close().await.unwrap();
     let original = command_rows(&backup).await;

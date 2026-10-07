@@ -182,3 +182,14 @@ execution-context/resolution preservation with reset deadlines and retained
 quarantine, plus the existing queued-before-backup ambiguity and immutable
 attempt guard. Worker code remains in progress; no provider dispatch or remote CI
 qualification is claimed by this schema checkpoint.
+
+The coordinated pre-publication index follow-up completes 0016 with partial
+indexes for active accounts, pending command keysets and pending target order.
+`EXPLAIN QUERY PLAN` verifies index seeks without a temporary sort. Discovery
+visits at most 32 pending command keys, rotates active accounts, and skips attention
+rows after that bounded fetch. It cannot scan terminal history or let one huge
+account consume every account's turns. Command retry timing uses a single process
+UTC anchor advanced by monotonic elapsed time, removing the per-command timer cap;
+provider budgets keep their separate existing wall-time plus monotonic gates.
+Suspension continues to respect the platform monotonic clock; cold restart begins
+a fresh UTC anchor and checks persisted deadlines before admission.

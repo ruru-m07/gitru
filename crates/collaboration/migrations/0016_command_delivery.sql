@@ -52,3 +52,11 @@ CREATE TRIGGER delivery_resolution_immutable BEFORE UPDATE ON delivery_resolutio
 BEGIN SELECT RAISE(ABORT,'immutable operation resolution'); END;
 CREATE TRIGGER delivery_resolution_retained BEFORE DELETE ON delivery_resolutions
 BEGIN SELECT RAISE(ABORT,'operation resolution requires explicit retention'); END;
+
+-- Keyset scans visit a bounded pending slice of one active account. Terminal
+-- history never participates; the runtime rotates accounts between slices.
+CREATE INDEX command_delivery_pending ON commands(account_id,command_id)
+WHERE state IN ('queued','sending','retry_wait','accepted','outcome_unknown');
+CREATE INDEX command_delivery_target_order ON commands(account_id,target_kind,target_id,enqueue_order)
+WHERE state IN ('queued','sending','retry_wait','accepted','outcome_unknown','conflict');
+CREATE INDEX command_delivery_active_accounts ON accounts(id) WHERE state='active';

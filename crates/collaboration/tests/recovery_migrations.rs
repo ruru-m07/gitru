@@ -373,3 +373,36 @@ async fn actual_interrupt_and_full_disk_leave_v15_retryable() {
         store.close().await.unwrap();
     }
 }
+
+#[tokio::test]
+async fn delivery_keysets_seek_partial_indexes_without_terminal_history_or_temp_sort() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut db = database(&dir.path().join("plans.db")).await;
+    CURRENT.run(&mut db).await.unwrap();
+    for (sql, index) in [
+        (
+            "EXPLAIN QUERY PLAN SELECT id FROM accounts INDEXED BY command_delivery_active_accounts WHERE state='active' AND id>'a' ORDER BY id LIMIT 32",
+            "command_delivery_active_accounts",
+        ),
+        (
+            "EXPLAIN QUERY PLAN SELECT account_id,command_id FROM commands INDEXED BY command_delivery_pending WHERE account_id='a' AND command_id>'123e4567-e89b-12d3-a456-426614174000' AND state IN ('queued','sending','retry_wait','accepted','outcome_unknown') ORDER BY command_id LIMIT 32",
+            "command_delivery_pending",
+        ),
+        (
+            "EXPLAIN QUERY PLAN SELECT 1 FROM commands WHERE account_id='a' AND target_kind='issue' AND target_id='issue' AND enqueue_order<90 AND state IN ('queued','sending','retry_wait','accepted','outcome_unknown','conflict') LIMIT 1",
+            "command_delivery_target_order",
+        ),
+    ] {
+        use sqlx::Row;
+        let rows = sqlx::query(sql).fetch_all(&mut db).await.unwrap();
+        let plan = rows
+            .iter()
+            .map(|r| r.get::<String, _>("detail"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(plan.contains(index), "{plan}");
+        assert!(plan.contains("SEARCH"), "{plan}");
+        assert!(!plan.contains("TEMP B-TREE"), "{plan}");
+    }
+    db.close().await.unwrap();
+}
