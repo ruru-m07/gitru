@@ -52,6 +52,7 @@ impl CollaborationProvider for BitbucketCloudProvider {
                             | ResourceFacet::Participants
                             | ResourceFacet::Tasks
                             | ResourceFacet::PullCommits
+                            | ResourceFacet::PullFiles
                     ) {
                         CapabilityState::Supported
                     } else {
@@ -63,7 +64,8 @@ impl CollaborationProvider for BitbucketCloudProvider {
                         | ResourceFacet::PullDetails
                         | ResourceFacet::Participants
                         | ResourceFacet::Tasks
-                        | ResourceFacet::PullCommits => None,
+                        | ResourceFacet::PullCommits
+                        | ResourceFacet::PullFiles => None,
                         ResourceFacet::Issues | ResourceFacet::Inbox => {
                             Some(CapabilityReason::ProviderSemantics)
                         }

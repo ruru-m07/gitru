@@ -48,6 +48,9 @@ mod notification_subjects;
 #[cfg(test)]
 mod pull_commit_tests;
 mod pull_commits;
+#[cfg(test)]
+mod pull_file_tests;
+mod pull_files;
 mod scheduler;
 
 const MAX_QUEUED_SCOPES: usize = 128;
@@ -914,16 +917,16 @@ impl CollaborationRuntime {
         let continue_page = result.is_ok_and(|more| more) && epoch_is_current;
         let interested = scheduler.demands.interested(&job);
         let explicit = scheduler.explicit_keys.contains(&job.key);
-        let page_limit = if matches!(
-            job.kind,
+        let page_limit = match job.kind {
             JobKind::Detail {
                 facet: DetailFacet::Commits,
                 ..
-            }
-        ) {
-            MAX_PULL_COMMIT_PAGES as usize
-        } else {
-            MAX_PAGES_PER_REFRESH
+            } => MAX_PULL_COMMIT_PAGES as usize,
+            JobKind::Detail {
+                facet: DetailFacet::Files,
+                ..
+            } => MAX_PULL_FILE_PROVIDER_PAGES as usize,
+            _ => MAX_PAGES_PER_REFRESH,
         };
         if continue_page
             && job.pages < page_limit

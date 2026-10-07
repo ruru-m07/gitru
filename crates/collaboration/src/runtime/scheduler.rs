@@ -418,6 +418,30 @@ impl CollaborationRuntime {
                 }
             }
             JobKind::Detail { subject_id, facet } => {
+                if *facet == DetailFacet::Files {
+                    let snapshot = self
+                        .store
+                        .pull_files(PullFileQuery {
+                            account_id: account.id.clone(),
+                            subject_id: subject_id.clone(),
+                            cursor: None,
+                            limit: 1,
+                        })
+                        .await?;
+                    if snapshot.context.is_none()
+                        || matches!(
+                            snapshot.completeness.state,
+                            PullFileCompletenessState::Missing
+                                | PullFileCompletenessState::Syncing
+                                | PullFileCompletenessState::Partial
+                        )
+                        || snapshot.freshness != DetailFreshness::Fresh
+                        || snapshot.sync.state == SyncState::Syncing
+                    {
+                        return Ok(self.now());
+                    }
+                    return Ok(cached.unwrap_or_else(|| self.deadline_after(60)));
+                }
                 if *facet == DetailFacet::Commits {
                     let snapshot = self
                         .store

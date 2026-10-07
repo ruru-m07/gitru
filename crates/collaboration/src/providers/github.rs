@@ -73,7 +73,7 @@ impl CollaborationProvider for GithubProvider {
                 ResourceFacet::PullDetails | ResourceFacet::IssueDetails
             ) || matches!(
                 facet.facet,
-                ResourceFacet::Comments | ResourceFacet::PullCommits
+                ResourceFacet::Comments | ResourceFacet::PullCommits | ResourceFacet::PullFiles
             ) && account.provider == ProviderKind::Github
                 && account.host == "github.com"
             {

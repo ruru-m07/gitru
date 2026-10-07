@@ -246,6 +246,7 @@ fn implemented(facet: ResourceFacet) -> bool {
             | ResourceFacet::PullDetails
             | ResourceFacet::IssueDetails
             | ResourceFacet::PullCommits
+            | ResourceFacet::PullFiles
     )
 }
 
