@@ -3278,3 +3278,27 @@ production build, format and workspace Clippy. Packaged macOS E2E passes both
 specs and all three scenarios; the focused checkout integration passes 26/26.
 Exact-head remote CI, Windows, live-provider and real credential-manager behavior
 remain pending and separate. RURU-136 stays In Progress and draft/unmerged.
+
+### RURU-137 cached pull commits published for review — 7 October 2026
+
+Draft [#168](https://github.com/ruru-m07/gitru/pull/168) publishes signed source
+`8b45143cf54bfc5bea728c6155ed36496c25b5b2`, stacked on exact RURU-136 head
+`9548c53cf3c926a47e474d8d9b9511bc41e99d41`. That base now passes all 14
+reported checks. Pull commits use an exact authorized base/head/source/Body-
+revision generation, bounded unpublished paging and atomic publication. GitHub,
+GitLab and Bitbucket Cloud adapters expose explicit ordering, cap and missing-field
+evidence; the renderer reads only local snapshots and exact linked-clone navigation
+never fetches an absent object.
+
+Final serialized `make verify` passes 670 frontend/SDK/UI tests with one platform
+skip plus lint, types, production build, Rust format, workspace Clippy and every
+default Rust suite. Normal type generation emits 123 commands. The feature harness
+passes 20 native tests, its full collaboration suites and warning-denied Clippy.
+A real packaged release run passes the main scenarios and both crash/restart pairs;
+the restart-after process reads the exact cached two-commit generation before new
+interest with provider and vault counters unchanged at zero. The exact evidence is
+in [the RURU-137 work note](./collaboration-work/RURU-137.md).
+
+PR #168 is attached, draft and unmerged. Its exact-head remote matrix is separate
+from the completed local macOS/fixture evidence. No personal credential, live
+private provider, Gitru cloud account or production keyring was inspected.

@@ -189,7 +189,7 @@ Then implement [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-
 | [RURU-119: Add cached PR changed-file and diff navigation](https://linear.app/catra/issue/RURU-119/add-cached-pr-changed-file-and-diff-navigation) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-98](https://linear.app/catra/issue/RURU-98/add-foreground-demand-leases-to-the-native-sync-scheduler) |
 | [RURU-124: Add local inbox snooze, bookmark and disposition state](https://linear.app/catra/issue/RURU-124/add-local-inbox-snooze-bookmark-and-disposition-state) | Backlog | [RURU-79](https://linear.app/catra/issue/RURU-79/resolve-inbox-notifications-to-cached-pr-and-issue-subjects) |
 | [RURU-136: Check out pull request branches through the local Git workflow](https://linear.app/catra/issue/RURU-136/check-out-pull-request-branches-through-the-local-git-workflow) | In Progress | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-96](https://linear.app/catra/issue/RURU-96/link-local-git-remotes-to-collaboration-repositories-and-accounts) |
-| [RURU-137: Cache and navigate the pull request commit list](https://linear.app/catra/issue/RURU-137/cache-and-navigate-the-pull-request-commit-list) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details) |
+| [RURU-137: Cache and navigate the pull request commit list](https://linear.app/catra/issue/RURU-137/cache-and-navigate-the-pull-request-commit-list) | In Review | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details) |
 
 ### Sync, storage and performance
 
@@ -902,7 +902,7 @@ Acceptance criteria:
 
 ## RURU-137: Cache and navigate the pull request commit list
 
-Planning key: C48. Group: Read experience. Priority: Medium. State: Backlog.
+Planning key: C48. Group: Read experience. Priority: Medium. State: In Review.
 Linear: [RURU-137](https://linear.app/catra/issue/RURU-137/cache-and-navigate-the-pull-request-commit-list).
 Prerequisites: [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details).
 
@@ -2215,3 +2215,21 @@ workspace Clippy. Packaged macOS E2E passes both specs and all three scenarios;
 the focused checkout integration passes 26/26. Exact-head remote CI, Windows,
 live-provider and real credential-manager behavior remain pending and separate.
 RURU-136 stays In Progress and draft/unmerged.
+
+### RURU-137 cached pull commits published for review — 7 October 2026
+
+Attached draft [#168](https://github.com/ruru-m07/gitru/pull/168) publishes signed
+source `8b45143cf54bfc5bea728c6155ed36496c25b5b2`, stacked on exact RURU-136 head
+`9548c53cf3c926a47e474d8d9b9511bc41e99d41`; that base's 14 reported checks
+all pass. The implementation supplies exact-context, atomically published commit
+generations for GitHub, GitLab and Bitbucket Cloud, local-only PR rendering and
+exact-object navigation through linked target or source clones without implicit
+fetch.
+
+Final `make verify`, 123-command generation, feature-native checks and the real
+packaged five-process crash/restart harness pass locally. The independent restart
+reads the exact complete two-row snapshot before new interest with zero provider
+and vault access. [The work note](./collaboration-work/RURU-137.md) records the
+scope and evidence. RURU-137 is In Review; PR #168 remains draft/unmerged and its
+exact-head remote matrix plus live private-provider/PAT/keyring and other-platform
+behavior remain separate gates.
