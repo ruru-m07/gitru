@@ -259,10 +259,18 @@ try {
         webview_label: view.webview_label,
         native_runtime_open_ms:
           Number(phase.raw.status?.runtime_open_micros ?? "0") / 1000,
+        landing_mode: view.landing_mode,
         runtime_ready_to_useful_ms:
           view.first_useful_epoch_ms -
           Number(phase.raw.status?.runtime_ready_epoch_ms ?? "0"),
         document_navigation_to_useful_ms: view.navigation_to_first_useful_ms,
+        document_navigation_to_workspace_mount_ms:
+          view.workspace_mount_epoch_ms -
+          (view.first_useful_epoch_ms - view.navigation_to_first_useful_ms),
+        workspace_mount_to_useful_ms:
+          view.first_useful_epoch_ms - view.workspace_mount_epoch_ms,
+        benchmark_request_offset_from_useful_ms:
+          view.benchmark_request_epoch_ms - view.first_useful_epoch_ms,
       })),
     ),
     distributions: summarize(phases),

@@ -44,7 +44,10 @@ import {
   installHarnessCatchupObservation,
   observeHarnessDocument,
 } from "./e2e-collaboration-harness-observation";
-import { runCollaborationPerformance } from "./e2e-collaboration-performance";
+import {
+  observePerformanceLanding,
+  runCollaborationPerformance,
+} from "./e2e-collaboration-performance";
 
 function outcome(error: unknown): HarnessResult["outcome"] {
   if (error instanceof StaleAuthorizationError) return "stale_view";
@@ -67,6 +70,7 @@ function outcome(error: unknown): HarnessResult["outcome"] {
 /** Root injects the generated own-view getter, never a fabricated manifest. */
 export async function installCollaborationHarnessProbe(
   readManifest: () => Promise<HarnessViewManifest>,
+  measureInitialPerformanceLanding = false,
 ) {
   const view = getCurrentWebview();
   const documentNonce = crypto.randomUUID();
@@ -81,7 +85,11 @@ export async function installCollaborationHarnessProbe(
     manifest: HarnessViewManifest;
     actor: HarnessActor | null;
     performanceKey: number | null;
-  } = { manifest, actor: null, performanceKey: null };
+  } = {
+    manifest,
+    actor: null,
+    performanceKey: measureInitialPerformanceLanding ? 0 : null,
+  };
   let nextPerformanceKey = 0;
   let binding: {
     actor: HarnessActor;
@@ -95,9 +103,15 @@ export async function installCollaborationHarnessProbe(
   container.setAttribute("aria-label", "Retained collaboration fixture");
   container.className =
     "fixed inset-4 z-70 overflow-y-auto rounded-lg border bg-background shadow-xl";
-  container.hidden = true;
+  container.hidden = !measureInitialPerformanceLanding;
   document.body.append(container);
   const root = createRoot(container);
+  const initialPerformanceLanding = measureInitialPerformanceLanding
+    ? observePerformanceLanding(
+        container,
+        performance.timeOrigin + performance.now(),
+      )
+    : null;
 
   function notify() {
     for (const listener of listeners) listener();
@@ -347,6 +361,7 @@ export async function installCollaborationHarnessProbe(
         manifest,
         phase: action.phase,
         sampleCount: action.sample_count,
+        initialLanding: initialPerformanceLanding,
         showWorkspace: showPerformanceWorkspace,
         hideWorkspace: hidePerformanceWorkspace,
       });

@@ -544,6 +544,9 @@ export const HarnessPerformanceViewSchema = z
     role: z.enum(["main", "concurrent_child"]),
     sample_count: z.union([z.literal(10), z.literal(30)]),
     account_id: z.literal("ruru103:alternate"),
+    landing_mode: z.enum(["automatic_navigation", "benchmark_request"]),
+    benchmark_request_epoch_ms: performanceEpoch,
+    workspace_mount_epoch_ms: performanceEpoch,
     first_useful_epoch_ms: performanceEpoch,
     navigation_to_first_useful_ms: performanceDuration,
     exact_first_title: z.literal(
@@ -553,6 +556,19 @@ export const HarnessPerformanceViewSchema = z
   })
   .strict()
   .superRefine((value, context) => {
+    if (value.workspace_mount_epoch_ms > value.first_useful_epoch_ms)
+      context.addIssue({
+        code: "custom",
+        message: "Useful content predates its workspace mount",
+      });
+    if (
+      value.landing_mode === "benchmark_request" &&
+      value.benchmark_request_epoch_ms > value.workspace_mount_epoch_ms
+    )
+      context.addIssue({
+        code: "custom",
+        message: "Requested landing predates its benchmark request",
+      });
     const keys = value.cases.map((entry) => `${entry.name}:${entry.boundary}`);
     if (new Set(keys).size !== keys.length)
       context.addIssue({

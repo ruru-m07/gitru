@@ -921,6 +921,11 @@ impl NativeHarness {
         }
         let app_handle = app.clone();
         let create = child.clone();
+        let child_url = if std::env::var(PERFORMANCE_ENV).as_deref() == Ok("1") {
+            "/app/git?embedded=1&collaborationHarness=1&collaborationPerformance=1"
+        } else {
+            "/app/git?embedded=1&collaborationHarness=1"
+        };
         let result = tauri::async_runtime::spawn_blocking(move || {
             let window = Window::builder(&app_handle, &create.window_label)
                 .title("Gitru retained collaboration fixture")
@@ -929,10 +934,7 @@ impl NativeHarness {
                 .build()
                 .map_err(|_| invalid())?;
             let view = match window.add_child(
-                WebviewBuilder::new(
-                    &create.label,
-                    WebviewUrl::App("/app/git?embedded=1&collaborationHarness=1".into()),
-                ),
+                WebviewBuilder::new(&create.label, WebviewUrl::App(child_url.into())),
                 tauri::LogicalPosition::new(0.0, 0.0),
                 tauri::LogicalSize::new(900.0, 700.0),
             ) {

@@ -53,13 +53,27 @@ if (rootElement && !rootElement.innerHTML) {
 }
 
 if (import.meta.env.MODE === "e2e-collaboration-harness") {
-  const { collaborationHarnessViewManifest } = await import("@gitru/commands");
+  const { collaborationHarnessStatus, collaborationHarnessViewManifest } =
+    await import("@gitru/commands");
   const { installCollaborationHarnessProbe } = await import(
     "./bootstrap/e2e-collaboration-harness"
   );
   const readManifest = () => collaborationHarnessViewManifest({});
-  const probe = await installCollaborationHarnessProbe(readManifest);
   const manifest = await readManifest();
+  const measureInitialPerformanceLanding =
+    new URLSearchParams(window.location.search).get(
+      "collaborationPerformance",
+    ) === "1" ||
+    (manifest.role === "main" &&
+      (
+        await collaborationHarnessStatus({
+          request: { run_nonce: manifest.run_nonce },
+        })
+      ).core.fixture === "performance");
+  const probe = await installCollaborationHarnessProbe(
+    readManifest,
+    measureInitialPerformanceLanding,
+  );
   if (manifest.role === "main") {
     const { installCollaborationHarnessExecutor } = await import(
       "./bootstrap/e2e-collaboration-harness-executor"

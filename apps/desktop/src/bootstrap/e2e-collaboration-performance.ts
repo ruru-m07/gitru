@@ -15,6 +15,10 @@ const FIRST_TITLE = "RURU-125 cached pull 4999 alternate repository 4";
 const STEP_TIMEOUT_MS = 10_000;
 
 type Sample = { duration_ms: number; payload_bytes: number | null };
+export type PerformanceLanding = {
+  firstUsefulEpochMs: number;
+  workspaceMountEpochMs: number;
+};
 
 function payloadBytes(value: unknown) {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
@@ -63,6 +67,17 @@ function buttonWithText(container: HTMLElement, text: string) {
 function usefulTitle(container: HTMLElement, title: string) {
   const button = buttonWithText(container, title);
   return button && !button.hidden ? button : null;
+}
+
+export async function observePerformanceLanding(
+  container: HTMLElement,
+  workspaceMountEpochMs: number,
+): Promise<PerformanceLanding> {
+  await waitFor(() => usefulTitle(container, FIRST_TITLE));
+  return {
+    firstUsefulEpochMs: performance.timeOrigin + performance.now(),
+    workspaceMountEpochMs,
+  };
 }
 
 function searchInput(container: HTMLElement) {
@@ -179,6 +194,7 @@ export async function runCollaborationPerformance({
   manifest,
   phase,
   sampleCount,
+  initialLanding,
   showWorkspace,
   hideWorkspace,
 }: {
@@ -187,9 +203,11 @@ export async function runCollaborationPerformance({
   manifest: HarnessViewManifest;
   phase: "warm" | "restart";
   sampleCount: 10 | 30;
+  initialLanding: Promise<PerformanceLanding> | null;
   showWorkspace: () => void;
   hideWorkspace: () => void;
 }): Promise<HarnessPerformanceView> {
+  const benchmarkRequestEpochMs = performance.timeOrigin + performance.now();
   const account = (await collaboration.accounts()).accounts.find(
     (candidate) => candidate.id === ACCOUNT_ID,
   );
@@ -201,26 +219,32 @@ export async function runCollaborationPerformance({
     throw new Error("Performance account does not match the fixed fixture");
 
   const listUi: Sample[] = [];
-  hideWorkspace();
-  await painted();
-  client.removeQueries({ queryKey: ["collaboration"] });
-  let started = performance.now();
-  showWorkspace();
-  await waitFor(() => usefulTitle(container, FIRST_TITLE));
-  listUi.push(elapsed(started));
-  const firstUsefulEpochMs = performance.timeOrigin + performance.now();
-  for (let index = 1; index < sampleCount; index += 1) {
+  let landing = initialLanding ? await initialLanding : null;
+  if (!landing) {
     hideWorkspace();
     await painted();
     client.removeQueries({ queryKey: ["collaboration"] });
-    started = performance.now();
+    const workspaceMountEpochMs = performance.timeOrigin + performance.now();
+    showWorkspace();
+    landing = await observePerformanceLanding(container, workspaceMountEpochMs);
+  }
+  hideWorkspace();
+  await painted();
+  for (let index = 0; index < sampleCount; index += 1) {
+    client.removeQueries({ queryKey: ["collaboration"] });
+    const started = performance.now();
     showWorkspace();
     await waitFor(() => usefulTitle(container, FIRST_TITLE));
     listUi.push(elapsed(started));
+    if (index + 1 < sampleCount) {
+      hideWorkspace();
+      await painted();
+    }
   }
 
   const input = await waitFor(() => searchInput(container));
   const searchUi: Sample[] = [];
+  let started: number;
   for (let index = 0; index < sampleCount; index += 1) {
     const term = `needle${index.toString().padStart(2, "0")}`;
     started = performance.now();
@@ -265,8 +289,12 @@ export async function runCollaborationPerformance({
     role,
     sample_count: sampleCount,
     account_id: ACCOUNT_ID,
-    first_useful_epoch_ms: firstUsefulEpochMs,
-    navigation_to_first_useful_ms: firstUsefulEpochMs - performance.timeOrigin,
+    landing_mode: initialLanding ? "automatic_navigation" : "benchmark_request",
+    benchmark_request_epoch_ms: benchmarkRequestEpochMs,
+    workspace_mount_epoch_ms: landing.workspaceMountEpochMs,
+    first_useful_epoch_ms: landing.firstUsefulEpochMs,
+    navigation_to_first_useful_ms:
+      landing.firstUsefulEpochMs - performance.timeOrigin,
     exact_first_title: FIRST_TITLE,
     cases: [
       {

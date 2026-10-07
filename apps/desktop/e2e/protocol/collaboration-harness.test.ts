@@ -59,7 +59,10 @@ describe("retained collaboration renderer protocol", () => {
       role: "main",
       sample_count: 10,
       account_id: "ruru103:alternate",
-      first_useful_epoch_ms: 1_800_000_000_000,
+      landing_mode: "automatic_navigation",
+      benchmark_request_epoch_ms: 1_800_000_000_200,
+      workspace_mount_epoch_ms: 1_800_000_000_050,
+      first_useful_epoch_ms: 1_800_000_000_120,
       navigation_to_first_useful_ms: 120,
       exact_first_title: "RURU-125 cached pull 4999 alternate repository 4",
       cases,
@@ -68,6 +71,7 @@ describe("retained collaboration renderer protocol", () => {
     for (const changed of [
       { ...view, samples: [{ duration_ms: Number.NaN }] },
       { ...view, token: "credential" },
+      { ...view, workspace_mount_epoch_ms: 1_800_000_000_121 },
       { ...view, cases: [...cases, cases[0]] },
       {
         ...view,
