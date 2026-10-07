@@ -1,17 +1,17 @@
 # RURU-116 — Effective projections of durable intent
 
-Status: design/integration in progress, 8 October 2026. No remote write UI or
-provider mutation is enabled by this checkpoint.
+Status: integrated implementation undergoing final qualification, 8 October 2026.
+No remote write operation is enabled by this infrastructure slice.
 
 ## Base and ownership
 
 Root owns the isolated external-volume `ruru-116-effective-intent` worktree.
-The initial base is signed RURU-106 `a18eba4472802863ca3d894432ea0841a2f3eb89`,
-which contains RURU-114 command admission and RURU-97 independent details.
-RURU-115 is implementing migration 0016 and delivery in another worktree. This
-slice will start schema work from its first buildable schema/recovery checkpoint,
-use migration 0017, and publish on the completed RURU-115 branch. Never modify
-already published migrations or qualify source using another branch's tests.
+The integrated base is signed RURU-115 `d88221aaaea61251f38614809bf93aa99d861bc9`,
+which includes RURU-106 recovery, RURU-114 command admission and migration 0016.
+This slice adds frozen migration 0017 and will publish on RURU-115. RURU-123
+reserves additive migration 0018; it has consumed signed schema checkpoint
+`2552249`. Never modify already shared migrations or qualify source using another
+branch's tests.
 
 ## Consistency contract
 
@@ -73,5 +73,37 @@ refresh/rejection/restart replay, cursor fencing without provider-evidence edits
 transaction rollback, active-chain bounds, epoch isolation and restore quarantine.
 IPC was regenerated from Rust (135 commands). Confirmation materialization and
 full-stack qualification remain in progress; this checkpoint does not enable a
-provider write operation. The unpublished 0017 active-target index includes the
+provider write operation. The frozen 0017 active-target index includes the
 authorization epoch so preserved older commands cannot lengthen current replay.
+
+## Canonical confirmation and query integration
+
+The finalization seam now requires transaction-owned canonical coverage for every
+authored field before confirmation removes its effect. A default no-op policy
+cannot confirm effects. Body observations pass the normal captured source,
+identity, authorization, visibility, head and freshness fences; notifications use
+an exact captured summary and activity timestamp. Only accepted known fields are
+materialized. Provider normalization can change authored values. Rechecking the
+summary, Body/metadata frame and full-text projection prevents a later raw write
+from invalidating the witness before commit. Canonical timestamps are normalized
+and non-regressing, so an older feed cannot overwrite the confirmed result.
+
+Accepted and ambiguous outcomes retain pending intent. Rejection and cancellation
+remove only their own effect; later commands replay over the current base. Restore
+preserves immutable effects but quarantines their delivery and clears derived
+rows. Restoration accepts only known ledger prefixes, including rejection of a
+future data-only migration. Frozen v16 fixtures and an injected v17 failure prove
+rollback preserves command bytes and permits a clean retry.
+
+Lists, details, inbox, filters, counts and literal search read the same native
+effective state. Pages include total filtered counts and bounded pending-command
+metadata. The desktop shows pending changes; independently retained SDK consumers
+invalidate on effective change hints, including held reads, without invalidating
+provider head/commit proofs or private draft queries. There is no renderer-owned
+optimistic store. `make typegen` generated 135 commands and 402 schema exports.
+
+Focused qualification includes 10 canonical-finalization tests, 25 delivery
+regressions and seven recovery-migration tests, plus 266 collaboration component
+tests. Full workspace qualification is running; its final evidence is recorded
+separately below. No live provider write, production credential, remote CI or
+packaged cross-platform claim follows from these fixtures.

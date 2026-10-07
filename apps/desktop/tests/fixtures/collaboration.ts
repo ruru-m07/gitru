@@ -251,7 +251,7 @@ export function fixtureInboxPage(
   items: RemoteItem[] = [fixtureItem],
 ): InboxPage {
   return {
-    total_count: 0,
+    total_count: items.length,
     pending_intents: [],
 
     entries: items.map((item) => ({

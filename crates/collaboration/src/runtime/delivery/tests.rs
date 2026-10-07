@@ -270,11 +270,12 @@ impl CommandDeliveryPolicy for Policy {
     }
     async fn finalize_in(
         &self,
-        tx: &mut Transaction<'_, Sqlite>,
+        context: &mut crate::storage::effective::finalization::DeliveryFinalization<'_, '_>,
         command: &DeliveryCommand,
         purpose: EvidencePurpose,
         _: &OperationEvidence,
     ) -> Result<(), CollaborationError> {
+        let tx = context.transaction();
         if self.finalize_fail.load(Ordering::SeqCst) {
             return Err(CollaborationError::storage());
         }

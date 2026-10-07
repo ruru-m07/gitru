@@ -9,7 +9,7 @@ use sqlx::{
     sqlite::SqliteConnectOptions,
 };
 static CURRENT: Migrator = sqlx::migrate!("./migrations");
-const OLD_SQL: [&str; 15] = [
+const OLD_SQL: [&str; 16] = [
     include_str!("fixtures/migrations/v8/0001_local_collaboration.sql"),
     include_str!("fixtures/migrations/v8/0002_credential_cutover.sql"),
     include_str!("fixtures/migrations/v8/0003_provider_identities.sql"),
@@ -25,8 +25,9 @@ const OLD_SQL: [&str; 15] = [
     include_str!("fixtures/migrations/v13/0013_command_admission.sql"),
     include_str!("fixtures/migrations/v14/0014_pull_file_generations.sql"),
     include_str!("fixtures/migrations/v15/0015_recovery_quarantine.sql"),
+    include_str!("fixtures/migrations/v16/0016_command_delivery.sql"),
 ];
-const CHECKSUMS: [&str; 15] = [
+const CHECKSUMS: [&str; 16] = [
     "a0b4863d56b1620dae93b13df7ef2b38074c3ac5a5d5bf639b01899204cb61f6796ba9fb37bfd3b085f79e928e475e3d",
     "2fe47653ace5f705b32a819739da13bd9faf40a56a268da416a9f9d39c770ec74a42377268670c40a5478c898137929b",
     "6f5925a0690563071eeaeeb43bc3eec634c280582b9971e94effe266eedb804fb7773b85a5a4d9ad2492439c575e67e9",
@@ -42,6 +43,7 @@ const CHECKSUMS: [&str; 15] = [
     "d29215527787e5b66230af7d8f1f1a915c969a52f54b49bace77247936b2138a361b82f3b167142341d914562d3b1109",
     "0e8e926a667a1e02a62edbcdf2886dc25e65a66c02c079ededd5a1db82f263673f4ffcdaab1b81dc5aada67c86281c15",
     "75cedf38449a30de9ec6ea7dae41582e09d34d746909ce6af16ee52c615c6a70f94b0f882c677b65ec40284b4fd6d88f",
+    "f29b1e22717899ef34a8159790fde4388d3573ed67a8051d970dad690191ac6daf28c9a0bf8905e0e78bb848dc93c3db",
 ];
 fn historical(version: usize) -> Migrator {
     Migrator::with_migrations(
@@ -88,7 +90,7 @@ fn accepted_historical_sql_and_checksums_are_frozen() {
 #[tokio::test]
 async fn every_recognized_historical_schema_restores_without_modifying_the_selected_file() {
     let dir = tempfile::tempdir().unwrap();
-    for version in 1..=15 {
+    for version in 1..=16 {
         let target = dir.path().join(format!("target-{version}.db"));
         let source = dir.path().join(format!("v{version}.db"));
         let store = Store::open(&target).await.unwrap();
@@ -404,5 +406,80 @@ async fn delivery_keysets_seek_partial_indexes_without_terminal_history_or_temp_
         assert!(plan.contains("SEARCH"), "{plan}");
         assert!(!plan.contains("TEMP B-TREE"), "{plan}");
     }
+    db.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn failed_effect_migration_preserves_v16_authored_rows_and_retries_cleanly() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut db = database(&dir.path().join("v16.db")).await;
+    historical(16).run(&mut db).await.unwrap();
+    let account = RemoteAccount {
+        id: "a".into(),
+        provider: ProviderKind::Github,
+        host: "github.com".into(),
+        actor_id: "actor-a".into(),
+        login: "a".into(),
+        display_name: None,
+        authorization_epoch: "17".into(),
+        state: AccountState::Active,
+        notifications_supported: true,
+    };
+    sqlx::query("INSERT INTO accounts VALUES('a','github','github.com','actor-a',17,'active',?)")
+        .bind(serde_json::to_string(&account).unwrap())
+        .execute(&mut db)
+        .await
+        .unwrap();
+    sqlx::raw_sql("INSERT INTO commands VALUES ('a','11111111-1111-4111-8111-111111111111',17,1,'fixture.comment',1,'pull_request','pull',NULL,x'010203',x'0405',x'0607',zeroblob(32),1,9004,'2026-10-08T00:00:00Z','queued');
+INSERT INTO command_target_protections(account_id,command_id,reference_kind,reference_id,facet) VALUES ('a','11111111-1111-4111-8111-111111111111','facet','pull','files');
+INSERT INTO command_evidence(account_id,command_id,ordinal,kind,version,payload,recorded_at) VALUES ('a','11111111-1111-4111-8111-111111111111',0,'validation',1,x'0102','2026-10-08T00:00:00Z');")
+        .execute(&mut db)
+        .await
+        .unwrap();
+    let before:Vec<String>=sqlx::query_scalar("SELECT json_array(account_id,command_id,hex(canonical_envelope),hex(submission_hash),state) FROM commands ORDER BY account_id,command_id").fetch_all(&mut db).await.unwrap();
+    let mut migrations = historical(16).iter().cloned().collect::<Vec<_>>();
+    migrations.push(Migration::new(
+        17,
+        "failed effects".into(),
+        MigrationType::Simple,
+        sqlx::AssertSqlSafe(format!(
+            "{}\nSELECT * FROM missing_effect_migration;",
+            include_str!("../migrations/0017_effective_intent.sql")
+        ))
+        .into_sql_str(),
+        false,
+    ));
+    assert!(
+        Migrator::with_migrations(migrations)
+            .run(&mut db)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT max(version) FROM _sqlx_migrations")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        16
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM sqlite_schema WHERE name='command_effects'"
+        )
+        .fetch_one(&mut db)
+        .await
+        .unwrap(),
+        0
+    );
+    let after:Vec<String>=sqlx::query_scalar("SELECT json_array(account_id,command_id,hex(canonical_envelope),hex(submission_hash),state) FROM commands ORDER BY account_id,command_id").fetch_all(&mut db).await.unwrap();
+    assert_eq!(before, after);
+    CURRENT.run(&mut db).await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM command_effects")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        0
+    );
     db.close().await.unwrap();
 }

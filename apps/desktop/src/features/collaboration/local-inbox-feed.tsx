@@ -76,6 +76,9 @@ export function LocalInboxFeed({
   const [mutating, setMutating] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const page = canReadSaved(policy) ? query.data : undefined;
+  const pendingSubjects = new Set(
+    page?.pending_intents.map((intent) => intent.subject_id),
+  );
   const selected = page?.entries.find(
     (entry) => entry.item.id === selectedItem,
   );
@@ -298,9 +301,7 @@ export function LocalInboxFeed({
                               ? "Provider unread"
                               : "Provider read"}
                         </Badge>
-                        {page.pending_intents.some(
-                          (intent) => intent.subject_id === entry.item.id,
-                        ) ? (
+                        {pendingSubjects.has(entry.item.id) ? (
                           <Badge variant="outline" size="sm">
                             Pending changes
                           </Badge>

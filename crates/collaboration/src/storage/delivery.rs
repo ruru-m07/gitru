@@ -196,9 +196,22 @@ impl Store {
                     &now.now,
                 )
                 .await?;
+                let mut finalization = super::effective::finalization::DeliveryFinalization::new(
+                    &mut tx,
+                    &command,
+                    account,
+                    EvidencePurpose::Conflict,
+                )
+                .await?;
                 policy
-                    .finalize_in(&mut tx, &command, EvidencePurpose::Conflict, &proof)
+                    .finalize_in(
+                        &mut finalization,
+                        &command,
+                        EvidencePurpose::Conflict,
+                        &proof,
+                    )
                     .await?;
+                finalization.finish().await?;
                 let revision =
                     transition_in(&mut tx, &command, DeliveryState::Conflict, None, None).await?;
                 tx.commit().await.map_err(storage_error)?;
@@ -321,9 +334,14 @@ impl Store {
                 now,
             )
             .await?;
+            let mut finalization = super::effective::finalization::DeliveryFinalization::new(
+                &mut tx, &command, account, purpose,
+            )
+            .await?;
             policy
-                .finalize_in(&mut tx, &command, purpose, proof)
+                .finalize_in(&mut finalization, &command, purpose, proof)
                 .await?;
+            finalization.finish().await?;
             match purpose {
                 EvidencePurpose::Confirmed => DeliveryState::Confirmed,
                 EvidencePurpose::Accepted => DeliveryState::Accepted,
@@ -541,6 +559,7 @@ async fn transition_in(
         .await
         .map_err(storage_error)?;
     sqlx::query("UPDATE command_delivery SET generation=generation+1,next_action_at=?,attention=? WHERE account_id=? AND command_id=?").bind(next).bind(attention).bind(&command.account_id).bind(&command.command_id).execute(&mut **tx).await.map_err(storage_error)?;
+    super::effective::refresh_target_in(tx, &command.account_id, &command.target_id).await?;
     let account = account_in(tx, &command.account_id, false).await?;
     record_change(
         tx,

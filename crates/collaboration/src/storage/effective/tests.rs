@@ -395,3 +395,173 @@ async fn restore_preserves_effect_bytes_but_quarantine_never_reactivates_project
             .is_some()
     );
 }
+
+#[tokio::test]
+async fn notification_read_intent_updates_inbox_membership_counts_and_leaves_local_bookmark_independent()
+ {
+    let (_dir, store) = setup().await;
+    let mut item = store.detail_subject("a", "pull").await.unwrap();
+    item.id = "notification".into();
+    item.kind = RemoteItemKind::Notification;
+    item.unread = Some(true);
+    item.body = None;
+    item.state = "unread".into();
+    item.number = None;
+    let run = store.begin_sync("a", "1", "notifications").await.unwrap();
+    store
+        .apply_page(PageCommit {
+            account_id: "a".into(),
+            authorization_epoch: "1".into(),
+            scope: "notifications".into(),
+            run_id: run,
+            repositories: vec![],
+            items: vec![item],
+            endpoint_aliases: vec![],
+            next_cursor: None,
+            etag: None,
+            last_modified: None,
+            not_modified: false,
+            complete: true,
+            observed_at: "2026-10-03T00:00:00Z".into(),
+        })
+        .await
+        .unwrap();
+    let mut q = InboxQuery {
+        account_id: "a".into(),
+        remote_state: Some("unread".into()),
+        local_state: LocalInboxFilter::All,
+        search: None,
+        cursor: None,
+        limit: 10,
+    };
+    assert_eq!(store.inbox(q.clone()).await.unwrap().total_count, 1);
+    let effect = ItemIntentPatch {
+        unread: Some(false),
+        ..Default::default()
+    };
+    let cmd = seal(
+        "a",
+        "notification",
+        CommandTargetKind::Notification,
+        effect.clone(),
+    );
+    store.admit_command(&cmd, &Policy(effect)).await.unwrap();
+    assert_eq!(store.inbox(q.clone()).await.unwrap().total_count, 0);
+    q.remote_state = Some("read".into());
+    let page = store.inbox(q).await.unwrap();
+    assert_eq!(page.total_count, 1);
+    assert_eq!(page.entries[0].item.unread, Some(false));
+    assert!(!page.entries[0].local.bookmarked);
+    assert_eq!(
+        page.pending_intents[0].commands[0].fields,
+        vec![crate::IntentField::Unread]
+    );
+    let mut list = query("a");
+    list.kind = RemoteItemKind::Notification;
+    list.state = Some("read".into());
+    list.repository_id = None;
+    assert_eq!(store.query_items(list).await.unwrap().total_count, 1);
+}
+
+#[tokio::test]
+async fn metadata_and_body_refresh_preserve_intent_without_turning_pending_fields_into_provider_evidence()
+ {
+    let (_dir, store) = setup().await;
+    let account = store.account("a").await.unwrap();
+    admit(
+        &store,
+        ItemIntentPatch {
+            state: Some("closed".into()),
+            body: Some(BodyIntent { text: None }),
+            ..patch("Pending heading")
+        },
+    )
+    .await;
+    let mut page = fixtures::commit(&store, &account, DetailFacet::Body).await;
+    let subject = store.detail_subject("a", "pull").await.unwrap();
+    page.subject_binding = Some(crate::DetailSubjectBinding {
+        repository_id: "repo".into(),
+        repository_provider_id: "1".into(),
+        provider_id: subject.provider_id,
+        number: subject.number,
+        kind: subject.kind,
+        head_oid: subject.head_oid,
+    });
+    page.source.observed_at = "2099-01-01T00:00:00Z".into();
+    page.metadata = Some(crate::ResourceMetadataObservation {
+        kind: RemoteItemKind::PullRequest,
+        values: crate::ResourceMetadataValues {
+            title: Some("Fresh provider heading".into()),
+            state: Some("open".into()),
+            ..Default::default()
+        },
+        fields: vec![
+            crate::MetadataObservedField {
+                field: crate::MetadataField::Title,
+                state: DetailValueState::Known,
+            },
+            crate::MetadataObservedField {
+                field: crate::MetadataField::State,
+                state: DetailValueState::Known,
+            },
+        ],
+        source: crate::MetadataSource {
+            source: page.source.source.clone(),
+            adapter_version: page.source.adapter_version,
+            provider_updated_at: None,
+            observed_at: page.source.observed_at.clone(),
+        },
+    });
+    store.apply_detail(page).await.unwrap();
+    let snapshot = store
+        .detail(fixtures::query("a", DetailFacet::Body))
+        .await
+        .unwrap();
+    let meta = snapshot.metadata.unwrap();
+    assert_eq!(meta.values.title.as_deref(), Some("Pending heading"));
+    assert_eq!(meta.values.state.as_deref(), Some("closed"));
+    assert_eq!(snapshot.body.text, None);
+    assert_eq!(snapshot.body.state, DetailValueState::Known);
+    let json:String=sqlx::query_scalar("SELECT metadata_json FROM detail_resource_metadata WHERE account_id='a' AND subject_id='pull'").fetch_one(&store.inner.readers).await.unwrap();
+    let raw: crate::ResourceMetadataSnapshot = decode(&json).unwrap();
+    assert_eq!(raw.values.title.as_deref(), Some("Fresh provider heading"));
+    assert!(snapshot.pending_intent.is_some());
+}
+
+#[tokio::test]
+async fn current_epoch_replay_uses_the_bounded_target_index() {
+    let (_dir, store) = setup().await;
+    let plan=sqlx::query("EXPLAIN QUERY PLAN SELECT c.command_id FROM commands c JOIN command_effects e USING(account_id,command_id) WHERE c.account_id=? AND c.target_id=? AND c.authorization_epoch=? AND c.state IN ('queued','sending','retry_wait','accepted','outcome_unknown','conflict') ORDER BY c.enqueue_order LIMIT 65").bind("a").bind("pull").bind(1000_i64).fetch_all(&store.inner.readers).await.unwrap();
+    let details: Vec<String> = plan.iter().map(|row| row.get("detail")).collect();
+    assert!(
+        details
+            .iter()
+            .any(|detail| detail.contains("command_effect_targets")
+                && detail.contains("authorization_epoch=?")),
+        "{details:?}"
+    );
+    assert!(
+        !details.iter().any(|detail| detail.contains("TEMP B-TREE")),
+        "{details:?}"
+    );
+}
+
+#[tokio::test]
+async fn unknown_data_only_migration_cannot_hide_beyond_the_accepted_ledger_prefix() {
+    let (dir, store) = setup().await;
+    let target = dir.path().join("intent.db");
+    let backup = dir.path().join("future.db");
+    store.backup_to(&backup).await.unwrap();
+    store.close().await.unwrap();
+    drop(store);
+    let mut db = SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&backup))
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO _sqlx_migrations(version,description,success,checksum,execution_time) VALUES((SELECT max(version)+1 FROM _sqlx_migrations),'future data-only',1,zeroblob(48),0)").execute(&mut db).await.unwrap();
+    db.close().await.unwrap();
+    assert!(
+        crate::recovery::RecoverySession::prepare(&target, &backup)
+            .await
+            .is_err()
+    );
+}

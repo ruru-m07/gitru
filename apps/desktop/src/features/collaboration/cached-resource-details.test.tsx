@@ -167,6 +167,40 @@ function bodyAcquisitions() {
 }
 
 describe("cached PR and issue detail views", () => {
+  it("shows a queued local description even when the provider Body has never been cached", async () => {
+    const intent: NonNullable<DetailSnapshot["pending_intent"]> = {
+      subject_id: summary.id,
+      commands: [
+        { command_id: "pending-command", state: "queued", fields: ["body"] },
+      ],
+    };
+    body = {
+      ...body,
+      body: { state: "known", text: "Locally queued description" },
+      metadata: null,
+      pending_intent: intent,
+      evidence: {
+        ...body.evidence,
+        availability: "missing",
+        observed_state: "not_loaded",
+      },
+    };
+    mockTauriCommand("collaboration_item", () => ({
+      item: summary,
+      pending_intent: intent,
+      revision,
+      authorization_view: authorizationView,
+    }));
+    const { detail } = await open();
+    expect(await detail.findByText("Locally queued description")).toBeVisible();
+    expect(detail.getByText("Pending changes")).toBeVisible();
+    expect(
+      detail.queryByText(
+        "Not saved on this device yet. Sync this facet to load it.",
+      ),
+    ).not.toBeInTheDocument();
+  });
+
   it("retains one Body interest after an upgrade even when the saved description is fresh", async () => {
     body.metadata = null;
     const hydrate = mockTauriCommandResult("collaboration_hydrate_detail", {

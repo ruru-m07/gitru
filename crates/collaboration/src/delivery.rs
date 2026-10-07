@@ -247,10 +247,11 @@ pub(crate) trait CommandDeliveryPolicy: Send + Sync {
         evidence: &OperationEvidence,
     ) -> bool;
     /// Commit canonical provider state before a confirmed optimistic effect can
-    /// retire. Implementations with effects must override this transaction hook.
+    /// retire. Only the scoped materializer can issue canonical field coverage;
+    /// the default no-op cannot confirm a command with authored effects.
     async fn finalize_in(
         &self,
-        _tx: &mut Transaction<'_, Sqlite>,
+        _context: &mut crate::storage::effective::finalization::DeliveryFinalization<'_, '_>,
         _command: &DeliveryCommand,
         _purpose: EvidencePurpose,
         _evidence: &OperationEvidence,

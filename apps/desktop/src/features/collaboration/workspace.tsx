@@ -906,6 +906,9 @@ function ItemFeed({
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const Icon = icons[kind];
   const page = canReadSaved(policy) ? query.data : undefined;
+  const pendingSubjects = new Set(
+    page?.pending_intents.map((intent) => intent.subject_id),
+  );
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-2">
@@ -1022,9 +1025,7 @@ function ItemFeed({
                       <span>{item.state}</span>
                     </div>
                   </div>
-                  {page.pending_intents.some(
-                    (intent) => intent.subject_id === item.id,
-                  ) ? (
+                  {pendingSubjects.has(item.id) ? (
                     <Badge variant="outline" size="sm">
                       Pending changes
                     </Badge>

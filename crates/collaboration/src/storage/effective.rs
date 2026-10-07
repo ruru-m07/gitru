@@ -1,5 +1,6 @@
 //! Sparse materialization of ordered durable intent. Provider rows stay untouched.
 use super::*;
+pub(crate) mod finalization;
 use crate::effective::{EFFECT_VERSION, ItemIntentPatch, MAX_ACTIVE_EFFECTS};
 use crate::{PendingCommandIntent, PendingItemIntent};
 
