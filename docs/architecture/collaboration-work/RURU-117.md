@@ -1,6 +1,6 @@
 # RURU-117 — Conflict review and superseding intent
 
-Status: native and desktop implementation under qualification, 8 October 2026.
+Status: implementation locally qualified for review, 8 October 2026.
 The signed continuation contract preceded implementation; this record now
 describes the implemented boundary and explicit remaining validation.
 
@@ -11,7 +11,7 @@ Managed external worktree `ruru-117-conflict-recovery`, branch
 `5a30303`. That review stack includes the explicit RURU-116/RURU-118/RURU-126
 integration base; it does not include RURU-127 or RURU-128. The original
 implementation ancestry is preserved in `ruru/ruru-117-pre-restack-869e26b`.
-Live Linear RURU-117 is In Progress with RURU-115/RURU-116 prerequisites;
+RURU-117 retains RURU-115/RURU-116 prerequisites;
 these review stacks are not merged releases. Read architecture section 14 and
 this document when resuming.
 
@@ -220,3 +220,22 @@ turns; its expanded recovery suite passes 18/18 with strict Clippy. Native revie
 otherwise found no remaining CAS, supersession, owned-lane, quarantine or schema
 blocker. The canonical held-feed fix from RURU-116 is consumed before publication
 and qualified separately; live-provider writes remain outside this foundation.
+
+
+## Final publication qualification — 8 October 2026
+
+The integration-only review base is `ruru/ruru-117-dependencies` at `3d102a3`:
+RURU-123 #178 plus RURU-116 #177's held-feed correction `af1d906`. It contains
+no RURU-127/RURU-128 feature work. Final signed product source `a64b9fe` also
+includes independently reviewed pause eligibility repair `8c3a763`: terminal
+conflict/attention or exhausted reconciliation cannot advertise a working pause,
+while unknown outcomes retain read-only probes after the mutation-attempt cap.
+
+Full local `make verify` at `a64b9fe` passes **766 frontend tests**, one platform
+skip, **1,230 Rust test executions**, seven intentionally ignored helper cases,
+frontend lint/types/production build, Rust formatting and strict workspace
+Clippy. The inherited stale full-page and 304 publication fence is included in
+this complete gate. Log: `/tmp/gitru-r117-final-verify.log`.
+`make typegen` produced 142 commands and 446 schema exports. No personal
+credentials or production provider writes were used. Remote CI begins with
+publication and remains a separate gate; no merge is authorized.
