@@ -1,15 +1,14 @@
 //! Local queries and explicit, caller-bound selected-file hydration.
 use super::{
-    collaboration::{CollaborationState, Operation, authorize},
-    collaboration_local_links::{CallerProof, observe},
+    collaboration::{authorize, CollaborationState, Operation},
+    collaboration_local_links::{observe, CallerProof},
 };
 use collaboration::{
-    CollaborationError, ErrorCode, LocalLinkQuery, LocalLinkVersion, PullFileArtifact,
-    PullFileArtifactSnapshot, PullFileArtifactValidation, PullFileBlobReferences,
-    PullFileContentState, PullFileContext, PullFileDiffRequest, PullFileFlag,
-    PullFileMembershipReceipt, PullFileQuery, PullFileSnapshot, PullFileSource,
-    PullFileSourceStrategy, RefreshReceipt, local_links::LocalLinkState,
-    storage::PullFileSelection,
+    local_links::LocalLinkState, storage::PullFileSelection, CollaborationError, ErrorCode,
+    LocalLinkQuery, LocalLinkVersion, PullFileArtifact, PullFileArtifactSnapshot,
+    PullFileArtifactValidation, PullFileBlobReferences, PullFileContentState, PullFileContext,
+    PullFileDiffRequest, PullFileFlag, PullFileMembershipReceipt, PullFileQuery, PullFileSnapshot,
+    PullFileSource, PullFileSourceStrategy, RefreshReceipt,
 };
 use git::{
     core::RepoServices,
