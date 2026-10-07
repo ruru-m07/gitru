@@ -71,7 +71,10 @@ const tauriCapabilities: TauriCapabilities = {
 export const config: WebdriverIO.Config = {
   runner: "local",
   specs: ["./specs/**/*.e2e.ts"],
-  exclude: ["./specs/collaboration-harness.e2e.ts"],
+  exclude: [
+    "./specs/collaboration-harness.e2e.ts",
+    "./specs/collaboration-performance.e2e.ts",
+  ],
   maxInstances: 1,
   capabilities: [tauriCapabilities],
   services: [["@wdio/tauri-service", tauriServiceOptions]],

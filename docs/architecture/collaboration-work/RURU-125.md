@@ -197,3 +197,21 @@ the alternate account while the assertion expected the primary account. Pinning
 the measured account fixed the fixture and demonstrates that wrong-account useful
 content cannot be counted as a successful fast render. Remote CI and other
 platforms remain separate evidence.
+
+## Ordinary packaged-suite isolation
+
+The first remote run at signed head
+`a9a671bae185bb0de8e2845100a6f2a33b14baae` exposed a test-selection defect on
+macOS, Linux and Windows: the ordinary WebdriverIO glob also loaded the dedicated
+performance spec, which correctly rejects execution without the retained
+performance mode. The ordinary collaboration and Git smoke specs passed on all
+three runners, as did the separate collaboration harness, frontend, Rust and
+Clippy jobs available when the failure was inspected.
+
+The ordinary configuration now excludes both dedicated retained-harness specs.
+This changes test selection only; it does not change the measured application,
+performance protocol or published timings. A fresh local ordinary E2E-feature
+release build then ran exactly two spec files and passed all three packaged
+scenarios: two collaboration storage/window scenarios and one Git smoke
+scenario. The replacement remote matrix is separate evidence and remains pending
+until the signed fix is published.
