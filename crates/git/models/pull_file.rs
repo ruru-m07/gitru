@@ -10,6 +10,12 @@ pub const MAX_LOCAL_PULL_FILE_PATH_BYTES: usize = 4_096;
 pub const MAX_LOCAL_PULL_FILE_TEXT_BYTES: usize = 4 * 1_048_576;
 pub const MAX_LOCAL_PULL_FILE_TEXT_LINES: usize = 50_000;
 pub const MAX_LOCAL_PULL_FILE_LINE_BYTES: usize = 256 * 1_024;
+/// Refuse a single selected blob before Git begins rename detection or diffing.
+/// The local path is an optional accelerator, so bounded refusal is preferable
+/// to letting an untrusted repository make the Git child consume unbounded RAM.
+pub const MAX_LOCAL_PULL_FILE_INPUT_BLOB_BYTES: u64 = 8 * 1_048_576;
+/// Both sides of a selected change share one bounded native diff budget.
+pub const MAX_LOCAL_PULL_FILE_COMBINED_BLOB_BYTES: u64 = 12 * 1_048_576;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LocalPullFileDiffRequest {
@@ -56,6 +62,7 @@ pub enum LocalPullFileDiffUnavailableReason {
     AmbiguousMergeBase,
     KnownMergeBaseMismatch,
     ChangeIdentityMismatch,
+    SelectedObjectMissing,
     MetadataLimitExceeded,
     MalformedGitOutput,
     GitUnavailable,

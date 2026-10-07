@@ -6,7 +6,8 @@ use git::{
     models::pull_file::{
         LocalPullFileComparison, LocalPullFileDiff, LocalPullFileDiffRequest,
         LocalPullFileDiffState, LocalPullFileDiffUnavailableReason as Unavailable,
-        LocalPullFileDiffUnsupportedReason as Unsupported,
+        LocalPullFileDiffUnsupportedReason as Unsupported, MAX_LOCAL_PULL_FILE_COMBINED_BLOB_BYTES,
+        MAX_LOCAL_PULL_FILE_INPUT_BLOB_BYTES,
     },
 };
 
@@ -394,13 +395,104 @@ async fn missing_promisor_blob_is_not_hydrated() {
     assert_eq!(
         result.state,
         LocalPullFileDiffState::Unavailable {
-            reason: Unavailable::GitUnavailable
+            reason: Unavailable::SelectedObjectMissing
         }
     );
     assert!(
         !clone.has_local_object(&head_blob),
         "local diff must never hydrate a missing blob"
     );
+}
+
+#[tokio::test]
+async fn refuses_individual_and_combined_blob_budgets_before_diffing() {
+    let individual_repo = test_repo();
+    individual_repo.commit_file("large.txt", "base\n", "root");
+    let individual_base = individual_repo.head_commit();
+    individual_repo.create_file(
+        "large.txt",
+        &"x".repeat((MAX_LOCAL_PULL_FILE_INPUT_BLOB_BYTES + 1) as usize),
+    );
+    individual_repo.add("large.txt");
+    individual_repo.commit("compressed large input");
+    let individual_head = individual_repo.head_commit();
+    let individual = selected(
+        &individual_repo,
+        request(
+            &individual_base,
+            &individual_head,
+            None,
+            Some("large.txt"),
+            Some("large.txt"),
+        ),
+    )
+    .await;
+    assert_eq!(individual.state, LocalPullFileDiffState::Oversized);
+
+    let combined_repo = test_repo();
+    let side = (MAX_LOCAL_PULL_FILE_COMBINED_BLOB_BYTES / 2 + 1) as usize;
+    assert!((side as u64) < MAX_LOCAL_PULL_FILE_INPUT_BLOB_BYTES);
+    combined_repo.commit_file("combined.txt", &"a".repeat(side), "root");
+    let combined_base = combined_repo.head_commit();
+    combined_repo.create_file("combined.txt", &"b".repeat(side));
+    combined_repo.add("combined.txt");
+    combined_repo.commit("combined input");
+    let combined_head = combined_repo.head_commit();
+    let combined = selected(
+        &combined_repo,
+        request(
+            &combined_base,
+            &combined_head,
+            None,
+            Some("combined.txt"),
+            Some("combined.txt"),
+        ),
+    )
+    .await;
+    assert_eq!(combined.state, LocalPullFileDiffState::Oversized);
+}
+
+#[tokio::test]
+async fn preserves_mode_only_and_missing_gitlink_metadata_changes() {
+    let mode_repo = test_repo();
+    mode_repo.commit_file("mode.txt", "content\n", "root");
+    let mode_base = mode_repo.head_commit();
+    mode_repo.git(&["update-index", "--chmod=+x", "mode.txt"]);
+    mode_repo.commit("mode only");
+    let mode_head = mode_repo.head_commit();
+    let mode = selected(
+        &mode_repo,
+        request(
+            &mode_base,
+            &mode_head,
+            None,
+            Some("mode.txt"),
+            Some("mode.txt"),
+        ),
+    )
+    .await;
+    assert!(text(&mode).contains("old mode 100644"));
+    assert!(text(&mode).contains("new mode 100755"));
+
+    let gitlink_repo = test_repo();
+    gitlink_repo.commit_file("seed.txt", "seed\n", "root");
+    let gitlink_base = gitlink_repo.head_commit();
+    let missing_commit = "1".repeat(gitlink_base.len());
+    gitlink_repo.git(&[
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        &format!("160000,{missing_commit},submodule"),
+    ]);
+    gitlink_repo.commit("add unavailable gitlink");
+    let gitlink_head = gitlink_repo.head_commit();
+    let gitlink = selected(
+        &gitlink_repo,
+        request(&gitlink_base, &gitlink_head, None, None, Some("submodule")),
+    )
+    .await;
+    assert!(text(&gitlink).contains("new file mode 160000"));
+    assert!(text(&gitlink).contains(&format!("Subproject commit {missing_commit}")));
 }
 
 #[cfg(unix)]

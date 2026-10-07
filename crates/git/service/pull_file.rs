@@ -12,9 +12,10 @@ use crate::{
             LocalPullFileComparison, LocalPullFileDiff, LocalPullFileDiffProvenance,
             LocalPullFileDiffRequest, LocalPullFileDiffState,
             LocalPullFileDiffUnavailableReason as Unavailable,
-            LocalPullFileDiffUnsupportedReason as Unsupported, MAX_LOCAL_PULL_FILE_LINE_BYTES,
-            MAX_LOCAL_PULL_FILE_PATH_BYTES, MAX_LOCAL_PULL_FILE_TEXT_BYTES,
-            MAX_LOCAL_PULL_FILE_TEXT_LINES,
+            LocalPullFileDiffUnsupportedReason as Unsupported,
+            MAX_LOCAL_PULL_FILE_COMBINED_BLOB_BYTES, MAX_LOCAL_PULL_FILE_INPUT_BLOB_BYTES,
+            MAX_LOCAL_PULL_FILE_LINE_BYTES, MAX_LOCAL_PULL_FILE_PATH_BYTES,
+            MAX_LOCAL_PULL_FILE_TEXT_BYTES, MAX_LOCAL_PULL_FILE_TEXT_LINES,
         },
         remotes::RemoteObservationError,
     },
@@ -24,8 +25,10 @@ use std::{collections::HashSet, sync::Arc, time::Duration};
 
 const OPERATION_TIMEOUT: Duration = Duration::from_secs(20);
 const MAX_OBJECT_TYPE_BYTES: usize = 16;
+const MAX_OBJECT_SIZE_BYTES: usize = 32;
 const MAX_MERGE_BASE_BYTES: usize = 8 * 1_024;
 const MAX_CHANGE_METADATA_BYTES: usize = 64 * 1_024;
+const MAX_SELECTED_ENTRY_BYTES: usize = MAX_LOCAL_PULL_FILE_PATH_BYTES + 256;
 
 pub struct PullFileService {
     ctx: Arc<RepoContext>,
@@ -95,6 +98,27 @@ impl PullFileService {
             .is_some_and(|known| known != resolved_merge_base)
         {
             return unavailable(Unavailable::KnownMergeBaseMismatch, Some(provenance));
+        }
+
+        match preflight_selected_blobs(
+            &mut transaction,
+            &resolved_merge_base,
+            &request.head_oid,
+            request,
+        )
+        .await
+        {
+            Ok(Preflight::Ready) => {}
+            Ok(Preflight::Oversized) => {
+                return LocalPullFileDiff {
+                    provenance: Some(provenance),
+                    state: LocalPullFileDiffState::Oversized,
+                };
+            }
+            Ok(Preflight::Unsupported) => {
+                return unsupported(Unsupported::UnsupportedChangeKind, Some(provenance));
+            }
+            Err(reason) => return unavailable(reason, Some(provenance)),
         }
 
         match verify_change_identity(
@@ -276,6 +300,174 @@ async fn resolve_merge_base(
         2.. => Ok(ResolvedMergeBase::Ambiguous),
         _ => Err(Unavailable::MalformedGitOutput),
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Preflight {
+    Ready,
+    Oversized,
+    Unsupported,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SelectedEntry {
+    Blob {
+        size: u64,
+    },
+    /// A gitlink is metadata-only for `--submodule=short`; its referenced
+    /// commit does not need to exist in the selected repository.
+    Gitlink,
+    Unsupported,
+}
+
+/// Inspect exact tree entries before any rename, numstat, or patch workload.
+/// `ls-tree` resolves the literal path without reading blob content, then
+/// `cat-file -t/-s` verifies each blob is present and within the native budget.
+async fn preflight_selected_blobs(
+    transaction: &mut GitCommandTransaction,
+    merge_base_oid: &str,
+    head_oid: &str,
+    request: &LocalPullFileDiffRequest,
+) -> Result<Preflight, Unavailable> {
+    let mut combined = 0_u64;
+    for (commit_oid, path) in [
+        (merge_base_oid, request.old_path.as_deref()),
+        (head_oid, request.new_path.as_deref()),
+    ] {
+        let Some(path) = path else { continue };
+        match selected_entry(transaction, commit_oid, path).await? {
+            SelectedEntry::Blob { size } => {
+                if size > MAX_LOCAL_PULL_FILE_INPUT_BLOB_BYTES {
+                    return Ok(Preflight::Oversized);
+                }
+                combined = combined
+                    .checked_add(size)
+                    .ok_or(Unavailable::MetadataLimitExceeded)?;
+                if combined > MAX_LOCAL_PULL_FILE_COMBINED_BLOB_BYTES {
+                    return Ok(Preflight::Oversized);
+                }
+            }
+            SelectedEntry::Gitlink => {}
+            SelectedEntry::Unsupported => return Ok(Preflight::Unsupported),
+        }
+    }
+    Ok(Preflight::Ready)
+}
+
+async fn selected_entry(
+    transaction: &mut GitCommandTransaction,
+    commit_oid: &str,
+    path: &str,
+) -> Result<SelectedEntry, Unavailable> {
+    let args = local_command(["ls-tree", "--full-tree", "-z", commit_oid, "--", path]);
+    let (bytes, status) = local_read(transaction, &args, MAX_SELECTED_ENTRY_BYTES)
+        .await
+        .map_err(read_metadata_failure)?;
+    if status != 0 {
+        return Err(Unavailable::GitUnavailable);
+    }
+    let entry = parse_selected_entry(&bytes, commit_oid.len(), path.as_bytes())?;
+    match entry {
+        TreeEntry::Blob { oid } => {
+            let kind = local_command(["cat-file", "-t", oid.as_str()]);
+            let (bytes, status) = local_read(transaction, &kind, MAX_OBJECT_TYPE_BYTES)
+                .await
+                .map_err(read_metadata_failure)?;
+            if status == 128 {
+                return Err(Unavailable::SelectedObjectMissing);
+            }
+            if status != 0 {
+                return Err(Unavailable::GitUnavailable);
+            }
+            if bytes != b"blob\n" {
+                return Err(Unavailable::MalformedGitOutput);
+            }
+
+            let size = local_command(["cat-file", "-s", oid.as_str()]);
+            let (bytes, status) = local_read(transaction, &size, MAX_OBJECT_SIZE_BYTES)
+                .await
+                .map_err(read_metadata_failure)?;
+            if status == 128 {
+                return Err(Unavailable::SelectedObjectMissing);
+            }
+            if status != 0 {
+                return Err(Unavailable::GitUnavailable);
+            }
+            Ok(SelectedEntry::Blob {
+                size: parse_object_size(&bytes)?,
+            })
+        }
+        TreeEntry::Gitlink => Ok(SelectedEntry::Gitlink),
+        TreeEntry::Unsupported => Ok(SelectedEntry::Unsupported),
+    }
+}
+
+enum TreeEntry {
+    Blob { oid: String },
+    Gitlink,
+    Unsupported,
+}
+
+fn parse_selected_entry(
+    bytes: &[u8],
+    oid_length: usize,
+    expected_path: &[u8],
+) -> Result<TreeEntry, Unavailable> {
+    if bytes.is_empty() {
+        return Err(Unavailable::ChangeIdentityMismatch);
+    }
+    if !bytes.ends_with(b"\0") || bytes[..bytes.len() - 1].contains(&0) {
+        return Err(Unavailable::MalformedGitOutput);
+    }
+    let record = &bytes[..bytes.len() - 1];
+    let separator = record
+        .iter()
+        .position(|byte| *byte == b'\t')
+        .ok_or(Unavailable::MalformedGitOutput)?;
+    let (metadata, path_with_separator) = record.split_at(separator);
+    let path = &path_with_separator[1..];
+    if path != expected_path {
+        return Err(Unavailable::ChangeIdentityMismatch);
+    }
+    let mut fields = metadata.split(|byte| *byte == b' ');
+    let mode = fields.next().ok_or(Unavailable::MalformedGitOutput)?;
+    let kind = fields.next().ok_or(Unavailable::MalformedGitOutput)?;
+    let oid = fields.next().ok_or(Unavailable::MalformedGitOutput)?;
+    if fields.next().is_some()
+        || oid.len() != oid_length
+        || !matches!(oid.len(), 40 | 64)
+        || !oid
+            .iter()
+            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+    {
+        return Err(Unavailable::MalformedGitOutput);
+    }
+    match (mode, kind) {
+        (b"100644" | b"100755" | b"120000", b"blob") => Ok(TreeEntry::Blob {
+            oid: std::str::from_utf8(oid)
+                .map_err(|_| Unavailable::MalformedGitOutput)?
+                .to_owned(),
+        }),
+        (b"160000", b"commit") => Ok(TreeEntry::Gitlink),
+        _ => Ok(TreeEntry::Unsupported),
+    }
+}
+
+fn parse_object_size(bytes: &[u8]) -> Result<u64, Unavailable> {
+    let digits = bytes
+        .strip_suffix(b"\n")
+        .ok_or(Unavailable::MalformedGitOutput)?;
+    if digits.is_empty()
+        || !digits.iter().all(u8::is_ascii_digit)
+        || digits.len() > 20
+        || (digits.len() > 1 && digits[0] == b'0')
+    {
+        return Err(Unavailable::MalformedGitOutput);
+    }
+    std::str::from_utf8(digits)
+        .map_err(|_| Unavailable::MalformedGitOutput)?
+        .parse()
+        .map_err(|_| Unavailable::MalformedGitOutput)
 }
 
 #[derive(Debug)]
