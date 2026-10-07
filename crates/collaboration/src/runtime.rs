@@ -25,9 +25,9 @@ mod bitbucket_tasks_tests;
 #[cfg(test)]
 mod bitbucket_tests;
 mod clock;
-mod command_recovery;
 #[cfg(test)]
 mod clock_lifecycle_tests;
+mod command_recovery;
 mod delivery;
 mod demand;
 #[cfg(test)]

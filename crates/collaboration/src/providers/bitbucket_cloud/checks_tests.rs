@@ -24,6 +24,7 @@ fn request() -> CheckRequest {
                 selected: true,
             },
             subject: RemoteItem {
+                native_inbox: None,
                 id: format!("bitbucket_cloud:pull:{REPO}:67"),
                 account_id: account.id.clone(),
                 repository_id: Some(repository_id),

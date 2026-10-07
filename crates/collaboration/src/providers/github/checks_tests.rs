@@ -32,6 +32,7 @@ fn request() -> CheckRequest {
                 selected: true,
             },
             subject: RemoteItem {
+                native_inbox: None,
                 id: "github:pull:999".into(),
                 account_id: "a".into(),
                 repository_id: Some("github:repository:123".into()),
