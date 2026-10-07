@@ -558,7 +558,6 @@ async fn actual_gitlab_common_reads_capabilities_and_independent_body_survive_co
     for facet in [
         ResourceFacet::Comments,
         ResourceFacet::Reviews,
-        ResourceFacet::Checks,
         ResourceFacet::Merge,
     ] {
         assert_eq!(
@@ -572,6 +571,16 @@ async fn actual_gitlab_common_reads_capabilities_and_independent_body_survive_co
             CapabilityState::Unsupported
         );
     }
+    assert_eq!(
+        capabilities
+            .facets
+            .iter()
+            .find(|entry| entry.facet == ResourceFacet::Checks)
+            .unwrap()
+            .saved_read
+            .state,
+        CapabilityState::Supported
+    );
     assert!(
         !runtime.run_next().await,
         "cold local reads do not admit provider work"

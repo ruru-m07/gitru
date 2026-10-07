@@ -89,6 +89,18 @@ export function SavedItemDetail({
     kind !== "notification" &&
     (bodyPolicy?.saved_read.state === "unavailable" ||
       body.data?.evidence.availability === "unavailable");
+  const bodyHeadEvidence = bodyData?.metadata?.fields.find(
+    (field) => field.field === "head",
+  );
+  const bodyContext =
+    bodyHeadEvidence?.saved_state === "known" &&
+    bodyData?.metadata?.values.head?.oid &&
+    bodyData.evidence.facet_revision
+      ? {
+          headOid: bodyData.metadata.values.head.oid,
+          facetRevision: bodyData.evidence.facet_revision,
+        }
+      : null;
   return (
     <article
       className="min-w-0 overflow-y-auto border-l p-5"
@@ -166,6 +178,7 @@ export function SavedItemDetail({
         snapshot={providerEnabled ? context.data : undefined}
         instanceId={instanceId}
         repositoryId={item?.repository_id ?? null}
+        bodyContext={bodyContext}
       />
       <SavedDraftEditor account={account} subjectId={itemId} />
     </article>

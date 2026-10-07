@@ -532,7 +532,6 @@ async fn invalid_task_values_families_clocks_and_page_authority_roll_back_atomic
     for facet in [
         DetailFacet::Comments,
         DetailFacet::Reviews,
-        DetailFacet::Checks,
         DetailFacet::Participants,
     ] {
         let mut wrong = commit(&store, &account, facet).await;

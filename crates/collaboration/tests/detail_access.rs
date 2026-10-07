@@ -117,6 +117,7 @@ async fn observation(
         reconciliation: DetailReconciliation::full_history(),
         metadata: None,
         subject_binding: None,
+        check_context: None,
         account_id: account.into(),
         authorization_epoch: epoch,
         authorization_view: lease.authorization_view,

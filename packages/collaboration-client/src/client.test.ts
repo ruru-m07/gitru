@@ -847,6 +847,143 @@ describe("CollaborationClient", () => {
     cache.clear();
   });
   it.each([
+    {
+      changeScope: "detail:pull:body",
+      source: "Body revision",
+    },
+    {
+      changeScope: "repo:repo-1:pull_request",
+      source: "source repository",
+    },
+  ])("hides an exact-head check result before its $source refetch resolves", async ({
+    changeScope,
+  }) => {
+    let next = changePage("1");
+    const refreshed = deferred<DetailSnapshot>();
+    const detail = vi.fn(() => refreshed.promise);
+    const client = new CollaborationClient(
+      transport({
+        detail,
+        listen: async () => () => {},
+        changesSince: async () => next,
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    const head = "a".repeat(40);
+    const query = {
+      account_id: account.id,
+      subject_id: "pull",
+      facet: "checks" as const,
+      cursor: null,
+      limit: 50,
+    };
+    const key = [
+      ...collaborationKeys.detail(account, query),
+      "body-context",
+      "1",
+      head,
+    ] as const;
+    const exactGreen: DetailSnapshot = {
+      subject_id: "pull",
+      body: { state: "not_loaded", text: null },
+      metadata: null,
+      entries: [
+        {
+          id: "github-check-run:1",
+          provider_id: "check-run:1",
+          author: null,
+          title: null,
+          state: null,
+          body: { state: "not_loaded", text: null },
+          observed_body_state: "not_loaded",
+          updated_at: null,
+          head_oid: head,
+          native: {
+            kind: "check.v1",
+            value: {
+              kind: "check_run",
+              name: "build",
+              state: {
+                kind: "check_run",
+                status: "completed",
+                conclusion: "success",
+              },
+              description: { state: "omitted", text: null },
+              producer: "fixture-ci",
+              started_at: null,
+              completed_at: null,
+              updated_at: null,
+              allow_failure: null,
+            },
+          },
+          field_mask: ["check", "head_oid"],
+          field_validations: [],
+        },
+      ],
+      next_cursor: null,
+      revision: "1",
+      authorization_view: "1",
+      evidence: {
+        facet: "checks",
+        availability: "ready",
+        coverage: page.coverage,
+        freshness: "fresh",
+        stale_at: null,
+        facet_revision: "1",
+        authorization_epoch: "1",
+        access_reason: null,
+        source: null,
+        value_source: null,
+        saved_empty: false,
+        observed_state: "not_loaded",
+        sync: page.sync,
+      },
+    };
+    cache.setQueryData(key, exactGreen);
+    const observer = new QueryObserver<DetailSnapshot>(cache, {
+      queryKey: key,
+      queryFn: ({ signal }) => client.forAccount(account).detail(query, signal),
+      staleTime: Infinity,
+      retry: false,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+
+    next = changePage("2", "1", [
+      {
+        revision: "2",
+        account_id: account.id,
+        scope: changeScope,
+        reset: false,
+      },
+    ]);
+    await client.wake();
+
+    expect(cache.getQueryData(key)).toBeUndefined();
+    expect(observer.getCurrentResult().data).toBeUndefined();
+    expect(detail).toHaveBeenCalled();
+    refreshed.resolve({
+      ...exactGreen,
+      entries: [],
+      revision: "2",
+      evidence: {
+        ...exactGreen.evidence,
+        freshness: "stale",
+        coverage: {
+          state: "partial",
+          validated_at: exactGreen.evidence.coverage.validated_at,
+          remote_has_more: false,
+        },
+        facet_revision: "2",
+      },
+    });
+    await refreshed.promise;
+    unsubscribe();
+    stop();
+    cache.clear();
+  });
+  it.each([
     "repositories",
     "items",
     "item",

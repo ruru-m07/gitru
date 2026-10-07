@@ -11,11 +11,10 @@ const LATEST: &str = "2026-10-03T03:00:00Z";
 // Engine validation time is intentionally separate from provider ordering time.
 const VALIDATED: &str = "2099-01-01T00:00:00Z";
 const REVALIDATED: &str = "2099-01-01T00:01:00Z";
-const COLLECTIONS: [DetailFacet; 3] = [
-    DetailFacet::Comments,
-    DetailFacet::Reviews,
-    DetailFacet::Checks,
-];
+const HEAD_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const HEAD_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const BASE: &str = "cccccccccccccccccccccccccccccccccccccccc";
+const COLLECTIONS: [DetailFacet; 2] = [DetailFacet::Comments, DetailFacet::Reviews];
 
 async fn fixture() -> (tempfile::TempDir, Store, RemoteAccount) {
     let directory = tempfile::tempdir().unwrap();
@@ -94,6 +93,16 @@ async fn binding(store: &Store) -> DetailSubjectBinding {
 }
 
 async fn detail_head(store: &Store, actor: &RemoteAccount, head: Option<&str>, at: &str) {
+    detail_head_source(store, actor, head, "1", at).await;
+}
+
+async fn detail_head_source(
+    store: &Store,
+    actor: &RemoteAccount,
+    head: Option<&str>,
+    source_repository_provider_id: &str,
+    at: &str,
+) {
     let mut description = commit(store, actor, DetailFacet::Body).await;
     description.subject_binding = Some(binding(store).await);
     description.source.provider_updated_at = Some(at.into());
@@ -101,17 +110,36 @@ async fn detail_head(store: &Store, actor: &RemoteAccount, head: Option<&str>, a
     description.metadata = Some(ResourceMetadataObservation {
         kind: RemoteItemKind::PullRequest,
         values: ResourceMetadataValues {
+            base: Some(DetailBranch {
+                name: "main".into(),
+                oid: BASE.into(),
+                repository: Some(DetailRepositoryRef {
+                    provider_id: "1".into(),
+                    full_name: "owner/project".into(),
+                    web_url: None,
+                }),
+            }),
             head: head.map(|oid| DetailBranch {
                 name: "feature".into(),
                 oid: oid.into(),
-                repository: None,
+                repository: Some(DetailRepositoryRef {
+                    provider_id: source_repository_provider_id.into(),
+                    full_name: "owner/project".into(),
+                    web_url: None,
+                }),
             }),
             ..Default::default()
         },
-        fields: vec![MetadataObservedField {
-            field: MetadataField::Head,
-            state: DetailValueState::Known,
-        }],
+        fields: vec![
+            MetadataObservedField {
+                field: MetadataField::Base,
+                state: DetailValueState::Known,
+            },
+            MetadataObservedField {
+                field: MetadataField::Head,
+                state: DetailValueState::Known,
+            },
+        ],
         source: MetadataSource {
             source: description.source.source.clone(),
             adapter_version: description.source.adapter_version,
@@ -123,10 +151,64 @@ async fn detail_head(store: &Store, actor: &RemoteAccount, head: Option<&str>, a
 }
 
 fn current_check(head: &str) -> DetailEntry {
-    let mut check = entry("check");
-    check.head_oid = Some(head.into());
-    check.field_mask.push(DetailField::HeadOid);
-    check
+    DetailEntry {
+        id: "fixture-check-run:1".into(),
+        provider_id: "check-run:1".into(),
+        author: None,
+        title: None,
+        state: None,
+        body: DetailValue::default(),
+        observed_body_state: DetailValueState::NotLoaded,
+        updated_at: None,
+        head_oid: Some(head.into()),
+        native: Some(NativeDetailPayload::CheckV1(CheckV1 {
+            kind: CheckKind::CheckRun,
+            name: "fixture check".into(),
+            state: CheckStateV1::CheckRun {
+                status: "completed".into(),
+                conclusion: Some("success".into()),
+            },
+            description: DetailValue::default(),
+            producer: Some("fixture".into()),
+            started_at: None,
+            completed_at: None,
+            updated_at: None,
+            allow_failure: None,
+        })),
+        field_mask: vec![DetailField::Check, DetailField::HeadOid],
+        field_validations: vec![],
+    }
+}
+
+fn historical_entry(head: &str) -> DetailEntry {
+    let mut value = entry("check-history");
+    value.head_oid = Some(head.into());
+    value.field_mask.push(DetailField::HeadOid);
+    value
+}
+
+async fn bind_checks(store: &Store, page: &mut DetailCommit, head: &str) {
+    page.reconciliation = DetailReconciliation {
+        enumeration: DetailEnumeration::FullEnumeration,
+        head_scope: DetailHeadScope::CurrentHead,
+    };
+    page.subject_binding = Some(binding(store).await);
+    page.source.field_mask = vec![DetailField::Check, DetailField::HeadOid];
+    let body = read(store, DetailFacet::Body).await;
+    let source_repository_provider_id = body
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.values.head.as_ref())
+        .and_then(|head| head.repository.as_ref())
+        .map(|repository| repository.provider_id.clone())
+        // Negative fixtures without an authoritative head repository still
+        // need a well-formed captured page; Store admission rejects them.
+        .unwrap_or_else(|| "1".into());
+    page.check_context = Some(CheckContext {
+        head_oid: head.into(),
+        source_repository_provider_id,
+        metadata_facet_revision: body.evidence.facet_revision.unwrap(),
+    });
 }
 
 #[tokio::test]
@@ -256,17 +338,13 @@ async fn continuation_representation_drift_cannot_finish_or_prune_a_different_tr
 #[tokio::test]
 async fn accepted_head_change_stales_current_head_checks_and_discards_old_continuation() {
     let (_directory, store, actor) = fixture().await;
-    parent(&store, &actor, "open", Some("head-a"), EARLY).await;
+    parent(&store, &actor, "open", Some(HEAD_A), EARLY).await;
+    detail_head(&store, &actor, Some(HEAD_A), EARLY).await;
     let draft = authored(&store).await;
     let mut first = commit(&store, &actor, DetailFacet::Checks).await;
-    first.reconciliation.head_scope = DetailHeadScope::CurrentHead;
-    first.subject_binding = Some(binding(&store).await);
+    bind_checks(&store, &mut first, HEAD_A).await;
     first.source.observed_at = VALIDATED.into();
-    let mut check = entry("check");
-    check.state = Some("success".into());
-    check.head_oid = Some("head-a".into());
-    check.field_mask = vec![DetailField::State, DetailField::HeadOid];
-    first.entries = vec![check];
+    first.entries = vec![current_check(HEAD_A)];
     first.next_cursor = Some("head-a-page2".into());
     first.complete = false;
     first.whole_scope = false;
@@ -276,11 +354,11 @@ async fn accepted_head_change_stales_current_head_checks_and_discards_old_contin
         .await
         .unwrap();
     let mut late = from_lease(&actor, DetailFacet::Checks, old_lease);
-    late.subject_binding = Some(binding(&store).await);
+    bind_checks(&store, &mut late, HEAD_A).await;
     let old = read(&store, DetailFacet::Checks).await;
     assert_eq!(old.evidence.freshness, DetailFreshness::Fresh);
 
-    parent(&store, &actor, "open", Some("head-b"), LATER).await;
+    parent(&store, &actor, "open", Some(HEAD_B), LATER).await;
     assert_eq!(
         store.apply_detail(late).await.unwrap_err().code,
         ErrorCode::StaleView
@@ -292,6 +370,7 @@ async fn accepted_head_change_stales_current_head_checks_and_discards_old_contin
         DetailFreshness::Stale,
         "head-a check success cannot remain current-head evidence at head-b"
     );
+    detail_head(&store, &actor, Some(HEAD_B), LATER).await;
     let replacement = store
         .begin_detail("a", "1", "pull", DetailFacet::Checks)
         .await
@@ -299,6 +378,143 @@ async fn accepted_head_change_stales_current_head_checks_and_discards_old_contin
     assert_eq!(replacement.next_cursor, None);
     assert_eq!(replacement.etag, None);
     assert_eq!(store.draft("a", "pull").await.unwrap(), Some(draft));
+}
+
+#[tokio::test]
+async fn same_head_body_context_change_retires_queued_and_inflight_check_traversals() {
+    for source_repository_provider_id in ["1", "2"] {
+        let (_directory, store, actor) = fixture().await;
+        parent(&store, &actor, "open", Some(HEAD_A), EARLY).await;
+        detail_head_source(&store, &actor, Some(HEAD_A), "1", EARLY).await;
+        let draft = authored(&store).await;
+
+        let mut first = commit(&store, &actor, DetailFacet::Checks).await;
+        bind_checks(&store, &mut first, HEAD_A).await;
+        let old_context = first.check_context.clone();
+        first.source.observed_at = VALIDATED.into();
+        first.entries = vec![current_check(HEAD_A)];
+        first.next_cursor = Some("old-context-page-2".into());
+        first.complete = false;
+        first.whole_scope = false;
+        store.apply_detail(first).await.unwrap();
+
+        let old_lease = store
+            .begin_detail("a", "1", "pull", DetailFacet::Checks)
+            .await
+            .unwrap();
+        assert_eq!(old_lease.next_cursor.as_deref(), Some("old-context-page-2"));
+        let mut late = from_lease(&actor, DetailFacet::Checks, old_lease);
+        late.reconciliation = DetailReconciliation {
+            enumeration: DetailEnumeration::FullEnumeration,
+            head_scope: DetailHeadScope::CurrentHead,
+        };
+        late.subject_binding = Some(binding(&store).await);
+        late.source.field_mask = vec![DetailField::Check, DetailField::HeadOid];
+        late.check_context = old_context;
+        late.entries = vec![current_check(HEAD_A)];
+
+        // A Body refresh changes the authoritative metadata facet revision even
+        // when the OID is unchanged. The second case also changes the source repo.
+        detail_head_source(
+            &store,
+            &actor,
+            Some(HEAD_A),
+            source_repository_provider_id,
+            LATER,
+        )
+        .await;
+        assert_eq!(
+            store.apply_detail(late).await.unwrap_err().code,
+            ErrorCode::StaleView,
+            "source repository {source_repository_provider_id}: old in-flight page"
+        );
+
+        let historical = read(&store, DetailFacet::Checks).await;
+        assert_eq!(historical.entries.len(), 1, "retain prior context history");
+        assert_eq!(historical.evidence.freshness, DetailFreshness::Stale);
+        assert_eq!(historical.evidence.coverage.state, CoverageState::Partial);
+        assert_eq!(
+            historical.check_aggregate(Some(HEAD_A)),
+            Some(CheckAggregate {
+                state: CheckAggregateState::Stale,
+                authoritative: false,
+                total: 1,
+            })
+        );
+
+        let replacement = store
+            .begin_detail("a", "1", "pull", DetailFacet::Checks)
+            .await
+            .unwrap();
+        assert_eq!(replacement.next_cursor, None, "queued cursor is retired");
+        assert_eq!(replacement.etag, None, "old validators are retired");
+        assert_eq!(store.draft("a", "pull").await.unwrap(), Some(draft));
+    }
+}
+
+#[tokio::test]
+async fn same_head_source_repository_change_replaces_old_row_ordering_clocks() {
+    let (_directory, store, actor) = fixture().await;
+    parent(&store, &actor, "open", Some(HEAD_A), EARLY).await;
+    detail_head_source(&store, &actor, Some(HEAD_A), "source-a", EARLY).await;
+
+    let mut first = commit(&store, &actor, DetailFacet::Checks).await;
+    bind_checks(&store, &mut first, HEAD_A).await;
+    let mut green = current_check(HEAD_A);
+    let Some(NativeDetailPayload::CheckV1(check)) = &mut green.native else {
+        panic!("fixture check")
+    };
+    check.updated_at = Some(LATEST.into());
+    first.entries = vec![green];
+    first.source.observed_at = VALIDATED.into();
+    store.apply_detail(first).await.unwrap();
+
+    detail_head_source(&store, &actor, Some(HEAD_A), "source-b", LATER).await;
+    let replacement_lease = store
+        .begin_detail("a", "1", "pull", DetailFacet::Checks)
+        .await
+        .unwrap();
+    assert_eq!(replacement_lease.next_cursor, None);
+    assert_eq!(replacement_lease.etag, None);
+    assert_eq!(replacement_lease.source, None);
+    assert_eq!(replacement_lease.reconciliation, None);
+
+    let mut replacement = from_lease(&actor, DetailFacet::Checks, replacement_lease);
+    bind_checks(&store, &mut replacement, HEAD_A).await;
+    let mut failed = current_check(HEAD_A);
+    let Some(NativeDetailPayload::CheckV1(check)) = &mut failed.native else {
+        panic!("fixture check")
+    };
+    check.updated_at = Some(EARLY.into());
+    check.state = CheckStateV1::CheckRun {
+        status: "completed".into(),
+        conclusion: Some("failure".into()),
+    };
+    replacement.entries = vec![failed];
+    replacement.source.observed_at = REVALIDATED.into();
+    store.apply_detail(replacement).await.unwrap();
+
+    let saved = read(&store, DetailFacet::Checks).await;
+    assert_eq!(saved.evidence.freshness, DetailFreshness::Fresh);
+    assert_eq!(
+        saved.check_aggregate(Some(HEAD_A)),
+        Some(CheckAggregate {
+            state: CheckAggregateState::Failed,
+            authoritative: true,
+            total: 1,
+        })
+    );
+    let Some(NativeDetailPayload::CheckV1(check)) = &sole_entry(&saved).native else {
+        panic!("saved check")
+    };
+    assert_eq!(
+        check.state,
+        CheckStateV1::CheckRun {
+            status: "completed".into(),
+            conclusion: Some("failure".into()),
+        }
+    );
+    assert_eq!(check.updated_at.as_deref(), Some(EARLY));
 }
 
 #[tokio::test]
@@ -368,23 +584,23 @@ async fn completed_same_representation_multipage_scan_reconciles_only_its_own_ch
 #[tokio::test]
 async fn close_merge_and_historical_review_head_do_not_order_unrelated_child_fields() {
     let (_directory, store, actor) = fixture().await;
-    parent(&store, &actor, "open", Some("head-a"), EARLY).await;
+    parent(&store, &actor, "open", Some(HEAD_A), EARLY).await;
     let draft = authored(&store).await;
     let mut history = commit(&store, &actor, DetailFacet::Reviews).await;
     history.source.observed_at = VALIDATED.into();
     let mut review = observed_entry("review", "historical review", Some(LATER));
-    review.head_oid = Some("head-a".into());
+    review.head_oid = Some(HEAD_A.into());
     review.field_mask.push(DetailField::HeadOid);
     history.entries = vec![review];
     store.apply_detail(history).await.unwrap();
     let before = read(&store, DetailFacet::Reviews).await;
-    parent(&store, &actor, "closed", Some("head-b"), LATER).await;
-    parent(&store, &actor, "merged", Some("head-b"), LATEST).await;
+    parent(&store, &actor, "closed", Some(HEAD_B), LATER).await;
+    parent(&store, &actor, "merged", Some(HEAD_B), LATEST).await;
     let after = read(&store, DetailFacet::Reviews).await;
     assert_eq!(after.entries, before.entries);
     assert_eq!(after.evidence.coverage, before.evidence.coverage);
     assert_eq!(after.evidence.freshness, DetailFreshness::Fresh);
-    assert_eq!(sole_entry(&after).head_oid.as_deref(), Some("head-a"));
+    assert_eq!(sole_entry(&after).head_oid.as_deref(), Some(HEAD_A));
     assert_eq!(store.draft("a", "pull").await.unwrap(), Some(draft));
 }
 
@@ -579,22 +795,19 @@ async fn persisted_traversal_proof_resumes_after_cold_reopen_and_fences_old_gene
 #[tokio::test]
 async fn new_head_empty_check_set_is_complete_without_ordering_old_head_or_review_history() {
     let (_directory, store, actor) = fixture().await;
-    parent(&store, &actor, "open", Some("head-a"), EARLY).await;
+    parent(&store, &actor, "open", Some(HEAD_A), EARLY).await;
+    detail_head(&store, &actor, Some(HEAD_A), EARLY).await;
     let draft = authored(&store).await;
     let mut initial = commit(&store, &actor, DetailFacet::Checks).await;
-    initial.reconciliation.head_scope = DetailHeadScope::CurrentHead;
-    initial.subject_binding = Some(binding(&store).await);
+    bind_checks(&store, &mut initial, HEAD_A).await;
     initial.source.provider_updated_at = Some(LATER.into());
     initial.source.observed_at = VALIDATED.into();
-    let mut old_check = entry("head-a-check");
-    old_check.head_oid = Some("head-a".into());
-    old_check.field_mask.push(DetailField::HeadOid);
-    initial.entries = vec![old_check];
+    initial.entries = vec![current_check(HEAD_A)];
     store.apply_detail(initial).await.unwrap();
-    parent(&store, &actor, "open", Some("head-b"), LATEST).await;
+    parent(&store, &actor, "open", Some(HEAD_B), LATEST).await;
+    detail_head(&store, &actor, Some(HEAD_B), LATEST).await;
     let mut replacement = commit(&store, &actor, DetailFacet::Checks).await;
-    replacement.reconciliation.head_scope = DetailHeadScope::CurrentHead;
-    replacement.subject_binding = Some(binding(&store).await);
+    bind_checks(&store, &mut replacement, HEAD_B).await;
     replacement.source.provider_updated_at = Some(EARLY.into());
     replacement.source.observed_at = REVALIDATED.into();
     // Different head has an independent ordering domain, even if its clock is older.
@@ -604,8 +817,7 @@ async fn new_head_empty_check_set_is_complete_without_ordering_old_head_or_revie
     assert_eq!(empty.evidence.saved_empty, Some(true));
     assert_eq!(empty.evidence.freshness, DetailFreshness::Fresh);
     let mut matching = commit(&store, &actor, DetailFacet::Checks).await;
-    matching.reconciliation.head_scope = DetailHeadScope::CurrentHead;
-    matching.subject_binding = Some(binding(&store).await);
+    bind_checks(&store, &mut matching, HEAD_B).await;
     matching.not_modified = true;
     matching.source.provider_updated_at = None;
     matching.source.observed_at = "2099-01-01T00:02:00Z".into();
@@ -620,16 +832,13 @@ async fn new_head_empty_check_set_is_complete_without_ordering_old_head_or_revie
 #[tokio::test]
 async fn newer_authoritative_description_head_prevents_summary_head_checks_from_staying_fresh() {
     let (_directory, store, actor) = fixture().await;
-    parent(&store, &actor, "open", Some("head-a"), EARLY).await;
+    parent(&store, &actor, "open", Some(HEAD_A), EARLY).await;
+    detail_head(&store, &actor, Some(HEAD_A), EARLY).await;
     let draft = authored(&store).await;
     let mut checks = commit(&store, &actor, DetailFacet::Checks).await;
-    checks.reconciliation.head_scope = DetailHeadScope::CurrentHead;
-    checks.subject_binding = Some(binding(&store).await);
+    bind_checks(&store, &mut checks, HEAD_A).await;
     checks.source.observed_at = VALIDATED.into();
-    let mut check = entry("head-a-check");
-    check.head_oid = Some("head-a".into());
-    check.field_mask.push(DetailField::HeadOid);
-    checks.entries = vec![check];
+    checks.entries = vec![current_check(HEAD_A)];
     store.apply_detail(checks).await.unwrap();
 
     let mut description = commit(&store, &actor, DetailFacet::Body).await;
@@ -641,7 +850,7 @@ async fn newer_authoritative_description_head_prevents_summary_head_checks_from_
         values: ResourceMetadataValues {
             head: Some(DetailBranch {
                 name: "feature".into(),
-                oid: "head-b".into(),
+                oid: HEAD_B.into(),
                 repository: None,
             }),
             ..Default::default()
@@ -660,7 +869,7 @@ async fn newer_authoritative_description_head_prevents_summary_head_checks_from_
     store.apply_detail(description).await.unwrap();
     // R77 intentionally keeps the list projection independent: an intermediate
     // summary cannot overwrite the newer authoritative detail head.
-    parent(&store, &actor, "open", Some("head-a"), LATER).await;
+    parent(&store, &actor, "open", Some(HEAD_A), LATER).await;
     assert_eq!(
         store
             .item("a", "pull")
@@ -670,7 +879,7 @@ async fn newer_authoritative_description_head_prevents_summary_head_checks_from_
             .unwrap()
             .head_oid
             .as_deref(),
-        Some("head-a")
+        Some(HEAD_A)
     );
     assert_eq!(
         read(&store, DetailFacet::Body)
@@ -681,10 +890,10 @@ async fn newer_authoritative_description_head_prevents_summary_head_checks_from_
             .head
             .unwrap()
             .oid,
-        "head-b"
+        HEAD_B
     );
     let saved = read(&store, DetailFacet::Checks).await;
-    assert_eq!(sole_entry(&saved).head_oid.as_deref(), Some("head-a"));
+    assert_eq!(sole_entry(&saved).head_oid.as_deref(), Some(HEAD_A));
     assert_eq!(
         saved.evidence.freshness,
         DetailFreshness::Stale,
@@ -811,24 +1020,23 @@ async fn per_field_clocks_never_invent_order_across_different_representations() 
 #[tokio::test]
 async fn known_head_conflict_revokes_old_validator_and_admission_but_preserves_review_history() {
     let (_directory, store, actor) = fixture().await;
-    parent(&store, &actor, "open", Some("head-a"), EARLY).await;
+    parent(&store, &actor, "open", Some(HEAD_A), EARLY).await;
+    detail_head(&store, &actor, Some(HEAD_A), EARLY).await;
     let draft = authored(&store).await;
     let mut checks = commit(&store, &actor, DetailFacet::Checks).await;
-    checks.reconciliation.head_scope = DetailHeadScope::CurrentHead;
-    checks.subject_binding = Some(binding(&store).await);
+    bind_checks(&store, &mut checks, HEAD_A).await;
     checks.source.observed_at = VALIDATED.into();
-    checks.entries = vec![current_check("head-a")];
+    checks.entries = vec![current_check(HEAD_A)];
     store.apply_detail(checks).await.unwrap();
     let mut history = commit(&store, &actor, DetailFacet::Reviews).await;
     history.source.observed_at = VALIDATED.into();
-    history.entries = vec![current_check("head-a")];
+    history.entries = vec![historical_entry(HEAD_A)];
     store.apply_detail(history).await.unwrap();
     let before_history = read(&store, DetailFacet::Reviews).await;
     let mut old_304 = commit(&store, &actor, DetailFacet::Checks).await;
-    old_304.reconciliation.head_scope = DetailHeadScope::CurrentHead;
-    old_304.subject_binding = Some(binding(&store).await);
+    bind_checks(&store, &mut old_304, HEAD_A).await;
     old_304.not_modified = true;
-    detail_head(&store, &actor, Some("head-b"), LATEST).await;
+    detail_head(&store, &actor, Some(HEAD_B), LATEST).await;
     let revision = store.revision().await.unwrap();
     assert_eq!(
         store.apply_detail(old_304).await.unwrap_err().code,
@@ -862,15 +1070,14 @@ async fn known_head_conflict_revokes_old_validator_and_admission_but_preserves_r
 
     // Agreement restores admission, without projecting either source over the
     // other or recovering a validator that was invalidated during the conflict.
-    detail_head(&store, &actor, Some("head-a"), "2026-10-03T04:00:00Z").await;
+    detail_head(&store, &actor, Some(HEAD_A), "2026-10-03T04:00:00Z").await;
     let current = store
         .begin_detail("a", "1", "pull", DetailFacet::Checks)
         .await
         .unwrap();
     assert_eq!(current.etag, None);
     let mut fresh = from_lease(&actor, DetailFacet::Checks, current);
-    fresh.reconciliation.head_scope = DetailHeadScope::CurrentHead;
-    fresh.subject_binding = Some(binding(&store).await);
+    bind_checks(&store, &mut fresh, HEAD_A).await;
     fresh.source.observed_at = REVALIDATED.into();
     store.apply_detail(fresh).await.unwrap();
     assert_eq!(
@@ -883,8 +1090,8 @@ async fn known_head_conflict_revokes_old_validator_and_admission_but_preserves_r
 #[tokio::test]
 async fn unclassified_first_head_receipt_is_fenced_without_inventing_pre_dispatch_strategy() {
     let (_directory, store, actor) = fixture().await;
-    parent(&store, &actor, "open", Some("head-a"), EARLY).await;
-    detail_head(&store, &actor, Some("head-b"), LATEST).await;
+    parent(&store, &actor, "open", Some(HEAD_A), EARLY).await;
+    detail_head(&store, &actor, Some(HEAD_B), LATEST).await;
     let lease = store
         .begin_detail("a", "1", "pull", DetailFacet::Checks)
         .await
@@ -894,9 +1101,8 @@ async fn unclassified_first_head_receipt_is_fenced_without_inventing_pre_dispatc
         "future adapter has not declared head scope yet"
     );
     let mut first = from_lease(&actor, DetailFacet::Checks, lease);
-    first.reconciliation.head_scope = DetailHeadScope::CurrentHead;
-    first.subject_binding = Some(binding(&store).await);
-    first.entries = vec![current_check("head-a")];
+    bind_checks(&store, &mut first, HEAD_A).await;
+    first.entries = vec![current_check(HEAD_A)];
     let revision = store.revision().await.unwrap();
     assert_eq!(
         store.apply_detail(first).await.unwrap_err().code,
@@ -907,7 +1113,7 @@ async fn unclassified_first_head_receipt_is_fenced_without_inventing_pre_dispatc
 
     // Head history remains usable with the same summary/description mismatch.
     let mut history = commit(&store, &actor, DetailFacet::Reviews).await;
-    history.entries = vec![current_check("head-a")];
+    history.entries = vec![historical_entry(HEAD_A)];
     store.apply_detail(history).await.unwrap();
     assert_eq!(read(&store, DetailFacet::Reviews).await.entries.len(), 1);
 }
@@ -916,9 +1122,9 @@ async fn unclassified_first_head_receipt_is_fenced_without_inventing_pre_dispatc
 async fn matching_or_unobserved_description_head_keeps_declared_current_head_evidence_usable() {
     for known_head in [true, false] {
         let (_directory, store, actor) = fixture().await;
-        parent(&store, &actor, "open", Some("head-a"), EARLY).await;
+        parent(&store, &actor, "open", Some(HEAD_A), EARLY).await;
         if known_head {
-            detail_head(&store, &actor, Some("head-a"), LATEST).await;
+            detail_head(&store, &actor, Some(HEAD_A), LATEST).await;
         } else {
             let mut description = commit(&store, &actor, DetailFacet::Body).await;
             description.subject_binding = Some(binding(&store).await);
@@ -943,10 +1149,17 @@ async fn matching_or_unobserved_description_head_keeps_declared_current_head_evi
             store.apply_detail(description).await.unwrap();
         }
         let mut checks = commit(&store, &actor, DetailFacet::Checks).await;
-        checks.reconciliation.head_scope = DetailHeadScope::CurrentHead;
-        checks.subject_binding = Some(binding(&store).await);
+        bind_checks(&store, &mut checks, HEAD_A).await;
         checks.source.observed_at = VALIDATED.into();
-        checks.entries = vec![current_check("head-a")];
+        checks.entries = vec![current_check(HEAD_A)];
+        if !known_head {
+            assert_eq!(
+                store.apply_detail(checks).await.unwrap_err().code,
+                ErrorCode::NotFound
+            );
+            assert!(read(&store, DetailFacet::Checks).await.entries.is_empty());
+            continue;
+        }
         store.apply_detail(checks).await.unwrap();
         let saved = read(&store, DetailFacet::Checks).await;
         assert_eq!(
@@ -956,8 +1169,7 @@ async fn matching_or_unobserved_description_head_keeps_declared_current_head_evi
         );
         assert_eq!(saved.evidence.coverage.state, CoverageState::Complete);
         let mut matching = commit(&store, &actor, DetailFacet::Checks).await;
-        matching.reconciliation.head_scope = DetailHeadScope::CurrentHead;
-        matching.subject_binding = Some(binding(&store).await);
+        bind_checks(&store, &mut matching, HEAD_A).await;
         matching.not_modified = true;
         store.apply_detail(matching).await.unwrap();
         assert_eq!(read(&store, DetailFacet::Checks).await.entries.len(), 1);

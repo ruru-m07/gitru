@@ -132,6 +132,7 @@ pub enum DetailField {
     TaskResolverLogin,
     TaskResolverDisplayName,
     TaskCommentId,
+    Check,
 }
 
 impl DetailField {
@@ -163,12 +164,16 @@ impl DetailField {
                 | Self::TaskCommentId
         )
     }
+    pub(crate) fn is_check(self) -> bool {
+        self == Self::Check
+    }
     pub(crate) fn valid_for(self, facet: DetailFacet) -> bool {
         match facet {
             DetailFacet::Participants => self.is_participant(),
             DetailFacet::Tasks => self.is_task(),
+            DetailFacet::Checks => self.is_check() || self == Self::HeadOid,
             DetailFacet::Commits => false,
-            _ => !self.is_participant() && !self.is_task(),
+            _ => !self.is_participant() && !self.is_task() && !self.is_check(),
         }
     }
 }
@@ -325,6 +330,7 @@ pub struct DetailCommit {
     pub body: DetailValue,
     pub metadata: Option<crate::ResourceMetadataObservation>,
     pub subject_binding: Option<crate::DetailSubjectBinding>,
+    pub check_context: Option<crate::CheckContext>,
     pub entries: Vec<DetailEntry>,
     pub source: DetailSource,
     pub next_cursor: Option<String>,

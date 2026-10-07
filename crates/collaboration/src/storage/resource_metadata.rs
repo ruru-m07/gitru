@@ -316,20 +316,6 @@ pub(super) async fn apply_in(
     }
     sqlx::query("INSERT INTO detail_resource_metadata(account_id,subject_id,authorization_epoch,metadata_json,source_json) VALUES(?,?,?,?,?) ON CONFLICT(account_id,subject_id) DO UPDATE SET authorization_epoch=excluded.authorization_epoch,metadata_json=excluded.metadata_json,source_json=excluded.source_json")
         .bind(&page.account_id).bind(&page.subject_id).bind(&page.authorization_epoch).bind(json).bind(encode(&source)?).execute(&mut **tx).await.map_err(storage_error)?;
-    if !page.not_modified
-        && saved.fields.iter().any(|field| {
-            field.field == MetadataField::Head && field.observed_state == DetailValueState::Known
-        })
-    {
-        let account = account_in(tx, &page.account_id, true).await?;
-        super::details::invalidate_declared_head_in(
-            tx,
-            &account,
-            &page.subject_id,
-            saved.values.head.as_ref().map(|head| head.oid.as_str()),
-        )
-        .await?;
-    }
     Ok(())
 }
 

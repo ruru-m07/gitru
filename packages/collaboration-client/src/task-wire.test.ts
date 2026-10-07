@@ -170,7 +170,7 @@ describe("generated native Task wire family", () => {
     }
   });
 
-  it("rejects duplicate or unknown authority rather than enlarging the three field families", () => {
+  it("rejects duplicate or unknown authority rather than enlarging the known field families", () => {
     expect(
       DetailEntrySchema.safeParse({
         ...entry,

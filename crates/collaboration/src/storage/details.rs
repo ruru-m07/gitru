@@ -33,13 +33,27 @@ pub(super) async fn invalidate_declared_head_in(
         .bind(&account.id).bind(subject).bind(&account.authorization_epoch).fetch_all(&mut **tx).await.map_err(storage_error)?;
     for row in rows {
         let source: StoredSource = decode(row.get("source_json"))?;
-        if source.traversal().is_none_or(|proof| {
-            proof.reconciliation.head_scope != DetailHeadScope::CurrentHead
-                || proof.head_oid.as_deref() == head
-        }) {
+        let Some(proof) = source
+            .traversal()
+            .filter(|proof| proof.reconciliation.head_scope == DetailHeadScope::CurrentHead)
+        else {
+            continue;
+        };
+        let facet: DetailFacet = decode(&format!("\"{}\"", row.get::<String, _>("facet")))?;
+        let changed = if facet == DetailFacet::Checks {
+            match super::pull_commits::check_context_in(tx, &account.id, subject, false).await {
+                Ok(context) => proof.check_context.as_ref() != Some(&context),
+                Err(error) if matches!(error.code, ErrorCode::NotFound | ErrorCode::StaleView) => {
+                    true
+                }
+                Err(error) => return Err(error),
+            }
+        } else {
+            proof.head_oid.as_deref() != head
+        };
+        if !changed {
             continue;
         }
-        let facet: DetailFacet = decode(&format!("\"{}\"", row.get::<String, _>("facet")))?;
         let scope = facet.scope(subject);
         let stored = scope_in(tx, &account.id, &scope).await?.ok_or_else(stale)?;
         let mut coverage = stored.coverage;
@@ -214,7 +228,23 @@ pub(crate) async fn detail_evidence_in(
             .fetch_one(&mut **tx)
             .await
             .map_err(storage_error)?;
+            let check_context_changed = if facet == DetailFacet::Checks {
+                match super::pull_commits::check_context_in(tx, &account.id, subject_id, false)
+                    .await
+                {
+                    Ok(context) => proof.check_context.as_ref() != Some(&context),
+                    Err(error)
+                        if matches!(error.code, ErrorCode::NotFound | ErrorCode::StaleView) =>
+                    {
+                        true
+                    }
+                    Err(error) => return Err(error),
+                }
+            } else {
+                false
+            };
             head != proof.head_oid
+                || check_context_changed
                 || super::resource_metadata::head_conflicts_in(
                     tx,
                     account,
@@ -297,6 +327,9 @@ fn participant_text(value: &Option<String>, limit: usize, nonempty: bool) -> boo
 }
 
 fn validate_native(facet: DetailFacet, entry: &DetailEntry) -> Result<()> {
+    if facet == DetailFacet::Checks {
+        return validate_check(entry);
+    }
     if facet == DetailFacet::Tasks {
         return validate_task(entry);
     }
@@ -329,6 +362,66 @@ fn validate_native(facet: DetailFacet, entry: &DetailEntry) -> Result<()> {
             .is_some_and(|at| !timestamp_valid(at))
         || entry.field_mask.contains(&DetailField::ParticipantApproved) && value.approved.is_none()
         || entry.field_mask.contains(&DetailField::ParticipantRole) && value.role.is_none()
+    {
+        return Err(invalid_detail());
+    }
+    Ok(())
+}
+
+fn check_text(value: &str, limit: usize, nonempty: bool) -> bool {
+    value.len() <= limit && (!nonempty || !value.is_empty()) && !value.chars().any(char::is_control)
+}
+
+fn validate_check(entry: &DetailEntry) -> Result<()> {
+    let Some(crate::NativeDetailPayload::CheckV1(check)) = &entry.native else {
+        return Err(invalid_detail());
+    };
+    validate_value(&check.description)?;
+    let state_valid = match (&check.kind, &check.state) {
+        (crate::CheckKind::CheckRun, crate::CheckStateV1::CheckRun { status, conclusion }) => {
+            check_text(status, 256, true)
+                && conclusion
+                    .as_deref()
+                    .is_none_or(|value| check_text(value, 256, true))
+                && check.allow_failure.is_none()
+        }
+        (crate::CheckKind::CommitStatus, crate::CheckStateV1::CommitStatus { state }) => {
+            check_text(state, 256, true)
+        }
+        _ => false,
+    };
+    if !state_valid
+        || !check_text(&check.name, 16_384, true)
+        || check
+            .description
+            .text
+            .as_ref()
+            .is_some_and(|value| value.len() > MAX_ENTRY_BODY_BYTES)
+        || check
+            .producer
+            .as_deref()
+            .is_some_and(|value| !check_text(value, 1024, false))
+        || [&check.started_at, &check.completed_at, &check.updated_at]
+            .into_iter()
+            .any(|value| value.as_deref().is_some_and(|at| !timestamp_valid(at)))
+        || entry.author.is_some()
+        || entry.title.is_some()
+        || entry.state.is_some()
+        || entry.body != DetailValue::default()
+        || entry.observed_body_state != DetailValueState::NotLoaded
+        || entry.updated_at.is_some()
+        || entry.head_oid.is_none()
+    {
+        return Err(invalid_detail());
+    }
+    Ok(())
+}
+
+fn validate_check_input(entry: &DetailEntry) -> Result<()> {
+    if entry.field_mask.len() != 2
+        || !entry.field_mask.contains(&DetailField::Check)
+        || !entry.field_mask.contains(&DetailField::HeadOid)
+        || !entry.field_validations.is_empty()
     {
         return Err(invalid_detail());
     }
@@ -464,6 +557,9 @@ fn blank_native(native: &Option<crate::NativeDetailPayload>) -> Option<crate::Na
                 comment_id: None,
             })
         }
+        crate::NativeDetailPayload::CheckV1(value) => {
+            crate::NativeDetailPayload::CheckV1(value.clone())
+        }
     })
 }
 
@@ -553,6 +649,18 @@ fn merge_task_field(
     Ok(())
 }
 
+fn merge_check_field(saved: &mut DetailEntry, incoming: &DetailEntry) -> Result<()> {
+    let (
+        Some(crate::NativeDetailPayload::CheckV1(saved)),
+        Some(crate::NativeDetailPayload::CheckV1(incoming)),
+    ) = (&mut saved.native, &incoming.native)
+    else {
+        return Err(invalid_detail());
+    };
+    *saved = incoming.clone();
+    Ok(())
+}
+
 fn merge_entry(
     facet: DetailFacet,
     mut incoming: DetailEntry,
@@ -578,6 +686,9 @@ fn merge_entry(
             };
             task.observed_content_state = DetailValueState::Oversized;
         }
+    }
+    if facet == DetailFacet::Checks {
+        validate_check_input(&incoming)?;
     }
     if facet == DetailFacet::Participants && !incoming.field_validations.is_empty() {
         return Err(invalid_detail());
@@ -616,7 +727,11 @@ fn merge_entry(
             body: DetailValue::default(),
             observed_body_state: DetailValueState::NotLoaded,
             updated_at: None,
-            head_oid: None,
+            head_oid: if facet == DetailFacet::Checks {
+                incoming.head_oid.clone()
+            } else {
+                None
+            },
             native: blank_native(&incoming.native),
             field_mask: vec![],
             field_validations: vec![],
@@ -653,6 +768,10 @@ fn merge_entry(
             old.creator.provider_id == new.creator.provider_id
                 && old.creator.kind == new.creator.kind
         }
+        (
+            Some(crate::NativeDetailPayload::CheckV1(old)),
+            Some(crate::NativeDetailPayload::CheckV1(new)),
+        ) => old.kind == new.kind,
         _ => false,
     };
     if saved.entry.provider_id != incoming.provider_id || !same_native_identity {
@@ -660,6 +779,8 @@ fn merge_entry(
     }
     let comparable = if let Some(crate::NativeDetailPayload::TaskV1(task)) = &incoming.native {
         task.updated_at.clone()
+    } else if let Some(crate::NativeDetailPayload::CheckV1(check)) = &incoming.native {
+        check.updated_at.clone()
     } else if incoming.field_mask.contains(&DetailField::UpdatedAt) {
         incoming
             .updated_at
@@ -782,6 +903,7 @@ fn merge_entry(
                 merge_task_field(&mut saved.entry, &incoming, *field)?;
             }
             field if field.is_task() => merge_task_field(&mut saved.entry, &incoming, *field)?,
+            DetailField::Check => merge_check_field(&mut saved.entry, &incoming)?,
             _ => return Err(invalid_detail()),
         }
         saved.observed(*field, comparable.as_deref(), source, head);
@@ -839,6 +961,15 @@ async fn validate_lease_in(
         .bind(account_id).bind(subject_id).bind(tag(&facet)?).bind(epoch).fetch_optional(&mut **tx).await.map_err(storage_error)?;
     let source: Option<StoredSource> = source.map(|json| decode(&json)).transpose()?;
     let proof = source.as_ref().and_then(StoredSource::traversal);
+    // begin_detail drops old traversal tokens when the retained observation is
+    // outside the current head/context. The replacement still has to match the
+    // durable run/cursor/authorization above, but the historical proof must not
+    // veto the fresh traversal it caused.
+    let replaces_incomparable_scope = source.is_some()
+        && lease.next_cursor.is_none()
+        && lease.etag.is_none()
+        && lease.source.is_none()
+        && lease.reconciliation.is_none();
     let reconciliation = lease.reconciliation.map(|value| {
         if facet == DetailFacet::Body {
             DetailReconciliation {
@@ -849,12 +980,26 @@ async fn validate_lease_in(
             value
         }
     });
-    if source.as_ref().map(|source| &source.source) != lease.source.as_ref()
-        || proof.map(|proof| proof.reconciliation) != reconciliation
-        || proof.is_some_and(|proof| {
-            proof.reconciliation.head_scope == DetailHeadScope::CurrentHead
-                && proof.head_oid != subject.head_oid
-        })
+    let check_context_changed = if !replaces_incomparable_scope
+        && facet == DetailFacet::Checks
+        && proof.is_some()
+    {
+        match super::pull_commits::check_context_in(tx, account_id, subject_id, false).await {
+            Ok(context) => proof.and_then(|proof| proof.check_context.as_ref()) != Some(&context),
+            Err(error) if matches!(error.code, ErrorCode::NotFound | ErrorCode::StaleView) => true,
+            Err(error) => return Err(error),
+        }
+    } else {
+        false
+    };
+    if !replaces_incomparable_scope
+        && (source.as_ref().map(|source| &source.source) != lease.source.as_ref()
+            || proof.map(|proof| proof.reconciliation) != reconciliation
+            || check_context_changed
+            || proof.is_some_and(|proof| {
+                proof.reconciliation.head_scope == DetailHeadScope::CurrentHead
+                    && proof.head_oid != subject.head_oid
+            }))
     {
         return Err(stale());
     }
@@ -863,6 +1008,47 @@ async fn validate_lease_in(
 }
 
 impl Store {
+    pub(crate) async fn check_context(
+        &self,
+        account_id: &str,
+        subject_id: &str,
+    ) -> Result<crate::CheckContext> {
+        let mut tx = self.inner.readers.begin().await.map_err(storage_error)?;
+        let context =
+            super::pull_commits::check_context_in(&mut tx, account_id, subject_id, true).await?;
+        tx.commit().await.map_err(storage_error)?;
+        Ok(context)
+    }
+
+    pub(crate) async fn validate_check_dispatch(
+        &self,
+        account_id: &str,
+        epoch: &str,
+        subject_id: &str,
+        lease: &DetailLease,
+        binding: &DetailSubjectBinding,
+    ) -> Result<crate::CheckContext> {
+        let mut tx = self.inner.readers.begin().await.map_err(storage_error)?;
+        let subject = validate_lease_in(
+            &mut tx,
+            account_id,
+            epoch,
+            subject_id,
+            DetailFacet::Checks,
+            lease,
+        )
+        .await?;
+        super::resource_metadata::validate_binding_in(&mut tx, account_id, &subject, binding)
+            .await?;
+        let context =
+            super::pull_commits::check_context_in(&mut tx, account_id, subject_id, true).await?;
+        if binding.head_oid.as_ref() != Some(&context.head_oid) {
+            return Err(stale());
+        }
+        tx.commit().await.map_err(storage_error)?;
+        Ok(context)
+    }
+
     pub(crate) async fn validate_detail_dispatch(
         &self,
         account_id: &str,
@@ -1185,12 +1371,31 @@ impl Store {
                 .map(|proof| proof.reconciliation),
         )
         .await?;
+        let current_check_context = if facet == DetailFacet::Checks {
+            match super::pull_commits::check_context_in(&mut tx, account_id, subject_id, false)
+                .await
+            {
+                Ok(context) => Some(context),
+                Err(error) if matches!(error.code, ErrorCode::NotFound | ErrorCode::StaleView) => {
+                    None
+                }
+                Err(error) => return Err(error),
+            }
+        } else {
+            None
+        };
         let comparable_scope = source
             .as_ref()
             .and_then(StoredSource::traversal)
             .is_some_and(|proof| {
-                proof.reconciliation.head_scope != DetailHeadScope::CurrentHead
-                    || proof.head_oid == subject.head_oid
+                if facet == DetailFacet::Checks {
+                    current_check_context
+                        .as_ref()
+                        .is_some_and(|context| proof.check_context.as_ref() == Some(context))
+                } else {
+                    proof.reconciliation.head_scope != DetailHeadScope::CurrentHead
+                        || proof.head_oid == subject.head_oid
+                }
             });
         let resume = old
             .as_ref()
@@ -1241,9 +1446,10 @@ impl Store {
                 .and_then(|s| s.etag.clone()),
             reconciliation: source
                 .as_ref()
+                .filter(|_| comparable_scope)
                 .and_then(StoredSource::traversal)
                 .map(|p| p.reconciliation),
-            source: source.map(|s| s.source),
+            source: source.filter(|_| comparable_scope).map(|s| s.source),
         };
         tx.commit().await.map_err(storage_error)?;
         Ok(result)
@@ -1419,6 +1625,14 @@ pub(super) async fn apply_detail_in(
     if page.facet.capability(&subject.kind).is_none() {
         return Err(invalid_detail());
     }
+    if page.facet == DetailFacet::Checks {
+        let current =
+            super::pull_commits::check_context_in(tx, &page.account_id, &page.subject_id, true)
+                .await?;
+        if page.check_context.as_ref() != Some(&current) {
+            return Err(stale());
+        }
+    }
     if identities::instance_in(tx, &account).await?.id != page.instance_id
         || metadata(tx).await?.1 != page.authorization_view
     {
@@ -1452,14 +1666,26 @@ pub(super) async fn apply_detail_in(
         .and_then(|r| r.get::<Option<String>, _>("value_source_json"))
         .map(|json| decode(&json))
         .transpose()?;
-    let same_head_context = native_source
-        .traversal()
-        .and_then(|proof| proof.head_oid.as_ref())
-        == previous_native_source
-            .as_ref()
-            .and_then(StoredSource::traversal)
-            .and_then(|proof| proof.head_oid.as_ref());
-    let ordering_source = previous_value_source.as_ref().filter(|_| same_head_context);
+    let same_traversal_context = if page.facet == DetailFacet::Checks {
+        native_source
+            .traversal()
+            .and_then(|proof| proof.check_context.as_ref())
+            == previous_native_source
+                .as_ref()
+                .and_then(StoredSource::traversal)
+                .and_then(|proof| proof.check_context.as_ref())
+    } else {
+        native_source
+            .traversal()
+            .and_then(|proof| proof.head_oid.as_ref())
+            == previous_native_source
+                .as_ref()
+                .and_then(StoredSource::traversal)
+                .and_then(|proof| proof.head_oid.as_ref())
+    };
+    let ordering_source = previous_value_source
+        .as_ref()
+        .filter(|_| same_traversal_context);
     if ordering_source.is_some_and(|old| {
         old.source == page.source.source
             && old.adapter_version == page.source.adapter_version
@@ -1503,7 +1729,7 @@ pub(super) async fn apply_detail_in(
         let mut source = page.source.clone();
         if source.provider_updated_at.is_none()
             && let Some(old) = previous_value_source.as_ref().filter(|old| {
-                same_head_context
+                same_traversal_context
                     && old.source == source.source
                     && old.adapter_version == source.adapter_version
             })
@@ -1572,16 +1798,42 @@ pub(super) async fn apply_detail_in(
             .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&page.authorization_epoch).bind(&revision).bind(encode(&body)?).bind(encode(&native_source)?).bind(value_source.map(|s|encode(&s)).transpose()?).bind(tag(&observed_state)?).bind(stale_at).execute(&mut **tx).await.map_err(storage_error)?;
     if page.facet == DetailFacet::Body {
         super::resource_metadata::apply_in(tx, &page, &subject.kind).await?;
+        let saved_metadata = super::resource_metadata::read_in(tx, &account, &subject.id).await?;
+        let saved_head = saved_metadata.as_ref().and_then(|metadata| {
+            metadata
+                .fields
+                .iter()
+                .find(|field| field.field == crate::MetadataField::Head)
+                .filter(|field| field.saved_state == DetailValueState::Known)
+                .and(metadata.values.head.as_ref())
+                .map(|head| head.oid.as_str())
+        });
+        invalidate_declared_head_in(tx, &account, &subject.id, saved_head).await?;
     } else if page.metadata.is_some() {
         return Err(invalid_detail());
     }
     for incoming in page.entries {
-        let old:Option<String>=sqlx::query_scalar("SELECT json FROM detail_entries WHERE account_id=? AND subject_id=? AND facet=? AND id=?")
+        let old=sqlx::query("SELECT json,last_seen_run FROM detail_entries WHERE account_id=? AND subject_id=? AND facet=? AND id=?")
                 .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&incoming.id).fetch_optional(&mut **tx).await.map_err(storage_error)?;
+        if page.facet == DetailFacet::Checks
+            && old
+                .as_ref()
+                .is_some_and(|row| row.get::<String, _>("last_seen_run") == page.run_id)
+        {
+            return Err(invalid_detail());
+        }
+        let previous_entry: Option<StoredEntry> =
+            old.map(|row| decode(row.get("json"))).transpose()?;
+        // Check keys may be reused by a different fork/source repository at
+        // the same SHA. Its provider clock has no ordering authority in the
+        // replacement CheckContext, so start that row's clocks from the fresh
+        // observation instead of allowing old green data to survive.
+        let previous_entry =
+            previous_entry.filter(|_| page.facet != DetailFacet::Checks || same_traversal_context);
         let entry = merge_entry(
             page.facet,
             incoming,
-            old.map(|s| decode(&s)).transpose()?,
+            previous_entry,
             &page.source,
             native_source
                 .traversal()

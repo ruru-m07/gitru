@@ -774,6 +774,7 @@ mod tests {
                 kind: RemoteItemKind::Issue,
                 head_oid: None,
             }),
+            check_context: None,
             body: page.body,
             metadata: page.metadata,
             entries: page.entries,

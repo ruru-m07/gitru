@@ -757,7 +757,6 @@ fn comments_capability_is_github_com_read_only_and_other_facets_remain_explicit(
     );
     for facet in [
         ResourceFacet::Reviews,
-        ResourceFacet::Checks,
         ResourceFacet::Participants,
         ResourceFacet::Tasks,
         ResourceFacet::Merge,
@@ -767,6 +766,13 @@ fn comments_capability_is_github_com_read_only_and_other_facets_remain_explicit(
             CapabilityState::Unsupported
         );
     }
+    assert_eq!(
+        provider
+            .profile(&account)
+            .facet(ResourceFacet::Checks)
+            .state,
+        CapabilityState::Supported
+    );
     let mut foreign = account;
     foreign.host = "enterprise.invalid".into();
     assert_eq!(

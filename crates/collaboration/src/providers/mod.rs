@@ -84,6 +84,12 @@ pub struct DetailPage {
     pub cooldown_seconds: Option<u64>,
 }
 
+#[derive(Debug, Clone)]
+pub struct CheckRequest {
+    pub detail: DetailRequest,
+    pub context: crate::CheckContext,
+}
+
 /// Native receipts capture the trusted installation and same-notification parent.
 /// No command accepts a renderer-authored URL or selector as HTTP authority.
 #[derive(Debug, Clone)]
@@ -164,6 +170,13 @@ pub trait CollaborationProvider: Send + Sync + 'static {
             retry_after_seconds: None,
             account_cooldown_seconds: None,
         })
+    }
+    async fn fetch_checks(
+        &self,
+        token: &SecretToken,
+        request: CheckRequest,
+    ) -> Result<DetailPage, ProviderError> {
+        self.fetch_detail(token, request.detail).await
     }
     async fn fetch_pull_commits(
         &self,

@@ -67,7 +67,7 @@ enum PullCommitPreparation {
 }
 
 impl CollaborationRuntime {
-    async fn request_pull_commit_body_context(
+    pub(super) async fn request_pull_commit_body_context(
         &self,
         account: &RemoteAccount,
         repository: &RemoteRepository,
@@ -183,6 +183,7 @@ impl CollaborationRuntime {
                 body: page.body,
                 metadata: page.metadata,
                 subject_binding: Some(binding),
+                check_context: None,
                 entries: page.entries,
                 source: page.source,
                 next_cursor: None,

@@ -2,6 +2,7 @@
 use super::*;
 use serde::Deserialize;
 
+mod checks;
 mod commits;
 mod discovery;
 mod feeds;
@@ -51,6 +52,7 @@ impl CollaborationProvider for BitbucketCloudProvider {
                             | ResourceFacet::Participants
                             | ResourceFacet::Tasks
                             | ResourceFacet::PullCommits
+                            | ResourceFacet::Checks
                     ) {
                         CapabilityState::Supported
                     } else {
@@ -62,7 +64,8 @@ impl CollaborationProvider for BitbucketCloudProvider {
                         | ResourceFacet::PullDetails
                         | ResourceFacet::Participants
                         | ResourceFacet::Tasks
-                        | ResourceFacet::PullCommits => None,
+                        | ResourceFacet::PullCommits
+                        | ResourceFacet::Checks => None,
                         ResourceFacet::Issues | ResourceFacet::Inbox => {
                             Some(CapabilityReason::ProviderSemantics)
                         }
@@ -195,6 +198,14 @@ impl CollaborationProvider for BitbucketCloudProvider {
     ) -> Result<PullCommitProviderPage, ProviderError> {
         self.pull_commits(token, request).await
     }
+
+    async fn fetch_checks(
+        &self,
+        token: &SecretToken,
+        request: CheckRequest,
+    ) -> Result<DetailPage, ProviderError> {
+        self.request_checks(token, request).await
+    }
 }
 
 #[derive(Deserialize)]
@@ -241,6 +252,9 @@ mod participants_tests;
 
 #[cfg(test)]
 mod commits_tests;
+
+#[cfg(test)]
+mod checks_tests;
 
 #[cfg(test)]
 mod tasks_tests;

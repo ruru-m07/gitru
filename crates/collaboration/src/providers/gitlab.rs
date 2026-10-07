@@ -1,6 +1,7 @@
 //! GitLab.com manual PAT, member repositories and cached MR/issue reads.
 use super::*;
 use serde::Deserialize;
+mod checks;
 mod commits;
 mod feeds;
 mod resource_details;
@@ -213,6 +214,14 @@ impl CollaborationProvider for GitlabProvider {
         self.resource_details(token, request).await
     }
 
+    async fn fetch_checks(
+        &self,
+        token: &SecretToken,
+        request: CheckRequest,
+    ) -> Result<DetailPage, ProviderError> {
+        self.request_checks(token, request).await
+    }
+
     async fn fetch_pull_commits(
         &self,
         token: &SecretToken,
@@ -231,6 +240,7 @@ fn implemented(facet: ResourceFacet) -> bool {
             | ResourceFacet::PullDetails
             | ResourceFacet::IssueDetails
             | ResourceFacet::PullCommits
+            | ResourceFacet::Checks
     )
 }
 
@@ -312,6 +322,8 @@ fn bounded(value: String, max: usize) -> Result<String, ProviderError> {
     }
 }
 
+#[cfg(test)]
+mod checks_tests;
 #[cfg(test)]
 mod commits_tests;
 #[cfg(test)]

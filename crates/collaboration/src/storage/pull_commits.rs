@@ -261,6 +261,20 @@ async fn capture_pull_in(
     })
 }
 
+pub(super) async fn check_context_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    account_id: &str,
+    subject_id: &str,
+    require_active: bool,
+) -> Result<crate::CheckContext> {
+    let captured = capture_pull_in(tx, account_id, subject_id, require_active).await?;
+    Ok(crate::CheckContext {
+        head_oid: captured.binding.context.head_oid,
+        source_repository_provider_id: captured.binding.context.source_repository_provider_id,
+        metadata_facet_revision: captured.binding.context.metadata_facet_revision,
+    })
+}
+
 async fn refresh_retention_in(
     tx: &mut Transaction<'_, Sqlite>,
     account_id: &str,

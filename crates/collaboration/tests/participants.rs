@@ -308,11 +308,7 @@ async fn invalid_facet_payload_masks_identity_and_native_values_roll_back_all_sa
         assert_eq!(store.revision().await.unwrap(), revision);
         assert_eq!(store.draft("a", "pull").await.unwrap(), Some(draft.clone()));
     }
-    for facet in [
-        DetailFacet::Comments,
-        DetailFacet::Reviews,
-        DetailFacet::Checks,
-    ] {
+    for facet in [DetailFacet::Comments, DetailFacet::Reviews] {
         let mut generic = commit(&store, &actor, facet).await;
         generic.entries = vec![participant()];
         assert_eq!(
