@@ -3622,6 +3622,7 @@ Remote checks also completed for existing PRs: RURU-119 #172 at `08a2db3`, RURU-
 contexts passing, including Linux/macOS/Windows Rust, packaged desktop E2E and
 retained collaboration harness. These exact-head CI results do not qualify live
 provider credentials. All PRs remain open; none were merged.
+
 ### RURU-127 native GitLab to-do inbox — 8 October 2026
 
 RURU-127 is In Review in draft [PR #174](https://github.com/ruru-m07/gitru/pull/174), stacked on #172. GitLab.com accounts now sync native pending/done to-dos into the local inbox. Completion, action and target type are explicit typed evidence; provider unread remains absent. Gitru-local snooze, dismissal and bookmarks remain independent, with no completion mutation. Supported MR/issue targets open cached subjects only when immutable project/target IDs, IID, account, instance, epoch and current membership agree. Unknown/projectless targets retain bounded presentation fallback. Unselected-repository point hydration uses that exact current grant; repository feeds still require selection and withdrawal fences queued work.
@@ -3629,3 +3630,55 @@ RURU-127 is In Review in draft [PR #174](https://github.com/ruru-m07/gitru/pull/
 The native traversal reads 50-row pages from both documented state feeds. After five done-history pages it revisits the complete pending feed before resuming the saved done position, without assuming an undocumented sort order. Account/epoch cursors, per-turn page budgets, strict continuation validation and provider cooldowns bound work. Partial sweeps never establish absence or infer completion. Failed pending pages preserve their done-history checkpoint through cold restart. This remains a mutable offset traversal, not an atomic provider snapshot; there is no uncached GitLab subject discovery in this slice.
 
 The [work note](./collaboration-work/RURU-127.md) records pre-code contract, current source `57635247ae07d77e4fa8784b761344d367841d75`, and final local qualification: 716 frontend tests / one platform skip; 1,091 top-level Rust tests plus two child helper runs / five standalone helper ignores, plus all lint, types, desktop build, format and strict Clippy. Focused GitLab 81 and cached-subject 27 suites pass; generated IPC contains 129 commands / 388 schemas. No migration is required. Remote CI is pending on the restacked child; local synthetic results do not establish live provider, personal vault or packaged GUI behavior. No merge was performed.
+
+
+### RURU-123 cached pull-request reviews and threads — 8 October 2026
+
+Draft [#178](https://github.com/ruru-m07/gitru/pull/178) adds independent
+`review_summaries` and `review_threads` facets on the integration-only prerequisite
+base `da1c6bc`. Signed source `5a30303` binds provider observations and local
+queries to the exact authorized Body base/head, source repositories and metadata
+revision. GitHub immutable review and comment routes are finite and cursor-bound;
+SQLite retains historical generations while current-head authority requires
+complete, fresh, exact-context evidence. REST-absent resolved/outdated and review
+commit facts remain unknown instead of being inferred.
+
+The collapsed Reviews panel starts no work while closed, reads only generated
+local IPC, pages both facets independently and offers explicit foreground sync.
+It distinguishes current, historical and unknown commit/anchor evidence and
+renders partial, stale, offline, permission and quota states without dispatching
+a review write. Complete-empty replacement, closed-cache reopen with zero
+provider/vault access, held-response drift, authorization isolation and recovery
+through frozen schema 17 pass native and UI fixtures.
+
+Exact product source `5a30303` passed local `make verify`: 757 frontend/SDK/UI
+tests passed with one platform skip, plus lint, types, production desktop build,
+Rust formatting, strict workspace Clippy and 1,206 Rust tests with seven ignored
+helper cases. `make typegen` generated 137 commands and 426 schema exports. The
+following progress-only documentation commit changes no measured source. Remote
+CI for the draft is newly observable and remains separate from this evidence;
+packaged execution, live private GitHub/PAT/keyring sampling and other platforms
+are unclaimed. No merge is authorized.
+
+
+### RURU-117 saved-command recovery — 8 October 2026
+
+Signed source `a64b9fe` implements local command review, original/edited export,
+cancel-before-send, owned-lane pause/resume, and atomic replacement of safe
+intent. Schema 0019 retains immutable action receipts and supersession evidence.
+Account/view/generation and policy comparison tokens are checked in the writer;
+exact action retries return saved receipts. Replacement preserves dependency
+proof and target order, while unknown delivery and restored quarantine never
+permit blind replay. The UI preserves edited text across updates and requires
+explicit review of changed provider evidence. No production write codec is
+introduced by this foundation.
+
+The review base `ruru/ruru-117-dependencies` at `3d102a3` combines RURU-123 #178
+with RURU-116 #177's held-feed repair. It excludes RURU-127/RURU-128. Full local
+`make verify` passes 766 frontend tests/one platform skip, 1,230 Rust test
+executions/seven helper ignores, lint/types/build/fmt and strict Clippy. Generated
+IPC contains 142 commands/446 schemas. The independent native review and pause
+eligibility repair are recorded in [the work note](./collaboration-work/RURU-117.md).
+Remote CI is pending publication; live provider and vault qualification remain
+separate. No PR has been merged.
+

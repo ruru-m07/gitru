@@ -620,6 +620,7 @@ mod tests {
         Operation::Draft,
         Operation::Drafts,
         Operation::ExportDraft,
+        Operation::CommandRecovery,
         Operation::Recovery,
         Operation::Capabilities,
         Operation::ContextualCapabilities,

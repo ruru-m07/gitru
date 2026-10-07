@@ -410,7 +410,23 @@ async fn detail_in(
     );
     let remote_possible = command.attempt_count > 0 || command.quarantine_generation > 0;
     let can_cancel = pending && !remote_possible;
-    let can_pause = pending && remote_possible && !paused && policy.is_some();
+    // Pause only when it can stop a future bounded delivery/reconciliation turn.
+    // Conflict and attention states are already halted; recording a pause there
+    // would consume immutable history while `can_retry` could never clear it.
+    let turn_remaining = command.attention.is_none()
+        && matches!(
+            command.state,
+            DeliveryState::Queued
+                | DeliveryState::Sending
+                | DeliveryState::RetryWait
+                | DeliveryState::Accepted
+                | DeliveryState::Unknown
+        )
+        && (command.reconcile_only()
+            || command.state == DeliveryState::Sending
+            || command.attempt_count < MAX_ATTEMPTS)
+        && command.reconciliation_count < MAX_RECONCILIATIONS;
+    let can_pause = pending && turn_remaining && remote_possible && !paused && policy.is_some();
     let can_retry = matches!(
         command.state,
         DeliveryState::Queued

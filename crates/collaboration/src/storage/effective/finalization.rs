@@ -381,10 +381,11 @@ async fn write_item_in(tx: &mut Transaction<'_, Sqlite>, item: &RemoteItem) -> R
         )
     };
     let account = account_in(tx, &item.account_id, true).await?;
-    // Canonical field changes fence list cursors and notify readers even when
-    // the command has no visible overlay (for example, restored quarantine).
+    // Fence both local list cursors and network pages captured before this
+    // canonical observation, including equal provider timestamps. Preserve
+    // accepted pagination/membership; only conditional validators are obsolete.
     sqlx::query(
-        "UPDATE sync_scopes SET data_revision=data_revision+1 WHERE account_id=? AND scope=?",
+        "UPDATE sync_scopes SET data_revision=data_revision+1,etag=NULL,last_modified=NULL WHERE account_id=? AND scope=?",
     )
     .bind(&item.account_id)
     .bind(&scope)

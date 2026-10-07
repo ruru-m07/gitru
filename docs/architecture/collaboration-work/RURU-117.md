@@ -1,17 +1,19 @@
 # RURU-117 — Conflict review and superseding intent
 
-Status: native and desktop implementation under qualification, 8 October 2026.
+Status: implementation locally qualified for review, 8 October 2026.
 The signed continuation contract preceded implementation; this record now
 describes the implemented boundary and explicit remaining validation.
 
 ## Baseline and ownership
 
 Managed external worktree `ruru-117-conflict-recovery`, branch
-`ruru/ruru-117-conflict-recovery`, starts from signed RURU-116
-`42c270c674b4ce11daf60f263f33ea7bce9b0886` and signed merge `c539b2cd` of
-RURU-115 repair source `3e5f7f07`. Live Linear RURU-117 is In Progress, with
-RURU-115 and RURU-116 prerequisites. Their review stacks are not merged releases.
-Read architecture section 14 and this document when resuming.
+`ruru/ruru-117-conflict-recovery`, is based on the cleaned RURU-123 source
+`5a30303`. That review stack includes the explicit RURU-116/RURU-118/RURU-126
+integration base; it does not include RURU-127 or RURU-128. The original
+implementation ancestry is preserved in `ruru/ruru-117-pre-restack-869e26b`.
+RURU-117 retains RURU-115/RURU-116 prerequisites;
+these review stacks are not merged releases. Read architecture section 14 and
+this document when resuming.
 
 The native lane owns common review DTOs, operation-specific recovery policies,
 atomic storage actions, delivery/effective dependency integration, migrations and
@@ -117,8 +119,8 @@ revisions. No user-action event contains private authored text.
 
 ## Public native/UI boundary
 
-The common Rust DTOs are the source for generated IPC; the coordinator will wire
-the exact exported methods after their definitions compile:
+The common Rust DTOs are the source for generated IPC. The desktop registers
+these five native commands, with account-scoped SDK query/action methods:
 
 - `command_recovery_list(query)` — shallow command summaries and cursor,
   revision and authorization view.
@@ -190,3 +192,50 @@ Remote CI and live provider write checks have not run for this slice, and no
 production write codec is enabled. Publication must use the coordinator's
 cleaned R123 dependency base; the temporary implementation ancestry includes
 unrelated inherited branch work.
+
+
+Desktop and client qualification before the clean dependency replay: 768 tests
+passed with one existing skip; all four focused recovery UI tests then passed,
+including failed-review refresh. Tests retain real pointer interactions; their
+jsdom fixture declares only unsupported modal/fullscreen states false to avoid
+the selector engine recursively delegating to itself. Desktop and SDK types pass.
+The clean replay regenerates 142 commands and 446 schemas with `make typegen`;
+its complete local verification and independent native review are running.
+
+The panel preserves edited choices across dialog closure and native snapshot
+changes. A changed review token requires explicit inspection of the latest
+values; a failed refresh keeps text visible and blocks new state-changing
+actions. Lost local action responses retain their exact request/action/replacement
+UUIDs for safe receipt replay. Original intent export uses the native OS picker;
+copying the edited resolution is separate. The shared native caller policy is
+covered for local main/child views and rejected remote origins.
+
+
+The cleaned source completed `make verify`: 766 frontend tests passed with one
+existing platform skip, 1,229 Rust test executions passed with seven subprocess
+helpers ignored, and lint/types/build/format/strict Clippy passed. Independent
+native review found a truthful-control issue: paused conflict/attention states
+had no resumable turn. Signed `8c3a763` restricts pause to remaining bounded
+turns; its expanded recovery suite passes 18/18 with strict Clippy. Native review
+otherwise found no remaining CAS, supersession, owned-lane, quarantine or schema
+blocker. The canonical held-feed fix from RURU-116 is consumed before publication
+and qualified separately; live-provider writes remain outside this foundation.
+
+
+## Final publication qualification — 8 October 2026
+
+The integration-only review base is `ruru/ruru-117-dependencies` at `3d102a3`:
+RURU-123 #178 plus RURU-116 #177's held-feed correction `af1d906`. It contains
+no RURU-127/RURU-128 feature work. Final signed product source `a64b9fe` also
+includes independently reviewed pause eligibility repair `8c3a763`: terminal
+conflict/attention or exhausted reconciliation cannot advertise a working pause,
+while unknown outcomes retain read-only probes after the mutation-attempt cap.
+
+Full local `make verify` at `a64b9fe` passes **766 frontend tests**, one platform
+skip, **1,230 Rust test executions**, seven intentionally ignored helper cases,
+frontend lint/types/production build, Rust formatting and strict workspace
+Clippy. The inherited stale full-page and 304 publication fence is included in
+this complete gate. Log: `/tmp/gitru-r117-final-verify.log`.
+`make typegen` produced 142 commands and 446 schema exports. No personal
+credentials or production provider writes were used. Remote CI begins with
+publication and remains a separate gate; no merge is authorized.

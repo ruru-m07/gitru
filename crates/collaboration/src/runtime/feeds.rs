@@ -45,6 +45,7 @@ impl CollaborationRuntime {
             (account, token)
         };
         let previous = self.store.scope_state(&account.id, &job.scope).await?;
+        let read_revision = previous.as_ref().map_or(0, |scope| scope.data_revision);
         let resumed = previous.as_ref().filter(|scope| {
             scope.coverage.state == CoverageState::Partial && scope.next_cursor.is_some()
         });
@@ -128,6 +129,11 @@ impl CollaborationRuntime {
                     return Err(error.into());
                 }
             };
+            // A later canonical write may reject this held page, but its
+            // successful HTTP response still consumed the provider budget.
+            if let Some(seconds) = page.cooldown_seconds.filter(|seconds| *seconds > 0) {
+                self.persist_rate_limit(&account, seconds, None).await?;
+            }
             let not_modified = page.not_modified;
             if not_modified && (page_index != 0 || conditional.is_none()) {
                 return Err(CollaborationError::new(
@@ -142,7 +148,7 @@ impl CollaborationRuntime {
             let retain_validator = starts_at_beginning && page_index == 0 && complete;
             let revision = self
                 .store
-                .apply_page_with_notification_subjects(
+                .apply_fetched_page(
                     PageCommit {
                         account_id: account.id.clone(),
                         authorization_epoch: account.authorization_epoch.clone(),
@@ -175,6 +181,7 @@ impl CollaborationRuntime {
                         observed_at: self.now_string(),
                     },
                     page.notification_subjects,
+                    read_revision,
                 )
                 .await?;
             self.publish(revision);
@@ -240,9 +247,6 @@ impl CollaborationRuntime {
                     )
                     .await?;
                 self.publish(revision);
-                if cooldown > 0 {
-                    self.persist_rate_limit(&account, cooldown, None).await?;
-                }
                 Ok(!complete && cooldown == 0)
             }
         }
