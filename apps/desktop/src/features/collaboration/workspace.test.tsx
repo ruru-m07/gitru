@@ -62,6 +62,8 @@ function readMocks(page: ItemPage = fixturePage) {
   mockTauriCommandResult("collaboration_repositories", fixtureRepositories);
   const items = mockTauriCommandResult("collaboration_items", page);
   mockTauriCommandResult("collaboration_item", {
+    pending_intent: null,
+
     item: fixtureItem,
     revision: "10",
     authorization_view: "1",

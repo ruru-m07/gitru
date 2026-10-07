@@ -32,7 +32,7 @@ mod policy;
 type Result<T> = std::result::Result<T, CollaborationError>;
 // Raising this requires a reviewed restore policy, especially for future outbox
 // tables. Merely adding a migration does not authorize replay of imported data.
-const RESTORE_SCHEMA_POLICY: i64 = 16;
+const RESTORE_SCHEMA_POLICY: i64 = 17;
 const MAX_DATABASE_BYTES: u64 = 512 * 1024 * 1024;
 const SIDECARS: [&str; 3] = ["", "-wal", "-shm"];
 
@@ -574,8 +574,9 @@ async fn verify(connection: &mut SqliteConnection) -> Result<i64> {
         return Err(invalid_backup());
     }
     let rows = sqlx::query(
-        "SELECT version,success,checksum FROM _sqlx_migrations ORDER BY version LIMIT 17",
+        "SELECT version,success,checksum FROM _sqlx_migrations ORDER BY version LIMIT ?",
     )
+    .bind(RESTORE_SCHEMA_POLICY + 1)
     .fetch_all(&mut *connection)
     .await
     .map_err(|_| invalid_backup())?;
@@ -709,6 +710,7 @@ async fn fence_restored_data(
         "DELETE FROM detail_observations",
         "DELETE FROM account_credentials",
         "DELETE FROM credential_cleanup",
+        "DELETE FROM effective_items_fts",
         "DELETE FROM items_fts",
         "DELETE FROM items",
         "DELETE FROM pull_file_blob_objects",

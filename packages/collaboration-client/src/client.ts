@@ -898,6 +898,18 @@ function isAuthoredDraft(key: readonly unknown[]) {
 
 function projectionAffected(key: readonly unknown[], scope: string) {
   const projection = key[4];
+  if (scope.startsWith("effective:")) {
+    const subject = scope.slice("effective:".length);
+    if (projection === "detail") {
+      const query = key[5] as DetailQuery;
+      return query.subject_id === subject && query.facet === "body";
+    }
+    // Item effects alter membership, counts and search in every saved list for
+    // this account. Identity, capability and head-bound facets remain provider data.
+    return (
+      projection === "item" || projection === "items" || projection === "inbox"
+    );
+  }
   if (projection === "capabilities" || projection === "resource")
     return scope !== "drafts";
   if (scope === "drafts")

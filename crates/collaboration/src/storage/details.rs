@@ -91,6 +91,7 @@ struct DetailCursor {
     facet: DetailFacet,
     authorization_view: String,
     facet_revision: Option<String>,
+    effective_revision: String,
     last_id: String,
 }
 
@@ -935,6 +936,7 @@ impl Store {
             detail_evidence_in(&mut tx, &account, &query.subject_id, query.facet).await?;
         let mut result = DetailSnapshot {
             subject_id: query.subject_id.clone(),
+            pending_intent: None,
             body: DetailValue::default(),
             metadata: None,
             entries: vec![],
@@ -951,6 +953,12 @@ impl Store {
             result.metadata =
                 super::resource_metadata::read_in(&mut tx, &account, &query.subject_id).await?;
         }
+        let effective_revision = if query.facet == DetailFacet::Body {
+            super::effective::subject_revision_in(&mut tx, &query.account_id, &query.subject_id)
+                .await?
+        } else {
+            "0".into()
+        };
         let mut after = String::new();
         if let Some(cursor) = query.cursor {
             let cursor: DetailCursor =
@@ -960,6 +968,7 @@ impl Store {
                 || cursor.facet != query.facet
                 || cursor.authorization_view != result.authorization_view
                 || cursor.facet_revision != result.evidence.facet_revision
+                || cursor.effective_revision != effective_revision
             {
                 return Err(stale());
             }
@@ -974,6 +983,30 @@ impl Store {
         for row in rows.into_iter().take(query.limit as usize) {
             result.entries.push(decode(row.get("json"))?);
         }
+        if query.facet == DetailFacet::Body {
+            result.pending_intent =
+                super::effective::pending_in(&mut tx, &query.account_id, &[&query.subject_id])
+                    .await?
+                    .pop();
+            if let Some(patch) =
+                super::effective::patch_in(&mut tx, &query.account_id, &query.subject_id).await?
+            {
+                if let Some(body) = patch.body {
+                    result.body = DetailValue {
+                        state: crate::DetailValueState::Known,
+                        text: body.text,
+                    };
+                }
+                if let Some(metadata) = &mut result.metadata {
+                    if let Some(title) = patch.title {
+                        metadata.values.title = Some(title);
+                    }
+                    if let Some(state) = patch.state {
+                        metadata.values.state = Some(state);
+                    }
+                }
+            }
+        }
         if has_more {
             result.next_cursor = Some(encode(&DetailCursor {
                 account: query.account_id,
@@ -981,6 +1014,7 @@ impl Store {
                 facet: query.facet,
                 authorization_view: result.authorization_view.clone(),
                 facet_revision: result.evidence.facet_revision.clone(),
+                effective_revision,
                 last_id: result.entries.last().ok_or_else(invalid_detail)?.id.clone(),
             })?);
         }

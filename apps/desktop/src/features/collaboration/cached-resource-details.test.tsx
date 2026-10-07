@@ -81,6 +81,8 @@ beforeEach(() => {
     authorization_view: authorizationView,
   }));
   mockTauriCommand("collaboration_item", () => ({
+    pending_intent: null,
+
     item: summary,
     revision,
     authorization_view: authorizationView,
@@ -574,6 +576,8 @@ describe("cached PR and issue detail views", () => {
           });
     });
     mockTauriCommand("collaboration_item", (payload) => ({
+      pending_intent: null,
+
       item: {
         ...fixtureItem,
         account_id: (payload as { accountId: string }).accountId,

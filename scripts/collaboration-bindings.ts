@@ -11,6 +11,9 @@ const domain = await Bun.file(
 const error = await Bun.file(
   new URL("crates/collaboration/src/error.rs", root),
 ).text();
+const effective = await Bun.file(
+  new URL("crates/collaboration/src/effective.rs", root),
+).text();
 const detail = await Bun.file(
   new URL("crates/collaboration/src/detail.rs", root),
 ).text();
@@ -226,6 +229,7 @@ generated = generated.replace(
 );
 
 for (const source of [
+  effective,
   domain,
   error,
   detail,

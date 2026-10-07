@@ -47,6 +47,8 @@ const snapshot = (generation = "1"): NotificationSubjectSnapshot => ({
   },
 });
 const body = (text: string): DetailSnapshot => ({
+  pending_intent: null,
+
   subject_id: "canonical-pr",
   body: { state: "known", text },
   metadata: null,

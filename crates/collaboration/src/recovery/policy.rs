@@ -58,6 +58,26 @@ pub(super) async fn verify_authored(db: &mut SqliteConnection, version: i64) -> 
     if version >= 16 {
         verify_delivery(db).await?;
     }
+    if version >= 17 {
+        let mut rows = sqlx::query("SELECT e.version,e.patch_json,c.target_kind FROM command_effects e JOIN commands c USING(account_id,command_id)").fetch(&mut *db);
+        while let Some(row) = rows.try_next().await.map_err(|_| invalid_backup())? {
+            let json: String = column(&row, "patch_json")?;
+            if column::<i64>(&row, "version")? != crate::effective::EFFECT_VERSION
+                || json.len() > 131072
+            {
+                return Err(invalid_backup());
+            }
+            let kind = match column::<String>(&row, "target_kind")?.as_str() {
+                "pull_request" => crate::RemoteItemKind::PullRequest,
+                "issue" => crate::RemoteItemKind::Issue,
+                "notification" => crate::RemoteItemKind::Notification,
+                _ => return Err(invalid_backup()),
+            };
+            let patch: crate::effective::ItemIntentPatch =
+                serde_json::from_str(&json).map_err(|_| invalid_backup())?;
+            patch.validate(&kind).map_err(|_| invalid_backup())?;
+        }
+    }
     Ok(())
 }
 

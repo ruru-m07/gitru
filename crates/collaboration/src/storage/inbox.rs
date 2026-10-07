@@ -149,12 +149,7 @@ fn push_common_predicates(sql: &mut sqlx::QueryBuilder<Sqlite>, query: &InboxQue
         .as_ref()
         .filter(|value| !value.trim().is_empty())
     {
-        let phrase = format!("\"{}\"", search.replace('"', "\"\""));
-        sql.push(" AND n.id IN(SELECT id FROM items_fts WHERE items_fts MATCH ")
-            .push_bind(phrase)
-            .push(" AND account_id=")
-            .push_bind(query.account_id.clone())
-            .push(")");
+        super::effective::push_search(sql, "n", &query.account_id, search);
     }
 }
 
@@ -184,9 +179,10 @@ fn push_local_filter(
 }
 
 async fn projection_view(tx: &mut Transaction<'_, Sqlite>, account_id: &str) -> Result<String> {
-    let values: (i64, i64) = sqlx::query_as(
-        "SELECT COALESCE((SELECT data_revision FROM sync_scopes WHERE account_id=? AND scope='notifications'),0),COALESCE((SELECT revision FROM local_inbox_projection WHERE account_id=?),0)",
+    let values: (i64, i64, i64) = sqlx::query_as(
+        "SELECT COALESCE((SELECT data_revision FROM sync_scopes WHERE account_id=? AND scope='notifications'),0),COALESCE((SELECT revision FROM local_inbox_projection WHERE account_id=?),0),COALESCE((SELECT max(revision) FROM effective_item_revisions WHERE account_id=? AND kind='notification'),0)",
     )
+    .bind(account_id)
     .bind(account_id)
     .bind(account_id)
     .fetch_one(&mut **tx)
@@ -257,7 +253,7 @@ impl Store {
         }
         let evaluated_at_text = canonical_time(evaluated_at);
         let mut sql = sqlx::QueryBuilder::<Sqlite>::new(
-            "SELECT n.json,l.notification_id AS local_id,l.disposition AS local_disposition,l.bookmarked AS local_bookmarked,l.snoozed_until AS local_snoozed_until,l.activity_updated_at AS local_activity_updated_at,l.generation AS local_generation FROM items n LEFT JOIN local_inbox_state l ON l.account_id=n.account_id AND l.notification_id=n.id WHERE",
+            "SELECT n.json,l.notification_id AS local_id,l.disposition AS local_disposition,l.bookmarked AS local_bookmarked,l.snoozed_until AS local_snoozed_until,l.activity_updated_at AS local_activity_updated_at,l.generation AS local_generation FROM effective_items n LEFT JOIN local_inbox_state l ON l.account_id=n.account_id AND l.notification_id=n.id WHERE",
         );
         push_common_predicates(&mut sql, &query);
         push_local_filter(&mut sql, query.local_state, &evaluated_at_text);
@@ -308,7 +304,7 @@ impl Store {
             None
         } else {
             let mut deadline = sqlx::QueryBuilder::<Sqlite>::new(
-                "SELECT MIN(l.snoozed_until) FROM items n JOIN local_inbox_state l ON l.account_id=n.account_id AND l.notification_id=n.id WHERE",
+                "SELECT MIN(l.snoozed_until) FROM effective_items n JOIN local_inbox_state l ON l.account_id=n.account_id AND l.notification_id=n.id WHERE",
             );
             push_common_predicates(&mut deadline, &query);
             if query.local_state == LocalInboxFilter::Bookmarked {
@@ -323,6 +319,19 @@ impl Store {
                 .await
                 .map_err(storage_error)?
         };
+        let mut count = sqlx::QueryBuilder::<Sqlite>::new(
+            "SELECT count(*) FROM effective_items n LEFT JOIN local_inbox_state l ON l.account_id=n.account_id AND l.notification_id=n.id WHERE",
+        );
+        push_common_predicates(&mut count, &query);
+        push_local_filter(&mut count, query.local_state, &evaluated_at_text);
+        let total_count: i64 = count
+            .build_query_scalar()
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(storage_error)?;
+        let ids: Vec<&str> = entries.iter().map(|entry| entry.item.id.as_str()).collect();
+        let pending_intents =
+            super::effective::pending_in(&mut tx, &query.account_id, &ids).await?;
         let presentation_query = ItemQuery {
             account_id: query.account_id.clone(),
             kind: RemoteItemKind::Notification,
@@ -336,6 +345,8 @@ impl Store {
         tx.commit().await.map_err(storage_error)?;
         Ok(InboxPage {
             entries,
+            total_count: total_count as u64,
+            pending_intents,
             revision,
             authorization_view,
             next_cursor,

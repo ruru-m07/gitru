@@ -303,6 +303,8 @@ describe("generated collaboration wire contract", () => {
   });
   it("preserves detail missingness, nullable authoritative body and string revisions through distinct read/hydrate commands", async () => {
     const snapshot = DetailSnapshotSchema.parse({
+      pending_intent: null,
+
       subject_id: "pull",
       body: { state: "known", text: null },
       metadata: null,
@@ -436,6 +438,8 @@ describe("generated collaboration wire contract", () => {
       })),
     };
     const raw = {
+      pending_intent: null,
+
       subject_id: "pull",
       body: { state: "known", text: null },
       metadata,
@@ -631,6 +635,9 @@ describe("generated collaboration wire contract", () => {
       }).repository_id,
     ).toBeNull();
     const page = ItemPageSchema.parse({
+      total_count: 1,
+      pending_intents: [],
+
       items: [
         {
           id: "item",

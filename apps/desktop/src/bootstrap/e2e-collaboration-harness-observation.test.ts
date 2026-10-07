@@ -54,6 +54,8 @@ describe("synthetic document observations", () => {
     client.setQueryData(
       itemQueryOptions(fixtureAccount, fixtureItem.id).queryKey,
       {
+        pending_intent: null,
+
         item: fixtureItem,
         revision: "9007199254740993",
         authorization_view: "1",

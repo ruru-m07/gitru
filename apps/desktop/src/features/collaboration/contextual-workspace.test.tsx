@@ -54,6 +54,8 @@ beforeEach(() => {
   mockTauriCommandResult("collaboration_repositories", fixtureRepositories);
   mockTauriCommandResult("collaboration_draft", null);
   mockTauriCommandResult("collaboration_item", {
+    pending_intent: null,
+
     item: fixtureItem,
     revision: "10",
     authorization_view: "1",
@@ -713,6 +715,8 @@ describe("ordinary collaboration workspace across provider policies", () => {
         };
       };
       const value: DetailSnapshot = {
+        pending_intent: null,
+
         subject_id: query.subject_id,
         metadata: query.facet === "body" ? fixtureMetadata() : null,
         body: {
@@ -828,7 +832,12 @@ describe("ordinary collaboration workspace across provider policies", () => {
     const item = mockTauriCommand("collaboration_item", () => {
       if (delaying)
         throw { code: "auth_required", message: "fixture content denied" };
-      return { item: fixtureItem, revision: "10", authorization_view: "1" };
+      return {
+        pending_intent: null,
+        item: fixtureItem,
+        revision: "10",
+        authorization_view: "1",
+      };
     });
     const user = userEvent.setup();
     await mount(<CollaborationWorkspace kind="pull_request" />);
@@ -939,6 +948,8 @@ describe("ordinary collaboration workspace across provider policies", () => {
       const { accountId } = payload as { accountId: string };
       expect(accountId).toBe(other.id);
       return {
+        pending_intent: null,
+
         item: {
           ...fixtureItem,
           account_id: other.id,

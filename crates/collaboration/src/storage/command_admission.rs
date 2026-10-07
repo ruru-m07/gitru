@@ -68,6 +68,14 @@ pub(crate) trait CommandAdmissionPolicy: Send + Sync {
     const OPERATION_KIND: &'static str;
     const PAYLOAD_VERSION: u32;
 
+    /// Deterministic native effect decoded from immutable submitted intent.
+    fn effect(
+        &self,
+        _submission: &CommandSubmission,
+    ) -> Result<Option<crate::effective::ItemIntentPatch>> {
+        Ok(None)
+    }
+
     async fn validate(
         &self,
         tx: &mut Transaction<'_, Sqlite>,
@@ -188,6 +196,7 @@ impl Store {
                 .bind(submission.account_id()).bind(submission.command_id()).bind(kind).bind(id).bind(facet)
                 .execute(&mut *tx).await.map_err(storage_error)?;
         }
+        super::effective::admit_in(&mut tx, submission, policy.effect(submission)?).await?;
         #[cfg(test)]
         tests::crash_checkpoint("before_commit");
         tx.commit().await.map_err(storage_error)?;

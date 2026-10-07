@@ -1,3 +1,4 @@
+use crate::PendingItemIntent;
 use crate::error::CollaborationError;
 use serde::{Deserialize, Serialize};
 
@@ -174,6 +175,8 @@ pub struct RepositorySnapshot {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ItemPage {
     pub items: Vec<RemoteItem>,
+    pub total_count: u64,
+    pub pending_intents: Vec<PendingItemIntent>,
     pub revision: String,
     pub authorization_view: String,
     pub next_cursor: Option<String>,
@@ -184,6 +187,7 @@ pub struct ItemPage {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ItemSnapshot {
     pub item: Option<RemoteItem>,
+    pub pending_intent: Option<PendingItemIntent>,
     pub revision: String,
     pub authorization_view: String,
 }
@@ -262,6 +266,8 @@ pub struct InboxQuery {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InboxPage {
     pub entries: Vec<InboxEntry>,
+    pub total_count: u64,
+    pub pending_intents: Vec<PendingItemIntent>,
     pub revision: String,
     pub authorization_view: String,
     pub next_cursor: Option<String>,

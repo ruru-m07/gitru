@@ -263,6 +263,8 @@ function reads(
       itemId: string;
     };
     return {
+      pending_intent: null,
+
       item: lookup(accountId, itemId).summary,
       revision: "10",
       authorization_view: "1",

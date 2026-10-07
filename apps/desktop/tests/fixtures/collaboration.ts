@@ -213,6 +213,9 @@ export const fixtureItem: RemoteItem = {
   unread: null,
 };
 export const fixturePage: ItemPage = {
+  total_count: 1,
+  pending_intents: [],
+
   items: [fixtureItem],
   revision: "10",
   authorization_view: "1",
@@ -248,6 +251,9 @@ export function fixtureInboxPage(
   items: RemoteItem[] = [fixtureItem],
 ): InboxPage {
   return {
+    total_count: 0,
+    pending_intents: [],
+
     entries: items.map((item) => ({
       item,
       local: fixtureLocalInboxState(item),
@@ -326,7 +332,12 @@ export function installCollaborationPreviewBoundary() {
         );
       }
       case "collaboration_item":
-        return { item: fixtureItem, revision: "10", authorization_view: "1" };
+        return {
+          pending_intent: null,
+          item: fixtureItem,
+          revision: "10",
+          authorization_view: "1",
+        };
       case "collaboration_draft":
         return null;
       case "collaboration_save_draft":

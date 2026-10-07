@@ -9,6 +9,7 @@ import {
   useContextualCapabilities,
   useVisibleDemand,
 } from "@gitru/collaboration-client/react";
+import { Badge } from "@gitru/ui/components/badge";
 import { Button } from "@gitru/ui/components/button";
 import { ArrowLeft } from "lucide-react";
 import { CapabilityBoundary, ReadOnlyCapability } from "./capability-boundary";
@@ -133,6 +134,11 @@ export function SavedItemDetail({
             item={item}
             metadata={bodyData?.metadata ?? null}
           />
+          {query.data?.pending_intent ? (
+            <Badge variant="outline" size="sm">
+              Pending changes
+            </Badge>
+          ) : null}
           <PullRequestCheckoutButton
             account={account}
             item={item}

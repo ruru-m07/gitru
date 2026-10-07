@@ -63,3 +63,15 @@ isolation, pagination fencing, cold restart, quarantine/restore and transactiona
 failure. SDK tests will prove change hints invalidate every affected consumer
 across independently held clients. No production token, live provider mutation,
 remote CI or platform qualification is implied by deterministic local fixtures.
+
+## Integration checkpoint (not final qualification)
+
+The first implementation adds immutable bounded effects, sparse effective item
+rows/search, transactional list/count/detail/inbox query metadata, and native
+change invalidation. Seven focused native tests pass: committed/query agreement,
+refresh/rejection/restart replay, cursor fencing without provider-evidence edits,
+transaction rollback, active-chain bounds, epoch isolation and restore quarantine.
+IPC was regenerated from Rust (135 commands). Confirmation materialization and
+full-stack qualification remain in progress; this checkpoint does not enable a
+provider write operation. The unpublished 0017 active-target index includes the
+authorization epoch so preserved older commands cannot lengthen current replay.

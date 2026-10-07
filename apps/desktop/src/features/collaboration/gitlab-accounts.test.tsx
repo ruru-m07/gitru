@@ -168,6 +168,8 @@ function commonGitlabReads(kind: Exclude<RemoteItemKind, "notification">) {
     items: [summary],
   });
   mockTauriCommandResult("collaboration_item", {
+    pending_intent: null,
+
     item: summary,
     revision: "10",
     authorization_view: "1",

@@ -45,6 +45,9 @@ const snapshot: AccountSnapshot = {
   authorization_view: "1",
 };
 const page: ItemPage = {
+  total_count: 0,
+  pending_intents: [],
+
   items: [],
   revision: "1",
   authorization_view: "1",
@@ -62,6 +65,9 @@ const page: ItemPage = {
   },
 };
 const inboxPage: InboxPage = {
+  total_count: 0,
+  pending_intents: [],
+
   entries: [],
   revision: "1",
   authorization_view: "1",
@@ -584,6 +590,8 @@ describe("CollaborationClient", () => {
   });
   it("binds cache-only detail reads and explicit hydration without starting refresh from a read", async () => {
     const saved: DetailSnapshot = {
+      pending_intent: null,
+
       subject_id: "pull",
       body: { state: "known", text: null },
       metadata: null,
@@ -675,6 +683,8 @@ describe("CollaborationClient", () => {
     let next = changePage("1");
     const old = deferred<DetailSnapshot>();
     const saved: DetailSnapshot = {
+      pending_intent: null,
+
       subject_id: "pull",
       body: { state: "not_loaded", text: null },
       metadata: null,
@@ -1010,7 +1020,12 @@ describe("CollaborationClient", () => {
         ? beforeRepository
         : projection === "items"
           ? { ...page, items: [privateItem] }
-          : { item: privateItem, revision: "1", authorization_view: "1" };
+          : {
+              pending_intent: null,
+              item: privateItem,
+              revision: "1",
+              authorization_view: "1",
+            };
     const currentItem = { ...privateItem, body: "current private body" };
     const current =
       projection === "repositories"
@@ -1025,7 +1040,12 @@ describe("CollaborationClient", () => {
           }
         : projection === "items"
           ? { ...page, revision: "2", items: [currentItem] }
-          : { item: currentItem, revision: "2", authorization_view: "1" };
+          : {
+              pending_intent: null,
+              item: currentItem,
+              revision: "2",
+              authorization_view: "1",
+            };
     let next = changePage("1");
     const oldRead = deferred<ProviderSnapshot>();
     const read = vi
@@ -1121,6 +1141,8 @@ describe("CollaborationClient", () => {
     ]);
     await client.wake();
     oldRead.resolve({
+      pending_intent: null,
+
       item: privateItem,
       revision: "1",
       authorization_view: "1",
@@ -2155,6 +2177,155 @@ it.each([
   ).resolves.toMatchObject({
     authorization_view: "3",
   });
+  unsubscribe();
+  stop();
+  cache.clear();
+});
+
+it("invalidates effective item, list/count/search and inbox consumers across independent clients without touching provider head proofs", async () => {
+  let next = changePage("1");
+  const clients = [0, 1].map(
+    () =>
+      new CollaborationClient(
+        transport({
+          listen: async () => () => {},
+          changesSince: async () => next,
+        }),
+      ),
+  );
+  const caches = clients.map(() => new QueryClient());
+  const stops = clients.map((client, i) => client.installBridge(caches[i]));
+  await Promise.all(clients.map((client) => client.wake()));
+  const itemKey = collaborationKeys.item(account, "pull");
+  const listKey = collaborationKeys.items(account, {
+    ...itemQuery,
+    account_id: account.id,
+    search: "changed",
+    state: "closed",
+  });
+  const inboxKey = collaborationKeys.inbox(account, {
+    account_id: account.id,
+    remote_state: "unread",
+    local_state: "all",
+    search: null,
+    cursor: null,
+    limit: 50,
+  });
+  const bodyKey = collaborationKeys.detail(account, {
+    account_id: account.id,
+    subject_id: "pull",
+    facet: "body",
+    cursor: null,
+    limit: 50,
+  });
+  const commentsKey = collaborationKeys.detail(account, {
+    account_id: account.id,
+    subject_id: "pull",
+    facet: "comments",
+    cursor: null,
+    limit: 50,
+  });
+  const otherBody = collaborationKeys.detail(account, {
+    account_id: account.id,
+    subject_id: "other",
+    facet: "body",
+    cursor: null,
+    limit: 50,
+  });
+  const draftKey = collaborationKeys.draft(account, "pull");
+  const otherActorKey = collaborationKeys.item(
+    { ...account, id: "other-account" },
+    "pull",
+  );
+  for (const cache of caches)
+    for (const key of [
+      itemKey,
+      listKey,
+      inboxKey,
+      bodyKey,
+      commentsKey,
+      otherBody,
+      draftKey,
+      otherActorKey,
+    ])
+      cache.setQueryData(key, "saved");
+  next = changePage("2", "1", [
+    {
+      revision: "2",
+      account_id: account.id,
+      scope: "effective:pull",
+      reset: false,
+    },
+  ]);
+  await Promise.all(clients.map((client) => client.wake()));
+  for (const cache of caches) {
+    for (const key of [itemKey, listKey, inboxKey, bodyKey])
+      expect(cache.getQueryState(key)?.isInvalidated).toBe(true);
+    for (const key of [commentsKey, otherBody, draftKey, otherActorKey])
+      expect(cache.getQueryState(key)?.isInvalidated).toBe(false);
+  }
+  stops.forEach((stop) => stop());
+  caches.forEach((cache) => cache.clear());
+});
+
+it("an effective-intent change cancels a held list response before it can overwrite committed pending values", async () => {
+  let next = changePage("1");
+  const held = deferred<ItemPage>();
+  const saved: ItemPage = {
+    ...page,
+    revision: "2",
+    total_count: 1,
+    items: [{ ...privateItem, title: "Pending title" }],
+    pending_intents: [
+      {
+        subject_id: privateItem.id,
+        commands: [
+          { command_id: "command", state: "queued", fields: ["title"] },
+        ],
+      },
+    ],
+  };
+  const items = vi
+    .fn<() => Promise<ItemPage>>()
+    .mockImplementationOnce(() => held.promise)
+    .mockResolvedValue(saved);
+  const client = new CollaborationClient(
+    transport({
+      items,
+      listen: async () => () => {},
+      changesSince: async () => next,
+    }),
+  );
+  const cache = new QueryClient(),
+    stop = client.installBridge(cache);
+  await client.wake();
+  const key = collaborationKeys.items(account, {
+    ...itemQuery,
+    account_id: account.id,
+  });
+  const observer = new QueryObserver(cache, {
+    queryKey: key,
+    queryFn: ({ signal }) =>
+      client.forAccount(account).items(itemQuery, signal),
+    staleTime: Infinity,
+    retry: false,
+  });
+  const unsubscribe = observer.subscribe(() => {});
+  next = changePage("2", "1", [
+    {
+      revision: "2",
+      account_id: account.id,
+      scope: `effective:${privateItem.id}`,
+      reset: false,
+    },
+  ]);
+  await client.wake();
+  await vi.waitFor(() => expect(cache.getQueryData(key)).toEqual(saved));
+  held.resolve({ ...page, items: [privateItem] });
+  await held.promise;
+  await Promise.resolve();
+  expect(items).toHaveBeenCalledTimes(2);
+  expect(cache.getQueryData(key)).toEqual(saved);
   unsubscribe();
   stop();
   cache.clear();

@@ -276,7 +276,10 @@ function ResourceFacetPanel({
                 </Badge>
               ) : null}
             </div>
-            {data.evidence.availability === "missing" ? (
+            {data.evidence.availability === "missing" &&
+            !data.pending_intent?.commands.some((command) =>
+              command.fields.includes("body"),
+            ) ? (
               <p className="text-xs text-muted-foreground">
                 Not saved on this device yet. Sync this facet to load it.
               </p>

@@ -177,7 +177,7 @@ export function LocalInboxFeed({
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-2">
         <span className="text-xs text-muted-foreground">
           {page
-            ? `${page.entries.length} saved items${search ? " matching your search" : " on this page"}`
+            ? `${page.total_count} saved items${search ? " matching your search" : " matching these filters"}`
             : "Saved activity"}
         </span>
         {page ? (
@@ -298,6 +298,13 @@ export function LocalInboxFeed({
                               ? "Provider unread"
                               : "Provider read"}
                         </Badge>
+                        {page.pending_intents.some(
+                          (intent) => intent.subject_id === entry.item.id,
+                        ) ? (
+                          <Badge variant="outline" size="sm">
+                            Pending changes
+                          </Badge>
+                        ) : null}
                         <Badge variant="outline" size="sm">
                           Local {entry.local.effective_disposition}
                         </Badge>

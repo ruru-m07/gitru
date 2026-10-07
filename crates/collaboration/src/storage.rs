@@ -18,6 +18,7 @@ use uuid::Uuid;
 pub(crate) mod command_admission;
 mod contextual_capabilities;
 pub(crate) mod delivery;
+pub(crate) mod effective;
 mod shutdown;
 use shutdown::NativeWriter;
 pub(crate) mod details;
@@ -686,53 +687,18 @@ impl Store {
             }
         }
         let mut sql = sqlx::QueryBuilder::<Sqlite>::new(
-            "SELECT items.json FROM items WHERE items.account_id=",
+            "SELECT items.json FROM effective_items AS items WHERE items.account_id=",
         );
-        sql.push_bind(&query.account_id)
-            .push(" AND items.kind=")
-            .push_bind(tag(&query.kind)?);
-        if query.kind != RemoteItemKind::Notification {
-            sql.push(" AND EXISTS(SELECT 1 FROM repositories r WHERE r.account_id=items.account_id AND r.id=items.repository_id AND r.selected=1 AND ")
-                .push(VISIBLE_REPOSITORY)
-                .push(")");
-        }
-        sql.push(" AND NOT EXISTS(SELECT 1 FROM sync_scopes s WHERE s.account_id=items.account_id AND s.scope=CASE WHEN items.kind='notification' THEN 'notifications' ELSE 'repo:'||items.repository_id||':'||items.kind END AND s.access_denied=1)");
-        sql.push(" AND EXISTS(SELECT 1 FROM scope_membership m WHERE m.account_id=items.account_id AND m.entity_id=items.id AND m.active=1 AND m.scope=CASE WHEN items.kind='notification' THEN 'notifications' ELSE 'repo:'||items.repository_id||':'||items.kind END)");
-        if let Some(repository_id) = &query.repository_id {
-            sql.push(" AND items.repository_id=")
-                .push_bind(repository_id);
-        }
-        if let Some(state) = &query.state {
-            if query.kind == RemoteItemKind::Notification {
-                match state.as_str() {
-                    "unread" => {
-                        sql.push(" AND json_extract(items.json,'$.unread')=1");
-                    }
-                    "read" => {
-                        sql.push(" AND json_extract(items.json,'$.unread')=0");
-                    }
-                    "pending" | "done" => {
-                        sql.push(" AND items.state=").push_bind(state);
-                    }
-                    _ => {
-                        return Err(CollaborationError::invalid(
-                            "Unsupported inbox disposition filter",
-                        ));
-                    }
-                }
-            } else {
-                sql.push(" AND items.state=").push_bind(state);
-            }
-        }
-        if let Some(search) = query.search.as_ref().filter(|s| !s.trim().is_empty()) {
-            // Treat user text as a literal FTS phrase; never as FTS syntax.
-            let phrase = format!("\"{}\"", search.replace('"', "\"\""));
-            sql.push(" AND items.id IN(SELECT id FROM items_fts WHERE items_fts MATCH ")
-                .push_bind(phrase)
-                .push(" AND account_id=")
-                .push_bind(&query.account_id)
-                .push(")");
-        }
+        push_item_predicates(&mut sql, &query)?;
+        let mut count = sqlx::QueryBuilder::<Sqlite>::new(
+            "SELECT count(*) FROM effective_items AS items WHERE items.account_id=",
+        );
+        push_item_predicates(&mut count, &query)?;
+        let total_count: i64 = count
+            .build_query_scalar()
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(storage_error)?;
         if let Some(cursor) = cursor {
             sql.push(" AND (items.updated_at,items.id)<(")
                 .push_bind(cursor.updated_at)
@@ -770,9 +736,13 @@ impl Store {
             None
         };
         let (coverage, sync) = query_presentation(&mut tx, &query).await?;
+        let ids: Vec<&str> = items.iter().map(|item| item.id.as_str()).collect();
+        let pending_intents = effective::pending_in(&mut tx, &query.account_id, &ids).await?;
         tx.commit().await.map_err(storage_error)?;
         Ok(ItemPage {
             items,
+            total_count: total_count as u64,
+            pending_intents,
             revision,
             authorization_view,
             next_cursor,
@@ -786,7 +756,7 @@ impl Store {
         account_in(&mut tx, account_id, true).await?;
         let (revision, authorization_view) = metadata(&mut tx).await?;
         let json: Option<String> =
-            sqlx::query_scalar("SELECT json FROM items WHERE account_id=? AND id=?")
+            sqlx::query_scalar("SELECT json FROM effective_items WHERE account_id=? AND id=?")
                 .bind(account_id)
                 .bind(item_id)
                 .fetch_optional(&mut *tx)
@@ -803,9 +773,17 @@ impl Store {
                 item = None;
             }
         }
+        let pending_intent = if item.is_some() {
+            effective::pending_in(&mut tx, account_id, &[item_id])
+                .await?
+                .pop()
+        } else {
+            None
+        };
         tx.commit().await.map_err(storage_error)?;
         Ok(ItemSnapshot {
             item,
+            pending_intent,
             revision,
             authorization_view,
         })
@@ -991,6 +969,7 @@ impl Store {
                 .execute(&mut *tx)
                 .await
                 .map_err(storage_error)?;
+            effective::refresh_target_in(&mut tx, &page.account_id, &item.id).await?;
             seen(&mut tx, &page, &item.id).await?;
         }
         for alias in &page.endpoint_aliases {
@@ -1607,7 +1586,12 @@ async fn query_projection_view(
     };
     // Keep cursors small regardless of the working-set size; JSON provides an
     // unambiguous tuple encoding before the digest is computed.
-    Ok(format!("{:x}", Sha256::digest(encode(&scopes)?.as_bytes())))
+    Ok(format!(
+        "{:x}",
+        Sha256::digest(
+            encode(&(scopes, effective::query_revision_in(tx, query).await?))?.as_bytes()
+        )
+    ))
 }
 async fn query_presentation(
     tx: &mut Transaction<'_, Sqlite>,
@@ -1914,6 +1898,7 @@ async fn clear_remote_cache(tx: &mut Transaction<'_, Sqlite>, account_id: &str) 
         "DELETE FROM notification_subject_selectors WHERE account_id=?",
         "DELETE FROM detail_demand WHERE account_id=?",
         "DELETE FROM detail_observations WHERE account_id=?",
+        "DELETE FROM effective_items_fts WHERE account_id=?",
         "DELETE FROM items_fts WHERE account_id=?",
         "DELETE FROM items WHERE account_id=?",
         // Provider quota is metadata, not private provider content. A reconnect
@@ -1963,4 +1948,47 @@ async fn record_change(
             .map_err(storage_error)?;
     }
     Ok(revision.to_string())
+}
+
+fn push_item_predicates(sql: &mut sqlx::QueryBuilder<Sqlite>, query: &ItemQuery) -> Result<()> {
+    sql.push_bind(query.account_id.clone())
+        .push(" AND items.kind=")
+        .push_bind(tag(&query.kind)?);
+    if query.kind != RemoteItemKind::Notification {
+        sql.push(" AND EXISTS(SELECT 1 FROM repositories r WHERE r.account_id=items.account_id AND r.id=items.repository_id AND r.selected=1 AND ")
+                .push(VISIBLE_REPOSITORY)
+                .push(")");
+    }
+    sql.push(" AND NOT EXISTS(SELECT 1 FROM sync_scopes s WHERE s.account_id=items.account_id AND s.scope=CASE WHEN items.kind='notification' THEN 'notifications' ELSE 'repo:'||items.repository_id||':'||items.kind END AND s.access_denied=1)");
+    sql.push(" AND EXISTS(SELECT 1 FROM scope_membership m WHERE m.account_id=items.account_id AND m.entity_id=items.id AND m.active=1 AND m.scope=CASE WHEN items.kind='notification' THEN 'notifications' ELSE 'repo:'||items.repository_id||':'||items.kind END)");
+    if let Some(repository_id) = &query.repository_id {
+        sql.push(" AND items.repository_id=")
+            .push_bind(repository_id.clone());
+    }
+    if let Some(state) = &query.state {
+        if query.kind == RemoteItemKind::Notification {
+            match state.as_str() {
+                "unread" => {
+                    sql.push(" AND json_extract(items.json,'$.unread')=1");
+                }
+                "read" => {
+                    sql.push(" AND json_extract(items.json,'$.unread')=0");
+                }
+                "pending" | "done" => {
+                    sql.push(" AND items.state=").push_bind(state.clone());
+                }
+                _ => {
+                    return Err(CollaborationError::invalid(
+                        "Unsupported inbox disposition filter",
+                    ));
+                }
+            }
+        } else {
+            sql.push(" AND items.state=").push_bind(state.clone());
+        }
+    }
+    if let Some(search) = query.search.as_ref().filter(|s| !s.trim().is_empty()) {
+        effective::push_search(sql, "items", &query.account_id, search);
+    }
+    Ok(())
 }

@@ -602,6 +602,9 @@ describe("retained restart pull-commit acceptance", () => {
       },
     });
     native.inbox.mockResolvedValue({
+      total_count: 0,
+      pending_intents: [],
+
       entries: [
         local(
           "github:notification:9007199254744991",

@@ -1,4 +1,5 @@
 //! Typed local detail observations. Summary endpoints have no authority here.
+use crate::PendingItemIntent;
 use crate::resource_metadata::ResourceMetadataSnapshot;
 use crate::{
     CapabilityReason, CollaborationError, Coverage, NativeDetailPayload, RemoteItemKind,
@@ -265,6 +266,8 @@ pub struct DetailQuery {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DetailSnapshot {
     pub subject_id: String,
+    /// Authored fields shown over the saved provider evidence below.
+    pub pending_intent: Option<PendingItemIntent>,
     pub body: DetailValue,
     pub metadata: Option<ResourceMetadataSnapshot>,
     pub entries: Vec<DetailEntry>,

@@ -982,6 +982,7 @@ impl Store {
                 .await?;
                 sqlx::query("INSERT INTO items(account_id,id,repository_id,kind,state,updated_at,json) VALUES(?,?,?,?,?,?,?) ON CONFLICT(account_id,id) DO UPDATE SET repository_id=excluded.repository_id,kind=excluded.kind,state=excluded.state,updated_at=excluded.updated_at,json=excluded.json")
                     .bind(&account.id).bind(&subject.id).bind(&subject.repository_id).bind(tag(&subject.kind)?).bind(&subject.state).bind(&subject.updated_at).bind(encode(&subject)?).execute(&mut *tx).await.map_err(storage_error)?;
+                super::effective::refresh_target_in(&mut tx, &account.id, &subject.id).await?;
                 if !provenance_in(&mut tx, &account.id, &subject.id).await? {
                     return Err(stale());
                 }

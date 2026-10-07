@@ -29,6 +29,9 @@ const localState = {
   generation: "9007199254740993",
 };
 const page = {
+  total_count: 0,
+  pending_intents: [],
+
   entries: [
     {
       item: {
