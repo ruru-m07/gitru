@@ -1,14 +1,15 @@
 # RURU-117 — Conflict review and superseding intent
 
-Status: continuation contract, 7 October 2026. Implementation and validation are
-pending; this document fixes the native/UI boundary before code changes.
+Status: native and desktop implementation under qualification, 8 October 2026.
+The signed continuation contract preceded implementation; this record now
+describes the implemented boundary and explicit remaining validation.
 
 ## Baseline and ownership
 
 Managed external worktree `ruru-117-conflict-recovery`, branch
 `ruru/ruru-117-conflict-recovery`, starts from signed RURU-116
 `42c270c674b4ce11daf60f263f33ea7bce9b0886` and signed merge `c539b2cd` of
-RURU-115 repair source `3e5f7f07`. Live Linear RURU-117 is Backlog, with
+RURU-115 repair source `3e5f7f07`. Live Linear RURU-117 is In Progress, with
 RURU-115 and RURU-116 prerequisites. Their review stacks are not merged releases.
 Read architecture section 14 and this document when resuming.
 
@@ -73,8 +74,9 @@ and whether a remote action may already have happened.
   quarantine cannot gain new dispatch authority through this action.
 
 Native completion belongs to the runtime even if a caller disappears. These
-local actions never load credentials or call a provider. Export likewise reads
-only the selected account's preserved local intent and evidence, never a vault.
+local actions never load credentials or call a provider. Export reads only the selected account's preserved authored payload, immutable
+hash, safe summary and declared comparison fields. It excludes execution
+evidence, raw provider responses, guard internals, credentials and vault references.
 
 ## Successors and execution order
 
@@ -84,12 +86,13 @@ C takes A's derived execution slot, so existing later B cannot block C merely
 because C received a newer admission sequence. Effective replay uses the same
 derived ordering, preserving later authored B intent over C.
 
-Superseded A is never treated as confirmed. B's dependency may resolve through
-C only after C has a valid canonical confirmation and B's native operation
-policy validates that replacement provenance and current execution base. The
-default is denial. Otherwise B stays visibly blocked and requires its own
-review/replacement. Replacement chains are strictly forward by immutable
-admission order and bounded during traversal; they cannot cross an account,
+Superseded A is never treated as confirmed. This slice never substitutes C for
+B's immutable dependency on A, even after C confirms. B stays visibly blocked
+and requires its own review and a new policy-validated intent; no inferred
+dependency rewrite creates dispatch authority. Replacement chains are strictly forward by immutable
+admission order and bounded during traversal. A replacement dependency must
+have an earlier inherited execution slot, preventing policy-introduced FIFO
+cycles. They cannot cross an account,
 target or original actor epoch. Tests must cover A→B then replacement C without
 FIFO deadlock, preserved A/B envelopes and no unjustified B dispatch.
 
@@ -97,15 +100,18 @@ FIFO deadlock, preserved A/B envelopes and no unjustified B dispatch.
 
 Normalized immutable local-action receipts, supersession edges and mutable pause
 state justify an ordered migration rather than unindexed mutable JSON aliases.
-Migration **0019** is reserved, but must not be added until the coordinator's
-frozen migration 0018 is merged. Do not rewrite migrations 0001–0018. Current
-backup/restore must structurally validate and preserve these authored records;
-add frozen-v18 migration fixtures and a real paused/superseded restore case.
+Migration **0019** follows frozen migration 0018. Migrations 0001–0018 remain
+unchanged. Current backup/restore structurally and semantically validates
+versioned action requests/receipts, immutable replacement affinity/order, and
+pause state. Frozen v18 SQL/checksums extend the historical restore matrix; a
+real paused/superseded synthetic store exercises current backup/restore.
 Restoring still quarantines every retained command and never resumes delivery.
 
 List queries return at most 50 shallow rows without loading command payloads or
-evidence. Detail/export loads one bounded command. Fields and action history
-have explicit limits. Keyset pages bind account/target/filter/view/revision;
+evidence. Detail/export loads one bounded command. Review fields are limited to five, each known scalar to 64 KiB, and the whole
+native review to 256 KiB. Immutable action history permits 64 receipts and 1 MiB
+of requests per command. Replacement chains have at most 16 edges. Account and
+target keyset indexes avoid scanning terminal history for pending pages. Keyset pages bind account/target/filter/view/revision;
 cache invalidations use the existing `commands` scope and effective subject
 revisions. No user-action event contains private authored text.
 
@@ -118,11 +124,11 @@ the exact exported methods after their definitions compile:
   revision and authorization view.
 - `command_recovery_detail(account_id, command_id)` — summary, generation and
   epoch/view CAS, bounded base/remote/desired fields, review token, action
-  availability (`can_retry`, `can_cancel`, `can_replace`) and reasons.
+  availability (`can_retry`, `can_cancel`, `can_pause`, `can_replace`) and reasons.
 - `command_recovery_action(request)` — cancel/pause/resume with durable receipt.
 - `command_recovery_replace(request)` — reviewed typed field choices, new
   command UUID and immutable receipt; no arbitrary operation payload.
-- `command_recovery_export(account_id, command_id)` — explicit local intent
+- `command_recovery_export(context)` — explicit local intent
   bundle for the user's selected export destination.
 
 The UI distinguishes cancel-before-send from pause-after-attempt, shows why
@@ -141,3 +147,46 @@ queries and schema/recovery preservation. Native tests must prove no extra
 dispatch after pause, unknown result or restored quarantine. Run focused/full
 collaboration tests, strict Clippy, generated IPC and meaningful UI tests.
 Record local checks separately from remote CI and live-provider/platform checks.
+
+
+## Implementation details and qualification checkpoint
+
+Exact actions recheck account epoch, authorization view, command generation and
+native comparison token inside the same writer transaction. The account/view
+check also precedes exact action retry. Identical requests return byte-stable
+receipts without replaying effects; changed bytes under an old UUID are rejected.
+
+Replacement retires the reviewed original inside the writer transaction before
+calling the concrete native admission policy. This reserves exactly its existing
+effect slot at the 64-active-effects limit. New admission, validated immutable
+supersession/action evidence, final inherited-order replay and the receipt commit
+atomically. Any failure rolls back original state, generation, retained-base
+protection, projections and revisions. No reader sees the intermediate state.
+
+Local pause clears no provider evidence, attempt/probe budgets or retry deadline.
+Delivery candidate scans exclude paused commands and writer claims independently
+recheck pause. Native runtime actions share the owned delivery lane: a held
+response completes before an action can commit, and its generation change rejects
+an older review. Dropping a caller does not interrupt admitted action completion;
+runtime shutdown drains it before releasing storage.
+
+Local native qualification: the final storage-action suite passes **17/17**,
+including exact-cap replacement/fault rollback, dependency ordering, typed
+conflict choices, account/epoch/CAS/concurrent retry, query plans, immutable
+schema, pause budgets and current backup/restore. The broader recovery suite
+passes **35**, with one subprocess helper intentionally ignored. Integration
+recovery **14/14** and migration policy **7/7** pass, including frozen v1–18
+restoration and actual interrupt/full-disk fixtures. Strict collaboration
+all-target Clippy passes. An earlier full native library run passed **542** with
+four helper ignores; final workspace validation follows clean publication
+replay. The later resume-boundary regression confirms that eight mutation
+attempts do not disable bounded read-only reconciliation or clear the counter.
+
+Logs: `/tmp/gitru-r117-actions-final.log`,
+`/tmp/gitru-r117-recovery-final.log`, `/tmp/gitru-r117-migrations-final.log`,
+`/tmp/gitru-r117-native-clippy.log`. The coordinator separately reported SDK and
+desktop tests/types; it owns generated IPC and final full-workspace validation.
+Remote CI and live provider write checks have not run for this slice, and no
+production write codec is enabled. Publication must use the coordinator's
+cleaned R123 dependency base; the temporary implementation ancestry includes
+unrelated inherited branch work.

@@ -269,6 +269,11 @@ impl Store {
         if occupied {
             return Err(invalid());
         }
+        // Reserve exactly the original's active-effect slot, within this same
+        // transaction. No reader can see retirement without the replacement;
+        // any admission/policy/edge/receipt failure restores all original state.
+        super::delivery::transition_in(&mut tx, &command, DeliveryState::Superseded, None, None)
+            .await?;
         let admitted = policy
             .replace_in(&mut tx, &command, &account, &request, &review)
             .await?;
@@ -291,21 +296,28 @@ impl Store {
         {
             return Err(invalid());
         }
-        let self_dependency:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM command_dependencies WHERE account_id=? AND command_id=? AND predecessor_id=?)").bind(&command.account_id).bind(&replacement.command_id).bind(&command.command_id).fetch_one(&mut *tx).await.map_err(|_| CollaborationError::storage())?;
-        if self_dependency {
-            return Err(invalid());
-        }
         let execution_order = execution_order_in(&mut tx, &command).await?;
-        sqlx::query("INSERT INTO command_supersessions(account_id,original_id,original_hash,replacement_id,replacement_hash,execution_order,depth) VALUES(?,?,?,?,?,?,?)")
-            .bind(&command.account_id).bind(&command.command_id).bind(command.hash.as_slice()).bind(&replacement.command_id).bind(replacement.hash.as_slice()).bind(execution_order).bind((depth+1) as i64).execute(&mut *tx).await.map_err(|_| CollaborationError::storage())?;
-        let revision = super::delivery::transition_in(
-            &mut tx,
-            &command,
-            DeliveryState::Superseded,
-            None,
-            None,
+        let invalid_dependency:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM command_dependencies d JOIN commands p ON p.account_id=d.account_id AND p.command_id=d.predecessor_id LEFT JOIN command_supersessions s ON s.account_id=p.account_id AND s.replacement_id=p.command_id WHERE d.account_id=? AND d.command_id=? AND coalesce(s.execution_order,p.enqueue_order)>=?)").bind(&command.account_id).bind(&replacement.command_id).bind(execution_order).fetch_one(&mut *tx).await.map_err(|_| CollaborationError::storage())?;
+        if invalid_dependency {
+            return Err(CollaborationError::invalid(
+                "Replacement dependency would reverse execution order",
+            ));
+        }
+        sqlx::query("INSERT INTO command_supersessions(account_id,original_id,original_hash,replacement_id,replacement_hash,action_id,execution_order,depth) VALUES(?,?,?,?,?,?,?,?)")
+            .bind(&command.account_id).bind(&command.command_id).bind(command.hash.as_slice()).bind(&replacement.command_id).bind(replacement.hash.as_slice()).bind(&request.action_id).bind(execution_order).bind((depth+1) as i64).execute(&mut *tx).await.map_err(|_| CollaborationError::storage())?;
+        sqlx::query(
+            "UPDATE command_user_controls SET paused=0 WHERE account_id=? AND command_id=?",
         )
-        .await?;
+        .bind(&command.account_id)
+        .bind(&command.command_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| CollaborationError::storage())?;
+        // Admission replay used its new enqueue order; only after recording the
+        // immutable edge can replay place it into the original execution slot.
+        super::effective::refresh_target_in(&mut tx, &command.account_id, &command.target_id)
+            .await?;
+        let revision = metadata(&mut tx).await?.0;
         let receipt = CommandRecoveryReceipt {
             account_id: command.account_id.clone(),
             action_id: request.action_id.clone(),
@@ -399,13 +411,21 @@ async fn detail_in(
     let remote_possible = command.attempt_count > 0 || command.quarantine_generation > 0;
     let can_cancel = pending && !remote_possible;
     let can_pause = pending && remote_possible && !paused && policy.is_some();
-    let can_retry = pending
-        && paused
+    let can_retry = matches!(
+        command.state,
+        DeliveryState::Queued
+            | DeliveryState::Sending
+            | DeliveryState::RetryWait
+            | DeliveryState::Accepted
+            | DeliveryState::Unknown
+    ) && paused
         && policy.is_some()
         && account.state == AccountState::Active
         && (command.authorization_epoch == account.authorization_epoch || command.reconcile_only())
         && command.attention.is_none()
-        && command.attempt_count < MAX_ATTEMPTS
+        && (command.reconcile_only()
+            || command.state == DeliveryState::Sending
+            || command.attempt_count < MAX_ATTEMPTS)
         && command.reconciliation_count < MAX_RECONCILIATIONS;
     let can_replace = review.can_replace
         && policy.is_some()
@@ -713,3 +733,6 @@ fn stale() -> CollaborationError {
         "The command review changed; reload before resolving it",
     )
 }
+
+#[cfg(test)]
+mod tests;

@@ -106,7 +106,10 @@ pub(crate) trait CommandRecoveryPolicy: Send + Sync {
         account: &RemoteAccount,
     ) -> Result<NativeRecoveryReview, CollaborationError>;
     /// Use command_admission::admit_in with the concrete operation admission
-    /// policy. No commit here: the engine checks the new receipt and persists
+    /// policy. The engine has tentatively retired the original in this same
+    /// transaction to reserve its active-effect slot; the passed command/review
+    /// describe the validated pre-retirement state. Any failure restores it.
+    /// No commit here: the engine checks the new receipt and persists
     /// supersession/order/action evidence in this same transaction.
     async fn replace_in(
         &self,

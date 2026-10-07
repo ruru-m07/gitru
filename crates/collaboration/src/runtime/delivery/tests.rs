@@ -412,7 +412,15 @@ async fn runtime(
     registry.register(Arc::new(ReadProvider)).unwrap();
     if register {
         registry
-            .register_delivery(&ProviderInstance::public(ProviderKind::Github), policy)
+            .register_delivery(
+                &ProviderInstance::public(ProviderKind::Github),
+                policy.clone(),
+            )
+            .unwrap();
+    }
+    if register {
+        registry
+            .register_recovery(&ProviderInstance::public(ProviderKind::Github), policy)
             .unwrap();
     }
     let mut runtime = CollaborationRuntime::with_registry(store, Arc::new(Vault), registry);
@@ -1335,4 +1343,120 @@ async fn dispatch_auth_observation_survives_independent_result_and_quota_faults(
         assert_eq!(policy.probes.load(Ordering::SeqCst), 0);
         runtime.shutdown().await.unwrap();
     }
+}
+
+#[async_trait]
+impl crate::command_recovery::policy::CommandRecoveryPolicy for Policy {
+    fn instance_id(&self) -> &str {
+        "github:https://github.com/"
+    }
+    fn operation_kind(&self) -> &'static str {
+        Payload::OPERATION_KIND
+    }
+    fn payload_version(&self) -> u32 {
+        1
+    }
+    async fn review_in(
+        &self,
+        _: &mut Transaction<'_, Sqlite>,
+        _: &DeliveryCommand,
+        _: &RemoteAccount,
+    ) -> Result<crate::command_recovery::policy::NativeRecoveryReview, CollaborationError> {
+        Ok(crate::command_recovery::policy::NativeRecoveryReview {
+            fields: vec![],
+            can_replace: false,
+            reason: None,
+            fence: vec![],
+        })
+    }
+    async fn replace_in(
+        &self,
+        _: &mut Transaction<'_, Sqlite>,
+        _: &DeliveryCommand,
+        _: &RemoteAccount,
+        _: &crate::CommandRecoveryReplaceRequest,
+        _: &crate::command_recovery::policy::NativeRecoveryReview,
+    ) -> Result<crate::storage::command_admission::CommandReceipt, CollaborationError> {
+        Err(CollaborationError::invalid("Fixture cannot replace"))
+    }
+}
+
+#[tokio::test]
+async fn recovery_pause_waits_for_held_dispatch_then_rejects_old_generation() {
+    let dir = tempfile::tempdir().unwrap();
+    let policy = Arc::new(Policy::new(dir.path().join("remote")));
+    policy.mode.store(2, Ordering::SeqCst);
+    policy.hold.store(true, Ordering::SeqCst);
+    let (runtime, account, _) = runtime(&dir.path().join("state.db"), policy.clone(), true).await;
+    admit(&runtime, &account, FIRST, "issue", vec![]).await;
+    let send = tokio::spawn({
+        let r = runtime.clone();
+        async move { r.run_delivery_next().await }
+    });
+    policy.entered.notified().await;
+    let sending = runtime.command_recovery_detail("a", FIRST).await.unwrap();
+    assert!(sending.can_pause && !sending.can_cancel);
+    let pause = tokio::spawn({
+        let r = runtime.clone();
+        async move {
+            r.command_recovery_action(crate::CommandRecoveryActionRequest {
+                context: sending.context,
+                action_id: uuid::Uuid::new_v4().to_string(),
+                action: crate::CommandRecoveryAction::Pause,
+            })
+            .await
+        }
+    });
+    tokio::task::yield_now().await;
+    assert!(!pause.is_finished());
+    policy.release.notify_one();
+    send.await.unwrap().unwrap();
+    assert_eq!(pause.await.unwrap().unwrap_err().code, ErrorCode::StaleView);
+    let unknown = runtime.command_recovery_detail("a", FIRST).await.unwrap();
+    assert_eq!(unknown.command.state, "outcome_unknown");
+    runtime
+        .command_recovery_action(crate::CommandRecoveryActionRequest {
+            context: unknown.context,
+            action_id: uuid::Uuid::new_v4().to_string(),
+            action: crate::CommandRecoveryAction::Pause,
+        })
+        .await
+        .unwrap();
+    assert!(!runtime.run_delivery_next().await.unwrap());
+    assert_eq!(policy.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(policy.probes.load(Ordering::SeqCst), 0);
+    runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn recovery_action_completion_survives_cancelled_caller_and_shutdown_drains_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let policy = Arc::new(Policy::new(dir.path().join("remote")));
+    let (runtime, account, _) = runtime(&dir.path().join("state.db"), policy, true).await;
+    admit(&runtime, &account, FIRST, "issue", vec![]).await;
+    let detail = runtime.command_recovery_detail("a", FIRST).await.unwrap();
+    let lane = runtime.dispatch.lock().await;
+    {
+        let action = runtime.command_recovery_action(crate::CommandRecoveryActionRequest {
+            context: detail.context,
+            action_id: uuid::Uuid::new_v4().to_string(),
+            action: crate::CommandRecoveryAction::Cancel,
+        });
+        tokio::pin!(action);
+        // Polling the action first admits and spawns its owned completion;
+        // dropping this caller while the dispatch lane is held cannot undo it.
+        tokio::select! {
+            biased;
+            result = &mut action => panic!("held lane completed unexpectedly: {result:?}"),
+            _ = tokio::task::yield_now() => {},
+        }
+    }
+    drop(lane);
+    runtime.shutdown().await.unwrap();
+    let reopened = Store::open(dir.path().join("state.db")).await.unwrap();
+    assert_eq!(
+        reopened.delivery_command("a", FIRST).await.unwrap().state,
+        DeliveryState::Cancelled
+    );
+    reopened.close().await.unwrap();
 }
