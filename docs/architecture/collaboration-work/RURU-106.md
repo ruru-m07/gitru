@@ -1,8 +1,173 @@
 # RURU-106 — Consistent backup and explicit recovery
 
-Status: native core implemented and locally validated, 3 October 2026.
+Status: existing native core implemented; current-schema recovery and desktop
+integration remain in progress, 8 October 2026.
 Started on RURU-105 `6becdd5`, then rebased onto its signed `d776d663` head,
 including the Windows LF migration-fixture fix. This document is the continuation point.
+
+## Continuation contract — 8 October 2026
+
+Continue the existing [draft PR #145](https://github.com/ruru-m07/gitru/pull/145),
+not a second implementation PR. The audit found its managed worktree clean at
+signed `ea997d4aa672a014031d54ffb72904d9f92bfa33`, matching the published head
+against `ruru/ruru-105-migration-recovery`. All eleven reported checks and status
+contexts are successful at that exact head: frontend, formatting/Clippy, Rust and
+packaged E2E on Linux/macOS/Windows, Cloudflare, CodeRabbit and Vercel. No
+exact-head CodeQL check is reported. That evidence covers the existing v1/v2
+core, not the continuation below. Live Linear has RURU-106 In Progress,
+RURU-105 In Review and RURU-115 Backlog; RURU-106 blocks delivery in RURU-115.
+
+The sections following this contract describe the existing v1/v2 implementation
+and its historical evidence. The work specified here is not implemented by this
+documentation checkpoint. First forward-port the existing branch onto the
+coordinator's frozen RURU-119 source, which includes RURU-114 migration 0013 and
+RURU-119 migration 0014. Then add ordered migration **0015** for recovery metadata.
+Record the exact integrated source commit and tested migration ceiling when
+that base is established; never modify checksummed migrations 0001–0014.
+
+### Current schema and durable intent
+
+Retain exact ledger/checksum and structural-schema verification before admitting
+a selected database. Support recognized historical versions through the reviewed
+current schema by migrating a private staged copy; reject future schemas,
+unknown schema objects, dirty ledgers and corrupt records without changing the
+selected input or current target. Merely increasing `RESTORE_SCHEMA_POLICY` is
+insufficient. Validate authored rows with bounded streaming and preserve their
+existing bytes and generations.
+
+The explicit preservation policy includes:
+
+- Accounts, provider instances, account-instance bindings, canonical resource
+  identities and aliases retain their actor/account partitions.
+- Draft bodies and generations, transport mappings and local repository links,
+  cache pins, and local inbox disposition/bookmark/snooze intent survive.
+  Restored local links do not establish fresh native registration, remote-digest
+  or caller authority; their normal native proofs still apply.
+- Commands retain their exact canonical envelope, payload and guard bytes,
+  submission hash, admission receipt/revision, original authorization epoch,
+  dependency ordering, target protections, delivery attempts and evidence.
+  Do not reserialize intent, rewrite its epoch to match reauthentication, delete
+  terminal evidence, or bypass the immutable-row triggers in migration 0013.
+
+Credential references and cleanup records are removed from both exports and
+installed replacements, with a second vacuum proving physical redaction. No
+credential payload, vault lookup, imported cleanup dispatch or Gitru cloud
+session participates in recovery. Accounts require reauthentication; account
+epochs, authorization view and durable revision advance beyond both readable
+snapshots with overflow checked. Rebuild provider projections, search indexes,
+scope membership, checkpoints, validators, active demand and retention cursors
+according to the full current schema, including commit/file generations.
+
+Before clearing provider projections, preserve a scrubbed, verified immutable
+snapshot of the incoming data as recovery evidence in the retained bundle.
+This snapshot keeps command-protected comparison bases and selected-file
+artifacts recoverable without presenting them as fresh observations or granting
+access. Its checksum and publication participate in the durable recovery
+manifest before any original mutation. The existing original-target bundle
+still preserves newer drafts and receipts separately. Neither archive is an
+active credential source or an automatic source for dispatch authorization;
+normal recovery never silently merges either archive into the active database.
+
+### Restored-command quarantine
+
+Migration 0015 introduces a durable recovery generation and account-scoped
+command quarantine tied to immutable command identity and submission hash.
+Use separate recovery metadata; the existing command state enum and immutable
+intent contract remain intact. Each restore advances recovery generation beyond
+both readable snapshots. Every restored command that could be dispatched or
+reconciled into dispatch is quarantined, including a command recorded as queued
+with zero delivery attempts: the backup cannot prove it was never sent later.
+Existing terminal receipts and all independent attempt/evidence rows survive.
+
+Reauthentication, reopening, scheduler retries, dependency completion and an
+old snapshot's queued state cannot release quarantine. RURU-115 must check
+quarantine in the same transaction that claims a dispatch attempt. Release or
+supersession requires operation-specific independent evidence or explicit
+manual resolution; a generic retry action cannot resend a possibly successful
+create. Structurally valid but unsupported operation/payload versions remain
+opaque, preserved and non-dispatchable. Malformed envelope/hash/dependency
+records fail verification rather than being normalized into guessed intent.
+Safety does not depend on newer receipt archives being available.
+
+The handoff to RURU-115 includes a synthetic backup-queued-command → remote
+success → restore-old-backup test proving no second dispatch, including after
+reauthentication. Restored quarantine must also survive another backup/restore
+and a cold reopen. Any quarantine-resolution API belongs to the delivery and
+operation policy work unless explicitly qualified here.
+
+### Owned shutdown and restart
+
+Replace immutable desktop `OnceCell` access with an owned lifecycle that can
+represent starting, running, quiescing, recovery and failure, including failure
+before a Store is available. Every normal IPC operation acquires a lifecycle
+lease for the current runtime generation. Entering recovery rejects new work,
+stops scheduler admission, wakes and joins the background worker, retires window
+activity observers, and drains existing operation leases and owned credential
+cutovers. Credential tasks that may already have mutated the vault must finish
+their existing durable protocol; requester cancellation is not permission to
+abort them midway.
+
+Wait for reader shutdown and actual SQLx writer close before releasing or
+handing over the OS writer lease. `Store::close()` awaiting only readers and
+asynchronous writer Drop are insufficient. Stale runtime/Store owners cannot
+write through a retired generation or reopen the writer while recovery owns
+it. Respect the existing lock order: dispatch paths can acquire lifecycle after
+dispatch, so shutdown must not hold lifecycle while waiting for dispatch.
+
+The native recovery session owns the same writer lease throughout preparation,
+preview and confirmation. Cancellation before confirmation and safe preparation
+failure reopen the unchanged target through a new runtime generation. After
+mutation starts, a native owned task completes or leaves a durable interrupted
+marker even if its renderer disappears. An interrupted marker continues to
+block ordinary bootstrap; recovery UI remains reachable. Successful recovery
+restarts storage, subscriptions and demand ownership with fresh generations and
+invalidates old frontend snapshots/cursors.
+
+### Native picker and session UI
+
+Expose native file selection for export and restore. Keep selected paths,
+staging objects and recovery ownership in Rust; generated IPC carries bounded
+preview DTOs and opaque session IDs, not arbitrary renderer-provided filesystem
+paths. Bind each session to the current native caller lifetime and revalidate
+that proof immediately before starting a confirmed mutation. Support backup,
+restore preparation, explicit replacement confirmation, pre-confirmation cancel
+and interrupted-recovery inspection/keep-original choice.
+
+The preview shows incoming/current counts, schema/revision/checksum,
+reauthentication, command quarantine, preserved newer data and the exact
+replacement consequence. Do not automatically reset corrupt storage, merge
+drafts, or delete recovery bundles. The flow must be usable from the visible
+desktop tabs and when initial storage startup fails; do not require users to
+find an inaccessible main window. Use the app's trusted native mediation for
+the existing child/main authorization boundary. Generate all wire changes with
+`make typegen` and implement the UI with the repository's shared components.
+
+### Validation and ownership
+
+Extend existing synthetic recovery tests rather than use the person's live app
+database, provider account or credentials. Required checks include active-WAL
+backup and physical reference redaction; frozen historical/current schema
+fixtures; byte-for-byte command, dependency and evidence preservation; authored
+state preservation; quarantine across restore/reopen/reauthentication; invalid
+or future input rejection; protected recovery evidence; stale caller/session
+and queued-writer races; drained credential tasks; canceled IPC during owned
+confirmation; corrupt targets and retained newer originals; and real process
+termination at preserve, marker, install and rollback boundaries. Prove an
+actual writer close precedes lease reuse, not just an eventual successful open.
+
+Use focused native tests and strict Clippy first, then generated IPC, complete
+`make verify`, packaged UI checks, and exact-head remote platform CI. Report
+those evidence classes separately. Existing Windows file flushing and passing
+process-crash tests do not prove parent-directory/rename durability under power
+loss; qualify that boundary honestly and retain the native Windows durability
+work as an explicit release gate until implemented and verified.
+
+The coordinator owns the forward-port/base decision and final integration. Core
+recovery, migration 0015 and native fixture work can proceed after that base is
+frozen; runtime/storage shutdown, setup/window observer ownership, and bridge/UI
+work need explicit file ownership because they overlap active integration.
+Update this contract with actual implementation and test evidence as each
+checkpoint lands. Do not merge the PR without user authorization.
 
 ## Boundary and user choice
 
