@@ -2306,3 +2306,32 @@ In Progress until integrated recovery UI and qualification pass. RURU-125's
 isolated native measurement lane is In Progress. RURU-115 remains dependent on
 RURU-106; restored commands must never bypass quarantine merely after reconnect.
 No merge or personal credential validation is authorized by these checkpoints.
+
+
+### RURU-106 current-schema recovery workflow — 8 October 2026
+
+Existing draft [#145](https://github.com/ruru-m07/gitru/pull/145) now continues on
+RURU-119 `08a2db3` with signed integrated source `7bd1e37`. Migration 0015
+preserves immutable authored command/evidence bytes while quarantining every
+restored potentially dispatchable command, including queued commands with no
+recorded attempt. Verified incoming evidence and newer original data remain in
+separate native archives. All recognized v1–v14 snapshots migrate privately to
+schema 15; unknown schemas and malformed authored data fail closed.
+
+The Backups UI is available even when normal storage startup fails. Native file
+pickers and caller-bound, ten-minute confirmations govern backup/restore; native
+owned tasks drain requests and actual SQLite connections, finish confirmed
+replacement despite IPC cancellation, then rebuild runtime ownership. Abandoned
+previews resume storage. SDK catch-up generations and trusted visible-tab demand
+are re-established without accepting old in-flight data. Accounts require
+reauthentication and cannot release restored command quarantine.
+
+Local `make verify` passes 727 frontend cases/one platform skip and 1,115 Rust
+test executions/six standalone helper ignores, with all lint/type/build/fmt/
+Clippy gates. Actual macOS release E2E passes four scenarios across two specs,
+including backup/cancel/restore; the five-process retained crash/restart harness
+also passes. [The work note](./collaboration-work/RURU-106.md) records exact tested
+source, artifact paths, binary checksums and the test-only ancestry repair.
+Remote new-head CI, other-platform recovery, OS picker interaction and live
+provider/vault qualification remain separate. RURU-115 can now build its delivery
+framework on the explicit quarantine and runtime-lifetime contract. No merge.

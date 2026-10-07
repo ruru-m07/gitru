@@ -1,9 +1,44 @@
 # RURU-106 — Consistent backup and explicit recovery
 
-Status: current-schema recovery core and desktop integration implemented; final
-combined and packaged validation remain in progress, 8 October 2026.
+Status: current-schema recovery and desktop workflow locally qualified; updated
+draft PR #145 is ready for review, with new-head remote CI pending, 8 October 2026.
 Started on RURU-105 `6becdd5`, then rebased onto its signed `d776d663` head,
 including the Windows LF migration-fixture fix. This document is the continuation point.
+
+## Final local qualification — 8 October 2026
+
+Signed integration source `7bd1e37db444539c81e3d4f1805a128f8c9ab00f` is based on
+RURU-119 `08a2db3c4d66269ce72bc5a780e9deda78a57f43`. Full `make verify`
+passes 727 frontend tests with one platform skip, all lint/type/production-build
+checks, Rust formatting, warning-denied workspace Clippy and 1,115 successful
+Rust test executions (six standalone helpers ignored by the ordinary runner;
+passing parent tests invoke their subprocess paths). The full run used signed
+`a18eba4472802863ca3d894432ea0841a2f3eb89` before the final E2E-only cleanup.
+
+The actual release-mode macOS packaged E2E passes both specs and all four
+scenarios, including real native backup, paused preview, cancellation without
+replacement, explicit restore, increasing revision/authorization view and
+resumed isolated CLI policy. Artifacts:
+`artifacts/e2e/2026-10-07T21-21-46-449Z-91136`; binary SHA-256
+`86bf8c6f584e82f9f6eddd36207de297ae41ecd58b9a66b7cd89be0e167b6dbd`.
+A test cleanup fix returns the app to the embedded Git route before the existing
+Git smoke spec. Native OS picker interaction is substituted by the fixed,
+feature-only native picker helper; the UI, commands, SQLite and recovery protocol
+are real. No personal files, account credentials or production database is used.
+
+The separate release-mode retained native harness passes all five app processes,
+including crash-before/after-commit and fresh cold-restart evidence. Artifacts:
+`artifacts/e2e-harness/2026-10-07T21-27-07-174Z-7496`; binary SHA-256
+`46308ae0d0e9f1c232569378c3865f9f391f8cf8d8c8e48daed319db41d15cb5`.
+That harness qualifies normal native sync/revision lifetimes, not a live provider
+or production vault. Its tested source was signed `3d0597e`; rebasing onto the
+RURU-119 Windows fixture repair changed only that inherited Git test and its
+work note, verified by tree diff. All production source and recovery tests are
+unchanged. The repaired Git integration suite separately passes 13 cases locally.
+
+New-head remote macOS/Linux/Windows CI is a separate gate. Windows power-loss
+durability, native OS picker interaction and live provider/PAT/keyring behavior
+remain unqualified. No PR has been merged.
 
 ## Desktop integration checkpoint — 8 October 2026
 
