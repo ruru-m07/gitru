@@ -31,6 +31,7 @@ import {
   canSynchronize,
   dispatchCapabilityIntent,
 } from "./capability-policy";
+import { GitlabReviewNote } from "./gitlab-review-note";
 
 export type PullReviewContext = {
   baseOid: string;
@@ -108,8 +109,9 @@ export function CachedReviewsPanel(props: Props) {
           {open ? (
             <div className="space-y-3 pt-3">
               <p className="text-xs text-muted-foreground">
-                Saved review decisions and inline discussion from the provider.
-                Historical reviews do not approve the current commit.
+                {account.provider === "gitlab"
+                  ? "Saved approver observations and discussions, including general and system notes. GitLab does not identify the approved commit in these observations."
+                  : "Saved review decisions and inline discussion from the provider. Historical reviews do not approve the current commit."}
               </p>
               <SynchronizationAvailability policy={policy} />
               <CapabilityBoundary
@@ -232,14 +234,22 @@ function OpenedReviews(props: Props & { bodyContext: PullReviewContext }) {
       <ReviewFacetView
         {...props}
         facet="review_summaries"
-        label="Review decisions"
+        label={
+          props.account.provider === "gitlab"
+            ? "Approval observations"
+            : "Review decisions"
+        }
         query={summaries}
         scopeMatches={summariesMatch}
       />
       <ReviewFacetView
         {...props}
         facet="review_threads"
-        label="Inline discussion"
+        label={
+          props.account.provider === "gitlab"
+            ? "Discussions"
+            : "Inline discussion"
+        }
         query={threads}
         scopeMatches={threadsMatch}
       />
@@ -367,6 +377,8 @@ function ReviewPager({
     cursors: Array<string | null>;
     position: number;
   }>({ cursors: [null], position: 0 });
+  const discussionName =
+    props.account.provider === "gitlab" ? "Discussions" : "Inline discussions";
   const cursor = pages.cursors[pages.position];
   const page = useQuery({
     ...detailQueryOptions(props.account, {
@@ -422,7 +434,7 @@ function ReviewPager({
             <p className="text-xs text-muted-foreground">
               {facet === "review_summaries"
                 ? "Review decisions have not been saved on this device yet."
-                : "Inline discussions have not been saved on this device yet."}
+                : `${discussionName} have not been saved on this device yet.`}
             </p>
           ) : data.entries.length ? (
             <ul
@@ -450,10 +462,10 @@ function ReviewPager({
               {data.evidence.coverage.state === "complete"
                 ? facet === "review_summaries"
                   ? "No review decisions were returned in this saved observation."
-                  : "No inline discussions were returned in this saved observation."
+                  : `No ${discussionName.toLowerCase()} were returned in this saved observation.`
                 : facet === "review_summaries"
                   ? "No review decisions are saved in this partial view."
-                  : "No inline discussions are saved in this partial view."}
+                  : `No ${discussionName.toLowerCase()} are saved in this partial view.`}
             </p>
           )}
         </>
@@ -627,14 +639,16 @@ function ThreadRow({
   const anchorState =
     thread.provider_outdated === true
       ? "Provider marked outdated"
-      : !thread.anchor
-        ? "General discussion"
-        : !thread.anchor.commit_oid
-          ? "Anchor commit unknown"
-          : contextMatches(entry, context) &&
-              thread.anchor.commit_oid === context.headOid
-            ? "Current anchor"
-            : "Historical anchor";
+      : thread.native?.provider === "gitlab" && thread.native.value.position
+        ? "GitLab diff position"
+        : !thread.anchor
+          ? "General discussion"
+          : !thread.anchor.commit_oid
+            ? "Anchor commit unknown"
+            : contextMatches(entry, context) &&
+                thread.anchor.commit_oid === context.headOid
+              ? "Current anchor"
+              : "Historical anchor";
   return (
     <li className="space-y-2 break-words text-sm">
       <div className="flex flex-wrap items-center gap-2">
@@ -654,6 +668,9 @@ function ThreadRow({
           </Badge>
         ) : null}
       </div>
+      {thread.native?.provider === "gitlab" ? (
+        <GitlabReviewNote note={thread.native.value} />
+      ) : null}
       {thread.anchor ? (
         <p className="text-xs text-muted-foreground">
           {thread.anchor.path}
