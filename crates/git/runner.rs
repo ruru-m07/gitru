@@ -49,6 +49,34 @@ pub struct GitCommandTransaction {
     _guard: OwnedMutexGuard<()>,
 }
 
+/// A prepared `git update-ref --stdin` transaction holding one exact ref lock.
+/// Dropping it closes stdin so Git aborts and releases the lock; callers should
+/// use `release` to wait for clean release on ordinary paths.
+pub(crate) struct PreparedGitRefLock {
+    child: Option<tokio::process::Child>,
+    stdin: Option<tokio::process::ChildStdin>,
+    _stdout: Option<BufReader<tokio::process::ChildStdout>>,
+}
+
+impl PreparedGitRefLock {
+    pub(crate) async fn release(mut self) {
+        if let Some(mut stdin) = self.stdin.take() {
+            let _ = stdin.write_all(b"abort\n").await;
+            let _ = stdin.shutdown().await;
+        }
+        if let Some(child) = self.child.take() {
+            finish_ref_lock_child(child).await;
+        }
+    }
+}
+
+async fn finish_ref_lock_child(mut child: tokio::process::Child) {
+    if timeout(Duration::from_secs(5), child.wait()).await.is_err() {
+        let _ = child.kill().await;
+        let _ = child.wait().await;
+    }
+}
+
 // TODO(ruru-m07): Consider allowing configuration of additional tool directories via environment variable or config file
 const DEFAULT_TOOL_DIRS: &[&str] = &[
     "/opt/homebrew/bin",
@@ -163,6 +191,116 @@ impl GitCommandRunner {
 }
 
 impl GitCommandTransaction {
+    /// Atomically verify and hold a direct ref at an exact object ID while
+    /// subsequent commands run through this Gitru transaction. The child
+    /// remains at update-ref's prepared phase until the returned guard is
+    /// released, so ordinary external Git processes cannot move the ref.
+    pub(crate) async fn prepare_ref_lock(
+        &mut self,
+        reference: &str,
+        expected_oid: &str,
+        duration: Duration,
+    ) -> Result<PreparedGitRefLock, String> {
+        if !reference.starts_with("refs/heads/")
+            || reference.chars().any(char::is_whitespace)
+            || !matches!(expected_oid.len(), 40 | 64)
+            || !expected_oid.bytes().all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err("Invalid Git ref lock request".into());
+        }
+        let binary = git_binary_path()?;
+        let path = git_path_env()?;
+        let mut command = tokio::process::Command::new(binary);
+        command
+            .current_dir(&self.repo_path)
+            .args([
+                "-c",
+                "core.askPass=",
+                "-c",
+                "core.hooksPath=",
+                "-c",
+                "core.filesRefLockTimeout=0",
+                "-c",
+                "core.packedRefsTimeout=0",
+                "-c",
+                "reftable.lockTimeout=0",
+                "update-ref",
+                "--stdin",
+            ])
+            .env("PATH", path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        configure_sensitive_command(&mut command, std::env::vars_os().map(|(key, _)| key));
+        // Do not kill on drop: closing the pipe lets Git abort its prepared
+        // transaction and remove the lock even if the caller is cancelled.
+        let mut child = command.spawn().map_err(|_| "Git ref lock unavailable")?;
+        let mut stdin = child.stdin.take().ok_or("Git ref lock unavailable")?;
+        let stdout = child.stdout.take().ok_or("Git ref lock unavailable")?;
+        let mut stdout = BufReader::new(stdout);
+        let protocol = async {
+            stdin
+                .write_all(
+                    format!("start\noption no-deref\nverify {reference} {expected_oid}\nprepare\n")
+                        .as_bytes(),
+                )
+                .await
+                .map_err(|_| "Git ref lock unavailable")?;
+            stdin
+                .flush()
+                .await
+                .map_err(|_| "Git ref lock unavailable")?;
+            let mut line = String::new();
+            if stdout
+                .read_line(&mut line)
+                .await
+                .map_err(|_| "Git ref lock unavailable")?
+                == 0
+                || line.trim_end_matches(['\r', '\n']) != "start: ok"
+            {
+                return Err("Git ref changed");
+            }
+            line.clear();
+            if stdout
+                .read_line(&mut line)
+                .await
+                .map_err(|_| "Git ref lock unavailable")?
+                == 0
+                || line.trim_end_matches(['\r', '\n']) != "prepare: ok"
+            {
+                return Err("Git ref changed");
+            }
+            Ok(())
+        };
+        match timeout(duration, protocol).await {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => {
+                drop(stdin);
+                finish_ref_lock_child(child).await;
+                return Err(error.into());
+            }
+            Err(_) => {
+                drop(stdin);
+                finish_ref_lock_child(child).await;
+                return Err("Git ref lock timed out".into());
+            }
+        }
+        if let Some(status) = child.try_wait().map_err(|_| "Git ref lock unavailable")? {
+            drop(stdin);
+            return Err(if status.success() {
+                "Git ref lock ended"
+            } else {
+                "Git ref changed"
+            }
+            .into());
+        }
+        Ok(PreparedGitRefLock {
+            child: Some(child),
+            stdin: Some(stdin),
+            _stdout: Some(stdout),
+        })
+    }
+
     /// Bounded local metadata read. Raw diagnostics are discarded before return.
     /// This method intentionally does not share the ordinary stderr fallback.
     pub(crate) async fn sensitive_read(

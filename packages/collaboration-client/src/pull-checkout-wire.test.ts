@@ -47,6 +47,7 @@ const receipt: PullCheckoutReceipt = {
   branch: plan.local_branch,
   oid: plan.expected_oid,
   fetched: true,
+  git_reported_failure: false,
 };
 
 describe("pull checkout IPC wire", () => {

@@ -212,6 +212,12 @@ export function PullCheckoutDialogBody({
       // changed locally. Retire the single-use plan before attempting the
       // separate convenience step of opening that repository.
       setPlan(null);
+      if (receipt.git_reported_failure) {
+        setSuccess(
+          `Checked out ${receipt.branch} at ${shortOid(receipt.oid)}, but Git reported a local checkout warning. Review repository hooks and worktree state before continuing.`,
+        );
+        return;
+      }
       setSuccess(
         `Checked out ${receipt.branch} at ${shortOid(receipt.oid)} successfully.`,
       );
@@ -514,7 +520,7 @@ function checkoutErrorMessage(error: unknown): string {
       : undefined;
   switch (code) {
     case "not_found":
-      return "No existing fetch remote matches this pull request source. Add or link the fork remote, then inspect again.";
+      return "The saved pull request or a matching source remote is no longer available. Refresh the pull request and linked clones, then inspect again.";
     case "not_ready":
       return "The linked worktree or saved pull request source is unavailable. Refresh it or choose another clone.";
     case "stale_view":
@@ -525,6 +531,8 @@ function checkoutErrorMessage(error: unknown): string {
       return "Git could not fetch the pull request branch. Check network and Git credentials, then inspect again.";
     case "invalid_input":
       return "Choose a valid local branch name and inspect again.";
+    case "local_state_changed":
+      return "Git may have changed this worktree without completing the requested checkout. Inspect the local repository before retrying.";
     default:
       return collaborationErrorMessage(error);
   }

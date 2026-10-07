@@ -18,6 +18,7 @@ use git::{
         },
         remotes::{RemoteEndpoint, RemoteTransport},
     },
+    AppState as GitAppState,
 };
 use ipc::repo_manager::{RepoManager, RepositoryInfo};
 use serde::{Deserialize, Serialize};
@@ -131,11 +132,12 @@ pub struct ExecutePullCheckoutRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PullCheckoutReceipt {
+pub struct CollaborationPullCheckoutReceipt {
     pub local_repository_id: String,
     pub branch: String,
     pub oid: String,
     pub fetched: bool,
+    pub git_reported_failure: bool,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -302,7 +304,8 @@ pub async fn collaboration_execute_pull_checkout(
     view: Webview,
     app: AppHandle,
     state: State<'_, CollaborationState>,
-) -> Result<PullCheckoutReceipt, CollaborationError> {
+    git_state: State<'_, GitAppState>,
+) -> Result<CollaborationPullCheckoutReceipt, CollaborationError> {
     authorize(&view, Operation::PullCheckout)?;
     let caller = CallerProof::capture(&view, &app)?;
     let plan = state
@@ -354,12 +357,30 @@ pub async fn collaboration_execute_pull_checkout(
         branch,
         oid,
         fetched,
-    } = prepared.finish().await.map_err(map_git_error)?;
-    Ok(PullCheckoutReceipt {
+        git_reported_failure,
+    } = {
+        let result = prepared.finish().await;
+        // The checkout service above has its own isolated RepoServices cache.
+        // Invalidate every currently mounted context after any possible switch
+        // attempt so immediate navigation cannot observe an older branch.
+        let live_services = git_state
+            .services
+            .read()
+            .await
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        for live in live_services {
+            live.invalidate_cache();
+        }
+        result.map_err(map_git_error)?
+    };
+    Ok(CollaborationPullCheckoutReceipt {
         local_repository_id: plan.request.local_repository_id,
         branch,
         oid,
         fetched,
+        git_reported_failure,
     })
 }
 
@@ -608,10 +629,12 @@ fn map_git_error(error: PullCheckoutError) -> CollaborationError {
         | PullCheckoutError::HeadMoved => ErrorCode::StaleView,
         PullCheckoutError::Blocked => ErrorCode::Busy,
         PullCheckoutError::FetchFailed => ErrorCode::Network,
-        PullCheckoutError::UnsupportedCredentials
-        | PullCheckoutError::InspectionFailed
-        | PullCheckoutError::CheckoutFailed
-        | PullCheckoutError::VerificationFailed => ErrorCode::NotReady,
+        PullCheckoutError::CheckoutFailed | PullCheckoutError::VerificationFailed => {
+            ErrorCode::LocalStateChanged
+        }
+        PullCheckoutError::UnsupportedCredentials | PullCheckoutError::InspectionFailed => {
+            ErrorCode::NotReady
+        }
     };
     CollaborationError::new(code, error.to_string())
 }
@@ -797,6 +820,14 @@ mod tests {
         assert_eq!(
             serde_json::to_value(blocked).unwrap()["blocker"],
             "existing_branch_diverged"
+        );
+        assert_eq!(
+            map_git_error(PullCheckoutError::CheckoutFailed).code,
+            ErrorCode::LocalStateChanged
+        );
+        assert_eq!(
+            map_git_error(PullCheckoutError::VerificationFailed).code,
+            ErrorCode::LocalStateChanged
         );
     }
 

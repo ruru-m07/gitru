@@ -290,8 +290,38 @@ fn creates_and_verifies_a_branch_from_an_existing_exact_object() {
         assert_eq!(receipt.branch, "pr/1");
         assert_eq!(receipt.oid, oid);
         assert!(!receipt.fetched);
+        assert!(!receipt.git_reported_failure);
         assert_eq!(repo.current_branch(), "pr/1");
         assert_eq!(repo.git(&["config", "--get-regexp", "^remote\\."]), before);
+    });
+}
+
+#[test]
+fn annotated_tag_oid_is_not_treated_as_the_exact_commit_object() {
+    run_async(async {
+        let repo = local_repo();
+        let commit_oid = repo.head_commit();
+        repo.git(&[
+            "-c",
+            "tag.gpgSign=false",
+            "tag",
+            "-a",
+            "provider-tag",
+            "-m",
+            "provider tag",
+        ]);
+        let tag_oid = repo.git(&["rev-parse", "refs/tags/provider-tag"]);
+        assert_ne!(tag_oid, commit_oid);
+        assert_eq!(repo.git(&["cat-file", "-t", &tag_oid]), "tag");
+
+        let services = RepoServices::new(repo.path_str()).unwrap();
+        let target = target(&repo, "origin", "feature", &tag_oid, "pr/tag").await;
+        let plan = services.pull_checkout().inspect(&target).await.unwrap();
+
+        assert!(!plan.object_available);
+        assert_eq!(plan.action, Some(PullCheckoutAction::FetchAndCreateBranch));
+        assert_eq!(repo.current_branch(), "main");
+        assert!(!repo.list_branches().contains(&"pr/tag".to_string()));
     });
 }
 
@@ -309,6 +339,110 @@ fn switches_only_an_existing_branch_at_the_exact_oid() {
         execute(&services, &target, &plan).await.unwrap();
         assert_eq!(repo.current_branch(), "pr/2");
         assert_eq!(repo.head_commit(), oid);
+    });
+}
+
+#[test]
+fn symbolic_existing_branch_is_rejected_before_switching_head() {
+    run_async(async {
+        let repo = local_repo();
+        let expected = repo.head_commit();
+        repo.git(&["branch", "real-target", &expected]);
+        repo.git(&[
+            "symbolic-ref",
+            "refs/heads/pr/symbolic",
+            "refs/heads/real-target",
+        ]);
+        let services = RepoServices::new(repo.path_str()).unwrap();
+        let target = target(&repo, "origin", "feature", &expected, "pr/symbolic").await;
+        let plan = services.pull_checkout().inspect(&target).await.unwrap();
+        assert_eq!(plan.action, Some(PullCheckoutAction::SwitchExisting));
+
+        assert_eq!(
+            execute(&services, &target, &plan).await.unwrap_err(),
+            PullCheckoutError::StalePlan
+        );
+        assert_eq!(repo.current_branch(), "main");
+        assert_eq!(repo.head_commit(), expected);
+        assert_eq!(
+            repo.git(&["symbolic-ref", "refs/heads/pr/symbolic"]),
+            "refs/heads/real-target"
+        );
+    });
+}
+
+#[test]
+fn existing_branch_lock_ignores_unbounded_repository_lock_timeouts() {
+    run_async(async {
+        let repo = local_repo();
+        let expected = repo.head_commit();
+        repo.git(&["branch", "pr/held-lock", &expected]);
+        let services = RepoServices::new(repo.path_str()).unwrap();
+        let target = target(&repo, "origin", "feature", &expected, "pr/held-lock").await;
+        let plan = services.pull_checkout().inspect(&target).await.unwrap();
+        assert_eq!(plan.action, Some(PullCheckoutAction::SwitchExisting));
+
+        for key in [
+            "core.filesRefLockTimeout",
+            "core.packedRefsTimeout",
+            "reftable.lockTimeout",
+        ] {
+            repo.git(&["config", key, "-1"]);
+        }
+        let lock_path = repo.path().join(".git/refs/heads/pr/held-lock.lock");
+        std::fs::write(&lock_path, "held by another process").unwrap();
+
+        let result =
+            tokio::time::timeout(Duration::from_secs(2), execute(&services, &target, &plan))
+                .await
+                .expect("prepared ref lock must not inherit an unbounded repository timeout");
+        assert_eq!(result.unwrap_err(), PullCheckoutError::StalePlan);
+        assert_eq!(repo.current_branch(), "main");
+        assert_eq!(repo.head_commit(), expected);
+        assert_eq!(
+            std::fs::read_to_string(lock_path).unwrap(),
+            "held by another process"
+        );
+    });
+}
+
+#[test]
+fn switches_an_existing_branch_in_a_sha256_repository_when_supported() {
+    run_async(async {
+        let dir = tempfile::tempdir().unwrap();
+        let initialized = Command::new("git")
+            .current_dir(dir.path())
+            .args(["init", "-b", "main", "--object-format=sha256"])
+            .output()
+            .unwrap();
+        if !initialized.status.success() {
+            return;
+        }
+        let repo = TestRepo { dir };
+        repo.git(&["config", "user.email", "test@example.com"]);
+        repo.git(&["config", "user.name", "Test User"]);
+        repo.git(&["config", "commit.gpgSign", "false"]);
+        repo.commit_file("README.md", "base", "base");
+        repo.git(&[
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/owner/project.git",
+        ]);
+        let oid = repo.head_commit();
+        assert_eq!(oid.len(), 64);
+        repo.git(&["branch", "pr/sha256", &oid]);
+
+        let services = RepoServices::new(repo.path_str()).unwrap();
+        let target = target(&repo, "origin", "feature", &oid, "pr/sha256").await;
+        let plan = services.pull_checkout().inspect(&target).await.unwrap();
+        assert_eq!(plan.action, Some(PullCheckoutAction::SwitchExisting));
+
+        let receipt = execute(&services, &target, &plan).await.unwrap();
+        assert_eq!(receipt.branch, "pr/sha256");
+        assert_eq!(receipt.oid, oid);
+        assert!(!receipt.git_reported_failure);
+        assert_eq!(repo.current_branch(), "pr/sha256");
     });
 }
 
@@ -393,6 +527,87 @@ fn checkout_failure_is_fixed_and_preserves_the_current_branch() {
     });
 }
 
+#[cfg(unix)]
+#[test]
+fn existing_branch_lock_blocks_hook_race_and_reports_verified_hook_failure() {
+    use std::os::unix::fs::PermissionsExt;
+
+    run_async(async {
+        let repo = local_repo();
+        let expected = repo.head_commit();
+        repo.git(&["branch", "pr/hook-race", &expected]);
+        repo.commit_file("later.txt", "later", "later main commit");
+        let raced_oid = repo.head_commit();
+        assert_ne!(expected, raced_oid);
+
+        let hook = repo.path().join(".git/hooks/post-checkout");
+        std::fs::write(
+            &hook,
+            format!("#!/bin/sh\ngit update-ref refs/heads/pr/hook-race {raced_oid} {expected}\n"),
+        )
+        .unwrap();
+        let mut permissions = std::fs::metadata(&hook).unwrap().permissions();
+        permissions.set_mode(0o700);
+        std::fs::set_permissions(&hook, permissions).unwrap();
+
+        let services = RepoServices::new(repo.path_str()).unwrap();
+        let target = target(&repo, "origin", "feature", &expected, "pr/hook-race").await;
+        let plan = services.pull_checkout().inspect(&target).await.unwrap();
+        assert_eq!(plan.action, Some(PullCheckoutAction::SwitchExisting));
+
+        let receipt = execute(&services, &target, &plan).await.unwrap();
+        assert!(receipt.git_reported_failure);
+        assert_eq!(receipt.branch, "pr/hook-race");
+        assert_eq!(receipt.oid, expected);
+        assert_eq!(repo.current_branch(), "pr/hook-race");
+        assert_eq!(repo.head_commit(), expected);
+        assert_eq!(
+            repo.git(&["rev-parse", "refs/heads/pr/hook-race"]),
+            expected
+        );
+    });
+}
+
+#[cfg(unix)]
+#[test]
+fn internal_ref_lock_does_not_run_reference_transaction_hooks() {
+    use std::os::unix::fs::PermissionsExt;
+
+    run_async(async {
+        let repo = local_repo();
+        let expected = repo.head_commit();
+        repo.git(&["branch", "pr/ref-hook", &expected]);
+        repo.commit_file("later.txt", "later", "later main commit");
+        let raced_oid = repo.head_commit();
+        let marker = repo.path().join("reference-transaction-aborted");
+        assert!(!marker.to_string_lossy().contains('\''));
+
+        let hook = repo.path().join(".git/hooks/reference-transaction");
+        std::fs::write(
+            &hook,
+            format!(
+                "#!/bin/sh\npayload=$(cat)\ncase \"$1:$payload\" in\n  aborted:*refs/heads/pr/ref-hook*)\n    : > '{}'\n    git update-ref refs/heads/pr/ref-hook {raced_oid} {expected}\n    ;;\nesac\n",
+                marker.display()
+            ),
+        )
+        .unwrap();
+        let mut permissions = std::fs::metadata(&hook).unwrap().permissions();
+        permissions.set_mode(0o700);
+        std::fs::set_permissions(&hook, permissions).unwrap();
+
+        let services = RepoServices::new(repo.path_str()).unwrap();
+        let target = target(&repo, "origin", "feature", &expected, "pr/ref-hook").await;
+        let plan = services.pull_checkout().inspect(&target).await.unwrap();
+        let receipt = execute(&services, &target, &plan).await.unwrap();
+
+        assert!(!receipt.git_reported_failure);
+        assert_eq!(receipt.branch, "pr/ref-hook");
+        assert_eq!(receipt.oid, expected);
+        assert!(!marker.exists());
+        assert_eq!(repo.git(&["rev-parse", "refs/heads/pr/ref-hook"]), expected);
+    });
+}
+
 #[test]
 fn active_merge_blocks_checkout_before_dirty_state() {
     run_async(async {
@@ -419,6 +634,38 @@ fn active_merge_blocks_checkout_before_dirty_state() {
         assert_eq!(plan.action, None);
         assert_eq!(plan.blocker, Some(PullCheckoutBlocker::ActiveOperation));
         repo.git(&["merge", "--abort"]);
+    });
+}
+
+#[test]
+fn unmerged_index_without_an_operation_marker_is_still_blocked_as_active() {
+    run_async(async {
+        let repo = local_repo();
+        repo.create_file("README.md", "stashed change");
+        repo.git(&["stash", "push", "-m", "conflicting stash"]);
+        repo.create_file("README.md", "committed change");
+        repo.add("README.md");
+        repo.commit("conflicting commit");
+        let expected = repo.head_commit();
+        let status = Command::new("git")
+            .current_dir(repo.path())
+            .args(["stash", "apply"])
+            .status()
+            .unwrap();
+        assert!(!status.success());
+        assert!(!repo.path().join(".git/MERGE_HEAD").exists());
+        assert!(
+            repo.git(&["status", "--porcelain"])
+                .starts_with("UU README.md")
+        );
+
+        let services = RepoServices::new(repo.path_str()).unwrap();
+        let target = target(&repo, "origin", "feature", &expected, "pr/unmerged").await;
+        let plan = services.pull_checkout().inspect(&target).await.unwrap();
+
+        assert_eq!(plan.action, None);
+        assert_eq!(plan.blocker, Some(PullCheckoutBlocker::ActiveOperation));
+        assert_eq!(repo.current_branch(), "main");
     });
 }
 

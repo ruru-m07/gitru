@@ -32,7 +32,7 @@ import {
   type NotificationSubjectSnapshot,
   type PullCheckoutPlan,
   type PullCheckoutPlanRequest,
-  type PullCheckoutReceipt,
+  type CollaborationPullCheckoutReceipt as PullCheckoutReceipt,
   type RefreshReceipt,
   type RefreshRequest,
   type RemoteAccount,
@@ -785,6 +785,8 @@ export function collaborationErrorMessage(error: unknown): string {
       return "Saved collaboration data could not be read. Try again.";
     case "stale_view":
       return "This saved view changed. Reload it before continuing.";
+    case "local_state_changed":
+      return "The local repository changed during the operation. Inspect it before retrying.";
     default:
       return "The operation could not be completed. Try again.";
   }

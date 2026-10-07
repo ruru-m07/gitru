@@ -10,7 +10,7 @@ use crate::{
     },
     parsers::remotes::urls,
     runner::{GitCommandTransaction, SensitiveRemoteProtocol},
-    service::{operation::OperationService, remotes::RemotesService},
+    service::{operation::GITRU_REBASE_DIR, remotes::RemotesService},
 };
 use sha2::{Digest, Sha256};
 use std::{sync::Arc, time::Duration};
@@ -167,12 +167,9 @@ impl PullCheckoutService {
             return Err(PullCheckoutError::InspectionFailed);
         }
         let dirty = !worktree.is_empty();
-        let operation = OperationService::new(self.ctx.clone())
-            .get_repo_operation()
-            .map_err(|_| PullCheckoutError::InspectionFailed)?;
-        let operation_kind = operation.kind.clone();
+        let operation_kind = checkout_operation_kind(transaction).await?;
         let active_operation =
-            operation_kind != RepoOperationKind::Clean || !operation.conflict_paths.is_empty();
+            operation_kind != RepoOperationKind::Clean || worktree_has_unmerged_entries(&worktree);
         let target_ref = format!("refs/heads/{}", target.local_branch);
         let target_branch_oid = read_oid(
             transaction,
@@ -359,15 +356,54 @@ impl PreparedPullCheckout {
         if actual != expected {
             return Err(PullCheckoutError::StalePlan);
         }
-        let status = match self.action {
-            PullCheckoutAction::AlreadyCheckedOut => 0,
-            PullCheckoutAction::SwitchExisting => redacted_status(
+        // An existing branch is protected with its native ref lock from the
+        // last exact-tip check through final verification. Git's ordinary
+        // switch path does not update the target ref, while another
+        // cooperating Git process cannot move it underneath this operation.
+        let mut branch_lock = if self.action == PullCheckoutAction::SwitchExisting {
+            Some(
+                self.transaction
+                    .prepare_ref_lock(
+                        &format!("refs/heads/{}", self.target.local_branch),
+                        &self.target.expected_oid,
+                        LOCAL_TIMEOUT,
+                    )
+                    .await
+                    .map_err(|_| PullCheckoutError::StalePlan)?,
+            )
+        } else {
+            None
+        };
+        if branch_lock.is_some() {
+            let target_ref = format!("refs/heads/{}", self.target.local_branch);
+            let direct_ref = match command(
                 &mut self.transaction,
-                &["switch", "--", &self.target.local_branch],
+                &["symbolic-ref", "-q", "--no-recurse", &target_ref],
                 LOCAL_TIMEOUT,
             )
             .await
-            .map_err(|_| PullCheckoutError::CheckoutFailed)?,
+            {
+                Ok((1, _)) => Ok(()),
+                Ok((0, _)) => Err(PullCheckoutError::StalePlan),
+                _ => Err(PullCheckoutError::InspectionFailed),
+            };
+            if let Err(error) = direct_ref {
+                if let Some(branch_lock) = branch_lock.take() {
+                    branch_lock.release().await;
+                }
+                return Err(error);
+            }
+        }
+        let command_result = match self.action {
+            PullCheckoutAction::AlreadyCheckedOut => Ok(0),
+            PullCheckoutAction::SwitchExisting => {
+                redacted_status(
+                    &mut self.transaction,
+                    &["switch", "--", &self.target.local_branch],
+                    LOCAL_TIMEOUT,
+                )
+                .await
+            }
             PullCheckoutAction::CreateBranch | PullCheckoutAction::FetchAndCreateBranch => {
                 redacted_status(
                     &mut self.transaction,
@@ -381,30 +417,62 @@ impl PreparedPullCheckout {
                     LOCAL_TIMEOUT,
                 )
                 .await
-                .map_err(|_| PullCheckoutError::CheckoutFailed)?
             }
         };
-        if status != 0 {
-            return Err(PullCheckoutError::CheckoutFailed);
+        if self.action != PullCheckoutAction::AlreadyCheckedOut {
+            // A failed or timed-out Git process may still have changed HEAD,
+            // the index, or the worktree. Clear local caches before reading
+            // the authoritative post-command state on every attempted switch.
+            self.ctx.cache.invalidate_all();
         }
-        let branch = symbolic_branch(&mut self.transaction)
-            .await?
-            .ok_or(PullCheckoutError::VerificationFailed)?;
+        let branch = symbolic_branch(&mut self.transaction).await;
         let oid = read_oid(
             &mut self.transaction,
             &["rev-parse", "--verify", "HEAD^{commit}"],
         )
-        .await?
-        .ok_or(PullCheckoutError::VerificationFailed)?;
-        if branch != self.target.local_branch || oid != self.target.expected_oid {
-            return Err(PullCheckoutError::VerificationFailed);
+        .await;
+        let exact_while_locked = matches!(
+            (&branch, &oid),
+            (Ok(Some(branch)), Ok(Some(oid)))
+                if branch == &self.target.local_branch && oid == &self.target.expected_oid
+        );
+        if let Some(branch_lock) = branch_lock {
+            branch_lock.release().await;
+        }
+        // The lock-only update-ref transaction has hooks disabled, then the
+        // authoritative state is read again after its lock file is gone. This
+        // prevents a reference-transaction abort hook from invalidating a
+        // receipt between verification and release.
+        let branch = symbolic_branch(&mut self.transaction).await;
+        let oid = read_oid(
+            &mut self.transaction,
+            &["rev-parse", "--verify", "HEAD^{commit}"],
+        )
+        .await;
+        let exact_state = match (exact_while_locked, branch, oid) {
+            (true, Ok(Some(branch)), Ok(Some(oid)))
+                if branch == self.target.local_branch && oid == self.target.expected_oid =>
+            {
+                Some((branch, oid))
+            }
+            _ => None,
+        };
+        if let Some((branch, oid)) = exact_state {
+            let git_reported_failure = !matches!(command_result, Ok(0));
+            self.ctx.cache.invalidate_all();
+            return Ok(PullCheckoutReceipt {
+                branch,
+                oid,
+                fetched: self.fetched,
+                git_reported_failure,
+            });
         }
         self.ctx.cache.invalidate_all();
-        Ok(PullCheckoutReceipt {
-            branch,
-            oid,
-            fetched: self.fetched,
-        })
+        if matches!(command_result, Ok(0)) {
+            Err(PullCheckoutError::VerificationFailed)
+        } else {
+            Err(PullCheckoutError::CheckoutFailed)
+        }
     }
 }
 
@@ -686,13 +754,84 @@ async fn object_exists(
     transaction: &mut GitCommandTransaction,
     oid: &str,
 ) -> Result<bool, PullCheckoutError> {
-    let object = format!("{oid}^{{commit}}");
-    let (status, _) = command(transaction, &["cat-file", "-e", &object], LOCAL_TIMEOUT).await?;
+    let (status, bytes) = command(transaction, &["cat-file", "-t", oid], LOCAL_TIMEOUT).await?;
     match status {
-        0 => Ok(true),
+        0 => Ok(one_line(&bytes).as_deref() == Some("commit")),
         1 | 128 => Ok(false),
         _ => Err(PullCheckoutError::InspectionFailed),
     }
+}
+
+async fn checkout_operation_kind(
+    transaction: &mut GitCommandTransaction,
+) -> Result<RepoOperationKind, PullCheckoutError> {
+    const MARKERS: &[&str] = &[
+        GITRU_REBASE_DIR,
+        "rebase-merge",
+        "rebase-apply",
+        "MERGE_HEAD",
+        "REVERT_HEAD",
+        "CHERRY_PICK_HEAD",
+        "BISECT_LOG",
+        "sequencer/todo",
+    ];
+    let mut args = vec!["rev-parse", "--path-format=absolute"];
+    for marker in MARKERS {
+        args.extend(["--git-path", marker]);
+    }
+    let (status, bytes) = command(transaction, &args, LOCAL_TIMEOUT).await?;
+    if status != 0 {
+        return Err(PullCheckoutError::InspectionFailed);
+    }
+    let output = std::str::from_utf8(&bytes)
+        .map_err(|_| PullCheckoutError::InspectionFailed)?
+        .strip_suffix('\n')
+        .ok_or(PullCheckoutError::InspectionFailed)?;
+    let paths = output.lines().collect::<Vec<_>>();
+    if paths.len() != MARKERS.len()
+        || paths
+            .iter()
+            .any(|path| path.is_empty() || path.chars().any(char::is_control))
+    {
+        return Err(PullCheckoutError::InspectionFailed);
+    }
+    let paths = paths.iter().map(std::path::Path::new).collect::<Vec<_>>();
+    if paths[0].join("onto").is_file() {
+        return Ok(RepoOperationKind::RebaseInteractive);
+    }
+    if paths[1].is_dir() {
+        return Ok(if paths[1].join("interactive").is_file() {
+            RepoOperationKind::RebaseInteractive
+        } else {
+            RepoOperationKind::RebaseMerge
+        });
+    }
+    if paths[2].is_dir() {
+        return Ok(if paths[2].join("applying").is_file() {
+            RepoOperationKind::ApplyMailbox
+        } else {
+            RepoOperationKind::Rebase
+        });
+    }
+    for (index, operation) in [
+        (3, RepoOperationKind::Merge),
+        (4, RepoOperationKind::Revert),
+        (5, RepoOperationKind::CherryPick),
+        (6, RepoOperationKind::Bisect),
+        (7, RepoOperationKind::Other),
+    ] {
+        if paths[index].exists() {
+            return Ok(operation);
+        }
+    }
+    Ok(RepoOperationKind::Clean)
+}
+
+fn worktree_has_unmerged_entries(status: &[u8]) -> bool {
+    status.split(|byte| *byte == 0).any(|entry| {
+        entry.len() >= 2
+            && (entry[0] == b'U' || entry[1] == b'U' || matches!(&entry[..2], b"AA" | b"DD"))
+    })
 }
 
 async fn command(

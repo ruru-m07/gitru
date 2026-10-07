@@ -8,7 +8,7 @@ import type {
   ItemPage,
   ItemSnapshot,
   PullCheckoutPlan,
-  PullCheckoutReceipt,
+  CollaborationPullCheckoutReceipt as PullCheckoutReceipt,
   RemoteAccount,
   RemoteItem,
   RepositorySnapshot,
@@ -95,6 +95,7 @@ const checkoutReceipt: PullCheckoutReceipt = {
   branch: checkoutPlan.local_branch,
   oid: checkoutPlan.expected_oid,
   fetched: false,
+  git_reported_failure: false,
 };
 
 function transport(

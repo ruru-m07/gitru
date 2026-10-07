@@ -90,6 +90,7 @@ beforeEach(() => {
     branch: basePlan.local_branch,
     oid: basePlan.expected_oid,
     fetched: true,
+    git_reported_failure: false,
   });
   useAppStore.setState({ repositories: [registration] });
 });
@@ -275,6 +276,68 @@ describe("pull request checkout confirmation", () => {
     expect(
       screen.queryByRole("button", { name: "Fetch and check out" }),
     ).not.toBeInTheDocument();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("explains that a missing saved pull request and source remote share a safe recovery", async () => {
+    vi.mocked(collaboration.transport.planPullCheckout).mockRejectedValue({
+      code: "not_found",
+      message: "provider-secret-must-not-render",
+    });
+    const user = userEvent.setup();
+    mountBody();
+    await user.click(
+      await screen.findByRole("button", { name: "Inspect Clone A" }),
+    );
+    expect(
+      await screen.findByText(/saved pull request or a matching source remote/),
+    ).toBeVisible();
+    expect(screen.queryByText(/provider-secret/)).not.toBeInTheDocument();
+  });
+
+  it("keeps a verified checkout visible when Git reports a post-switch failure", async () => {
+    vi.mocked(collaboration.transport.executePullCheckout).mockResolvedValue({
+      local_repository_id: clone.local_repository_id,
+      branch: basePlan.local_branch,
+      oid: basePlan.expected_oid,
+      fetched: true,
+      git_reported_failure: true,
+    });
+    const user = userEvent.setup();
+    const navigate = mountBody();
+    await user.click(
+      await screen.findByRole("button", { name: "Inspect Clone A" }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "Fetch and check out" }),
+    );
+
+    expect(
+      await screen.findByText(/Git reported a local checkout warning/),
+    ).toBeVisible();
+    expect(navigate).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("button", { name: "Fetch and check out" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("treats an indeterminate post-switch state as a local inspection boundary", async () => {
+    vi.mocked(collaboration.transport.executePullCheckout).mockRejectedValue({
+      code: "local_state_changed",
+      message: "native-detail-must-not-render",
+    });
+    const user = userEvent.setup();
+    const navigate = mountBody();
+    await user.click(
+      await screen.findByRole("button", { name: "Inspect Clone A" }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "Fetch and check out" }),
+    );
+    expect(
+      await screen.findByText(/may have changed this worktree/),
+    ).toBeVisible();
+    expect(screen.queryByText(/native-detail/)).not.toBeInTheDocument();
     expect(navigate).not.toHaveBeenCalled();
   });
 

@@ -16,6 +16,7 @@ pub enum ErrorCode {
     Unsupported,
     StaleView,
     Busy,
+    LocalStateChanged,
 }
 
 /// Safe for IPC. Never construct its message from an HTTP body, URL or token.

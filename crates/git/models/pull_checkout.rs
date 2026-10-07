@@ -51,6 +51,10 @@ pub struct PullCheckoutReceipt {
     pub branch: String,
     pub oid: String,
     pub fetched: bool,
+    /// Git returned a failure after the requested branch and commit became
+    /// authoritative. The caller must present this as a completed checkout
+    /// with a local Git warning rather than offering the consumed plan again.
+    pub git_reported_failure: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
