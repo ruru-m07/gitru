@@ -3373,3 +3373,45 @@ frontend/build and deployment checks while native, E2E and retained harness
 checks are pending. Draft-skip bot status does not constitute a substantive
 code review. These are live remote statuses, separate from RURU-114 local
 qualification; none of these PRs is merged.
+
+### RURU-119 implementation checkpoint — 8 October 2026
+
+RURU-119 is in progress on the signed RURU-114 final head
+`de0e245d5b10bbebb9b66ad78d92febe084a986b`, following migrations 0012 (local
+inbox) and 0013 (immutable command admission). Its
+[work contract](./collaboration-work/RURU-119.md) defines the comparison and
+selected-artifact authority. Migration 0014, durable file staging and terminal
+publication, separate bounded artifact storage, and normalized retention are
+implemented. Superseded generations are reclaimed in bounded maintenance turns;
+active file demand protects the Body evidence as well as the selected content.
+
+GitHub, GitLab and Bitbucket Cloud file summaries preserve old/new identity,
+unknown counts and flags, provider caps and merge-base-to-head semantics.
+The shared scheduler resumes native durable leases and separately budgets fresh
+terminal parent validation. Six synthetic runtime cases pass, covering coalescing,
+Body prerequisites, durable paging, terminal quota, parent mismatch and account
+disconnect. Twelve file-storage tests and five frozen-v13 migration/fault cases
+pass. These are focused local results, not final whole-slice qualification.
+
+The optional native Git accelerator reads existing exact commit objects without
+fetching and requires a unique merge base. Its 11 integration and three focused
+unit cases pass; the full Git crate and strict Clippy pass. Selected local IPC
+revalidates the caller, authored clone link, account, file membership and range
+before publishing. Binary detection without saved blob bytes remains explicit
+omission with a known binary hint. The four new IPC commands are generated with
+`make typegen` (129 commands). Generation now rejects malformed TypeScript syntax;
+the generated-schema test suite passes nine cases. Provider selected-artifact
+hydration, final UI validation and unchanged-Body cache preservation are still
+being integrated. No RURU-119 PR or completion claim exists at this checkpoint.
+
+Remote checkpoint at 7 October 20:10 UTC: all 14 reported checks pass for
+[#169](https://github.com/ruru-m07/gitru/pull/169) at
+`4d31a40743d3e203f2fc1027f17b4ae292268478` and
+[#170](https://github.com/ruru-m07/gitru/pull/170) at
+`e75bf77b920c9f1198d4e7d825cf829298209f5b`. These include Rust, packaged E2E
+and retained collaboration harness jobs on macOS/Linux/Windows. RURU-114 is now
+In Review in [#171](https://github.com/ruru-m07/gitru/pull/171), exact head
+`de0e245d5b10bbebb9b66ad78d92febe084a986b`; its macOS/Linux jobs pass while
+Windows remains pending. Deployment checks pass. CodeRabbit's draft-skipped
+success is not independent code review. No merge, personal credential inspection,
+live provider qualification or production-vault validation was performed.

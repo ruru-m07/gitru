@@ -2269,3 +2269,24 @@ done, snoozed and bookmarked generation-1 projections without increasing
 provider/vault counters, and the fresh restart reads byte-equivalent SQLite
 evidence with provider and vault access both `0 -> 0`. Remote CI, other platforms
 and live provider/PAT/keyring behavior remain separate gates. No PR is merged.
+
+### Publication and next slice checkpoint — 8 October 2026
+
+RURU-124 is now In Review in draft [#169](https://github.com/ruru-m07/gitru/pull/169).
+Its exact final head `4d31a40743d3e203f2fc1027f17b4ae292268478` passes all
+14 reported remote checks. RURU-118 is In Review in draft
+[#170](https://github.com/ruru-m07/gitru/pull/170); exact head
+`e75bf77b920c9f1198d4e7d825cf829298209f5b` also passes all 14 reported checks,
+including the three-platform Rust, packaged E2E and retained harness matrix.
+RURU-114 is In Review in draft [#171](https://github.com/ruru-m07/gitru/pull/171)
+at `de0e245d5b10bbebb9b66ad78d92febe084a986b`. Its final local `make verify`
+passes; remote macOS/Linux checks pass while Windows is still pending at
+7 October 20:10 UTC. Draft-skip bot checks do not constitute code review.
+
+RURU-119 is the active bounded slice, stacked on RURU-114. Its signed contract,
+provider summary adapters, migration 0014 storage/retention, collection scheduler,
+and native local-Git selected-diff accelerator are implemented. Selected provider
+hydration and the frontend are being integrated; final combined validation and
+PR publication remain outstanding. The architecture progress section records
+the focused evidence and limits. All worktrees remain on `/Volumes/Lexar` and
+the no-merge and no-personal-credential constraints remain in force.
