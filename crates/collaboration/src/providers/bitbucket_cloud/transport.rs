@@ -16,6 +16,11 @@ pub(super) enum Route {
     PullRequest(String, u64),
     Tasks(String, u64),
     Commits(String, u64),
+    PullFiles {
+        repository: String,
+        base: String,
+        head: String,
+    },
 }
 
 pub(super) struct BitbucketHttp {
@@ -60,6 +65,23 @@ impl BitbucketHttp {
                     return Err(invalid());
                 }
                 format!("repositories/%7B{workspace}%7D?role=member&pagelen=50")
+            }
+            Route::PullFiles {
+                repository,
+                base,
+                head,
+            } => {
+                if super::canonical_uuid(repository)? != *repository
+                    || !crate::is_canonical_pull_file_oid(base)
+                    || !crate::is_canonical_pull_file_oid(head)
+                {
+                    return Err(invalid());
+                }
+                // Bitbucket spec order is source..destination (opposite git diff).
+                // topic=true selects the PR merge-base comparison explicitly.
+                format!(
+                    "repositories/%7B%7D/%7B{repository}%7D/diffstat/{head}..{base}?topic=true&renames=true&pagelen=100"
+                )
             }
             Route::PullRequests(repository)
             | Route::PullRequest(repository, _)

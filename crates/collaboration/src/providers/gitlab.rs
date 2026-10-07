@@ -3,6 +3,7 @@ use super::*;
 use serde::Deserialize;
 mod commits;
 mod feeds;
+mod files;
 mod resource_details;
 mod transport;
 use transport::{GitlabHttp, invalid, max_wait, positive_id, project_after, with_quota};
@@ -213,6 +214,20 @@ impl CollaborationProvider for GitlabProvider {
         self.resource_details(token, request).await
     }
 
+    async fn fetch_pull_files(
+        &self,
+        token: &SecretToken,
+        request: PullFileCollectionRequest,
+    ) -> Result<PullFileProviderPage, ProviderError> {
+        self.request_pull_files(token, request).await
+    }
+    async fn validate_pull_file_range(
+        &self,
+        token: &SecretToken,
+        request: PullFileCollectionRequest,
+    ) -> Result<PullFileRangeValidationResult, ProviderError> {
+        self.request_pull_file_range(token, request).await
+    }
     async fn fetch_pull_commits(
         &self,
         token: &SecretToken,
@@ -318,3 +333,6 @@ mod commits_tests;
 pub(crate) mod reads_tests;
 #[cfg(test)]
 pub(crate) mod tests;
+
+#[cfg(test)]
+mod files_tests;

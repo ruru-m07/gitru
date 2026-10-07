@@ -9,7 +9,7 @@ fn oid(index: u32) -> String {
     format!("{index:040x}")
 }
 
-fn request(head: String) -> PullCommitRequest {
+pub(super) fn request(head: String) -> PullCommitRequest {
     PullCommitRequest {
         account: RemoteAccount {
             id: "github-account".into(),
@@ -63,7 +63,7 @@ fn request(head: String) -> PullCommitRequest {
     }
 }
 
-fn token() -> SecretToken {
+pub(super) fn token() -> SecretToken {
     SecretToken::new("synthetic_commit_token".into()).unwrap()
 }
 
@@ -89,7 +89,7 @@ fn row(index: u32) -> Value {
     })
 }
 
-fn response(status: u16, headers: &str, body: &Value) -> String {
+pub(super) fn response(status: u16, headers: &str, body: &Value) -> String {
     let body = body.to_string();
     format!(
         "HTTP/1.1 {status} Fixture\r\nContent-Length: {}\r\nConnection: close\r\n{headers}\r\n{body}",
@@ -97,7 +97,7 @@ fn response(status: u16, headers: &str, body: &Value) -> String {
     )
 }
 
-fn server(
+pub(super) fn server(
     responses: impl FnOnce(&str) -> Vec<String>,
 ) -> (GithubProvider, std::thread::JoinHandle<Vec<String>>) {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();

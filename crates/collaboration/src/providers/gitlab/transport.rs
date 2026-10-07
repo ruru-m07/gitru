@@ -49,6 +49,7 @@ enum Operation {
     Feed { project: u64, route: ItemRoute },
     Detail,
     PullCommits { project: u64, iid: u64, page: u64 },
+    PullFiles { project: u64, iid: u64, page: u64 },
 }
 
 pub(super) struct GitlabHttp {
@@ -159,6 +160,38 @@ impl GitlabHttp {
         }
         Ok(url)
     }
+    pub(super) fn pull_files(&self, project: u64, iid: u64) -> Result<Url, ProviderError> {
+        if project == 0 || iid == 0 {
+            return Err(invalid());
+        }
+        let mut url = self
+            .base
+            .join(&format!("projects/{project}/merge_requests/{iid}/diffs"))
+            .map_err(|_| invalid())?;
+        url.query_pairs_mut()
+            .append_pair("per_page", &PULL_COMMIT_PAGE_SIZE.to_string())
+            .append_pair("page", "1");
+        Ok(url)
+    }
+    pub(super) fn pull_file_continuation(
+        &self,
+        raw: &str,
+        project: u64,
+        iid: u64,
+        expected_page: u64,
+    ) -> Result<Url, ProviderError> {
+        let url = self.check_resource_raw(raw)?;
+        if self.operation(&url)?
+            != (Operation::PullFiles {
+                project,
+                iid,
+                page: expected_page,
+            })
+        {
+            return Err(invalid());
+        }
+        Ok(url)
+    }
     pub(super) fn resource_continuation(
         &self,
         raw: &str,
@@ -227,6 +260,20 @@ impl GitlabHttp {
                 .and_then(|value| positive_id(value))
                 .ok_or_else(invalid)?;
             return Ok(Operation::PullCommits {
+                project,
+                iid,
+                page: pull_commit_page(url, project, iid)?,
+            });
+        }
+        if parts.len() == 4
+            && parts.get(1) == Some(&"merge_requests")
+            && parts.get(3) == Some(&"diffs")
+        {
+            let iid = parts
+                .get(2)
+                .and_then(|value| positive_id(value))
+                .ok_or_else(invalid)?;
+            return Ok(Operation::PullFiles {
                 project,
                 iid,
                 page: pull_commit_page(url, project, iid)?,
@@ -414,6 +461,12 @@ impl GitlabHttp {
                                 iid,
                                 page.checked_add(1).ok_or_else(invalid)?,
                             ),
+                        Operation::PullFiles { project, iid, page } => self.pull_file_continuation(
+                            next,
+                            project,
+                            iid,
+                            page.checked_add(1).ok_or_else(invalid)?,
+                        ),
                         _ => Err(invalid()),
                     }
                     .map_err(|e| with_quota(e, observed_cooldown))?;

@@ -418,6 +418,21 @@ fn normalize(
         )?;
         fields.push(observed);
         values.base = base;
+        let merge_base = diff
+            .filter(|_| matching_diff)
+            .and_then(|refs| refs.get("base_sha"))
+            .map(oid)
+            .transpose()?
+            .flatten();
+        fields.push(MetadataObservedField {
+            field: MetadataField::MergeBase,
+            state: if merge_base.is_some() {
+                DetailValueState::Known
+            } else {
+                DetailValueState::Omitted
+            },
+        });
+        values.merge_base_oid = merge_base;
     }
     let mut metadata = ResourceMetadataObservation {
         kind: request.subject.kind.clone(),

@@ -11,7 +11,7 @@ fn oid(index: u32) -> String {
     format!("{index:040x}")
 }
 
-fn request(head: String) -> PullCommitRequest {
+pub(super) fn request(head: String) -> PullCommitRequest {
     let account = feed_request().account;
     PullCommitRequest {
         repository: RemoteRepository {

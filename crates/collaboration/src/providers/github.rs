@@ -8,6 +8,7 @@ use super::{
 use serde::Deserialize;
 mod comments;
 mod commits;
+mod files;
 mod issue_details;
 mod notification_subject_discovery;
 pub mod notification_subjects;
@@ -114,6 +115,20 @@ impl CollaborationProvider for GithubProvider {
         }
     }
 
+    async fn fetch_pull_files(
+        &self,
+        token: &SecretToken,
+        request: PullFileCollectionRequest,
+    ) -> Result<PullFileProviderPage, ProviderError> {
+        self.request_pull_files(token, request).await
+    }
+    async fn validate_pull_file_range(
+        &self,
+        token: &SecretToken,
+        request: PullFileCollectionRequest,
+    ) -> Result<PullFileRangeValidationResult, ProviderError> {
+        self.request_pull_file_range(token, request).await
+    }
     async fn fetch_pull_commits(
         &self,
         token: &SecretToken,
@@ -856,3 +871,6 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod files_tests;

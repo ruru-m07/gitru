@@ -187,6 +187,23 @@ impl GithubHttp {
         raw: &str,
         expected_path: &str,
     ) -> Result<(Url, u64), ProviderError> {
+        self.check_bounded_collection_url(raw, expected_path, 50)
+    }
+
+    pub(crate) fn check_pull_file_url(
+        &self,
+        raw: &str,
+        expected_path: &str,
+    ) -> Result<(Url, u64), ProviderError> {
+        self.check_bounded_collection_url(raw, expected_path, 100)
+    }
+
+    fn check_bounded_collection_url(
+        &self,
+        raw: &str,
+        expected_path: &str,
+        page_size: u32,
+    ) -> Result<(Url, u64), ProviderError> {
         let invalid = || ProviderError::new(ProviderErrorKind::InvalidResponse);
         if raw.len() > MAX_COLLECTION_URL
             || raw.chars().any(|c| c.is_control() || c.is_whitespace())
@@ -213,7 +230,7 @@ impl GithubHttp {
         let mut page = None;
         for (key, value) in url.query_pairs() {
             match key.as_ref() {
-                "per_page" if !per_page && value == "50" => per_page = true,
+                "per_page" if !per_page && value == page_size.to_string() => per_page = true,
                 "page" if page.is_none() => {
                     let number = value.parse::<u64>().map_err(|_| invalid())?;
                     if number == 0 || number.to_string() != value.as_ref() {
@@ -235,6 +252,7 @@ impl GithubHttp {
         headers: &header::HeaderMap,
         expected_path: &str,
         current: u64,
+        page_size: u32,
     ) -> Result<Option<String>, ProviderError> {
         let invalid = || ProviderError::new(ProviderErrorKind::InvalidResponse);
         let mut bytes = 0usize;
@@ -259,7 +277,7 @@ impl GithubHttp {
                     .and_then(|parameter| parameter.strip_suffix('"'))
                     .filter(|relation| matches!(*relation, "next" | "prev" | "first" | "last"))
                     .ok_or_else(invalid)?;
-                let (_, page) = self.check_collection_url(raw, expected_path)?;
+                let (_, page) = self.check_bounded_collection_url(raw, expected_path, page_size)?;
                 if links.insert(relation, (page, raw.to_string())).is_some() {
                     return Err(invalid());
                 }
@@ -289,8 +307,33 @@ impl GithubHttp {
         expected_path: &str,
         current: u64,
     ) -> Result<HttpPage, ProviderError> {
-        let (url, page) = self.check_collection_url(url.as_str(), expected_path)?;
-        if current == 0 || current > 20 || page != current {
+        self.get_bounded_collection(url, token, expected_path, current, 50, 20)
+            .await
+    }
+
+    pub(crate) async fn get_pull_file_collection(
+        &self,
+        url: Url,
+        token: &SecretToken,
+        expected_path: &str,
+        current: u64,
+    ) -> Result<HttpPage, ProviderError> {
+        self.get_bounded_collection(url, token, expected_path, current, 100, 30)
+            .await
+    }
+
+    async fn get_bounded_collection(
+        &self,
+        url: Url,
+        token: &SecretToken,
+        expected_path: &str,
+        current: u64,
+        page_size: u32,
+        max_pages: u64,
+    ) -> Result<HttpPage, ProviderError> {
+        let (url, page) =
+            self.check_bounded_collection_url(url.as_str(), expected_path, page_size)?;
+        if current == 0 || current > max_pages || page != current {
             return Err(ProviderError::new(ProviderErrorKind::InvalidResponse));
         }
         let mut authorization =
@@ -355,7 +398,7 @@ impl GithubHttp {
                 return Err(fail(ProviderErrorKind::InvalidResponse));
             }
             let next_url = if status == StatusCode::OK {
-                self.collection_next(response.headers(), expected_path, current)
+                self.collection_next(response.headers(), expected_path, current, page_size)
                     .map_err(|error| error.with_cooldown(cooldown))?
             } else {
                 None
