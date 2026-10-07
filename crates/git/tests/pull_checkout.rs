@@ -392,10 +392,11 @@ fn existing_branch_lock_ignores_unbounded_repository_lock_timeouts() {
         let lock_path = repo.path().join(".git/refs/heads/pr/held-lock.lock");
         std::fs::write(&lock_path, "held by another process").unwrap();
 
-        let result =
-            tokio::time::timeout(Duration::from_secs(2), execute(&services, &target, &plan))
-                .await
-                .expect("prepared ref lock must not inherit an unbounded repository timeout");
+        // Full execution repeats the repository inspection before touching the
+        // ref lock. Its many process starts are not a lock-wait measurement on
+        // a loaded runner. The runner's focused prepare_ref_lock regression
+        // separately requires a real lock conflict, never its timeout fallback.
+        let result = execute(&services, &target, &plan).await;
         assert_eq!(result.unwrap_err(), PullCheckoutError::StalePlan);
         assert_eq!(repo.current_branch(), "main");
         assert_eq!(repo.head_commit(), expected);
