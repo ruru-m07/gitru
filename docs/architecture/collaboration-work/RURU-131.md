@@ -1,0 +1,103 @@
+# RURU-131 — Durable GitHub conversation comment submission
+
+Status: approved bounded implementation contract, 8 October 2026. This document
+precedes implementation and does not claim completed code or qualification.
+
+## Scope and ownership
+
+Managed external worktree `ruru-131-comment-send`, branch
+`ruru/ruru-131-comment-send`, starts on the RURU-129 title/body review stack and
+will consume its final qualified parent. GitHub.com PR/issue conversation
+comments are the only initial creation operation. Review comments, GitLab,
+Bitbucket, issue/PR creation and merge remain separate work. Accounts use native
+PAT/manual or explicit CLI import and remain independent of Gitru cloud.
+
+The native lane owns all collaboration Rust, DTOs, migration/recovery, finite
+provider transport fixtures, and the operation policy. The frontend lane owns
+Tauri registration/caller policy, generated IPC via `make typegen`, SDK, React
+UI and its tests. The coordinator reviews boundaries, records qualification and
+publishes a scoped draft PR. Never inspect personal credentials or send live
+provider comments during unattended validation.
+
+## Separate authored draft and admission
+
+A dedicated `comment_drafts` table and explicit Comment composer are separate
+from the existing Private note `drafts` table. Private notes are never copied,
+prefilled or submitted implicitly. Local comment drafts survive disconnect,
+missing subjects, restart and restore; read/save uses a known local account,
+while provider-send authority additionally requires current active credentials
+and accessible native target context. Save uses generation CAS, bounds text at
+16 KiB, and does not increment generation for unchanged bytes.
+
+Migration 0020 adds immutable submission linkage keyed by account, subject and
+saved draft generation, with command ID and body hash. Admission checks the
+saved generation/content, native account/epoch/view/target token and explicit
+queue-when-connected policy in one writer transaction. The provider payload and
+route are built only in native code. The same command UUID/request returns the
+saved receipt after a lost IPC response; changed bytes under that UUID fail.
+A fresh UUID cannot submit an already-linked draft generation. Outstanding
+queued/accepted/unknown creation for the same target blocks another send even
+if the user edits the draft; editing must not bypass ambiguous-create recovery.
+Original draft bytes remain after admission, success, failure and unknown result.
+
+## Provider evidence and unknown outcomes
+
+Use the established bounded GitHub native transport and authenticated exact
+repository/issue identity preflight. One durable dispatch attempt must commit
+before POST. GitHub's documented conversation-comment endpoint applies to both
+issues and PRs. A validated 201 response with exact parent identity, canonical
+comment ID, expected authored body and author, and valid timestamps supplies
+strong creation evidence. Mere HTTP success without valid identity/body evidence
+does not confirm creation.
+
+Lost responses, timeouts, malformed receipts, crashes after dispatch and restore
+remain outcome-unknown unless strong operation evidence proves completion or
+non-delivery. Matching text, actor or time in a list is not unique causality.
+There is no automatic POST replay, hidden marker, invented idempotency guarantee,
+or generic replacement path for an ambiguous create. Recovery offers saved
+intent/status/export and honest next-step text. No user acknowledgement is
+silently converted into proof that the remote comment was never created.
+
+Official API reference, checked 8 October 2026:
+https://docs.github.com/en/rest/issues/comments#create-an-issue-comment
+The endpoint documents a required body, a 201 creation response and write-level
+Issues or Pull requests token permission. It can trigger secondary rate limits.
+No request idempotency key is documented; this contract therefore assumes none.
+
+## Local created receipts and frontend API
+
+A bounded, keyset local query follows immutable submission linkage to validated
+confirmed operation evidence and returns canonical comment IDs/URLs. It is
+separate from normal cached comment enumeration, labeled as submission history
+from Gitru; it does not claim complete or current provider conversation coverage.
+A stale/full detail feed cannot erase creation proof. Auth/view/visibility fences
+still govern provider-derived receipt details; authored draft recovery remains
+independent. A future canonical cache seed must preserve these same boundaries.
+
+Native DTOs expose a local draft snapshot (body, generation, send context,
+availability/reason, pending submission, revision/view), save-CAS request,
+send request (context, saved generation, command UUID, explicit offline policy),
+local admission receipt and bounded submitted-comment history. Freeze DTOs with
+the frontend lane before implementation. Names may follow established package
+conventions without changing the contract.
+
+The distinct composer reads local state, saves before Send, discloses queued
+rather than completed delivery, and preserves entered text across stale context
+and transport failures. Exact local retry retains command UUID/context/generation.
+Account or target transitions cannot carry text or late receipts to another
+account. Native availability drives controls; unsupported providers retain
+private drafts and an honest unsupported action. No network request starts merely
+because the composer is opened.
+
+## Required qualification
+
+Cover draft isolation from Private notes, generation CAS/unchanged-save behavior,
+exact local retry and different-UUID deduplication, atomic admission rollback,
+account/epoch/view/target fences, revoked or missing targets, same-target pending
+creation blocking, strict 201 receipt parsing, accepted/unknown/no-second-POST
+across crash/reopen/restore, quota and authentication observations, and preserved
+draft bytes. Restore frozen schemas through 0019 and validate new immutable
+linkage. UI/SDK tests cover offline save/admission, changed context with text
+retention, failed local receipt retry, account retirement and original subject.
+Run full local `make verify`; keep its evidence separate from remote CI and live
+provider/platform/vault qualification. Signed scoped commits; no merge.
