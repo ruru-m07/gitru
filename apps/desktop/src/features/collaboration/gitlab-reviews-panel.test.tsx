@@ -1,5 +1,9 @@
 import { collaboration } from "@gitru/collaboration-client";
-import type { ContextFacetCapability, DetailEntry } from "@gitru/commands";
+import type {
+  ContextFacetCapability,
+  DetailEntry,
+  RemoteAccount,
+} from "@gitru/commands";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -115,7 +119,7 @@ const thread: DetailEntry = {
 };
 afterEach(() => vi.restoreAllMocks());
 it("reads GitLab approvers and native discussions locally with unknown approval commits and partial coverage", async () => {
-  const account = {
+  const account: RemoteAccount = {
     ...fixtureAccount,
     provider: "gitlab",
     host: "gitlab.com",
