@@ -3,6 +3,7 @@ import type {
   CapabilitySnapshot,
   CapabilityTarget,
   ChangePage,
+  CommandRecoveryDetail,
   ContextualCapabilitySnapshot,
   DetailSnapshot,
   InboxPage,
@@ -2472,6 +2473,113 @@ it("an effective-intent change cancels a held list response before it can overwr
   expect(items).toHaveBeenCalledTimes(2);
   expect(cache.getQueryData(key)).toEqual(saved);
   unsubscribe();
+  stop();
+  cache.clear();
+});
+
+function recoveryDetail(): CommandRecoveryDetail {
+  return {
+    command: {
+      account_id: account.id,
+      command_id: "command",
+      target_id: "issue",
+      target_kind: "issue",
+      operation_kind: "fixture.edit",
+      payload_version: 1,
+      state: "conflict",
+      admitted_at: "2026-10-08T00:00:00Z",
+      attempt_count: 0,
+      paused: false,
+      quarantined: false,
+      attention: null,
+      replacement_id: null,
+      blocked_reason: null,
+    },
+    context: {
+      account_id: account.id,
+      command_id: "command",
+      expected_generation: "1",
+      expected_epoch: account.authorization_epoch,
+      authorization_view: "1",
+      review_token: "native-proof",
+    },
+    fields: [],
+    can_retry: false,
+    can_cancel: true,
+    can_pause: false,
+    can_replace: false,
+    reason: null,
+    revision: "1",
+  };
+}
+
+it("fences held recovery details after disconnect and refuses a foreign action context before IPC", async () => {
+  const held = deferred<CommandRecoveryDetail>();
+  const action = vi.fn(async () => {
+    throw new Error("must not dispatch");
+  });
+  const client = new CollaborationClient(
+    transport({
+      accounts: async () => snapshot,
+      commandRecoveryDetail: () => held.promise,
+      commandRecoveryAction: action,
+      disconnect: async () => "2",
+    }),
+  );
+  await client.accounts();
+  const bound = client.forAccount(account);
+  const pending = bound.commandRecoveryDetail("command");
+  const rejected = expect(pending).rejects.toBeInstanceOf(
+    StaleAuthorizationError,
+  );
+  await client.disconnect(account.id);
+  held.resolve(recoveryDetail());
+  await rejected;
+  for (const context of [
+    { ...recoveryDetail().context, account_id: "other" },
+    { ...recoveryDetail().context, expected_epoch: "99" },
+  ])
+    expect(() =>
+      bound.commandRecoveryAction({
+        context,
+        action: "cancel",
+        action_id: "action",
+      }),
+    ).toThrow(StaleAuthorizationError);
+  expect(action).not.toHaveBeenCalled();
+});
+
+it("invalidates command review after local actions and provider changes without touching private drafts", async () => {
+  let next = changePage("1");
+  const client = new CollaborationClient(
+    transport({ listen: async () => () => {}, changesSince: async () => next }),
+  );
+  const cache = new QueryClient();
+  const stop = client.installBridge(cache);
+  await client.wake();
+  const list = collaborationKeys.commandRecovery(account, {
+    account_id: account.id,
+    target_id: null,
+    include_terminal: false,
+    cursor: null,
+    limit: 50,
+  });
+  const detailKey = collaborationKeys.commandRecoveryDetail(account, "command");
+  const draft = collaborationKeys.draft(account, "issue");
+  for (const [revision, scope] of [
+    ["2", "commands"],
+    ["3", "detail:issue:body"],
+  ]) {
+    for (const key of [list, detailKey, draft])
+      cache.setQueryData(key, "saved");
+    next = changePage(revision, "1", [
+      { revision, account_id: account.id, scope, reset: false },
+    ]);
+    await client.wake();
+    expect(cache.getQueryState(list)?.isInvalidated).toBe(true);
+    expect(cache.getQueryState(detailKey)?.isInvalidated).toBe(true);
+    expect(cache.getQueryState(draft)?.isInvalidated).toBe(false);
+  }
   stop();
   cache.clear();
 });

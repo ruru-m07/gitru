@@ -425,6 +425,21 @@ function CommandReview({
   const review = resolution.review;
   return (
     <section className="min-w-0 space-y-4" aria-label="Saved change review">
+      {query.isError ? (
+        <div className="space-y-2">
+          <p role="alert">{collaborationErrorMessage(query.error)}</p>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            onClick={() => {
+              void query.refetch();
+            }}
+          >
+            Reload change
+          </Button>
+        </div>
+      ) : null}
       <div className="space-y-1 text-sm">
         <p className="break-all font-medium">
           {changeLabel(detail.command.target_kind)}
@@ -458,7 +473,7 @@ function CommandReview({
           </p>
           <Button
             type="button"
-            disabled={busy}
+            disabled={busy || query.isError}
             variant="outline"
             onClick={() =>
               retain({
@@ -611,7 +626,7 @@ function CommandReview({
         {detail.can_replace ? (
           <Button
             type="button"
-            disabled={busy || outdated}
+            disabled={busy || outdated || query.isError}
             onClick={() => {
               void submit({
                 kind: "replace",
@@ -631,7 +646,7 @@ function CommandReview({
           <Button
             type="button"
             variant="outline"
-            disabled={busy}
+            disabled={busy || query.isError}
             onClick={() => {
               void submit({
                 kind: "action",
@@ -650,7 +665,7 @@ function CommandReview({
           <Button
             type="button"
             variant="outline"
-            disabled={busy}
+            disabled={busy || query.isError}
             onClick={() => {
               void submit({
                 kind: "action",
@@ -669,7 +684,7 @@ function CommandReview({
           <Button
             type="button"
             variant="outline"
-            disabled={busy}
+            disabled={busy || query.isError}
             onClick={() => {
               void submit({
                 kind: "action",
