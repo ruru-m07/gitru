@@ -3650,3 +3650,21 @@ following progress-only documentation commit changes no measured source. Remote
 CI for the draft is newly observable and remains separate from this evidence;
 packaged execution, live private GitHub/PAT/keyring sampling and other platforms
 are unclaimed. No merge is authorized.
+
+### RURU-128 GitLab review reads — 8 October 2026
+
+Draft [PR #179](https://github.com/ruru-m07/gitru/pull/179), stacked on R123 #178,
+adds bounded GitLab.com discussion and approval observations to the shared local
+review facets. Native positions and resolution facts remain separate from common
+commit anchors; missing approval SHAs remain unknown. Truncation and multi-page
+traversals retain partial coverage. Account, epoch, membership and exact Body
+context fence provider requests, publication and offline reads. The shared panel
+shows these observations without offering provider writes or inferring merge
+readiness; exact-head checks reuse R118.
+
+Signed product source `241c71b` passes full local `make verify`: 762 frontend
+passes/one platform skip and 1,234 Rust reported passes/seven helper ignores,
+including types, build, lint, formatting and strict workspace Clippy. Generated
+IPC has 137 commands/431 schemas. Parent documentation and this progress record
+are the only subsequent changes. Remote CI is pending; no live account,
+credential, provider mutation or packaged platform claim is made.

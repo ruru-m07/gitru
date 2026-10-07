@@ -681,7 +681,7 @@ Acceptance criteria:
 
 ## RURU-128: Add GitLab discussion and approval detail facets
 
-Planning key: C30. Group: Provider rollout. Priority: Medium. State: Backlog.
+Planning key: C30. Group: Provider rollout. Priority: Medium. State: In Review.
 Linear: [RURU-128](https://linear.app/catra/issue/RURU-128/add-gitlab-discussion-and-approval-detail-facets).
 Prerequisites: [RURU-122](https://linear.app/catra/issue/RURU-122/cache-and-display-conversation-comments-and-activity-timelines), [RURU-118](https://linear.app/catra/issue/RURU-118/show-cached-checks-and-commit-statuses-for-the-current-pr-head), [RURU-123](https://linear.app/catra/issue/RURU-123/cache-pr-review-summaries-and-review-threads-with-head-context), [RURU-111](https://linear.app/catra/issue/RURU-111/sync-gitlab-merge-requests-and-issues-through-shared-local-queries).
 
@@ -689,9 +689,11 @@ Validate richer shared detail contracts against GitLab discussion, approval and 
 
 Acceptance criteria:
 
-- [ ] Normalize supported discussion/review/approval facets while preserving provider-native positions and plan/version limitations.
-- [ ] Bind approvals and pipeline/check observations to relevant heads; unavailable/partial data cannot imply readiness to merge.
-- [ ] Run shared component/adapter tests with divergent fixtures and offline snapshots; remain read-only until mutation policies exist.
+- [x] Normalize supported discussion/review/approval facets while preserving provider-native positions and plan/version limitations.
+- [x] Bind approvals and pipeline/check observations to relevant heads; unavailable/partial data cannot imply readiness to merge.
+- [x] Run shared component/adapter tests with divergent fixtures and offline snapshots; remain read-only until mutation policies exist.
+
+Draft [PR #179](https://github.com/ruru-m07/gitru/pull/179) is stacked on R123 #178. Signed source `241c71b` passes full local verification (762 frontend, 1,234 Rust; one platform skip, seven helper ignores). Native approval commit anchors remain unknown when absent; existing exact-head checks are reused and no aggregate merge readiness is inferred. Remote CI and live provider/platform checks remain separate. See [work contract](collaboration-work/RURU-128.md).
 
 ## RURU-112: Add Bitbucket Cloud account and pull request reads
 
