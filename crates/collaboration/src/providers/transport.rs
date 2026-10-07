@@ -1,3 +1,4 @@
+pub(crate) mod mutations;
 use crate::credentials::SecretToken;
 use reqwest::{Client, StatusCode, Url, header};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -84,6 +85,7 @@ pub(crate) struct HttpPage {
 /// receive credentials, including after redirects and on pagination requests.
 pub(crate) struct GithubHttp {
     client: Client,
+    mutation_client: Client,
     base_url: Url,
 }
 
@@ -101,7 +103,12 @@ impl GithubHttp {
             .https_only(base_url.scheme() == "https")
             .build()
             .map_err(|_| ProviderError::new(ProviderErrorKind::Unavailable))?;
-        Ok(Self { client, base_url })
+        let mutation_client = mutations::mutation_client(&base_url)?;
+        Ok(Self {
+            client,
+            mutation_client,
+            base_url,
+        })
     }
 
     #[cfg(test)]
