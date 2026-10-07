@@ -76,11 +76,13 @@ impl Store {
         &self,
         expected: &DeliveryCommand,
         account: &RemoteAccount,
+        policy: &dyn CommandDeliveryPolicy,
         now: &DeliveryTime,
     ) -> Result<(Option<ReconcileRequest>, Option<String>)> {
         let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let command = exact_in(&mut tx, expected).await?;
+        policy_matches(&command, policy)?;
         let instance = authorize_in(&mut tx, &command, account, now).await?;
         if command.authorization_epoch != account.authorization_epoch
             || command.reconcile_only()
@@ -108,7 +110,16 @@ impl Store {
         let revision = transition_in(&mut tx, &command, command.state, None, attention).await?;
         let request = if attention.is_none() {
             sqlx::query("UPDATE command_delivery SET reconciliation_count=reconciliation_count+1,generation=generation+1 WHERE account_id=? AND command_id=?").bind(&command.account_id).bind(&command.command_id).execute(&mut *tx).await.map_err(storage_error)?;
+            let native_context = policy
+                .prepare_context_in(&mut tx, &command, account)
+                .await?;
+            if native_context.len() > MAX_EVIDENCE_BYTES {
+                return Err(CollaborationError::invalid(
+                    "Oversized native delivery context",
+                ));
+            }
             Some(ReconcileRequest {
+                native_context,
                 command: load_in(&mut tx, &command.account_id, &command.command_id).await?,
                 account: account.clone(),
                 instance_id: instance,
@@ -185,35 +196,27 @@ impl Store {
             ClaimDecision::Ready(_) => {
                 return Err(CollaborationError::invalid("Oversized execution base"));
             }
-            ClaimDecision::Conflict(proof) => {
-                validate_proof(policy, &command, EvidencePurpose::Conflict, &proof)?;
-                record_proof_in(
-                    &mut tx,
-                    &command,
-                    None,
-                    EvidencePurpose::Conflict,
-                    &proof,
-                    &now.now,
-                )
-                .await?;
+            resolution @ (ClaimDecision::Conflict(_) | ClaimDecision::Confirmed(_)) => {
+                let (purpose, state, proof) = match resolution {
+                    ClaimDecision::Conflict(proof) => {
+                        (EvidencePurpose::Conflict, DeliveryState::Conflict, proof)
+                    }
+                    ClaimDecision::Confirmed(proof) => {
+                        (EvidencePurpose::Confirmed, DeliveryState::Confirmed, proof)
+                    }
+                    ClaimDecision::Ready(_) => unreachable!(),
+                };
+                validate_proof(policy, &command, purpose, &proof)?;
+                record_proof_in(&mut tx, &command, None, purpose, &proof, &now.now).await?;
                 let mut finalization = super::effective::finalization::DeliveryFinalization::new(
-                    &mut tx,
-                    &command,
-                    account,
-                    EvidencePurpose::Conflict,
+                    &mut tx, &command, account, purpose,
                 )
                 .await?;
                 policy
-                    .finalize_in(
-                        &mut finalization,
-                        &command,
-                        EvidencePurpose::Conflict,
-                        &proof,
-                    )
+                    .finalize_in(&mut finalization, &command, purpose, &proof)
                     .await?;
                 finalization.finish().await?;
-                let revision =
-                    transition_in(&mut tx, &command, DeliveryState::Conflict, None, None).await?;
+                let revision = transition_in(&mut tx, &command, state, None, None).await?;
                 tx.commit().await.map_err(storage_error)?;
                 return Ok(DeliveryClaim {
                     request: None,
@@ -256,11 +259,13 @@ impl Store {
         &self,
         expected: &DeliveryCommand,
         account: &RemoteAccount,
+        policy: &dyn CommandDeliveryPolicy,
         now: &DeliveryTime,
     ) -> Result<(Option<ReconcileRequest>, String)> {
         let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let command = exact_in(&mut tx, expected).await?;
+        policy_matches(&command, policy)?;
         let instance = authorize_in(&mut tx, &command, account, now).await?;
         if !command.reconcile_only()
             || !matches!(
@@ -283,7 +288,16 @@ impl Store {
         let revision = transition_in(&mut tx, &command, command.state, None, attention).await?;
         let request = if attention.is_none() {
             sqlx::query("UPDATE command_delivery SET reconciliation_count=reconciliation_count+1,generation=generation+1 WHERE account_id=? AND command_id=?").bind(&command.account_id).bind(&command.command_id).execute(&mut *tx).await.map_err(storage_error)?;
+            let native_context = policy
+                .prepare_context_in(&mut tx, &command, account)
+                .await?;
+            if native_context.len() > MAX_EVIDENCE_BYTES {
+                return Err(CollaborationError::invalid(
+                    "Oversized native delivery context",
+                ));
+            }
             Some(ReconcileRequest {
+                native_context,
                 command: load_in(&mut tx, &command.account_id, &command.command_id).await?,
                 account: account.clone(),
                 instance_id: instance,

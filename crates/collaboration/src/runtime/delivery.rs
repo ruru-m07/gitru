@@ -70,7 +70,12 @@ impl CollaborationRuntime {
             if command.reconcile_only() {
                 let (request, revision) = self
                     .store
-                    .claim_reconciliation(&command, &account, &self.delivery_time().await)
+                    .claim_reconciliation(
+                        &command,
+                        &account,
+                        policy.as_ref(),
+                        &self.delivery_time().await,
+                    )
                     .await?;
                 self.publish(revision);
                 let Some(request) = request else {
@@ -100,7 +105,12 @@ impl CollaborationRuntime {
             }
             let (request, revision) = self
                 .store
-                .claim_preparation(&command, &account, &self.delivery_time().await)
+                .claim_preparation(
+                    &command,
+                    &account,
+                    policy.as_ref(),
+                    &self.delivery_time().await,
+                )
                 .await?;
             let changed = revision.is_some();
             if let Some(revision) = revision {
