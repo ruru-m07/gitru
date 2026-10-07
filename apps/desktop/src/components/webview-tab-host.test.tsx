@@ -28,6 +28,7 @@ const native = vi.hoisted(() => ({
   demandAtHide: [] as Array<{ label: string; active: boolean }>,
   demandAtClose: [] as Array<{ label: string; active: boolean }>,
   readinessListeners: new Set<() => void>(),
+  runtimeResetListeners: new Set<() => void>(),
   demandSequence: 0,
   demandOwners: new Map<string, { generation: string; active: boolean }>(),
   demandTransitions: [] as Array<{
@@ -127,9 +128,13 @@ vi.mock("@/state/core/repo-context-registry", () => ({
   createRepoContextOwnerId: (label: string) => "owner:" + label,
 }));
 vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn(async (_event: string, callback: () => void) => {
-    native.readinessListeners.add(callback);
-    return () => native.readinessListeners.delete(callback);
+  listen: vi.fn(async (event: string, callback: () => void) => {
+    const listeners =
+      event === "gitru:collaboration-runtime-reset"
+        ? native.runtimeResetListeners
+        : native.readinessListeners;
+    listeners.add(callback);
+    return () => listeners.delete(callback);
   }),
 }));
 vi.mock("@tauri-apps/api/window", () => ({
@@ -208,6 +213,7 @@ beforeEach(() => {
   native.demandTransitions = [];
   native.demandSequence = 0;
   native.readinessListeners.clear();
+  native.runtimeResetListeners.clear();
   native.listeners.clear();
   native.state = {
     activeTabId: "a",
@@ -689,4 +695,61 @@ it("repairs a still-visible startup owner once after native readiness without a 
     activeCalls,
   );
   setter.mockImplementation(original);
+});
+
+it("re-authorizes only the visible child after recovery replaces native owner generations", async () => {
+  const host = await mountHost();
+  await waitFor(() =>
+    expect(native.demandOwners.get("tab-webview:a")?.active).toBe(true),
+  );
+  const original = native.demandOwners.get("tab-webview:a")?.generation;
+  const creations = native.creations.length;
+  const { collaborationSetDemandOwnerActivity } = await import(
+    "@gitru/commands"
+  );
+  const setter = vi.mocked(collaborationSetDemandOwnerActivity);
+  const implementation = setter.getMockImplementation();
+  if (!implementation) throw new Error("Missing demand fixture");
+  let paused = true;
+  let pausedAttempts = 0;
+  setter.mockImplementation(async (request) => {
+    if (paused) {
+      pausedAttempts++;
+      throw { code: "not_ready" };
+    }
+    return implementation(request);
+  });
+  native.demandOwners.clear();
+  await act(async () => {
+    for (const listener of native.runtimeResetListeners) listener();
+  });
+  await waitFor(() => expect(pausedAttempts).toBeGreaterThan(0));
+  expect(native.demandOwners.get("tab-webview:a")?.active).not.toBe(true);
+  paused = false;
+  native.demandOwners.clear();
+  await act(async () => {
+    for (const listener of native.runtimeResetListeners) listener();
+  });
+  await waitFor(() =>
+    expect(native.demandOwners.get("tab-webview:a")?.active).toBe(true),
+  );
+  expect(native.demandOwners.get("tab-webview:a")?.generation).not.toBe(
+    original,
+  );
+  expect(native.demandOwners.get("tab-webview:b")?.active).not.toBe(true);
+  expect(native.demandOwners.get("main")?.active).toBe(false);
+  expect(native.creations).toHaveLength(creations);
+  await act(async () => host.setTabWebviewsSuspended(true));
+  native.demandOwners.clear();
+  await act(async () => {
+    for (const listener of native.runtimeResetListeners) listener();
+  });
+  expect([...native.demandOwners.values()].some(({ active }) => active)).toBe(
+    false,
+  );
+  await act(async () => host.setTabWebviewsSuspended(false));
+  await waitFor(() =>
+    expect(native.demandOwners.get("tab-webview:a")?.active).toBe(true),
+  );
+  setter.mockImplementation(implementation);
 });

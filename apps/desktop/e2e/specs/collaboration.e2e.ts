@@ -277,3 +277,128 @@ describe("packaged collaboration storage", () => {
     await browser.setTimeout({ script: 30_000 });
   });
 });
+
+it("backs up, cancels preview and restores through the packaged recovery UI", async () => {
+  await browser.setTimeout({ script: 150_000 });
+  const result = await browser.executeAsync((done) => {
+    const native = (
+      window as unknown as {
+        __TAURI__: {
+          core: {
+            invoke: (command: string, args?: object) => Promise<unknown>;
+          };
+          event: {
+            emitTo: (
+              target: { kind: "Webview"; label: string },
+              event: string,
+              payload: object,
+            ) => Promise<void>;
+          };
+        };
+      }
+    ).__TAURI__;
+    const end = Date.now() + 120_000;
+    let stage = "open recovery workspace";
+    const button = (text: string) =>
+      Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
+        (value) => value.textContent?.trim() === text && !value.disabled,
+      );
+    const wait = async (test: () => boolean) => {
+      while (Date.now() < end) {
+        if (test()) return;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      throw new Error("Fixed recovery state did not settle");
+    };
+    const click = async (text: string) => {
+      await wait(() => Boolean(button(text)));
+      button(text)?.click();
+    };
+    const text = (value: string) =>
+      document.body.textContent?.includes(value) === true;
+    const accounts = async () =>
+      native.core.invoke("collaboration_accounts") as Promise<{
+        revision: string;
+        authorization_view: string;
+        accounts: unknown[];
+      }>;
+    void (async () => {
+      try {
+        await native.event.emitTo(
+          { kind: "Webview", label: "main" },
+          "gitru:e2e-collaboration-request",
+          { label: "main", action: "open-recovery" },
+        );
+        await click("Backups");
+        const before = await accounts();
+        if (before.accounts.length !== 0)
+          throw new Error("Unexpected E2E accounts");
+        stage = "save verified native backup";
+        await native.core.invoke("collaboration_e2e_recovery_picker", {
+          restore: false,
+        });
+        await click("Save a backup");
+        await wait(() => text("Backup verified and saved"));
+        stage = "prepare and cancel real restore preview";
+        await native.core.invoke("collaboration_e2e_recovery_picker", {
+          restore: true,
+        });
+        await click("Choose backup to restore");
+        await wait(() => text("Replace collaboration data with this backup?"));
+        let paused = false;
+        try {
+          await accounts();
+        } catch (failure) {
+          paused =
+            typeof failure === "object" &&
+            failure !== null &&
+            "code" in failure &&
+            failure.code === "not_ready";
+        }
+        if (!paused) throw new Error("Preview did not fence native reads");
+        await click("Cancel recovery");
+        await wait(() => !text("Replace collaboration data with this backup?"));
+        const cancelled = await accounts();
+        if (cancelled.revision !== before.revision)
+          throw new Error("Cancel replaced data");
+        stage = "confirm native restore and restart";
+        await native.core.invoke("collaboration_e2e_recovery_picker", {
+          restore: true,
+        });
+        await click("Choose backup to restore");
+        await click("Replace collaboration data");
+        await wait(() => text("Recovery finished."));
+        const after = await accounts();
+        if (
+          after.accounts.length !== 0 ||
+          BigInt(after.revision) <= BigInt(before.revision) ||
+          BigInt(after.authorization_view) <= BigInt(before.authorization_view)
+        )
+          throw new Error("Restore did not fence the old generation");
+        const cli = (await native.core.invoke(
+          "collaboration_discover_github_cli",
+        )) as { status: string; accounts: unknown[] };
+        if (cli.status !== "not_installed" || cli.accounts.length !== 0)
+          throw new Error("Recovery changed isolated CLI policy");
+        done({
+          passed: true,
+          before: before.revision,
+          after: after.revision,
+          cancelled: cancelled.revision,
+        });
+      } catch {
+        done({ passed: false, stage });
+      }
+    })();
+  });
+  if (
+    !result ||
+    typeof result !== "object" ||
+    !("passed" in result) ||
+    result.passed !== true
+  )
+    throw new Error(
+      `Packaged recovery failed at ${result && typeof result === "object" && "stage" in result ? result.stage : "unknown stage"}`,
+    );
+  await browser.setTimeout({ script: 30_000 });
+});

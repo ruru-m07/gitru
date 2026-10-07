@@ -21,7 +21,6 @@ const E2E_IDENTIFIER: &str = "com.ruru.gitru.e2e";
 mod app_menu;
 #[cfg(feature = "collaboration-harness")]
 mod collaboration_harness;
-#[cfg(not(feature = "collaboration-harness"))]
 mod collaboration_setup;
 mod commands;
 
@@ -47,6 +46,7 @@ pub fn run() {
         })
         .manage(RepoContextRuntime::default())
         .manage(commands::collaboration::CollaborationState::default())
+        .manage(commands::collaboration_recovery::RecoveryUiState::default())
         .manage(Arc::new(SessionManager::new()));
 
     #[cfg(target_os = "macos")]
@@ -77,6 +77,13 @@ pub fn run() {
             commands::collaboration_harness::collaboration_harness_status,
             #[cfg(feature = "collaboration-harness")]
             commands::collaboration_harness::collaboration_harness_view_manifest,
+            #[cfg(all(feature = "e2e", not(feature = "collaboration-harness")))]
+            commands::collaboration_recovery::collaboration_e2e_recovery_picker,
+            commands::collaboration_recovery::collaboration_backup,
+            commands::collaboration_recovery::collaboration_prepare_restore,
+            commands::collaboration_recovery::collaboration_inspect_interrupted_recovery,
+            commands::collaboration_recovery::collaboration_cancel_recovery,
+            commands::collaboration_recovery::collaboration_confirm_recovery,
             commands::collaboration::collaboration_accounts,
             commands::collaboration::collaboration_connect_github,
             commands::collaboration::collaboration_connect_gitlab,

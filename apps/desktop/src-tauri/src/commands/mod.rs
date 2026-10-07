@@ -19,3 +19,5 @@ pub mod security;
 pub mod stash;
 #[cfg(not(feature = "collaboration-harness"))]
 pub mod updater;
+
+pub mod collaboration_recovery;

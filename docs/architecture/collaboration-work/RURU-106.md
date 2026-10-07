@@ -1,9 +1,38 @@
 # RURU-106 — Consistent backup and explicit recovery
 
-Status: current-schema recovery core implemented; desktop integration and final
-combined validation remain in progress, 8 October 2026.
+Status: current-schema recovery core and desktop integration implemented; final
+combined and packaged validation remain in progress, 8 October 2026.
 Started on RURU-105 `6becdd5`, then rebased onto its signed `d776d663` head,
 including the Windows LF migration-fixture fix. This document is the continuation point.
+
+## Desktop integration checkpoint — 8 October 2026
+
+The workspace Backups dialog is reachable without a healthy account query.
+Native file pickers supply paths; five generated recovery commands expose only
+review metadata and opaque caller-bound confirmations. A native gate serializes
+backup, preview, cancel and confirm. Preview ownership includes tab incarnation
+and expires after ten minutes; abandoned views are retired by a native watchdog.
+The blocking mutation rechecks expiry and caller lifetime immediately before
+its first write. Native-owned completion resumes storage even if IPC disappears.
+
+Recovery drains the runtime and actual SQLite writer before obtaining the
+replacement lease. A failed startup can also enter recovery. Cancel and successful
+restore create a fresh runtime with the previous configured provider/vault/CLI
+policy. The SDK fences cached reads and restarts revision catch-up generations;
+a retired success, rejection or async batch cannot consume the replacement wake.
+The trusted main host re-authorizes its visible child using fresh native demand
+proof after recovery; suspended and background tabs remain inactive.
+
+Initial combined frontend verification passes 722 tests with one platform skip;
+subsequent SDK review passes all 172 SDK cases, and host recovery coverage passes
+19 cases. Desktop typechecking and scoped lint pass. `make typegen` produces 135
+wrappers and 399 schema exports, including a feature-only ordinary-E2E command
+that substitutes a fixed native picker result without accepting renderer paths.
+That helper requires the E2E identifier and main caller, and is absent from
+production and the retained harness. The packaged scenario exercises the real
+Backups UI, preview cancellation, replacement and resumed isolated runtime;
+its execution and whole-workspace verification are still pending here. Native
+OS picker interaction itself is a separate manual UI check.
 
 ## Continuation contract — 8 October 2026
 

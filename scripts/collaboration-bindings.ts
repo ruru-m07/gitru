@@ -38,6 +38,15 @@ const notificationSubjects = await Bun.file(
 const pullCommits = await Bun.file(
   new URL("crates/collaboration/src/pull_commits.rs", root),
 ).text();
+const recovery = await Bun.file(
+  new URL("crates/collaboration/src/recovery.rs", root),
+).text();
+const recoveryCommands = await Bun.file(
+  new URL(
+    "apps/desktop/src-tauri/src/commands/collaboration_recovery.rs",
+    root,
+  ),
+).text();
 const pullFiles = await Bun.file(
   new URL("crates/collaboration/src/pull_files.rs", root),
 ).text();
@@ -229,6 +238,8 @@ for (const source of [
   notificationSubjects,
   pullCommits,
   pullFiles,
+  recovery,
+  recoveryCommands,
   gitRemotes,
   linkCommands,
   repositoryInfo,

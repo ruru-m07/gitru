@@ -40,6 +40,7 @@ import {
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import PageLayout from "@/components/page-layout";
 import { AccountSettingsButton } from "./account-manager";
+import { BackupRecoveryButton } from "./backup-recovery";
 import {
   CapabilityBoundary,
   ReadOnlyCapability,
@@ -195,6 +196,7 @@ export function CollaborationWorkspace({
               Drafts
             </Button>
           ) : null}
+          <BackupRecoveryButton />
           <AccountSettingsButton />
         </div>
       </header>

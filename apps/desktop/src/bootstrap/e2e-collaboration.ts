@@ -19,6 +19,7 @@ type Request = {
     | "click-inbox"
     | "click-accounts"
     | "open-host"
+    | "open-recovery"
     | "restore-embedded";
 };
 
@@ -46,18 +47,29 @@ const stop = await view.listen<Request>(REQUEST_EVENT, async (event) => {
       "click-inbox",
       "click-accounts",
       "open-host",
+      "open-recovery",
       "restore-embedded",
     ].includes(request.action)
   ) {
     return;
   }
 
-  if (request.action === "open-host" || request.action === "restore-embedded") {
+  if (
+    request.action === "open-host" ||
+    request.action === "restore-embedded" ||
+    request.action === "open-recovery"
+  ) {
     // Fixed routes preserve the pending WDIO script's main document. Child
     // hooks cannot navigate the host or perform either main-only action.
     if (view.label !== "main") return;
     if (request.action === "open-host") {
       await router.navigate({ to: "/app", search: {}, replace: true });
+    } else if (request.action === "open-recovery") {
+      await router.navigate({
+        to: "/app/inbox",
+        search: { embedded: 1 },
+        replace: true,
+      });
     } else {
       await router.navigate({
         to: "/app/git",

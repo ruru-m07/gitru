@@ -604,6 +604,7 @@ export default function WebviewTabHost() {
     latestHostBounds = null;
     let stopped = false;
     let stopReadiness: (() => void) | null = null;
+    let stopRuntimeReset: (() => void) | null = null;
     void listen("gitru:collaboration-change", () => {
       if (stopped || activeHostOwner !== owner) return;
       nativeReadinessVersion += 1;
@@ -614,6 +615,23 @@ export default function WebviewTabHost() {
         else stopReadiness = unlisten;
       })
       .catch(() => {});
+    void listen("gitru:collaboration-runtime-reset", () => {
+      if (stopped || activeHostOwner !== owner || tabWebviewsSuspended) return;
+      const state = useAppStore.getState();
+      const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId);
+      const bounds = latestHostBounds;
+      if (!activeTab || !bounds || visibleTabId !== activeTab.id) return;
+      // Recovery discards native owner generations. Only the main host may
+      // re-authorize its already-visible child in the replacement runtime.
+      // Entry can reject while paused; the resume reset retries with fresh proof.
+      nativeReadinessVersion += 1;
+      void activateTabWebview(activeTab, bounds, owner).catch(() => {});
+    })
+      .then((unlisten) => {
+        if (stopped) unlisten();
+        else stopRuntimeReset = unlisten;
+      })
+      .catch(() => {});
     if (pendingCleanupTimer !== null) {
       window.clearTimeout(pendingCleanupTimer);
       pendingCleanupTimer = null;
@@ -622,6 +640,7 @@ export default function WebviewTabHost() {
     return () => {
       stopped = true;
       stopReadiness?.();
+      stopRuntimeReset?.();
       if (pendingDemandActivation?.owner === owner)
         pendingDemandActivation = null;
       if (activeHostOwner !== owner) return;
