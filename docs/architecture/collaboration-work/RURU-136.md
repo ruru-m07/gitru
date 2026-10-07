@@ -1,16 +1,19 @@
 # RURU-136 — Pull request checkout through local Git
 
-Status: In Progress in Linear; contract frozen before implementation and local
-implementation complete pending review, 7 October 2026.
-Baseline: signed RURU-96 `0eb71a5a39db2ae11a7af2a11d0cdd074443142e`,
-which contains RURU-77. The implementation branch is
+Status: In Progress in Linear; contract frozen before implementation and the
+integrated implementation passed final local qualification on 7 October 2026.
+Baseline: signed RURU-104/PR #166
+`44a94ee69e1d739b55adfdfec666dbacf89e266c`, which contains RURU-77 and
+RURU-96. All 14 checks reported for that exact baseline are green; no exact-head
+CodeQL context is reported. The implementation branch is
 `ruru/ruru-136-pr-checkout` in the external managed worktree
 `/Volumes/Lexar/.codex/wt/ruru-136-pr-checkout/gitru`.
 
 Live issue: [RURU-136](https://linear.app/catra/issue/RURU-136/check-out-pull-request-branches-through-the-local-git-workflow),
 “Check out pull request branches through the local Git workflow”. Its
 prerequisites are RURU-77 and RURU-96. Both are present in this exact baseline;
-review, integration and exact-head remote CI remain delivery gates.
+review publication and exact-head remote CI remain delivery gates. Neither the
+baseline nor this branch is merged.
 
 ## Outcome
 
@@ -56,12 +59,15 @@ evidence, expected source repository/ref/OID, current symbolic branch and `HEAD`
 dirty/operation state, target branch state, and expiry. Replanning retires the
 older token for that caller/subject/clone. Confirmation consumes the token before
 Git mutation and reruns every relevant read. Any changed link, remote, saved head,
-authorization, worktree, branch, or active operation returns a stale/blocked
-result without worktree or branch mutation. Execution acquires the repository
-transaction before its first durable/caller revalidation. It checks the same
-authority again after a potentially slow fetch and immediately before the final
-Git reinspection and switch. Dropping the guard at either admission gate cannot
-change the worktree or branch.
+authorization, worktree, branch, or active operation found before the Git command
+returns a stale/blocked result without worktree or branch mutation. Execution
+acquires the repository transaction before its first durable/caller revalidation.
+It checks the same authority again after a potentially slow fetch and immediately
+before the final Git reinspection and switch. Dropping the guard at either
+admission gate cannot change the worktree or branch. Once Git starts a checkout,
+a command failure may still have changed local state; that boundary returns the
+typed `local_state_changed` result unless exact post-command verification proves
+the requested state.
 
 ## Git operation rules
 
@@ -73,9 +79,16 @@ inputs receive native Git validation before use.
   mutating plan. Gitru does not choose a stash or conflict strategy here.
 * Detached HEAD is shown explicitly and may move only after a clean confirmed
   plan. A symbolic branch/current OID change between plan and execution is stale.
-* An existing target branch at the expected OID is switched normally. An existing
-  target branch at another OID is never reset, deleted, renamed or force-updated;
-  planning asks for a different valid local branch name.
+* An existing direct target branch at the expected OID is switched normally. A
+  Git-native prepared `update-ref --stdin` transaction verifies and holds its
+  exact ref from the last precondition check through the switch and first final
+  verification. Internal reference-transaction hooks are disabled for this
+  verify-only lock, repository lock-retry settings are overridden with fail-fast
+  command values, the ref must remain direct while locked, and branch/`HEAD` are
+  reread after lock release. This preserves Git CLI SHA-1 and SHA-256 object
+  formats and bounds cancellation cleanup. A symbolic target branch or one at
+  another OID is never reset, deleted, renamed or force-updated; execution fails
+  before switching and planning asks for a different valid local branch name.
 * If the commit is missing, explicit confirmation fetches only
   `refs/heads/<saved head ref>` from the verified existing endpoint. While the
   repository transaction is held, native code captures the selected effective
@@ -107,7 +120,12 @@ inputs receive native Git validation before use.
 * If the commit already exists, execution performs no fetch. Checkout creates the
   new local branch at the exact OID or switches the exact existing branch.
 * After the switch, Gitru verifies `symbolic-ref --short HEAD` and `rev-parse
-  HEAD`. Only an exact branch and OID match produces a success receipt.
+  HEAD` while any existing-branch lock is held, releases the lock, and verifies
+  both again. Only exact branch/OID matches produce a receipt. A nonzero Git
+  status with exact verified state produces an explicit local warning receipt,
+  covering failures such as a post-checkout hook after Git completed the switch.
+  Other failed or unverifiable commands return `local_state_changed` because
+  the prior worktree state can no longer be promised.
 * Secret-sensitive fetch output and inherited Git trace destinations are
   discarded, and `SSLKEYLOGFILE` is removed. The sensitive runner removes
   inherited command-scope Git config, executable-path overrides, repository and
@@ -133,8 +151,10 @@ race, and the ref-free fetch guarantee does not depend on detecting it.
 
 The repository watcher may publish normal Git change events after the operation;
 this command does not create a second repository context or manipulate the JSON
-repository registry. A successful receipt carries the durable local repository ID
-so the frontend can navigate through the existing Git tab/session path.
+repository registry. Every attempted finish invalidates both its isolated service
+cache and all live application RepoServices for the same native app state. A
+successful receipt carries the durable local repository ID so the frontend can
+navigate through the existing Git tab/session path.
 
 ## Frontend behavior
 
@@ -153,7 +173,10 @@ actionable states. Users can choose another clone or enter a different local
 branch and replan. Confirmation is disabled for blocked plans. On exact verified
 success the app navigates to the existing local Git repository registration. A
 verified native receipt remains an explicit success even if repository opening or
-navigation then fails; the consumed plan is not offered as a retry.
+navigation then fails; the consumed plan is not offered as a retry. An exact
+receipt carrying a Git warning stays in the dialog and asks the user to inspect
+hooks/worktree state instead of navigating automatically. `local_state_changed`
+uses the same conservative recovery boundary and never renders native stderr.
 
 ## Implemented slice
 
@@ -171,8 +194,10 @@ reinspect the bound plan and credential-free transport identity; revalidate
 caller, account epoch, link generation, metadata binding and registration proof;
 optionally perform the pinned ref-free fetch; repeat the full authority
 validation; re-read Git dirtiness, active operation, symbolic branch, current
-OID, target branch and object availability; switch; then verify the resulting
-symbolic branch and exact OID.
+OID, target branch and exact commit-object availability; for an existing branch,
+prepare its exact Git-native ref lock and reject symbolic aliases; switch; verify
+the resulting symbolic branch and exact OID while locked; release; then verify
+both again. Tauri invalidates every live repository cache after the finish result.
 
 ## Ownership and bounds
 
@@ -205,14 +230,19 @@ redacted failures.
 
 Local evidence completed on 7 October 2026:
 
-* `make typegen`: generated 112 commands successfully.
-* `cargo test -p git --test pull_checkout`: 19 passed after review fixes,
+* `make typegen`: generated 121 commands successfully. The checkout receipt has
+  a distinct IPC schema and the shared error enum includes `local_state_changed`.
+* `cargo test -p git --test pull_checkout`: 26 passed after review fixes,
   including queued-lock authority revocation, a worktree dirtied during delayed
   fetch, ref-free HTTPS fork/moved-head fetches, in-flight symbolic-ref
   replacement, raced `remote.vcs` and `ext::` rewrites with non-invoked marker
   helpers, inline-credential rejection before transport/helpers, SSH username
-  rebinding, replacement-ref isolation, canonical OID rejection,
-  component-length bounds and exact post-checkout verification.
+  rebinding, replacement-ref isolation, canonical OID rejection, annotated-tag
+  rejection, component-length bounds, SHA-256 existing-branch checkout, exact
+  post-checkout verification, prepared-lock hook isolation, symbolic target-ref
+  rejection, inherited unbounded ref-lock timeout isolation and a post-checkout
+  hook ref race. A marker-free conflicted stash/index remains classified as an
+  active operation after moving checkout inspection off libgit2.
 * `cargo test -p git service::pull_checkout::tests::`: 2 passed; canonical
   credential-free HTTPS, SSH, SCP and IPv6 reconstruction plus inline-secret and
   unsafe-username rejection are covered.
@@ -230,17 +260,20 @@ Local evidence completed on 7 October 2026:
   fixes, including canonical provider OID validation.
 * `cargo clippy -p git -p gitru --all-targets -- -D warnings` and
   `cargo fmt --all -- --check`: passed.
-* Collaboration client focused Vitest: 35 passed; package TypeScript and scoped
-  Biome checks passed. This includes a successful native execution receipt that
-  remains observable when the local authorization fence invalidates in flight.
-* Desktop checkout/workspace Vitest: 27 passed; desktop and E2E TypeScript plus
-  scoped Biome checks passed.
-* Before the final native transport hardening, `make verify` passed the complete
-  repository frontend test, lint, type-check, desktop build, Rust format,
-  workspace Clippy and workspace test suite (45 frontend files and 374 tests),
-  and `make test-e2e` passed both packaged macOS spec files and all three
-  scenarios. The post-review native changes are covered by the focused Rust,
-  Tauri, format and Clippy checks above; the full commands have not been rerun.
+* Collaboration client full Vitest: 147 passed across 18 files; package TypeScript
+  and scoped Biome checks passed. This includes a successful native execution
+  receipt that remains observable when the local authorization fence invalidates
+  in flight.
+* Desktop checkout dialog Vitest: 13 passed; desktop and E2E TypeScript plus
+  scoped Biome checks passed. Warning receipts and `local_state_changed` remain
+  local, actionable and free of native details.
+* Final-source `make verify` passed the complete repository suite: 661 frontend,
+  SDK and UI tests across 68 files with one platform skip; lint, type-check and
+  the production desktop build; Rust format and workspace Clippy; and 891 Rust
+  tests with four ignored.
+* Final-source `make test-e2e` passed both packaged macOS spec files and all three
+  scenarios. The run used the release binary built from this worktree and wrote
+  artifacts to `artifacts/e2e/2026-10-07T16-10-21-212Z-18045`.
 
 Not yet verified: Windows behavior, a live GitHub/GitLab/Bitbucket checkout,
 credential-manager behavior against a real provider, exact-head remote CI, or a
