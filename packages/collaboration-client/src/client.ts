@@ -4,6 +4,13 @@ import {
   type CapabilityTarget,
   type ChangePage,
   type CollaborationChange,
+  type CommandRecoveryActionRequest,
+  type CommandRecoveryContext,
+  type CommandRecoveryDetail,
+  type CommandRecoveryQuery,
+  type CommandRecoveryReceipt,
+  type CommandRecoveryReplaceRequest,
+  type CommandRecoverySnapshot,
   type ConfirmLocalLinkPreview,
   type ContextCapabilityRequest,
   type ContextualCapabilitySnapshot,
@@ -70,6 +77,20 @@ import {
 import { compareRevisions, RevisionBridge } from "./revision-bridge";
 
 export interface CollaborationTransport extends DemandTransport {
+  commandRecoveryList(
+    query: CommandRecoveryQuery,
+  ): Promise<CommandRecoverySnapshot>;
+  commandRecoveryDetail(
+    accountId: string,
+    commandId: string,
+  ): Promise<CommandRecoveryDetail>;
+  commandRecoveryAction(
+    request: CommandRecoveryActionRequest,
+  ): Promise<CommandRecoveryReceipt>;
+  commandRecoveryReplace(
+    request: CommandRecoveryReplaceRequest,
+  ): Promise<CommandRecoveryReceipt>;
+  commandRecoveryExport(context: CommandRecoveryContext): Promise<boolean>;
   localLinks(localRepositoryId: string): Promise<LocalLinkInspection>;
   confirmLocalLink(
     request: ConfirmLocalLinkPreview,
@@ -155,6 +176,20 @@ export interface CollaborationTransport extends DemandTransport {
 }
 
 export const collaborationKeys = {
+  commandRecovery: (account: RemoteAccount, query: CommandRecoveryQuery) =>
+    [
+      ...collaborationKeys.account(account.id),
+      account.authorization_epoch,
+      "command-recovery",
+      query,
+    ] as const,
+  commandRecoveryDetail: (account: RemoteAccount, commandId: string) =>
+    [
+      ...collaborationKeys.account(account.id),
+      account.authorization_epoch,
+      "command-recovery-detail",
+      commandId,
+    ] as const,
   all: ["collaboration"] as const,
   localLinks: (localRepositoryId: string, version: number) =>
     ["collaboration", "local-links", localRepositoryId, version] as const,
@@ -414,7 +449,72 @@ export class CollaborationClient {
       id: account.id,
       authorization_epoch: account.authorization_epoch,
     };
+    const reviewedContext = (context: CommandRecoveryContext) => {
+      if (
+        context.account_id !== account.id ||
+        context.expected_epoch !== account.authorization_epoch
+      )
+        throw new StaleAuthorizationError();
+      return { ...context };
+    };
     return {
+      commandRecoveryList: (
+        query: Omit<CommandRecoveryQuery, "account_id">,
+        signal?: AbortSignal,
+      ) =>
+        read(
+          () =>
+            this.transport.commandRecoveryList({
+              ...query,
+              account_id: account.id,
+            }),
+          signal,
+        ),
+      commandRecoveryDetail: async (
+        commandId: string,
+        signal?: AbortSignal,
+      ) => {
+        const detail = await this.fence.read(
+          account.id,
+          () => this.transport.commandRecoveryDetail(account.id, commandId),
+          signal,
+        );
+        if (
+          detail.context.account_id !== account.id ||
+          detail.command.account_id !== account.id ||
+          detail.command.command_id !== commandId ||
+          detail.context.command_id !== commandId
+        )
+          throw new StaleAuthorizationError();
+        this.acceptSnapshot({
+          revision: detail.revision,
+          authorization_view: detail.context.authorization_view,
+        });
+        return detail;
+      },
+      commandRecoveryAction: (request: CommandRecoveryActionRequest) => {
+        const context = reviewedContext(request.context);
+        return this.fence.read(account.id, () =>
+          this.transport.commandRecoveryAction({ ...request, context }),
+        );
+      },
+      commandRecoveryReplace: (request: CommandRecoveryReplaceRequest) => {
+        const context = reviewedContext(request.context);
+        const fields = request.fields.map((field) => ({ ...field }));
+        return this.fence.read(account.id, () =>
+          this.transport.commandRecoveryReplace({
+            ...request,
+            context,
+            fields,
+          }),
+        );
+      },
+      commandRecoveryExport: (context: CommandRecoveryContext) => {
+        const reviewed = reviewedContext(context);
+        return this.fence.read(account.id, () =>
+          this.transport.commandRecoveryExport(reviewed),
+        );
+      },
       retainDemand: (target: DemandTarget) =>
         this.retainDemand(account, target),
       notificationSubject: async (
@@ -917,6 +1017,11 @@ function isAuthoredDraft(key: readonly unknown[]) {
 
 function projectionAffected(key: readonly unknown[], scope: string) {
   const projection = key[4];
+  if (
+    projection === "command-recovery" ||
+    projection === "command-recovery-detail"
+  )
+    return scope !== "drafts";
   if (scope.startsWith("effective:")) {
     const subject = scope.slice("effective:".length);
     if (projection === "detail") {

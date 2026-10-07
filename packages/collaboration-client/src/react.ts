@@ -1,5 +1,6 @@
 import type {
   CapabilityTarget,
+  CommandRecoveryQuery,
   DemandTarget,
   DetailQuery,
   DraftQuery,
@@ -25,6 +26,35 @@ const localQueryPolicy = {
   retry: false as const,
   meta: { collaboration: true },
 };
+
+export function commandRecoveryQueryOptions(
+  account: RemoteAccount,
+  query: Omit<CommandRecoveryQuery, "account_id">,
+) {
+  return queryOptions({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.commandRecovery(account, {
+      ...query,
+      account_id: account.id,
+    }),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).commandRecoveryList(query, signal),
+  });
+}
+
+export function commandRecoveryDetailQueryOptions(
+  account: RemoteAccount,
+  commandId: string,
+) {
+  return queryOptions({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.commandRecoveryDetail(account, commandId),
+    queryFn: ({ signal }) =>
+      collaboration
+        .forAccount(account)
+        .commandRecoveryDetail(commandId, signal),
+  });
+}
 
 export function useCollaborationVersion() {
   return useSyncExternalStore(

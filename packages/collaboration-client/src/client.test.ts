@@ -124,6 +124,11 @@ function transport(
     throw new Error("Unexpected transport operation");
   };
   return {
+    commandRecoveryList: unexpected,
+    commandRecoveryDetail: unexpected,
+    commandRecoveryAction: unexpected,
+    commandRecoveryReplace: unexpected,
+    commandRecoveryExport: unexpected,
     accounts: unexpected,
     diagnostics: unexpected,
     exportDiagnostics: unexpected,

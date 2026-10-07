@@ -14,6 +14,9 @@ const error = await Bun.file(
 const effective = await Bun.file(
   new URL("crates/collaboration/src/effective.rs", root),
 ).text();
+const commandRecovery = await Bun.file(
+  new URL("crates/collaboration/src/command_recovery.rs", root),
+).text();
 const detail = await Bun.file(
   new URL("crates/collaboration/src/detail.rs", root),
 ).text();
@@ -92,6 +95,7 @@ const snake = (value: string) =>
 // These serialized cache/parser types are native-only and deliberately absent
 // from renderer command signatures. If reachable later, correct them normally.
 const nativeOnlyTypes = new Set([
+  "CommandRecoveryExport",
   "NotificationSubjectKind",
   "NotificationSubjectRepresentation",
   "NotificationSubjectFallbackReason",
@@ -290,6 +294,7 @@ generated = generated.replace(
 
 for (const source of [
   effective,
+  commandRecovery,
   domain,
   error,
   detail,

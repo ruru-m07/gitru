@@ -12,8 +12,10 @@ use std::sync::Arc;
 use tauri::{State, Webview};
 use tauri_plugin_dialog::DialogExt;
 
+mod command_recovery;
 mod diagnostics_export;
 mod draft_export;
+pub use command_recovery::*;
 mod lifecycle;
 pub(super) use lifecycle::RecoveryTransition;
 use lifecycle::RuntimeSlot;
@@ -55,6 +57,7 @@ pub(super) enum Operation {
     ExportDraft,
     Diagnostics,
     ExportDiagnostics,
+    CommandRecovery,
     Recovery,
     Capabilities,
     ContextualCapabilities,

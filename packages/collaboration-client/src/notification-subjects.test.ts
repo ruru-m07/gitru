@@ -108,6 +108,21 @@ function fixture() {
     throw new Error("Unexpected provider or authored operation");
   });
   const transport = {
+    commandRecoveryList: async () => {
+      throw new Error("Unexpected recovery operation");
+    },
+    commandRecoveryDetail: async () => {
+      throw new Error("Unexpected recovery operation");
+    },
+    commandRecoveryAction: async () => {
+      throw new Error("Unexpected recovery operation");
+    },
+    commandRecoveryReplace: async () => {
+      throw new Error("Unexpected recovery operation");
+    },
+    commandRecoveryExport: async () => {
+      throw new Error("Unexpected recovery operation");
+    },
     accounts: async () => ({
       accounts: [account],
       revision,

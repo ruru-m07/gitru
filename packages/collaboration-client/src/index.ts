@@ -3,6 +3,11 @@ import {
   collaborationAcquireDemand,
   collaborationCapabilities,
   collaborationChangesSince,
+  collaborationCommandRecoveryAction,
+  collaborationCommandRecoveryDetail,
+  collaborationCommandRecoveryExport,
+  collaborationCommandRecoveryList,
+  collaborationCommandRecoveryReplace,
   collaborationConfirmLocalLink,
   collaborationConnectBitbucketCloud,
   collaborationConnectGithub,
@@ -62,6 +67,17 @@ export type {
   CheckStateV1,
   CheckV1,
   CollaborationPullCheckoutReceipt as PullCheckoutReceipt,
+  CommandFieldResolution,
+  CommandFieldReview,
+  CommandFieldValue,
+  CommandRecoveryActionRequest,
+  CommandRecoveryContext,
+  CommandRecoveryDetail,
+  CommandRecoveryQuery,
+  CommandRecoveryReceipt,
+  CommandRecoveryReplaceRequest,
+  CommandRecoverySnapshot,
+  CommandRecoverySummary,
   ContextCapabilityAccess,
   ContextCapabilityRequest,
   ContextFacetCapability,
@@ -194,6 +210,15 @@ export type ResourceFacet =
 export type ResourceKind = import("@gitru/commands").ResourceLocator["kind"];
 
 export const collaboration = new CollaborationClient({
+  commandRecoveryList: (query) => collaborationCommandRecoveryList({ query }),
+  commandRecoveryDetail: (accountId, commandId) =>
+    collaborationCommandRecoveryDetail({ accountId, commandId }),
+  commandRecoveryAction: (request) =>
+    collaborationCommandRecoveryAction({ request }),
+  commandRecoveryReplace: (request) =>
+    collaborationCommandRecoveryReplace({ request }),
+  commandRecoveryExport: (context) =>
+    collaborationCommandRecoveryExport({ context }),
   demandActivity: () => collaborationDemandActivity({}),
   acquireDemand: (request) => collaborationAcquireDemand({ request }),
   renewDemand: (request) => collaborationRenewDemand({ request }),
