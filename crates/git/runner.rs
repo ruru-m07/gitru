@@ -1452,6 +1452,73 @@ mod tests {
 
     // ── GitCommandRunner tests ───────────────────────────────────────
 
+    #[tokio::test]
+    async fn prepared_ref_lock_rejects_contention_without_using_timeout_fallback() {
+        let directory = tempfile::tempdir().unwrap();
+        let repository = git2::Repository::init(directory.path()).unwrap();
+        let reference = "refs/heads/pr/held-lock";
+        let signature = git2::Signature::now("Fixture", "fixture@example.invalid").unwrap();
+        let tree_id = repository.treebuilder(None).unwrap().write().unwrap();
+        let tree = repository.find_tree(tree_id).unwrap();
+        let expected = repository
+            .commit(
+                Some(reference),
+                &signature,
+                &signature,
+                "fixture",
+                &tree,
+                &[],
+            )
+            .unwrap();
+        let mut config = repository.config().unwrap();
+        for key in [
+            "core.filesRefLockTimeout",
+            "core.packedRefsTimeout",
+            "reftable.lockTimeout",
+        ] {
+            config.set_i64(key, -1).unwrap();
+            assert_eq!(config.get_i64(key).unwrap(), -1);
+        }
+        let foreign_lock = repository.path().join("refs/heads/pr/held-lock.lock");
+        std::fs::write(&foreign_lock, "held by another process").unwrap();
+        let runner = GitCommandRunner::new(directory.path().to_str().unwrap()).unwrap();
+        let mut transaction = runner.transaction().await.unwrap();
+
+        // Exercise the native lock protocol directly, without unrelated
+        // checkout inspections. Keep the production operation budget for slow
+        // process startup; an inherited -1 wait must hit the distinct timeout
+        // fallback and fail this assertion, not count as successful rejection.
+        let error = transaction
+            .prepare_ref_lock(reference, &expected.to_string(), Duration::from_secs(30))
+            .await
+            .err()
+            .expect("a foreign ref lock must prevent preparation");
+        assert_eq!(error, "Git ref changed");
+        assert_eq!(
+            std::fs::read_to_string(&foreign_lock).unwrap(),
+            "held by another process"
+        );
+        assert_eq!(
+            repository.find_reference(reference).unwrap().target(),
+            Some(expected)
+        );
+
+        // Prove the same ref, OID and protocol are valid once only our fixture
+        // lock is removed; a generic spawn/protocol failure cannot pass above.
+        std::fs::remove_file(&foreign_lock).unwrap();
+        let held = transaction
+            .prepare_ref_lock(reference, &expected.to_string(), Duration::from_secs(30))
+            .await
+            .expect("uncontended exact ref should prepare");
+        assert!(foreign_lock.exists());
+        held.release().await;
+        assert!(!foreign_lock.exists());
+        assert_eq!(
+            repository.find_reference(reference).unwrap().target(),
+            Some(expected)
+        );
+    }
+
     #[test]
     fn runner_rejects_invalid_path() {
         let result = GitCommandRunner::new("/nonexistent/path/to/repo");

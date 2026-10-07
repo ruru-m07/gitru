@@ -17,6 +17,17 @@ job also timed out downloading system packages before running code checks; that
 infrastructure failure is separate from this reproduced startup bug. Remote
 checks must be rerun on the repaired head.
 
+The Windows Rust job separately hit a two-second test deadline around the entire
+PR checkout execution, including two repository reinspections. The fixture now
+keeps the full checkout/HEAD/foreign-lock safety assertions and tests the native
+ref-lock protocol directly in the runner. With all three repository lock timeout
+settings at `-1`, that regression requires Git's lock-conflict result; the native
+timeout fallback is a failure. It preserves the foreign lock and exact OID, then
+proves the same protocol acquires/releases the ref after only the fixture lock is
+removed. Production behavior and its bounded operation timeout are unchanged.
+The new direct test, all 26 checkout integration tests, and strict all-target Git
+Clippy pass locally. Remote Windows qualification remains pending on this fix.
+
 Signed integration source `7bd1e37db444539c81e3d4f1805a128f8c9ab00f` is based on
 RURU-119 `08a2db3c4d66269ce72bc5a780e9deda78a57f43`. Full `make verify`
 passes 727 frontend tests with one platform skip, all lint/type/production-build
