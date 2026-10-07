@@ -100,3 +100,57 @@ contract is the reason for the explicit best-effort boundary; this is an inferen
 from the documented endpoint contract, not a claim that GitHub cannot implement
 other internal concurrency mechanisms. Researched 7 October 2026. Existing adapter
 version is `2026-03-10`.
+
+## Native implementation checkpoint — 8 October 2026
+
+The selected native operation is implemented as `github.edit_text`, payload version
+1. The immutable codec writes fixed typed scalar fields in tag order, including
+explicit best-effort acknowledgement, affected text, saved title/body/state/head,
+native identities, source/time, and review context. Unchanged supplied fields are
+rejected; the editor must omit them. A known null description remains a raw
+provider fact; sending an empty string explicitly clears it. Only this empty-body
+comparison treats null and empty as semantically equal. No provider bytes or
+routes are accepted from the renderer.
+
+`text_edit_snapshot` is local-only and declines unknown/oversized bases or existing
+pending intent. `submit_text_edit` atomically admits the command and effective
+projection, protects Body retention, and returns an immutable admission receipt.
+Exact retries compare the original request and sealed bytes even after the cache
+changes or process reopens; current epoch authorization still precedes retry.
+The runtime owns accepted completion through shutdown and signals the existing
+revision/subscription path.
+
+The shared native-context seam is signed as `ed8f66d`; the transport is the reviewed
+R130 checkpoint `21b2ae5` (cherry-picked here as `9549dcb`). Both preparation and
+reconciliation capture current native context inside the writer transaction;
+64 KiB overflow rolls back generation, budget and revision together. Fresh GET
+observations cannot predate the captured provider timestamp. A converged
+preflight can commit canonical state and confirmation without recording a mutation
+attempt. An overlapping edit, workflow or head change instead commits conflict
+and fresh canonical evidence while retaining authored intent.
+
+After an actual attempt or restored quarantine, read-only convergence verifies the
+exact resource and every authored field using the **current** captured lease.
+Unrelated newer head/workflow facts do not prohibit observing the desired text.
+The original authored guards remain byte-identical. A different desired field or
+resource never proves non-delivery. No error, arbitrary HTTP status, differing
+read, or authentication failure produces a generic safe-retry receipt. Successful
+PATCH and read convergence both go through the scoped canonical finalizer before
+retiring effective intent. Confirmation describes observed convergence, not proof
+of command causality.
+
+Operation-specific R117 review exposes only authored text fields as editable.
+Replacement rebuilds an acknowledged native operation from a fresh saved base;
+untouched fields remain omitted. Existing actor/epoch/quarantine, supersession,
+history, attempts and attention limits remain authoritative. No schema change is
+introduced; current backup/restore preserves immutable payloads and quarantines
+pending commands even after account reauthorization.
+
+Local qualification: **17/17 focused native tests passed** in
+`/tmp/gitru-r129-native-text-tests4.log`, including finite loopback HTTP, cold reopen,
+transaction bounds, conflict/convergence, current-head reconciliation, canonical
+empty-body behavior, auth/quota, replacement, and actual synthetic backup/restore.
+Strict all-target collaboration Clippy passed in `/tmp/gitru-r129-native-clippy2.log`.
+Broader regression is being finalized; desktop IPC/editor work
+is concurrent and has its own evidence. No live provider mutation, credential
+inspection, remote CI, or packaged platform claim follows from these fixtures.

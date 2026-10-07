@@ -56,6 +56,7 @@ mod pull_file_tests;
 mod pull_files;
 mod scheduler;
 mod shutdown;
+mod text_edits;
 pub use shutdown::RuntimeOperation;
 
 #[cfg(test)]

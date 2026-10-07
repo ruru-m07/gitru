@@ -21,6 +21,9 @@ mod contextual_capabilities;
 pub(crate) mod delivery;
 pub(crate) mod effective;
 mod shutdown;
+pub(crate) mod text_edits;
+#[cfg(test)]
+mod text_edits_tests;
 use shutdown::NativeWriter;
 pub(crate) mod details;
 pub(crate) mod diagnostics;

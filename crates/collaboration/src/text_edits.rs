@@ -54,3 +54,5 @@ pub struct TextEditReceipt {
     pub admitted_revision: String,
     pub duplicate: bool,
 }
+
+pub(crate) mod native;

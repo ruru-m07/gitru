@@ -16,6 +16,7 @@ pub mod notification_subjects;
 mod pull_details;
 mod resource_details;
 mod reviews;
+pub(crate) mod text_edits;
 
 pub struct GithubProvider {
     http: GithubHttp,
