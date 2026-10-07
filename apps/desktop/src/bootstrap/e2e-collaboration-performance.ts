@@ -7,9 +7,11 @@ import type { HarnessViewManifest, RemoteAccount } from "@gitru/commands";
 import type { QueryClient } from "@tanstack/react-query";
 import type { HarnessPerformanceView } from "../../e2e/protocol/collaboration-harness";
 
-const ACCOUNT_ID = "ruru103:primary";
-const ITEM_ID = "github:pull:ruru125:primary:4999";
-const FIRST_TITLE = "RURU-125 cached pull 4999 primary repository 4";
+// Account snapshots are ordered by their stable id. Use that deterministic
+// first account so every remount measures the same real workspace.
+const ACCOUNT_ID = "ruru103:alternate";
+const ITEM_ID = "github:pull:ruru125:alternate:4999";
+const FIRST_TITLE = "RURU-125 cached pull 4999 alternate repository 4";
 const STEP_TIMEOUT_MS = 10_000;
 
 type Sample = { duration_ms: number; payload_bytes: number | null };
@@ -84,7 +86,7 @@ function elapsed(started: number): Sample {
 }
 
 function searchTitle(index: number) {
-  return `RURU-125 cached pull ${4900 + index} primary repository 4 needle${index
+  return `RURU-125 cached pull ${4900 + index} alternate repository 4 needle${index
     .toString()
     .padStart(2, "0")}`;
 }

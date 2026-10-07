@@ -58,10 +58,10 @@ describe("retained collaboration renderer protocol", () => {
       webview_label: "main",
       role: "main",
       sample_count: 10,
-      account_id: "ruru103:primary",
+      account_id: "ruru103:alternate",
       first_useful_epoch_ms: 1_800_000_000_000,
       navigation_to_first_useful_ms: 120,
-      exact_first_title: "RURU-125 cached pull 4999 primary repository 4",
+      exact_first_title: "RURU-125 cached pull 4999 alternate repository 4",
       cases,
     };
     expect(HarnessPerformanceViewSchema.safeParse(view).success).toBe(true);

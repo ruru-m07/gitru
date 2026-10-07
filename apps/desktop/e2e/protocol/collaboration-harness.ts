@@ -543,11 +543,11 @@ export const HarnessPerformanceViewSchema = z
     webview_label: label,
     role: z.enum(["main", "concurrent_child"]),
     sample_count: z.union([z.literal(10), z.literal(30)]),
-    account_id: z.literal("ruru103:primary"),
+    account_id: z.literal("ruru103:alternate"),
     first_useful_epoch_ms: performanceEpoch,
     navigation_to_first_useful_ms: performanceDuration,
     exact_first_title: z.literal(
-      "RURU-125 cached pull 4999 primary repository 4",
+      "RURU-125 cached pull 4999 alternate repository 4",
     ),
     cases: z.array(HarnessPerformanceCaseSchema).length(9),
   })

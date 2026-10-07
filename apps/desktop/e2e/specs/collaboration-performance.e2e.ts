@@ -46,8 +46,19 @@ describe("packaged cached collaboration performance", () => {
 
   it(`measures the ${mode} SQLite to useful-content path`, async () => {
     const receipt = await runPerformance();
+    const artifactRoot = process.env.GITRU_E2E_ARTIFACTS;
+    if (!artifactRoot) throw new Error("Performance artifact root is missing");
+    mkdirSync(artifactRoot, { recursive: true });
+    writeFileSync(
+      resolve(artifactRoot, "raw-performance.json"),
+      `${JSON.stringify(receipt, null, 2)}\n`,
+      { encoding: "utf8", flag: "wx", mode: 0o600 },
+    );
+    if (receipt.outcome !== "passed")
+      throw new Error(
+        `Packaged performance scenario failed at ${receipt.stage}: ${receipt.failure?.kind ?? "unknown"}`,
+      );
     if (
-      receipt.outcome !== "passed" ||
       !receipt.status ||
       !receipt.performance ||
       receipt.performance.provider_call_count_before !==
@@ -79,14 +90,6 @@ describe("packaged cached collaboration performance", () => {
       )
     )
       throw new Error("Both retained native views were not measured");
-    const artifactRoot = process.env.GITRU_E2E_ARTIFACTS;
-    if (!artifactRoot) throw new Error("Performance artifact root is missing");
-    mkdirSync(artifactRoot, { recursive: true });
-    writeFileSync(
-      resolve(artifactRoot, "raw-performance.json"),
-      `${JSON.stringify(receipt, null, 2)}\n`,
-      { encoding: "utf8", flag: "wx", mode: 0o600 },
-    );
     writeFileSync(
       resolve(artifactRoot, "process-memory.json"),
       `${JSON.stringify(observeProcessMemory(receipt.status.process_id), null, 2)}\n`,
