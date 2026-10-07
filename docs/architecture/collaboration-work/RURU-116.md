@@ -107,3 +107,30 @@ regressions and seven recovery-migration tests, plus 266 collaboration component
 tests. Full workspace qualification is running; its final evidence is recorded
 separately below. No live provider write, production credential, remote CI or
 packaged cross-platform claim follows from these fixtures.
+
+
+## Full local qualification — 8 October 2026
+
+`make verify` passes at signed source `42c270c674b4ce11daf60f263f33ea7bce9b0886`:
+731 frontend cases/one platform skip, 1,165 Rust test executions/seven standalone
+helper ignores, lint, types, production desktop build, formatting and strict
+workspace Clippy. Evidence: `/tmp/gitru-r116-verify-final.log`. Eleven native
+projection cases cover pending query/count/search agreement, refresh and restart,
+account/epoch isolation, rollback, active-chain bounds, Body metadata proof,
+notification unread counts, indexed replay and unknown schema rejection. Ten
+canonical-finalization cases exercise normalization, later pending successors,
+no-op/stale/omitted proofs, rollback, raw/FTS tampering, accepted receipts,
+notifications, older feeds and no-effect query revision fencing.
+
+Signed integration `e5f2188a6834e9e89e57aab3a50e336e0e547d4c` merges parent
+RURU-115 `3e5f7f07` without changing effective-intent production source. It adds
+RURU-106's failed-harness startup close and a focused Git ref-lock regression that
+separates actual lock contention from whole-checkout process-start latency.
+Remote CI and packaged/live-provider qualification are separate gates. No write
+operation is enabled and no PR is merged by this change.
+
+
+The final parent-fix integration passes all 20 feature-harness session tests and
+the direct Git ref-lock regression. Logs: `/tmp/gitru-r116-final-harness.log` and
+`/tmp/gitru-r116-final-git.log`. This qualifies the inherited test-only delta in
+addition to the full workspace run above.

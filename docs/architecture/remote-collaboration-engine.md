@@ -3499,3 +3499,37 @@ across cold restart, cancellation/drain and account isolation. [The contract and
 qualification note](./collaboration-work/RURU-115.md) retains the exact evidence.
 Remote CI and live provider mutation behavior remain separate, unclaimed gates.
 The change is prepared as a draft stacked on RURU-106; no merge is authorized.
+
+
+### RURU-116 durable effective projections — 8 October 2026
+
+Implemented on the RURU-115 delivery framework, with signed source `42c270c`.
+Frozen migration 0017 retains immutable typed command effects and sparse derived
+item/search projections. Local lists, details, filtered counts, inbox and literal
+search read the same SQLite state; pending metadata makes queued, accepted and
+ambiguous intent visible. Account/epoch/visibility fences remain authoritative,
+and intent never changes provider head, permission or hydration evidence.
+
+Confirmation requires a transaction-owned canonical observation covering every
+authored field before its effect can retire. A default no-op finalizer fails
+closed. Rejection replays successors, stale provider feeds cannot undo a newer
+canonical confirmation, and rollback preserves authored bytes. Restore retains
+effects but quarantines delivery and clears derived projections. Partial indexes
+bound active replay by target and authorization epoch. SDK revision hints cancel
+held reads and invalidate all affected consumers across retained clients.
+
+Full local `make verify` at `42c270c` passes 731 frontend tests/one platform skip,
+1,165 Rust test executions/seven standalone helper ignores, lint/types/build,
+formatting and strict workspace Clippy. `make typegen` generated 135 commands and
+402 schema exports. Integration `e5f2188` adds only the parent's failed-harness
+shutdown and Git lock-test corrections; focused validation of that delta is
+recorded in [the RURU-116 work note](./collaboration-work/RURU-116.md). Remote CI,
+packaged application qualification and live provider writes remain distinct.
+Production providers still register no write operation in this framework slice;
+RURU-117 and operation-specific follow-ups supply review/recovery and delivery.
+
+Remote checks also completed for existing PRs: RURU-119 #172 at `08a2db3`, RURU-125
+#173 at `8eccce4`, and RURU-127 #174 at `cfc5b23` each have all 14 reported status
+contexts passing, including Linux/macOS/Windows Rust, packaged desktop E2E and
+retained collaboration harness. These exact-head CI results do not qualify live
+provider credentials. All PRs remain open; none were merged.
