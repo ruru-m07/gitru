@@ -204,6 +204,12 @@ async fn dependencies_capture_exact_predecessors_and_order() {
     let hash: Vec<u8>=sqlx::query_scalar("SELECT predecessor_hash FROM command_dependencies WHERE account_id='a' AND command_id=? AND ordinal=0")
         .bind(THIRD).fetch_one(&store.inner.readers).await.unwrap();
     assert_eq!(hash, first.submission_hash);
+    assert!(
+        sqlx::query("UPDATE command_dependencies SET required=0 WHERE account_id='a'")
+            .execute(&mut *store.inner.writer.lock().await)
+            .await
+            .is_err()
+    );
     pending.dependencies.reverse();
     assert_error(
         &store,
@@ -377,6 +383,15 @@ async fn immutable_facts_and_collision_defense_are_enforced_by_storage() {
             .await
             .is_err()
     );
+    for mutation in [
+        "UPDATE command_target_protections SET reference_id='other'",
+        "UPDATE command_target_protections SET required=0",
+        "UPDATE command_target_protections SET account_id='b'",
+        "UPDATE command_target_protections SET command_id='123e4567-e89b-12d3-a456-426614174001'",
+        "DELETE FROM command_target_protections",
+    ] {
+        assert!(sqlx::query(mutation).execute(&mut *writer).await.is_err());
+    }
     // Simulate a corrupted decomposed field while retaining the exact hash and
     // envelope. The digest must never authorize a different stored intent.
     sqlx::query("DROP TRIGGER commands_immutable")
@@ -512,14 +527,12 @@ async fn pending_successor_keeps_terminal_predecessor_reference_protection() {
             .execute(&mut *writer)
             .await
             .unwrap();
-        // The second command's target may already be missing from rebuildable
-        // cache. Remove only its derived protections to isolate the predecessor
-        // join, which still must retain the first command's target.
-        sqlx::query("DELETE FROM command_target_protections WHERE account_id='a' AND command_id=?")
-            .bind(SECOND)
-            .execute(&mut *writer)
-            .await
-            .unwrap();
+        let required: i64 = sqlx::query_scalar("SELECT count(*) FROM command_target_protections WHERE account_id='a' AND command_id=? AND required=1")
+            .bind(FIRST).fetch_one(&mut *writer).await.unwrap();
+        assert_eq!(
+            required, 2,
+            "the confirmed predecessor remains protected solely by its pending dependent"
+        );
         sqlx::query("UPDATE detail_demand SET requested=0")
             .execute(&mut *writer)
             .await

@@ -103,7 +103,18 @@ CREATE INDEX command_protection_lookup ON command_target_protections(account_id,
 CREATE TRIGGER protection_bound BEFORE INSERT ON command_target_protections
 WHEN (SELECT count(*) FROM command_target_protections WHERE account_id=NEW.account_id AND command_id=NEW.command_id) >= 128
 BEGIN SELECT RAISE(ABORT,'too many command protections'); END;
+CREATE TRIGGER protection_identity_immutable BEFORE UPDATE OF account_id,command_id,reference_kind,reference_id,facet ON command_target_protections
+BEGIN SELECT RAISE(ABORT,'immutable command protection'); END;
+CREATE TRIGGER protections_retained BEFORE DELETE ON command_target_protections
+BEGIN SELECT RAISE(ABORT,'command protection requires explicit retention policy'); END;
 
+
+CREATE TRIGGER dependency_required_valid BEFORE UPDATE OF required ON command_dependencies
+WHEN NEW.required <> EXISTS(SELECT 1 FROM commands c WHERE c.account_id=NEW.account_id AND c.command_id=NEW.command_id AND c.state IN ('queued','sending','retry_wait','accepted','outcome_unknown','conflict'))
+BEGIN SELECT RAISE(ABORT,'invalid dependency requirement'); END;
+CREATE TRIGGER protection_required_valid BEFORE UPDATE OF required ON command_target_protections
+WHEN NEW.required <> (EXISTS(SELECT 1 FROM commands c WHERE c.account_id=NEW.account_id AND c.command_id=NEW.command_id AND c.state IN ('queued','sending','retry_wait','accepted','outcome_unknown','conflict')) OR EXISTS(SELECT 1 FROM command_dependencies d WHERE d.account_id=NEW.account_id AND d.predecessor_id=NEW.command_id AND d.required=1))
+BEGIN SELECT RAISE(ABORT,'invalid protection requirement'); END;
 
 -- These two flags are derived local indexes, not immutable submitted intent.
 -- Their partial indexes keep retention independent of terminal receipt history.
