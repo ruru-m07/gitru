@@ -28,6 +28,7 @@ import {
   type HarnessLocalInboxEvidence,
   type HarnessObsoleteReads,
   HarnessPeerLeaseSchema,
+  type HarnessPerformanceEvidence,
   type HarnessProbeSnapshot,
   type HarnessPullCommitEvidence,
   type HarnessScenario,
@@ -172,7 +173,10 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
     if (!alive || running)
       throw new Error("The retained scenario executor is unavailable");
     running = true;
-    const deadline = Date.now() + SCENARIO_TIMEOUT_MS;
+    const performanceScenario =
+      scenario === "performance" || scenario === "performance-restart";
+    const deadline =
+      Date.now() + (performanceScenario ? 5 * 60_000 : SCENARIO_TIMEOUT_MS);
     const observations: HarnessProbeSnapshot[] = [];
     const obsoleteReads: HarnessObsoleteReads = {
       retention_reset: null,
@@ -181,6 +185,7 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
     let authority: HarnessAuthorityEvidence | null = null;
     let pullCommits: HarnessPullCommitEvidence | null = null;
     let localInbox: HarnessLocalInboxEvidence | null = null;
+    let performanceEvidence: HarnessPerformanceEvidence | null = null;
     let manualLease: DemandLeaseReceipt | null = null;
     let manualLeaseBaseline = 0;
     let stage = "read native fixture";
@@ -579,17 +584,70 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
 
     try {
       await status();
-      if (scenario !== "restart" && !current.core.prepared) {
+      if (performanceScenario) {
+        if (!current.core.prepared) {
+          require(scenario === "performance");
+          stage = "prepare deterministic 10,000-item cache";
+          await core("prepare_performance");
+        }
+        require(current.core.fixture === "performance");
+        require(current.core.performance?.dataset_version === 1);
+        require(current.core.performance?.item_count === 10_000);
+      } else if (scenario !== "restart" && !current.core.prepared) {
         stage = "prepare synthetic primary account";
         await core("prepare_primary");
       }
       require(current.core.prepared);
-      stage = "wake the real main SDK";
-      await collaboration.wake();
-      stage = "activate the real native main demand owner";
-      await activate("main");
+      if (!performanceScenario) {
+        stage = "wake the real main SDK";
+        await collaboration.wake();
+        stage = "activate the real native main demand owner";
+        await activate("main");
+      }
 
-      if (scenario === "concurrent-demand") {
+      if (performanceScenario) {
+        const fixture = current.core.performance;
+        require(fixture);
+        if (!fixture) throw new HarnessScenarioError({ kind: "assertion" });
+        const before = await status();
+        const phase = scenario === "performance" ? "warm" : "restart";
+        const mainSamples = scenario === "performance" ? 30 : 10;
+        stage = "measure useful cached content in the real main webview";
+        const main = await request("main", {
+          kind: "benchmark",
+          phase,
+          sample_count: mainSamples,
+        });
+        require(main.outcome === "accepted" && main.performance);
+        const label = await child();
+        stage = "measure the same saved cache in a retained second native view";
+        const secondary = await request(label, {
+          kind: "benchmark",
+          phase,
+          sample_count: 10,
+        });
+        require(secondary.outcome === "accepted" && secondary.performance);
+        if (!main.performance || !secondary.performance)
+          throw new HarnessScenarioError({ kind: "assertion" });
+        const after = await status();
+        require(
+          after.core.provider_call_count === before.core.provider_call_count &&
+            after.core.vault_load_count === before.core.vault_load_count,
+        );
+        require(after.authorized_hydrate_requests === "0");
+        performanceEvidence = {
+          dataset_version: 1,
+          item_count: 10_000,
+          account_count: 2,
+          repositories_per_account: 5,
+          items_per_account: 5_000,
+          views: [main.performance, secondary.performance],
+          provider_call_count_before: before.core.provider_call_count,
+          provider_call_count_after: after.core.provider_call_count,
+          vault_load_count_before: before.core.vault_load_count,
+          vault_load_count_after: after.core.vault_load_count,
+        };
+      } else if (scenario === "concurrent-demand") {
         stage = "arm missing Body response";
         const gate = (await core("arm_provider_gate")).gate_id;
         require(gate);
@@ -1589,7 +1647,10 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
           failed = true;
         }
       }
-      if (!checkpoint) {
+      // The dedicated performance driver samples the live process tree after
+      // this receipt, so its two real views remain retained until the owned
+      // WDIO launcher tears down the process. No later scenario shares it.
+      if (!checkpoint && !performanceScenario) {
         try {
           if (normalHostMounted) {
             await router.navigate({
@@ -1642,6 +1703,7 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
       authority,
       pull_commits: pullCommits,
       local_inbox: localInbox,
+      performance: performanceEvidence,
       obsolete_reads: obsoleteReads,
       failure,
       cleanup_failure: cleanupFailure,

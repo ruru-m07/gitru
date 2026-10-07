@@ -3,6 +3,7 @@
 mod clock;
 mod domain;
 mod files;
+mod performance;
 mod provider;
 mod state;
 mod vault;
@@ -10,6 +11,11 @@ mod vault;
 pub(crate) use clock::HarnessClock;
 pub use domain::*;
 pub use files::APPLICATION_ID;
+pub use performance::{
+    PERFORMANCE_DATASET_VERSION, PERFORMANCE_ITEMS_PER_ACCOUNT,
+    PERFORMANCE_REPOSITORIES_PER_ACCOUNT, PERFORMANCE_SEARCH_SAMPLE_COUNT, PERFORMANCE_TOTAL_ITEMS,
+    performance_item, performance_repository,
+};
 pub use provider::{
     ALTERNATE_ACCOUNT, BASE_OID, BOOKMARKED_NOTIFICATION_ID, DONE_NOTIFICATION_ID,
     FIRST_COMMIT_OID, HEAD_OID, PRIMARY_ACCOUNT, REPOSITORY_ID, SNOOZED_NOTIFICATION_ID,
@@ -175,6 +181,7 @@ impl HarnessControl {
                     request.action,
                     HarnessCoreAction::PreparePrimary
                         | HarnessCoreAction::PrepareRepositoryOnly
+                        | HarnessCoreAction::PreparePerformance
                         | HarnessCoreAction::CancelGates
                 )
             {
@@ -186,14 +193,17 @@ impl HarnessControl {
         }
         let mut issued_gate = None;
         match request.action {
-            HarnessCoreAction::PreparePrimary | HarnessCoreAction::PrepareRepositoryOnly => {
+            HarnessCoreAction::PreparePrimary
+            | HarnessCoreAction::PrepareRepositoryOnly
+            | HarnessCoreAction::PreparePerformance => {
                 if self.0.shared.lock().persistent.prepared {
                     return Err(stale());
                 }
-                let fixture = if request.action == HarnessCoreAction::PreparePrimary {
-                    HarnessFixture::Primary
-                } else {
-                    HarnessFixture::RepositoryOnly
+                let fixture = match request.action {
+                    HarnessCoreAction::PreparePrimary => HarnessFixture::Primary,
+                    HarnessCoreAction::PrepareRepositoryOnly => HarnessFixture::RepositoryOnly,
+                    HarnessCoreAction::PreparePerformance => HarnessFixture::Performance,
+                    _ => unreachable!(),
                 };
                 self.prepare(fixture, &guard).await?;
             }
@@ -336,6 +346,11 @@ impl HarnessControl {
                 .store
                 .commit_account_credential(account, reference)
                 .await?;
+            if fixture == HarnessFixture::Performance {
+                self.prepare_performance_account(slot, &account, &guard)
+                    .await?;
+                continue;
+            }
             let scope = "repositories";
             let run = self
                 .0
@@ -448,6 +463,84 @@ impl HarnessControl {
         self.0.runtime.harness_publish_current().await
     }
 
+    async fn prepare_performance_account<F>(
+        &self,
+        slot: HarnessActorSlot,
+        account: &RemoteAccount,
+        guard: &F,
+    ) -> Result<(), CollaborationError>
+    where
+        F: Fn() -> Result<(), CollaborationError> + Send + Sync,
+    {
+        let observed_at = "2026-01-01T00:00:00Z";
+        let repositories = (0..PERFORMANCE_REPOSITORIES_PER_ACCOUNT)
+            .map(|index| performance_repository(slot, account, index))
+            .collect::<Vec<_>>();
+        let run = self
+            .0
+            .store
+            .begin_sync(&account.id, &account.authorization_epoch, "repositories")
+            .await?;
+        self.0
+            .store
+            .apply_page(PageCommit {
+                account_id: account.id.clone(),
+                authorization_epoch: account.authorization_epoch.clone(),
+                scope: "repositories".into(),
+                run_id: run,
+                repositories: repositories.clone(),
+                items: vec![],
+                endpoint_aliases: vec![],
+                next_cursor: None,
+                etag: None,
+                last_modified: None,
+                not_modified: false,
+                complete: true,
+                observed_at: observed_at.into(),
+            })
+            .await?;
+        let items_per_repository =
+            PERFORMANCE_ITEMS_PER_ACCOUNT / PERFORMANCE_REPOSITORIES_PER_ACCOUNT as usize;
+        for (repository_index, repository) in repositories.iter().enumerate() {
+            guard()?;
+            let scope = format!("repo:{}:pull_request", repository.id);
+            let run = self
+                .0
+                .store
+                .begin_sync(&account.id, &account.authorization_epoch, &scope)
+                .await?;
+            for page_index in 0..(items_per_repository / 100) {
+                guard()?;
+                let start = page_index * 100;
+                let items = (start..start + 100)
+                    .map(|item_index| {
+                        performance_item(slot, account, repository, repository_index, item_index)
+                    })
+                    .collect();
+                let last = start + 100 == items_per_repository;
+                self.0
+                    .store
+                    .apply_page(PageCommit {
+                        account_id: account.id.clone(),
+                        authorization_epoch: account.authorization_epoch.clone(),
+                        scope: scope.clone(),
+                        run_id: run.clone(),
+                        repositories: vec![],
+                        items,
+                        endpoint_aliases: vec![],
+                        next_cursor: (!last).then(|| format!("page-{}", page_index + 1)),
+                        etag: None,
+                        last_modified: None,
+                        not_modified: false,
+                        complete: last,
+                        observed_at: observed_at.into(),
+                    })
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
     async fn fill<F>(&self, count: usize, guard: &F) -> Result<(), CollaborationError>
     where
         F: Fn() -> Result<(), CollaborationError> + Send + Sync,
@@ -503,29 +596,30 @@ impl HarnessControl {
                 });
             }
         }
-        let (committed_phase, committed_facet_revision) = if state.prepared {
-            let detail = self
-                .0
-                .store
-                .detail(DetailQuery {
-                    account_id: PRIMARY_ACCOUNT.into(),
-                    subject_id: SUBJECT_ID.into(),
-                    facet: DetailFacet::Body,
-                    cursor: None,
-                    limit: 1,
-                })
-                .await?;
-            let phase = [HarnessPhase::One, HarnessPhase::Two]
-                .into_iter()
-                .find(|phase| {
-                    detail.body.state == DetailValueState::Known
-                        && detail.body.text.as_deref()
-                            == fixture_body(HarnessActorSlot::Primary, *phase)
-                });
-            (phase, phase.and(detail.evidence.facet_revision))
-        } else {
-            (None, None)
-        };
+        let (committed_phase, committed_facet_revision) =
+            if state.prepared && state.fixture == HarnessFixture::Primary {
+                let detail = self
+                    .0
+                    .store
+                    .detail(DetailQuery {
+                        account_id: PRIMARY_ACCOUNT.into(),
+                        subject_id: SUBJECT_ID.into(),
+                        facet: DetailFacet::Body,
+                        cursor: None,
+                        limit: 1,
+                    })
+                    .await?;
+                let phase = [HarnessPhase::One, HarnessPhase::Two]
+                    .into_iter()
+                    .find(|phase| {
+                        detail.body.state == DetailValueState::Known
+                            && detail.body.text.as_deref()
+                                == fixture_body(HarnessActorSlot::Primary, *phase)
+                    });
+                (phase, phase.and(detail.evidence.facet_revision))
+            } else {
+                (None, None)
+            };
         Ok(HarnessCoreStatus {
             run_nonce: self.0.nonce.clone(),
             session_id: self.0.session_id.clone(),
@@ -546,6 +640,19 @@ impl HarnessControl {
             clock_elapsed_seconds: state.elapsed,
             committed_phase,
             committed_facet_revision,
+            performance: if state.fixture == HarnessFixture::Performance {
+                let item_count = self.0.store.harness_item_count().await?;
+                Some(HarnessPerformanceFixture {
+                    dataset_version: PERFORMANCE_DATASET_VERSION,
+                    item_count,
+                    account_count: 2,
+                    repositories_per_account: PERFORMANCE_REPOSITORIES_PER_ACCOUNT,
+                    items_per_account: PERFORMANCE_ITEMS_PER_ACCOUNT as u32,
+                    search_sample_count: PERFORMANCE_SEARCH_SAMPLE_COUNT,
+                })
+            } else {
+                None
+            },
         })
     }
 }

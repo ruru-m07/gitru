@@ -12,6 +12,7 @@ import {
   HarnessLocalInboxEvidenceSchema,
   HarnessObsoleteReadsSchema,
   HarnessPeerLeaseSchema,
+  HarnessPerformanceViewSchema,
   HarnessPullCommitEvidenceSchema,
   type HarnessRequest,
   HarnessRequestSchema,
@@ -39,6 +40,49 @@ const receipt = {
 };
 
 describe("retained collaboration renderer protocol", () => {
+  it("bounds performance samples to finite fixed native cases", () => {
+    const sample = { duration_ms: 4.25, payload_bytes: 4096 };
+    const cases = [
+      ["list_local_ipc", "react_useful_content"],
+      ["search_local_ipc", "react_useful_content"],
+      ["detail_local_ipc", "react_useful_content"],
+      ["list_local_ipc", "sdk_ipc"],
+      ["search_local_ipc", "sdk_ipc"],
+      ["detail_local_ipc", "sdk_ipc"],
+      ["list_memory_hit", "query_memory"],
+      ["search_memory_hit", "query_memory"],
+      ["detail_memory_hit", "query_memory"],
+    ].map(([name, boundary]) => ({ name, boundary, samples: [sample] }));
+    const view = {
+      phase: "restart",
+      webview_label: "main",
+      role: "main",
+      sample_count: 10,
+      account_id: "ruru103:primary",
+      first_useful_epoch_ms: 1_800_000_000_000,
+      navigation_to_first_useful_ms: 120,
+      exact_first_title: "RURU-125 cached pull 4999 primary repository 4",
+      cases,
+    };
+    expect(HarnessPerformanceViewSchema.safeParse(view).success).toBe(true);
+    for (const changed of [
+      { ...view, samples: [{ duration_ms: Number.NaN }] },
+      { ...view, token: "credential" },
+      { ...view, cases: [...cases, cases[0]] },
+      {
+        ...view,
+        cases: cases.map((entry, index) =>
+          index === 0
+            ? { ...entry, samples: [{ ...sample, payload_bytes: 9_000_000 }] }
+            : entry,
+        ),
+      },
+    ])
+      expect(HarnessPerformanceViewSchema.safeParse(changed).success).toBe(
+        false,
+      );
+  });
+
   it("bounds restart pull-commit evidence to exact typed cache facts", () => {
     const evidence = {
       account_id: "ruru103:primary",

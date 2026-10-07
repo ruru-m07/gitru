@@ -18,6 +18,8 @@
     "e2e": "bun run e2e:build && bun run e2e:test",
     "e2e:harness:build": "tauri build --no-bundle --features collaboration-harness --config src-tauri/tauri.harness.conf.json",
     "e2e:harness:test": "bun run e2e/harness-run.ts",
+    "e2e:harness:performance:test": "bun run e2e/performance-run.ts",
+    "e2e:harness:performance": "bun run e2e:harness:build && bun run e2e:harness:performance:test",
     "e2e:harness": "bun run e2e:harness:build && bun run e2e:harness:test",
     "tauri": "tauri"
   },

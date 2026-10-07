@@ -31,6 +31,7 @@ export function SavedItemDetail({
   kind,
   instanceId,
   providerEnabled = true,
+  maintainProviderDemand = true,
 }: {
   account: RemoteAccount;
   itemId: string;
@@ -38,6 +39,7 @@ export function SavedItemDetail({
   instanceId: string;
   close?: () => void;
   providerEnabled?: boolean;
+  maintainProviderDemand?: boolean;
 }) {
   const context = useContextualCapabilities(
     account,
@@ -79,6 +81,7 @@ export function SavedItemDetail({
     enabled:
       account.state === "active" &&
       providerEnabled &&
+      maintainProviderDemand &&
       kind !== "notification" &&
       !!item &&
       canReadSaved(policy) &&

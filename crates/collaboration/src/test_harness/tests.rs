@@ -58,6 +58,74 @@ async fn prepared(run: &Run) -> HarnessSession {
     action(&session, HarnessCoreAction::PreparePrimary).await;
     session
 }
+
+#[tokio::test]
+async fn performance_fixture_is_exact_bounded_searchable_and_restartable() {
+    let run = Run::new();
+    let session = run.open().await;
+    let receipt = action(&session, HarnessCoreAction::PreparePerformance).await;
+    let fixture = receipt
+        .status
+        .performance
+        .expect("performance preparation publishes bounded metadata");
+    assert_eq!(fixture.dataset_version, PERFORMANCE_DATASET_VERSION);
+    assert_eq!(fixture.item_count, PERFORMANCE_TOTAL_ITEMS);
+    assert_eq!(fixture.account_count, 2);
+    assert_eq!(
+        fixture.repositories_per_account,
+        PERFORMANCE_REPOSITORIES_PER_ACCOUNT
+    );
+    assert_eq!(
+        fixture.items_per_account,
+        PERFORMANCE_ITEMS_PER_ACCOUNT as u32
+    );
+    let page = session
+        .store
+        .query_items(ItemQuery {
+            account_id: PRIMARY_ACCOUNT.into(),
+            kind: RemoteItemKind::PullRequest,
+            repository_id: None,
+            state: Some("open".into()),
+            search: None,
+            cursor: None,
+            limit: 50,
+        })
+        .await
+        .unwrap();
+    assert_eq!(page.items.len(), 50);
+    assert!(page.next_cursor.is_some());
+    assert_eq!(
+        page.items.first().unwrap().id,
+        "github:pull:ruru125:primary:4999"
+    );
+    let search = session
+        .store
+        .query_items(ItemQuery {
+            account_id: PRIMARY_ACCOUNT.into(),
+            kind: RemoteItemKind::PullRequest,
+            repository_id: None,
+            state: Some("open".into()),
+            search: Some("needle00".into()),
+            cursor: None,
+            limit: 50,
+        })
+        .await
+        .unwrap();
+    assert_eq!(search.items.len(), 1);
+    assert!(search.items[0].title.ends_with("needle00"));
+    assert_eq!(receipt.status.provider_call_count, "0");
+    assert_eq!(receipt.status.vault_load_count, "0");
+    drop(session);
+
+    let restarted = run.open().await;
+    let status = restarted.control.status(&run.nonce).await.unwrap();
+    assert_eq!(
+        status.performance.unwrap().item_count,
+        PERFORMANCE_TOTAL_ITEMS
+    );
+    assert_eq!(status.provider_call_count, "0");
+    assert_eq!(status.vault_load_count, "0");
+}
 async fn interest(
     session: &HarnessSession,
     owner: &str,

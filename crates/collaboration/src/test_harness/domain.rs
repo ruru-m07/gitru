@@ -14,6 +14,7 @@ pub enum HarnessActorSlot {
 pub enum HarnessFixture {
     Primary,
     RepositoryOnly,
+    Performance,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,6 +33,7 @@ pub enum HarnessPhase {
 pub enum HarnessCoreAction {
     PreparePrimary,
     PrepareRepositoryOnly,
+    PreparePerformance,
     PhaseOne,
     PhaseTwo,
     PhaseOffline,
@@ -126,6 +128,17 @@ pub struct HarnessCoreStatus {
     pub clock_elapsed_seconds: u32,
     pub committed_phase: Option<HarnessPhase>,
     pub committed_facet_revision: Option<String>,
+    pub performance: Option<HarnessPerformanceFixture>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HarnessPerformanceFixture {
+    pub dataset_version: u32,
+    pub item_count: u32,
+    pub account_count: u32,
+    pub repositories_per_account: u32,
+    pub items_per_account: u32,
+    pub search_sample_count: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

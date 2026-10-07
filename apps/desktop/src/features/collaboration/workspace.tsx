@@ -114,9 +114,11 @@ function accountPickerLabel(account: RemoteAccount): string {
 export function CollaborationWorkspace({
   kind,
   target,
+  maintainProviderDemand = true,
 }: {
   kind: RemoteItemKind;
   target?: LocalLinkRouteTarget;
+  maintainProviderDemand?: boolean;
 }) {
   const accounts = useCollaborationAccounts();
   const [accountId, setAccountId] = useState<string | null>(null);
@@ -230,6 +232,7 @@ export function CollaborationWorkspace({
           account={account}
           kind={kind}
           target={target}
+          maintainProviderDemand={maintainProviderDemand}
         />
       )}
     </PageLayout>
@@ -249,10 +252,12 @@ function AccountContextWorkspace({
   account,
   kind,
   target,
+  maintainProviderDemand,
 }: {
   account: RemoteAccount;
   kind: RemoteItemKind;
   target?: LocalLinkRouteTarget;
+  maintainProviderDemand: boolean;
 }) {
   const context = useContextualCapabilities(account, accountCapabilityTarget);
   const [metadata, setMetadata] = useState<{
@@ -307,6 +312,7 @@ function AccountContextWorkspace({
       contextError={
         context.isError ? collaborationErrorMessage(context.error) : undefined
       }
+      maintainProviderDemand={maintainProviderDemand}
     />
   );
 }
@@ -319,6 +325,7 @@ function AccountWorkspace({
   instanceId,
   semantics,
   contextError,
+  maintainProviderDemand,
 }: {
   account: RemoteAccount;
   kind: RemoteItemKind;
@@ -327,6 +334,7 @@ function AccountWorkspace({
   instanceId: string | null;
   semantics: InboxSemantics | null;
   contextError: string | undefined;
+  maintainProviderDemand: boolean;
 }) {
   const repositoryPolicy = facetPolicy(snapshot, "repositories");
   const repositories = useCollaborationRepositories(
@@ -382,7 +390,10 @@ function AccountWorkspace({
       subject_id: null,
       facet: null,
     },
-    enabled: account.state === "active" && canMaintainDemand(repositoryPolicy),
+    enabled:
+      maintainProviderDemand &&
+      account.state === "active" &&
+      canMaintainDemand(repositoryPolicy),
   });
   useVisibleDemand({
     account,
@@ -397,7 +408,10 @@ function AccountWorkspace({
       subject_id: null,
       facet: null,
     },
-    enabled: account.state === "active" && canMaintainDemand(policy),
+    enabled:
+      maintainProviderDemand &&
+      account.state === "active" &&
+      canMaintainDemand(policy),
   });
 
   async function refresh(recheck = false) {
@@ -679,6 +693,7 @@ function AccountWorkspace({
           search={searchValue}
           refresh={refresh}
           refreshing={refreshing}
+          maintainProviderDemand={maintainProviderDemand}
         />
       )}
     </>
@@ -855,6 +870,7 @@ function ItemFeed({
   contextPending,
   contextError,
   recheck,
+  maintainProviderDemand,
 }: {
   account: RemoteAccount;
   kind: RemoteItemKind;
@@ -863,6 +879,7 @@ function ItemFeed({
   contextPending: boolean;
   contextError: string | undefined;
   recheck: () => void;
+  maintainProviderDemand: boolean;
   repositoryId: string | null;
   repositories: RemoteRepository[];
   state: string | null;
@@ -1047,6 +1064,7 @@ function ItemFeed({
               kind={kind}
               instanceId={instanceId}
               close={() => setSelectedItem(null)}
+              maintainProviderDemand={maintainProviderDemand}
             />
           )
         ) : null}

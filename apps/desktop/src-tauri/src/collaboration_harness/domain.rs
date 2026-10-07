@@ -76,6 +76,25 @@ pub enum HarnessReadState {
     Cancelled,
     TimedOut,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HarnessQueryKind {
+    Accounts,
+    Repositories,
+    ContextualCapabilities,
+    Items,
+    Item,
+    Detail,
+    Draft,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HarnessQueryTiming {
+    pub sequence: String,
+    pub webview_label: String,
+    pub kind: HarnessQueryKind,
+    pub elapsed_micros: String,
+    pub result_count: u32,
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HarnessLocalReadGate {
     pub gate_id: String,
@@ -111,6 +130,10 @@ pub struct HarnessStatus {
     pub authorized_hydrate_requests: String,
     pub checkpoint: Option<HarnessCheckpoint>,
     pub process_id: u32,
+    pub native_setup_started_epoch_ms: String,
+    pub runtime_ready_epoch_ms: String,
+    pub runtime_open_micros: String,
+    pub performance_queries: Vec<HarnessQueryTiming>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HarnessReceipt {

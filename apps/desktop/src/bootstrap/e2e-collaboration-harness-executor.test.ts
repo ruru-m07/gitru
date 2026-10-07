@@ -100,6 +100,7 @@ function statusFixture(): HarnessStatus {
       clock_elapsed_seconds: 0,
       committed_phase: null,
       committed_facet_revision: null,
+      performance: null,
     },
     child_label: null,
     hint_mode: "normal",
@@ -108,6 +109,10 @@ function statusFixture(): HarnessStatus {
     authorized_hydrate_requests: "0",
     checkpoint: null,
     process_id: 103,
+    native_setup_started_epoch_ms: "1770000000000",
+    runtime_ready_epoch_ms: "1770000000010",
+    runtime_open_micros: "10000",
+    performance_queries: [],
   };
 }
 

@@ -30,6 +30,7 @@ import {
   type HarnessActor,
   type HarnessAuthorityChecks,
   type HarnessDocumentActivity,
+  type HarnessPerformanceView,
   type HarnessRequest,
   HarnessRequestSchema,
   type HarnessResult,
@@ -37,11 +38,13 @@ import {
   matchesHarnessPeerLease,
 } from "../../e2e/protocol/collaboration-harness";
 import { SavedItemDetail } from "../features/collaboration/saved-item-detail";
+import { CollaborationWorkspace } from "../features/collaboration/workspace";
 import { queryClient } from "../state/core/state-manager";
 import {
   installHarnessCatchupObservation,
   observeHarnessDocument,
 } from "./e2e-collaboration-harness-observation";
+import { runCollaborationPerformance } from "./e2e-collaboration-performance";
 
 function outcome(error: unknown): HarnessResult["outcome"] {
   if (error instanceof StaleAuthorizationError) return "stale_view";
@@ -74,11 +77,12 @@ export async function installCollaborationHarnessProbe(
   const sessionId = manifest.session_id;
   const catchup = installHarnessCatchupObservation();
   let alive = true;
-  let selection: { manifest: HarnessViewManifest; actor: HarnessActor | null } =
-    {
-      manifest,
-      actor: null,
-    };
+  let selection: {
+    manifest: HarnessViewManifest;
+    actor: HarnessActor | null;
+    performanceKey: number | null;
+  } = { manifest, actor: null, performanceKey: null };
+  let nextPerformanceKey = 0;
   let binding: {
     actor: HarnessActor;
     scenarioGeneration: string;
@@ -99,8 +103,23 @@ export async function installCollaborationHarnessProbe(
     for (const listener of listeners) listener();
   }
   function choose(actor: HarnessActor | null) {
-    selection = { manifest, actor };
+    selection = { manifest, actor, performanceKey: null };
     container.hidden = actor === null;
+    notify();
+  }
+  function showPerformanceWorkspace() {
+    nextPerformanceKey += 1;
+    selection = {
+      manifest,
+      actor: null,
+      performanceKey: nextPerformanceKey,
+    };
+    container.hidden = false;
+    notify();
+  }
+  function hidePerformanceWorkspace() {
+    selection = { manifest, actor: null, performanceKey: null };
+    container.hidden = true;
     notify();
   }
   function HarnessPanel() {
@@ -132,7 +151,13 @@ export async function installCollaborationHarnessProbe(
         binding = null;
       };
     }, [account, subject, current.actor, current.manifest.scenario_generation]);
-    return account && subject ? (
+    return current.performanceKey !== null ? (
+      <CollaborationWorkspace
+        key={`performance:${current.performanceKey}`}
+        kind="pull_request"
+        maintainProviderDemand={false}
+      />
+    ) : account && subject ? (
       <SavedItemDetail
         key={`${account.id}:${account.actor_id}:${subject.subject_id}`}
         account={account}
@@ -175,6 +200,7 @@ export async function installCollaborationHarnessProbe(
     const captured = binding;
     let authority: HarnessAuthorityChecks | undefined;
     let activity: HarnessDocumentActivity | undefined;
+    let performanceResult: HarnessPerformanceView | undefined;
     if (
       ["edit-draft", "save-draft", "read-item", "read-body"].includes(
         action.kind,
@@ -314,10 +340,25 @@ export async function installCollaborationHarnessProbe(
           cursor: null,
           limit: 50,
         });
+    } else if (action.kind === "benchmark") {
+      performanceResult = await runCollaborationPerformance({
+        client: queryClient,
+        container,
+        manifest,
+        phase: action.phase,
+        sampleCount: action.sample_count,
+        showWorkspace: showPerformanceWorkspace,
+        hideWorkspace: hidePerformanceWorkspace,
+      });
     }
     // React may commit after the action receipt. The driver waits on actual
     // read-only inspect receipts rather than forcing fake cache/UI state.
-    return { snapshot: await inspect(), authority, activity };
+    return {
+      snapshot: await inspect(),
+      authority,
+      activity,
+      performance: performanceResult,
+    };
   }
 
   async function execute(request: HarnessRequest): Promise<HarnessResult> {
@@ -352,7 +393,9 @@ export async function installCollaborationHarnessProbe(
         // not replace the authored editor for the same account and subject.
         choose(selection.actor);
       }
-      const { snapshot, authority, activity } = await perform(request.action);
+      const { snapshot, authority, activity, performance } = await perform(
+        request.action,
+      );
       const after = await readManifest();
       if (
         !alive ||
@@ -377,6 +420,7 @@ export async function installCollaborationHarnessProbe(
         snapshot,
         ...(authority ? { authority } : {}),
         ...(activity ? { activity } : {}),
+        ...(performance ? { performance } : {}),
       });
     } catch (error) {
       return {

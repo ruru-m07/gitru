@@ -94,6 +94,15 @@ struct DraftCursor {
 }
 
 impl Store {
+    #[cfg(feature = "test-harness")]
+    pub async fn harness_item_count(&self) -> Result<u32> {
+        let count: i64 = sqlx::query_scalar("SELECT count(*) FROM items")
+            .fetch_one(&self.inner.readers)
+            .await
+            .map_err(storage_error)?;
+        u32::try_from(count).map_err(|_| CollaborationError::invalid("Fixture item count overflow"))
+    }
+
     pub async fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         prepare_private_path(path)?;

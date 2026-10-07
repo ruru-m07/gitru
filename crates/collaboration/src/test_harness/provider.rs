@@ -332,14 +332,16 @@ impl CollaborationProvider for FixtureProvider {
                 .into_iter()
                 .map(|facet| {
                     let supported = facet == ResourceFacet::Repositories
-                        || fixture == HarnessFixture::Primary
-                            && matches!(
-                                facet,
-                                ResourceFacet::PullRequests
-                                    | ResourceFacet::Issues
-                                    | ResourceFacet::PullDetails
-                                    | ResourceFacet::PullCommits
-                            );
+                        || matches!(
+                            fixture,
+                            HarnessFixture::Primary | HarnessFixture::Performance
+                        ) && matches!(
+                            facet,
+                            ResourceFacet::PullRequests
+                                | ResourceFacet::Issues
+                                | ResourceFacet::PullDetails
+                                | ResourceFacet::PullCommits
+                        );
                     FacetCapability {
                         facet,
                         state: if supported {

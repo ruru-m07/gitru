@@ -140,7 +140,17 @@ pub async fn collaboration_accounts(
     state: State<'_, CollaborationState>,
 ) -> Result<AccountSnapshot, CollaborationError> {
     authorize(&view, Operation::Accounts)?;
-    state.get().await?.store().accounts().await
+    #[cfg(feature = "collaboration-harness")]
+    let started = std::time::Instant::now();
+    let snapshot = state.get().await?.store().accounts().await?;
+    #[cfg(feature = "collaboration-harness")]
+    crate::collaboration_harness::record_performance_query(
+        view.label(),
+        crate::collaboration_harness::HarnessQueryKind::Accounts,
+        started.elapsed(),
+        snapshot.accounts.len(),
+    );
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -209,7 +219,17 @@ pub async fn collaboration_repositories(
     state: State<'_, CollaborationState>,
 ) -> Result<RepositorySnapshot, CollaborationError> {
     authorize(&view, Operation::Repositories)?;
-    state.get().await?.store().repositories(&account_id).await
+    #[cfg(feature = "collaboration-harness")]
+    let started = std::time::Instant::now();
+    let snapshot = state.get().await?.store().repositories(&account_id).await?;
+    #[cfg(feature = "collaboration-harness")]
+    crate::collaboration_harness::record_performance_query(
+        view.label(),
+        crate::collaboration_harness::HarnessQueryKind::Repositories,
+        started.elapsed(),
+        snapshot.repositories.len(),
+    );
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -235,7 +255,17 @@ pub async fn collaboration_items(
     state: State<'_, CollaborationState>,
 ) -> Result<ItemPage, CollaborationError> {
     authorize(&view, Operation::Items)?;
-    state.get().await?.store().query_items(query).await
+    #[cfg(feature = "collaboration-harness")]
+    let started = std::time::Instant::now();
+    let snapshot = state.get().await?.store().query_items(query).await?;
+    #[cfg(feature = "collaboration-harness")]
+    crate::collaboration_harness::record_performance_query(
+        view.label(),
+        crate::collaboration_harness::HarnessQueryKind::Items,
+        started.elapsed(),
+        snapshot.items.len(),
+    );
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -248,12 +278,21 @@ pub async fn collaboration_item(
     authorize(&view, Operation::Item)?;
     #[cfg(feature = "collaboration-harness")]
     let proof = super::collaboration_harness::LocalReturnProof::capture(&view)?;
+    #[cfg(feature = "collaboration-harness")]
+    let started = std::time::Instant::now();
     let snapshot = state
         .get()
         .await?
         .store()
         .item(&account_id, &item_id)
         .await?;
+    #[cfg(feature = "collaboration-harness")]
+    crate::collaboration_harness::record_performance_query(
+        view.label(),
+        crate::collaboration_harness::HarnessQueryKind::Item,
+        started.elapsed(),
+        usize::from(snapshot.item.is_some()),
+    );
     #[cfg(feature = "collaboration-harness")]
     proof
         .hold(
@@ -330,12 +369,21 @@ pub async fn collaboration_draft(
     authorize(&view, Operation::Draft)?;
     #[cfg(feature = "collaboration-harness")]
     let proof = super::collaboration_harness::LocalReturnProof::capture(&view)?;
+    #[cfg(feature = "collaboration-harness")]
+    let started = std::time::Instant::now();
     let snapshot = state
         .get()
         .await?
         .store()
         .draft(&account_id, &subject_id)
         .await?;
+    #[cfg(feature = "collaboration-harness")]
+    crate::collaboration_harness::record_performance_query(
+        view.label(),
+        crate::collaboration_harness::HarnessQueryKind::Draft,
+        started.elapsed(),
+        usize::from(snapshot.is_some()),
+    );
     #[cfg(feature = "collaboration-harness")]
     proof
         .hold(
@@ -354,7 +402,17 @@ pub async fn collaboration_contextual_capabilities(
     state: State<'_, CollaborationState>,
 ) -> Result<ContextualCapabilitySnapshot, CollaborationError> {
     authorize(&view, Operation::ContextualCapabilities)?;
-    state.get().await?.contextual_capabilities(request).await
+    #[cfg(feature = "collaboration-harness")]
+    let started = std::time::Instant::now();
+    let snapshot = state.get().await?.contextual_capabilities(request).await?;
+    #[cfg(feature = "collaboration-harness")]
+    crate::collaboration_harness::record_performance_query(
+        view.label(),
+        crate::collaboration_harness::HarnessQueryKind::ContextualCapabilities,
+        started.elapsed(),
+        snapshot.facets.len(),
+    );
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -444,9 +502,18 @@ pub async fn collaboration_detail(
     #[cfg(feature = "collaboration-harness")]
     let proof = super::collaboration_harness::LocalReturnProof::capture(&view)?;
     #[cfg(feature = "collaboration-harness")]
+    let started = std::time::Instant::now();
+    #[cfg(feature = "collaboration-harness")]
     let held_target = (query.facet == collaboration::DetailFacet::Body)
         .then(|| (query.account_id.clone(), query.subject_id.clone()));
     let snapshot = state.get().await?.store().detail(query).await?;
+    #[cfg(feature = "collaboration-harness")]
+    crate::collaboration_harness::record_performance_query(
+        view.label(),
+        crate::collaboration_harness::HarnessQueryKind::Detail,
+        started.elapsed(),
+        snapshot.entries.len(),
+    );
     #[cfg(feature = "collaboration-harness")]
     if let Some((account, subject)) = held_target {
         proof

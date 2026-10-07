@@ -12,8 +12,8 @@ use std::{
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     path::PathBuf,
-    sync::{Arc, Mutex},
-    time::Duration,
+    sync::{Arc, LazyLock, Mutex},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tauri::{
     App, AppHandle, Emitter, EventTarget, Manager, Webview, WebviewBuilder, WebviewUrl, Window,
@@ -22,7 +22,9 @@ use tokio::sync::{Notify, OnceCell};
 
 const ROOT_ENV: &str = "GITRU_COLLABORATION_HARNESS_ROOT";
 const NONCE_ENV: &str = "GITRU_COLLABORATION_HARNESS_RUN_NONCE";
+const PERFORMANCE_ENV: &str = "GITRU_COLLABORATION_PERFORMANCE";
 const MAX_HINTS: usize = 128;
+const MAX_PERFORMANCE_QUERIES: usize = 512;
 const READ_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub fn invalid() -> CollaborationError {
@@ -280,9 +282,65 @@ pub struct NativeHarness {
     control: HarnessControl,
     projection: Mutex<Projection>,
     operations: tokio::sync::Mutex<()>,
+    native_setup_started_epoch_ms: u128,
+    runtime_ready_epoch_ms: u128,
+    runtime_open_micros: u128,
+}
+
+#[derive(Default)]
+struct PerformanceQueryState {
+    next: u64,
+    timings: VecDeque<HarnessQueryTiming>,
+}
+static PERFORMANCE_QUERIES: LazyLock<Mutex<PerformanceQueryState>> =
+    LazyLock::new(|| Mutex::new(PerformanceQueryState::default()));
+
+fn epoch_millis() -> Result<u128, CollaborationError> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .map_err(|_| invalid())
+}
+
+pub(crate) fn record_performance_query(
+    webview_label: &str,
+    kind: HarnessQueryKind,
+    elapsed: Duration,
+    result_count: usize,
+) {
+    if std::env::var(PERFORMANCE_ENV).as_deref() != Ok("1") {
+        return;
+    }
+    let Ok(result_count) = u32::try_from(result_count) else {
+        return;
+    };
+    let Ok(mut state) = PERFORMANCE_QUERIES.lock() else {
+        return;
+    };
+    state.next = state.next.saturating_add(1);
+    let sequence = state.next.to_string();
+    if state.timings.len() == MAX_PERFORMANCE_QUERIES {
+        state.timings.pop_front();
+    }
+    state.timings.push_back(HarnessQueryTiming {
+        sequence,
+        webview_label: webview_label.into(),
+        kind,
+        elapsed_micros: elapsed.as_micros().to_string(),
+        result_count,
+    });
+}
+
+fn performance_queries() -> Vec<HarnessQueryTiming> {
+    PERFORMANCE_QUERIES
+        .lock()
+        .map(|state| state.timings.iter().cloned().collect())
+        .unwrap_or_default()
 }
 
 pub fn setup(app: &App) -> Result<(), Box<dyn std::error::Error>> {
+    let setup_started = Instant::now();
+    let native_setup_started_epoch_ms = epoch_millis()?;
     // Fail synchronously, before normal managers can use any application data.
     let root = std::env::var_os(ROOT_ENV).ok_or_else(invalid)?;
     let nonce = std::env::var(NONCE_ENV).map_err(|_| invalid())?;
@@ -303,8 +361,9 @@ pub fn setup(app: &App) -> Result<(), Box<dyn std::error::Error>> {
             }),
         )
         .await
-        .map(|session| {
-            Arc::new(NativeHarness {
+        .and_then(|session| {
+            let runtime_ready_epoch_ms = epoch_millis()?;
+            Ok(Arc::new(NativeHarness {
                 launch,
                 runtime: session.runtime,
                 control: session.control,
@@ -313,7 +372,10 @@ pub fn setup(app: &App) -> Result<(), Box<dyn std::error::Error>> {
                     ..Projection::default()
                 }),
                 operations: tokio::sync::Mutex::new(()),
-            })
+                native_setup_started_epoch_ms,
+                runtime_ready_epoch_ms,
+                runtime_open_micros: setup_started.elapsed().as_micros(),
+            }))
         });
         let runtime_result = result
             .as_ref()
@@ -340,7 +402,9 @@ pub fn setup(app: &App) -> Result<(), Box<dyn std::error::Error>> {
                 .control
                 .status(&harness.launch.nonce)
                 .await
-                .is_ok_and(|status| status.prepared)
+                .is_ok_and(|status| {
+                    status.prepared && status.fixture != HarnessFixture::Performance
+                })
             {
                 harness.runtime.clone().start_background();
             }
@@ -459,6 +523,10 @@ impl NativeHarness {
             authorized_hydrate_requests: projection.hydrate_requests.to_string(),
             checkpoint: projection.checkpoint.clone(),
             process_id: std::process::id(),
+            native_setup_started_epoch_ms: self.native_setup_started_epoch_ms.to_string(),
+            runtime_ready_epoch_ms: self.runtime_ready_epoch_ms.to_string(),
+            runtime_open_micros: self.runtime_open_micros.to_string(),
+            performance_queries: performance_queries(),
         })
     }
     pub async fn execute<F>(
@@ -495,7 +563,8 @@ impl NativeHarness {
                     )
                     .await?;
                 guard()?;
-                if receipt.status.prepared {
+                if receipt.status.prepared && receipt.status.fixture != HarnessFixture::Performance
+                {
                     self.runtime.clone().start_background();
                 }
                 issued = receipt.gate_id;

@@ -83,6 +83,13 @@ export const HarnessActionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("wake") }).strict(),
   z.object({ kind: z.literal("read-item") }).strict(),
   z.object({ kind: z.literal("read-body") }).strict(),
+  z
+    .object({
+      kind: z.literal("benchmark"),
+      phase: z.enum(["warm", "restart"]),
+      sample_count: z.union([z.literal(10), z.literal(30)]),
+    })
+    .strict(),
   z.object({ kind: z.literal("check-control-authority") }).strict(),
   z
     .object({
@@ -286,6 +293,7 @@ export const HarnessResultSchema = z
     snapshot: HarnessProbeSnapshotSchema.nullable(),
     authority: HarnessAuthorityChecksSchema.optional(),
     activity: HarnessDocumentActivitySchema.optional(),
+    performance: z.lazy(() => HarnessPerformanceViewSchema).optional(),
     failure: HarnessFailureSchema.optional(),
   })
   .strict();
@@ -375,7 +383,7 @@ export function createHarnessRequester({
       return new Promise<HarnessResult>((resolve, reject) => {
         const timer = setTimeout(
           () => finish(null),
-          HARNESS_REQUEST_TIMEOUT_MS,
+          action.kind === "benchmark" ? 180_000 : HARNESS_REQUEST_TIMEOUT_MS,
         );
         function finish(result: HarnessResult | null) {
           if (!pending.delete(request.request_id)) return;
@@ -413,6 +421,8 @@ export const HarnessScenarioSchema = z.enum([
   "crash-after-commit",
   "restart",
   "authority",
+  "performance",
+  "performance-restart",
 ]);
 export type HarnessScenario = z.infer<typeof HarnessScenarioSchema>;
 
@@ -496,13 +506,89 @@ export type HarnessLocalInboxEvidence = z.infer<
   typeof HarnessLocalInboxEvidenceSchema
 >;
 
+const performanceDuration = z.number().finite().min(0).max(60_000);
+const performanceEpoch = z
+  .number()
+  .finite()
+  .min(1_700_000_000_000)
+  .max(4_102_444_800_000);
+export const HarnessPerformanceSampleSchema = z
+  .object({
+    duration_ms: performanceDuration,
+    payload_bytes: z
+      .number()
+      .int()
+      .min(0)
+      .max(4 * 1024 * 1024)
+      .nullable(),
+  })
+  .strict();
+export const HarnessPerformanceCaseSchema = z
+  .object({
+    name: z.enum([
+      "list_local_ipc",
+      "list_memory_hit",
+      "search_local_ipc",
+      "search_memory_hit",
+      "detail_local_ipc",
+      "detail_memory_hit",
+    ]),
+    boundary: z.enum(["react_useful_content", "sdk_ipc", "query_memory"]),
+    samples: z.array(HarnessPerformanceSampleSchema).min(1).max(30),
+  })
+  .strict();
+export const HarnessPerformanceViewSchema = z
+  .object({
+    phase: z.enum(["warm", "restart"]),
+    webview_label: label,
+    role: z.enum(["main", "concurrent_child"]),
+    sample_count: z.union([z.literal(10), z.literal(30)]),
+    account_id: z.literal("ruru103:primary"),
+    first_useful_epoch_ms: performanceEpoch,
+    navigation_to_first_useful_ms: performanceDuration,
+    exact_first_title: z.literal(
+      "RURU-125 cached pull 4999 primary repository 4",
+    ),
+    cases: z.array(HarnessPerformanceCaseSchema).length(9),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const keys = value.cases.map((entry) => `${entry.name}:${entry.boundary}`);
+    if (new Set(keys).size !== keys.length)
+      context.addIssue({
+        code: "custom",
+        message: "Duplicate performance case",
+      });
+  });
+export type HarnessPerformanceView = z.infer<
+  typeof HarnessPerformanceViewSchema
+>;
+export const HarnessPerformanceEvidenceSchema = z
+  .object({
+    dataset_version: z.literal(1),
+    item_count: z.literal(10_000),
+    account_count: z.literal(2),
+    repositories_per_account: z.literal(5),
+    items_per_account: z.literal(5_000),
+    views: z.array(HarnessPerformanceViewSchema).length(2),
+    provider_call_count_before: decimal,
+    provider_call_count_after: decimal,
+    vault_load_count_before: decimal,
+    vault_load_count_after: decimal,
+  })
+  .strict();
+export type HarnessPerformanceEvidence = z.infer<
+  typeof HarnessPerformanceEvidenceSchema
+>;
+
 const scenarioStatus = HarnessStatusSchema.refine(
   (value) =>
     value.core.actors.length <= 2 &&
     value.core.calls.length <= 128 &&
     value.core.gates.length <= 2 &&
     value.local_reads.length <= 2 &&
-    value.held_hint_revisions.length <= 128,
+    value.held_hint_revisions.length <= 128 &&
+    value.performance_queries.length <= 512,
 );
 export const HarnessFailureContextSchema = z
   .object({
@@ -536,6 +622,7 @@ export const HarnessScenarioResultSchema = z
     authority: HarnessAuthorityEvidenceSchema.nullable().optional(),
     pull_commits: HarnessPullCommitEvidenceSchema.nullable(),
     local_inbox: HarnessLocalInboxEvidenceSchema.nullable(),
+    performance: HarnessPerformanceEvidenceSchema.nullable().optional(),
     obsolete_reads: HarnessObsoleteReadsSchema.optional(),
     failure: HarnessFailureSchema.nullable().optional(),
     cleanup_failure: HarnessFailureSchema.nullable().optional(),
