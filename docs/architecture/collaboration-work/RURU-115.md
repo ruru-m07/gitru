@@ -1,7 +1,8 @@
 # RURU-115 — Durable delivery and ambiguous-outcome recovery
 
-Status: native implementation qualified for review, 7 October 2026 21:51 UTC.
-Whole-workspace validation and PR publication follow the final RURU-106 base.
+Status: native framework qualified for review, 7 October 2026 22:14 UTC.
+Whole-workspace validation and independent native review pass on the final
+RURU-106 base; remote CI is a separate publication gate.
 Real provider mutation codecs remain in their operation-specific issues.
 
 ## Baseline and ownership
@@ -276,3 +277,24 @@ all-target collaboration Clippy passed. These cases include a cold restart,
 forced SQLite scheduling errors, result finalization rollback, and an invalid
 credential preventing a second command from dispatching. Final whole-workspace
 `make verify` is running on the rebased source; no remote CI claim is made here.
+
+
+## Final local qualification — 7 October 22:14 UTC
+
+Signed source `5741de24e3f686f2ec622be2c60a0ed8673a840b` on RURU-106
+`3e4627be0fd633f2042be6f62b1de0e6dbd029ee` passes full `make verify`: **727
+frontend cases, one platform skip, and 1,143 Rust test executions with seven
+standalone helpers ignored**, across 46 Rust suites including doc tests. Lint,
+TypeScript checks, production desktop build, Rust formatting and strict workspace
+all-target Clippy pass. Delivery itself has 25 parent cases and one separately
+invoked subprocess fixture, including the five process-exit boundary variants.
+Independent native review rechecked the quota/authentication fixes and found no
+remaining blocker. The source remains free of production mutation registrations.
+
+The native framework acceptance criteria are locally demonstrated. This does not
+qualify a future provider's operation codec, actual network idempotency contract,
+OS credential access, a packaged delivery UI or remote CI on the new PR head.
+Those boundaries remain explicit. No public IPC changed, so no generated binding
+changes are required. Existing parent packaged recovery results remain parent
+qualification; this slice does not relabel them as delivery E2E. Publication is a
+draft stacked on RURU-106, and neither branch is merged.

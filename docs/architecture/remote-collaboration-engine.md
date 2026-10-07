@@ -3470,3 +3470,32 @@ source, artifact paths, binary checksums and the test-only ancestry repair.
 Remote new-head CI, other-platform recovery, OS picker interaction and live
 provider/vault qualification remain separate. RURU-115 can now build its delivery
 framework on the explicit quarantine and runtime-lifetime contract. No merge.
+
+
+### RURU-115 durable delivery framework — 7 October 2026
+
+The native framework is implemented on final RURU-106 `3e4627b`, with signed
+reviewed source `5741de2`. Migration 0016 preserves immutable per-attempt execution
+context and operation evidence through explicitly verified historical restores.
+A committed attempt precedes dispatch; accepted receipts remain distinct from
+confirmation. Unknown creates enter bounded read-only reconciliation, and
+restored quarantine never permits a new dispatch. Credential epochs, exact
+provider instances, dependency proof, target order, shared quota and native owned
+shutdown fence every turn. Canonical materialization runs in the same transaction
+as confirmation, with a central target-transition seam for RURU-116.
+
+Successful preparation can report exhausted quota before attempt admission.
+Command transaction failures do not suppress independent quota/authentication
+observations; a mutation credential failure retains ambiguous intent while
+retiring the captured account authorization. Production providers register no
+write codecs in this framework; operation-specific follow-ups own those codecs.
+
+Full local `make verify` passes 727 frontend cases/one platform skip and 1,143 Rust
+test executions/seven standalone helper ignores, including lint/types/build/fmt
+and strict workspace Clippy. Independent native review found no remaining blocker
+after three quota/auth fixes. Twenty-five delivery parent cases include five
+actual process-exit boundaries, restore after remote success, SQL faults, quota
+across cold restart, cancellation/drain and account isolation. [The contract and
+qualification note](./collaboration-work/RURU-115.md) retains the exact evidence.
+Remote CI and live provider mutation behavior remain separate, unclaimed gates.
+The change is prepared as a draft stacked on RURU-106; no merge is authorized.
