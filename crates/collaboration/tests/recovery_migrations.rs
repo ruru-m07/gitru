@@ -9,7 +9,7 @@ use sqlx::{
     sqlite::SqliteConnectOptions,
 };
 static CURRENT: Migrator = sqlx::migrate!("./migrations");
-const OLD_SQL: [&str; 14] = [
+const OLD_SQL: [&str; 15] = [
     include_str!("fixtures/migrations/v8/0001_local_collaboration.sql"),
     include_str!("fixtures/migrations/v8/0002_credential_cutover.sql"),
     include_str!("fixtures/migrations/v8/0003_provider_identities.sql"),
@@ -24,8 +24,9 @@ const OLD_SQL: [&str; 14] = [
     include_str!("fixtures/migrations/v12/0012_local_inbox_state.sql"),
     include_str!("fixtures/migrations/v13/0013_command_admission.sql"),
     include_str!("fixtures/migrations/v14/0014_pull_file_generations.sql"),
+    include_str!("fixtures/migrations/v15/0015_recovery_quarantine.sql"),
 ];
-const CHECKSUMS: [&str; 14] = [
+const CHECKSUMS: [&str; 15] = [
     "a0b4863d56b1620dae93b13df7ef2b38074c3ac5a5d5bf639b01899204cb61f6796ba9fb37bfd3b085f79e928e475e3d",
     "2fe47653ace5f705b32a819739da13bd9faf40a56a268da416a9f9d39c770ec74a42377268670c40a5478c898137929b",
     "6f5925a0690563071eeaeeb43bc3eec634c280582b9971e94effe266eedb804fb7773b85a5a4d9ad2492439c575e67e9",
@@ -40,6 +41,7 @@ const CHECKSUMS: [&str; 14] = [
     "65b06409d491935ea19d209a0317f96894e6c3e2cbb69ee03e130bb983ddc28e7aa720521f9963b5957db1d97fe5dd1b",
     "d29215527787e5b66230af7d8f1f1a915c969a52f54b49bace77247936b2138a361b82f3b167142341d914562d3b1109",
     "0e8e926a667a1e02a62edbcdf2886dc25e65a66c02c079ededd5a1db82f263673f4ffcdaab1b81dc5aada67c86281c15",
+    "75cedf38449a30de9ec6ea7dae41582e09d34d746909ce6af16ee52c615c6a70f94b0f882c677b65ec40284b4fd6d88f",
 ];
 fn historical(version: usize) -> Migrator {
     Migrator::with_migrations(
@@ -86,7 +88,7 @@ fn accepted_historical_sql_and_checksums_are_frozen() {
 #[tokio::test]
 async fn every_recognized_historical_schema_restores_without_modifying_the_selected_file() {
     let dir = tempfile::tempdir().unwrap();
-    for version in 1..=14 {
+    for version in 1..=15 {
         let target = dir.path().join(format!("target-{version}.db"));
         let source = dir.path().join(format!("v{version}.db"));
         let store = Store::open(&target).await.unwrap();
@@ -277,6 +279,94 @@ async fn actual_interrupt_and_full_disk_leave_v14_retryable() {
                 .await
                 .unwrap(),
             14
+        );
+        db.close().await.unwrap();
+        let store = Store::open(&path).await.unwrap();
+        store.close().await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn actual_interrupt_and_full_disk_leave_v15_retryable() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+    for interrupt in [true, false] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fault.db");
+        let mut db = database(&path).await;
+        historical(15).run(&mut db).await.unwrap();
+        let observed = Arc::new(AtomicBool::new(false));
+        if interrupt {
+            let mut handle = db.lock_handle().await.unwrap();
+            let signal = observed.clone();
+            handle.set_update_hook(move |update| {
+                if update.table == "_sqlx_migrations" {
+                    signal.store(true, Ordering::SeqCst);
+                }
+            });
+            let signal = observed.clone();
+            let mut fired = false;
+            handle.set_progress_handler(1, move || {
+                if signal.load(Ordering::SeqCst) && !fired {
+                    fired = true;
+                    false
+                } else {
+                    true
+                }
+            });
+        } else {
+            let pages: i64 = sqlx::query_scalar("PRAGMA page_count")
+                .fetch_one(&mut db)
+                .await
+                .unwrap();
+            sqlx::query(sqlx::AssertSqlSafe(format!(
+                "PRAGMA max_page_count={pages}"
+            )))
+            .execute(&mut db)
+            .await
+            .unwrap();
+        }
+        let error = CURRENT.run_direct(None, &mut db, false).await.unwrap_err();
+        let code = match &error {
+            sqlx::migrate::MigrateError::Execute(error)
+            | sqlx::migrate::MigrateError::ExecuteMigration(error, _) => error
+                .as_database_error()
+                .and_then(|error| error.code())
+                .map(|code| code.into_owned()),
+            _ => None,
+        };
+        assert_eq!(
+            code.as_deref(),
+            Some(if interrupt { "9" } else { "13" }),
+            "{error:?}"
+        );
+        if interrupt {
+            assert!(observed.load(Ordering::SeqCst));
+            let mut handle = db.lock_handle().await.unwrap();
+            handle.remove_progress_handler();
+            handle.remove_update_hook();
+        }
+        sqlx::query("PRAGMA max_page_count=1073741823")
+            .execute(&mut db)
+            .await
+            .unwrap();
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>(
+                "SELECT count(*) FROM sqlite_schema WHERE name='command_delivery'"
+            )
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+            0
+        );
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>("SELECT max(version) FROM _sqlx_migrations")
+                .fetch_one(&mut db)
+                .await
+                .unwrap(),
+            15
         );
         db.close().await.unwrap();
         let store = Store::open(&path).await.unwrap();

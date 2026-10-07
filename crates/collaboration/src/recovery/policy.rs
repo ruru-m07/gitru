@@ -55,6 +55,9 @@ pub(super) async fn verify_authored(db: &mut SqliteConnection, version: i64) -> 
         }
         refuse_rows(db, "SELECT 1 FROM command_recovery_quarantine WHERE recovery_generation>(SELECT generation FROM recovery_meta WHERE singleton=1) LIMIT 1").await?;
     }
+    if version >= 16 {
+        verify_delivery(db).await?;
+    }
     Ok(())
 }
 
@@ -385,5 +388,23 @@ async fn verify_commands(db: &mut SqliteConnection) -> Result<()> {
             timestamp(&column::<String>(&row, "value")?)?;
         }
     }
+    Ok(())
+}
+
+async fn verify_delivery(db: &mut SqliteConnection) -> Result<()> {
+    // Every admitted command has exactly one bounded scheduling record. Older
+    // attempt history may legitimately predate execution-context storage.
+    refuse_rows(db, "SELECT 1 FROM commands c LEFT JOIN command_delivery d USING(account_id,command_id) WHERE d.command_id IS NULL LIMIT 1").await?;
+    refuse_rows(db, "SELECT 1 FROM delivery_attempt_context c JOIN account_instances a ON a.account_id=c.account_id WHERE c.instance_id<>a.instance_id LIMIT 1").await?;
+    refuse_rows(db, "SELECT 1 FROM delivery_resolutions r JOIN command_delivery d USING(account_id,command_id) WHERE r.delivery_generation>d.generation LIMIT 1").await?;
+    let mut rows =
+        sqlx::query("SELECT next_action_at FROM command_delivery WHERE next_action_at IS NOT NULL")
+            .fetch(&mut *db);
+    while let Some(row) = rows.try_next().await.map_err(|_| invalid_backup())? {
+        timestamp(&column::<String>(&row, "next_action_at")?)?;
+    }
+    // Execution bases and resolution evidence remain opaque for unsupported
+    // codecs. SQL CHECK/FK constraints enforce bounded framing and provenance;
+    // restore retains them byte-for-byte and only resets scheduling authority.
     Ok(())
 }

@@ -133,7 +133,7 @@ async fn queued_backup_cannot_redeliver_after_remote_success_restore_and_reauthe
     let receipt = store.command_receipt("a", FIRST).await.unwrap().unwrap();
     let summary = store.backup_to(&backup).await.unwrap();
     assert_eq!(summary.commands, 3);
-    assert_eq!(summary.schema_version, 15);
+    assert_eq!(summary.schema_version, 16);
     assert_eq!(count(&backup, "delivery_attempts").await, 0);
     let original_commands = command_rows(&backup).await;
     // An independent remote side effect and receipt happen after the backup.
@@ -366,7 +366,7 @@ async fn frozen_v14_command_history_migrates_and_preserves_terminal_receipts() {
     // Materialize exactly the pre-0015 schema with production-sealed v1 bytes.
     // The separate migration fixture pins all 0001..0014 SQL/checksums.
     let mut db = connect(&backup, false).await.unwrap();
-    sqlx::raw_sql("DROP TRIGGER quarantined_attempt_refused; DROP TABLE command_recovery_quarantine; DROP TABLE recovery_meta; DELETE FROM _sqlx_migrations WHERE version=15;").execute(&mut db).await.unwrap();
+    sqlx::raw_sql("DROP TRIGGER command_delivery_admitted; DROP TABLE delivery_resolutions; DROP TABLE delivery_attempt_context; DROP TABLE command_delivery; DROP TRIGGER quarantined_attempt_refused; DROP TABLE command_recovery_quarantine; DROP TABLE recovery_meta; DELETE FROM _sqlx_migrations WHERE version>=15;").execute(&mut db).await.unwrap();
     assert_eq!(verify(&mut db).await.unwrap(), 14);
     db.close().await.unwrap();
     let original = command_rows(&backup).await;
@@ -459,6 +459,58 @@ async fn native_remote_paths_longer_than_identity_keys_remain_recoverable() {
             .await
             .unwrap(),
         path
+    );
+    db.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn delivery_context_and_resolution_survive_restore_but_old_schedule_cannot_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("delivery.db");
+    let backup = dir.path().join("delivery-backup.db");
+    let store = setup(&target).await;
+    let mut db = connect(&target, false).await.unwrap();
+    sqlx::raw_sql("INSERT INTO delivery_attempts VALUES('a','123e4567-e89b-12d3-a456-426614174000',1,1,'2026-10-08T00:00:00Z','accepted','2026-10-08T00:00:01Z'); INSERT INTO delivery_attempt_context VALUES('a','123e4567-e89b-12d3-a456-426614174000',1,'github:https://github.com/',x'006f7061717565ff'); INSERT INTO command_evidence VALUES('a','123e4567-e89b-12d3-a456-426614174000',0,1,'future.receipt',1,x'0070726f6f66ff','2026-10-08T00:00:01Z'); UPDATE command_delivery SET generation=2,next_action_at='2026-10-09T00:00:00Z',reconciliation_count=7,attention='reconciliation_limit' WHERE account_id='a' AND command_id='123e4567-e89b-12d3-a456-426614174000'; INSERT INTO delivery_resolutions VALUES('a','123e4567-e89b-12d3-a456-426614174000',2,0,'accepted'); UPDATE commands SET state='accepted' WHERE account_id='a' AND command_id='123e4567-e89b-12d3-a456-426614174000';").execute(&mut db).await.unwrap();
+    let context: Vec<u8> =
+        sqlx::query_scalar("SELECT execution_base FROM delivery_attempt_context")
+            .fetch_one(&mut db)
+            .await
+            .unwrap();
+    for sql in [
+        "DELETE FROM delivery_attempt_context",
+        "UPDATE delivery_attempt_context SET execution_base=x''",
+        "DELETE FROM delivery_resolutions",
+        "UPDATE delivery_resolutions SET purpose='confirmed'",
+    ] {
+        assert!(sqlx::query(sql).execute(&mut db).await.is_err());
+    }
+    db.close().await.unwrap();
+    store.backup_to(&backup).await.unwrap();
+    store.close().await.unwrap();
+    restore(&target, &backup).await;
+    let mut db = connect(&target, true).await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, Vec<u8>>("SELECT execution_base FROM delivery_attempt_context")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        context
+    );
+    let schedule:(i64,Option<String>,i64,Option<String>)=sqlx::query_as("SELECT generation,next_action_at,reconciliation_count,attention FROM command_delivery WHERE account_id='a' AND command_id='123e4567-e89b-12d3-a456-426614174000'").fetch_one(&mut db).await.unwrap();
+    assert_eq!(schedule, (3, None, 0, None));
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT purpose FROM delivery_resolutions")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        "accepted"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM command_recovery_quarantine")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        3
     );
     db.close().await.unwrap();
 }

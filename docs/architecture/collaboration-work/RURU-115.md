@@ -163,3 +163,22 @@ changes; no IPC is planned. Update this note, the architecture progress record
 and Linear with actual evidence. Open and attach one draft PR stacked on the
 existing RURU-106 branch; do not merge. Local synthetic tests, remote CI and
 live provider/platform qualification remain separate evidence.
+
+## Schema checkpoint — 8 October implementation
+
+Migration 0016 is frozen before worker integration. `command_delivery` provides
+one monotonic generation and bounded probe/deadline metadata per admitted
+command. `delivery_attempt_context` retains immutable bounded execution bases;
+`delivery_resolutions` retains immutable purpose-to-evidence references. Neither
+relation can rewrite the original admission ledger. Unsupported operation bytes
+remain opaque. Recovery policy explicitly accepts schema 16, validates coverage,
+instance affinity, resolution generations and timestamps, preserves context and
+resolution bytes, advances generations, and clears only old scheduling authority.
+
+Local evidence: five migration tests passed, covering frozen v1–v15 inputs,
+source-preserving restores, rollback, and actual SQLite interrupt/full-disk
+failures from v14 and v15. Eight current recovery cases passed, including new
+execution-context/resolution preservation with reset deadlines and retained
+quarantine, plus the existing queued-before-backup ambiguity and immutable
+attempt guard. Worker code remains in progress; no provider dispatch or remote CI
+qualification is claimed by this schema checkpoint.
