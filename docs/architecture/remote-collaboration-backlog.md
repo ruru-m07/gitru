@@ -368,7 +368,7 @@ Acceptance criteria:
 
 ## RURU-123: Cache PR review summaries and review threads with head context
 
-Planning key: C10. Group: Read experience. Priority: Medium. State: Backlog.
+Planning key: C10. Group: Read experience. Priority: Medium. State: In Review.
 Linear: [RURU-123](https://linear.app/catra/issue/RURU-123/cache-pr-review-summaries-and-review-threads-with-head-context).
 Prerequisites: [RURU-122](https://linear.app/catra/issue/RURU-122/cache-and-display-conversation-comments-and-activity-timelines), [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details).
 
@@ -376,9 +376,17 @@ Add read-only review decisions and review threads without implying old reviews a
 
 Acceptance criteria:
 
-- [ ] Persist reviewer decisions and independently paged review threads with head/base/anchor metadata.
-- [ ] Show stale or outdated anchors and distinguish historical review state from current-head coverage.
-- [ ] Offline, insufficient-permission and partial-coverage states remain honest; no review mutation is dispatched.
+- [x] Persist reviewer decisions and independently paged review threads with head/base/anchor metadata.
+- [x] Show stale or outdated anchors and distinguish historical review state from current-head coverage.
+- [x] Offline, insufficient-permission and partial-coverage states remain honest; no review mutation is dispatched.
+
+Draft [#178](https://github.com/ruru-m07/gitru/pull/178) contains the bounded
+GitHub.com read slice on integration-only prerequisite base `da1c6bc`. Signed
+product source `5a30303` passed local `make verify`: 757 frontend/SDK/UI tests
+with one platform skip, lint, types, production build, formatting, strict Clippy
+and 1,206 Rust tests with seven ignored helper cases. Exact PR-head remote CI,
+packaged execution, live private provider/PAT/keyring access and other platforms
+remain separate, unclaimed gates; no merge or review write is authorized.
 
 ## RURU-118: Show cached checks and commit statuses for the current PR head
 

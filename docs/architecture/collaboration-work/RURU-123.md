@@ -1,12 +1,12 @@
 # RURU-123 — Cached pull-request reviews and review threads
 
-Status: accepted pre-code contract, 8 October 2026. Read the shared engine and
-backlog first. This bounded read-only slice starts from signed RURU-126
-`e9cbad6496b0ff5870c928949f32bd7c6c98ec7c` plus the signed local merge of
-RURU-118 exact head `e75bf77b920c9f1198d4e7d825cf829298209f5b` at
-`3ca3348a5c74836765fc8d6de6f9351be0c4ecc2`. Live Linear RURU-123 was Backlog
-with no attachment or duplicate; RURU-77 and RURU-122 are implemented review
-stacks in ancestry. No merge is authorized.
+Status: implemented, locally qualified and opened for review on 8 October 2026.
+Read the shared engine and backlog first. Draft
+[#178](https://github.com/ruru-m07/gitru/pull/178) targets signed integration-only
+base `da1c6bc2f1ddc32cb99b4a45dc838297a9af7e46`, which contains final RURU-116,
+RURU-118 and RURU-126 prerequisites without RURU-127/RURU-128 feature lineage.
+The exact locally qualified product source is signed
+`5a30303cdfc912e2387c756123ee9fe5c632673e`. No merge is authorized.
 
 ## Scope and sources
 
@@ -139,3 +139,26 @@ Run focused provider/runtime/storage/client/desktop tests, `make typegen`, stric
 Clippy/format, then `make verify`. Packaged desktop, live private provider/PAT,
 other platforms and exact PR-head remote CI are separate evidence and must not be
 claimed unless actually run.
+
+## Implemented and qualified evidence
+
+Schema 0018, the provider-independent models, GitHub adapter, runtime/storage
+fences, generated IPC/client and cached desktop panel are implemented as scoped
+above. The signed clean-lineage source `5a30303cdfc912e2387c756123ee9fe5c632673e`
+contains no RURU-127 or RURU-128 feature commits. Historical rows survive context
+changes but cannot become current-head authority; complete-empty replacement,
+closed-cache reopen, held-response drift, permission, offline, quota and partial
+coverage cases are exercised without review writes or personal credentials.
+
+Normal `make typegen` generated 137 commands and 426 schema exports. Exact-source
+`make verify` passed 757 frontend/SDK/UI cases with one platform skip, lint,
+types, the production desktop build, Rust formatting, strict workspace Clippy,
+and every default Rust suite: 1,206 Rust tests passed with seven ignored helper
+cases. Focused review provider, runtime, storage, migration and recovery suites
+also passed. The subsequent documentation-only progress commit does not change
+the measured product source.
+
+This evidence is local fixture/macOS source validation. Draft publication makes
+remote CI observable but does not make it passed. Packaged desktop execution,
+live private GitHub/PAT/keyring sampling, other-platform behavior and provider
+mutation remain untested and unclaimed.
