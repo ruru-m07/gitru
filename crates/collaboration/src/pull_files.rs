@@ -4,8 +4,8 @@
 //! local path or accepts a renderer-selected provider URL as fetch authority.
 
 use crate::{
-    AccountState, CollaborationError, ProviderKind, RemoteAccount, RemoteItem, RemoteItemKind,
-    RemoteRepository, is_canonical_commit_oid,
+    AccountState, CollaborationError, Coverage, DetailFreshness, ProviderKind, RemoteAccount, RemoteItem, RemoteItemKind,
+    RemoteRepository, SyncStatus, is_canonical_commit_oid,
 };
 use chrono::{DateTime, SecondsFormat};
 use serde::{Deserialize, Serialize};
@@ -914,9 +914,9 @@ pub struct PullFileSnapshot {
     pub files: Vec<PullFile>,
     pub next_cursor: Option<String>,
     pub completeness: PullFileCompleteness,
-    pub coverage: crate::Coverage,
-    pub sync: crate::SyncStatus,
-    pub freshness: crate::DetailFreshness,
+    pub coverage: Coverage,
+    pub sync: SyncStatus,
+    pub freshness: DetailFreshness,
     pub facet_revision: Option<String>,
     pub revision: String,
     pub authorization_view: String,
@@ -930,7 +930,7 @@ pub struct PullFileArtifactSnapshot {
     pub artifact: Option<PullFileArtifact>,
     pub revision: String,
     pub authorization_view: String,
-    pub freshness: crate::DetailFreshness,
+    pub freshness: DetailFreshness,
 }
 
 /// Renderer-safe selected-file identity. The store resolves this key against

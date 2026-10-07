@@ -82,6 +82,13 @@ export const DetailValueStateSchema = z.enum(["known", "omitted"]);
 `;
 
 describe("generated schema ordering", () => {
+  it("rejects unresolved Rust namespace syntax before reporting generation success", () => {
+    expect(() =>
+      orderGeneratedSchemas(
+        "export const FileSchema = z.object({ freshness: crate::DetailFreshnessSchema });",
+      ),
+    ).toThrow(/Invalid generated TypeScript/);
+  });
   it("repairs the shuffled eager TaskV1 → DetailValue graph without changing declarations", () => {
     expect(() => execute(shuffledTask)).toThrow(/before initialization/);
     const ordered = orderGeneratedSchemas(shuffledTask);
@@ -179,7 +186,7 @@ export const KeySchema = "key";
     const generated = await import("@gitru/commands");
     expect(
       Object.keys(generated).filter((name) => name.endsWith("Schema")),
-    ).toHaveLength(357);
+    ).toHaveLength(386);
     expect(
       generated.TaskV1Schema.shape.content.parse({ state: "known", text: "" }),
     ).toEqual({ state: "known", text: "" });
