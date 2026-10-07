@@ -111,6 +111,8 @@ function fixture() {
       revision,
       authorization_view: view,
     }),
+    diagnostics: unexpected,
+    exportDiagnostics: unexpected,
     connectGithub: unexpected,
     connectGitlab: unexpected,
     connectBitbucketCloud: unexpected,

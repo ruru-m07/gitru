@@ -375,6 +375,7 @@ async fn assert_native_token(
             pull_commit_lease: None,
             pull_commit_restarted: false,
             local_budget_refusal: false,
+            enqueued_at: runtime.now(),
         })
         .await
         .unwrap();

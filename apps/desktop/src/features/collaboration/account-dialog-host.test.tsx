@@ -74,6 +74,34 @@ beforeEach(() => {
   native.setFocus.mockReset().mockResolvedValue(undefined);
   native.suspend.mockReset().mockResolvedValue(undefined);
   mockTauriCommandResult("collaboration_accounts", fixtureAccounts);
+  mockTauriCommandResult("collaboration_diagnostics", {
+    generated_at: "2026-10-08T00:00:00.000Z",
+    revision: fixtureAccounts.revision,
+    accounts: [],
+    ready_jobs: 0,
+    deferred_jobs: 0,
+    oldest_job_age_seconds: null,
+    accounts_in_cooldown: 0,
+    latency: {
+      sample_count: 0,
+      total_milliseconds: 0,
+      maximum_milliseconds: null,
+      p50_upper_bound_milliseconds: null,
+      p95_upper_bound_milliseconds: null,
+      p99_upper_bound_milliseconds: null,
+    },
+    storage: {
+      cache_usage_available: false,
+      logical_bytes: null,
+      indexed_logical_bytes: null,
+      database_bytes: null,
+      wal_bytes: null,
+      wal_observation_supported: false,
+      wal_busy: null,
+      wal_log_frames: null,
+      wal_checkpointed_frames: null,
+    },
+  });
   mockTauriCommandResult("collaboration_discover_github_cli", fixtureGithubCli);
 });
 afterEach(async () => {

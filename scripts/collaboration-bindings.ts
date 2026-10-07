@@ -29,6 +29,9 @@ const resourceMetadata = await Bun.file(
 const demand = await Bun.file(
   new URL("crates/collaboration/src/demand.rs", root),
 ).text();
+const diagnostics = await Bun.file(
+  new URL("crates/collaboration/src/diagnostics.rs", root),
+).text();
 const localLinks = await Bun.file(
   new URL("crates/collaboration/src/local_links.rs", root),
 ).text();
@@ -81,6 +84,8 @@ const nativeOnlyTypes = new Set([
   "PullCommitBinding",
   "PullCommitMembershipRequest",
   "PullCommitMembershipReceipt",
+  "RecoveryCategoryCount",
+  "SyncDiagnosticsExport",
   "HarnessCoreRequest",
   "HarnessCoreReceipt",
 ]);
@@ -170,6 +175,7 @@ for (const source of [
   contextualCapabilities,
   resourceMetadata,
   demand,
+  diagnostics,
   localLinks,
   notificationSubjects,
   pullCommits,

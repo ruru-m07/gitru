@@ -202,7 +202,7 @@ Then implement [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-
 | [RURU-104: Implement bounded cache retention, pins and WAL maintenance](https://linear.app/catra/issue/RURU-104/implement-bounded-cache-retention-pins-and-wal-maintenance) | Backlog | [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-99](https://linear.app/catra/issue/RURU-99/recover-private-drafts-after-disconnect-or-missing-subjects) |
 | [RURU-106: Add consistent collaboration backup and restore recovery](https://linear.app/catra/issue/RURU-106/add-consistent-collaboration-backup-and-restore-recovery) | Backlog | [RURU-105](https://linear.app/catra/issue/RURU-105/test-schema-evolution-and-recoverable-migration-failures) |
 | [RURU-125: Measure cached navigation latency and memory through native IPC](https://linear.app/catra/issue/RURU-125/measure-cached-navigation-latency-and-memory-through-native-ipc) | In Review | [RURU-121](https://linear.app/catra/issue/RURU-121/add-bounded-frontend-prefetch-and-cached-navigation), [RURU-103](https://linear.app/catra/issue/RURU-103/prove-sync-and-revision-recovery-across-real-native-webviews) |
-| [RURU-126: Expose safe local sync diagnostics and actionable retry states](https://linear.app/catra/issue/RURU-126/expose-safe-local-sync-diagnostics-and-actionable-retry-states) | Backlog | [RURU-102](https://linear.app/catra/issue/RURU-102/add-fair-rate-budgets-and-scheduler-lifecycle-recovery), [RURU-125](https://linear.app/catra/issue/RURU-125/measure-cached-navigation-latency-and-memory-through-native-ipc) |
+| [RURU-126: Expose safe local sync diagnostics and actionable retry states](https://linear.app/catra/issue/RURU-126/expose-safe-local-sync-diagnostics-and-actionable-retry-states) | In Review | [RURU-102](https://linear.app/catra/issue/RURU-102/add-fair-rate-budgets-and-scheduler-lifecycle-recovery), [RURU-125](https://linear.app/catra/issue/RURU-125/measure-cached-navigation-latency-and-memory-through-native-ipc) |
 | [RURU-107: Verify collaboration vaults and storage on supported desktop platforms](https://linear.app/catra/issue/RURU-107/verify-collaboration-vaults-and-storage-on-supported-desktop-platforms) | Backlog | [RURU-105](https://linear.app/catra/issue/RURU-105/test-schema-evolution-and-recoverable-migration-failures), [RURU-103](https://linear.app/catra/issue/RURU-103/prove-sync-and-revision-recovery-across-real-native-webviews), [RURU-95](https://linear.app/catra/issue/RURU-95/make-credential-replacement-recover-safely-after-a-process-crash) |
 
 ### GitLab and Bitbucket Cloud
@@ -558,7 +558,7 @@ section 18 memory fixture remain open qualification boundaries.
 
 ## RURU-126: Expose safe local sync diagnostics and actionable retry states
 
-Planning key: C23. Group: Storage and operations. Priority: Medium. State: Backlog.
+Planning key: C23. Group: Storage and operations. Priority: Medium. State: In Review.
 Linear: [RURU-126](https://linear.app/catra/issue/RURU-126/expose-safe-local-sync-diagnostics-and-actionable-retry-states).
 Prerequisites: [RURU-102](https://linear.app/catra/issue/RURU-102/add-fair-rate-budgets-and-scheduler-lifecycle-recovery), [RURU-125](https://linear.app/catra/issue/RURU-125/measure-cached-navigation-latency-and-memory-through-native-ipc).
 
@@ -566,9 +566,18 @@ Add bounded, user-readable sync health and a privacy-preserving export for troub
 
 Acceptance criteria:
 
-- [ ] Show coverage/queue age, cooldowns, retry category, storage/WAL usage and aggregate latency using local state.
-- [ ] Auth, permission, rate, offline, unavailable and permanent errors offer appropriate recovery without retry loops.
-- [ ] Export tests reject tokens, usernames, repository identifiers, provider URLs and remote text; authorized contextual UI remains separate.
+- [x] Show coverage/queue age, cooldowns, retry category, storage/WAL usage and aggregate latency using local state.
+- [x] Auth, permission, rate, offline, unavailable and permanent errors offer appropriate recovery without retry loops.
+- [x] Export tests reject tokens, usernames, repository identifiers, provider URLs and remote text; authorized contextual UI remains separate.
+
+Implementation evidence is recorded in the signed
+[RURU-126 work note](./collaboration-work/RURU-126.md). Local qualification
+passes normal 127-command type generation and full `make verify`, including 693
+frontend/SDK/UI tests with one platform fixture skipped, all lint/type/build
+gates, workspace warning-denied Clippy and every default Rust suite. Diagnostics
+remain cache-only and aggregate export remains identity-free. Live providers,
+personal credentials, packaged desktop execution, other platforms and remote CI
+are separate qualification boundaries.
 
 ## RURU-107: Verify collaboration vaults and storage on supported desktop platforms
 

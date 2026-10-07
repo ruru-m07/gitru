@@ -582,6 +582,7 @@ async fn manual_commit_intent_survives_busy_body_admission_and_retries_from_dura
                 pull_commit_lease: None,
                 pull_commit_restarted: false,
                 local_budget_refusal: false,
+                enqueued_at: runtime.now(),
             });
         }
     }

@@ -5,19 +5,22 @@ use collaboration::{
     DraftQuery, ErrorCode, GithubCliDiscovery, HydrateDetailRequest, InboxPage, InboxQuery,
     ItemPage, ItemQuery, ItemSnapshot, LocalDraft, LocalInboxWriteReceipt, PullCommitQuery,
     PullCommitSnapshot, RefreshReceipt, RefreshRequest, RemoteAccount, RepositorySnapshot,
-    ResourceLocator, ResourceResolution, SetLocalInboxStateRequest,
+    ResourceLocator, ResourceResolution, SetLocalInboxStateRequest, SyncDiagnosticsExportReceipt,
+    SyncDiagnosticsSnapshot,
 };
 use std::sync::Arc;
 use tauri::{State, Webview};
 use tauri_plugin_dialog::DialogExt;
 use tokio::sync::OnceCell;
 
+mod diagnostics_export;
 mod draft_export;
 
 #[derive(Default)]
 pub struct CollaborationState {
     pub runtime: OnceCell<Result<Arc<CollaborationRuntime>, CollaborationError>>,
     draft_export: tokio::sync::Mutex<()>,
+    diagnostic_export: tokio::sync::Mutex<()>,
     pub(super) demand_hosts: tokio::sync::Mutex<std::collections::HashMap<String, bool>>,
     pub(super) local_link_previews: super::collaboration_local_links::LocalLinkPreviews,
     pub(super) pull_checkout_plans: super::collaboration_pull_checkout::PullCheckoutPlans,
@@ -62,6 +65,8 @@ pub(super) enum Operation {
     Draft,
     Drafts,
     ExportDraft,
+    Diagnostics,
+    ExportDiagnostics,
     Capabilities,
     ContextualCapabilities,
     ResolveResource,
@@ -93,6 +98,8 @@ impl Operation {
                 | Self::DiscoverGithubCli
                 | Self::ConnectGithubCli
                 | Self::Disconnect
+                | Self::Diagnostics
+                | Self::ExportDiagnostics
                 | Self::InspectDemandOwner
                 | Self::SetDemandOwner
                 | Self::DisposeDemandOwner
@@ -332,6 +339,52 @@ pub async fn collaboration_refresh(
 ) -> Result<RefreshReceipt, CollaborationError> {
     authorize(&view, Operation::Refresh)?;
     state.get().await?.refresh(request).await
+}
+
+/// Cache/scheduler observation only. It does not load credentials, admit work
+/// or contact a provider.
+#[tauri::command]
+pub async fn collaboration_diagnostics(
+    view: Webview,
+    state: State<'_, CollaborationState>,
+) -> Result<SyncDiagnosticsSnapshot, CollaborationError> {
+    authorize(&view, Operation::Diagnostics)?;
+    state.get().await?.diagnostics().await
+}
+
+/// The destination and report bytes are both native-owned. IPC callers cannot
+/// supply a path or contextual data to this aggregate-only export.
+#[tauri::command]
+pub async fn collaboration_export_diagnostics(
+    view: Webview,
+    state: State<'_, CollaborationState>,
+) -> Result<SyncDiagnosticsExportReceipt, CollaborationError> {
+    authorize(&view, Operation::ExportDiagnostics)?;
+    let _lease = state.diagnostic_export.try_lock().map_err(|_| {
+        CollaborationError::new(
+            ErrorCode::NotReady,
+            "A sync diagnostics export dialog is already open",
+        )
+    })?;
+    let report = state.get().await?.diagnostics().await?.export();
+    let (send, receive) = tokio::sync::oneshot::channel();
+    view.dialog()
+        .file()
+        .set_parent(&view.window())
+        .set_title("Export sync diagnostics")
+        .set_file_name("gitru-sync-diagnostics.json")
+        .add_filter("JSON", &["json"])
+        .save_file(move |path| {
+            let _ = send.send(path);
+        });
+    diagnostics_export::export(report, async move {
+        receive
+            .await
+            .map_err(|_| CollaborationError::storage())?
+            .map(|path| path.into_path().map_err(|_| CollaborationError::storage()))
+            .transpose()
+    })
+    .await
 }
 
 #[tauri::command]
@@ -594,6 +647,8 @@ mod tests {
         Operation::DiscoverGithubCli,
         Operation::ConnectGithubCli,
         Operation::Disconnect,
+        Operation::Diagnostics,
+        Operation::ExportDiagnostics,
         Operation::TransportBindings,
     ];
     const HOST_OPERATIONS: &[Operation] = &[

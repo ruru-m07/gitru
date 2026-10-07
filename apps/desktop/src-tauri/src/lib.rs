@@ -91,6 +91,8 @@ pub fn run() {
             commands::collaboration::collaboration_inbox,
             commands::collaboration::collaboration_set_local_inbox_state,
             commands::collaboration::collaboration_refresh,
+            commands::collaboration::collaboration_diagnostics,
+            commands::collaboration::collaboration_export_diagnostics,
             commands::collaboration::collaboration_changes_since,
             commands::collaboration::collaboration_save_draft,
             commands::collaboration::collaboration_draft,

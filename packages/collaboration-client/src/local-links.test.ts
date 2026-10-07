@@ -76,6 +76,8 @@ function fixture() {
       revision,
       authorization_view: "1",
     }),
+    diagnostics: unexpected,
+    exportDiagnostics: unexpected,
     connectGithub: unexpected,
     connectGitlab: unexpected,
     connectBitbucketCloud: unexpected,

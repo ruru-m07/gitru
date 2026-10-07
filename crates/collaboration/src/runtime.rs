@@ -50,6 +50,27 @@ mod pull_commit_tests;
 mod pull_commits;
 mod scheduler;
 
+#[cfg(test)]
+mod diagnostics_unit_tests {
+    use super::*;
+
+    #[test]
+    fn actual_elapsed_histogram_is_constant_space_and_saturating() {
+        let mut histogram = LatencyAccumulator::default();
+        for milliseconds in [1, 11, 99, 249, 499, 999, 1_999, 2_001] {
+            histogram.record(Duration::from_millis(milliseconds));
+        }
+        let snapshot = histogram.snapshot();
+        assert_eq!(snapshot.sample_count, 8);
+        assert_eq!(snapshot.total_milliseconds, 5_858);
+        assert_eq!(snapshot.maximum_milliseconds, Some(2_001));
+        assert_eq!(snapshot.p50_upper_bound_milliseconds, Some(250));
+        assert_eq!(snapshot.p95_upper_bound_milliseconds, Some(2_001));
+        assert_eq!(snapshot.p99_upper_bound_milliseconds, Some(2_001));
+        assert_eq!(histogram.buckets.len(), 8);
+    }
+}
+
 const MAX_QUEUED_SCOPES: usize = 128;
 const MAX_PAGES_PER_REFRESH: usize = 10;
 
@@ -86,6 +107,62 @@ struct Job {
     pull_commit_lease: Option<PullCommitLease>,
     pull_commit_restarted: bool,
     local_budget_refusal: bool,
+    enqueued_at: Instant,
+}
+
+const DIAGNOSTIC_LATENCY_BOUNDS_MS: [u64; 8] = [10, 30, 100, 250, 500, 1_000, 2_000, u64::MAX];
+
+#[derive(Default)]
+struct LatencyAccumulator {
+    count: u64,
+    total_ms: u64,
+    maximum_ms: u64,
+    buckets: [u64; DIAGNOSTIC_LATENCY_BOUNDS_MS.len()],
+}
+
+impl LatencyAccumulator {
+    fn record(&mut self, elapsed: Duration) {
+        let milliseconds = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
+        self.count = self.count.saturating_add(1);
+        self.total_ms = self.total_ms.saturating_add(milliseconds);
+        self.maximum_ms = self.maximum_ms.max(milliseconds);
+        let index = DIAGNOSTIC_LATENCY_BOUNDS_MS
+            .iter()
+            .position(|bound| milliseconds <= *bound)
+            .unwrap_or(DIAGNOSTIC_LATENCY_BOUNDS_MS.len() - 1);
+        self.buckets[index] = self.buckets[index].saturating_add(1);
+    }
+
+    fn snapshot(&self) -> SyncLatencyDiagnostics {
+        SyncLatencyDiagnostics {
+            sample_count: self.count,
+            total_milliseconds: self.total_ms,
+            maximum_milliseconds: (self.count > 0).then_some(self.maximum_ms),
+            p50_upper_bound_milliseconds: self.quantile(50),
+            p95_upper_bound_milliseconds: self.quantile(95),
+            p99_upper_bound_milliseconds: self.quantile(99),
+        }
+    }
+
+    fn quantile(&self, percentile: u64) -> Option<u64> {
+        if self.count == 0 {
+            return None;
+        }
+        let rank = self.count.saturating_mul(percentile).saturating_add(99) / 100;
+        let mut seen = 0u64;
+        for (index, count) in self.buckets.iter().enumerate() {
+            seen = seen.saturating_add(*count);
+            if seen >= rank {
+                let bound = DIAGNOSTIC_LATENCY_BOUNDS_MS[index];
+                return Some(if bound == u64::MAX {
+                    self.maximum_ms
+                } else {
+                    bound
+                });
+            }
+        }
+        Some(self.maximum_ms)
+    }
 }
 
 #[derive(Default)]
@@ -109,6 +186,14 @@ struct Scheduler {
     detail_cursor: Option<DetailDemand>,
 }
 
+#[derive(Default)]
+struct QueueObservation {
+    ready: u32,
+    deferred: u32,
+    oldest_seconds: Option<u64>,
+    cooldown_seconds: Option<u64>,
+}
+
 #[derive(Clone)]
 pub struct CollaborationRuntime {
     clock: Arc<dyn clock::Clock>,
@@ -120,6 +205,7 @@ pub struct CollaborationRuntime {
     lifecycle: Arc<Mutex<()>>,
     dispatch: Arc<Mutex<()>>,
     scheduler: Arc<Mutex<Scheduler>>,
+    diagnostic_latency: Arc<std::sync::Mutex<LatencyAccumulator>>,
     notify: Arc<Notify>,
     started: Arc<AtomicBool>,
     changes: broadcast::Sender<ChangeHint>,
@@ -154,6 +240,7 @@ impl CollaborationRuntime {
             lifecycle: Arc::new(Mutex::new(())),
             dispatch: Arc::new(Mutex::new(())),
             scheduler: Arc::new(Mutex::new(Scheduler::default())),
+            diagnostic_latency: Arc::new(std::sync::Mutex::new(LatencyAccumulator::default())),
             notify: Arc::new(Notify::new()),
             started: Arc::new(AtomicBool::new(false)),
             changes,
@@ -188,6 +275,153 @@ impl CollaborationRuntime {
 
     pub fn subscribe(&self) -> broadcast::Receiver<ChangeHint> {
         self.changes.subscribe()
+    }
+
+    /// Local-only support state. This path never loads a credential, admits a
+    /// job or calls a provider.
+    pub async fn diagnostics(&self) -> Result<SyncDiagnosticsSnapshot, CollaborationError> {
+        let (revision, saved) = self.store.saved_diagnostics().await?;
+        let now = self.now();
+        let mut queue_by_account = HashMap::<String, QueueObservation>::new();
+        {
+            let scheduler = self.scheduler.lock().await;
+            for job in &scheduler.queue {
+                let observation = queue_by_account.entry(job.account.id.clone()).or_default();
+                observation.ready = observation.ready.saturating_add(1);
+                let age = now
+                    .checked_duration_since(job.enqueued_at)
+                    .unwrap_or_default()
+                    .as_secs();
+                observation.oldest_seconds = Some(observation.oldest_seconds.unwrap_or(0).max(age));
+            }
+            for job in &scheduler.deferred {
+                let observation = queue_by_account.entry(job.account.id.clone()).or_default();
+                observation.deferred = observation.deferred.saturating_add(1);
+                let age = now
+                    .checked_duration_since(job.enqueued_at)
+                    .unwrap_or_default()
+                    .as_secs();
+                observation.oldest_seconds = Some(observation.oldest_seconds.unwrap_or(0).max(age));
+            }
+            for (account_id, deadline) in &scheduler.account_cooldowns {
+                if let Some(remaining) = deadline.checked_duration_since(now) {
+                    if remaining.is_zero() {
+                        continue;
+                    }
+                    queue_by_account
+                        .entry(account_id.clone())
+                        .or_default()
+                        .cooldown_seconds = Some(remaining.as_secs().saturating_add(1));
+                }
+            }
+        }
+
+        let cache = self.store.cache_usage().await.ok();
+        let wal = self.store.wal_status().await.ok();
+        let storage = StorageDiagnostics {
+            cache_usage_available: cache.as_ref().is_some_and(|usage| usage.available),
+            logical_bytes: cache.as_ref().and_then(|usage| usage.logical_bytes),
+            indexed_logical_bytes: cache
+                .as_ref()
+                .filter(|usage| usage.available)
+                .map(|usage| usage.indexed_logical_bytes),
+            database_bytes: wal
+                .as_ref()
+                .map(|status| status.database_bytes)
+                .or_else(|| cache.as_ref().map(|usage| usage.database_bytes)),
+            wal_bytes: wal
+                .as_ref()
+                .map(|status| status.wal_bytes)
+                .or_else(|| cache.as_ref().map(|usage| usage.wal_bytes)),
+            wal_observation_supported: wal.as_ref().is_some_and(|status| status.supported),
+            wal_busy: wal
+                .as_ref()
+                .filter(|status| status.supported)
+                .and_then(|status| status.busy)
+                .map(|busy| busy > 0),
+            wal_log_frames: wal
+                .as_ref()
+                .filter(|status| status.supported)
+                .and_then(|status| status.log_frames)
+                .and_then(|frames| u64::try_from(frames).ok()),
+            wal_checkpointed_frames: wal
+                .as_ref()
+                .filter(|status| status.supported)
+                .and_then(|status| status.checkpointed_frames)
+                .and_then(|frames| u64::try_from(frames).ok()),
+        };
+        let latency = self
+            .diagnostic_latency
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .snapshot();
+
+        let mut accounts = Vec::with_capacity(saved.len());
+        for saved_account in saved {
+            let queue = queue_by_account
+                .remove(&saved_account.account.id)
+                .unwrap_or_default();
+            let recovery = saved_account.recovery.map(|recovery| {
+                let retry_after_seconds = recovery
+                    .next_retry_at
+                    .as_deref()
+                    .and_then(|time| self.delay_until(time))
+                    .map(|delay| delay.as_secs().saturating_add(1));
+                let explicit_retry_eligible = saved_account.account.state == AccountState::Active
+                    && retry_after_seconds.is_none()
+                    && matches!(
+                        recovery.category,
+                        SyncRecoveryCategory::RateLimit
+                            | SyncRecoveryCategory::Offline
+                            | SyncRecoveryCategory::Unavailable
+                    );
+                SyncRecoveryState {
+                    category: recovery.category,
+                    affected_scopes: recovery.affected_scopes,
+                    next_retry_at: recovery.next_retry_at,
+                    retry_after_seconds,
+                    explicit_retry_eligible,
+                }
+            });
+            accounts.push(AccountSyncDiagnostics {
+                account_id: saved_account.account.id,
+                provider: saved_account.account.provider,
+                coverage: saved_account.coverage,
+                ready_jobs: queue.ready,
+                deferred_jobs: queue.deferred,
+                oldest_job_age_seconds: queue.oldest_seconds,
+                cooldown_remaining_seconds: queue.cooldown_seconds,
+                recovery,
+            });
+        }
+        let ready_jobs = accounts
+            .iter()
+            .fold(0u32, |sum, account| sum.saturating_add(account.ready_jobs));
+        let deferred_jobs = accounts.iter().fold(0u32, |sum, account| {
+            sum.saturating_add(account.deferred_jobs)
+        });
+        let oldest_job_age_seconds = accounts
+            .iter()
+            .filter_map(|account| account.oldest_job_age_seconds)
+            .max();
+        let accounts_in_cooldown = u32::try_from(
+            accounts
+                .iter()
+                .filter(|account| account.cooldown_remaining_seconds.is_some())
+                .count(),
+        )
+        .unwrap_or(u32::MAX);
+        Ok(SyncDiagnosticsSnapshot {
+            generated_at: self.now_string(),
+            revision,
+            accounts,
+            ready_jobs,
+            deferred_jobs,
+            oldest_job_age_seconds,
+            accounts_in_cooldown,
+            latency,
+            storage,
+        })
     }
 
     pub async fn save_draft(&self, draft: LocalDraft) -> Result<LocalDraft, CollaborationError> {
@@ -885,6 +1119,7 @@ impl CollaborationRuntime {
                 return true;
             }
         }
+        let diagnostic_started = Instant::now();
         let result = match job.kind.clone() {
             JobKind::NotificationSubject { intent } => {
                 self.sync_notification_subject(&intent).await
@@ -894,6 +1129,10 @@ impl CollaborationRuntime {
                 self.sync_detail_page(&mut job, &subject_id, facet).await
             }
         };
+        self.diagnostic_latency
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .record(diagnostic_started.elapsed());
         if let Err(error) = &result
             && !matches!(job.kind, JobKind::NotificationSubject { .. })
         {

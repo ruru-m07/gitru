@@ -18,6 +18,7 @@ use uuid::Uuid;
 pub(crate) mod command_admission;
 mod contextual_capabilities;
 pub(crate) mod details;
+pub(crate) mod diagnostics;
 pub(crate) mod facet_reconciliation;
 mod identities;
 mod inbox;

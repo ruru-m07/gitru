@@ -1,12 +1,14 @@
 # RURU-126 — Safe local sync diagnostics
 
-Status: pre-code contract, 8 October 2026.
+Status: implemented and locally qualified, 8 October 2026.
 
 Issue: [RURU-126](https://linear.app/catra/issue/RURU-126/expose-safe-local-sync-diagnostics-and-actionable-retry-states).
 
-This isolated managed worktree starts at signed RURU-125 head
-`a9a671bae185bb0de8e2845100a6f2a33b14baae`. It inherits RURU-102's bounded
-fair scheduler/lifecycle slice and schema 13 from RURU-114. Schema 14/15 command
+This isolated managed worktree started at signed RURU-125 measured head
+`a9a671bae185bb0de8e2845100a6f2a33b14baae` and now inherits its signed,
+test-only ordinary-suite isolation fix
+`8eccce4e7989faa09a3b8b07abbe5727c0492947`. It inherits RURU-102's bounded fair
+scheduler/lifecycle slice and schema 13 from RURU-114. Schema 14/15 command
 operations are outside this source and must not be assumed or recreated here.
 
 ## User outcome
@@ -116,3 +118,44 @@ packaged collaboration harness if the runtime/IPC surface changes materially.
 Record actual local checks separately from remote CI, live providers, production
 vaults and other platforms. Publish a signed scoped draft PR stacked on RURU-125;
 do not merge.
+
+## Implemented slice — 8 October 2026
+
+The native runtime now owns a bounded diagnostics snapshot. SQLite supplies
+saved coverage and recovery evidence, the scheduler supplies ready/deferred
+counts and monotonic queue/cooldown ages, the existing retention accounting
+supplies cache usage, and an eight-bucket in-memory histogram records elapsed
+time only around real sync attempts. A cold runtime intentionally retains saved
+recovery evidence while process-local queue and latency observations restart.
+Snapshot reads do not load the vault, admit work or invoke a provider.
+
+The main-window-only Tauri surface exposes local snapshot and native export
+commands through generated IPC. The export model is aggregate-only and cannot
+represent account, user, provider, repository, resource, URL or remote-text
+identity. Its native save flow uses the existing private atomic writer. Canary
+tests reject every forbidden class in serialized bytes, and cancellation writes
+nothing.
+
+The collaboration client adds a local TanStack query whose bounded interval only
+re-reads native state. The trusted account dialog now shows cache coverage,
+ready/waiting work, cooldowns, actual latency samples and database/WAL size.
+Recovery copy distinguishes authentication, permission, rate-limit, offline,
+provider-unavailable and permanent states. A retry button is rendered only when
+the native snapshot marks the exact active account eligible, and clicking it
+invokes the existing explicit refresh path once. Rendering, polling and export
+never start provider work.
+
+Local qualification passed normal 127-command `make typegen` and the final
+serialized `make verify`: 693 frontend/SDK/UI tests passed with one platform
+fixture skipped, followed by lint, type checks, production build, Rust format,
+workspace warning-denied Clippy and every default Rust workspace suite. The
+collaboration library portion passed 355 tests with two standalone subprocess
+helpers ignored. Focused collaboration-client and desktop suites passed 159 and
+533 tests respectively, with the same single platform skip in the desktop run;
+the feature-enabled native harness passed 43 tests.
+
+No database migration, provider request, credential/keyring access, retry-loop
+timer, Gitru cloud dependency or production telemetry was added. This run did
+not exercise a live provider, personal credential, packaged desktop binary,
+other operating system or remote CI; those remain separate qualification
+boundaries.

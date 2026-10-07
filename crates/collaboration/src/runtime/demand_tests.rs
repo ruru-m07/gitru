@@ -704,6 +704,7 @@ fn queued(account: &RemoteAccount, index: usize, reason: scheduler::Admission) -
         pull_commit_lease: None,
         pull_commit_restarted: false,
         local_budget_refusal: false,
+        enqueued_at: Instant::now(),
     }
 }
 
@@ -1123,6 +1124,148 @@ async fn denial_after_admission_prevents_vault_and_provider_access() {
     assert_eq!(vault.loads.load(Ordering::SeqCst), 0);
     assert_eq!(provider.requests.lock().unwrap().len(), 0);
     assert!(runtime.store.pending_details().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn diagnostics_observe_saved_recovery_and_monotonic_queue_age_without_io() {
+    let dir = tempfile::tempdir().unwrap();
+    let database = dir.path().join("cache.sqlite");
+    let provider = Provider::new(1);
+    let (runtime, clock, vault, account) = setup(&database, provider.clone()).await;
+    let future_retry = runtime.future_string(30);
+    runtime
+        .store
+        .set_sync_status(
+            &account.id,
+            &account.authorization_epoch,
+            "repositories",
+            SyncStatus {
+                state: SyncState::Offline,
+                last_success_at: None,
+                next_retry_at: Some(future_retry.clone()),
+                error: Some(CollaborationError::new(
+                    ErrorCode::Network,
+                    "fixture raw provider url token must never leave storage",
+                )),
+            },
+        )
+        .await
+        .unwrap();
+    {
+        let mut scheduler = runtime.scheduler.lock().await;
+        let mut ready = queued(&account, 1, scheduler::Admission::Manual);
+        ready.enqueued_at = clock.now();
+        let mut deferred = queued(&account, 2, scheduler::Admission::Manual);
+        deferred.enqueued_at = clock.now();
+        scheduler.queue.push_back(ready);
+        scheduler.deferred.push_back(deferred);
+        scheduler
+            .account_cooldowns
+            .insert(account.id.clone(), clock.now() + Duration::from_secs(30));
+    }
+    clock.advance(12);
+
+    let snapshot = runtime.diagnostics().await.unwrap();
+    let observed = snapshot
+        .accounts
+        .iter()
+        .find(|candidate| candidate.account_id == account.id)
+        .unwrap();
+    assert_eq!(snapshot.ready_jobs, 1);
+    assert_eq!(snapshot.deferred_jobs, 1);
+    assert_eq!(snapshot.oldest_job_age_seconds, Some(12));
+    assert_eq!(observed.cooldown_remaining_seconds, Some(19));
+    let recovery = observed.recovery.as_ref().unwrap();
+    assert_eq!(recovery.category, SyncRecoveryCategory::Offline);
+    assert_eq!(recovery.retry_after_seconds, Some(19));
+    assert!(!recovery.explicit_retry_eligible);
+    assert_eq!(vault.loads.load(Ordering::SeqCst), 0);
+    assert!(provider.requests.lock().unwrap().is_empty());
+
+    runtime
+        .store
+        .set_sync_status(
+            &account.id,
+            &account.authorization_epoch,
+            "repositories",
+            SyncStatus {
+                state: SyncState::Offline,
+                last_success_at: None,
+                next_retry_at: Some("2026-10-02T00:00:00Z".into()),
+                error: Some(CollaborationError::new(
+                    ErrorCode::Network,
+                    "another raw diagnostic that stays native",
+                )),
+            },
+        )
+        .await
+        .unwrap();
+    runtime.scheduler.lock().await.account_cooldowns.clear();
+    let eligible = runtime.diagnostics().await.unwrap();
+    let recovery = eligible.accounts[0].recovery.as_ref().unwrap();
+    assert_eq!(recovery.retry_after_seconds, None);
+    assert!(recovery.explicit_retry_eligible);
+    assert_eq!(vault.loads.load(Ordering::SeqCst), 0);
+    assert!(provider.requests.lock().unwrap().is_empty());
+
+    drop(runtime);
+    let store = Arc::new(Store::open(&database).await.unwrap());
+    let mut reopened = CollaborationRuntime::new(store, vault.clone(), provider.clone());
+    reopened.clock = clock;
+    let cold = reopened.diagnostics().await.unwrap();
+    assert_eq!(cold.ready_jobs, 0);
+    assert_eq!(cold.deferred_jobs, 0);
+    assert_eq!(cold.oldest_job_age_seconds, None);
+    assert_eq!(cold.latency.sample_count, 0);
+    assert_eq!(
+        cold.accounts[0].recovery.as_ref().unwrap().category,
+        SyncRecoveryCategory::Offline
+    );
+    assert!(
+        cold.accounts[0]
+            .recovery
+            .as_ref()
+            .unwrap()
+            .explicit_retry_eligible
+    );
+    assert_eq!(vault.loads.load(Ordering::SeqCst), 0);
+    assert!(provider.requests.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn diagnostics_latency_counts_attempted_runtime_work_without_counting_reads() {
+    let dir = tempfile::tempdir().unwrap();
+    let provider = Provider::new(1);
+    let (runtime, _, vault, account) =
+        setup(&dir.path().join("cache.sqlite"), provider.clone()).await;
+    assert_eq!(runtime.diagnostics().await.unwrap().latency.sample_count, 0);
+    runtime
+        .refresh(RefreshRequest {
+            account_id: account.id,
+            repository_id: None,
+            kind: Some(RemoteItemKind::Notification),
+        })
+        .await
+        .unwrap();
+    assert!(runtime.run_next().await);
+    let loads = vault.loads.load(Ordering::SeqCst);
+    let requests = provider.requests.lock().unwrap().len();
+    let measured = runtime.diagnostics().await.unwrap();
+    assert_eq!(measured.latency.sample_count, 1);
+    let maximum = measured.latency.maximum_milliseconds.unwrap();
+    let upper_bound = measured.latency.p50_upper_bound_milliseconds.unwrap();
+    assert!(upper_bound >= maximum);
+    assert_eq!(
+        measured.latency.p95_upper_bound_milliseconds,
+        Some(upper_bound)
+    );
+    assert_eq!(
+        measured.latency.p99_upper_bound_milliseconds,
+        Some(upper_bound)
+    );
+    assert_eq!(runtime.diagnostics().await.unwrap().latency.sample_count, 1);
+    assert_eq!(vault.loads.load(Ordering::SeqCst), loads);
+    assert_eq!(provider.requests.lock().unwrap().len(), requests);
 }
 
 #[tokio::test]

@@ -11,6 +11,7 @@ import { setTabWebviewsSuspended } from "@/components/webview-tab-host";
 import { ACCOUNT_SETTINGS_OPEN_EVENT } from "./account-dialog-events";
 import { AccountManager, isTrustedAccountWindow } from "./account-manager";
 import { LocalTransportSettings } from "./local-transport-settings";
+import { SyncHealthPanel } from "./sync-health-panel";
 
 // Effect owners prevent an old listener/unmount cleanup from releasing a newer
 // acquisition during StrictMode, HMR or a close/reopen race.
@@ -167,6 +168,7 @@ function MainAccountDialogHost() {
             >
               <AccountManager />
               <LocalTransportSettings />
+              <SyncHealthPanel />
             </div>
           ) : null}
         </DialogPopup>

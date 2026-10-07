@@ -119,6 +119,8 @@ function transport(
   };
   return {
     accounts: unexpected,
+    diagnostics: unexpected,
+    exportDiagnostics: unexpected,
     connectGithub: unexpected,
     connectGitlab: unexpected,
     connectBitbucketCloud: unexpected,

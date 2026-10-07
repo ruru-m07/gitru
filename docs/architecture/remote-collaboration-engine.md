@@ -3408,3 +3408,32 @@ database/WAL/shared-memory set is 45,486,168 bytes and does not grow during
 restart. This 10,000-summary run does not qualify section 18's
 100,000-summary/500,000-child memory target; storage medium classification, other
 platforms, live-provider behavior and remote CI remain separate evidence.
+
+### RURU-126 safe local sync diagnostics — 8 October 2026
+
+RURU-126 adds a main-window-only, local diagnostics surface on signed RURU-125
+head `a9a671bae185bb0de8e2845100a6f2a33b14baae`. Native code combines bounded
+saved coverage/recovery queries, scheduler queue and cooldown state, existing
+cache accounting and a fixed-bucket histogram of actual sync attempts. Reading
+diagnostics neither opens the credential vault nor admits provider work. A cold
+runtime preserves only durable SQLite recovery evidence; process-local queue age
+and latency observations intentionally restart.
+
+The generated SDK and trusted account dialog expose coverage, waiting work,
+cooldowns, database/WAL size and actual latency samples. Recovery states keep
+authentication, permission, rate-limit, offline, transient-unavailable and
+permanent outcomes distinct. Only an eligible exact-account row offers the
+existing explicit refresh action, once per user click. The native export derives
+an aggregate-only DTO and writes private JSON atomically; privacy canaries reject
+tokens, usernames, repository/resource identifiers, provider URLs and remote
+text.
+
+The signed [implementation record](./collaboration-work/RURU-126.md) documents
+the exact contract and evidence. Normal type generation emits 127 commands. Full
+`make verify` passes 693 frontend/SDK/UI tests with one platform fixture skipped,
+all lint/type/build gates, Rust format, workspace warning-denied Clippy and every
+default Rust suite, including 355 collaboration library tests with two helper
+processes ignored. No schema migration, provider request, credential access,
+background retry loop, Gitru cloud dependency or production telemetry is added.
+Live providers, personal credentials, packaged desktop execution, other
+platforms and remote CI remain separate gates.

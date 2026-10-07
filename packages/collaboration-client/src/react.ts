@@ -110,6 +110,23 @@ export function useCollaborationAccounts() {
   return useQuery(accountsQueryOptions(version));
 }
 
+export function diagnosticsQueryOptions(version = collaboration.getVersion()) {
+  return queryOptions({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.diagnostics(version),
+    queryFn: () => collaboration.diagnostics(),
+    // Only process-local queue ages/cooldowns change between revision events.
+    // This interval remains a SQLite/scheduler observation and never syncs.
+    refetchInterval: 10_000,
+    refetchOnWindowFocus: "always" as const,
+  });
+}
+
+export function useCollaborationDiagnostics(enabled = true) {
+  const version = useCollaborationVersion();
+  return useQuery({ ...diagnosticsQueryOptions(version), enabled });
+}
+
 /** Discover only while the account dialog is mounted in the trusted main window. */
 export function useGithubCliAccounts(enabled: boolean) {
   return useQuery({

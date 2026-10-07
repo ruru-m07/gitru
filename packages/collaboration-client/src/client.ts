@@ -47,6 +47,8 @@ import {
   type ResourceLocator,
   type ResourceResolution,
   type SetLocalInboxStateRequest,
+  type SyncDiagnosticsExportReceipt,
+  type SyncDiagnosticsSnapshot,
   type TransportBindingRequest,
 } from "@gitru/commands";
 import type { QueryClient } from "@tanstack/react-query";
@@ -81,6 +83,8 @@ export interface CollaborationTransport extends DemandTransport {
   ): Promise<LocalNavigationReceipt>;
   listenLocalChanges(onWake: () => void): Promise<() => void>;
   accounts(): Promise<AccountSnapshot>;
+  diagnostics(): Promise<SyncDiagnosticsSnapshot>;
+  exportDiagnostics(): Promise<SyncDiagnosticsExportReceipt>;
   connectGithub(token: string): Promise<RemoteAccount>;
   connectGitlab(token: string): Promise<RemoteAccount>;
   connectBitbucketCloud(token: string): Promise<RemoteAccount>;
@@ -157,6 +161,8 @@ export const collaborationKeys = {
     ] as const,
   accounts: (version: number) =>
     ["collaboration", "accounts", version] as const,
+  diagnostics: (version: number) =>
+    ["collaboration", "diagnostics", version] as const,
   githubCli: ["collaboration", "github-cli-accounts"] as const,
   account: (accountId: string) =>
     ["collaboration", "account", accountId] as const,
@@ -288,6 +294,15 @@ export class CollaborationClient {
     );
     this.acceptSnapshot(snapshot);
     return snapshot;
+  }
+
+  /** Native cache/scheduler observation only; this never admits provider work. */
+  diagnostics(): Promise<SyncDiagnosticsSnapshot> {
+    return this.transport.diagnostics();
+  }
+
+  exportDiagnostics(): Promise<SyncDiagnosticsExportReceipt> {
+    return this.transport.exportDiagnostics();
   }
 
   async localLinks(localRepositoryId: string, signal?: AbortSignal) {

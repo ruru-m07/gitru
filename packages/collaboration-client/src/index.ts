@@ -11,12 +11,14 @@ import {
   collaborationContextualCapabilities,
   collaborationDemandActivity,
   collaborationDetail,
+  collaborationDiagnostics,
   collaborationDisconnect,
   collaborationDiscoverGithubCli,
   collaborationDiscoverNotificationSubject,
   collaborationDraft,
   collaborationDrafts,
   collaborationExecutePullCheckout,
+  collaborationExportDiagnostics,
   collaborationExportDraft,
   collaborationHydrateDetail,
   collaborationInbox,
@@ -47,6 +49,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { CollaborationClient } from "./client";
 
 export type {
+  AccountSyncDiagnostics,
   AcquireDemandRequest,
   CanonicalResource,
   CapabilitySnapshot,
@@ -56,6 +59,7 @@ export type {
   ContextCapabilityRequest,
   ContextFacetCapability,
   ContextualCapabilitySnapshot,
+  CoverageDiagnostics,
   DemandLeaseReceipt,
   DemandOwnerActivity,
   DemandRenewalReceipt,
@@ -121,6 +125,11 @@ export type {
   ResourceMetadataValues,
   ResourceResolution,
   SetLocalInboxStateRequest,
+  StorageDiagnostics,
+  SyncDiagnosticsExportReceipt,
+  SyncDiagnosticsSnapshot,
+  SyncLatencyDiagnostics,
+  SyncRecoveryState,
   TaskActor,
   TaskV1,
   TransportBindingRequest,
@@ -140,6 +149,8 @@ export type LocalInboxFilter =
 export type LocalInboxMutation =
   import("@gitru/commands").SetLocalInboxStateRequest["mutation"];
 export type DetailFacet = import("@gitru/commands").DetailQuery["facet"];
+export type SyncRecoveryCategory =
+  import("@gitru/commands").SyncRecoveryState["category"];
 export type DetailField =
   import("@gitru/commands").DetailEntry["field_mask"][number];
 export type CapabilityObservation =
@@ -185,6 +196,8 @@ export const collaboration = new CollaborationClient({
     collaborationValidateLocalNavigation({ request }),
   listenLocalChanges: (onWake) => listen("gitru://repository-changed", onWake),
   accounts: () => collaborationAccounts({}),
+  diagnostics: () => collaborationDiagnostics({}),
+  exportDiagnostics: () => collaborationExportDiagnostics({}),
   connectGithub: (token) => collaborationConnectGithub({ token }),
   connectGitlab: (token) => collaborationConnectGitlab({ token }),
   connectBitbucketCloud: (token) =>
