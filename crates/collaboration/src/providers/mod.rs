@@ -5,13 +5,14 @@ pub mod bitbucket_cloud;
 mod contract_tests;
 pub mod github;
 pub mod gitlab;
+pub(crate) mod inbox_actions;
 mod pull_file_selection;
 mod pull_files;
 pub use pull_file_selection::{
     PullFileArtifactRead, PullFileSelectedRequest, PullFileSourceRequest,
 };
 mod registry;
-mod transport;
+pub(crate) mod transport;
 
 pub(crate) use registry::FACETS;
 pub use registry::{ProviderProfile, ProviderRegistry};

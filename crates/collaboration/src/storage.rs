@@ -29,6 +29,7 @@ mod identities;
 mod inbox;
 mod local_links;
 pub(crate) mod notification_subjects;
+pub(crate) mod provider_inbox_actions;
 mod pull_commits;
 mod pull_files;
 pub use pull_files::{PullFileApplyReceipt, PullFileCommit, PullFileSelection};

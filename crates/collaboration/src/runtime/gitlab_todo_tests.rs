@@ -172,7 +172,7 @@ async fn actual_todos_are_local_read_only_and_resolve_exact_cached_subject_after
     assert_eq!(calls.len(), 5);
     assert!(calls.iter().all(|c| c.starts_with("GET ")));
     let loads = vault.loads.load(Ordering::SeqCst);
-    database.close().await;
+    database.close().await.unwrap();
     drop(runtime);
     drop(database);
     let reopened = store(dir.path()).await;
@@ -249,7 +249,7 @@ async fn depleted_pending_phase_persists_and_resumes_done_after_cold_reopen() {
     assert_eq!(checkpoint.coverage.state, CoverageState::Partial);
     assert!(checkpoint.next_cursor.unwrap().contains("\"done\":true"));
     assert_eq!(task.join().unwrap().len(), 4);
-    database.close().await;
+    database.close().await.unwrap();
     drop(runtime);
     drop(database);
     let reopened = store(dir.path()).await;
@@ -454,7 +454,7 @@ async fn pending_sweeps_interleave_done_history_and_failure_restart_keeps_exact_
     assert_eq!(calls.len(), 11);
     assert!(calls[9].starts_with("GET /api/v4/todos?state=pending&per_page=50&page=1 "));
     assert!(calls[10].starts_with("GET /api/v4/todos?state=pending&per_page=50&page=2 "));
-    database.close().await;
+    database.close().await.unwrap();
     drop(runtime);
     drop(database);
     clock.advance(3);

@@ -48,6 +48,7 @@ mod harness;
 #[cfg(test)]
 mod notification_subject_tests;
 mod notification_subjects;
+mod provider_inbox_actions;
 #[cfg(test)]
 mod pull_commit_tests;
 mod pull_commits;

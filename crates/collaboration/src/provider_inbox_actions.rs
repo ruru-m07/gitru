@@ -47,7 +47,7 @@ pub struct ProviderInboxActionDescriptor {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderInboxActionsQuery {
     pub account_id: String,
-    /// Canonical local notification item UUID, not the linked PR/issue identity.
+    /// Canonical local notification item identity, not the linked PR/issue identity.
     pub subject_id: String,
 }
 
@@ -67,7 +67,7 @@ pub struct QueueProviderInboxActionRequest {
     pub account_id: String,
     pub authorization_epoch: String,
     pub authorization_view: String,
-    /// Canonical local notification item UUID; no provider URL is accepted.
+    /// Canonical local notification item identity; no provider URL is accepted.
     pub subject_id: String,
     pub expected_activity_version: String,
     /// Retain the same UUID when retrying after a lost local IPC receipt.
@@ -83,4 +83,57 @@ pub struct ProviderInboxActionReceipt {
     pub command_id: String,
     pub revision: String,
     pub duplicate: bool,
+}
+
+pub(crate) mod native;
+
+fn bounded_id(value: &str) -> Result<(), crate::CollaborationError> {
+    if value.is_empty() || value.len() > 1024 || value.chars().any(char::is_control) {
+        return Err(crate::CollaborationError::invalid(
+            "Invalid bounded inbox identity",
+        ));
+    }
+    Ok(())
+}
+fn canonical_revision(value: &str) -> Result<(), crate::CollaborationError> {
+    if value.is_empty()
+        || value.len() > 19
+        || !value.bytes().all(|b| b.is_ascii_digit())
+        || !value
+            .parse::<i64>()
+            .is_ok_and(|n| n > 0 && n.to_string() == value)
+    {
+        return Err(crate::CollaborationError::invalid(
+            "Invalid inbox authorization revision",
+        ));
+    }
+    Ok(())
+}
+impl ProviderInboxActionsQuery {
+    pub(crate) fn validate(&self) -> Result<(), crate::CollaborationError> {
+        bounded_id(&self.account_id)?;
+        bounded_id(&self.subject_id)
+    }
+}
+impl QueueProviderInboxActionRequest {
+    pub(crate) fn validate(&self) -> Result<(), crate::CollaborationError> {
+        bounded_id(&self.account_id)?;
+        bounded_id(&self.subject_id)?;
+        canonical_revision(&self.authorization_epoch)?;
+        canonical_revision(&self.authorization_view)?;
+        if self.command_id.len() != 36
+            || !uuid::Uuid::parse_str(&self.command_id)
+                .is_ok_and(|id| id.hyphenated().to_string() == self.command_id)
+            || self.expected_activity_version.len() != 64
+            || !self
+                .expected_activity_version
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return Err(crate::CollaborationError::invalid(
+                "Invalid inbox action proof or command identity",
+            ));
+        }
+        Ok(())
+    }
 }
