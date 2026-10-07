@@ -1208,6 +1208,7 @@ async fn diagnostics_observe_saved_recovery_and_monotonic_queue_age_without_io()
     assert_eq!(vault.loads.load(Ordering::SeqCst), 0);
     assert!(provider.requests.lock().unwrap().is_empty());
 
+    runtime.shutdown().await.unwrap();
     drop(runtime);
     let store = Arc::new(Store::open(&database).await.unwrap());
     let mut reopened = CollaborationRuntime::new(store, vault.clone(), provider.clone());

@@ -745,7 +745,7 @@ async fn actual_comments_native_failures_preserve_status_and_quota_without_false
 }
 
 #[test]
-fn comments_capability_is_github_com_read_only_and_other_facets_remain_explicit() {
+fn comments_and_reviews_are_github_com_read_only_and_other_facets_remain_explicit() {
     let provider = GithubProvider::new().unwrap();
     let account = request(RemoteItemKind::Issue).account;
     assert_eq!(
@@ -755,8 +755,14 @@ fn comments_capability_is_github_com_read_only_and_other_facets_remain_explicit(
             .state,
         CapabilityState::Supported
     );
+    assert_eq!(
+        provider
+            .profile(&account)
+            .facet(ResourceFacet::Reviews)
+            .state,
+        CapabilityState::Supported
+    );
     for facet in [
-        ResourceFacet::Reviews,
         ResourceFacet::Participants,
         ResourceFacet::Tasks,
         ResourceFacet::Merge,
