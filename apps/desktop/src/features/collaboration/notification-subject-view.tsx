@@ -24,6 +24,7 @@ import {
   resourceCapabilityTarget,
 } from "./capability-policy";
 import { SavedDraftEditor } from "./private-draft";
+import { ProviderInboxActions } from "./provider-inbox-actions";
 import { ProviderLink } from "./provider-link";
 import { SavedItemDetail } from "./saved-item-detail";
 
@@ -144,6 +145,11 @@ export function NotificationSubjectView({
           aria-label={isTodo ? "Original to-do" : "Original notification"}
         >
           <p className="break-words text-sm">{original.title}</p>
+          <ProviderInboxActions
+            key={`${account.id}:${account.authorization_epoch}:${notificationId}`}
+            account={account}
+            notificationId={notificationId}
+          />
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             {original.reason ? <span>Reason: {original.reason}</span> : null}
             <Badge variant="outline" size="sm">

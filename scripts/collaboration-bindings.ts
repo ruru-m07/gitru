@@ -14,6 +14,9 @@ const error = await Bun.file(
 const effective = await Bun.file(
   new URL("crates/collaboration/src/effective.rs", root),
 ).text();
+const providerInboxActions = await Bun.file(
+  new URL("crates/collaboration/src/provider_inbox_actions.rs", root),
+).text();
 const commandRecovery = await Bun.file(
   new URL("crates/collaboration/src/command_recovery.rs", root),
 ).text();
@@ -339,6 +342,7 @@ generated = generated.replace(
 for (const source of [
   effective,
   commandRecovery,
+  providerInboxActions,
   domain,
   error,
   detail,

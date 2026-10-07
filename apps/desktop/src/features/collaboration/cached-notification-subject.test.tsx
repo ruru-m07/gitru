@@ -132,6 +132,19 @@ function snapshot(
 }
 
 beforeEach(() => {
+  mockTauriCommand("collaboration_provider_inbox_actions", (args) => {
+    const { query } = args as {
+      query: { account_id: string; subject_id: string };
+    };
+    return {
+      ...query,
+      authorization_epoch: fixtureAccount.authorization_epoch,
+      authorization_view: view,
+      activity_version: "fixture-activity",
+      actions: [],
+      revision,
+    };
+  });
   revision = "10";
   view = "1";
   selector = "9007199254740995";

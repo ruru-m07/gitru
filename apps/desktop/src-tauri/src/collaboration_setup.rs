@@ -139,6 +139,7 @@ pub(crate) async fn build_runtime(
             registry.register(Arc::new(
                 collaboration::providers::bitbucket_cloud::BitbucketCloudProvider::new()?,
             ))?;
+            registry.register_provider_inbox_actions()?;
             #[cfg(not(feature = "e2e"))]
             let vault = Arc::new(NativeVault {
                 service: format!("{}.collaboration", handle.config().identifier),

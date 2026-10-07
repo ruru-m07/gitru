@@ -649,7 +649,14 @@ function AccountWorkspace({
           />
         </div>
       ) : null}
-      <ReadOnlyCapability policy={policy} />
+      {kind === "notification" ? (
+        <p className="px-5 text-xs text-muted-foreground">
+          Select an item to check provider actions. Local inbox controls stay on
+          this device.
+        </p>
+      ) : (
+        <ReadOnlyCapability policy={policy} />
+      )}
       <div className="px-5">
         <SynchronizationAvailability policy={policy} />
       </div>

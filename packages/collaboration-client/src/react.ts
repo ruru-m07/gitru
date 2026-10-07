@@ -27,6 +27,18 @@ const localQueryPolicy = {
   meta: { collaboration: true },
 };
 
+export function providerInboxActionsQueryOptions(
+  account: RemoteAccount,
+  subjectId: string,
+) {
+  return queryOptions({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.providerInboxActions(account, subjectId),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).providerInboxActions(subjectId, signal),
+  });
+}
+
 export function commandRecoveryQueryOptions(
   account: RemoteAccount,
   query: Omit<CommandRecoveryQuery, "account_id">,

@@ -105,6 +105,8 @@ pub fn run() {
             commands::collaboration::collaboration_draft,
             commands::collaboration::collaboration_drafts,
             commands::collaboration::collaboration_export_draft,
+            commands::collaboration::collaboration_provider_inbox_actions,
+            commands::collaboration::collaboration_queue_provider_inbox_action,
             commands::collaboration::collaboration_command_recovery_list,
             commands::collaboration::collaboration_command_recovery_detail,
             commands::collaboration::collaboration_command_recovery_action,

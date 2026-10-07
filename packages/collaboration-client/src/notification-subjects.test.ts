@@ -120,6 +120,12 @@ function fixture() {
     commandRecoveryReplace: async () => {
       throw new Error("Unexpected recovery operation");
     },
+    providerInboxActions: async () => {
+      throw new Error("Unexpected provider inbox query");
+    },
+    queueProviderInboxAction: async () => {
+      throw new Error("Unexpected provider inbox action");
+    },
     commandRecoveryExport: async () => {
       throw new Error("Unexpected recovery operation");
     },
