@@ -1152,7 +1152,7 @@ impl Store {
         facet: DetailFacet,
         expected_authorization_view: Option<&str>,
     ) -> Result<DetailLease> {
-        if facet == DetailFacet::Commits {
+        if matches!(facet, DetailFacet::Commits | DetailFacet::Files) {
             return Err(invalid_detail());
         }
         let mut writer = self.inner.writer.lock().await;
@@ -1296,7 +1296,7 @@ pub(super) async fn apply_detail_in(
     tx: &mut Transaction<'_, Sqlite>,
     mut page: DetailCommit,
 ) -> Result<String> {
-    if page.facet == DetailFacet::Commits
+    if matches!(page.facet, DetailFacet::Commits | DetailFacet::Files)
         || page.entries.len() > 100
         || page.source.source.is_empty()
         || page.source.source.len() > 256

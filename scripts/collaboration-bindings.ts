@@ -38,6 +38,9 @@ const notificationSubjects = await Bun.file(
 const pullCommits = await Bun.file(
   new URL("crates/collaboration/src/pull_commits.rs", root),
 ).text();
+const pullFiles = await Bun.file(
+  new URL("crates/collaboration/src/pull_files.rs", root),
+).text();
 const gitRemotes = await Bun.file(
   new URL("crates/git/models/remotes.rs", root),
 ).text();
@@ -81,6 +84,10 @@ const nativeOnlyTypes = new Set([
   "PullCommitBinding",
   "PullCommitMembershipRequest",
   "PullCommitMembershipReceipt",
+  "PullFileLease",
+  "PullFileBinding",
+  "PullFileGenerationReceipt",
+  "PullFileProvenance",
   "HarnessCoreRequest",
   "HarnessCoreReceipt",
 ]);
@@ -161,6 +168,54 @@ for (const [, tag, content, name, body] of participants.matchAll(
   );
 }
 
+// The pull-file boundary uses explicit unknown facts, plus source-specific
+// validation receipts. Recover these Serde unions from the Rust declaration;
+// reject schema growth that the pinned generator cannot safely represent.
+for (const name of ["PullFileCount", "PullFileFlag"]) {
+  const declaration = pullFiles.match(
+    new RegExp(
+      `#\\[serde\\(tag = "state", content = "value", rename_all = "snake_case"\\)\\]\\s*pub enum ${name} \\{\\s*Unknown,\\s*Known\\((String|bool)\\),\\s*\\}`,
+    ),
+  );
+  if (!declaration) throw new Error(`Unsupported pull-file fact union ${name}`);
+  const pattern = new RegExp(
+    `export const ${name}Schema = z\\.enum\\(\\[[^\\]]+\\]\\);`,
+  );
+  if (!pattern.test(generated))
+    throw new Error(`Missing pull-file fact schema ${name}`);
+  generated = generated.replace(
+    pattern,
+    `export const ${name}Schema = z.discriminatedUnion("state", [z.object({ state: z.literal("unknown") }), z.object({ state: z.literal("known"), value: z.${declaration[1] === "String" ? "string" : "boolean"}() })]);`,
+  );
+}
+const validationDeclaration = pullFiles.match(
+  /#\[serde\(tag = "kind", rename_all = "snake_case"\)\]\s*pub enum PullFileArtifactValidation \{([\s\S]*?)\n\}/,
+);
+if (!validationDeclaration)
+  throw new Error("Missing Rust pull-file validation union");
+const validationVariants = [
+  ...validationDeclaration[1].matchAll(/(\w+)\s*\{([^}]+)\},/g),
+];
+if (
+  validationVariants.length !== 2 ||
+  validationDeclaration[1].replace(/(\w+)\s*\{([^}]+)\},/g, "").trim()
+)
+  throw new Error("Unsupported pull-file validation variants");
+const validationSchemas = validationVariants.map(([, variant, fields]) => {
+  const declarations = [...fields.matchAll(/(\w+): String,/g)];
+  if (!declarations.length || fields.replace(/(\w+): String,/g, "").trim())
+    throw new Error(`Unsupported pull-file validation fields ${variant}`);
+  return `z.object({ kind: z.literal(${JSON.stringify(snake(variant))}), ${declarations.map(([, field]) => `${field}: z.string()`).join(", ")} })`;
+});
+const validationPattern =
+  /export const PullFileArtifactValidationSchema = z\.enum\(\[[^\]]+\]\);/;
+if (!validationPattern.test(generated))
+  throw new Error("Missing flattened pull-file validation");
+generated = generated.replace(
+  validationPattern,
+  `export const PullFileArtifactValidationSchema = z.discriminatedUnion("kind", [${validationSchemas.join(", ")}]);`,
+);
+
 for (const source of [
   domain,
   error,
@@ -173,6 +228,7 @@ for (const source of [
   localLinks,
   notificationSubjects,
   pullCommits,
+  pullFiles,
   gitRemotes,
   linkCommands,
   repositoryInfo,
@@ -185,6 +241,7 @@ for (const source of [
   )) {
     const [, name, body] = match;
     const variants = body
+      .replace(/\/\/[^\n]*/g, "")
       .split(",")
       .map((part) => part.trim())
       .filter(Boolean);

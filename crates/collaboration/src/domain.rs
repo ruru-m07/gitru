@@ -415,6 +415,7 @@ pub enum ResourceFacet {
     Participants,
     Tasks,
     PullCommits,
+    PullFiles,
     Merge,
 }
 
