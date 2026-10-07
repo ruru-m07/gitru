@@ -100,6 +100,15 @@ impl CollaborationRuntime {
                     Err(error) => return Err(error),
                 }
             }
+        } else if request.facet == DetailFacet::Checks {
+            match self.store.check_context(&account.id, &subject.id).await {
+                Ok(_) => {}
+                Err(error) if matches!(error.code, ErrorCode::NotFound | ErrorCode::StaleView) => {
+                    self.request_pull_commit_body_context(&account, &repository, &subject)
+                        .await?;
+                }
+                Err(error) => return Err(error),
+            }
         }
         let job_id = self
             .enqueue_work(
@@ -192,6 +201,26 @@ impl CollaborationRuntime {
         if facet == DetailFacet::Commits {
             return self.sync_pull_commit_page(job, subject_id).await;
         }
+        if facet == DetailFacet::Checks {
+            match self.store.check_context(&job.account.id, subject_id).await {
+                Ok(_) => {}
+                Err(error) if matches!(error.code, ErrorCode::NotFound | ErrorCode::StaleView) => {
+                    let account = self.active_account(&job.account.id).await?;
+                    let subject = self.store.detail_subject(&account.id, subject_id).await?;
+                    let repository = self
+                        .store
+                        .repository(
+                            &account.id,
+                            subject.repository_id.as_deref().ok_or_else(unsupported)?,
+                        )
+                        .await?;
+                    self.request_pull_commit_body_context(&account, &repository, &subject)
+                        .await?;
+                    return Ok(false);
+                }
+                Err(error) => return Err(error),
+            }
+        }
         self.ensure_demand_dispatch(job).await?;
         let (account, token, mut lease) = {
             let _lifecycle = self.lifecycle.lock().await;
@@ -254,31 +283,49 @@ impl CollaborationRuntime {
             };
             let adapter = self.adapter_for_account(&current).await?;
             self.ensure_demand_dispatch(job).await?;
-            self.store
-                .validate_detail_dispatch(
-                    &account.id,
-                    &account.authorization_epoch,
-                    subject_id,
-                    facet,
-                    &lease,
-                    &binding,
+            let check_context = if facet == DetailFacet::Checks {
+                Some(
+                    self.store
+                        .validate_check_dispatch(
+                            &account.id,
+                            &account.authorization_epoch,
+                            subject_id,
+                            &lease,
+                            &binding,
+                        )
+                        .await?,
                 )
-                .await?;
-            self.ensure_provider_budget(&current, job).await?;
-            let fetched = adapter
-                .fetch_detail(
-                    &token,
-                    DetailRequest {
-                        account: current,
-                        repository,
-                        subject,
+            } else {
+                self.store
+                    .validate_detail_dispatch(
+                        &account.id,
+                        &account.authorization_epoch,
+                        subject_id,
                         facet,
-                        cursor: lease.next_cursor.clone(),
-                        etag: lease.etag.clone(),
-                        source: lease.source.clone(),
-                    },
-                )
-                .await;
+                        &lease,
+                        &binding,
+                    )
+                    .await?;
+                None
+            };
+            self.ensure_provider_budget(&current, job).await?;
+            let detail = DetailRequest {
+                account: current,
+                repository,
+                subject,
+                facet,
+                cursor: lease.next_cursor.clone(),
+                etag: lease.etag.clone(),
+                source: lease.source.clone(),
+            };
+            let page_check_context = check_context.clone();
+            let fetched = if let Some(context) = check_context {
+                adapter
+                    .fetch_checks(&token, CheckRequest { detail, context })
+                    .await
+            } else {
+                adapter.fetch_detail(&token, detail).await
+            };
             // A rejected singleton can consume account quota without proving
             // any Body, metadata or access. Keep that captured-epoch evidence
             // before converting the safe provider error, as feed reads do.
@@ -328,6 +375,7 @@ impl CollaborationRuntime {
                     body: page.body,
                     metadata: page.metadata,
                     subject_binding: Some(binding),
+                    check_context: page_check_context,
                     entries: page.entries,
                     source: page.source.clone(),
                     next_cursor: page.next_cursor.clone(),

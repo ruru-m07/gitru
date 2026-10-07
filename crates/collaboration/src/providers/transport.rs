@@ -187,7 +187,20 @@ impl GithubHttp {
         raw: &str,
         expected_path: &str,
     ) -> Result<(Url, u64), ProviderError> {
+        self.check_collection_url_with_page_size(raw, expected_path, 50, &[])
+    }
+
+    fn check_collection_url_with_page_size(
+        &self,
+        raw: &str,
+        expected_path: &str,
+        expected_page_size: u64,
+        fixed_query: &[(&str, &str)],
+    ) -> Result<(Url, u64), ProviderError> {
         let invalid = || ProviderError::new(ProviderErrorKind::InvalidResponse);
+        if expected_page_size == 0 || expected_page_size > 100 {
+            return Err(invalid());
+        }
         if raw.len() > MAX_COLLECTION_URL
             || raw.chars().any(|c| c.is_control() || c.is_whitespace())
             || raw.contains(['%', '\\', '#'])
@@ -211,9 +224,22 @@ impl GithubHttp {
         }
         let mut per_page = false;
         let mut page = None;
+        let expected_page_size = expected_page_size.to_string();
+        let mut fixed = std::collections::BTreeMap::new();
+        for (key, value) in fixed_query {
+            if matches!(*key, "per_page" | "page")
+                || key.is_empty()
+                || value.is_empty()
+                || fixed
+                    .insert((*key).to_owned(), (*value).to_owned())
+                    .is_some()
+            {
+                return Err(invalid());
+            }
+        }
         for (key, value) in url.query_pairs() {
             match key.as_ref() {
-                "per_page" if !per_page && value == "50" => per_page = true,
+                "per_page" if !per_page && value == expected_page_size => per_page = true,
                 "page" if page.is_none() => {
                     let number = value.parse::<u64>().map_err(|_| invalid())?;
                     if number == 0 || number.to_string() != value.as_ref() {
@@ -221,10 +247,11 @@ impl GithubHttp {
                     }
                     page = Some(number);
                 }
+                key if fixed.remove(key).as_deref() == Some(value.as_ref()) => {}
                 _ => return Err(invalid()),
             }
         }
-        if !per_page {
+        if !per_page || !fixed.is_empty() {
             return Err(invalid());
         }
         Ok((url, page.unwrap_or(1)))
@@ -235,6 +262,8 @@ impl GithubHttp {
         headers: &header::HeaderMap,
         expected_path: &str,
         current: u64,
+        expected_page_size: u64,
+        fixed_query: &[(&str, &str)],
     ) -> Result<Option<String>, ProviderError> {
         let invalid = || ProviderError::new(ProviderErrorKind::InvalidResponse);
         let mut bytes = 0usize;
@@ -259,7 +288,12 @@ impl GithubHttp {
                     .and_then(|parameter| parameter.strip_suffix('"'))
                     .filter(|relation| matches!(*relation, "next" | "prev" | "first" | "last"))
                     .ok_or_else(invalid)?;
-                let (_, page) = self.check_collection_url(raw, expected_path)?;
+                let (_, page) = self.check_collection_url_with_page_size(
+                    raw,
+                    expected_path,
+                    expected_page_size,
+                    fixed_query,
+                )?;
                 if links.insert(relation, (page, raw.to_string())).is_some() {
                     return Err(invalid());
                 }
@@ -289,7 +323,44 @@ impl GithubHttp {
         expected_path: &str,
         current: u64,
     ) -> Result<HttpPage, ProviderError> {
-        let (url, page) = self.check_collection_url(url.as_str(), expected_path)?;
+        self.get_collection_with_page_size(url, token, expected_path, current, 50)
+            .await
+    }
+
+    pub(crate) async fn get_collection_with_page_size(
+        &self,
+        url: Url,
+        token: &SecretToken,
+        expected_path: &str,
+        current: u64,
+        expected_page_size: u64,
+    ) -> Result<HttpPage, ProviderError> {
+        self.get_collection_with_fixed_query(
+            url,
+            token,
+            expected_path,
+            current,
+            expected_page_size,
+            &[],
+        )
+        .await
+    }
+
+    pub(crate) async fn get_collection_with_fixed_query(
+        &self,
+        url: Url,
+        token: &SecretToken,
+        expected_path: &str,
+        current: u64,
+        expected_page_size: u64,
+        fixed_query: &[(&str, &str)],
+    ) -> Result<HttpPage, ProviderError> {
+        let (url, page) = self.check_collection_url_with_page_size(
+            url.as_str(),
+            expected_path,
+            expected_page_size,
+            fixed_query,
+        )?;
         if current == 0 || current > 20 || page != current {
             return Err(ProviderError::new(ProviderErrorKind::InvalidResponse));
         }
@@ -355,8 +426,14 @@ impl GithubHttp {
                 return Err(fail(ProviderErrorKind::InvalidResponse));
             }
             let next_url = if status == StatusCode::OK {
-                self.collection_next(response.headers(), expected_path, current)
-                    .map_err(|error| error.with_cooldown(cooldown))?
+                self.collection_next(
+                    response.headers(),
+                    expected_path,
+                    current,
+                    expected_page_size,
+                    fixed_query,
+                )
+                .map_err(|error| error.with_cooldown(cooldown))?
             } else {
                 None
             };

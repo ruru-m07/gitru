@@ -14,6 +14,7 @@ pub(super) const MERGE_REQUEST_QUERY: &str =
 pub(super) const ISSUE_QUERY: &str =
     "state=all&scope=all&issue_type=issue&pagination=keyset&order_by=id&sort=asc&per_page=50";
 const PULL_COMMIT_PAGE_SIZE: u64 = 100;
+const CHECK_PAGE_SIZE: u64 = 100;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ItemRoute {
@@ -49,6 +50,7 @@ enum Operation {
     Feed { project: u64, route: ItemRoute },
     Detail,
     PullCommits { project: u64, iid: u64, page: u64 },
+    CommitStatuses { project: u64, page: u64 },
 }
 
 pub(super) struct GitlabHttp {
@@ -60,6 +62,7 @@ pub(super) struct Page {
     pub body: Vec<u8>,
     pub next: Option<String>,
     pub cooldown: Option<u64>,
+    pub total: Option<u64>,
 }
 
 impl GitlabHttp {
@@ -140,6 +143,24 @@ impl GitlabHttp {
             .append_pair("page", "1");
         Ok(url)
     }
+    pub(super) fn commit_statuses(&self, project: u64, head: &str) -> Result<Url, ProviderError> {
+        if project == 0 || !crate::is_canonical_commit_oid(head) {
+            return Err(invalid());
+        }
+        let mut url = self
+            .base
+            .join(&format!(
+                "projects/{project}/repository/commits/{head}/statuses"
+            ))
+            .map_err(|_| invalid())?;
+        url.query_pairs_mut()
+            .append_pair("all", "false")
+            .append_pair("order_by", "id")
+            .append_pair("sort", "asc")
+            .append_pair("per_page", &CHECK_PAGE_SIZE.to_string())
+            .append_pair("page", "1");
+        Ok(url)
+    }
     pub(super) fn pull_commit_continuation(
         &self,
         raw: &str,
@@ -154,6 +175,26 @@ impl GitlabHttp {
                 iid,
                 page: expected_page,
             })
+        {
+            return Err(invalid());
+        }
+        Ok(url)
+    }
+    pub(super) fn commit_status_continuation(
+        &self,
+        raw: &str,
+        project: u64,
+        head: &str,
+        expected_page: u64,
+    ) -> Result<Url, ProviderError> {
+        let url = self.check_resource_raw(raw)?;
+        if !crate::is_canonical_commit_oid(head)
+            || self.operation(&url)?
+                != (Operation::CommitStatuses {
+                    project,
+                    page: expected_page,
+                })
+            || url.path() != self.commit_statuses(project, head)?.path()
         {
             return Err(invalid());
         }
@@ -230,6 +271,19 @@ impl GitlabHttp {
                 project,
                 iid,
                 page: pull_commit_page(url, project, iid)?,
+            });
+        }
+        if parts.len() == 5
+            && parts.get(1) == Some(&"repository")
+            && parts.get(2) == Some(&"commits")
+            && parts.get(4) == Some(&"statuses")
+            && parts
+                .get(3)
+                .is_some_and(|head| crate::is_canonical_commit_oid(head))
+        {
+            return Ok(Operation::CommitStatuses {
+                project,
+                page: commit_status_page(url, project, parts[3])?,
             });
         }
         let route = match parts.get(1) {
@@ -315,6 +369,11 @@ impl GitlabHttp {
                     })?;
                 let status = response.status();
                 let headers = response.headers();
+                let total = if matches!(operation, Operation::CommitStatuses { .. }) {
+                    optional_number(headers, "x-total")?
+                } else {
+                    None
+                };
                 let retry = retry_after(headers);
                 let reset =
                     number(headers, "ratelimit-reset").map(|n| n.saturating_sub(now()).max(1));
@@ -414,6 +473,20 @@ impl GitlabHttp {
                                 iid,
                                 page.checked_add(1).ok_or_else(invalid)?,
                             ),
+                        Operation::CommitStatuses { project, page } => {
+                            let head = original
+                                .path()
+                                .split('/')
+                                .rev()
+                                .nth(1)
+                                .ok_or_else(invalid)?;
+                            self.commit_status_continuation(
+                                next,
+                                project,
+                                head,
+                                page.checked_add(1).ok_or_else(invalid)?,
+                            )
+                        }
                         _ => Err(invalid()),
                     }
                     .map_err(|e| with_quota(e, observed_cooldown))?;
@@ -455,6 +528,7 @@ impl GitlabHttp {
                     body,
                     next,
                     cooldown: observed_cooldown,
+                    total,
                 });
             }
             unreachable!("bounded redirect loop")
@@ -467,6 +541,39 @@ impl GitlabHttp {
             )
         })?
     }
+}
+
+fn commit_status_page(url: &Url, project: u64, head: &str) -> Result<u64, ProviderError> {
+    let mut pairs = std::collections::HashMap::new();
+    for (key, value) in url.query_pairs() {
+        if pairs.insert(key.to_string(), value.to_string()).is_some() {
+            return Err(invalid());
+        }
+    }
+    for (key, expected) in [
+        ("all", "false"),
+        ("order_by", "id"),
+        ("sort", "asc"),
+        ("per_page", "100"),
+    ] {
+        if pairs.remove(key).as_deref() != Some(expected) {
+            return Err(invalid());
+        }
+    }
+    let page = pairs
+        .remove("page")
+        .as_deref()
+        .and_then(positive_id)
+        .ok_or_else(invalid)?;
+    if pairs
+        .remove("id")
+        .is_some_and(|value| value != project.to_string())
+        || pairs.remove("sha").is_some_and(|value| value != head)
+        || !pairs.is_empty()
+    {
+        return Err(invalid());
+    }
+    Ok(page)
 }
 
 fn pull_commit_page(url: &Url, project: u64, iid: u64) -> Result<u64, ProviderError> {
@@ -617,6 +724,11 @@ fn now() -> u64 {
 }
 fn number(headers: &header::HeaderMap, key: &str) -> Option<u64> {
     unsigned(headers.get(key)?.to_str().ok()?)
+}
+fn optional_number(headers: &header::HeaderMap, key: &str) -> Result<Option<u64>, ProviderError> {
+    text(headers, key)?
+        .map(|value| unsigned(&value).ok_or_else(invalid))
+        .transpose()
 }
 fn unsigned(raw: &str) -> Option<u64> {
     if raw.is_empty() || raw.len() > MAX_HEADER || !raw.bytes().all(|b| b.is_ascii_digit()) {

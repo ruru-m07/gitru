@@ -398,6 +398,7 @@ async fn body_commit(store: &Store, actor: &str, id: &str) -> DetailCommit {
         },
         metadata: None,
         subject_binding: None,
+        check_context: None,
         entries: vec![],
         source: DetailSource {
             source: "fixture/pull-details".into(),

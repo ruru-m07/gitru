@@ -6,6 +6,8 @@ use collaboration::{
 };
 use std::sync::Arc;
 
+const CHECK_HEAD: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
 fn account(id: &str) -> RemoteAccount {
     RemoteAccount {
         id: id.into(),
@@ -491,6 +493,7 @@ async fn detail_page(
             reconciliation: DetailReconciliation::full_history(),
             metadata: None,
             subject_binding: None,
+            check_context: None,
             account_id: "a".into(),
             authorization_epoch: "1".into(),
             authorization_view: lease.authorization_view,
@@ -519,6 +522,197 @@ async fn detail_page(
             etag: None,
             not_modified: false,
             whole_scope: true,
+            complete,
+            freshness_seconds: 60,
+        })
+        .await
+        .unwrap();
+}
+
+async fn save_check_body_context(store: &Store) -> CheckContext {
+    let mut pull = store.item("a", "pull").await.unwrap().item.unwrap();
+    pull.head_oid = Some(CHECK_HEAD.into());
+    page(store, "repo:repo:pull_request", vec![], vec![pull.clone()]).await;
+    let lease = store
+        .begin_detail("a", "1", "pull", DetailFacet::Body)
+        .await
+        .unwrap();
+    let source = DetailSource {
+        source: "fixture.body.v1".into(),
+        adapter_version: 1,
+        field_mask: vec![DetailField::Body],
+        provider_updated_at: None,
+        observed_at: "2026-10-03T12:00:00Z".into(),
+    };
+    store
+        .apply_detail(DetailCommit {
+            reconciliation: DetailReconciliation::full_history(),
+            metadata: Some(ResourceMetadataObservation {
+                kind: RemoteItemKind::PullRequest,
+                values: ResourceMetadataValues {
+                    base: Some(DetailBranch {
+                        name: "main".into(),
+                        oid: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into(),
+                        repository: Some(DetailRepositoryRef {
+                            provider_id: "9007199254740993".into(),
+                            full_name: "owner/project".into(),
+                            web_url: None,
+                        }),
+                    }),
+                    head: Some(DetailBranch {
+                        name: "feature".into(),
+                        oid: CHECK_HEAD.into(),
+                        repository: Some(DetailRepositoryRef {
+                            provider_id: "9007199254740993".into(),
+                            full_name: "owner/project".into(),
+                            web_url: None,
+                        }),
+                    }),
+                    ..Default::default()
+                },
+                fields: vec![
+                    MetadataObservedField {
+                        field: MetadataField::Base,
+                        state: DetailValueState::Known,
+                    },
+                    MetadataObservedField {
+                        field: MetadataField::Head,
+                        state: DetailValueState::Known,
+                    },
+                ],
+                source: MetadataSource {
+                    source: source.source.clone(),
+                    adapter_version: source.adapter_version,
+                    provider_updated_at: None,
+                    observed_at: source.observed_at.clone(),
+                },
+            }),
+            subject_binding: Some(DetailSubjectBinding {
+                repository_id: "repo".into(),
+                repository_provider_id: "9007199254740993".into(),
+                provider_id: pull.provider_id,
+                number: pull.number,
+                kind: pull.kind,
+                head_oid: pull.head_oid,
+            }),
+            check_context: None,
+            account_id: "a".into(),
+            authorization_epoch: "1".into(),
+            authorization_view: lease.authorization_view,
+            instance_id: lease.instance_id,
+            subject_id: "pull".into(),
+            facet: DetailFacet::Body,
+            run_id: lease.run_id,
+            request_cursor: lease.next_cursor,
+            body: DetailValue {
+                state: DetailValueState::Known,
+                text: Some("saved body".into()),
+            },
+            entries: vec![],
+            source,
+            next_cursor: None,
+            etag: None,
+            not_modified: false,
+            whole_scope: true,
+            complete: true,
+            freshness_seconds: 60,
+        })
+        .await
+        .unwrap();
+    let body = store
+        .detail(DetailQuery {
+            account_id: "a".into(),
+            subject_id: "pull".into(),
+            facet: DetailFacet::Body,
+            cursor: None,
+            limit: 1,
+        })
+        .await
+        .unwrap();
+    CheckContext {
+        head_oid: CHECK_HEAD.into(),
+        source_repository_provider_id: "9007199254740993".into(),
+        metadata_facet_revision: body.evidence.facet_revision.unwrap(),
+    }
+}
+
+async fn save_checks_page(
+    store: &Store,
+    context: &CheckContext,
+    include_entry: bool,
+    complete: bool,
+) {
+    let lease = store
+        .begin_detail("a", "1", "pull", DetailFacet::Checks)
+        .await
+        .unwrap();
+    store
+        .apply_detail(DetailCommit {
+            reconciliation: DetailReconciliation {
+                enumeration: DetailEnumeration::FullEnumeration,
+                head_scope: DetailHeadScope::CurrentHead,
+            },
+            metadata: None,
+            subject_binding: Some(DetailSubjectBinding {
+                repository_id: "repo".into(),
+                repository_provider_id: "9007199254740993".into(),
+                provider_id: "9007199254740995".into(),
+                number: Some("67".into()),
+                kind: RemoteItemKind::PullRequest,
+                head_oid: Some(CHECK_HEAD.into()),
+            }),
+            check_context: Some(context.clone()),
+            account_id: "a".into(),
+            authorization_epoch: "1".into(),
+            authorization_view: lease.authorization_view,
+            instance_id: lease.instance_id,
+            subject_id: "pull".into(),
+            facet: DetailFacet::Checks,
+            run_id: lease.run_id,
+            request_cursor: lease.next_cursor,
+            body: DetailValue::default(),
+            entries: if include_entry {
+                vec![DetailEntry {
+                    id: "github-check-run:1".into(),
+                    provider_id: "check-run:1".into(),
+                    author: None,
+                    title: None,
+                    state: None,
+                    body: DetailValue::default(),
+                    observed_body_state: DetailValueState::NotLoaded,
+                    updated_at: None,
+                    head_oid: Some(CHECK_HEAD.into()),
+                    native: Some(NativeDetailPayload::CheckV1(CheckV1 {
+                        kind: CheckKind::CheckRun,
+                        name: "build".into(),
+                        state: CheckStateV1::CheckRun {
+                            status: "completed".into(),
+                            conclusion: Some("success".into()),
+                        },
+                        description: DetailValue::default(),
+                        producer: Some("fixture-ci".into()),
+                        started_at: None,
+                        completed_at: None,
+                        updated_at: None,
+                        allow_failure: None,
+                    })),
+                    field_mask: vec![DetailField::Check, DetailField::HeadOid],
+                    field_validations: vec![],
+                }]
+            } else {
+                vec![]
+            },
+            source: DetailSource {
+                source: "fixture.checks.v1".into(),
+                adapter_version: 1,
+                field_mask: vec![DetailField::Check, DetailField::HeadOid],
+                provider_updated_at: None,
+                observed_at: "2026-10-03T12:00:00Z".into(),
+            },
+            next_cursor: (!complete).then(|| "page-2".into()),
+            etag: None,
+            not_modified: false,
+            whole_scope: false,
             complete,
             freshness_seconds: 60,
         })
@@ -604,6 +798,7 @@ async fn detail_evidence_distinguishes_authoritative_empty_omission_and_oversize
             reconciliation: DetailReconciliation::full_history(),
             metadata: None,
             subject_binding: None,
+            check_context: None,
             account_id: "a".into(),
             authorization_epoch: "1".into(),
             authorization_view: lease.authorization_view,
@@ -638,6 +833,161 @@ async fn detail_evidence_distinguishes_authoritative_empty_omission_and_oversize
         facet(&empty, ResourceFacet::Reviews).observation,
         CapabilityObservation::Empty
     );
+}
+
+#[tokio::test]
+async fn checks_capability_reports_empty_partial_complete_sync_and_access_evidence() {
+    let (_dir, store) = fixture().await;
+    let missing = store
+        .contextual_capabilities(request("a", resource_target()), detail_profile)
+        .await
+        .unwrap();
+    assert_eq!(
+        facet(&missing, ResourceFacet::Checks).observation,
+        CapabilityObservation::NotLoaded
+    );
+
+    let context = save_check_body_context(&store).await;
+    save_checks_page(&store, &context, true, false).await;
+    let partial = store
+        .contextual_capabilities(request("a", resource_target()), detail_profile)
+        .await
+        .unwrap();
+    assert_eq!(
+        facet(&partial, ResourceFacet::Checks).observation,
+        CapabilityObservation::Partial
+    );
+
+    save_checks_page(&store, &context, false, true).await;
+    let complete = store
+        .contextual_capabilities(request("a", resource_target()), detail_profile)
+        .await
+        .unwrap();
+    let checks = facet(&complete, ResourceFacet::Checks);
+    assert_eq!(checks.saved_read.state, CapabilityState::Supported);
+    assert_eq!(checks.observation, CapabilityObservation::Complete);
+
+    store
+        .set_sync_status(
+            "a",
+            "1",
+            "detail:pull:checks",
+            SyncStatus {
+                state: SyncState::Syncing,
+                ..SyncStatus::default()
+            },
+        )
+        .await
+        .unwrap();
+    let syncing = store
+        .contextual_capabilities(request("a", resource_target()), detail_profile)
+        .await
+        .unwrap();
+    let checks = facet(&syncing, ResourceFacet::Checks);
+    assert_eq!(checks.saved_read.state, CapabilityState::Supported);
+    assert_eq!(checks.observation, CapabilityObservation::Complete);
+    assert_eq!(checks.sync.state, SyncState::Syncing);
+
+    store
+        .set_sync_status(
+            "a",
+            "1",
+            "detail:pull:checks",
+            SyncStatus {
+                state: SyncState::Offline,
+                error: Some(CollaborationError::new(
+                    ErrorCode::Network,
+                    "fixture offline",
+                )),
+                next_retry_at: Some("2099-10-03T12:00:00Z".into()),
+                ..SyncStatus::default()
+            },
+        )
+        .await
+        .unwrap();
+    let offline = store
+        .contextual_capabilities(request("a", resource_target()), detail_profile)
+        .await
+        .unwrap();
+    let checks = facet(&offline, ResourceFacet::Checks);
+    assert_eq!(checks.saved_read.state, CapabilityState::Supported);
+    assert_eq!(checks.observation, CapabilityObservation::Complete);
+    assert_eq!(checks.sync.state, SyncState::Offline);
+    assert_eq!(checks.synchronize.state, CapabilityState::Unavailable);
+    assert_eq!(
+        checks.synchronize.reason,
+        Some(ContextCapabilityReason::TemporarilyUnavailable)
+    );
+
+    store
+        .set_sync_status(
+            "a",
+            "1",
+            "detail:pull:checks",
+            SyncStatus {
+                state: SyncState::RateLimited,
+                error: Some(CollaborationError::new(
+                    ErrorCode::RateLimited,
+                    "fixture rate limit",
+                )),
+                next_retry_at: Some("2099-10-03T12:00:00Z".into()),
+                ..SyncStatus::default()
+            },
+        )
+        .await
+        .unwrap();
+    let limited = store
+        .contextual_capabilities(request("a", resource_target()), detail_profile)
+        .await
+        .unwrap();
+    let checks = facet(&limited, ResourceFacet::Checks);
+    assert_eq!(checks.saved_read.state, CapabilityState::Supported);
+    assert_eq!(checks.observation, CapabilityObservation::Complete);
+    assert_eq!(checks.synchronize.state, CapabilityState::Unavailable);
+    assert_eq!(
+        checks.synchronize.reason,
+        Some(ContextCapabilityReason::TemporarilyUnavailable)
+    );
+
+    store
+        .set_sync_status(
+            "a",
+            "1",
+            "detail:pull:checks",
+            SyncStatus {
+                state: SyncState::Error,
+                error: Some(CollaborationError::new(
+                    ErrorCode::PermissionDenied,
+                    "fixture denied",
+                )),
+                ..SyncStatus::default()
+            },
+        )
+        .await
+        .unwrap();
+    let denied = store
+        .contextual_capabilities(request("a", resource_target()), detail_profile)
+        .await
+        .unwrap();
+    let checks = facet(&denied, ResourceFacet::Checks);
+    assert_eq!(checks.saved_read.state, CapabilityState::Unavailable);
+    assert_eq!(
+        checks.saved_read.reason,
+        Some(ContextCapabilityReason::PermissionDenied)
+    );
+    assert_eq!(checks.observation, CapabilityObservation::Unknown);
+    assert!(checks.can_recheck_access);
+
+    let (_empty_dir, empty_store) = fixture().await;
+    let empty_context = save_check_body_context(&empty_store).await;
+    save_checks_page(&empty_store, &empty_context, false, true).await;
+    let empty = empty_store
+        .contextual_capabilities(request("a", resource_target()), detail_profile)
+        .await
+        .unwrap();
+    let checks = facet(&empty, ResourceFacet::Checks);
+    assert_eq!(checks.saved_read.state, CapabilityState::Supported);
+    assert_eq!(checks.observation, CapabilityObservation::Empty);
 }
 
 #[tokio::test]

@@ -761,7 +761,9 @@ describe("ordinary collaboration workspace across provider policies", () => {
       await screen.findByText("No reviews were returned by the provider."),
     ).toBeVisible();
     expect(
-      await screen.findByText("No checks were returned by the provider."),
+      await screen.findByText(
+        "The provider returned no checks for this exact head.",
+      ),
     ).toBeVisible();
     expect(detail).toHaveBeenCalledTimes(3);
     expect(

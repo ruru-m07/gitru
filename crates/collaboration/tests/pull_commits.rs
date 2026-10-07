@@ -162,6 +162,7 @@ async fn hydrate_range(
                     observed_at: source.observed_at.clone(),
                 },
             }),
+            check_context: None,
             subject_binding: Some(DetailSubjectBinding {
                 repository_id: "repo".into(),
                 repository_provider_id: "target-1".into(),
@@ -235,6 +236,7 @@ async fn omit_range_metadata(store: &Store, account: &RemoteAccount) {
                     observed_at: source.observed_at.clone(),
                 },
             }),
+            check_context: None,
             subject_binding: Some(DetailSubjectBinding {
                 repository_id: "repo".into(),
                 repository_provider_id: "target-1".into(),

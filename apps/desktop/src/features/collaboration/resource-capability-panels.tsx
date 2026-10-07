@@ -12,6 +12,7 @@ import { Badge } from "@gitru/ui/components/badge";
 import { Button } from "@gitru/ui/components/button";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { CachedChecksPanel } from "./cached-checks-panel";
 import {
   CapabilityBoundary,
   ReadOnlyCapability,
@@ -45,6 +46,7 @@ export function ResourceCapabilityPanels({
   snapshot,
   instanceId,
   repositoryId,
+  bodyContext,
 }: {
   account: RemoteAccount;
   subjectId: string;
@@ -52,6 +54,7 @@ export function ResourceCapabilityPanels({
   snapshot: ContextualCapabilitySnapshot | undefined;
   instanceId: string;
   repositoryId: string | null;
+  bodyContext: { headOid: string; facetRevision: string } | null;
 }) {
   if (kind === "notification") return null;
   const facets: Array<{ detail: DetailFacet; capability: ResourceFacet }> = [
@@ -60,10 +63,7 @@ export function ResourceCapabilityPanels({
       capability: kind === "pull_request" ? "pull_details" : "issue_details",
     },
     ...(kind === "pull_request"
-      ? [
-          { detail: "reviews" as const, capability: "reviews" as const },
-          { detail: "checks" as const, capability: "checks" as const },
-        ]
+      ? [{ detail: "reviews" as const, capability: "reviews" as const }]
       : []),
   ];
   return (
@@ -78,6 +78,23 @@ export function ResourceCapabilityPanels({
           snapshot={snapshot}
         />
       ))}
+      {kind === "pull_request" ? (
+        <CachedChecksPanel
+          key={JSON.stringify([
+            "checks",
+            account.id,
+            account.actor_id,
+            account.authorization_epoch,
+            subjectId,
+            bodyContext?.facetRevision ?? null,
+            bodyContext?.headOid ?? null,
+          ])}
+          account={account}
+          subjectId={subjectId}
+          policy={facetPolicy(snapshot, "checks")}
+          bodyContext={bodyContext}
+        />
+      ) : null}
       <ConversationCommentsPanel
         key={JSON.stringify([
           "comments",

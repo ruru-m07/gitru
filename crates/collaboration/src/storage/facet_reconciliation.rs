@@ -10,6 +10,8 @@ pub(super) struct TraversalEvidence {
     version: u32,
     pub reconciliation: DetailReconciliation,
     pub head_oid: Option<String>,
+    #[serde(default)]
+    pub check_context: Option<crate::CheckContext>,
     pub starts_at_beginning: bool,
 }
 impl TraversalEvidence {
@@ -20,6 +22,10 @@ impl TraversalEvidence {
             })
             && (self.reconciliation.head_scope != DetailHeadScope::CurrentHead
                 || self.head_oid.is_some())
+            && self
+                .check_context
+                .as_ref()
+                .is_none_or(crate::CheckContext::is_valid)
     }
 }
 
@@ -81,20 +87,42 @@ pub(super) fn source_for(page: &DetailCommit, old: Option<&StoredSource>) -> Res
     } else {
         None
     };
+    let check_context = if page.facet == DetailFacet::Checks {
+        let context = page
+            .check_context
+            .clone()
+            .filter(crate::CheckContext::is_valid)
+            .ok_or_else(invalid_detail)?;
+        if Some(&context.head_oid) != head_oid.as_ref() {
+            return Err(invalid_detail());
+        }
+        Some(context)
+    } else {
+        if page.check_context.is_some() {
+            return Err(invalid_detail());
+        }
+        None
+    };
     let previous = old.and_then(StoredSource::traversal);
     if page.request_cursor.is_some()
         && (old.is_none_or(|old| {
             old.source.source != page.source.source
                 || old.source.adapter_version != page.source.adapter_version
                 || old.source.field_mask != page.source.field_mask
-        }) || previous
-            .is_none_or(|old| old.reconciliation != reconciliation || old.head_oid != head_oid))
+        }) || previous.is_none_or(|old| {
+            old.reconciliation != reconciliation
+                || old.head_oid != head_oid
+                || old.check_context != check_context
+        }))
     {
         return Err(drift());
     }
     if page.not_modified
-        && previous
-            .is_none_or(|old| old.reconciliation != reconciliation || old.head_oid != head_oid)
+        && previous.is_none_or(|old| {
+            old.reconciliation != reconciliation
+                || old.head_oid != head_oid
+                || old.check_context != check_context
+        })
     {
         return Err(invalid_detail());
     }
@@ -104,6 +132,7 @@ pub(super) fn source_for(page: &DetailCommit, old: Option<&StoredSource>) -> Res
             version: VERSION,
             reconciliation,
             head_oid,
+            check_context,
             starts_at_beginning: page.request_cursor.is_none()
                 || previous.is_some_and(|old| old.starts_at_beginning),
         }),

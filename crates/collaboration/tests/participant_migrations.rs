@@ -188,8 +188,22 @@ async fn assert_cold_saved_reads(store: &Store) {
             assert_eq!(saved.revision, "9004");
             assert_eq!(saved.authorization_view, "11");
             assert_eq!(saved.evidence.authorization_epoch, epoch);
-            assert_eq!(saved.evidence.availability, DetailAvailability::Ready);
-            assert_eq!(saved.evidence.coverage.state, CoverageState::Complete);
+            assert_eq!(
+                saved.evidence.availability,
+                if facet == DetailFacet::Checks {
+                    DetailAvailability::Partial
+                } else {
+                    DetailAvailability::Ready
+                }
+            );
+            assert_eq!(
+                saved.evidence.coverage.state,
+                if facet == DetailFacet::Checks {
+                    CoverageState::Partial
+                } else {
+                    CoverageState::Complete
+                }
+            );
             assert_eq!(saved.evidence.sync.state, SyncState::Offline);
             assert!(saved.next_cursor.is_none());
             if facet == DetailFacet::Body {

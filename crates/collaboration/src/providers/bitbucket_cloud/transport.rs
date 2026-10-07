@@ -16,6 +16,8 @@ pub(super) enum Route {
     PullRequest(String, u64),
     Tasks(String, u64),
     Commits(String, u64),
+    Statuses(String, String),
+    Commit(String, String),
 }
 
 pub(super) struct BitbucketHttp {
@@ -64,7 +66,9 @@ impl BitbucketHttp {
             Route::PullRequests(repository)
             | Route::PullRequest(repository, _)
             | Route::Tasks(repository, _)
-            | Route::Commits(repository, _) => {
+            | Route::Commits(repository, _)
+            | Route::Statuses(repository, _)
+            | Route::Commit(repository, _) => {
                 if super::canonical_uuid(repository)? != *repository {
                     return Err(invalid());
                 }
@@ -76,6 +80,12 @@ impl BitbucketHttp {
                     }
                     Route::Commits(_, id) if *id > 0 && *id <= i64::MAX as u64 => {
                         format!("{path}/{id}/commits?pagelen=50")
+                    }
+                    Route::Statuses(_, head) if crate::is_canonical_commit_oid(head) => format!(
+                        "repositories/%7B%7D/%7B{repository}%7D/commit/{head}/statuses?pagelen=100"
+                    ),
+                    Route::Commit(_, head) if crate::is_canonical_commit_oid(head) => {
+                        format!("repositories/%7B%7D/%7B{repository}%7D/commit/{head}")
                     }
                     Route::PullRequests(_) => format!(
                         "{path}?state=OPEN&state=MERGED&state=DECLINED&state=SUPERSEDED&pagelen=50&sort=id"
@@ -89,10 +99,12 @@ impl BitbucketHttp {
 
     pub(super) fn continuation(&self, raw: &str, route: &Route) -> Result<Url, ProviderError> {
         let url = self.validate(raw, route)?;
-        if matches!(route, Route::User | Route::PullRequest(..))
-            || !url
-                .query_pairs()
-                .any(|(key, _)| matches!(key.as_ref(), "page" | "cursor" | "after" | "before"))
+        if matches!(
+            route,
+            Route::User | Route::PullRequest(..) | Route::Commit(..)
+        ) || !url
+            .query_pairs()
+            .any(|(key, _)| matches!(key.as_ref(), "page" | "cursor" | "after" | "before"))
         {
             return Err(invalid());
         }
@@ -163,11 +175,66 @@ impl BitbucketHttp {
         if pairs
             .keys()
             .any(|key| !matches!(key.as_str(), "page" | "cursor" | "after" | "before"))
-            || (matches!(route, Route::User | Route::PullRequest(..)) && !pairs.is_empty())
+            || (matches!(
+                route,
+                Route::User | Route::PullRequest(..) | Route::Commit(..)
+            ) && !pairs.is_empty())
         {
             return Err(invalid());
         }
         Ok(url)
+    }
+
+    pub(super) fn commit_link(
+        &self,
+        raw: &str,
+        repository: &str,
+        head: &str,
+    ) -> Result<(), ProviderError> {
+        if self
+            .validate(raw, &Route::Commit(repository.into(), head.into()))
+            .is_ok()
+        {
+            return Ok(());
+        }
+        // Bitbucket canonicalizes links in representations back to the
+        // workspace/repository slug even when the authenticated request used
+        // the immutable repository UUID. We never follow or expose this URL;
+        // accept only the fixed API origin and exact captured commit suffix.
+        if raw.len() > MAX_URL
+            || raw.trim() != raw
+            || raw.chars().any(|c| c.is_control() || c.is_whitespace())
+            || raw.contains(['\\', '#'])
+        {
+            return Err(invalid());
+        }
+        let url = Url::parse(raw).map_err(|_| invalid())?;
+        if url.origin() != self.base.origin()
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.query().is_some()
+            || url.fragment().is_some()
+        {
+            return Err(invalid());
+        }
+        let base = self.base.path().trim_end_matches('/');
+        let prefix = format!("{base}/repositories/");
+        let suffix = url.path().strip_prefix(&prefix).ok_or_else(invalid)?;
+        let segments: Vec<_> = suffix.split('/').collect();
+        if segments.len() != 4
+            || segments[0].is_empty()
+            || segments[1].is_empty()
+            || segments[2] != "commit"
+            || segments[3] != head
+            || segments[..3].iter().any(|segment| {
+                matches!(*segment, "." | "..")
+                    || segment.to_ascii_lowercase().contains("%2f")
+                    || segment.to_ascii_lowercase().contains("%2e")
+            })
+        {
+            return Err(invalid());
+        }
+        Ok(())
     }
 
     pub(super) fn fingerprint(&self, raw: &str, route: &Route) -> Result<String, ProviderError> {

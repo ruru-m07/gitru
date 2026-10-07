@@ -55,7 +55,9 @@ fn singleton(repository: &str, values: Vec<Value>) -> Value {
 fn native(entry: &DetailEntry) -> &crate::ParticipantV1 {
     match entry.native.as_ref().unwrap() {
         NativeDetailPayload::ParticipantV1(value) => value,
-        NativeDetailPayload::TaskV1(_) => panic!("Expected the typed participant payload"),
+        NativeDetailPayload::TaskV1(_) | NativeDetailPayload::CheckV1(_) => {
+            panic!("Expected the typed participant payload")
+        }
     }
 }
 

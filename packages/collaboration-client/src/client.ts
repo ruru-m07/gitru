@@ -694,16 +694,18 @@ export class CollaborationClient {
           // Authored writes have their own generation/authorization fences.
           if (change.scope !== "drafts")
             await queryClient.cancelQueries(affectedQueries);
-          if (pullCommitContextChanged(change.scope)) {
+          if (currentHeadContextChanged(change.scope)) {
             // Repository membership and Body observations can replace or omit
-            // the exact base/head/source range. Reset matching commit
+            // the exact base/head/source range. Reset matching commit and check
             // projections before their active refetch so React cannot keep
-            // rendering the superseded generation.
+            // rendering a superseded generation or prior-head green state.
+            // resetQueries clears cached data synchronously, then returns the
+            // active refetch. Do not hold the revision bridge on provider-local
+            // IPC; later change batches must remain able to fence that refetch.
             void queryClient.resetQueries({
               queryKey: collaborationKeys.account(change.account_id),
               predicate: (query: { queryKey: readonly unknown[] }) =>
-                query.queryKey[4] === "pull-commits" &&
-                projectionAffected(query.queryKey, change.scope),
+                currentHeadProjectionAffected(query.queryKey, change.scope),
             });
           }
           void queryClient.invalidateQueries(affectedQueries);
@@ -868,11 +870,23 @@ function projectionAffected(key: readonly unknown[], scope: string) {
   return scope === `repo:${query.repository_id}:${query.kind}`;
 }
 
-function pullCommitContextChanged(scope: string) {
+function currentHeadContextChanged(scope: string) {
   return (
     scope === "repositories" ||
     scope.startsWith("repo:") ||
     (scope.startsWith("detail:") && scope.endsWith(":body"))
+  );
+}
+
+function currentHeadProjectionAffected(key: readonly unknown[], scope: string) {
+  if (key[4] === "pull-commits") return projectionAffected(key, scope);
+  if (key[4] !== "detail") return false;
+  const query = key[5] as DetailQuery;
+  return (
+    query.facet === "checks" &&
+    (scope === "repositories" ||
+      scope.startsWith("repo:") ||
+      scope === `detail:${query.subject_id}:body`)
   );
 }
 

@@ -3437,3 +3437,29 @@ processes ignored. No schema migration, provider request, credential access,
 background retry loop, Gitru cloud dependency or production telemetry is added.
 Live providers, personal credentials, packaged desktop execution, other
 platforms and remote CI remain separate gates.
+### RURU-118 cached current-head checks locally qualified — 8 October 2026
+
+Signed source `f2c6f2e769c70e83531f047e8ef718508489bb52` is stacked on exact
+signed RURU-137 evidence head `0da82cc7e5a3543512be683e68ac074f8d9689cd`;
+the frozen pre-code contract is `613409bc99705b88574f45e7a660c28c3e4842ee`.
+The native `Checks` facet keeps check-run conclusions separate from commit-status
+states and binds every traversal to the authorized Body head, source repository
+and metadata revision before HTTP and publication. GitHub, GitLab and Bitbucket
+Cloud adapters use exact-head routes with explicit completeness, cap, permission
+and quota evidence. Prior-context generations remain retained but stale and
+non-authoritative. No SQLite migration or provider HTTP in TypeScript was added.
+
+The dedicated desktop panel reads only generated local IPC, scans every saved
+local page for its aggregate, renders the first 50 rows, and never treats empty,
+partial, pending, unknown, syncing, denied, capped, stale or foreign-head evidence
+as an authoritative pass. Cache reopen, same-head Body/source replacement,
+changed-head pre-dispatch fences, coalescing, complete-empty, offline, permission
+and rate-limit controls pass. Two independent audits report no remaining blocker.
+
+Final serialized `make verify` passes 681 frontend/SDK/UI tests with one platform
+skip, lint, desktop/E2E types, production build, Rust formatting, warning-denied
+workspace Clippy and every default Rust suite. Normal type generation emits 123
+commands; focused client, desktop and GitHub-check suites pass 156/156, 17/17 and
+11/11. This is local fixture/macOS source evidence. No review PR, remote matrix,
+packaged restart run, live private provider/PAT/keyring, Gitru cloud dependency,
+other-platform execution, required-check policy or merge result is claimed.

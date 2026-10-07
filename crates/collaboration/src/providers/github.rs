@@ -6,6 +6,7 @@ use super::{
     *,
 };
 use serde::Deserialize;
+mod checks;
 mod comments;
 mod commits;
 mod issue_details;
@@ -72,7 +73,7 @@ impl CollaborationProvider for GithubProvider {
                 ResourceFacet::PullDetails | ResourceFacet::IssueDetails
             ) || matches!(
                 facet.facet,
-                ResourceFacet::Comments | ResourceFacet::PullCommits
+                ResourceFacet::Comments | ResourceFacet::PullCommits | ResourceFacet::Checks
             ) && account.provider == ProviderKind::Github
                 && account.host == "github.com"
             {
@@ -112,6 +113,14 @@ impl CollaborationProvider for GithubProvider {
             }
             RemoteItemKind::Notification => Err(ProviderError::new(ProviderErrorKind::Unsupported)),
         }
+    }
+
+    async fn fetch_checks(
+        &self,
+        token: &SecretToken,
+        request: CheckRequest,
+    ) -> Result<DetailPage, ProviderError> {
+        self.request_checks(token, request).await
     }
 
     async fn fetch_pull_commits(
@@ -369,6 +378,8 @@ impl CollaborationProvider for GithubProvider {
     }
 }
 
+#[cfg(test)]
+mod checks_tests;
 #[cfg(test)]
 mod comments_tests;
 #[cfg(test)]

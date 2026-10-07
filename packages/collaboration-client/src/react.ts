@@ -301,20 +301,41 @@ export function resourceQueryOptions(
   });
 }
 
+/**
+ * Cache-only query identity/policy for a local projection assembled from one
+ * or more detail pages. Callers request hydration separately.
+ */
+export function detailProjectionQueryOptions<TData>(
+  account: RemoteAccount,
+  query: Omit<DetailQuery, "account_id">,
+  load: (signal: AbortSignal) => Promise<TData>,
+  context: readonly unknown[] = [],
+) {
+  const key = collaborationKeys.detail(account, {
+    ...query,
+    account_id: account.id,
+  });
+  return queryOptions({
+    ...localQueryPolicy,
+    // Optional trusted local context partitions retained query data without
+    // changing the native DetailQuery or the bridge's fixed key positions.
+    queryKey: [...key, ...context] as const,
+    queryFn: ({ signal }) => load(signal),
+  });
+}
+
 /** Cache-only; callers request hydration separately when the view needs it. */
 export function detailQueryOptions(
   account: RemoteAccount,
   query: Omit<DetailQuery, "account_id">,
+  context: readonly unknown[] = [],
 ) {
-  return queryOptions({
-    ...localQueryPolicy,
-    queryKey: collaborationKeys.detail(account, {
-      ...query,
-      account_id: account.id,
-    }),
-    queryFn: ({ signal }) =>
-      collaboration.forAccount(account).detail(query, signal),
-  });
+  return detailProjectionQueryOptions(
+    account,
+    query,
+    (signal) => collaboration.forAccount(account).detail(query, signal),
+    context,
+  );
 }
 
 /** Local read only. Visible demand and manual hydration stay separate. */
