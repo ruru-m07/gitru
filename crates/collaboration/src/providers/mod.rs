@@ -19,7 +19,7 @@ pub use transport::{ProviderError, ProviderErrorKind};
 
 use crate::{
     CollaborationError, ErrorCode, credentials::SecretToken, detail::*, domain::*, pull_commits::*,
-    pull_files::*,
+    pull_files::*, reviews::*,
 };
 use async_trait::async_trait;
 
@@ -193,6 +193,17 @@ pub trait CollaborationProvider: Send + Sync + 'static {
         request: CheckRequest,
     ) -> Result<DetailPage, ProviderError> {
         self.fetch_detail(token, request.detail).await
+    }
+    async fn fetch_reviews(
+        &self,
+        _token: &SecretToken,
+        _request: ReviewRequest,
+    ) -> Result<DetailPage, ProviderError> {
+        Err(ProviderError {
+            kind: ProviderErrorKind::Unsupported,
+            retry_after_seconds: None,
+            account_cooldown_seconds: None,
+        })
     }
     async fn fetch_pull_commits(
         &self,

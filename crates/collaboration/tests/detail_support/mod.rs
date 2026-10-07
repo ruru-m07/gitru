@@ -127,6 +127,7 @@ pub fn from_lease(account: &RemoteAccount, facet: DetailFacet, lease: DetailLeas
         metadata: None,
         subject_binding: None,
         check_context: None,
+        review_context: None,
         account_id: account.id.clone(),
         authorization_epoch: account.authorization_epoch.clone(),
         authorization_view: lease.authorization_view,

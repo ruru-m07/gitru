@@ -186,11 +186,11 @@ export const KeySchema = "key";
     const generated = await import("@gitru/commands");
     expect(
       Object.keys(generated).filter((name) => name.endsWith("Schema")),
-    ).toHaveLength(418);
+    ).toHaveLength(428);
     expect(
       generated.TaskV1Schema.shape.content.parse({ state: "known", text: "" }),
     ).toEqual({ state: "known", text: "" });
-    expect(generated.NativeDetailPayloadSchema.options).toHaveLength(3);
+    expect(generated.NativeDetailPayloadSchema.options).toHaveLength(5);
   });
 
   it("parses the nullable pull-commit cache and local-navigation wire contract", async () => {

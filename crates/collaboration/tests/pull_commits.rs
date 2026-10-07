@@ -163,6 +163,7 @@ async fn hydrate_range(
                 },
             }),
             check_context: None,
+            review_context: None,
             subject_binding: Some(DetailSubjectBinding {
                 repository_id: "repo".into(),
                 repository_provider_id: "target-1".into(),
@@ -237,6 +238,7 @@ async fn omit_range_metadata(store: &Store, account: &RemoteAccount) {
                 },
             }),
             check_context: None,
+            review_context: None,
             subject_binding: Some(DetailSubjectBinding {
                 repository_id: "repo".into(),
                 repository_provider_id: "target-1".into(),

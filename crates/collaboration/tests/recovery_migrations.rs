@@ -90,7 +90,7 @@ fn accepted_historical_sql_and_checksums_are_frozen() {
 #[tokio::test]
 async fn every_recognized_historical_schema_restores_without_modifying_the_selected_file() {
     let dir = tempfile::tempdir().unwrap();
-    for version in 1..=16 {
+    for version in 1..=18 {
         let target = dir.path().join(format!("target-{version}.db"));
         let source = dir.path().join(format!("v{version}.db"));
         let store = Store::open(&target).await.unwrap();

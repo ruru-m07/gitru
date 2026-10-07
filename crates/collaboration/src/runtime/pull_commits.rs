@@ -184,6 +184,7 @@ impl CollaborationRuntime {
                 metadata: page.metadata,
                 subject_binding: Some(binding),
                 check_context: None,
+                review_context: None,
                 entries: page.entries,
                 source: page.source,
                 next_cursor: None,

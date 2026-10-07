@@ -378,7 +378,10 @@ async fn draft(
 fn native(entry: &DetailEntry) -> &ParticipantV1 {
     match entry.native.as_ref().unwrap() {
         NativeDetailPayload::ParticipantV1(value) => value,
-        NativeDetailPayload::TaskV1(_) | NativeDetailPayload::CheckV1(_) => {
+        NativeDetailPayload::TaskV1(_)
+        | NativeDetailPayload::CheckV1(_)
+        | NativeDetailPayload::ReviewV1(_)
+        | NativeDetailPayload::ReviewThreadV1(_) => {
             panic!("Expected the typed participant payload")
         }
     }

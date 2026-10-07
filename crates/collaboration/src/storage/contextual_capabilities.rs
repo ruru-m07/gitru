@@ -589,7 +589,7 @@ async fn facet_evidence(
     let detail = match facet {
         ResourceFacet::PullDetails | ResourceFacet::IssueDetails => Some(DetailFacet::Body),
         ResourceFacet::Comments => Some(DetailFacet::Comments),
-        ResourceFacet::Reviews => Some(DetailFacet::Reviews),
+        ResourceFacet::Reviews => Some(DetailFacet::ReviewSummaries),
         ResourceFacet::Checks => Some(DetailFacet::Checks),
         ResourceFacet::Participants => Some(DetailFacet::Participants),
         ResourceFacet::Tasks => Some(DetailFacet::Tasks),

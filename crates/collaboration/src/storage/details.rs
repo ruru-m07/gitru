@@ -6,6 +6,13 @@ use crate::{DetailSubjectBinding, detail::*};
 const MAX_DETAIL_ENTRIES: i64 = 5_000;
 const MAX_ENTRY_BODY_BYTES: usize = 65_536;
 
+fn is_review_facet(facet: DetailFacet) -> bool {
+    matches!(
+        facet,
+        DetailFacet::ReviewSummaries | DetailFacet::ReviewThreads
+    )
+}
+
 /// Internal SQL expressions only; all detail facets share authorization resets.
 pub(super) fn scope_sql_list(subject_expression: &str) -> String {
     DetailFacet::ALL
@@ -44,6 +51,14 @@ pub(super) async fn invalidate_declared_head_in(
         let changed = if facet == DetailFacet::Checks {
             match super::pull_commits::check_context_in(tx, &account.id, subject, false).await {
                 Ok(context) => proof.check_context.as_ref() != Some(&context),
+                Err(error) if matches!(error.code, ErrorCode::NotFound | ErrorCode::StaleView) => {
+                    true
+                }
+                Err(error) => return Err(error),
+            }
+        } else if is_review_facet(facet) {
+            match super::pull_commits::review_context_in(tx, &account.id, subject, false).await {
+                Ok(context) => proof.review_context.as_ref() != Some(&context),
                 Err(error) if matches!(error.code, ErrorCode::NotFound | ErrorCode::StaleView) => {
                     true
                 }
@@ -230,7 +245,7 @@ pub(crate) async fn detail_evidence_in(
             .fetch_one(&mut **tx)
             .await
             .map_err(storage_error)?;
-            let check_context_changed = if facet == DetailFacet::Checks {
+            let exact_context_changed = if facet == DetailFacet::Checks {
                 match super::pull_commits::check_context_in(tx, &account.id, subject_id, false)
                     .await
                 {
@@ -242,11 +257,23 @@ pub(crate) async fn detail_evidence_in(
                     }
                     Err(error) => return Err(error),
                 }
+            } else if is_review_facet(facet) {
+                match super::pull_commits::review_context_in(tx, &account.id, subject_id, false)
+                    .await
+                {
+                    Ok(context) => proof.review_context.as_ref() != Some(&context),
+                    Err(error)
+                        if matches!(error.code, ErrorCode::NotFound | ErrorCode::StaleView) =>
+                    {
+                        true
+                    }
+                    Err(error) => return Err(error),
+                }
             } else {
                 false
             };
             head != proof.head_oid
-                || check_context_changed
+                || exact_context_changed
                 || super::resource_metadata::head_conflicts_in(
                     tx,
                     account,
@@ -332,6 +359,9 @@ fn validate_native(facet: DetailFacet, entry: &DetailEntry) -> Result<()> {
     if facet == DetailFacet::Checks {
         return validate_check(entry);
     }
+    if is_review_facet(facet) {
+        return validate_review(facet, entry);
+    }
     if facet == DetailFacet::Tasks {
         return validate_task(entry);
     }
@@ -364,6 +394,119 @@ fn validate_native(facet: DetailFacet, entry: &DetailEntry) -> Result<()> {
             .is_some_and(|at| !timestamp_valid(at))
         || entry.field_mask.contains(&DetailField::ParticipantApproved) && value.approved.is_none()
         || entry.field_mask.contains(&DetailField::ParticipantRole) && value.role.is_none()
+    {
+        return Err(invalid_detail());
+    }
+    Ok(())
+}
+
+fn review_actor_valid(actor: &Option<crate::ReviewActor>) -> bool {
+    actor.as_ref().is_none_or(crate::reviews::actor_valid)
+}
+
+fn review_id_valid(value: &str) -> bool {
+    crate::reviews::bounded_identity(value, 512)
+}
+
+fn validate_review(facet: DetailFacet, entry: &DetailEntry) -> Result<()> {
+    let valid = match (&entry.native, facet) {
+        (Some(crate::NativeDetailPayload::ReviewV1(review)), DetailFacet::ReviewSummaries) => {
+            review.context.is_valid()
+                && review_actor_valid(&review.reviewer)
+                && crate::reviews::bounded_identity(&review.provider_state, 256)
+                && review
+                    .reviewed_commit_oid
+                    .as_deref()
+                    .is_none_or(crate::is_canonical_commit_oid)
+                && review.submitted_at.as_deref().is_none_or(timestamp_valid)
+                && entry.state.as_ref() == Some(&review.provider_state)
+                && entry.updated_at == review.submitted_at
+                && entry.author
+                    == review
+                        .reviewer
+                        .as_ref()
+                        .and_then(|actor| actor.login.clone())
+                && entry.head_oid.as_ref() == Some(&review.context.head_oid)
+        }
+        (Some(crate::NativeDetailPayload::ReviewThreadV1(thread)), DetailFacet::ReviewThreads) => {
+            thread.context.is_valid()
+                && review_id_valid(&thread.thread_id)
+                && thread
+                    .root_comment_id
+                    .as_deref()
+                    .is_none_or(review_id_valid)
+                && review_id_valid(&thread.comment_id)
+                && thread
+                    .parent_comment_id
+                    .as_deref()
+                    .is_none_or(review_id_valid)
+                && thread.review_id.as_deref().is_none_or(review_id_valid)
+                && thread.parent_comment_id.as_ref() != Some(&thread.comment_id)
+                && (thread.parent_comment_id.is_some()
+                    || thread
+                        .root_comment_id
+                        .as_ref()
+                        .is_none_or(|root| root == &thread.comment_id))
+        }
+        _ => false,
+    };
+    if !valid {
+        return Err(invalid_detail());
+    }
+    if let Some(crate::NativeDetailPayload::ReviewThreadV1(thread)) = &entry.native {
+        let anchor_valid = thread.anchor.as_ref().is_none_or(|anchor| {
+            crate::reviews::bounded_identity(&anchor.path, 4096)
+                && crate::is_canonical_commit_oid(&anchor.commit_oid)
+                && crate::is_canonical_commit_oid(&anchor.original_commit_oid)
+                && [anchor.start_line, anchor.line]
+                    .into_iter()
+                    .flatten()
+                    .all(|line| line > 0)
+        });
+        if !review_actor_valid(&thread.author)
+            || !timestamp_valid(&thread.created_at)
+            || !timestamp_valid(&thread.updated_at)
+            || !anchor_valid
+            || entry.author != thread.author.as_ref().and_then(|actor| actor.login.clone())
+            || entry.updated_at.as_ref() != Some(&thread.updated_at)
+            || entry.head_oid.as_ref() != Some(&thread.context.head_oid)
+        {
+            return Err(invalid_detail());
+        }
+    }
+    if entry.title.is_some()
+        || entry.body.state == DetailValueState::NotLoaded
+        || entry.observed_body_state != entry.body.state
+    {
+        return Err(invalid_detail());
+    }
+    Ok(())
+}
+
+fn validate_review_input(facet: DetailFacet, entry: &DetailEntry) -> Result<()> {
+    let expected: &[DetailField] = match facet {
+        DetailFacet::ReviewSummaries => &[
+            DetailField::Body,
+            DetailField::Author,
+            DetailField::State,
+            DetailField::UpdatedAt,
+            DetailField::HeadOid,
+            DetailField::Review,
+        ],
+        DetailFacet::ReviewThreads => &[
+            DetailField::Body,
+            DetailField::Author,
+            DetailField::UpdatedAt,
+            DetailField::HeadOid,
+            DetailField::ReviewThread,
+        ],
+        _ => return Err(invalid_detail()),
+    };
+    if entry.field_mask.len() != expected.len()
+        || expected
+            .iter()
+            .any(|field| !entry.field_mask.contains(field))
+        || !entry.field_validations.is_empty()
     {
         return Err(invalid_detail());
     }
@@ -562,6 +705,12 @@ fn blank_native(native: &Option<crate::NativeDetailPayload>) -> Option<crate::Na
         crate::NativeDetailPayload::CheckV1(value) => {
             crate::NativeDetailPayload::CheckV1(value.clone())
         }
+        crate::NativeDetailPayload::ReviewV1(value) => {
+            crate::NativeDetailPayload::ReviewV1(value.clone())
+        }
+        crate::NativeDetailPayload::ReviewThreadV1(value) => {
+            crate::NativeDetailPayload::ReviewThreadV1(value.clone())
+        }
     })
 }
 
@@ -663,6 +812,27 @@ fn merge_check_field(saved: &mut DetailEntry, incoming: &DetailEntry) -> Result<
     Ok(())
 }
 
+fn merge_review_field(
+    saved: &mut DetailEntry,
+    incoming: &DetailEntry,
+    field: DetailField,
+) -> Result<()> {
+    match (&mut saved.native, &incoming.native, field) {
+        (
+            Some(crate::NativeDetailPayload::ReviewV1(saved)),
+            Some(crate::NativeDetailPayload::ReviewV1(incoming)),
+            DetailField::Review,
+        ) => *saved = incoming.clone(),
+        (
+            Some(crate::NativeDetailPayload::ReviewThreadV1(saved)),
+            Some(crate::NativeDetailPayload::ReviewThreadV1(incoming)),
+            DetailField::ReviewThread,
+        ) => *saved = incoming.clone(),
+        _ => return Err(invalid_detail()),
+    }
+    Ok(())
+}
+
 fn merge_entry(
     facet: DetailFacet,
     mut incoming: DetailEntry,
@@ -692,6 +862,9 @@ fn merge_entry(
     if facet == DetailFacet::Checks {
         validate_check_input(&incoming)?;
     }
+    if is_review_facet(facet) {
+        validate_review_input(facet, &incoming)?;
+    }
     if facet == DetailFacet::Participants && !incoming.field_validations.is_empty() {
         return Err(invalid_detail());
     }
@@ -720,6 +893,15 @@ fn merge_entry(
         };
     }
     let mut saved = previous.unwrap_or_else(|| {
+        if is_review_facet(facet) {
+            // A review native payload and its generic projection are one typed
+            // observation. Seed a new row from that internally consistent
+            // value, then let the ordinary field loop attach source clocks.
+            let mut entry = incoming.clone();
+            entry.field_mask.clear();
+            entry.field_validations.clear();
+            return StoredEntry::from_entry(entry);
+        }
         StoredEntry::from_entry(DetailEntry {
             id: incoming.id.clone(),
             provider_id: incoming.provider_id.clone(),
@@ -774,6 +956,18 @@ fn merge_entry(
             Some(crate::NativeDetailPayload::CheckV1(old)),
             Some(crate::NativeDetailPayload::CheckV1(new)),
         ) => old.kind == new.kind,
+        (
+            Some(crate::NativeDetailPayload::ReviewV1(_)),
+            Some(crate::NativeDetailPayload::ReviewV1(_)),
+        ) => true,
+        (
+            Some(crate::NativeDetailPayload::ReviewThreadV1(old)),
+            Some(crate::NativeDetailPayload::ReviewThreadV1(new)),
+        ) => {
+            old.thread_id == new.thread_id
+                && old.root_comment_id == new.root_comment_id
+                && old.comment_id == new.comment_id
+        }
         _ => false,
     };
     if saved.entry.provider_id != incoming.provider_id || !same_native_identity {
@@ -783,6 +977,10 @@ fn merge_entry(
         task.updated_at.clone()
     } else if let Some(crate::NativeDetailPayload::CheckV1(check)) = &incoming.native {
         check.updated_at.clone()
+    } else if let Some(crate::NativeDetailPayload::ReviewV1(review)) = &incoming.native {
+        review.submitted_at.clone()
+    } else if let Some(crate::NativeDetailPayload::ReviewThreadV1(thread)) = &incoming.native {
+        Some(thread.updated_at.clone())
     } else if incoming.field_mask.contains(&DetailField::UpdatedAt) {
         incoming
             .updated_at
@@ -906,6 +1104,9 @@ fn merge_entry(
             }
             field if field.is_task() => merge_task_field(&mut saved.entry, &incoming, *field)?,
             DetailField::Check => merge_check_field(&mut saved.entry, &incoming)?,
+            DetailField::Review | DetailField::ReviewThread => {
+                merge_review_field(&mut saved.entry, &incoming, *field)?
+            }
             _ => return Err(invalid_detail()),
         }
         saved.observed(*field, comparable.as_deref(), source, head);
@@ -982,14 +1183,29 @@ async fn validate_lease_in(
             value
         }
     });
-    let check_context_changed = if !replaces_incomparable_scope
-        && facet == DetailFacet::Checks
-        && proof.is_some()
-    {
-        match super::pull_commits::check_context_in(tx, account_id, subject_id, false).await {
-            Ok(context) => proof.and_then(|proof| proof.check_context.as_ref()) != Some(&context),
-            Err(error) if matches!(error.code, ErrorCode::NotFound | ErrorCode::StaleView) => true,
-            Err(error) => return Err(error),
+    let exact_context_changed = if !replaces_incomparable_scope && proof.is_some() {
+        if facet == DetailFacet::Checks {
+            match super::pull_commits::check_context_in(tx, account_id, subject_id, false).await {
+                Ok(context) => {
+                    proof.and_then(|proof| proof.check_context.as_ref()) != Some(&context)
+                }
+                Err(error) if matches!(error.code, ErrorCode::NotFound | ErrorCode::StaleView) => {
+                    true
+                }
+                Err(error) => return Err(error),
+            }
+        } else if is_review_facet(facet) {
+            match super::pull_commits::review_context_in(tx, account_id, subject_id, false).await {
+                Ok(context) => {
+                    proof.and_then(|proof| proof.review_context.as_ref()) != Some(&context)
+                }
+                Err(error) if matches!(error.code, ErrorCode::NotFound | ErrorCode::StaleView) => {
+                    true
+                }
+                Err(error) => return Err(error),
+            }
+        } else {
+            false
         }
     } else {
         false
@@ -997,7 +1213,7 @@ async fn validate_lease_in(
     if !replaces_incomparable_scope
         && (source.as_ref().map(|source| &source.source) != lease.source.as_ref()
             || proof.map(|proof| proof.reconciliation) != reconciliation
-            || check_context_changed
+            || exact_context_changed
             || proof.is_some_and(|proof| {
                 proof.reconciliation.head_scope == DetailHeadScope::CurrentHead
                     && proof.head_oid != subject.head_oid
@@ -1044,6 +1260,44 @@ impl Store {
             .await?;
         let context =
             super::pull_commits::check_context_in(&mut tx, account_id, subject_id, true).await?;
+        if binding.head_oid.as_ref() != Some(&context.head_oid) {
+            return Err(stale());
+        }
+        tx.commit().await.map_err(storage_error)?;
+        Ok(context)
+    }
+
+    pub(crate) async fn review_context(
+        &self,
+        account_id: &str,
+        subject_id: &str,
+    ) -> Result<crate::ReviewContext> {
+        let mut tx = self.inner.readers.begin().await.map_err(storage_error)?;
+        let context =
+            super::pull_commits::review_context_in(&mut tx, account_id, subject_id, true).await?;
+        tx.commit().await.map_err(storage_error)?;
+        Ok(context)
+    }
+
+    pub(crate) async fn validate_review_dispatch(
+        &self,
+        account_id: &str,
+        epoch: &str,
+        subject_id: &str,
+        facet: DetailFacet,
+        lease: &DetailLease,
+        binding: &DetailSubjectBinding,
+    ) -> Result<crate::ReviewContext> {
+        if !is_review_facet(facet) {
+            return Err(invalid_detail());
+        }
+        let mut tx = self.inner.readers.begin().await.map_err(storage_error)?;
+        let subject =
+            validate_lease_in(&mut tx, account_id, epoch, subject_id, facet, lease).await?;
+        super::resource_metadata::validate_binding_in(&mut tx, account_id, &subject, binding)
+            .await?;
+        let context =
+            super::pull_commits::review_context_in(&mut tx, account_id, subject_id, true).await?;
         if binding.head_oid.as_ref() != Some(&context.head_oid) {
             return Err(stale());
         }
@@ -1419,6 +1673,19 @@ impl Store {
         } else {
             None
         };
+        let current_review_context = if is_review_facet(facet) {
+            match super::pull_commits::review_context_in(&mut tx, account_id, subject_id, false)
+                .await
+            {
+                Ok(context) => Some(context),
+                Err(error) if matches!(error.code, ErrorCode::NotFound | ErrorCode::StaleView) => {
+                    None
+                }
+                Err(error) => return Err(error),
+            }
+        } else {
+            None
+        };
         let comparable_scope = source
             .as_ref()
             .and_then(StoredSource::traversal)
@@ -1427,6 +1694,10 @@ impl Store {
                     current_check_context
                         .as_ref()
                         .is_some_and(|context| proof.check_context.as_ref() == Some(context))
+                } else if is_review_facet(facet) {
+                    current_review_context
+                        .as_ref()
+                        .is_some_and(|context| proof.review_context.as_ref() == Some(context))
                 } else {
                     proof.reconciliation.head_scope != DetailHeadScope::CurrentHead
                         || proof.head_oid == subject.head_oid
@@ -1598,6 +1869,30 @@ pub(super) async fn apply_detail_in(
     {
         return Err(invalid_detail());
     }
+    if is_review_facet(page.facet)
+        && (page.entries.len() > 50
+            || page.reconciliation.head_scope != DetailHeadScope::CurrentHead
+            || !matches!(
+                page.reconciliation.enumeration,
+                DetailEnumeration::Uncertain | DetailEnumeration::FullEnumeration
+            )
+            || page.reconciliation.enumeration == DetailEnumeration::FullEnumeration
+                && (page.request_cursor.is_some()
+                    || page.next_cursor.is_some()
+                    || !page.complete
+                    || !page.whole_scope)
+            || page.complete != page.next_cursor.is_none()
+            || page.subject_binding.is_none()
+            || page.review_context.is_none()
+            || page.metadata.is_some()
+            || page.etag.is_some()
+            || page.not_modified
+            || [&page.request_cursor, &page.next_cursor]
+                .into_iter()
+                .any(|cursor| cursor.as_ref().is_some_and(|cursor| cursor.len() > 4096)))
+    {
+        return Err(invalid_detail());
+    }
     if page.facet == DetailFacet::Participants {
         for (index, entry) in page.entries.iter().enumerate() {
             validate_native(page.facet, entry)?;
@@ -1617,6 +1912,18 @@ pub(super) async fn apply_detail_in(
     if page.facet == DetailFacet::Tasks {
         for (index, entry) in page.entries.iter().enumerate() {
             validate_task_input(entry)?;
+            if page.entries[..index]
+                .iter()
+                .any(|prior| prior.id == entry.id || prior.provider_id == entry.provider_id)
+            {
+                return Err(invalid_detail());
+            }
+        }
+    }
+    if is_review_facet(page.facet) {
+        for (index, entry) in page.entries.iter().enumerate() {
+            validate_review_input(page.facet, entry)?;
+            validate_review(page.facet, entry)?;
             if page.entries[..index]
                 .iter()
                 .any(|prior| prior.id == entry.id || prior.provider_id == entry.provider_id)
@@ -1667,6 +1974,13 @@ pub(super) async fn apply_detail_in(
         if page.check_context.as_ref() != Some(&current) {
             return Err(stale());
         }
+    } else if is_review_facet(page.facet) {
+        let current =
+            super::pull_commits::review_context_in(tx, &page.account_id, &page.subject_id, true)
+                .await?;
+        if page.review_context.as_ref() != Some(&current) {
+            return Err(stale());
+        }
     }
     if identities::instance_in(tx, &account).await?.id != page.instance_id
         || metadata(tx).await?.1 != page.authorization_view
@@ -1709,6 +2023,14 @@ pub(super) async fn apply_detail_in(
                 .as_ref()
                 .and_then(StoredSource::traversal)
                 .and_then(|proof| proof.check_context.as_ref())
+    } else if is_review_facet(page.facet) {
+        native_source
+            .traversal()
+            .and_then(|proof| proof.review_context.as_ref())
+            == previous_native_source
+                .as_ref()
+                .and_then(StoredSource::traversal)
+                .and_then(|proof| proof.review_context.as_ref())
     } else {
         native_source
             .traversal()

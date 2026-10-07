@@ -26,6 +26,9 @@ const tasks = await Bun.file(
 const checks = await Bun.file(
   new URL("crates/collaboration/src/checks.rs", root),
 ).text();
+const reviews = await Bun.file(
+  new URL("crates/collaboration/src/reviews.rs", root),
+).text();
 const contextualCapabilities = await Bun.file(
   new URL("crates/collaboration/src/contextual_capabilities.rs", root),
 ).text();
@@ -121,10 +124,21 @@ const nativeOnlyTypes = new Set([
 // unsupported shape rather than inventing a renderer-owned wire model.
 const payloadStructs = new Map(
   [
-    ...`${participants}\n${tasks}\n${checks}`.matchAll(
+    ...`${participants}\n${tasks}\n${checks}\n${reviews}`.matchAll(
       /pub struct (\w+)\s*\{([^}]+)\}/g,
     ),
   ].map(([, name, body]) => [name, body] as const),
+);
+const payloadEnums = new Map(
+  [...`${participants}\n${tasks}\n${checks}\n${reviews}`.matchAll(
+    /#\[serde\(rename_all = "snake_case"\)\]\s*pub enum (\w+)\s*\{([^}]+)\}/g,
+  )].map(([, name, body]) => [
+    name,
+    body
+      .split(",")
+      .map((variant) => variant.trim())
+      .filter(Boolean),
+  ] as const),
 );
 const nativePayloadKinds = new Set<string>();
 for (const [, tag, content, name, body] of participants.matchAll(
@@ -138,6 +152,8 @@ for (const [, tag, content, name, body] of participants.matchAll(
     if (optional) return `${schemaFor(optional[1])}.optional()`;
     if (rustType === "String") return "z.string()";
     if (rustType === "bool") return "z.boolean()";
+    if (["u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64", "usize"].includes(rustType))
+      return "z.number()";
     if (!/^\w+$/.test(rustType))
       throw new Error(`Unsupported tagged payload type ${rustType}`);
     if (generated.includes(`export const ${rustType}Schema =`))
@@ -158,6 +174,14 @@ for (const [, tag, content, name, body] of participants.matchAll(
       );
       emitted.add(rustType);
       return "CheckStateV1Schema";
+    }
+    const variants = payloadEnums.get(rustType);
+    if (variants) {
+      dependencies.push(
+        `export const ${rustType}Schema = z.enum(${JSON.stringify(variants.map(snake))});\n\nexport type ${rustType} = z.infer<typeof ${rustType}Schema>;`,
+      );
+      emitted.add(rustType);
+      return `${rustType}Schema`;
     }
     const struct = payloadStructs.get(rustType);
     if (!struct) throw new Error(`Missing tagged payload struct ${rustType}`);
@@ -263,6 +287,7 @@ for (const source of [
   participants,
   tasks,
   checks,
+  reviews,
   contextualCapabilities,
   resourceMetadata,
   demand,
@@ -341,10 +366,12 @@ generated = generated.replace(
 // Qualify every native family explicitly; enum growth cannot silently borrow
 // another payload's authority or widen ordinary entry limits.
 if (
-  nativePayloadKinds.size !== 3 ||
+  nativePayloadKinds.size !== 5 ||
   !nativePayloadKinds.has("participant.v1") ||
   !nativePayloadKinds.has("task.v1") ||
-  !nativePayloadKinds.has("check.v1")
+  !nativePayloadKinds.has("check.v1") ||
+  !nativePayloadKinds.has("review.v1") ||
+  !nativePayloadKinds.has("review_thread.v1")
 )
   throw new Error("Extend native detail field-family guards for this payload");
 const familyFields = (name: string, maximum: number): string[] => {
@@ -363,6 +390,8 @@ const participantFields = familyFields("participant", 6);
 const taskFields = familyFields("task", 12);
 const checkOnlyFields = familyFields("check", 1);
 const checkFields = [...checkOnlyFields, "head_oid"];
+const reviewSummaryFields = familyFields("review_summary", 6);
+const reviewThreadFields = familyFields("review_thread", 5);
 const fieldsEnum = detail.match(/pub enum DetailField\s*\{([^}]+)\}/);
 if (!fieldsEnum) throw new Error("Missing Rust detail field enum");
 const fields = fieldsEnum[1]
@@ -374,13 +403,15 @@ const nativeFields = new Set([
   ...participantFields,
   ...taskFields,
   ...checkOnlyFields,
+  "review",
+  "review_thread",
 ]);
 const genericFields = fields.filter((field) => !nativeFields.has(field));
 if (
-  nativeFields.size !== 19 ||
+  nativeFields.size !== 21 ||
   genericFields.length !== 6 ||
   checkFields.length !== 2 ||
-  fields.length !== 25 ||
+  fields.length !== 27 ||
   new Set(fields).size !== fields.length ||
   [...nativeFields].some((field) => !fields.includes(field))
 )
@@ -391,7 +422,7 @@ if (!entrySchema.test(generated))
   throw new Error("Missing generated detail entry schema for family guard");
 generated = generated.replace(
   entrySchema,
-  `const detailFieldFamilies = {\n  generic: new Set<string>(${JSON.stringify(genericFields)}),\n  "participant.v1": new Set<string>(${JSON.stringify(participantFields)}),\n  "task.v1": new Set<string>(${JSON.stringify(taskFields)}),\n  "check.v1": new Set<string>(${JSON.stringify(checkFields)}),\n};\n\n$1.superRefine((entry, context) => {\n  const family = detailFieldFamilies[entry.native?.kind ?? "generic"];\n  const validations = entry.field_validations.map((validation) => validation.field);\n  const invalidCheckEvidence = entry.native?.kind === "check.v1" && (entry.field_mask.length !== 2 || !entry.field_mask.includes("check") || !entry.field_mask.includes("head_oid") || validations.length !== 2 || !validations.includes("check") || !validations.includes("head_oid"));\n  if (invalidCheckEvidence || entry.field_mask.length > family.size || validations.length > family.size || new Set(entry.field_mask).size !== entry.field_mask.length || new Set(validations).size !== validations.length || entry.field_mask.some((field) => !family.has(field)) || validations.some((field) => !family.has(field))) {\n    context.addIssue({ code: "custom", path: ["native"], message: "Detail entry fields do not match its native payload" });\n  }\n});`,
+  `const detailFieldFamilies = {\n  generic: new Set<string>(${JSON.stringify(genericFields)}),\n  "participant.v1": new Set<string>(${JSON.stringify(participantFields)}),\n  "task.v1": new Set<string>(${JSON.stringify(taskFields)}),\n  "check.v1": new Set<string>(${JSON.stringify(checkFields)}),\n  "review.v1": new Set<string>(${JSON.stringify(reviewSummaryFields)}),\n  "review_thread.v1": new Set<string>(${JSON.stringify(reviewThreadFields)}),\n};\n\n$1.superRefine((entry, context) => {\n  const family = detailFieldFamilies[entry.native?.kind ?? "generic"];\n  const validations = entry.field_validations.map((validation) => validation.field);\n  const invalidCheckEvidence = entry.native?.kind === "check.v1" && (entry.field_mask.length !== 2 || !entry.field_mask.includes("check") || !entry.field_mask.includes("head_oid") || validations.length !== 2 || !validations.includes("check") || !validations.includes("head_oid"));\n  if (invalidCheckEvidence || entry.field_mask.length > family.size || validations.length > family.size || new Set(entry.field_mask).size !== entry.field_mask.length || new Set(validations).size !== validations.length || entry.field_mask.some((field) => !family.has(field)) || validations.some((field) => !family.has(field))) {\n    context.addIssue({ code: "custom", path: ["native"], message: "Detail entry fields do not match its native payload" });\n  }\n});`,
 );
 generated = generated.replace(
   /(export const Collaboration\w+ParamsSchema = z\.object\(\{)([\s\S]*?)(\n\}\);)/g,

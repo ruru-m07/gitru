@@ -494,6 +494,7 @@ async fn detail_page(
             metadata: None,
             subject_binding: None,
             check_context: None,
+            review_context: None,
             account_id: "a".into(),
             authorization_epoch: "1".into(),
             authorization_view: lease.authorization_view,
@@ -596,6 +597,7 @@ async fn save_check_body_context(store: &Store) -> CheckContext {
                 head_oid: pull.head_oid,
             }),
             check_context: None,
+            review_context: None,
             account_id: "a".into(),
             authorization_epoch: "1".into(),
             authorization_view: lease.authorization_view,
@@ -662,6 +664,7 @@ async fn save_checks_page(
                 head_oid: Some(CHECK_HEAD.into()),
             }),
             check_context: Some(context.clone()),
+            review_context: None,
             account_id: "a".into(),
             authorization_epoch: "1".into(),
             authorization_view: lease.authorization_view,
@@ -720,6 +723,114 @@ async fn save_checks_page(
         .unwrap();
 }
 
+fn review_context(context: &CheckContext) -> ReviewContext {
+    ReviewContext {
+        base_oid: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into(),
+        head_oid: context.head_oid.clone(),
+        base_repository_provider_id: "9007199254740993".into(),
+        source_repository_provider_id: context.source_repository_provider_id.clone(),
+        metadata_facet_revision: context.metadata_facet_revision.clone(),
+    }
+}
+
+async fn save_review_page(
+    store: &Store,
+    context: &ReviewContext,
+    include_entry: bool,
+    complete: bool,
+) {
+    let lease = store
+        .begin_detail("a", "1", "pull", DetailFacet::ReviewSummaries)
+        .await
+        .unwrap();
+    let fields = vec![
+        DetailField::Body,
+        DetailField::Author,
+        DetailField::State,
+        DetailField::UpdatedAt,
+        DetailField::HeadOid,
+        DetailField::Review,
+    ];
+    store
+        .apply_detail(DetailCommit {
+            reconciliation: DetailReconciliation {
+                enumeration: if complete {
+                    DetailEnumeration::FullEnumeration
+                } else {
+                    DetailEnumeration::Uncertain
+                },
+                head_scope: DetailHeadScope::CurrentHead,
+            },
+            metadata: None,
+            subject_binding: Some(DetailSubjectBinding {
+                repository_id: "repo".into(),
+                repository_provider_id: "9007199254740993".into(),
+                provider_id: "9007199254740995".into(),
+                number: Some("67".into()),
+                kind: RemoteItemKind::PullRequest,
+                head_oid: Some(CHECK_HEAD.into()),
+            }),
+            check_context: None,
+            review_context: Some(context.clone()),
+            account_id: "a".into(),
+            authorization_epoch: "1".into(),
+            authorization_view: lease.authorization_view,
+            instance_id: lease.instance_id,
+            subject_id: "pull".into(),
+            facet: DetailFacet::ReviewSummaries,
+            run_id: lease.run_id,
+            request_cursor: lease.next_cursor,
+            body: DetailValue::default(),
+            entries: if include_entry {
+                vec![DetailEntry {
+                    id: "github-review:00000000000000000001".into(),
+                    provider_id: "1".into(),
+                    author: Some("reviewer".into()),
+                    title: None,
+                    state: Some("APPROVED".into()),
+                    body: DetailValue {
+                        state: DetailValueState::Known,
+                        text: Some("looks good".into()),
+                    },
+                    observed_body_state: DetailValueState::Known,
+                    updated_at: Some("2026-10-03T12:00:00Z".into()),
+                    head_oid: Some(CHECK_HEAD.into()),
+                    native: Some(NativeDetailPayload::ReviewV1(ReviewV1 {
+                        context: context.clone(),
+                        reviewer: Some(ReviewActor {
+                            provider_id: "8".into(),
+                            login: Some("reviewer".into()),
+                            display_name: None,
+                        }),
+                        decision: ReviewDecision::Approved,
+                        provider_state: "APPROVED".into(),
+                        reviewed_commit_oid: Some(CHECK_HEAD.into()),
+                        submitted_at: Some("2026-10-03T12:00:00Z".into()),
+                    })),
+                    field_mask: fields.clone(),
+                    field_validations: vec![],
+                }]
+            } else {
+                vec![]
+            },
+            source: DetailSource {
+                source: "fixture.reviews.v1".into(),
+                adapter_version: 1,
+                field_mask: fields,
+                provider_updated_at: None,
+                observed_at: "2026-10-03T12:00:01Z".into(),
+            },
+            next_cursor: (!complete).then(|| "page-2".into()),
+            etag: None,
+            not_modified: false,
+            whole_scope: complete,
+            complete,
+            freshness_seconds: 60,
+        })
+        .await
+        .unwrap();
+}
+
 #[tokio::test]
 async fn detail_evidence_distinguishes_authoritative_empty_omission_and_oversize_without_body_copy()
 {
@@ -771,14 +882,8 @@ async fn detail_evidence_distinguishes_authoritative_empty_omission_and_oversize
         facet(&missing, ResourceFacet::Reviews).observation,
         CapabilityObservation::NotLoaded
     );
-    detail_page(
-        &store,
-        DetailFacet::Reviews,
-        DetailValueState::NotLoaded,
-        None,
-        false,
-    )
-    .await;
+    let context = review_context(&save_check_body_context(&store).await);
+    save_review_page(&store, &context, true, false).await;
     let partial = store
         .contextual_capabilities(request("a", resource_target()), detail_profile)
         .await
@@ -787,45 +892,10 @@ async fn detail_evidence_distinguishes_authoritative_empty_omission_and_oversize
         facet(&partial, ResourceFacet::Reviews).observation,
         CapabilityObservation::Partial
     );
-    // Finish the traversal using the leased continuation, rather than declaring
-    // an empty initial partial page authoritative.
-    let lease = store
-        .begin_detail("a", "1", "pull", DetailFacet::Reviews)
-        .await
-        .unwrap();
-    store
-        .apply_detail(DetailCommit {
-            reconciliation: DetailReconciliation::full_history(),
-            metadata: None,
-            subject_binding: None,
-            check_context: None,
-            account_id: "a".into(),
-            authorization_epoch: "1".into(),
-            authorization_view: lease.authorization_view,
-            instance_id: lease.instance_id,
-            subject_id: "pull".into(),
-            facet: DetailFacet::Reviews,
-            run_id: lease.run_id,
-            request_cursor: lease.next_cursor,
-            body: DetailValue::default(),
-            entries: vec![],
-            source: DetailSource {
-                source: "fixture.detail.v1".into(),
-                adapter_version: 1,
-                field_mask: vec![],
-                provider_updated_at: Some("2026-10-03T12:00:00Z".into()),
-                observed_at: "2026-10-03T12:00:00Z".into(),
-            },
-            next_cursor: None,
-            etag: None,
-            not_modified: false,
-            whole_scope: true,
-            complete: true,
-            freshness_seconds: 60,
-        })
-        .await
-        .unwrap();
-    let empty = store
+    let (_empty_dir, empty_store) = fixture().await;
+    let empty_context = review_context(&save_check_body_context(&empty_store).await);
+    save_review_page(&empty_store, &empty_context, false, true).await;
+    let empty = empty_store
         .contextual_capabilities(request("a", resource_target()), detail_profile)
         .await
         .unwrap();

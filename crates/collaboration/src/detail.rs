@@ -13,6 +13,8 @@ pub enum DetailFacet {
     Body,
     Comments,
     Reviews,
+    ReviewSummaries,
+    ReviewThreads,
     Checks,
     Participants,
     Tasks,
@@ -21,10 +23,12 @@ pub enum DetailFacet {
 }
 
 impl DetailFacet {
-    pub(crate) const ALL: [Self; 8] = [
+    pub(crate) const ALL: [Self; 10] = [
         Self::Body,
         Self::Comments,
         Self::Reviews,
+        Self::ReviewSummaries,
+        Self::ReviewThreads,
         Self::Checks,
         Self::Participants,
         Self::Tasks,
@@ -41,7 +45,10 @@ impl DetailFacet {
             (Self::Comments, RemoteItemKind::PullRequest | RemoteItemKind::Issue) => {
                 Some(ResourceFacet::Comments)
             }
-            (Self::Reviews, RemoteItemKind::PullRequest) => Some(ResourceFacet::Reviews),
+            (
+                Self::Reviews | Self::ReviewSummaries | Self::ReviewThreads,
+                RemoteItemKind::PullRequest,
+            ) => Some(ResourceFacet::Reviews),
             (Self::Checks, RemoteItemKind::PullRequest) => Some(ResourceFacet::Checks),
             (Self::Participants, RemoteItemKind::PullRequest) => Some(ResourceFacet::Participants),
             (Self::Tasks, RemoteItemKind::PullRequest) => Some(ResourceFacet::Tasks),
@@ -55,6 +62,8 @@ impl DetailFacet {
             Self::Body => "body",
             Self::Comments => "comments",
             Self::Reviews => "reviews",
+            Self::ReviewSummaries => "review_summaries",
+            Self::ReviewThreads => "review_threads",
             Self::Checks => "checks",
             Self::Participants => "participants",
             Self::Tasks => "tasks",
@@ -76,6 +85,8 @@ impl DetailFacet {
                 "body" => Self::Body,
                 "comments" => Self::Comments,
                 "reviews" => Self::Reviews,
+                "review_summaries" => Self::ReviewSummaries,
+                "review_threads" => Self::ReviewThreads,
                 "checks" => Self::Checks,
                 "participants" => Self::Participants,
                 "tasks" => Self::Tasks,
@@ -139,6 +150,8 @@ pub enum DetailField {
     TaskResolverDisplayName,
     TaskCommentId,
     Check,
+    Review,
+    ReviewThread,
 }
 
 impl DetailField {
@@ -173,13 +186,37 @@ impl DetailField {
     pub(crate) fn is_check(self) -> bool {
         self == Self::Check
     }
+    pub(crate) fn is_review_summary(self) -> bool {
+        matches!(
+            self,
+            Self::Body
+                | Self::Author
+                | Self::State
+                | Self::UpdatedAt
+                | Self::HeadOid
+                | Self::Review
+        )
+    }
+    pub(crate) fn is_review_thread(self) -> bool {
+        matches!(
+            self,
+            Self::Body | Self::Author | Self::UpdatedAt | Self::HeadOid | Self::ReviewThread
+        )
+    }
     pub(crate) fn valid_for(self, facet: DetailFacet) -> bool {
         match facet {
             DetailFacet::Participants => self.is_participant(),
             DetailFacet::Tasks => self.is_task(),
             DetailFacet::Checks => self.is_check() || self == Self::HeadOid,
+            DetailFacet::ReviewSummaries => self.is_review_summary(),
+            DetailFacet::ReviewThreads => self.is_review_thread(),
             DetailFacet::Commits | DetailFacet::Files => false,
-            _ => !self.is_participant() && !self.is_task() && !self.is_check(),
+            _ => {
+                !self.is_participant()
+                    && !self.is_task()
+                    && !self.is_check()
+                    && !matches!(self, Self::Review | Self::ReviewThread)
+            }
         }
     }
 }
@@ -339,6 +376,7 @@ pub struct DetailCommit {
     pub metadata: Option<crate::ResourceMetadataObservation>,
     pub subject_binding: Option<crate::DetailSubjectBinding>,
     pub check_context: Option<crate::CheckContext>,
+    pub review_context: Option<crate::ReviewContext>,
     pub entries: Vec<DetailEntry>,
     pub source: DetailSource,
     pub next_cursor: Option<String>,

@@ -40,9 +40,12 @@ Official source review:
 
 ## Common model and authority
 
-Add an independent `ReviewThreads` detail facet; both `Reviews` and
-`ReviewThreads` map to the existing `reviews` capability but retain separate
-scope, cursor, freshness and error state. Define provider-independent typed
+Add independent `ReviewSummaries` and `ReviewThreads` detail facets. Both map to
+the existing `reviews` capability but retain separate scope, cursor, freshness
+and error state. The older `Reviews` key remains a compatibility-only placeholder
+so historical untyped rows cannot be misread as the new model. Schema 0018
+preserves every historical detail and retention row while admitting the two new
+keys. Define provider-independent typed
 payloads:
 
 - `ReviewContext`: exact Body base/head OIDs, base/source repository provider

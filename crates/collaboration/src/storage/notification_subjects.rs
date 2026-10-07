@@ -1039,6 +1039,7 @@ impl Store {
                             head_oid: subject.head_oid.clone(),
                         }),
                         check_context: None,
+                        review_context: None,
                         entries: detail.entries,
                         source: detail.source,
                         next_cursor: None,

@@ -1,5 +1,9 @@
 //! Typed provider observations; native participant state is not commit approval.
-use crate::{checks::CheckV1, tasks::TaskV1};
+use crate::{
+    checks::CheckV1,
+    reviews::{ReviewThreadV1, ReviewV1},
+    tasks::TaskV1,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -11,6 +15,10 @@ pub enum NativeDetailPayload {
     TaskV1(TaskV1),
     #[serde(rename = "check.v1")]
     CheckV1(CheckV1),
+    #[serde(rename = "review.v1")]
+    ReviewV1(ReviewV1),
+    #[serde(rename = "review_thread.v1")]
+    ReviewThreadV1(ReviewThreadV1),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

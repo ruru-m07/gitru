@@ -121,6 +121,7 @@ pub(super) async fn range_observation(
     };
     DetailCommit {
         check_context: None,
+        review_context: None,
         reconciliation: DetailReconciliation::full_history(),
         account_id: account.id.clone(),
         authorization_epoch: account.authorization_epoch.clone(),

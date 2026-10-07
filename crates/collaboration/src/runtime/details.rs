@@ -1,6 +1,13 @@
 //! Explicit detail demand uses the single engine queue, quota and credential owner.
 use super::*;
 
+fn is_review_facet(facet: DetailFacet) -> bool {
+    matches!(
+        facet,
+        DetailFacet::ReviewSummaries | DetailFacet::ReviewThreads
+    )
+}
+
 impl CollaborationRuntime {
     pub(super) async fn require_detail(
         &self,
@@ -101,8 +108,19 @@ impl CollaborationRuntime {
                     Err(error) => return Err(error),
                 }
             }
-        } else if request.facet == DetailFacet::Checks {
-            match self.store.check_context(&account.id, &subject.id).await {
+        } else if request.facet == DetailFacet::Checks || is_review_facet(request.facet) {
+            let context = if request.facet == DetailFacet::Checks {
+                self.store
+                    .check_context(&account.id, &subject.id)
+                    .await
+                    .map(|_| ())
+            } else {
+                self.store
+                    .review_context(&account.id, &subject.id)
+                    .await
+                    .map(|_| ())
+            };
+            match context {
                 Ok(_) => {}
                 Err(error) if matches!(error.code, ErrorCode::NotFound | ErrorCode::StaleView) => {
                     self.request_pull_commit_body_context(&account, &repository, &subject)
@@ -220,8 +238,19 @@ impl CollaborationRuntime {
         if facet == DetailFacet::Files {
             return self.sync_pull_file_page(job, subject_id).await;
         }
-        if facet == DetailFacet::Checks {
-            match self.store.check_context(&job.account.id, subject_id).await {
+        if facet == DetailFacet::Checks || is_review_facet(facet) {
+            let context = if facet == DetailFacet::Checks {
+                self.store
+                    .check_context(&job.account.id, subject_id)
+                    .await
+                    .map(|_| ())
+            } else {
+                self.store
+                    .review_context(&job.account.id, subject_id)
+                    .await
+                    .map(|_| ())
+            };
+            match context {
                 Ok(_) => {}
                 Err(error) if matches!(error.code, ErrorCode::NotFound | ErrorCode::StaleView) => {
                     let account = self.active_account(&job.account.id).await?;
@@ -314,7 +343,7 @@ impl CollaborationRuntime {
                         )
                         .await?,
                 )
-            } else {
+            } else if !is_review_facet(facet) {
                 self.store
                     .validate_detail_dispatch(
                         &account.id,
@@ -325,6 +354,24 @@ impl CollaborationRuntime {
                         &binding,
                     )
                     .await?;
+                None
+            } else {
+                None
+            };
+            let review_context = if is_review_facet(facet) {
+                Some(
+                    self.store
+                        .validate_review_dispatch(
+                            &account.id,
+                            &account.authorization_epoch,
+                            subject_id,
+                            facet,
+                            &lease,
+                            &binding,
+                        )
+                        .await?,
+                )
+            } else {
                 None
             };
             self.ensure_provider_budget(&current, job).await?;
@@ -338,9 +385,14 @@ impl CollaborationRuntime {
                 source: lease.source.clone(),
             };
             let page_check_context = check_context.clone();
+            let page_review_context = review_context.clone();
             let fetched = if let Some(context) = check_context {
                 adapter
                     .fetch_checks(&token, CheckRequest { detail, context })
+                    .await
+            } else if let Some(context) = review_context {
+                adapter
+                    .fetch_reviews(&token, ReviewRequest { detail, context })
                     .await
             } else {
                 adapter.fetch_detail(&token, detail).await
@@ -395,6 +447,7 @@ impl CollaborationRuntime {
                     metadata: page.metadata,
                     subject_binding: Some(binding),
                     check_context: page_check_context,
+                    review_context: page_review_context,
                     entries: page.entries,
                     source: page.source.clone(),
                     next_cursor: page.next_cursor.clone(),

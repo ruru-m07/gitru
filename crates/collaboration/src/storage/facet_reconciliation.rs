@@ -12,6 +12,8 @@ pub(super) struct TraversalEvidence {
     pub head_oid: Option<String>,
     #[serde(default)]
     pub check_context: Option<crate::CheckContext>,
+    #[serde(default)]
+    pub review_context: Option<crate::ReviewContext>,
     pub starts_at_beginning: bool,
 }
 impl TraversalEvidence {
@@ -26,6 +28,10 @@ impl TraversalEvidence {
                 .check_context
                 .as_ref()
                 .is_none_or(crate::CheckContext::is_valid)
+            && self
+                .review_context
+                .as_ref()
+                .is_none_or(crate::ReviewContext::is_valid)
     }
 }
 
@@ -103,6 +109,25 @@ pub(super) fn source_for(page: &DetailCommit, old: Option<&StoredSource>) -> Res
         }
         None
     };
+    let review_context = if matches!(
+        page.facet,
+        DetailFacet::ReviewSummaries | DetailFacet::ReviewThreads
+    ) {
+        let context = page
+            .review_context
+            .clone()
+            .filter(crate::ReviewContext::is_valid)
+            .ok_or_else(invalid_detail)?;
+        if Some(&context.head_oid) != head_oid.as_ref() {
+            return Err(invalid_detail());
+        }
+        Some(context)
+    } else {
+        if page.review_context.is_some() {
+            return Err(invalid_detail());
+        }
+        None
+    };
     let previous = old.and_then(StoredSource::traversal);
     if page.request_cursor.is_some()
         && (old.is_none_or(|old| {
@@ -113,6 +138,7 @@ pub(super) fn source_for(page: &DetailCommit, old: Option<&StoredSource>) -> Res
             old.reconciliation != reconciliation
                 || old.head_oid != head_oid
                 || old.check_context != check_context
+                || old.review_context != review_context
         }))
     {
         return Err(drift());
@@ -122,6 +148,7 @@ pub(super) fn source_for(page: &DetailCommit, old: Option<&StoredSource>) -> Res
             old.reconciliation != reconciliation
                 || old.head_oid != head_oid
                 || old.check_context != check_context
+                || old.review_context != review_context
         })
     {
         return Err(invalid_detail());
@@ -133,6 +160,7 @@ pub(super) fn source_for(page: &DetailCommit, old: Option<&StoredSource>) -> Res
             reconciliation,
             head_oid,
             check_context,
+            review_context,
             starts_at_beginning: page.request_cursor.is_none()
                 || previous.is_some_and(|old| old.starts_at_beginning),
         }),

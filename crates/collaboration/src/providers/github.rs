@@ -15,6 +15,7 @@ mod notification_subject_discovery;
 pub mod notification_subjects;
 mod pull_details;
 mod resource_details;
+mod reviews;
 
 pub struct GithubProvider {
     http: GithubHttp,
@@ -77,6 +78,7 @@ impl CollaborationProvider for GithubProvider {
                 ResourceFacet::Comments
                     | ResourceFacet::PullCommits
                     | ResourceFacet::PullFiles
+                    | ResourceFacet::Reviews
                     | ResourceFacet::Checks
             ) && account.provider == ProviderKind::Github
                 && account.host == "github.com"
@@ -157,6 +159,14 @@ impl CollaborationProvider for GithubProvider {
         request: CheckRequest,
     ) -> Result<DetailPage, ProviderError> {
         self.request_checks(token, request).await
+    }
+
+    async fn fetch_reviews(
+        &self,
+        token: &SecretToken,
+        request: ReviewRequest,
+    ) -> Result<DetailPage, ProviderError> {
+        self.request_reviews(token, request).await
     }
 
     async fn fetch_pull_commits(
@@ -420,6 +430,8 @@ mod checks_tests;
 mod comments_tests;
 #[cfg(test)]
 mod commits_tests;
+#[cfg(test)]
+mod reviews_tests;
 
 fn notification_access(token: &SecretToken, scopes: &str) -> bool {
     // gh commonly stores an existing OAuth user token. It is not a PAT, but

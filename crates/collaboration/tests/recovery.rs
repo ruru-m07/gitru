@@ -135,6 +135,7 @@ async fn cache_observation(store: &Store) {
                 is_draft: Some(false),
                 reason: None,
                 unread: None,
+                native_inbox: None,
             }],
             endpoint_aliases: vec![],
             next_cursor: None,
@@ -221,7 +222,7 @@ async fn active_wal_backup_preserves_authored_data_and_physically_redacts_refere
     let before = store.accounts().await.unwrap();
     let summary = store.backup_to(&backup).await.unwrap();
     assert_eq!(summary.revision, before.revision);
-    assert_eq!(summary.schema_version, 17);
+    assert_eq!(summary.schema_version, 18);
     assert_eq!((summary.accounts, summary.drafts), (2, 2));
     assert_eq!(
         summary.sha256,
