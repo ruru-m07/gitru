@@ -29,6 +29,7 @@ pub(super) async fn invalidate_declared_head_in(
     subject: &str,
     head: Option<&str>,
 ) -> Result<()> {
+    super::pull_files::head_observed_in(tx, account, subject, head).await?;
     let rows = sqlx::query("SELECT facet,source_json FROM detail_observations WHERE account_id=? AND subject_id=? AND facet<>'body' AND authorization_epoch=?")
         .bind(&account.id).bind(subject).bind(&account.authorization_epoch).fetch_all(&mut **tx).await.map_err(storage_error)?;
     for row in rows {
@@ -1572,6 +1573,8 @@ pub(super) async fn apply_detail_in(
             .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&page.authorization_epoch).bind(&revision).bind(encode(&body)?).bind(encode(&native_source)?).bind(value_source.map(|s|encode(&s)).transpose()?).bind(tag(&observed_state)?).bind(stale_at).execute(&mut **tx).await.map_err(storage_error)?;
     if page.facet == DetailFacet::Body {
         super::resource_metadata::apply_in(tx, &page, &subject.kind).await?;
+        super::pull_files::body_observed_in(tx, &page.account_id, &page.subject_id, &revision)
+            .await?;
     } else if page.metadata.is_some() {
         return Err(invalid_detail());
     }

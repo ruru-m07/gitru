@@ -90,6 +90,19 @@ async fn hydrate_range(
     head: &str,
     source_repository: &str,
 ) {
+    store
+        .apply_detail(range_observation(store, account, base, head, source_repository).await)
+        .await
+        .unwrap();
+}
+
+async fn range_observation(
+    store: &Store,
+    account: &RemoteAccount,
+    base: &str,
+    head: &str,
+    source_repository: &str,
+) -> DetailCommit {
     let lease = store
         .begin_detail(
             &account.id,
@@ -106,80 +119,77 @@ async fn hydrate_range(
         provider_updated_at: None,
         observed_at: "2099-01-01T00:00:00Z".into(),
     };
-    store
-        .apply_detail(DetailCommit {
-            reconciliation: DetailReconciliation::full_history(),
-            account_id: account.id.clone(),
-            authorization_epoch: account.authorization_epoch.clone(),
-            authorization_view: lease.authorization_view,
-            instance_id: lease.instance_id,
-            subject_id: "pull".into(),
-            facet: DetailFacet::Body,
-            run_id: lease.run_id,
-            request_cursor: lease.next_cursor,
-            body: DetailValue {
-                state: DetailValueState::Known,
-                text: Some("body".into()),
+    DetailCommit {
+        reconciliation: DetailReconciliation::full_history(),
+        account_id: account.id.clone(),
+        authorization_epoch: account.authorization_epoch.clone(),
+        authorization_view: lease.authorization_view,
+        instance_id: lease.instance_id,
+        subject_id: "pull".into(),
+        facet: DetailFacet::Body,
+        run_id: lease.run_id,
+        request_cursor: lease.next_cursor,
+        body: DetailValue {
+            state: DetailValueState::Known,
+            text: Some("body".into()),
+        },
+        metadata: Some(ResourceMetadataObservation {
+            kind: RemoteItemKind::PullRequest,
+            values: ResourceMetadataValues {
+                base: Some(DetailBranch {
+                    name: "main".into(),
+                    oid: base.into(),
+                    repository: Some(DetailRepositoryRef {
+                        provider_id: "target-1".into(),
+                        full_name: "owner/project".into(),
+                        web_url: None,
+                    }),
+                }),
+                head: Some(DetailBranch {
+                    name: "feature".into(),
+                    oid: head.into(),
+                    repository: Some(DetailRepositoryRef {
+                        provider_id: source_repository.into(),
+                        full_name: "fork/project".into(),
+                        web_url: None,
+                    }),
+                }),
+                ..Default::default()
             },
-            metadata: Some(ResourceMetadataObservation {
-                kind: RemoteItemKind::PullRequest,
-                values: ResourceMetadataValues {
-                    base: Some(DetailBranch {
-                        name: "main".into(),
-                        oid: base.into(),
-                        repository: Some(DetailRepositoryRef {
-                            provider_id: "target-1".into(),
-                            full_name: "owner/project".into(),
-                            web_url: None,
-                        }),
-                    }),
-                    head: Some(DetailBranch {
-                        name: "feature".into(),
-                        oid: head.into(),
-                        repository: Some(DetailRepositoryRef {
-                            provider_id: source_repository.into(),
-                            full_name: "fork/project".into(),
-                            web_url: None,
-                        }),
-                    }),
-                    ..Default::default()
+            fields: vec![
+                MetadataObservedField {
+                    field: MetadataField::Base,
+                    state: DetailValueState::Known,
                 },
-                fields: vec![
-                    MetadataObservedField {
-                        field: MetadataField::Base,
-                        state: DetailValueState::Known,
-                    },
-                    MetadataObservedField {
-                        field: MetadataField::Head,
-                        state: DetailValueState::Known,
-                    },
-                ],
-                source: MetadataSource {
-                    source: source.source.clone(),
-                    adapter_version: 1,
-                    provider_updated_at: None,
-                    observed_at: source.observed_at.clone(),
+                MetadataObservedField {
+                    field: MetadataField::Head,
+                    state: DetailValueState::Known,
                 },
-            }),
-            subject_binding: Some(DetailSubjectBinding {
-                repository_id: "repo".into(),
-                repository_provider_id: "target-1".into(),
-                provider_id: "pull-67".into(),
-                number: Some("67".into()),
-                kind: RemoteItemKind::PullRequest,
-                head_oid: Some(head.into()),
-            }),
-            entries: vec![],
-            source,
-            next_cursor: None,
-            etag: None,
-            not_modified: false,
-            whole_scope: true,
-            complete: true,
-            freshness_seconds: 3_600,
-        })
-        .await
-        .unwrap();
+            ],
+            source: MetadataSource {
+                source: source.source.clone(),
+                adapter_version: 1,
+                provider_updated_at: None,
+                observed_at: source.observed_at.clone(),
+            },
+        }),
+        subject_binding: Some(DetailSubjectBinding {
+            repository_id: "repo".into(),
+            repository_provider_id: "target-1".into(),
+            provider_id: "pull-67".into(),
+            number: Some("67".into()),
+            kind: RemoteItemKind::PullRequest,
+            head_oid: Some(head.into()),
+        }),
+        entries: vec![],
+        source,
+        next_cursor: None,
+        etag: Some("range-v1".into()),
+        not_modified: false,
+        whole_scope: true,
+        complete: true,
+        freshness_seconds: 3_600,
+    }
 }
 
 fn source() -> PullFileSource {
@@ -526,7 +536,14 @@ async fn local_cursor_membership_is_bound_to_generation_epoch_authview_and_body_
     );
     let saved = snapshot(&store).await;
     let selected = request(&saved, &a);
-    hydrate_range(&store, &a, BASE, HEAD, "fork-2").await;
+    hydrate_range(
+        &store,
+        &a,
+        "cccccccccccccccccccccccccccccccccccccccc",
+        HEAD,
+        "fork-2",
+    )
+    .await;
     assert!(snapshot(&store).await.files.is_empty());
     assert!(store.verify_pull_file_membership(selected).await.is_err());
     let saved = publish(&store, &a, &["new"]).await;
@@ -1057,4 +1074,234 @@ async fn replacing_native_blob_artifact_reclaims_only_unreferenced_unprotected_o
             .unwrap(),
         0
     );
+}
+
+#[tokio::test]
+async fn unchanged_body_range_title_edit_and_304_keep_active_file_and_artifact_authority() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(dir.path().join("cache.db")).await.unwrap();
+    let a = seed(&store, "a").await;
+    let saved = publish(&store, &a, &["a"]).await;
+    let req = request(&saved, &a);
+    let membership = store
+        .verify_pull_file_membership(req.clone())
+        .await
+        .unwrap();
+    store
+        .apply_pull_file_artifact(
+            req.clone(),
+            membership.clone(),
+            artifact(&membership, "cached diff"),
+        )
+        .await
+        .unwrap();
+    let lease = store
+        .begin_pull_files("a", &a.authorization_epoch, "pull", source())
+        .await
+        .unwrap();
+    let mut changed = range_observation(&store, &a, BASE, HEAD, "fork-2").await;
+    let metadata = changed.metadata.as_mut().unwrap();
+    metadata.values.title = Some("new title".into());
+    metadata.fields.push(MetadataObservedField {
+        field: MetadataField::Title,
+        state: DetailValueState::Known,
+    });
+    changed.body.text = Some("new description".into());
+    store.apply_detail(changed).await.unwrap();
+    assert_eq!(snapshot(&store).await.context, saved.context);
+    assert_eq!(snapshot(&store).await.facet_revision, saved.facet_revision);
+    assert_eq!(
+        store
+            .resume_pull_files("a", &a.authorization_epoch, "pull")
+            .await
+            .unwrap(),
+        Some(lease.clone())
+    );
+    let mut unchanged = range_observation(&store, &a, BASE, HEAD, "fork-2").await;
+    unchanged.not_modified = true;
+    unchanged.body = DetailValue::default();
+    unchanged.metadata = None;
+    store.apply_detail(unchanged).await.unwrap();
+    assert_eq!(snapshot(&store).await.files, saved.files);
+    assert_eq!(
+        store
+            .verify_pull_file_membership(req.clone())
+            .await
+            .unwrap(),
+        membership
+    );
+    assert_eq!(
+        store
+            .pull_file_artifact(req)
+            .await
+            .unwrap()
+            .artifact
+            .unwrap()
+            .unified_text
+            .as_deref(),
+        Some("cached diff")
+    );
+    store
+        .apply_pull_files(commit(&store, &lease, &["a"], None).await)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn range_fact_changes_and_omission_then_recovery_do_not_revive_old_generations() {
+    for transition in ["base", "source", "merge_base", "omission"] {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path().join("cache.db")).await.unwrap();
+        let a = seed(&store, "a").await;
+        let saved = publish(&store, &a, &["a"]).await;
+        let req = request(&saved, &a);
+        let lease = store
+            .begin_pull_files("a", &a.authorization_epoch, "pull", source())
+            .await
+            .unwrap();
+        let inflight = commit(&store, &lease, &["new"], None).await;
+        let mut changed = range_observation(&store, &a, BASE, HEAD, "fork-2").await;
+        let metadata = changed.metadata.as_mut().unwrap();
+        match transition {
+            "base" => {
+                metadata.values.base.as_mut().unwrap().oid =
+                    "cccccccccccccccccccccccccccccccccccccccc".into()
+            }
+            "source" => {
+                metadata
+                    .values
+                    .head
+                    .as_mut()
+                    .unwrap()
+                    .repository
+                    .as_mut()
+                    .unwrap()
+                    .provider_id = "different-fork".into()
+            }
+            "merge_base" => {
+                metadata.values.merge_base_oid =
+                    Some("dddddddddddddddddddddddddddddddddddddddd".into());
+                metadata.fields.push(MetadataObservedField {
+                    field: MetadataField::MergeBase,
+                    state: DetailValueState::Known,
+                });
+            }
+            _ => {
+                metadata.values = ResourceMetadataValues::default();
+                for field in &mut metadata.fields {
+                    field.state = DetailValueState::Omitted;
+                }
+            }
+        }
+        store.apply_detail(changed).await.unwrap();
+        // No Files query occurs between the changed and restored observations.
+        hydrate_range(&store, &a, BASE, HEAD, "fork-2").await;
+        assert!(snapshot(&store).await.files.is_empty(), "{transition}");
+        assert!(
+            store.verify_pull_file_membership(req).await.is_err(),
+            "{transition}"
+        );
+        assert!(
+            store.apply_pull_files(inflight).await.is_err(),
+            "{transition}"
+        );
+        assert_eq!(
+            store
+                .resume_pull_files("a", &a.authorization_epoch, "pull")
+                .await
+                .unwrap(),
+            None,
+            "{transition}"
+        );
+        assert_eq!(publish(&store, &a, &["fresh"]).await.files.len(), 1);
+    }
+}
+
+#[tokio::test]
+async fn summary_head_away_and_back_is_fenced_without_a_body_or_files_query_between() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(dir.path().join("cache.db")).await.unwrap();
+    let a = seed(&store, "a").await;
+    let saved = publish(&store, &a, &["a"]).await;
+    let req = request(&saved, &a);
+    let mut subject = store
+        .pull_file_selection(req.clone())
+        .await
+        .unwrap()
+        .subject;
+    let lease = store
+        .begin_pull_files("a", &a.authorization_epoch, "pull", source())
+        .await
+        .unwrap();
+    let inflight = commit(&store, &lease, &["old run"], None).await;
+    for (head, at) in [
+        (
+            "cccccccccccccccccccccccccccccccccccccccc",
+            "2099-01-01T01:00:00Z",
+        ),
+        (HEAD, "2099-01-01T02:00:00Z"),
+    ] {
+        subject.head_oid = Some(head.into());
+        subject.updated_at = at.into();
+        let run_id = store
+            .begin_sync("a", &a.authorization_epoch, "repo:repo:pull_request")
+            .await
+            .unwrap();
+        store
+            .apply_page(PageCommit {
+                account_id: "a".into(),
+                authorization_epoch: a.authorization_epoch.clone(),
+                scope: "repo:repo:pull_request".into(),
+                run_id,
+                repositories: vec![],
+                items: vec![subject.clone()],
+                endpoint_aliases: vec![],
+                next_cursor: None,
+                etag: None,
+                last_modified: None,
+                not_modified: false,
+                complete: true,
+                observed_at: at.into(),
+            })
+            .await
+            .unwrap();
+    }
+    assert!(snapshot(&store).await.files.is_empty());
+    assert!(store.verify_pull_file_membership(req).await.is_err());
+    assert!(store.apply_pull_files(inflight).await.is_err());
+}
+
+#[tokio::test]
+async fn body_access_denial_recovery_cannot_rebind_old_generation_to_the_new_view() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(dir.path().join("cache.db")).await.unwrap();
+    let a = seed(&store, "a").await;
+    let saved = publish(&store, &a, &["a"]).await;
+    let req = request(&saved, &a);
+    let lease = store
+        .begin_pull_files("a", &a.authorization_epoch, "pull", source())
+        .await
+        .unwrap();
+    store
+        .set_sync_status(
+            "a",
+            &a.authorization_epoch,
+            "detail:pull:body",
+            SyncStatus {
+                state: SyncState::Error,
+                last_success_at: None,
+                next_retry_at: None,
+                error: Some(CollaborationError::new(
+                    ErrorCode::PermissionDenied,
+                    "Denied fixture",
+                )),
+            },
+        )
+        .await
+        .unwrap();
+    hydrate_range(&store, &a, BASE, HEAD, "fork-2").await;
+    assert!(snapshot(&store).await.files.is_empty());
+    assert!(store.verify_pull_file_membership(req).await.is_err());
+    assert!(store.pull_file_request(&lease).await.is_err());
+    assert_eq!(publish(&store, &a, &["recovered"]).await.files.len(), 1);
 }

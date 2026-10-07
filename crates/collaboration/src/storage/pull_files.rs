@@ -63,7 +63,7 @@ async fn denied_in(tx: &mut Transaction<'_, Sqlite>, account: &str, subject: &st
     sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sync_scopes WHERE account_id=? AND scope IN (?,?) AND access_denied=1)")
         .bind(account).bind(scope(subject)).bind(DetailFacet::Body.scope(subject)).fetch_one(&mut **tx).await.map_err(storage_error)
 }
-async fn capture_in(
+async fn capture_latest_in(
     tx: &mut Transaction<'_, Sqlite>,
     account_id: &str,
     subject_id: &str,
@@ -164,6 +164,120 @@ async fn capture_in(
         authorization_view: super::metadata(tx).await?.1,
     })
 }
+/// A Body validation revision is not itself a range change. Reuse the revision
+/// at which the exact range became current only while an active/staging native
+/// binding still witnesses that range. The Body commit hook retires both kinds
+/// atomically when known facts or authorization change, including an ABA cycle.
+async fn capture_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    account: &str,
+    subject: &str,
+) -> Result<Captured> {
+    let mut captured = capture_latest_in(tx, account, subject).await?;
+    let saved:Option<String>=sqlx::query_scalar("SELECT current_context_json FROM pull_file_facets WHERE account_id=? AND subject_id=? AND authorization_epoch=? AND authorization_view=?")
+        .bind(account).bind(subject).bind(&captured.account.authorization_epoch).bind(&captured.authorization_view).fetch_optional(&mut **tx).await.map_err(storage_error)?;
+    if let Some(saved) = saved {
+        let context: PullFileContext = decode(&saved)?;
+        let mut candidate = captured.binding.clone();
+        candidate.context.body_metadata_facet_revision =
+            context.body_metadata_facet_revision.clone();
+        if candidate.context == context {
+            let witnessed:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pull_file_generations WHERE account_id=? AND subject_id=? AND state IN ('active','staging') AND authorization_epoch=? AND authorization_view=? AND binding_json=?)")
+                .bind(account).bind(subject).bind(&captured.account.authorization_epoch).bind(&captured.authorization_view).bind(encode(&candidate)?).fetch_one(&mut **tx).await.map_err(storage_error)?;
+            if witnessed {
+                captured.binding = candidate;
+            }
+        }
+    }
+    Ok(captured)
+}
+
+/// Called inside every successful Body transaction, after metadata reconciliation.
+/// This makes omission and away-and-back changes durable fences even when no
+/// file query ran between those Body observations.
+pub(super) async fn body_observed_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    account: &str,
+    subject: &str,
+    body_revision: &str,
+) -> Result<()> {
+    let facet=sqlx::query("SELECT authorization_epoch,authorization_view,current_context_json FROM pull_file_facets WHERE account_id=? AND subject_id=?")
+        .bind(account).bind(subject).fetch_optional(&mut **tx).await.map_err(storage_error)?;
+    let Some(facet) = facet else { return Ok(()) };
+    let mut old_context: PullFileContext = decode(facet.get("current_context_json"))?;
+    let account_state = account_in(tx, account, true).await?;
+    let current_view = metadata(tx).await?.1;
+    let current = match capture_in(tx, account, subject).await {
+        Ok(captured) => Some(captured),
+        Err(error) if matches!(error.code, ErrorCode::NotFound | ErrorCode::StaleView) => None,
+        Err(error) => return Err(error),
+    };
+    if current.as_ref().is_some_and(|current| {
+        current.binding.context == old_context
+            && facet.get::<String, _>("authorization_epoch") == current.account.authorization_epoch
+            && facet.get::<String, _>("authorization_view") == current.authorization_view
+    }) {
+        return Ok(());
+    }
+    old_context.body_metadata_facet_revision = body_revision.into();
+    let context = current
+        .map(|value| value.binding.context)
+        .unwrap_or(old_context);
+    invalidate_current_in(tx, &account_state, subject, context, &current_view).await
+}
+
+/// Summary head transitions fence a Files generation even if the provider moves
+/// away and back before the next Body refresh or selected-artifact completion.
+pub(super) async fn head_observed_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    account: &RemoteAccount,
+    subject: &str,
+    head: Option<&str>,
+) -> Result<()> {
+    let context:Option<String>=sqlx::query_scalar("SELECT current_context_json FROM pull_file_facets f WHERE account_id=? AND subject_id=? AND EXISTS(SELECT 1 FROM pull_file_generations g WHERE g.account_id=f.account_id AND g.subject_id=f.subject_id AND g.state IN ('active','staging'))")
+        .bind(&account.id).bind(subject).fetch_optional(&mut **tx).await.map_err(storage_error)?;
+    let Some(context) = context else {
+        return Ok(());
+    };
+    let context: PullFileContext = decode(&context)?;
+    if Some(context.head_oid.as_str()) == head {
+        return Ok(());
+    };
+    let authorization_view = metadata(tx).await?.1;
+    invalidate_current_in(tx, account, subject, context, &authorization_view).await
+}
+async fn invalidate_current_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    account_state: &RemoteAccount,
+    subject: &str,
+    context: PullFileContext,
+    current_view: &str,
+) -> Result<()> {
+    let account = &account_state.id;
+    sqlx::query("UPDATE pull_file_facets SET authorization_epoch=?,authorization_view=?,current_context_json=?,active_generation=NULL,facet_revision=NULL,stale_at=NULL WHERE account_id=? AND subject_id=?")
+        .bind(&account_state.authorization_epoch).bind(current_view).bind(encode(&context)?).bind(account).bind(subject).execute(&mut **tx).await.map_err(storage_error)?;
+    sqlx::query("UPDATE pull_file_generations SET state='superseded' WHERE account_id=? AND subject_id=? AND state='active'").bind(account).bind(subject).execute(&mut **tx).await.map_err(storage_error)?;
+    sqlx::query(
+        "DELETE FROM pull_file_generations WHERE account_id=? AND subject_id=? AND state='staging'",
+    )
+    .bind(account)
+    .bind(subject)
+    .execute(&mut **tx)
+    .await
+    .map_err(storage_error)?;
+    sqlx::query("UPDATE sync_scopes SET run_id=?,next_cursor=NULL,coverage_json=?,sync_json=json_set(sync_json,'$.state','idle') WHERE account_id=? AND scope=?")
+        .bind(Uuid::new_v4().to_string()).bind(encode(&missing_coverage())?).bind(account).bind(scope(subject)).execute(&mut **tx).await.map_err(storage_error)?;
+    record_change(
+        tx,
+        account,
+        positive_revision(&account_state.authorization_epoch)?,
+        &scope(subject),
+        false,
+    )
+    .await?;
+    refresh_retention_in(tx, account, subject).await
+}
+
 async fn lease_in(
     tx: &mut Transaction<'_, Sqlite>,
     account: &str,
