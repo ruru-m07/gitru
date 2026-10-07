@@ -6,6 +6,8 @@ import type {
   InboxQuery,
   ItemQuery,
   PullCommitQuery,
+  PullFileDiffRequest,
+  PullFileQuery,
   RemoteAccount,
   ResourceLocator,
 } from "@gitru/commands";
@@ -331,6 +333,62 @@ export function usePullCommits(
 ) {
   useCollaborationVersion();
   return useQuery({ ...pullCommitsQueryOptions(account, query), enabled });
+}
+
+/** Ordered cache-only pull file page; visible demand drives native sync. */
+export function pullFilesQueryOptions(
+  account: RemoteAccount,
+  query: Omit<PullFileQuery, "account_id">,
+) {
+  const fullQuery = { ...query, account_id: account.id };
+  return queryOptions({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.pullFiles(account, fullQuery),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).pullFiles(query, signal),
+  });
+}
+
+export function usePullFiles(
+  account: RemoteAccount,
+  query: Omit<PullFileQuery, "account_id">,
+  enabled = true,
+) {
+  useCollaborationVersion();
+  return useQuery({ ...pullFilesQueryOptions(account, query), enabled });
+}
+
+/** Exact selected artifact read from SQLite only. Hydration is explicit. */
+export function pullFileArtifactQueryOptions(
+  account: RemoteAccount,
+  request: Omit<PullFileDiffRequest, "account_id" | "authorization_epoch">,
+) {
+  const fullRequest = {
+    ...request,
+    account_id: account.id,
+    authorization_epoch: account.authorization_epoch,
+  };
+  return queryOptions({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.pullFileArtifact(account, fullRequest),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).pullFileArtifact(request, signal),
+    // SQLite is the durable cache. Release inactive multi-megabyte patch text
+    // immediately so navigation retains only the selected artifact in JS.
+    gcTime: 0,
+  });
+}
+
+export function usePullFileArtifact(
+  account: RemoteAccount,
+  request: Omit<PullFileDiffRequest, "account_id" | "authorization_epoch">,
+  enabled = true,
+) {
+  useCollaborationVersion();
+  return useQuery({
+    ...pullFileArtifactQueryOptions(account, request),
+    enabled,
+  });
 }
 
 /** Local Git/SQLite only; no provider request or automatic link selection. */

@@ -142,6 +142,10 @@ function transport(
     resolveResource: unexpected,
     detail: unexpected,
     pullCommits: unexpected,
+    pullFiles: unexpected,
+    pullFileArtifact: unexpected,
+    hydratePullFile: unexpected,
+    loadLocalPullFile: unexpected,
     hydrateDetail: unexpected,
     notificationSubject: unexpected,
     discoverNotificationSubject: unexpected,
@@ -857,6 +861,119 @@ describe("CollaborationClient", () => {
     });
     await refreshed.promise;
     unsubscribe();
+    stop();
+    cache.clear();
+  });
+  it("invalidates file list and artifact reads when selected file evidence changes", async () => {
+    let next = changePage("1");
+    const client = new CollaborationClient(
+      transport({
+        listen: async () => () => {},
+        changesSince: async () => next,
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    const context = {
+      base_oid: "a".repeat(40),
+      head_oid: "b".repeat(40),
+      merge_base_oid: null,
+      base_repository_provider_id: "target",
+      source_repository_provider_id: "source",
+      body_metadata_facet_revision: "1",
+    };
+    const query = {
+      account_id: account.id,
+      subject_id: "pull",
+      cursor: null,
+      limit: 100,
+    };
+    const request = {
+      account_id: account.id,
+      authorization_epoch: account.authorization_epoch,
+      subject_id: "pull",
+      file_facet_revision: "2",
+      context,
+      file_key: "file-a",
+    };
+    const listKey = collaborationKeys.pullFiles(account, query);
+    const artifactKey = collaborationKeys.pullFileArtifact(account, request);
+    cache.setQueryData(listKey, "saved file list");
+    cache.setQueryData(artifactKey, "saved selected artifact");
+
+    next = changePage("2", "1", [
+      {
+        revision: "2",
+        account_id: account.id,
+        scope: "detail:pull:files",
+        reset: false,
+      },
+    ]);
+    await client.wake();
+
+    expect(cache.getQueryData(listKey)).toBe("saved file list");
+    expect(cache.getQueryData(artifactKey)).toBe("saved selected artifact");
+    expect(cache.getQueryState(listKey)?.isInvalidated).toBe(true);
+    expect(cache.getQueryState(artifactKey)?.isInvalidated).toBe(true);
+    stop();
+    cache.clear();
+  });
+  it.each([
+    { scope: "detail:pull:body", source: "body context" },
+    {
+      scope: "repo:repo-1:pull_request",
+      source: "repository context",
+    },
+  ])("removes superseded file projections before a $source refresh", async ({
+    scope,
+  }) => {
+    let next = changePage("1");
+    const client = new CollaborationClient(
+      transport({
+        listen: async () => () => {},
+        changesSince: async () => next,
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    const context = {
+      base_oid: "a".repeat(40),
+      head_oid: "b".repeat(40),
+      merge_base_oid: null,
+      base_repository_provider_id: "target",
+      source_repository_provider_id: "source",
+      body_metadata_facet_revision: "1",
+    };
+    const listKey = collaborationKeys.pullFiles(account, {
+      account_id: account.id,
+      subject_id: "pull",
+      cursor: null,
+      limit: 100,
+    });
+    const artifactKey = collaborationKeys.pullFileArtifact(account, {
+      account_id: account.id,
+      authorization_epoch: account.authorization_epoch,
+      subject_id: "pull",
+      file_facet_revision: "2",
+      context,
+      file_key: "file-a",
+    });
+    cache.setQueryData(listKey, "superseded file list");
+    cache.setQueryData(artifactKey, "superseded selected artifact");
+
+    next = changePage("2", "1", [
+      {
+        revision: "2",
+        account_id: account.id,
+        scope,
+        reset: false,
+      },
+    ]);
+    await client.wake();
+    await vi.waitFor(() => expect(cache.getQueryData(listKey)).toBeUndefined());
+    expect(cache.getQueryData(artifactKey)).toBeUndefined();
     stop();
     cache.clear();
   });

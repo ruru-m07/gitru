@@ -21,6 +21,7 @@ import {
   type ItemPage,
   type ItemQuery,
   type ItemSnapshot,
+  type LoadLocalPullFileRequest,
   type LocalCloneRequest,
   type LocalCloneSnapshot,
   type LocalDraft,
@@ -40,6 +41,10 @@ import {
   type CollaborationPullCheckoutReceipt as PullCheckoutReceipt,
   type PullCommitQuery,
   type PullCommitSnapshot,
+  type PullFileArtifactSnapshot,
+  type PullFileDiffRequest,
+  type PullFileQuery,
+  type PullFileSnapshot,
   type RefreshReceipt,
   type RefreshRequest,
   type RemoteAccount,
@@ -119,6 +124,14 @@ export interface CollaborationTransport extends DemandTransport {
   ): Promise<ResourceResolution>;
   detail(query: DetailQuery): Promise<DetailSnapshot>;
   pullCommits(query: PullCommitQuery): Promise<PullCommitSnapshot>;
+  pullFiles(query: PullFileQuery): Promise<PullFileSnapshot>;
+  pullFileArtifact(
+    request: PullFileDiffRequest,
+  ): Promise<PullFileArtifactSnapshot>;
+  hydratePullFile(request: PullFileDiffRequest): Promise<RefreshReceipt>;
+  loadLocalPullFile(
+    request: LoadLocalPullFileRequest,
+  ): Promise<PullFileArtifactSnapshot>;
   hydrateDetail(request: HydrateDetailRequest): Promise<RefreshReceipt>;
   notificationSubject(
     query: NotificationSubjectQuery,
@@ -222,6 +235,20 @@ export const collaborationKeys = {
       account.authorization_epoch,
       "pull-commits",
       query,
+    ] as const,
+  pullFiles: (account: RemoteAccount, query: PullFileQuery) =>
+    [
+      ...collaborationKeys.account(account.id),
+      account.authorization_epoch,
+      "pull-files",
+      query,
+    ] as const,
+  pullFileArtifact: (account: RemoteAccount, request: PullFileDiffRequest) =>
+    [
+      ...collaborationKeys.account(account.id),
+      account.authorization_epoch,
+      "pull-file-artifact",
+      request,
     ] as const,
   notificationSubject: (account: RemoteAccount, notificationId: string) =>
     [
@@ -484,6 +511,56 @@ export class CollaborationClient {
             this.transport.pullCommits({ ...query, account_id: account.id }),
           signal,
         ),
+      pullFiles: (
+        query: Omit<PullFileQuery, "account_id">,
+        signal?: AbortSignal,
+      ) =>
+        read(
+          () => this.transport.pullFiles({ ...query, account_id: account.id }),
+          signal,
+        ),
+      pullFileArtifact: (
+        request: Omit<
+          PullFileDiffRequest,
+          "account_id" | "authorization_epoch"
+        >,
+        signal?: AbortSignal,
+      ) =>
+        read(
+          () =>
+            this.transport.pullFileArtifact({
+              ...request,
+              account_id: account.id,
+              authorization_epoch: account.authorization_epoch,
+            }),
+          signal,
+        ),
+      hydratePullFile: (
+        request: Omit<
+          PullFileDiffRequest,
+          "account_id" | "authorization_epoch"
+        >,
+      ) =>
+        this.fence.read(account.id, () =>
+          this.transport.hydratePullFile({
+            ...request,
+            account_id: account.id,
+            authorization_epoch: account.authorization_epoch,
+          }),
+        ),
+      loadLocalPullFile: (
+        request: Omit<
+          LoadLocalPullFileRequest,
+          "account_id" | "authorization_epoch"
+        >,
+      ) =>
+        read(() =>
+          this.transport.loadLocalPullFile({
+            ...request,
+            account_id: account.id,
+            authorization_epoch: account.authorization_epoch,
+          }),
+        ),
       hydrateDetail: (
         request: Omit<
           HydrateDetailRequest,
@@ -679,7 +756,7 @@ export class CollaborationClient {
           // Authored writes have their own generation/authorization fences.
           if (change.scope !== "drafts")
             await queryClient.cancelQueries(affectedQueries);
-          if (pullCommitContextChanged(change.scope)) {
+          if (pullRangeContextChanged(change.scope)) {
             // Repository membership and Body observations can replace or omit
             // the exact base/head/source range. Reset matching commit
             // projections before their active refetch so React cannot keep
@@ -687,7 +764,9 @@ export class CollaborationClient {
             void queryClient.resetQueries({
               queryKey: collaborationKeys.account(change.account_id),
               predicate: (query: { queryKey: readonly unknown[] }) =>
-                query.queryKey[4] === "pull-commits" &&
+                (query.queryKey[4] === "pull-commits" ||
+                  query.queryKey[4] === "pull-files" ||
+                  query.queryKey[4] === "pull-file-artifact") &&
                 projectionAffected(query.queryKey, change.scope),
             });
           }
@@ -831,6 +910,15 @@ function projectionAffected(key: readonly unknown[], scope: string) {
       scope === `detail:${query.subject_id}:commits`
     );
   }
+  if (projection === "pull-files" || projection === "pull-file-artifact") {
+    const request = key[5] as PullFileQuery | PullFileDiffRequest;
+    return (
+      scope === "repositories" ||
+      scope.startsWith("repo:") ||
+      scope === `detail:${request.subject_id}:body` ||
+      scope === `detail:${request.subject_id}:files`
+    );
+  }
   if (projection === "inbox")
     return scope === "notifications" || scope.startsWith("local_inbox:");
   if (scope === "repositories")
@@ -853,7 +941,7 @@ function projectionAffected(key: readonly unknown[], scope: string) {
   return scope === `repo:${query.repository_id}:${query.kind}`;
 }
 
-function pullCommitContextChanged(scope: string) {
+function pullRangeContextChanged(scope: string) {
   return (
     scope === "repositories" ||
     scope.startsWith("repo:") ||

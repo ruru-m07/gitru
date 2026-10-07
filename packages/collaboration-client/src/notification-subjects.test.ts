@@ -133,6 +133,10 @@ function fixture() {
     resolveResource: unexpected,
     detail: vi.fn(async () => body("current saved body")),
     pullCommits: unexpected,
+    pullFiles: unexpected,
+    pullFileArtifact: unexpected,
+    hydratePullFile: unexpected,
+    loadLocalPullFile: unexpected,
     hydrateDetail: unexpected,
     notificationSubject: vi.fn(async () => {
       const current = snapshot(revision);
