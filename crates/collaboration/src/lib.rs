@@ -29,9 +29,9 @@ pub mod reviews;
 pub mod runtime;
 pub mod storage;
 pub mod tasks;
-pub mod text_edits;
 #[cfg(feature = "test-harness")]
 pub mod test_harness;
+pub mod text_edits;
 
 pub use checks::*;
 pub use command_recovery::*;

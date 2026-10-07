@@ -46,7 +46,22 @@ impl CommandPayloadCodec for Payload {
     }
 }
 pub(crate) fn validate_request(r: &TextEditRequest) -> Result<()> {
-    if !r.accept_best_effort
+    let identifier =
+        |value: &str| !value.is_empty() && value.len() <= 1024 && !value.contains('\0');
+    let revision = |value: &str, positive: bool| {
+        value.len() <= 19
+            && value.parse::<u64>().ok().is_some_and(|n| {
+                n <= i64::MAX as u64 && (!positive || n > 0) && n.to_string() == value
+            })
+    };
+    if !identifier(&r.context.account_id)
+        || !identifier(&r.context.subject_id)
+        || !revision(&r.context.authorization_epoch, true)
+        || !revision(&r.context.authorization_view, false)
+        || uuid::Uuid::parse_str(&r.command_id)
+            .ok()
+            .is_none_or(|id| id.hyphenated().to_string() != r.command_id)
+        || !r.accept_best_effort
         || r.title.is_none() && r.body.is_none()
         || r.title.as_ref().is_some_and(|t| {
             t.trim().is_empty()
@@ -228,4 +243,39 @@ pub(crate) fn overlap(payload: &Payload, o: &Observation) -> bool {
             !body_equal(o.body.as_deref(), payload.base.body.as_deref())
                 && !body_equal(o.body.as_deref(), Some(t))
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn text_edit_context_and_identity_are_bounded_before_lookup() {
+        let valid = TextEditRequest {
+            context: TextEditContext {
+                account_id: "a".into(),
+                subject_id: "issue".into(),
+                authorization_epoch: "1".into(),
+                authorization_view: "0".into(),
+                review_token: "a".repeat(64),
+            },
+            command_id: "abcdefab-cdef-4abc-9def-abcdefabcdef".into(),
+            accept_best_effort: true,
+            title: Some("new title".into()),
+            body: None,
+        };
+        validate_request(&valid).unwrap();
+        for field in 0..7 {
+            let mut bad = valid.clone();
+            match field {
+                0 => bad.context.account_id = "a".repeat(1025),
+                1 => bad.context.subject_id = "a".repeat(1025),
+                2 => bad.context.authorization_epoch = "01".into(),
+                3 => bad.context.authorization_view = "9".repeat(20),
+                4 => bad.command_id = "x".repeat(1025),
+                5 => bad.command_id = bad.command_id.to_uppercase(),
+                _ => bad.context.subject_id = "nul\0key".into(),
+            };
+            assert!(validate_request(&bad).is_err(), "field {field}");
+        }
+    }
 }

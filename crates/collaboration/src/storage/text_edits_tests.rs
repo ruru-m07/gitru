@@ -1032,3 +1032,22 @@ async fn text_edit_successful_preflight_preserves_depleted_account_quota() {
     server.join().unwrap();
     store.close().await.unwrap();
 }
+
+#[tokio::test]
+async fn text_edit_snapshot_rejects_oversized_and_nul_identity_before_lookup() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(dir.path().join("bounded.db")).await.unwrap();
+    for invalid in ["x".repeat(1025), "nul\0key".into()] {
+        for (account, subject) in [(invalid.as_str(), "pull"), ("a", invalid.as_str())] {
+            assert_eq!(
+                store
+                    .text_edit_snapshot(account, subject)
+                    .await
+                    .unwrap_err()
+                    .code,
+                ErrorCode::InvalidInput
+            );
+        }
+    }
+    store.close().await.unwrap();
+}

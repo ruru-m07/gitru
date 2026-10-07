@@ -85,6 +85,8 @@ impl Store {
         account_id: &str,
         subject_id: &str,
     ) -> Result<TextEditSnapshot> {
+        validate_identifier(account_id)?;
+        validate_identifier(subject_id)?;
         let mut tx = self.inner.readers.begin().await.map_err(storage_error)?;
         let account = account_in(&mut tx, account_id, false).await?;
         let (revision, authorization_view) = metadata(&mut tx).await?;
