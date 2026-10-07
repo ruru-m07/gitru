@@ -3,8 +3,14 @@
 //! Remote paths are bounded labels. Nothing in this module turns one into a
 //! local path or accepts a renderer-selected provider URL as fetch authority.
 
-use crate::{CollaborationError, is_canonical_commit_oid};
+use crate::{
+    AccountState, CollaborationError, ProviderKind, RemoteAccount, RemoteItem, RemoteItemKind,
+    RemoteRepository, is_canonical_commit_oid,
+};
+use chrono::{DateTime, SecondsFormat};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use uuid::Uuid;
 
 pub const MAX_PULL_FILES: u32 = 3_000;
 pub const MAX_PULL_FILE_PROVIDER_PAGES: u32 = 30;
@@ -48,6 +54,25 @@ fn validate_identifier(value: &str) -> Result<()> {
 
 fn validate_revision(value: &str) -> Result<()> {
     validate_positive_decimal(value).map(|_| ())
+}
+
+fn validate_generation(value: &str) -> Result<()> {
+    let parsed = Uuid::parse_str(value).map_err(|_| invalid_pull_file())?;
+    if parsed.hyphenated().to_string() != value {
+        return Err(invalid_pull_file());
+    }
+    Ok(())
+}
+
+fn validate_canonical_utc_timestamp(value: &str) -> Result<()> {
+    validate_label(value, MAX_TIMESTAMP_BYTES)?;
+    let parsed = DateTime::parse_from_rfc3339(value).map_err(|_| invalid_pull_file())?;
+    if parsed.offset().local_minus_utc() != 0
+        || parsed.to_rfc3339_opts(SecondsFormat::AutoSi, true) != value
+    {
+        return Err(invalid_pull_file());
+    }
+    Ok(())
 }
 
 fn validate_decimal(value: &str) -> Result<u64> {
@@ -182,8 +207,6 @@ impl PullFileRangeValidation {
 pub struct PullFileIdentity {
     pub old_path: Option<String>,
     pub new_path: Option<String>,
-    /// Supplemental adapter-owned evidence; the path tuple remains identity.
-    pub provider_file_id: Option<String>,
 }
 
 impl PullFileIdentity {
@@ -202,11 +225,42 @@ impl PullFileIdentity {
         {
             return Err(invalid_pull_file());
         }
-        if let Some(provider_file_id) = &self.provider_file_id {
-            validate_identifier(provider_file_id)?;
-        }
         Ok(())
     }
+
+    fn validate_for(&self, change_kind: PullFileChangeKind) -> Result<()> {
+        self.validate()?;
+        let valid = match change_kind {
+            PullFileChangeKind::Added => self.old_path.is_none() && self.new_path.is_some(),
+            PullFileChangeKind::Deleted => self.old_path.is_some() && self.new_path.is_none(),
+            PullFileChangeKind::Renamed | PullFileChangeKind::Copied => {
+                self.old_path.is_some() && self.new_path.is_some()
+            }
+            // Some providers omit one side for in-place or unclassified
+            // changes. These kinds preserve the observed pair without
+            // inferring the missing path.
+            PullFileChangeKind::Modified
+            | PullFileChangeKind::TypeChanged
+            | PullFileChangeKind::Unknown => true,
+        };
+        if valid {
+            Ok(())
+        } else {
+            Err(invalid_pull_file())
+        }
+    }
+}
+
+/// The same helper can be applied to one page or to storage's accumulated
+/// generation identities, so supplemental provider IDs never mask a duplicate
+/// old/new path tuple across pages.
+pub fn pull_file_identities_are_unique<'a>(
+    identities: impl IntoIterator<Item = &'a PullFileIdentity>,
+) -> bool {
+    let mut unique = HashSet::new();
+    identities
+        .into_iter()
+        .all(|identity| unique.insert(identity))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -217,7 +271,9 @@ pub enum PullFileChangeKind {
     Deleted,
     Renamed,
     Copied,
+    /// A provider-observed type transition. One-sided paths remain explicit.
     TypeChanged,
+    /// Native state was not recognized. Path presence is not inferred.
     Unknown,
 }
 
@@ -267,6 +323,8 @@ pub enum PullFileDiffHint {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderPullFile {
     pub identity: PullFileIdentity,
+    /// Supplemental adapter-owned evidence; never part of path-pair identity.
+    pub provider_file_id: Option<String>,
     pub change_kind: PullFileChangeKind,
     pub provider_change_kind: String,
     pub additions: PullFileCount,
@@ -280,7 +338,10 @@ pub struct ProviderPullFile {
 
 impl ProviderPullFile {
     pub fn validate(&self) -> Result<()> {
-        self.identity.validate()?;
+        self.identity.validate_for(self.change_kind)?;
+        if let Some(provider_file_id) = &self.provider_file_id {
+            validate_identifier(provider_file_id)?;
+        }
         validate_label(&self.provider_change_kind, MAX_PULL_FILE_NATIVE_STATE_BYTES)?;
         self.additions.validate()?;
         self.deletions.validate()?;
@@ -314,7 +375,7 @@ impl PullFile {
             self.provider_position,
             self.file.identity.old_path.as_deref(),
             self.file.identity.new_path.as_deref(),
-            self.file.identity.provider_file_id.as_deref(),
+            self.file.provider_file_id.as_deref(),
         )
     }
 }
@@ -330,11 +391,44 @@ pub enum PullFileCapReason {
     LocalByteLimit,
 }
 
+impl PullFileCapReason {
+    const fn provenance(self) -> PullFileCapProvenance {
+        match self {
+            Self::ProviderFileLimit | Self::ProviderPageLimit | Self::ProviderOverflow => {
+                PullFileCapProvenance::Provider
+            }
+            Self::LocalFileLimit | Self::LocalPageLimit | Self::LocalByteLimit => {
+                PullFileCapProvenance::Local
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PullFileCapProvenance {
+    Provider,
+    Local,
+}
+
 /// Exact terminal cap evidence. `remote_has_more` may itself be unknown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PullFileCapEvidence {
+    pub provenance: PullFileCapProvenance,
     pub reason: PullFileCapReason,
     pub remote_has_more: PullFileFlag,
+}
+
+impl PullFileCapEvidence {
+    pub const fn is_valid(self) -> bool {
+        matches!(
+            (self.provenance, self.reason.provenance()),
+            (
+                PullFileCapProvenance::Provider,
+                PullFileCapProvenance::Provider
+            ) | (PullFileCapProvenance::Local, PullFileCapProvenance::Local)
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -390,17 +484,17 @@ impl PullFileCompleteness {
     }
 
     pub const fn is_valid(self) -> bool {
-        matches!(
-            (self.state, self.cap),
-            (PullFileCompletenessState::Capped, Some(_))
-                | (
-                    PullFileCompletenessState::Missing
-                        | PullFileCompletenessState::Syncing
-                        | PullFileCompletenessState::Complete
-                        | PullFileCompletenessState::Partial,
-                    None
-                )
-        )
+        match (self.state, self.cap) {
+            (PullFileCompletenessState::Capped, Some(cap)) => cap.is_valid(),
+            (
+                PullFileCompletenessState::Missing
+                | PullFileCompletenessState::Syncing
+                | PullFileCompletenessState::Complete
+                | PullFileCompletenessState::Partial,
+                None,
+            ) => true,
+            _ => false,
+        }
     }
 }
 
@@ -411,70 +505,188 @@ pub enum PullFileProvenance {
     LocalExactRange,
 }
 
-/// Versioned adapter/strategy evidence, never a response payload or URL.
+/// Closed transport/derivation strategies. Adding a provider path requires a
+/// reviewed native variant; serialized observations cannot smuggle URLs or
+/// provider response labels through this field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PullFileSourceStrategy {
+    GithubPullFiles,
+    GithubPullDiff,
+    GitlabMergeRequestDiffs,
+    GitlabRawDiffs,
+    BitbucketCloudDiffstat,
+    BitbucketCloudDiff,
+    LocalExactRange,
+}
+
+impl PullFileSourceStrategy {
+    pub const fn provenance(self) -> PullFileProvenance {
+        match self {
+            Self::LocalExactRange => PullFileProvenance::LocalExactRange,
+            Self::GithubPullFiles
+            | Self::GithubPullDiff
+            | Self::GitlabMergeRequestDiffs
+            | Self::GitlabRawDiffs
+            | Self::BitbucketCloudDiffstat
+            | Self::BitbucketCloudDiff => PullFileProvenance::Provider,
+        }
+    }
+
+    pub const fn provider(self) -> Option<ProviderKind> {
+        match self {
+            Self::GithubPullFiles | Self::GithubPullDiff => Some(ProviderKind::Github),
+            Self::GitlabMergeRequestDiffs | Self::GitlabRawDiffs => Some(ProviderKind::Gitlab),
+            Self::BitbucketCloudDiffstat | Self::BitbucketCloudDiff => {
+                Some(ProviderKind::BitbucketCloud)
+            }
+            Self::LocalExactRange => None,
+        }
+    }
+
+    const fn supports_collection(self) -> bool {
+        matches!(
+            self,
+            Self::GithubPullFiles
+                | Self::GitlabMergeRequestDiffs
+                | Self::BitbucketCloudDiffstat
+                | Self::LocalExactRange
+        )
+    }
+}
+
+/// Versioned closed strategy evidence, never a response payload or URL.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PullFileSource {
-    pub provenance: PullFileProvenance,
-    pub source: String,
+    pub strategy: PullFileSourceStrategy,
     pub adapter_version: u32,
 }
 
 impl PullFileSource {
     pub fn validate(&self) -> Result<()> {
-        validate_label(&self.source, MAX_PULL_FILE_NATIVE_STATE_BYTES)?;
-        if self.source.contains("://") || self.adapter_version == 0 {
+        if self.adapter_version == 0 {
             return Err(invalid_pull_file());
         }
         Ok(())
     }
 }
 
-/// Bounded opaque provider continuation plus its traversal depth.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PullFileProviderCursor {
-    pub value: String,
-    pub page: u32,
-}
-
-impl PullFileProviderCursor {
-    pub fn validate(&self) -> Result<()> {
-        if self.value.is_empty()
-            || self.value.len() > MAX_PULL_FILE_PROVIDER_CURSOR_BYTES
-            || self.value.chars().any(char::is_control)
-            || self.page == 0
-            || self.page > MAX_PULL_FILE_PROVIDER_PAGES
-        {
-            Err(invalid_pull_file())
-        } else {
-            Ok(())
-        }
+fn validate_provider_cursor(value: &str) -> Result<()> {
+    if value.is_empty()
+        || value.len() > MAX_PULL_FILE_PROVIDER_CURSOR_BYTES
+        || value.chars().any(char::is_control)
+    {
+        Err(invalid_pull_file())
+    } else {
+        Ok(())
     }
 }
 
-/// Trusted collection request. It contains no endpoint, URL or local path.
+/// Storage-owned continuation evidence. `provider_page_count` is the number of
+/// pages already accepted, while `seen_cursors` preserves every continuation
+/// token used to detect non-adjacent provider cycles.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PullFileContinuation {
+    pub cursor: String,
+    pub provider_page_count: u32,
+    pub seen_cursors: Vec<String>,
+}
+
+impl PullFileContinuation {
+    pub fn validate(&self) -> Result<()> {
+        if self.provider_page_count == 0
+            || self.provider_page_count >= MAX_PULL_FILE_PROVIDER_PAGES
+            || self.seen_cursors.len() != self.provider_page_count as usize
+            || self.seen_cursors.last() != Some(&self.cursor)
+        {
+            return Err(invalid_pull_file());
+        }
+        let mut unique = HashSet::with_capacity(self.seen_cursors.len());
+        for cursor in &self.seen_cursors {
+            validate_provider_cursor(cursor)?;
+            if !unique.insert(cursor) {
+                return Err(invalid_pull_file());
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Trusted native routing facts resolved before an adapter is called.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PullFileCollectionRequest {
-    pub account_id: String,
-    pub authorization_epoch: String,
-    pub subject_id: String,
+pub struct PullFileBinding {
+    pub instance_id: String,
+    pub repository_id: String,
+    pub repository_provider_id: String,
+    pub pull_id: String,
+    pub pull_provider_id: String,
+    pub number: Option<String>,
     pub context: PullFileContext,
-    pub cursor: Option<PullFileProviderCursor>,
+}
+
+impl PullFileBinding {
+    pub fn validate(&self) -> Result<()> {
+        validate_identifier(&self.instance_id)?;
+        validate_identifier(&self.repository_id)?;
+        validate_identifier(&self.repository_provider_id)?;
+        validate_identifier(&self.pull_id)?;
+        validate_identifier(&self.pull_provider_id)?;
+        if let Some(number) = &self.number {
+            validate_identifier(number)?;
+        }
+        self.context.validate()
+    }
+}
+
+/// Trusted collection request. Provider routing comes from native account,
+/// repository, pull and instance bindings; there is no caller-selected URL.
+#[derive(Debug, Clone)]
+pub struct PullFileCollectionRequest {
+    pub account: RemoteAccount,
+    pub repository: RemoteRepository,
+    pub subject: RemoteItem,
+    pub binding: PullFileBinding,
+    pub continuation: Option<PullFileContinuation>,
     pub start_position: u32,
 }
 
 impl PullFileCollectionRequest {
     pub fn validate(&self) -> Result<()> {
-        validate_identifier(&self.account_id)?;
-        validate_revision(&self.authorization_epoch)?;
-        validate_identifier(&self.subject_id)?;
-        self.context.validate()?;
-        if self.start_position > MAX_PULL_FILES {
+        validate_identifier(&self.account.id)?;
+        validate_revision(&self.account.authorization_epoch)?;
+        validate_identifier(&self.repository.id)?;
+        validate_identifier(&self.repository.provider_id)?;
+        validate_identifier(&self.subject.id)?;
+        validate_identifier(&self.subject.provider_id)?;
+        self.binding.validate()?;
+        if self.account.state != AccountState::Active
+            || self.repository.account_id != self.account.id
+            || self.subject.account_id != self.account.id
+            || self.subject.repository_id.as_deref() != Some(self.repository.id.as_str())
+            || self.subject.kind != RemoteItemKind::PullRequest
+            || self.binding.repository_id != self.repository.id
+            || self.binding.repository_provider_id != self.repository.provider_id
+            || self.binding.context.base_repository_provider_id
+                != self.binding.repository_provider_id
+            || self.binding.pull_id != self.subject.id
+            || self.binding.pull_provider_id != self.subject.provider_id
+            || self.binding.number != self.subject.number
+            || self.start_position > MAX_PULL_FILES
+        {
             return Err(invalid_pull_file());
         }
-        if let Some(cursor) = &self.cursor {
-            cursor.validate()?;
+        if let Some(continuation) = &self.continuation {
+            continuation.validate()?;
+        } else if self.start_position != 0 {
+            return Err(invalid_pull_file());
         }
         Ok(())
+    }
+
+    fn accepted_provider_pages(&self) -> u32 {
+        self.continuation
+            .as_ref()
+            .map_or(0, |continuation| continuation.provider_page_count)
     }
 }
 
@@ -485,7 +697,7 @@ pub struct PullFileProviderPage {
     pub files: Vec<ProviderPullFile>,
     pub source: PullFileSource,
     pub start_position: u32,
-    pub next_cursor: Option<PullFileProviderCursor>,
+    pub next_cursor: Option<String>,
     pub cap: Option<PullFileCapEvidence>,
     pub freshness_seconds: u32,
     pub cooldown_seconds: Option<u64>,
@@ -495,9 +707,17 @@ impl PullFileProviderPage {
     pub fn validate_for(&self, request: &PullFileCollectionRequest) -> Result<()> {
         request.validate()?;
         self.context.validate()?;
-        if !self.context.is_exact(&request.context)
+        if !self.context.is_exact(&request.binding.context)
             || self.start_position != request.start_position
             || self.files.len() > MAX_PULL_FILES_PER_PROVIDER_PAGE
+            || !self.source.strategy.supports_collection()
+            || self
+                .source
+                .strategy
+                .provider()
+                .is_some_and(|provider| provider != request.account.provider)
+            || self.cap.is_some_and(|cap| !cap.is_valid())
+            || self.cap.is_some() && self.next_cursor.is_some()
         {
             return Err(invalid_pull_file());
         }
@@ -510,11 +730,16 @@ impl PullFileProviderPage {
         }
         self.source.validate()?;
         if let Some(cursor) = &self.next_cursor {
-            cursor.validate()?;
-            if request
-                .cursor
-                .as_ref()
-                .is_some_and(|request_cursor| request_cursor.value == cursor.value)
+            validate_provider_cursor(cursor)?;
+            let accepted_page_count = request
+                .accepted_provider_pages()
+                .checked_add(1)
+                .ok_or_else(invalid_pull_file)?;
+            if accepted_page_count >= MAX_PULL_FILE_PROVIDER_PAGES
+                || request
+                    .continuation
+                    .as_ref()
+                    .is_some_and(|continuation| continuation.seen_cursors.contains(cursor))
             {
                 return Err(invalid_pull_file());
             }
@@ -522,7 +747,38 @@ impl PullFileProviderPage {
         for file in &self.files {
             file.validate()?;
         }
+        if !pull_file_identities_are_unique(self.files.iter().map(|file| &file.identity)) {
+            return Err(invalid_pull_file());
+        }
         Ok(())
+    }
+
+    /// Advances only after this page passes validation. The first continuation
+    /// records one accepted page; a thirtieth page must be terminal.
+    pub fn next_continuation(
+        &self,
+        request: &PullFileCollectionRequest,
+    ) -> Result<Option<PullFileContinuation>> {
+        self.validate_for(request)?;
+        let Some(cursor) = &self.next_cursor else {
+            return Ok(None);
+        };
+        let provider_page_count = request
+            .accepted_provider_pages()
+            .checked_add(1)
+            .ok_or_else(invalid_pull_file)?;
+        let mut seen_cursors = request
+            .continuation
+            .as_ref()
+            .map_or_else(Vec::new, |continuation| continuation.seen_cursors.clone());
+        seen_cursors.push(cursor.clone());
+        let continuation = PullFileContinuation {
+            cursor: cursor.clone(),
+            provider_page_count,
+            seen_cursors,
+        };
+        continuation.validate()?;
+        Ok(Some(continuation))
     }
 }
 
@@ -575,6 +831,38 @@ impl PullFileDiffRequest {
     }
 }
 
+/// Store-resolved active generation evidence. Generation identity is an opaque
+/// UUID and is intentionally distinct from the decimal collaboration revision
+/// that published the facet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PullFileGenerationReceipt {
+    pub account_id: String,
+    pub authorization_epoch: String,
+    pub subject_id: String,
+    pub generation: String,
+    pub file_facet_revision: String,
+    pub context: PullFileContext,
+}
+
+impl PullFileGenerationReceipt {
+    pub fn validate(&self) -> Result<()> {
+        validate_identifier(&self.account_id)?;
+        validate_revision(&self.authorization_epoch)?;
+        validate_identifier(&self.subject_id)?;
+        validate_generation(&self.generation)?;
+        validate_revision(&self.file_facet_revision)?;
+        self.context.validate()
+    }
+
+    pub fn is_exact_for(&self, request: &PullFileDiffRequest) -> bool {
+        self.account_id == request.account_id
+            && self.authorization_epoch == request.authorization_epoch
+            && self.subject_id == request.subject_id
+            && self.file_facet_revision == request.file_facet_revision
+            && self.context.is_exact(&request.context)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PullFileContentState {
@@ -616,6 +904,7 @@ impl PullFileBlobReferences {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PullFileArtifact {
     pub account_id: String,
+    pub authorization_epoch: String,
     pub subject_id: String,
     pub generation: String,
     pub file_key: String,
@@ -638,8 +927,9 @@ pub struct PullFileArtifact {
 impl PullFileArtifact {
     pub fn validate(&self) -> Result<()> {
         validate_identifier(&self.account_id)?;
+        validate_revision(&self.authorization_epoch)?;
         validate_identifier(&self.subject_id)?;
-        validate_revision(&self.generation)?;
+        validate_generation(&self.generation)?;
         validate_file_key(&self.file_key)?;
         self.context.validate()?;
         if let Some(source) = &self.source {
@@ -658,17 +948,20 @@ impl PullFileArtifact {
             validate_label(content_type, MAX_CONTENT_TYPE_BYTES)?;
         }
         if let Some(validated_at) = &self.provider_validated_at {
-            validate_label(validated_at, MAX_TIMESTAMP_BYTES)?;
+            validate_canonical_utc_timestamp(validated_at)?;
         }
         validate_revision(&self.last_access_revision)?;
         let logical_bytes = validate_decimal(&self.logical_bytes)?;
-        validate_decimal(&self.on_disk_bytes)?;
+        let on_disk_bytes = validate_decimal(&self.on_disk_bytes)?;
 
         match self.content_state {
             PullFileContentState::NotLoaded => {
                 if self.source.is_some()
+                    || self.provider_validated_at.is_some()
                     || self.unified_text.is_some()
                     || !self.blob_references.is_empty()
+                    || logical_bytes != 0
+                    || on_disk_bytes != 0
                 {
                     return Err(invalid_pull_file());
                 }
@@ -676,6 +969,7 @@ impl PullFileArtifact {
             PullFileContentState::Text => {
                 let text = self.unified_text.as_ref().ok_or_else(invalid_pull_file)?;
                 if self.source.is_none()
+                    || self.provider_validated_at.is_none()
                     || !self.blob_references.is_empty()
                     || text.len() > MAX_PULL_FILE_TEXT_BYTES
                     || logical_bytes != text.len() as u64
@@ -686,6 +980,7 @@ impl PullFileArtifact {
             }
             PullFileContentState::Binary | PullFileContentState::Image => {
                 if self.source.is_none()
+                    || self.provider_validated_at.is_none()
                     || self.unified_text.is_some()
                     || self.blob_references.is_empty()
                 {
@@ -693,12 +988,24 @@ impl PullFileArtifact {
                 }
             }
             PullFileContentState::Omitted
-            | PullFileContentState::Oversized
             | PullFileContentState::Unsupported
             | PullFileContentState::Unavailable => {
                 if self.source.is_none()
+                    || self.provider_validated_at.is_none()
                     || self.unified_text.is_some()
                     || !self.blob_references.is_empty()
+                    || logical_bytes != 0
+                    || on_disk_bytes != 0
+                {
+                    return Err(invalid_pull_file());
+                }
+            }
+            PullFileContentState::Oversized => {
+                if self.source.is_none()
+                    || self.provider_validated_at.is_none()
+                    || self.unified_text.is_some()
+                    || !self.blob_references.is_empty()
+                    || on_disk_bytes != 0
                 {
                     return Err(invalid_pull_file());
                 }
@@ -707,10 +1014,20 @@ impl PullFileArtifact {
         Ok(())
     }
 
-    pub fn is_exact_for(&self, request: &PullFileDiffRequest) -> bool {
-        self.account_id == request.account_id
+    pub fn is_exact_for(
+        &self,
+        request: &PullFileDiffRequest,
+        active: &PullFileGenerationReceipt,
+    ) -> bool {
+        active.is_exact_for(request)
+            && self.account_id == active.account_id
+            && self.authorization_epoch == active.authorization_epoch
+            && self.subject_id == active.subject_id
+            && self.generation == active.generation
+            && self.context.is_exact(&active.context)
+            && self.account_id == request.account_id
+            && self.authorization_epoch == request.authorization_epoch
             && self.subject_id == request.subject_id
-            && self.generation == request.file_facet_revision
             && self.file_key == request.file_key
             && self.context.is_exact(&request.context)
     }
@@ -735,6 +1052,7 @@ mod tests {
     const BASE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const HEAD: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     const OTHER: &str = "cccccccccccccccccccccccccccccccccccccccc";
+    const GENERATION: &str = "123e4567-e89b-12d3-a456-426614174000";
 
     fn context() -> PullFileContext {
         PullFileContext {
@@ -751,8 +1069,8 @@ mod tests {
             identity: PullFileIdentity {
                 old_path: Some("src/ancien-雪.rs".into()),
                 new_path: Some("src/new-雪.rs".into()),
-                provider_file_id: Some("provider-file-1".into()),
             },
+            provider_file_id: Some("provider-file-1".into()),
             change_kind: PullFileChangeKind::Renamed,
             provider_change_kind: "renamed".into(),
             additions: PullFileCount::Known("2".into()),
@@ -765,21 +1083,81 @@ mod tests {
         }
     }
 
-    fn source(provenance: PullFileProvenance) -> PullFileSource {
+    fn provider_files(count: usize) -> Vec<ProviderPullFile> {
+        (0..count)
+            .map(|index| {
+                let mut file = provider_file();
+                file.identity.old_path = Some(format!("old/{index}.rs"));
+                file.identity.new_path = Some(format!("new/{index}.rs"));
+                file.provider_file_id = Some(format!("provider-file-{index}"));
+                file
+            })
+            .collect()
+    }
+
+    fn source(strategy: PullFileSourceStrategy) -> PullFileSource {
         PullFileSource {
-            provenance,
-            source: "fixture.pull_files.v1".into(),
+            strategy,
             adapter_version: 1,
         }
     }
 
     fn collection_request() -> PullFileCollectionRequest {
-        PullFileCollectionRequest {
-            account_id: "account".into(),
+        let account = RemoteAccount {
+            id: "account".into(),
+            provider: ProviderKind::Github,
+            host: "github.com".into(),
+            actor_id: "actor".into(),
+            login: "octocat".into(),
+            display_name: None,
             authorization_epoch: "2".into(),
-            subject_id: "pull-1".into(),
-            context: context(),
-            cursor: None,
+            state: AccountState::Active,
+            notifications_supported: true,
+        };
+        let repository = RemoteRepository {
+            id: "repository".into(),
+            account_id: account.id.clone(),
+            provider_id: "base-repository".into(),
+            full_name: "owner/repository".into(),
+            name: "repository".into(),
+            web_url: "https://github.com/owner/repository".into(),
+            description: None,
+            default_branch: Some("main".into()),
+            selected: true,
+        };
+        let subject = RemoteItem {
+            id: "pull-1".into(),
+            account_id: account.id.clone(),
+            repository_id: Some(repository.id.clone()),
+            provider_id: "provider-pull-1".into(),
+            kind: RemoteItemKind::PullRequest,
+            number: Some("1".into()),
+            title: "Pull".into(),
+            body: None,
+            body_omitted: false,
+            author: None,
+            web_url: None,
+            state: "open".into(),
+            updated_at: "2026-10-07T12:00:00Z".into(),
+            head_oid: Some(HEAD.into()),
+            is_draft: Some(false),
+            reason: None,
+            unread: None,
+        };
+        PullFileCollectionRequest {
+            binding: PullFileBinding {
+                instance_id: "github-instance".into(),
+                repository_id: repository.id.clone(),
+                repository_provider_id: repository.provider_id.clone(),
+                pull_id: subject.id.clone(),
+                pull_provider_id: subject.provider_id.clone(),
+                number: subject.number.clone(),
+                context: context(),
+            },
+            account,
+            repository,
+            subject,
+            continuation: None,
             start_position: 0,
         }
     }
@@ -787,11 +1165,12 @@ mod tests {
     fn text_artifact(text: &str) -> PullFileArtifact {
         PullFileArtifact {
             account_id: "account".into(),
+            authorization_epoch: "2".into(),
             subject_id: "pull-1".into(),
-            generation: "19".into(),
+            generation: GENERATION.into(),
             file_key: "file:001".into(),
             context: context(),
-            source: Some(source(PullFileProvenance::Provider)),
+            source: Some(source(PullFileSourceStrategy::GithubPullFiles)),
             content_state: PullFileContentState::Text,
             unified_text: Some(text.into()),
             blob_references: PullFileBlobReferences::default(),
@@ -804,6 +1183,17 @@ mod tests {
             last_access_revision: "20".into(),
             logical_bytes: text.len().to_string(),
             on_disk_bytes: text.len().to_string(),
+        }
+    }
+
+    fn generation_receipt() -> PullFileGenerationReceipt {
+        PullFileGenerationReceipt {
+            account_id: "account".into(),
+            authorization_epoch: "2".into(),
+            subject_id: "pull-1".into(),
+            generation: GENERATION.into(),
+            file_facet_revision: "19".into(),
+            context: context(),
         }
     }
 
@@ -893,11 +1283,57 @@ mod tests {
             PullFileIdentity {
                 old_path: None,
                 new_path: None,
-                provider_file_id: Some("supplemental".into()),
             }
             .validate()
             .is_err()
         );
+    }
+
+    #[test]
+    fn change_kinds_enforce_path_pair_cardinality_without_inference() {
+        let cases = [
+            (PullFileChangeKind::Added, None, Some("new.rs"), true),
+            (
+                PullFileChangeKind::Added,
+                Some("old.rs"),
+                Some("new.rs"),
+                false,
+            ),
+            (PullFileChangeKind::Deleted, Some("old.rs"), None, true),
+            (
+                PullFileChangeKind::Deleted,
+                Some("old.rs"),
+                Some("new.rs"),
+                false,
+            ),
+            (
+                PullFileChangeKind::Renamed,
+                Some("old.rs"),
+                Some("new.rs"),
+                true,
+            ),
+            (PullFileChangeKind::Renamed, None, Some("new.rs"), false),
+            (
+                PullFileChangeKind::Copied,
+                Some("old.rs"),
+                Some("copy.rs"),
+                true,
+            ),
+            (PullFileChangeKind::Copied, Some("old.rs"), None, false),
+            (PullFileChangeKind::Modified, None, Some("same.rs"), true),
+            (PullFileChangeKind::TypeChanged, Some("same.rs"), None, true),
+            (PullFileChangeKind::Unknown, None, Some("observed.rs"), true),
+            (PullFileChangeKind::Unknown, None, None, false),
+        ];
+        for (kind, old_path, new_path, valid) in cases {
+            let mut file = provider_file();
+            file.change_kind = kind;
+            file.identity = PullFileIdentity {
+                old_path: old_path.map(str::to_owned),
+                new_path: new_path.map(str::to_owned),
+            };
+            assert_eq!(file.validate().is_ok(), valid, "{kind:?}");
+        }
     }
 
     #[test]
@@ -920,17 +1356,14 @@ mod tests {
     }
 
     #[test]
-    fn provider_pages_are_range_bound_bounded_and_reject_repeated_cursors() {
+    fn provider_pages_are_range_bound_bounded_and_reject_duplicate_path_tuples() {
         let request = collection_request();
         let page = PullFileProviderPage {
             context: context(),
-            files: vec![provider_file(); MAX_PULL_FILES_PER_PROVIDER_PAGE],
-            source: source(PullFileProvenance::Provider),
+            files: provider_files(MAX_PULL_FILES_PER_PROVIDER_PAGE),
+            source: source(PullFileSourceStrategy::GithubPullFiles),
             start_position: 0,
-            next_cursor: Some(PullFileProviderCursor {
-                value: "page-2".into(),
-                page: 1,
-            }),
+            next_cursor: Some("page-2".into()),
             cap: None,
             freshness_seconds: 30,
             cooldown_seconds: None,
@@ -938,42 +1371,220 @@ mod tests {
         assert!(page.validate_for(&request).is_ok());
 
         let mut oversized = page.clone();
-        oversized.files.push(provider_file());
+        oversized.files.push(provider_files(101).pop().unwrap());
         assert!(oversized.validate_for(&request).is_err());
 
         let mut wrong_range = page.clone();
         wrong_range.context.head_oid = OTHER.into();
         assert!(wrong_range.validate_for(&request).is_err());
 
-        let continued_request = PullFileCollectionRequest {
-            cursor: Some(PullFileProviderCursor {
-                value: "same".into(),
-                page: 1,
-            }),
+        let mut duplicate_tuple = page.clone();
+        let mut duplicate = duplicate_tuple.files[0].clone();
+        duplicate.provider_file_id = Some("different-supplemental-id".into());
+        duplicate_tuple.files[1] = duplicate;
+        assert!(duplicate_tuple.validate_for(&request).is_err());
+        assert_eq!(
+            duplicate_tuple.files[0].identity,
+            duplicate_tuple.files[1].identity
+        );
+        assert_ne!(
+            duplicate_tuple.files[0].provider_file_id,
+            duplicate_tuple.files[1].provider_file_id
+        );
+    }
+
+    #[test]
+    fn continuation_counts_pages_from_one_and_rejects_every_cursor_cycle() {
+        let first_request = collection_request();
+        let first_page = PullFileProviderPage {
+            context: context(),
+            files: provider_files(1),
+            source: source(PullFileSourceStrategy::GithubPullFiles),
+            start_position: 0,
+            next_cursor: Some("cursor-a".into()),
+            cap: None,
+            freshness_seconds: 30,
+            cooldown_seconds: None,
+        };
+        let first = first_page
+            .next_continuation(&first_request)
+            .unwrap()
+            .unwrap();
+        assert_eq!(first.provider_page_count, 1);
+        assert_eq!(first.seen_cursors, ["cursor-a"]);
+
+        let second_request = PullFileCollectionRequest {
+            continuation: Some(first),
+            start_position: 1,
             ..collection_request()
         };
-        let repeated = PullFileProviderPage {
-            next_cursor: Some(PullFileProviderCursor {
-                value: "same".into(),
-                page: 2,
-            }),
-            ..page
+        let second_page = PullFileProviderPage {
+            start_position: 1,
+            next_cursor: Some("cursor-b".into()),
+            ..first_page.clone()
         };
-        assert!(repeated.validate_for(&continued_request).is_err());
+        let second = second_page
+            .next_continuation(&second_request)
+            .unwrap()
+            .unwrap();
+        assert_eq!(second.provider_page_count, 2);
+        assert_eq!(second.seen_cursors, ["cursor-a", "cursor-b"]);
 
-        let too_deep = PullFileProviderPage {
-            next_cursor: Some(PullFileProviderCursor {
-                value: "past-provider-bound".into(),
-                page: MAX_PULL_FILE_PROVIDER_PAGES + 1,
-            }),
-            ..repeated
+        let cyclic_request = PullFileCollectionRequest {
+            continuation: Some(second),
+            start_position: 2,
+            ..collection_request()
         };
-        assert!(too_deep.validate_for(&collection_request()).is_err());
+        let cyclic_page = PullFileProviderPage {
+            start_position: 2,
+            next_cursor: Some("cursor-a".into()),
+            ..first_page.clone()
+        };
+        assert!(cyclic_page.validate_for(&cyclic_request).is_err());
+
+        let last_request = PullFileCollectionRequest {
+            continuation: Some(PullFileContinuation {
+                cursor: "cursor-29".into(),
+                provider_page_count: MAX_PULL_FILE_PROVIDER_PAGES - 1,
+                seen_cursors: (1..MAX_PULL_FILE_PROVIDER_PAGES)
+                    .map(|page| format!("cursor-{page}"))
+                    .collect(),
+            }),
+            start_position: 29,
+            ..collection_request()
+        };
+        let nonterminal_thirtieth = PullFileProviderPage {
+            start_position: 29,
+            next_cursor: Some("cursor-30".into()),
+            ..first_page.clone()
+        };
+        assert!(nonterminal_thirtieth.validate_for(&last_request).is_err());
+        let terminal_thirtieth = PullFileProviderPage {
+            next_cursor: None,
+            ..nonterminal_thirtieth
+        };
+        assert!(terminal_thirtieth.validate_for(&last_request).is_ok());
+
+        let forged = PullFileContinuation {
+            cursor: "cursor-b".into(),
+            provider_page_count: 2,
+            seen_cursors: vec!["cursor-b".into(), "cursor-b".into()],
+        };
+        assert!(forged.validate().is_err());
+    }
+
+    #[test]
+    fn native_routing_binding_and_closed_source_must_match_provider_identity() {
+        let request = collection_request();
+        assert!(request.validate().is_ok());
+
+        let mut wrong_repository = collection_request();
+        wrong_repository.binding.repository_provider_id = "other-repository".into();
+        assert!(wrong_repository.validate().is_err());
+
+        let mut wrong_pull = collection_request();
+        wrong_pull.binding.pull_provider_id = "other-pull".into();
+        assert!(wrong_pull.validate().is_err());
+
+        let mut wrong_base_context = collection_request();
+        wrong_base_context
+            .binding
+            .context
+            .base_repository_provider_id = "other-repository".into();
+        assert!(wrong_base_context.validate().is_err());
+
+        let gitlab_page = PullFileProviderPage {
+            context: context(),
+            files: provider_files(1),
+            source: source(PullFileSourceStrategy::GitlabMergeRequestDiffs),
+            start_position: 0,
+            next_cursor: None,
+            cap: None,
+            freshness_seconds: 30,
+            cooldown_seconds: None,
+        };
+        assert!(gitlab_page.validate_for(&request).is_err());
+
+        let serialized =
+            serde_json::to_string(&source(PullFileSourceStrategy::GithubPullFiles)).unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"strategy":"github_pull_files","adapter_version":1}"#
+        );
+        assert!(!serialized.contains("http"));
+    }
+
+    #[test]
+    fn cap_reason_must_match_provenance_and_is_always_terminal() {
+        let request = collection_request();
+        let provider_cap = PullFileCapEvidence {
+            provenance: PullFileCapProvenance::Provider,
+            reason: PullFileCapReason::ProviderFileLimit,
+            remote_has_more: PullFileFlag::Unknown,
+        };
+        let provider_page = PullFileProviderPage {
+            context: context(),
+            files: provider_files(1),
+            source: source(PullFileSourceStrategy::GithubPullFiles),
+            start_position: 0,
+            next_cursor: None,
+            cap: Some(provider_cap),
+            freshness_seconds: 30,
+            cooldown_seconds: None,
+        };
+        assert!(provider_page.validate_for(&request).is_ok());
+
+        let nonterminal_cap = PullFileProviderPage {
+            next_cursor: Some("forbidden-next".into()),
+            ..provider_page.clone()
+        };
+        assert!(nonterminal_cap.validate_for(&request).is_err());
+
+        let local_reason_with_provider_provenance = PullFileProviderPage {
+            cap: Some(PullFileCapEvidence {
+                provenance: PullFileCapProvenance::Provider,
+                reason: PullFileCapReason::LocalByteLimit,
+                remote_has_more: PullFileFlag::Known(true),
+            }),
+            ..provider_page.clone()
+        };
+        assert!(
+            local_reason_with_provider_provenance
+                .validate_for(&request)
+                .is_err()
+        );
+
+        let provider_reason_with_local_provenance = PullFileProviderPage {
+            cap: Some(PullFileCapEvidence {
+                provenance: PullFileCapProvenance::Local,
+                reason: PullFileCapReason::ProviderFileLimit,
+                remote_has_more: PullFileFlag::Unknown,
+            }),
+            ..provider_page.clone()
+        };
+        assert!(
+            provider_reason_with_local_provenance
+                .validate_for(&request)
+                .is_err()
+        );
+
+        // A local safety bound can terminate provider-sourced rows without
+        // rewriting their content provenance.
+        let local_cap = PullFileProviderPage {
+            cap: Some(PullFileCapEvidence {
+                provenance: PullFileCapProvenance::Local,
+                reason: PullFileCapReason::LocalByteLimit,
+                remote_has_more: PullFileFlag::Unknown,
+            }),
+            ..provider_page
+        };
+        assert!(local_cap.validate_for(&request).is_ok());
     }
 
     #[test]
     fn capped_completeness_retains_exact_reason_and_remote_more_evidence() {
         let cap = PullFileCapEvidence {
+            provenance: PullFileCapProvenance::Provider,
             reason: PullFileCapReason::ProviderFileLimit,
             remote_has_more: PullFileFlag::Unknown,
         };
@@ -997,7 +1608,7 @@ mod tests {
     }
 
     #[test]
-    fn selected_request_is_only_an_exact_generation_and_opaque_file_key() {
+    fn selected_artifact_requires_active_uuid_generation_epoch_and_facet_receipt() {
         let request = PullFileDiffRequest {
             account_id: "account".into(),
             authorization_epoch: "2".into(),
@@ -1007,7 +1618,36 @@ mod tests {
             file_key: "file:001".into(),
         };
         assert!(request.validate().is_ok());
-        assert!(text_artifact("").is_exact_for(&request));
+        let active = generation_receipt();
+        assert!(active.validate().is_ok());
+        assert!(text_artifact("").is_exact_for(&request, &active));
+
+        let mut stale_epoch = text_artifact("");
+        stale_epoch.authorization_epoch = "1".into();
+        assert!(!stale_epoch.is_exact_for(&request, &active));
+
+        let stale_generation = PullFileGenerationReceipt {
+            generation: "123e4567-e89b-12d3-a456-426614174099".into(),
+            ..active.clone()
+        };
+        assert!(!text_artifact("").is_exact_for(&request, &stale_generation));
+
+        let stale_facet = PullFileGenerationReceipt {
+            file_facet_revision: "18".into(),
+            ..active.clone()
+        };
+        assert!(!text_artifact("").is_exact_for(&request, &stale_facet));
+
+        let decimal_generation = PullFileGenerationReceipt {
+            generation: "19".into(),
+            ..active.clone()
+        };
+        assert!(decimal_generation.validate().is_err());
+        let uppercase_generation = PullFileGenerationReceipt {
+            generation: GENERATION.to_uppercase(),
+            ..active
+        };
+        assert!(uppercase_generation.validate().is_err());
 
         for file_key in ["../src/lib.rs", "https://provider.test/file", "file/key"] {
             let malformed = PullFileDiffRequest {
@@ -1026,7 +1666,7 @@ mod tests {
         assert_eq!(empty.unified_text.as_deref(), Some(""));
 
         let binary = PullFileArtifact {
-            source: Some(source(PullFileProvenance::LocalExactRange)),
+            source: Some(source(PullFileSourceStrategy::LocalExactRange)),
             content_state: PullFileContentState::Binary,
             unified_text: None,
             blob_references: PullFileBlobReferences {
@@ -1057,6 +1697,7 @@ mod tests {
 
         let not_loaded = PullFileArtifact {
             source: None,
+            provider_validated_at: None,
             content_state: PullFileContentState::NotLoaded,
             unified_text: None,
             logical_bytes: "0".into(),
@@ -1083,7 +1724,7 @@ mod tests {
         assert!(uppercase_oid.validate().is_err());
 
         let mut remote_blob = PullFileArtifact {
-            source: Some(source(PullFileProvenance::LocalExactRange)),
+            source: Some(source(PullFileSourceStrategy::LocalExactRange)),
             content_state: PullFileContentState::Image,
             unified_text: None,
             blob_references: PullFileBlobReferences {
@@ -1097,5 +1738,32 @@ mod tests {
         assert!(remote_blob.validate().is_err());
         remote_blob.blob_references.new = Some("blob:image".into());
         assert!(remote_blob.validate().is_ok());
+
+        let mut non_utc = text_artifact("text");
+        non_utc.provider_validated_at = Some("2026-10-07T17:30:00+05:30".into());
+        assert!(non_utc.validate().is_err());
+        non_utc.provider_validated_at = Some("2026-10-07T12:00:00+00:00".into());
+        assert!(non_utc.validate().is_err());
+        let mut missing_validation = text_artifact("text");
+        missing_validation.provider_validated_at = None;
+        assert!(missing_validation.validate().is_err());
+
+        let retained_oversized_size = PullFileArtifact {
+            content_state: PullFileContentState::Oversized,
+            unified_text: None,
+            logical_bytes: (MAX_PULL_FILE_TEXT_BYTES + 1).to_string(),
+            on_disk_bytes: "0".into(),
+            ..text_artifact("x")
+        };
+        assert!(retained_oversized_size.validate().is_ok());
+
+        let retained_omitted_bytes = PullFileArtifact {
+            content_state: PullFileContentState::Omitted,
+            unified_text: None,
+            logical_bytes: "1".into(),
+            on_disk_bytes: "1".into(),
+            ..text_artifact("x")
+        };
+        assert!(retained_omitted_bytes.validate().is_err());
     }
 }
