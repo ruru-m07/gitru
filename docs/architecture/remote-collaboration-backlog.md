@@ -222,7 +222,7 @@ Then implement [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-
 | [RURU-114: Add durable command admission and outbox schema](https://linear.app/catra/issue/RURU-114/add-durable-command-admission-and-outbox-schema) | Backlog | [RURU-104](https://linear.app/catra/issue/RURU-104/implement-bounded-cache-retention-pins-and-wal-maintenance), [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and), [RURU-105](https://linear.app/catra/issue/RURU-105/test-schema-evolution-and-recoverable-migration-failures) |
 | [RURU-115: Implement outbox delivery and ambiguous-outcome recovery](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery) | In Review | [RURU-95](https://linear.app/catra/issue/RURU-95/make-credential-replacement-recover-safely-after-a-process-crash), [RURU-106](https://linear.app/catra/issue/RURU-106/add-consistent-collaboration-backup-and-restore-recovery), [RURU-114](https://linear.app/catra/issue/RURU-114/add-durable-command-admission-and-outbox-schema) |
 | [RURU-116: Project optimistic intent into local lists, details, counts and search](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search) | Backlog | [RURU-114](https://linear.app/catra/issue/RURU-114/add-durable-command-admission-and-outbox-schema), [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts) |
-| [RURU-117: Add conflict resolution and superseding-command recovery UI](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui) | Backlog | [RURU-116](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search), [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery) |
+| [RURU-117: Add conflict resolution and superseding-command recovery UI](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui) | In Review | [RURU-116](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search), [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery) |
 | [RURU-129: Deliver queued issue and PR desired-state edits](https://linear.app/catra/issue/RURU-129/deliver-queued-issue-and-pr-desired-state-edits) | Backlog | [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details), [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui), [RURU-116](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search), [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details) |
 | [RURU-130: Deliver provider inbox read/done actions with explicit activity policy](https://linear.app/catra/issue/RURU-130/deliver-provider-inbox-readdone-actions-with-explicit-activity-policy) | Backlog | [RURU-79](https://linear.app/catra/issue/RURU-79/resolve-inbox-notifications-to-cached-pr-and-issue-subjects), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui), [RURU-116](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search), [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery), [RURU-124](https://linear.app/catra/issue/RURU-124/add-local-inbox-snooze-bookmark-and-disposition-state) |
 | [RURU-131: Submit comments with durable drafts and ambiguous-create handling](https://linear.app/catra/issue/RURU-131/submit-comments-with-durable-drafts-and-ambiguous-create-handling) | Backlog | [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery), [RURU-99](https://linear.app/catra/issue/RURU-99/recover-private-drafts-after-disconnect-or-missing-subjects), [RURU-122](https://linear.app/catra/issue/RURU-122/cache-and-display-conversation-comments-and-activity-timelines), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui) |
@@ -368,7 +368,7 @@ Acceptance criteria:
 
 ## RURU-123: Cache PR review summaries and review threads with head context
 
-Planning key: C10. Group: Read experience. Priority: Medium. State: Backlog.
+Planning key: C10. Group: Read experience. Priority: Medium. State: In Review.
 Linear: [RURU-123](https://linear.app/catra/issue/RURU-123/cache-pr-review-summaries-and-review-threads-with-head-context).
 Prerequisites: [RURU-122](https://linear.app/catra/issue/RURU-122/cache-and-display-conversation-comments-and-activity-timelines), [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details).
 
@@ -376,9 +376,17 @@ Add read-only review decisions and review threads without implying old reviews a
 
 Acceptance criteria:
 
-- [ ] Persist reviewer decisions and independently paged review threads with head/base/anchor metadata.
-- [ ] Show stale or outdated anchors and distinguish historical review state from current-head coverage.
-- [ ] Offline, insufficient-permission and partial-coverage states remain honest; no review mutation is dispatched.
+- [x] Persist reviewer decisions and independently paged review threads with head/base/anchor metadata.
+- [x] Show stale or outdated anchors and distinguish historical review state from current-head coverage.
+- [x] Offline, insufficient-permission and partial-coverage states remain honest; no review mutation is dispatched.
+
+Draft [#178](https://github.com/ruru-m07/gitru/pull/178) contains the bounded
+GitHub.com read slice on integration-only prerequisite base `da1c6bc`. Signed
+product source `5a30303` passed local `make verify`: 757 frontend/SDK/UI tests
+with one platform skip, lint, types, production build, formatting, strict Clippy
+and 1,206 Rust tests with seven ignored helper cases. Exact PR-head remote CI,
+packaged execution, live private provider/PAT/keyring access and other platforms
+remain separate, unclaimed gates; no merge or review write is authorized.
 
 ## RURU-118: Show cached checks and commit statuses for the current PR head
 
@@ -2423,3 +2431,25 @@ Remote checks also completed for existing PRs: RURU-119 #172 at `08a2db3`, RURU-
 contexts passing, including Linux/macOS/Windows Rust, packaged desktop E2E and
 retained collaboration harness. These exact-head CI results do not qualify live
 provider credentials. All PRs remain open; none were merged.
+
+
+### RURU-117 saved-command recovery — 8 October 2026
+
+Signed source `a64b9fe` implements local command review, original/edited export,
+cancel-before-send, owned-lane pause/resume, and atomic replacement of safe
+intent. Schema 0019 retains immutable action receipts and supersession evidence.
+Account/view/generation and policy comparison tokens are checked in the writer;
+exact action retries return saved receipts. Replacement preserves dependency
+proof and target order, while unknown delivery and restored quarantine never
+permit blind replay. The UI preserves edited text across updates and requires
+explicit review of changed provider evidence. No production write codec is
+introduced by this foundation.
+
+The review base `ruru/ruru-117-dependencies` at `3d102a3` combines RURU-123 #178
+with RURU-116 #177's held-feed repair. It excludes RURU-127/RURU-128. Full local
+`make verify` passes 766 frontend tests/one platform skip, 1,230 Rust test
+executions/seven helper ignores, lint/types/build/fmt and strict Clippy. Generated
+IPC contains 142 commands/446 schemas. The independent native review and pause
+eligibility repair are recorded in [the work note](./collaboration-work/RURU-117.md).
+Remote CI is pending publication; live provider and vault qualification remain
+separate. No PR has been merged.
