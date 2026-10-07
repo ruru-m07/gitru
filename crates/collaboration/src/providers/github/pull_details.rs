@@ -94,6 +94,7 @@ mod tests {
                 selected: true,
             },
             subject: RemoteItem {
+                native_inbox: None,
                 id: "canonical-pull".into(),
                 account_id: "a".into(),
                 repository_id: Some("repo".into()),

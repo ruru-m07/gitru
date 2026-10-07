@@ -659,7 +659,7 @@ Acceptance criteria:
 
 ## RURU-127: Support GitLab todos with explicit inbox semantics
 
-Planning key: C29. Group: Provider rollout. Priority: Medium. State: Backlog.
+Planning key: C29. Group: Provider rollout. Priority: Medium. State: In Review.
 Linear: [RURU-127](https://linear.app/catra/issue/RURU-127/support-gitlab-todos-with-explicit-inbox-semantics).
 Prerequisites: [RURU-79](https://linear.app/catra/issue/RURU-79/resolve-inbox-notifications-to-cached-pr-and-issue-subjects), [RURU-111](https://linear.app/catra/issue/RURU-111/sync-gitlab-merge-requests-and-issues-through-shared-local-queries), [RURU-100](https://linear.app/catra/issue/RURU-100/drive-collaboration-ui-from-typed-resource-capabilities).
 
@@ -667,9 +667,11 @@ Add a provider-native todo inbox source without pretending todos are GitHub noti
 
 Acceptance criteria:
 
-- [ ] Persist todo identity, source, subject and completion/read semantics explicitly in the shared model.
-- [ ] Reuse inbox UI where semantics match and resolve supported subjects to cached local details.
-- [ ] Unsupported completion actions remain unavailable until durable delivery policies are verified; read-only syncing/offline tests pass.
+- [x] Persist todo identity, source, subject and completion/read semantics explicitly in the shared model.
+- [x] Reuse inbox UI where semantics match and resolve supported subjects to cached local details.
+- [x] Unsupported completion actions remain unavailable until durable delivery policies are verified; read-only syncing/offline tests pass.
+
+Implementation is published in draft [PR #174](https://github.com/ruru-m07/gitru/pull/174), stacked on #172. The native read-only adapter interleaves pending sweeps with completed history and persists the exact cursor across restart. Typed provider completion remains separate from Gitru-local inbox state, and immutable target evidence controls cached MR/issue routing. Final local `make verify` passed: 716 frontend tests / 1 platform skip; 1,091 top-level Rust tests plus 2 child helper runs / 5 helper ignores, plus lint/types/build/format/Clippy. Generated IPC is 129 commands / 388 schemas. Remote CI remains separate and pending. No live provider, personal credential, production database/vault or packaged GUI was used; no merge occurred. See the [RURU-127 work note](./collaboration-work/RURU-127.md) for exact source and bounds. The original publication table above remains a historical snapshot.
 
 ## RURU-128: Add GitLab discussion and approval detail facets
 

@@ -78,6 +78,7 @@ fn feed(kind: FeedKind) -> FeedRequest {
 }
 fn subject(kind: RemoteItemKind) -> RemoteItem {
     RemoteItem {
+        native_inbox: None,
         id: format!(
             "gitlab:{}:{NATIVE}",
             if kind == RemoteItemKind::PullRequest {
@@ -827,7 +828,7 @@ async fn malformed_local_resource_authority_and_unsupported_facets_never_send_re
         match change {
             0 => input.subject.account_id = "foreign".into(),
             1 => input.repository.account_id = "foreign".into(),
-            2 => input.repository.selected = false,
+            2 => input.repository.provider_id = "042".into(),
             3 => input.subject.number = Some("067".into()),
             4 => input.subject.repository_id = None,
             5 => input.cursor = Some("page=2".into()),
@@ -845,6 +846,15 @@ async fn malformed_local_resource_authority_and_unsupported_facets_never_send_re
     }
     for kind in [FeedKind::PullRequests, FeedKind::Issues] {
         let mut input = feed(kind);
+        input.repository.as_mut().unwrap().selected = false;
+        assert_eq!(
+            provider
+                .fetch_page(&token(), input.clone())
+                .await
+                .unwrap_err()
+                .kind,
+            ProviderErrorKind::InvalidResponse
+        );
         input.repository = None;
         assert_eq!(
             provider.fetch_page(&token(), input).await.unwrap_err().kind,

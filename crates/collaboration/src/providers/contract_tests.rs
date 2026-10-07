@@ -160,6 +160,7 @@ impl CollaborationProvider for GitlabFixture {
                         return Err(ProviderError::new(ProviderErrorKind::InvalidResponse));
                     }
                     result.items.push(RemoteItem {
+                        native_inbox: None,
                         id: format!(
                             "gitlab:{}:{}",
                             if kind == RemoteItemKind::PullRequest {
@@ -199,6 +200,7 @@ impl CollaborationProvider for GitlabFixture {
             FeedKind::Notifications => {
                 for todo in fixture.todos.drain(..) {
                     result.items.push(RemoteItem {
+                        native_inbox: None,
                         id: format!("gitlab:todo:{}", todo.id),
                         account_id: a.clone(),
                         repository_id: None,

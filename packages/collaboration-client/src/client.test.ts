@@ -240,6 +240,7 @@ const privateItem: RemoteItem = {
   is_draft: null,
   reason: null,
   unread: null,
+  native_inbox: null,
 };
 const itemQuery = {
   kind: "issue" as const,

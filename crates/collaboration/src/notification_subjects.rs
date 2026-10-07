@@ -1,4 +1,4 @@
-//! Notification selectors are locators, never native subject IDs or HTTP authority.
+//! Notification locators and optional immutable subject evidence never grant HTTP authority.
 use crate::{CanonicalResource, CapabilityState, RemoteItemKind, ResourceKind, SyncStatus};
 use serde::{Deserialize, Serialize};
 
@@ -31,6 +31,8 @@ impl NotificationSubjectKind {
 pub enum NotificationSubjectRepresentation {
     GithubPullRequest,
     GithubIssue,
+    GitlabMergeRequest,
+    GitlabIssue,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,6 +45,9 @@ pub struct NotificationSubjectSelector {
     /// Bounded presentation coordinates, checked against that notification's parent.
     pub repository_path: String,
     pub representation: NotificationSubjectRepresentation,
+    /// Immutable native subject observed alongside the parent (required for GitLab).
+    #[serde(default)]
+    pub subject_provider_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

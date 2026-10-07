@@ -177,6 +177,8 @@ impl HttpFixture {
                                 })
                                 .to_string(),
                             )
+                        } else if target.starts_with("/api/v4/todos?") {
+                            response(200, "", "[]")
                         } else if target.starts_with("/api/v4/projects?") {
                             let mut projects = vec![project(PROJECT, "group/sub/project")];
                             if moved.load(Ordering::SeqCst) {
@@ -401,8 +403,10 @@ async fn selected(
         .select_repository(&account.id, &repository.id, true)
         .await
         .unwrap();
-    assert!(runtime.run_next().await);
-    assert!(runtime.run_next().await);
+    // Both todo phases are now admitted alongside the selected resource feeds.
+    for _ in 0..4 {
+        assert!(runtime.run_next().await);
+    }
     let repository = runtime
         .store
         .repository(&account.id, &repository.id)
@@ -486,13 +490,13 @@ async fn actual_gitlab_common_reads_capabilities_and_independent_body_survive_co
         .unwrap();
     let refresh_calls = fixture.count();
     runtime.refresh(refresh(&account)).await.unwrap();
-    for _ in 0..3 {
+    for _ in 0..5 {
         assert!(runtime.run_next().await);
     }
     assert_eq!(
         fixture.count(),
-        refresh_calls + 3,
-        "account refresh admits discovery and both selected feeds"
+        refresh_calls + 5,
+        "account refresh admits discovery, both selected feeds and both todo phases"
     );
     let body = database
         .detail(query(&account, RemoteItemKind::PullRequest))
@@ -783,7 +787,7 @@ async fn actual_gitlab_cross_project_issue_copy_keeps_native_identity_and_privat
     // either item or transfer private authored state.
     fixture.moved.store(true, Ordering::SeqCst);
     runtime.refresh(refresh(&account)).await.unwrap();
-    for _ in 0..3 {
+    for _ in 0..5 {
         assert!(runtime.run_next().await);
     }
     let target_repository = database

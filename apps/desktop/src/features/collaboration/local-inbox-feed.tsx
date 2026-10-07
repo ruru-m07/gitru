@@ -24,7 +24,11 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { CapabilityBoundary } from "./capability-boundary";
-import { canReadSaved, canSynchronize } from "./capability-policy";
+import {
+  canReadSaved,
+  canSynchronize,
+  providerInboxState,
+} from "./capability-policy";
 import { NotificationSubjectView } from "./notification-subject-view";
 import { CollaborationStatePanel } from "./state-panel";
 import { SyncIndicator } from "./sync-indicator";
@@ -295,11 +299,7 @@ export function LocalInboxFeed({
                             "Provider activity"}
                         </span>
                         <Badge variant="outline" size="sm">
-                          {entry.item.unread === null
-                            ? `Provider ${entry.item.state}`
-                            : entry.item.unread
-                              ? "Provider unread"
-                              : "Provider read"}
+                          {providerInboxState(entry.item)}
                         </Badge>
                         {pendingSubjects.has(entry.item.id) ? (
                           <Badge variant="outline" size="sm">

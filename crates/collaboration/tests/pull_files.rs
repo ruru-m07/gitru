@@ -65,6 +65,7 @@ fn commit_with_old_lease(lease: &PullFileLease) -> PullFileCommit {
         selected: true,
     };
     let subject = RemoteItem {
+        native_inbox: None,
         id: "pull".into(),
         account_id: "a".into(),
         repository_id: Some("repo".into()),

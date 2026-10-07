@@ -33,6 +33,7 @@ pub async fn project(store: &Store, account: &RemoteAccount) {
         selected: true,
     };
     let item = RemoteItem {
+        native_inbox: None,
         id: "pull".into(),
         account_id: id.into(),
         repository_id: Some(repository.id.clone()),

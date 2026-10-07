@@ -97,6 +97,8 @@ pub(super) fn route(kind: &RemoteItemKind) -> Result<ItemRoute, ProviderError> {
         _ => Err(ProviderError::new(ProviderErrorKind::Unsupported)),
     }
 }
+// Point-read authorization is checked by the Store against current selected
+// scope or exact todo provenance. Only feed enumeration requires selection.
 pub(super) fn repository_identity(
     account: &RemoteAccount,
     repository: &RemoteRepository,
@@ -104,7 +106,6 @@ pub(super) fn repository_identity(
     if account.id.is_empty()
         || repository.id.is_empty()
         || repository.account_id != account.id
-        || !repository.selected
         || !valid_path(&repository.full_name)
     {
         return Err(invalid());

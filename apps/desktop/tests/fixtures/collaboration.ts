@@ -211,6 +211,7 @@ export const fixtureItem: RemoteItem = {
   is_draft: false,
   reason: null,
   unread: null,
+  native_inbox: null,
 };
 export const fixturePage: ItemPage = {
   total_count: 1,

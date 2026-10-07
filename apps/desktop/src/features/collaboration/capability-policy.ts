@@ -3,6 +3,7 @@ import type {
   ContextFacetCapability,
   ContextualCapabilitySnapshot,
   InboxSemantics,
+  RemoteItem,
   RemoteItemKind,
   ResourceFacet,
   ResourceKind,
@@ -127,4 +128,20 @@ export function inboxPresentation(semantics: InboxSemantics) {
         filters: [],
       };
   }
+}
+
+/** A provider todo has completion semantics, never an inferred unread bit. */
+export function providerInboxState(item: RemoteItem): string {
+  if (item.native_inbox?.source === "todo") {
+    return `Provider ${item.native_inbox.completion}`;
+  }
+  const unread =
+    item.native_inbox?.source === "notification"
+      ? item.native_inbox.unread
+      : item.unread;
+  return unread === null
+    ? `Provider ${item.state}`
+    : unread
+      ? "Provider unread"
+      : "Provider read";
 }

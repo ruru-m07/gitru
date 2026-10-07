@@ -30,6 +30,7 @@ fn repository(account_id: &str) -> RemoteRepository {
 
 fn notification(account_id: &str, id: &str, updated_at: &str, unread: bool) -> RemoteItem {
     RemoteItem {
+        native_inbox: None,
         id: id.into(),
         account_id: account_id.into(),
         repository_id: Some(format!("repo-{account_id}")),

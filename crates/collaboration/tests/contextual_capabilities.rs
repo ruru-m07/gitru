@@ -88,6 +88,7 @@ async fn fixture() -> (tempfile::TempDir, Store) {
         "repo:repo:pull_request",
         vec![],
         vec![RemoteItem {
+            native_inbox: None,
             id: "pull".into(),
             account_id: "a".into(),
             repository_id: Some("repo".into()),

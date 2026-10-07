@@ -595,6 +595,7 @@ describe("retained restart pull-commit acceptance", () => {
         is_draft: null,
         reason: "review_requested",
         unread: true,
+        native_inbox: null,
       },
       local: {
         disposition,
