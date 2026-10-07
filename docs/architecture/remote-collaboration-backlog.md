@@ -549,10 +549,12 @@ Acceptance criteria:
 - [x] Document bottlenecks and add justified performance correctness gates; separate warm storage latency from end-to-end UI latency.
 
 Local macOS evidence is recorded in
-[the RURU-125 work note](./collaboration-work/RURU-125.md). Warm useful-content
-and SDK/IPC targets pass; cold cached landing misses the provisional 500 ms target.
-Remote CI, other platforms and the larger section 18 memory fixture remain open
-qualification boundaries.
+[the RURU-125 work note](./collaboration-work/RURU-125.md). Warm useful-content,
+SDK/IPC and corrected cold cached landing targets pass: the cold main view reaches
+exact useful content 142 ms after runtime readiness. The earlier 2,010 ms result
+was benchmark-request delay before the workspace mounted; correcting that observer
+is not a production optimization. Remote CI, other platforms and the larger
+section 18 memory fixture remain open qualification boundaries.
 
 ## RURU-126: Expose safe local sync diagnostics and actionable retry states
 

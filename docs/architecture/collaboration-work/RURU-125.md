@@ -94,64 +94,86 @@ loads do not increase.
 
 ## Measured baseline
 
-The retained local report is
-`artifacts/collaboration-performance/2026-10-07T20-59-32-918Z-23699/performance-report.json`.
+The corrected retained local report is
+`artifacts/collaboration-performance/2026-10-07T21-16-45-421Z-78475/performance-report.json`.
 Artifacts are intentionally ignored by Git; the identifying evidence is:
 
-- source: `e136d9cf933e986018b00f2ad561fbba9b9b11a1`
+- report trace head: `0a74b3963645809a723925fbe48fb16ff63d58db`
+- signed measured-source commit: `07aba1e61cb9a6140ca937c9e5cd2f8e122f46fe`
 - build: `release/no-bundle/collaboration-harness`
 - executable SHA-256:
-  `af31149f21d80f22904a78239826d7a32970df7c4131e80b8dd23c9f8d5c5d6b`
+  `c62fe45d22c4e9631d5cfdd5fddcae9aeadeb10317a155b2701d090cca1838e8`
 - machine: Apple M4, arm64, 10 logical CPUs, 16 GiB, macOS/Darwin `27.0.0`
 - fixture location: `/Volumes/Lexar`; the OS storage probe did not establish its
   device location or solid-state property, so the report classifies the medium as
   `unverified`
+
+The report records the checked-out trace head because the corrected harness was
+measured before its commit was created. The passing source tree was committed
+immediately afterward as `07aba1e` without changing code or assets; the recorded
+binary was built from those exact bytes. The trace head and signed measured-source
+commit are kept distinct rather than rewriting the raw artifact.
 
 Nearest-rank distributions use integer-millisecond browser observations. Main
 seed uses 30 samples; the retained child and both cold-restart views use 10 each.
 
 | Phase/view | React list p50/p95/p99 | React search p50/p95/p99 | React detail p50/p95/p99 | SDK list/search/detail p95 |
 | --- | ---: | ---: | ---: | ---: |
-| Seed main | 30/42/60 ms | 20/22/23 ms | 30/32/32 ms | 2/2/2 ms |
-| Seed child | 31/51/51 ms | 20/22/22 ms | 30/30/30 ms | 3/2/2 ms |
-| Restart main | 40/51/51 ms | 20/32/32 ms | 30/32/32 ms | 5/7/4 ms |
-| Restart child | 38/50/50 ms | 20/22/22 ms | 30/32/32 ms | 2/2/2 ms |
+| Seed main | 40/59/71 ms | 20/22/29 ms | 30/44/50 ms | 1/2/1 ms |
+| Seed child | 30/40/40 ms | 20/22/22 ms | 30/32/32 ms | 2/3/2 ms |
+| Restart main | 30/31/31 ms | 20/22/22 ms | 30/32/32 ms | 2/1/1 ms |
+| Restart child | 30/34/34 ms | 20/22/22 ms | 30/32/32 ms | 1/2/1 ms |
 
 The 50-row list response is 32,231 bytes, the deterministic search response is
 904–905 bytes and the detail response is 681 bytes. Same-query memory reads round
 to 0 ms at the runner's integer-millisecond resolution; this establishes only
 that they are below that observer's resolution, not that their cost is zero.
 
-The fresh process opened the native collaboration runtime in 7.876 ms. Its main
-view reached exact useful cached content 2,010 ms after runtime readiness and
-1,958 ms after document navigation. The retained child reached it 13,794 ms after
-runtime readiness and 10,169 ms after its navigation. Seed startup includes the
-10,000-row seed and is recorded separately: 229.321 ms native open, 23,193 ms
-main readiness-to-useful and 37,853 ms child readiness-to-useful. Process-launch
+The cold restart opened the native collaboration runtime in 217.493 ms. Its main
+view automatically mounted the real collaboration workspace and reached exact
+useful cached content 142 ms after runtime readiness and 302 ms after document
+navigation. Navigation-to-mount was 174 ms and mount-to-useful was 128 ms. The
+benchmark request arrived 1,619 ms after useful content, proving the cold result
+did not wait for test-driver orchestration.
+
+The retained restart child automatically reached useful content 249 ms after its
+own navigation (105 ms to mount and 144 ms from mount to useful). Its
+runtime-ready delta is 3,530 ms because both views share a runtime created before
+the child; that shared clock is not a child cold-start boundary. Seed-main startup
+remains request-mounted because it also performs fixture seeding and orchestration:
+164.169 ms native open and 14,554 ms runtime-ready-to-useful. The automatic seed
+child reached useful content 300 ms after its own navigation. Process-launch
 latency is not claimed because the runner does not establish a shared trustworthy
 launch clock.
 
-The native Rust process used 157,319,168 bytes (150.03 MiB) RSS after seed and
-152,551,424 bytes (145.48 MiB) after restart. No WebKit process was a proven
-descendant, so WebKit aggregate and per-view RSS are explicitly missing. The
-seeded database was 40,521,728 bytes, with a 4,931,672-byte WAL and 32,768-byte
-shared-memory file (45,486,168 bytes total); all three sizes were unchanged by the
-restart measurement.
+The native Rust process used 157,581,312 bytes (150.28 MiB) RSS after seed and
+147,668,992 bytes (140.83 MiB) after restart. No WebKit process was a proven
+native descendant, so WebKit aggregate and per-view RSS are explicitly missing.
+The seeded database was 40,521,728 bytes, with a 4,931,672-byte WAL and
+32,768-byte shared-memory file (45,486,168 bytes total); all three sizes were
+unchanged by the restart measurement.
 
-Ordinary item projections stayed below 9.546 ms p95. Contextual-capability
-projection p95 reached 43.943 ms in the seed child and 36.868 ms in the restart
-main view, with a 54.946 ms seed-main p99. The end-to-end SDK samples stayed below
-7 ms p95, but repeated contextual-capability projection is the clearest measured
-native optimization candidate.
+Ordinary item projection p95 was at most 3.612 ms. Contextual-capability
+projection p95 was 24.462 ms in seed main, 41.168 ms in seed child, 9.839 ms in
+restart main and 25.770 ms in restart child. Only the seed child exceeds the
+provisional 30 ms native projection target; every end-to-end generated SDK sample
+stayed at or below 3 ms p95.
 
 ## Target assessment and limits
 
 The section 18 warm useful-content target passes: every measured list, search and
-detail p95 is at most 51 ms against the provisional 100 ms target. The local
-generated SDK/IPC target passes at no more than 7 ms p95 against 30 ms. The cold cached
-landing target does not pass: the fresh main view took 2,010 ms after runtime
-readiness against the provisional 500 ms target. This is a measured baseline and
-optimization input, not a universal timing gate from one workstation.
+detail p95 is at most 59 ms against the provisional 100 ms target. The local
+generated SDK/IPC target passes at no more than 3 ms p95 against 30 ms. The cold
+cached main landing also passes at 142 ms after runtime readiness against the
+provisional 500 ms target.
+
+An earlier report measured 2,010 ms because the performance fixture deliberately
+left the workspace unmounted until a WebDriver benchmark request. Raw timestamps
+showed the request arrived roughly 1.9 seconds after navigation while the first
+list render itself took 46 ms. The correction makes saved performance fixtures
+mount the real workspace during bootstrap and preserves the original
+runtime-ready-to-useful metric. This is a benchmark observer correction, not a
+production performance optimization and not a weakened target.
 
 This 10,000-summary fixture does not qualify the 100,000-summary,
 500,000-child-record or combined sub-100-MiB memory target. Combined collaboration
@@ -163,10 +185,12 @@ keyring, internal-SSD or remote-CI evidence.
 
 Normal `make typegen` generated 125 commands. Final full `make verify` passed 688
 frontend tests with one platform skip, lint, types, the production desktop build,
-Rust formatting, workspace Clippy and every default Rust suite. The final release
-harness build and both packaged processes passed; exact content, two retained
-views, generated IPC validation and unchanged provider/vault counters are hard
-correctness gates.
+Rust formatting, workspace Clippy and every default Rust suite. Focused corrected-
+harness validation passed 40 protocol, React and process-observer tests plus
+Desktop typecheck, Biome, Rust formatting and feature Clippy. The corrected
+release harness build and both packaged processes passed; exact content, two
+retained views, generated IPC validation and unchanged provider/vault counters
+are hard correctness gates.
 
 The first packaged attempt stopped because the workspace deterministically opened
 the alternate account while the assertion expected the primary account. Pinning

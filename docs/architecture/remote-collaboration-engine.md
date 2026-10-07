@@ -3386,19 +3386,25 @@ cache. Exact useful content, 125-command generated validation and unchanged
 provider/vault counters are correctness gates; no personal credential or live
 provider is used. See [the measurement record](./collaboration-work/RURU-125.md).
 
-The retained macOS report identifies source
-`e136d9cf933e986018b00f2ad561fbba9b9b11a1` and release executable SHA-256
-`af31149f21d80f22904a78239826d7a32970df7c4131e80b8dd23c9f8d5c5d6b` on an
-Apple M4 with 16 GiB. Across seed and restart views, React list/search/detail p95
-is at most 51 ms and generated SDK/IPC p95 at most 7 ms, passing the provisional
-100/30 ms warm targets. The fresh main view reaches exact cached content 2,010 ms
-after runtime readiness, missing the provisional 500 ms cold target. Repeated
-contextual-capability projection peaks at 43.943 ms p95 and is a measured native
-optimization candidate.
+The corrected retained macOS report records trace head
+`0a74b3963645809a723925fbe48fb16ff63d58db` and release executable SHA-256
+`c62fe45d22c4e9631d5cfdd5fddcae9aeadeb10317a155b2701d090cca1838e8` on an
+Apple M4 with 16 GiB. The measured tree was committed immediately afterward,
+without code or asset changes, as signed source
+`07aba1e61cb9a6140ca937c9e5cd2f8e122f46fe`; raw trace head and signed source
+remain distinct. Across seed and restart views, React list/search/detail p95 is at
+most 59 ms and generated SDK/IPC p95 at most 3 ms, passing the provisional 100/30
+ms warm targets. The fresh main view automatically reaches exact cached content
+142 ms after runtime readiness and 302 ms after navigation, passing the 500 ms
+cold target. The benchmark request arrives 1,619 ms after useful content.
 
-Native RSS is 150.03 MiB after seed and 145.48 MiB after restart. WebKit RSS is
-explicitly missing because no process was a proven native descendant, so combined
-memory is not claimed. The database/WAL/shared-memory set is 45,486,168 bytes and
-does not grow during restart. This 10,000-summary run does not qualify section
-18's 100,000-summary/500,000-child memory target; storage medium classification,
-other platforms, live-provider behavior and remote CI remain separate evidence.
+The earlier 2,010 ms result included WebDriver delay while the fixture deliberately
+left the workspace unmounted. Mounting the real saved workspace during bootstrap
+corrects the observer while preserving the original readiness-to-useful metric;
+this is not a production performance optimization. Native RSS is 150.28 MiB after
+seed and 140.83 MiB after restart. WebKit RSS is explicitly missing because no
+process was a proven native descendant, so combined memory is not claimed. The
+database/WAL/shared-memory set is 45,486,168 bytes and does not grow during
+restart. This 10,000-summary run does not qualify section 18's
+100,000-summary/500,000-child memory target; storage medium classification, other
+platforms, live-provider behavior and remote CI remain separate evidence.
