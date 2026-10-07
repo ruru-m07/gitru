@@ -266,6 +266,7 @@ impl CollaborationProvider for Provider {
                         anchor: None,
                         provider_outdated: None,
                         provider_resolved: None,
+                        native: None,
                     })
                 }
                 _ => unreachable!(),
