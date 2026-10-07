@@ -2233,3 +2233,26 @@ and vault access. [The work note](./collaboration-work/RURU-137.md) records the
 scope and evidence. RURU-137 is In Review; PR #168 remains draft/unmerged and its
 exact-head remote matrix plus live private-provider/PAT/keyring and other-platform
 behavior remain separate gates.
+
+
+### RURU-124 local inbox state locally qualified — 8 October 2026
+
+RURU-124 is In Progress from exact signed RURU-137 final head
+`0da82cc7e5a3543512be683e68ac074f8d9689cd`; its sole declared prerequisite
+RURU-79 remains open in draft #154 and is an ancestor of this source. The signed
+[pre-code and implementation record](./collaboration-work/RURU-124.md) defines
+and implements provider-independent local inbox disposition, bookmark and
+bounded UTC snooze state in SQLite. Provider unread/read or pending/done fields
+remain immutable and no adapter, vault, Gitru cloud or provider-write path is
+used. Explicit mutation kinds keep bookmarks independent; newer accepted
+provider activity re-surfaces done or snoozed rows even when remotely read.
+
+Local qualification passes normal 125-command type generation, every default
+collaboration Rust suite, warning-denied collaboration/native Clippy, 27 native
+caller-policy tests, 156 collaboration-client tests and 234 desktop
+collaboration tests plus their type/lint gates, Rust formatting and diff checks.
+Focused controls cover cold restart, account/access/CAS isolation, all filters,
+literal search and stable cursors, exact snooze expiry, cache clear and stale UI
+recovery. Packaged multi-process restart, remote CI, other platforms and live
+provider/PAT/keyring behavior remain separate gates. No PR is published or
+merged by this local source checkpoint.

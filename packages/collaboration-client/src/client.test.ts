@@ -5,6 +5,7 @@ import type {
   ChangePage,
   ContextualCapabilitySnapshot,
   DetailSnapshot,
+  InboxPage,
   ItemPage,
   ItemSnapshot,
   PullCheckoutPlan,
@@ -15,6 +16,7 @@ import type {
   RepositorySnapshot,
   ResourceLocator,
   ResourceResolution,
+  SetLocalInboxStateRequest,
 } from "@gitru/commands";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
@@ -58,6 +60,16 @@ const page: ItemPage = {
     next_retry_at: null,
     error: null,
   },
+};
+const inboxPage: InboxPage = {
+  entries: [],
+  revision: "1",
+  authorization_view: "1",
+  next_cursor: null,
+  coverage: page.coverage,
+  sync: page.sync,
+  evaluated_at: "2026-10-07T00:00:00Z",
+  next_local_change_at: null,
 };
 const changePage = (
   revision: string,
@@ -116,6 +128,8 @@ function transport(
     repositories: unexpected,
     selectRepository: unexpected,
     items: unexpected,
+    inbox: unexpected,
+    setLocalInboxState: unexpected,
     item: unexpected,
     refresh: unexpected,
     changesSince: unexpected,
@@ -1449,6 +1463,166 @@ describe("CollaborationClient", () => {
     expect(cache.getQueryState(issueKey)?.isInvalidated).toBe(true);
     expect(cache.getQueryState(otherKey)?.isInvalidated).toBe(false);
     expect(cache.getQueryState(draftKey)?.isInvalidated).toBe(false);
+    stop();
+    cache.clear();
+  });
+
+  it("binds local inbox reads and writes to the selected account epoch", async () => {
+    const read = vi.fn(async () => inboxPage);
+    const write = vi.fn(async (_request: SetLocalInboxStateRequest) => ({
+      state: {
+        disposition: "done" as const,
+        effective_disposition: "done" as const,
+        bookmarked: false,
+        snoozed_until: null,
+        activity_updated_at: "2026-10-07T00:00:00Z",
+        superseded_by_activity: false,
+        generation: "1",
+      },
+      revision: "2",
+      authorization_view: "1",
+    }));
+    const client = new CollaborationClient(
+      transport({ inbox: read, setLocalInboxState: write }),
+    );
+    const handle = client.forAccount(account);
+    await expect(
+      handle.inbox({
+        remote_state: "unread",
+        local_state: "inbox",
+        search: null,
+        cursor: null,
+        limit: 50,
+      }),
+    ).resolves.toEqual(inboxPage);
+    expect(read).toHaveBeenCalledExactlyOnceWith({
+      account_id: account.id,
+      remote_state: "unread",
+      local_state: "inbox",
+      search: null,
+      cursor: null,
+      limit: 50,
+    });
+    await handle.setLocalInboxState({
+      notification_id: "notification-a",
+      mutation: "disposition",
+      disposition: "done",
+      bookmarked: null,
+      snoozed_until: null,
+      expected_generation: "0",
+    });
+    expect(write).toHaveBeenCalledExactlyOnceWith({
+      account_id: account.id,
+      authorization_epoch: account.authorization_epoch,
+      notification_id: "notification-a",
+      mutation: "disposition",
+      disposition: "done",
+      bookmarked: null,
+      snoozed_until: null,
+      expected_generation: "0",
+    });
+  });
+
+  it("fences a late local inbox write receipt after account cutover", async () => {
+    let finish!: (receipt: {
+      state: {
+        disposition: "done";
+        effective_disposition: "done";
+        bookmarked: boolean;
+        snoozed_until: null;
+        activity_updated_at: string;
+        superseded_by_activity: boolean;
+        generation: string;
+      };
+      revision: string;
+      authorization_view: string;
+    }) => void;
+    const client = new CollaborationClient(
+      transport({
+        disconnect: async () => "2",
+        setLocalInboxState: () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      }),
+    );
+    const pending = client.forAccount(account).setLocalInboxState({
+      notification_id: "notification-a",
+      mutation: "disposition",
+      disposition: "done",
+      bookmarked: null,
+      snoozed_until: null,
+      expected_generation: "0",
+    });
+    await client.disconnect(account.id);
+    finish({
+      state: {
+        disposition: "done",
+        effective_disposition: "done",
+        bookmarked: false,
+        snoozed_until: null,
+        activity_updated_at: "2026-10-07T00:00:00Z",
+        superseded_by_activity: false,
+        generation: "1",
+      },
+      revision: "2",
+      authorization_view: "2",
+    });
+    await expect(pending).rejects.toBeInstanceOf(StaleAuthorizationError);
+  });
+
+  it("invalidates local inbox projections for local intents and provider activity", async () => {
+    let next = changePage("1");
+    const client = new CollaborationClient(
+      transport({
+        listen: async () => () => {},
+        changesSince: async () => next,
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    const inboxKey = collaborationKeys.inbox(account, {
+      account_id: account.id,
+      remote_state: null,
+      local_state: "inbox",
+      search: null,
+      cursor: null,
+      limit: 50,
+    });
+    const issueKey = collaborationKeys.items(account, {
+      account_id: account.id,
+      kind: "issue",
+      repository_id: null,
+      state: null,
+      search: null,
+      cursor: null,
+      limit: 50,
+    });
+    cache.setQueryData(inboxKey, inboxPage);
+    cache.setQueryData(issueKey, page);
+    next = changePage("2", "1", [
+      {
+        revision: "2",
+        account_id: account.id,
+        scope: "local_inbox:notification-a",
+        reset: false,
+      },
+    ]);
+    await client.wake();
+    expect(cache.getQueryState(inboxKey)?.isInvalidated).toBe(true);
+    expect(cache.getQueryState(issueKey)?.isInvalidated).toBe(false);
+    cache.setQueryData(inboxKey, inboxPage);
+    next = changePage("3", "1", [
+      {
+        revision: "3",
+        account_id: account.id,
+        scope: "notifications",
+        reset: false,
+      },
+    ]);
+    await client.wake();
+    expect(cache.getQueryState(inboxKey)?.isInvalidated).toBe(true);
     stop();
     cache.clear();
   });

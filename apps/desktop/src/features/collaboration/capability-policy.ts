@@ -101,8 +101,9 @@ export function inboxPresentation(semantics: InboxSemantics) {
         badgeState: "unread",
         badgeMeaning: "unread notifications",
         filters: [
-          { label: "Unread", value: "unread" },
-          { label: "All saved", value: "all" },
+          { label: "Provider unread", value: "unread" },
+          { label: "Provider read", value: "read" },
+          { label: "All provider states", value: "all" },
         ],
       };
     case "todos":
@@ -112,9 +113,9 @@ export function inboxPresentation(semantics: InboxSemantics) {
         badgeState: "pending",
         badgeMeaning: "pending to-dos",
         filters: [
-          { label: "Pending", value: "pending" },
-          { label: "Done", value: "done" },
-          { label: "All saved", value: "all" },
+          { label: "Provider pending", value: "pending" },
+          { label: "Provider done", value: "done" },
+          { label: "All provider states", value: "all" },
         ],
       };
     case "none":

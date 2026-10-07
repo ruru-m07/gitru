@@ -9,7 +9,9 @@ import type {
   ContextFacetCapability,
   ContextualCapabilitySnapshot,
   GithubCliDiscovery,
+  InboxPage,
   ItemPage,
+  LocalInboxState,
   RemoteAccount,
   RemoteItem,
   RepositorySnapshot,
@@ -228,6 +230,38 @@ export const fixturePage: ItemPage = {
   },
 };
 
+export function fixtureLocalInboxState(
+  item: RemoteItem = fixtureItem,
+): LocalInboxState {
+  return {
+    disposition: "inbox",
+    effective_disposition: "inbox",
+    bookmarked: false,
+    snoozed_until: null,
+    activity_updated_at: item.updated_at,
+    superseded_by_activity: false,
+    generation: "0",
+  };
+}
+
+export function fixtureInboxPage(
+  items: RemoteItem[] = [fixtureItem],
+): InboxPage {
+  return {
+    entries: items.map((item) => ({
+      item,
+      local: fixtureLocalInboxState(item),
+    })),
+    revision: fixturePage.revision,
+    authorization_view: fixturePage.authorization_view,
+    next_cursor: fixturePage.next_cursor,
+    coverage: fixturePage.coverage,
+    sync: fixturePage.sync,
+    evaluated_at: "2026-10-02T05:00:00Z",
+    next_local_change_at: null,
+  };
+}
+
 /** Install only in a standalone browser QA harness, before rendering real features. */
 export function installCollaborationPreviewBoundary() {
   mockWindows("main");
@@ -274,6 +308,22 @@ export function installCollaborationPreviewBoundary() {
               ? []
               : [item],
         };
+      }
+      case "collaboration_inbox": {
+        const query = input?.query as { search: string | null };
+        const item = {
+          ...fixtureItem,
+          kind: "notification" as const,
+          state: "unread",
+          unread: true,
+          reason: "review_requested",
+        };
+        return fixtureInboxPage(
+          query.search &&
+            !item.title.toLowerCase().includes(query.search.toLowerCase())
+            ? []
+            : [item],
+        );
       }
       case "collaboration_item":
         return { item: fixtureItem, revision: "10", authorization_view: "1" };

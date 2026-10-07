@@ -16,12 +16,15 @@ import {
   type ExecutePullCheckoutRequest,
   type GithubCliDiscovery,
   type HydrateDetailRequest,
+  type InboxPage,
+  type InboxQuery,
   type ItemPage,
   type ItemQuery,
   type ItemSnapshot,
   type LocalCloneRequest,
   type LocalCloneSnapshot,
   type LocalDraft,
+  type LocalInboxWriteReceipt,
   type LocalLinkInspection,
   type LocalLinkVersion,
   type LocalLinkWriteReceipt,
@@ -43,6 +46,7 @@ import {
   type RepositorySnapshot,
   type ResourceLocator,
   type ResourceResolution,
+  type SetLocalInboxStateRequest,
   type TransportBindingRequest,
 } from "@gitru/commands";
 import type { QueryClient } from "@tanstack/react-query";
@@ -90,6 +94,10 @@ export interface CollaborationTransport extends DemandTransport {
     selected: boolean,
   ): Promise<string>;
   items(query: ItemQuery): Promise<ItemPage>;
+  inbox(query: InboxQuery): Promise<InboxPage>;
+  setLocalInboxState(
+    request: SetLocalInboxStateRequest,
+  ): Promise<LocalInboxWriteReceipt>;
   item(accountId: string, itemId: string): Promise<ItemSnapshot>;
   refresh(request: RefreshRequest): Promise<RefreshReceipt>;
   changesSince(afterRevision: string): Promise<ChangePage>;
@@ -222,6 +230,13 @@ export const collaborationKeys = {
       "notification-subject",
       account.actor_id,
       notificationId,
+    ] as const,
+  inbox: (account: RemoteAccount, query: InboxQuery) =>
+    [
+      ...collaborationKeys.account(account.id),
+      account.authorization_epoch,
+      "inbox",
+      query,
     ] as const,
 };
 
@@ -417,6 +432,24 @@ export class CollaborationClient {
         read(
           () => this.transport.items({ ...query, account_id: account.id }),
           signal,
+        ),
+      inbox: (query: Omit<InboxQuery, "account_id">, signal?: AbortSignal) =>
+        read(
+          () => this.transport.inbox({ ...query, account_id: account.id }),
+          signal,
+        ),
+      setLocalInboxState: (
+        request: Omit<
+          SetLocalInboxStateRequest,
+          "account_id" | "authorization_epoch"
+        >,
+      ) =>
+        this.fence.read(account.id, () =>
+          this.transport.setLocalInboxState({
+            ...request,
+            account_id: account.id,
+            authorization_epoch: account.authorization_epoch,
+          }),
         ),
       item: (itemId: string, signal?: AbortSignal) =>
         read(() => this.transport.item(account.id, itemId), signal),
@@ -798,6 +831,8 @@ function projectionAffected(key: readonly unknown[], scope: string) {
       scope === `detail:${query.subject_id}:commits`
     );
   }
+  if (projection === "inbox")
+    return scope === "notifications" || scope.startsWith("local_inbox:");
   if (scope === "repositories")
     return (
       projection === "repositories" ||

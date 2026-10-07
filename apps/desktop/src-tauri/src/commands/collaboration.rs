@@ -2,9 +2,10 @@
 use collaboration::{
     AccountSnapshot, CapabilitySnapshot, ChangePage, CollaborationError, CollaborationRuntime,
     ContextCapabilityRequest, ContextualCapabilitySnapshot, DetailQuery, DetailSnapshot, DraftPage,
-    DraftQuery, ErrorCode, GithubCliDiscovery, HydrateDetailRequest, ItemPage, ItemQuery,
-    ItemSnapshot, LocalDraft, PullCommitQuery, PullCommitSnapshot, RefreshReceipt, RefreshRequest,
-    RemoteAccount, RepositorySnapshot, ResourceLocator, ResourceResolution,
+    DraftQuery, ErrorCode, GithubCliDiscovery, HydrateDetailRequest, InboxPage, InboxQuery,
+    ItemPage, ItemQuery, ItemSnapshot, LocalDraft, LocalInboxWriteReceipt, PullCommitQuery,
+    PullCommitSnapshot, RefreshReceipt, RefreshRequest, RemoteAccount, RepositorySnapshot,
+    ResourceLocator, ResourceResolution, SetLocalInboxStateRequest,
 };
 use std::sync::Arc;
 use tauri::{State, Webview};
@@ -53,6 +54,8 @@ pub(super) enum Operation {
     SelectRepository,
     Items,
     Item,
+    Inbox,
+    SetLocalInboxState,
     Refresh,
     ChangesSince,
     SaveDraft,
@@ -260,6 +263,26 @@ pub async fn collaboration_item(
         )
         .await?;
     Ok(snapshot)
+}
+
+#[tauri::command]
+pub async fn collaboration_inbox(
+    query: InboxQuery,
+    view: Webview,
+    state: State<'_, CollaborationState>,
+) -> Result<InboxPage, CollaborationError> {
+    authorize(&view, Operation::Inbox)?;
+    state.get().await?.store().inbox(query).await
+}
+
+#[tauri::command]
+pub async fn collaboration_set_local_inbox_state(
+    request: SetLocalInboxStateRequest,
+    view: Webview,
+    state: State<'_, CollaborationState>,
+) -> Result<LocalInboxWriteReceipt, CollaborationError> {
+    authorize(&view, Operation::SetLocalInboxState)?;
+    state.get().await?.set_local_inbox_state(request).await
 }
 
 #[tauri::command]
@@ -473,6 +496,8 @@ mod tests {
         Operation::SelectRepository,
         Operation::Items,
         Operation::Item,
+        Operation::Inbox,
+        Operation::SetLocalInboxState,
         Operation::Refresh,
         Operation::ChangesSince,
         Operation::SaveDraft,

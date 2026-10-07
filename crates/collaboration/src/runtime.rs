@@ -196,6 +196,15 @@ impl CollaborationRuntime {
         Ok(draft)
     }
 
+    pub async fn set_local_inbox_state(
+        &self,
+        request: SetLocalInboxStateRequest,
+    ) -> Result<LocalInboxWriteReceipt, CollaborationError> {
+        let receipt = self.store.set_local_inbox_state(request).await?;
+        self.publish(receipt.revision.clone());
+        Ok(receipt)
+    }
+
     /// Idempotent process-level startup. A weak owner permits normal application
     /// teardown; the background loop does not keep an otherwise dropped runtime.
     pub fn start_background(self: Arc<Self>) {

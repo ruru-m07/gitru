@@ -268,6 +268,16 @@ async fn frozen_v1_opens_with_latest_schema_and_preserves_private_intent() {
                 .unwrap();
         let expected: Vec<_> = CURRENT.iter().map(|migration| migration.version).collect();
         assert_eq!(applied, expected, "All current forward migrations must run");
+        let local_inbox_rows: i64 = sqlx::query_scalar(
+            "SELECT (SELECT count(*) FROM local_inbox_state) + (SELECT count(*) FROM local_inbox_projection)",
+        )
+        .fetch_one(&mut connection)
+        .await
+        .unwrap();
+        assert_eq!(
+            local_inbox_rows, 0,
+            "An upgrade must not invent user-authored inbox intent"
+        );
         assert_integrity(&mut connection).await;
         connection.close().await.unwrap();
     }

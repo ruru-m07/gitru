@@ -1,7 +1,7 @@
 import { type RemoteAccount } from "@gitru/collaboration-client";
 import {
   contextualCapabilitiesQueryOptions,
-  itemsQueryOptions,
+  inboxQueryOptions,
   useCollaborationAccounts,
   useCollaborationVersion,
 } from "@gitru/collaboration-client/react";
@@ -40,10 +40,9 @@ export function useSavedInboxBadge() {
   });
   const pages = useQueries({
     queries: inboxes.map(({ account, state }) =>
-      itemsQueryOptions(account, {
-        kind: "notification",
-        repository_id: null,
-        state,
+      inboxQueryOptions(account, {
+        remote_state: state,
+        local_state: "inbox",
         search: null,
         cursor: null,
         limit: 100,
@@ -51,7 +50,7 @@ export function useSavedInboxBadge() {
     ),
   });
   const count = pages.reduce(
-    (sum, page) => sum + (page.data?.items.length ?? 0),
+    (sum, page) => sum + (page.data?.entries.length ?? 0),
     0,
   );
   return count

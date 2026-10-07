@@ -1,6 +1,7 @@
 import {
   collaboration,
   collaborationErrorMessage,
+  type LocalInboxState,
   type NotificationSubjectSnapshot,
   type RemoteAccount,
 } from "@gitru/collaboration-client";
@@ -64,11 +65,13 @@ export function NotificationSubjectView({
   account,
   notificationId,
   instanceId,
+  localState,
   close,
 }: {
   account: RemoteAccount;
   notificationId: string;
   instanceId: string;
+  localState?: LocalInboxState;
   close: () => void;
 }) {
   const context = useContextualCapabilities(
@@ -136,6 +139,21 @@ export function NotificationSubjectView({
             {original.unread !== null ? (
               <Badge variant="outline" size="sm">
                 {original.unread ? "Unread notification" : "Read notification"}
+              </Badge>
+            ) : null}
+            {localState ? (
+              <Badge variant="outline" size="sm">
+                Local {localState.effective_disposition}
+              </Badge>
+            ) : null}
+            {localState?.bookmarked ? (
+              <Badge variant="outline" size="sm">
+                Bookmarked locally
+              </Badge>
+            ) : null}
+            {localState?.superseded_by_activity ? (
+              <Badge variant="outline" size="sm">
+                New activity restored this item to the local inbox
               </Badge>
             ) : null}
           </div>

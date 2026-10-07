@@ -17,7 +17,9 @@ import {
   fixtureAccount,
   fixtureAccounts,
   fixtureContextualCapabilities,
+  fixtureInboxPage,
   fixtureItem,
+  fixtureLocalInboxState,
   fixturePage,
   fixtureRepositories,
 } from "../../../tests/fixtures/collaboration";
@@ -158,20 +160,20 @@ describe("ordinary collaboration workspace across provider policies", () => {
     currentAccounts = { ...fixtureAccounts, accounts: [account] };
     contextMock(semantics);
     const state = semantics === "todos" ? "pending" : "unread";
-    const items = mockTauriCommand("collaboration_items", (payload) => {
-      const { query } = payload as { query: { state: string } };
-      expect(query.state).toBe(state);
-      return {
-        ...fixturePage,
-        items: [
-          {
-            ...fixtureItem,
-            kind: "notification",
-            state,
-            unread: semantics === "todos" ? null : true,
-          },
-        ],
+    const items = mockTauriCommand("collaboration_inbox", (payload) => {
+      const { query } = payload as {
+        query: { remote_state: string; local_state: string };
       };
+      expect(query.remote_state).toBe(state);
+      expect(query.local_state).toBe("inbox");
+      return fixtureInboxPage([
+        {
+          ...fixtureItem,
+          kind: "notification",
+          state,
+          unread: semantics === "todos" ? null : true,
+        },
+      ]);
     });
     await mount(
       <>
@@ -197,15 +199,20 @@ describe("ordinary collaboration workspace across provider policies", () => {
       ),
     ).toBe(true);
     expect(
-      screen.getByRole("combobox", { name: "Item state" }),
-    ).toHaveTextContent(semantics === "todos" ? "Pending" : "Unread");
+      screen.getByRole("combobox", { name: "Provider state" }),
+    ).toHaveTextContent(
+      semantics === "todos" ? "Provider pending" : "Provider unread",
+    );
   });
 
   it("does not query or refresh an unsupported issue feature", async () => {
     contextMock("none", (snapshot) =>
       deny(snapshot, "issues", "not_implemented"),
     );
-    const items = mockTauriCommandResult("collaboration_items", fixturePage);
+    const items = mockTauriCommandResult(
+      "collaboration_inbox",
+      fixtureInboxPage(),
+    );
     const refresh = mockTauriCommandResult("collaboration_refresh", {
       job_id: "must-not-run",
     });
@@ -237,6 +244,178 @@ describe("ordinary collaboration workspace across provider policies", () => {
       "none",
     );
     expect(items).not.toHaveBeenCalled();
+  });
+
+  it("writes bookmark and disposition as independent local inbox intents", async () => {
+    contextMock("native_notifications");
+    const notification = {
+      ...fixtureItem,
+      kind: "notification" as const,
+      state: "unread",
+      unread: true,
+    };
+    mockTauriCommandResult(
+      "collaboration_inbox",
+      fixtureInboxPage([notification]),
+    );
+    const write = mockTauriCommand(
+      "collaboration_set_local_inbox_state",
+      (payload) => {
+        const { request } = payload as {
+          request: import("@gitru/commands").SetLocalInboxStateRequest;
+        };
+        return {
+          state: {
+            ...fixtureLocalInboxState(notification),
+            disposition: request.disposition ?? "inbox",
+            bookmarked: request.bookmarked ?? false,
+            generation: "1",
+          },
+          revision: "11",
+          authorization_view: "1",
+        };
+      },
+    );
+    const refresh = mockTauriCommandResult("collaboration_refresh", {
+      job_id: "must-not-run",
+    });
+    const user = userEvent.setup();
+    await mount(<CollaborationWorkspace kind="notification" />);
+    await user.click(
+      await screen.findByRole("button", {
+        name: `Bookmark ${notification.title}`,
+      }),
+    );
+    await waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+    expect(write).toHaveBeenNthCalledWith(1, {
+      request: {
+        account_id: fixtureAccount.id,
+        authorization_epoch: fixtureAccount.authorization_epoch,
+        notification_id: notification.id,
+        mutation: "bookmark",
+        disposition: null,
+        bookmarked: true,
+        snoozed_until: null,
+        expected_generation: "0",
+      },
+    });
+    await user.click(
+      screen.getByRole("button", {
+        name: `Mark ${notification.title} locally done`,
+      }),
+    );
+    await waitFor(() => expect(write).toHaveBeenCalledTimes(2));
+    expect(write).toHaveBeenNthCalledWith(2, {
+      request: {
+        account_id: fixtureAccount.id,
+        authorization_epoch: fixtureAccount.authorization_epoch,
+        notification_id: notification.id,
+        mutation: "disposition",
+        disposition: "done",
+        bookmarked: null,
+        snoozed_until: null,
+        expected_generation: "0",
+      },
+    });
+    const snoozeStarted = Date.now();
+    await user.click(
+      screen.getByRole("button", {
+        name: `Snooze ${notification.title} for one hour`,
+      }),
+    );
+    await waitFor(() => expect(write).toHaveBeenCalledTimes(3));
+    const third = write.mock.calls[2][0] as {
+      request: import("@gitru/commands").SetLocalInboxStateRequest;
+    };
+    expect(third.request).toMatchObject({
+      account_id: fixtureAccount.id,
+      authorization_epoch: fixtureAccount.authorization_epoch,
+      notification_id: notification.id,
+      mutation: "disposition",
+      disposition: "inbox",
+      bookmarked: null,
+      expected_generation: "0",
+    });
+    expect(
+      Date.parse(third.request.snoozed_until ?? ""),
+    ).toBeGreaterThanOrEqual(snoozeStarted + 60 * 60_000);
+    expect(Date.parse(third.request.snoozed_until ?? "")).toBeLessThanOrEqual(
+      Date.now() + 60 * 60_000,
+    );
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("reloads SQLite after a stale local inbox CAS without overwriting it", async () => {
+    contextMock("native_notifications");
+    const notification = {
+      ...fixtureItem,
+      kind: "notification" as const,
+      state: "unread",
+      unread: true,
+    };
+    const inbox = mockTauriCommandResult(
+      "collaboration_inbox",
+      fixtureInboxPage([notification]),
+    );
+    const write = mockTauriCommand(
+      "collaboration_set_local_inbox_state",
+      () => {
+        throw { code: "stale_view", message: "private native diagnostics" };
+      },
+    );
+    const user = userEvent.setup();
+    await mount(<CollaborationWorkspace kind="notification" />);
+    await user.click(
+      await screen.findByRole("button", {
+        name: `Mark ${notification.title} locally done`,
+      }),
+    );
+    expect(
+      await screen.findByText(
+        "This saved view changed. Reload it before continuing.",
+      ),
+    ).toBeVisible();
+    expect(write).toHaveBeenCalledOnce();
+    await waitFor(() => expect(inbox.mock.calls.length).toBeGreaterThan(1));
+    expect(
+      screen.getByRole("button", {
+        name: `Mark ${notification.title} locally done`,
+      }),
+    ).toBeEnabled();
+  });
+
+  it("returns paged inboxes to the SQLite root when a snooze deadline arrives", async () => {
+    contextMock("native_notifications");
+    const notification = {
+      ...fixtureItem,
+      kind: "notification" as const,
+      state: "unread",
+      unread: true,
+    };
+    const deadline = new Date(Date.now() + 1_000).toISOString();
+    const cursors: Array<string | null> = [];
+    mockTauriCommand("collaboration_inbox", (payload) => {
+      const { query } = payload as { query: { cursor: string | null } };
+      cursors.push(query.cursor);
+      return {
+        ...fixtureInboxPage([notification]),
+        next_cursor: query.cursor ? null : "second-page",
+        next_local_change_at: deadline,
+      };
+    });
+    const user = userEvent.setup();
+    await mount(<CollaborationWorkspace kind="notification" />);
+    await user.click(
+      await screen.findByRole("button", { name: "Next saved page" }),
+    );
+    await waitFor(() => expect(cursors).toContain("second-page"));
+    await waitFor(
+      () => {
+        const secondPage = cursors.indexOf("second-page");
+        expect(cursors.slice(secondPage + 1)).toContain(null);
+      },
+      { timeout: 4_000 },
+    );
   });
 
   it("distinguishes missing permission from an explicit denied-scope recheck", async () => {

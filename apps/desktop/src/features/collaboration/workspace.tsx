@@ -4,6 +4,7 @@ import {
   collaboration,
   collaborationErrorMessage,
   type InboxSemantics,
+  type LocalInboxFilter,
   type RemoteAccount,
   type RemoteItemKind,
   type RemoteRepository,
@@ -57,6 +58,7 @@ import {
 } from "./capability-policy";
 import { DraftRecovery } from "./draft-recovery";
 import { OpenLocalCloneButton } from "./local-clone-picker";
+import { LocalInboxFeed } from "./local-inbox-feed";
 import type { LocalLinkRouteTarget } from "./local-link-navigation";
 import { NotificationSubjectView } from "./notification-subject-view";
 import { SavedItemDetail } from "./saved-item-detail";
@@ -342,6 +344,8 @@ function AccountWorkspace({
   const [state, setState] = useState<string | null>(
     kind === "notification" ? inbox.initialState : "open",
   );
+  const [localInboxState, setLocalInboxState] =
+    useState<LocalInboxFilter>("inbox");
   if (semantics !== observedSemantics) {
     setObservedSemantics(semantics);
     if (kind === "notification") setState(inbox.initialState);
@@ -488,7 +492,9 @@ function AccountWorkspace({
           <SelectTrigger
             size="sm"
             className="min-w-28 w-28"
-            aria-label="Item state"
+            aria-label={
+              kind === "notification" ? "Provider state" : "Item state"
+            }
           >
             <SelectValue />
           </SelectTrigger>
@@ -500,6 +506,36 @@ function AccountWorkspace({
             ))}
           </SelectPopup>
         </Select>
+        {kind === "notification" ? (
+          <Select
+            items={[
+              { label: "Local inbox", value: "inbox" },
+              { label: "Snoozed locally", value: "snoozed" },
+              { label: "Done locally", value: "done" },
+              { label: "Bookmarked", value: "bookmarked" },
+              { label: "All local states", value: "all" },
+            ]}
+            value={localInboxState}
+            onValueChange={(value) =>
+              setLocalInboxState(value as LocalInboxFilter)
+            }
+          >
+            <SelectTrigger
+              size="sm"
+              className="min-w-36 w-36"
+              aria-label="Local inbox state"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectPopup>
+              <SelectItem value="inbox">Local inbox</SelectItem>
+              <SelectItem value="snoozed">Snoozed locally</SelectItem>
+              <SelectItem value="done">Done locally</SelectItem>
+              <SelectItem value="bookmarked">Bookmarked</SelectItem>
+              <SelectItem value="all">All local states</SelectItem>
+            </SelectPopup>
+          </Select>
+        ) : null}
         {kind !== "notification" && selected.length > 1 ? (
           <Select
             items={[
@@ -599,29 +635,52 @@ function AccountWorkspace({
       <div className="px-5">
         <SynchronizationAvailability policy={policy} />
       </div>
-      <ItemFeed
-        key={`${kind}:${repositoryId}:${state}:${searchValue}`}
-        account={account}
-        kind={kind}
-        instanceId={instanceId}
-        policy={policy}
-        contextPending={context.isPending}
-        contextError={
-          contextError ??
-          (context.isError
-            ? collaborationErrorMessage(context.error)
-            : undefined)
-        }
-        recheck={() => {
-          void refresh(true);
-        }}
-        repositoryId={selectedRepositoryId}
-        repositories={repositories.data?.repositories ?? []}
-        state={state}
-        search={searchValue}
-        refresh={refresh}
-        refreshing={refreshing}
-      />
+      {kind === "notification" ? (
+        <LocalInboxFeed
+          key={`${kind}:${state}:${localInboxState}:${searchValue}`}
+          account={account}
+          instanceId={instanceId}
+          policy={policy}
+          contextPending={context.isPending}
+          contextError={
+            contextError ??
+            (context.isError
+              ? collaborationErrorMessage(context.error)
+              : undefined)
+          }
+          recheck={() => void refresh(true)}
+          repositories={repositories.data?.repositories ?? []}
+          remoteState={state}
+          localState={localInboxState}
+          search={searchValue}
+          refresh={refresh}
+          refreshing={refreshing}
+        />
+      ) : (
+        <ItemFeed
+          key={`${kind}:${repositoryId}:${state}:${searchValue}`}
+          account={account}
+          kind={kind}
+          instanceId={instanceId}
+          policy={policy}
+          contextPending={context.isPending}
+          contextError={
+            contextError ??
+            (context.isError
+              ? collaborationErrorMessage(context.error)
+              : undefined)
+          }
+          recheck={() => {
+            void refresh(true);
+          }}
+          repositoryId={selectedRepositoryId}
+          repositories={repositories.data?.repositories ?? []}
+          state={state}
+          search={searchValue}
+          refresh={refresh}
+          refreshing={refreshing}
+        />
+      )}
     </>
   );
 }

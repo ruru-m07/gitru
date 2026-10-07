@@ -85,6 +85,8 @@ function fixture() {
     repositories: unexpected,
     selectRepository: unexpected,
     items: unexpected,
+    inbox: unexpected,
+    setLocalInboxState: unexpected,
     item: unexpected,
     refresh: unexpected,
     saveDraft: unexpected,

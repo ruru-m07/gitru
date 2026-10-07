@@ -238,3 +238,47 @@ adapter changes, credential/keyring changes, global notification preferences,
 arbitrary custom snooze dates, destructive cache retention policy or PR/issue
 local state. RURU-130 owns remote read/done actions and their activity policy.
 No PR merge is authorized.
+
+## Implemented source and local evidence — 8 October 2026
+
+The bounded local-only slice is implemented on the frozen baseline above. The
+new 0012 migration and SQLite projection keep provider status immutable while
+adding account-partitioned local disposition, bookmark, snooze deadline and CAS
+generation. Explicit bookmark versus disposition mutations preserve independent
+intent. A newer accepted provider `updated_at` re-surfaces locally done or
+snoozed rows, including remotely read rows; equal and older observations do not.
+The same native query applies provider/local filters, literal FTS search,
+pagination, badge pages and the next relevant UTC transition.
+
+Generated IPC now exposes the two cache-local commands through
+`@gitru/commands`; the collaboration client fences reads and writes by account
+epoch and invalidates inbox projections for both provider and local revisions.
+The desktop Inbox presents provider and local selectors/badges separately and
+offers keyboard-accessible bookmark, one-hour snooze, local Done and Move to
+inbox controls. A stale CAS reloads SQLite. Deadline handling returns paged
+views to their first page, checks at most once per minute while active and
+rechecks after focus; it still makes no exact alarm or correct-system-clock
+claim.
+
+Local source qualification at this worktree passes:
+
+* `make typegen` with 125 generated commands;
+* `cargo test -p collaboration`, including six focused local-inbox integration
+  cases, the exact-deadline unit control and the frozen-v1 migration upgrade;
+* `cargo clippy -p collaboration -p gitru --all-targets -- -D warnings`;
+* `cargo test -p gitru` with 27 passing native caller-policy tests;
+* collaboration-client typecheck/lint and 156 tests across 19 files;
+* desktop typecheck/lint and 234 collaboration feature tests across 18 files;
+* `cargo fmt --all --check` and `git diff --check`.
+
+The focused native cases also prove restart persistence for done, bookmark and
+snooze; overlapping account IDs; stale generation and epoch fencing;
+non-notification, retired and denied access rejection; every local and provider
+filter; search/cursor invalidation; past, invalid and over-30-day deadline
+rejection; and authored-state survival across provider-cache clearing. The
+queries and writes call no adapter, vault or Gitru cloud service.
+
+Packaged multi-process restart qualification, fresh remote CI, other-platform
+execution and live-provider/PAT/keyring behavior remain separate gates. No
+personal credential or provider endpoint was used, no provider write was added,
+and no PR is published or merged by this source checkpoint.

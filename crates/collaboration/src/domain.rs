@@ -199,6 +199,97 @@ pub struct ItemQuery {
     pub limit: u32,
 }
 
+/// Gitru-owned inbox intent. Provider read/done state remains on `RemoteItem`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalInboxDisposition {
+    Inbox,
+    Done,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalInboxEffectiveDisposition {
+    Inbox,
+    Snoozed,
+    Done,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalInboxFilter {
+    Inbox,
+    Snoozed,
+    Done,
+    Bookmarked,
+    All,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalInboxMutation {
+    Disposition,
+    Bookmark,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalInboxState {
+    pub disposition: LocalInboxDisposition,
+    pub effective_disposition: LocalInboxEffectiveDisposition,
+    pub bookmarked: bool,
+    pub snoozed_until: Option<String>,
+    pub activity_updated_at: String,
+    pub superseded_by_activity: bool,
+    pub generation: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InboxEntry {
+    pub item: RemoteItem,
+    pub local: LocalInboxState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InboxQuery {
+    pub account_id: String,
+    pub remote_state: Option<String>,
+    pub local_state: LocalInboxFilter,
+    pub search: Option<String>,
+    pub cursor: Option<String>,
+    pub limit: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InboxPage {
+    pub entries: Vec<InboxEntry>,
+    pub revision: String,
+    pub authorization_view: String,
+    pub next_cursor: Option<String>,
+    pub coverage: Coverage,
+    pub sync: SyncStatus,
+    pub evaluated_at: String,
+    pub next_local_change_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SetLocalInboxStateRequest {
+    pub account_id: String,
+    pub authorization_epoch: String,
+    pub notification_id: String,
+    pub mutation: LocalInboxMutation,
+    pub disposition: Option<LocalInboxDisposition>,
+    pub bookmarked: Option<bool>,
+    pub snoozed_until: Option<String>,
+    pub expected_generation: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalInboxWriteReceipt {
+    pub state: LocalInboxState,
+    pub revision: String,
+    pub authorization_view: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CollaborationChange {
     pub revision: String,

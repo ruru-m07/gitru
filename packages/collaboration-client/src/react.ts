@@ -3,6 +3,7 @@ import type {
   DemandTarget,
   DetailQuery,
   DraftQuery,
+  InboxQuery,
   ItemQuery,
   PullCommitQuery,
   RemoteAccount,
@@ -159,6 +160,39 @@ export function useCollaborationItems(
 ) {
   useCollaborationVersion();
   return useQuery({ ...itemsQueryOptions(account, query), enabled });
+}
+
+function inboxRefreshInterval(nextLocalChangeAt: string | null | undefined) {
+  if (!nextLocalChangeAt) return false;
+  const deadline = Date.parse(nextLocalChangeAt);
+  if (!Number.isFinite(deadline)) return false;
+  return Math.max(250, Math.min(deadline - Date.now(), 60_000));
+}
+
+/** SQLite-only inbox projection; bounded polling repairs snooze expiry/clock resume. */
+export function inboxQueryOptions(
+  account: RemoteAccount,
+  query: Omit<InboxQuery, "account_id">,
+) {
+  const fullQuery = { ...query, account_id: account.id };
+  return queryOptions({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.inbox(account, fullQuery),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).inbox(query, signal),
+    refetchInterval: (current) =>
+      inboxRefreshInterval(current.state.data?.next_local_change_at),
+    refetchOnWindowFocus: "always" as const,
+  });
+}
+
+export function useCollaborationInbox(
+  account: RemoteAccount,
+  query: Omit<InboxQuery, "account_id">,
+  enabled = true,
+) {
+  useCollaborationVersion();
+  return useQuery({ ...inboxQueryOptions(account, query), enabled });
 }
 
 export function itemQueryOptions(account: RemoteAccount, itemId: string) {

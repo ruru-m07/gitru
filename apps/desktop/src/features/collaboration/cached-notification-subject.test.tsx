@@ -15,8 +15,8 @@ import {
   fixtureAccount,
   fixtureAccounts,
   fixtureContextualCapabilities,
+  fixtureInboxPage,
   fixtureItem,
-  fixturePage,
   fixtureRepositories,
 } from "../../../tests/fixtures/collaboration";
 import {
@@ -163,9 +163,8 @@ beforeEach(() => {
       selected: false,
     })),
   });
-  mockTauriCommand("collaboration_items", () => ({
-    ...fixturePage,
-    items: [thread],
+  mockTauriCommand("collaboration_inbox", () => ({
+    ...fixtureInboxPage([thread]),
     revision,
     authorization_view: view,
   }));

@@ -19,6 +19,7 @@ import {
   collaborationExecutePullCheckout,
   collaborationExportDraft,
   collaborationHydrateDetail,
+  collaborationInbox,
   collaborationItem,
   collaborationItems,
   collaborationLocalClones,
@@ -37,6 +38,7 @@ import {
   collaborationSaveDraft,
   collaborationSaveTransportBinding,
   collaborationSelectRepository,
+  collaborationSetLocalInboxState,
   collaborationValidateLocalNavigation,
 } from "@gitru/commands";
 import type { QueryClient } from "@tanstack/react-query";
@@ -76,10 +78,15 @@ export type {
   GithubCliAccount,
   GithubCliDiscovery,
   HydrateDetailRequest,
+  InboxEntry,
+  InboxPage,
+  InboxQuery,
   ItemQuery,
   LocalCloneRecord,
   LocalCloneSnapshot,
   LocalDraft,
+  LocalInboxState,
+  LocalInboxWriteReceipt,
   LocalLinkCandidate,
   LocalLinkInspection,
   LocalLinkVersion,
@@ -113,6 +120,7 @@ export type {
   ResourceMetadataSnapshot,
   ResourceMetadataValues,
   ResourceResolution,
+  SetLocalInboxStateRequest,
   TaskActor,
   TaskV1,
   TransportBindingRequest,
@@ -123,6 +131,14 @@ export type { DemandAccount, DemandHandle } from "./demand-coordinator";
 export type LocalLinkState =
   import("@gitru/commands").LocalRepositoryLink["state"];
 export type RemoteItemKind = import("@gitru/commands").ItemQuery["kind"];
+export type LocalInboxDisposition =
+  import("@gitru/commands").LocalInboxState["disposition"];
+export type LocalInboxEffectiveDisposition =
+  import("@gitru/commands").LocalInboxState["effective_disposition"];
+export type LocalInboxFilter =
+  import("@gitru/commands").InboxQuery["local_state"];
+export type LocalInboxMutation =
+  import("@gitru/commands").SetLocalInboxStateRequest["mutation"];
 export type DetailFacet = import("@gitru/commands").DetailQuery["facet"];
 export type DetailField =
   import("@gitru/commands").DetailEntry["field_mask"][number];
@@ -181,6 +197,8 @@ export const collaboration = new CollaborationClient({
   selectRepository: (accountId, repositoryId, selected) =>
     collaborationSelectRepository({ accountId, repositoryId, selected }),
   items: (query) => collaborationItems({ query }),
+  inbox: (query) => collaborationInbox({ query }),
+  setLocalInboxState: (request) => collaborationSetLocalInboxState({ request }),
   item: (accountId, itemId) => collaborationItem({ accountId, itemId }),
   refresh: (request) => collaborationRefresh({ request }),
   changesSince: (afterRevision) => collaborationChangesSince({ afterRevision }),
