@@ -584,29 +584,54 @@ fn validate_provider_cursor(value: &str) -> Result<()> {
     }
 }
 
-/// Storage-owned continuation evidence. `provider_page_count` is the number of
-/// pages already accepted, while `seen_cursors` preserves every continuation
-/// token used to detect non-adjacent provider cycles.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PullFileContinuation {
-    pub cursor: String,
-    pub provider_page_count: u32,
-    pub seen_cursors: Vec<String>,
-    /// Exact first-page strategy/version; later pages may not switch either.
+/// Storage-issued authority for exactly one staging generation. Renderer-facing
+/// query and hydration types never contain or construct this value.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PullFileLease {
+    pub run_id: String,
+    pub generation: String,
+    pub account_id: String,
+    pub authorization_epoch: String,
+    pub authorization_view: String,
+    pub binding: PullFileBinding,
     pub source: PullFileSource,
+    /// Number of provider pages durably accepted before the next request.
+    pub provider_page_count: u32,
+    /// Number of rows durably accepted; this is the next page's start position.
+    pub accepted_row_count: u32,
+    pub next_cursor: Option<String>,
+    pub seen_cursors: Vec<String>,
 }
 
-impl PullFileContinuation {
+impl PullFileLease {
     pub fn validate(&self) -> Result<()> {
-        if self.provider_page_count == 0
+        validate_generation(&self.run_id)?;
+        validate_generation(&self.generation)?;
+        validate_identifier(&self.account_id)?;
+        validate_revision(&self.authorization_epoch)?;
+        validate_revision(&self.authorization_view)?;
+        self.binding.validate()?;
+        self.source.validate()?;
+        if !self.source.strategy.supports_collection()
             || self.provider_page_count >= MAX_PULL_FILE_PROVIDER_PAGES
-            || self.seen_cursors.len() != self.provider_page_count as usize
-            || self.seen_cursors.last() != Some(&self.cursor)
+            || self.accepted_row_count > MAX_PULL_FILES
+            || self.accepted_row_count
+                > self
+                    .provider_page_count
+                    .saturating_mul(MAX_PULL_FILES_PER_PROVIDER_PAGE as u32)
         {
             return Err(invalid_pull_file());
         }
-        self.source.validate()?;
-        if !self.source.strategy.supports_collection() {
+        let continuation_shape_valid = if self.provider_page_count == 0 {
+            self.accepted_row_count == 0
+                && self.next_cursor.is_none()
+                && self.seen_cursors.is_empty()
+        } else {
+            self.next_cursor.is_some()
+                && self.seen_cursors.len() == self.provider_page_count as usize
+                && self.seen_cursors.last() == self.next_cursor.as_ref()
+        };
+        if !continuation_shape_valid {
             return Err(invalid_pull_file());
         }
         let mut unique = HashSet::with_capacity(self.seen_cursors.len());
@@ -655,8 +680,10 @@ pub struct PullFileCollectionRequest {
     pub repository: RemoteRepository,
     pub subject: RemoteItem,
     pub binding: PullFileBinding,
-    pub continuation: Option<PullFileContinuation>,
+    pub source: PullFileSource,
+    pub cursor: Option<String>,
     pub start_position: u32,
+    pub lease: PullFileLease,
 }
 
 impl PullFileCollectionRequest {
@@ -669,7 +696,11 @@ impl PullFileCollectionRequest {
         validate_identifier(&self.subject.id)?;
         validate_identifier(&self.subject.provider_id)?;
         self.binding.validate()?;
+        self.lease.validate()?;
         if self.account.state != AccountState::Active
+            || self.account.id != self.lease.account_id
+            || self.account.authorization_epoch != self.lease.authorization_epoch
+            || self.authorization_view != self.lease.authorization_view
             || self.repository.account_id != self.account.id
             || self.subject.account_id != self.account.id
             || self.subject.repository_id.as_deref() != Some(self.repository.id.as_str())
@@ -681,22 +712,14 @@ impl PullFileCollectionRequest {
             || self.binding.pull_id != self.subject.id
             || self.binding.pull_provider_id != self.subject.provider_id
             || self.binding.number != self.subject.number
-            || self.start_position > MAX_PULL_FILES
+            || self.binding != self.lease.binding
+            || self.source != self.lease.source
+            || self.cursor != self.lease.next_cursor
+            || self.start_position != self.lease.accepted_row_count
         {
             return Err(invalid_pull_file());
         }
-        if let Some(continuation) = &self.continuation {
-            continuation.validate()?;
-        } else if self.start_position != 0 {
-            return Err(invalid_pull_file());
-        }
         Ok(())
-    }
-
-    fn accepted_provider_pages(&self) -> u32 {
-        self.continuation
-            .as_ref()
-            .map_or(0, |continuation| continuation.provider_page_count)
     }
 }
 
@@ -717,9 +740,10 @@ impl PullFileProviderPage {
     pub fn validate_for(&self, request: &PullFileCollectionRequest) -> Result<()> {
         request.validate()?;
         self.context.validate()?;
-        if !self.context.is_exact(&request.binding.context)
-            || self.start_position != request.start_position
+        if !self.context.is_exact(&request.lease.binding.context)
+            || self.start_position != request.lease.accepted_row_count
             || self.files.len() > MAX_PULL_FILES_PER_PROVIDER_PAGE
+            || self.source != request.lease.source
             || !self.source.strategy.supports_collection()
             || self
                 .source
@@ -732,10 +756,6 @@ impl PullFileProviderPage {
                     .cap
                     .is_some_and(|cap| cap.provenance == PullFileCapProvenance::Provider)
             || self.cap.is_some() && self.next_cursor.is_some()
-            || request
-                .continuation
-                .as_ref()
-                .is_some_and(|continuation| continuation.source != self.source)
         {
             return Err(invalid_pull_file());
         }
@@ -759,14 +779,12 @@ impl PullFileProviderPage {
         if let Some(cursor) = &self.next_cursor {
             validate_provider_cursor(cursor)?;
             let accepted_page_count = request
-                .accepted_provider_pages()
+                .lease
+                .provider_page_count
                 .checked_add(1)
                 .ok_or_else(invalid_pull_file)?;
             if accepted_page_count >= MAX_PULL_FILE_PROVIDER_PAGES
-                || request
-                    .continuation
-                    .as_ref()
-                    .is_some_and(|continuation| continuation.seen_cursors.contains(cursor))
+                || request.lease.seen_cursors.contains(cursor)
             {
                 return Err(invalid_pull_file());
             }
@@ -780,33 +798,41 @@ impl PullFileProviderPage {
         Ok(())
     }
 
-    /// Advances only after this page passes validation. The first continuation
-    /// records one accepted page; a thirtieth page must be terminal.
-    pub fn next_continuation(
-        &self,
-        request: &PullFileCollectionRequest,
-    ) -> Result<Option<PullFileContinuation>> {
+    /// Advances storage authority only after this page passes validation. The
+    /// first continuation records one accepted page; a thirtieth page must be
+    /// terminal and therefore cannot produce another lease.
+    pub fn next_lease(&self, request: &PullFileCollectionRequest) -> Result<Option<PullFileLease>> {
         self.validate_for(request)?;
         let Some(cursor) = &self.next_cursor else {
             return Ok(None);
         };
         let provider_page_count = request
-            .accepted_provider_pages()
+            .lease
+            .provider_page_count
             .checked_add(1)
             .ok_or_else(invalid_pull_file)?;
-        let mut seen_cursors = request
-            .continuation
-            .as_ref()
-            .map_or_else(Vec::new, |continuation| continuation.seen_cursors.clone());
+        let accepted_row_count = request
+            .lease
+            .accepted_row_count
+            .checked_add(u32::try_from(self.files.len()).map_err(|_| invalid_pull_file())?)
+            .ok_or_else(invalid_pull_file)?;
+        let mut seen_cursors = request.lease.seen_cursors.clone();
         seen_cursors.push(cursor.clone());
-        let continuation = PullFileContinuation {
-            cursor: cursor.clone(),
+        let lease = PullFileLease {
+            run_id: request.lease.run_id.clone(),
+            generation: request.lease.generation.clone(),
+            account_id: request.lease.account_id.clone(),
+            authorization_epoch: request.lease.authorization_epoch.clone(),
+            authorization_view: request.lease.authorization_view.clone(),
+            binding: request.lease.binding.clone(),
+            source: request.lease.source.clone(),
             provider_page_count,
+            accepted_row_count,
+            next_cursor: Some(cursor.clone()),
             seen_cursors,
-            source: self.source.clone(),
         };
-        continuation.validate()?;
-        Ok(Some(continuation))
+        lease.validate()?;
+        Ok(Some(lease))
     }
 }
 
@@ -1172,6 +1198,7 @@ mod tests {
     const HEAD: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     const OTHER: &str = "cccccccccccccccccccccccccccccccccccccccc";
     const GENERATION: &str = "123e4567-e89b-12d3-a456-426614174000";
+    const RUN_ID: &str = "123e4567-e89b-12d3-a456-426614174010";
 
     fn context() -> PullFileContext {
         PullFileContext {
@@ -1203,8 +1230,13 @@ mod tests {
     }
 
     fn provider_files(count: usize) -> Vec<ProviderPullFile> {
+        provider_files_from(0, count)
+    }
+
+    fn provider_files_from(start: u32, count: usize) -> Vec<ProviderPullFile> {
         (0..count)
-            .map(|index| {
+            .map(|offset| {
+                let index = start + u32::try_from(offset).unwrap();
                 let mut file = provider_file();
                 file.identity.old_path = Some(format!("old/{index}.rs"));
                 file.identity.new_path = Some(format!("new/{index}.rs"));
@@ -1263,22 +1295,39 @@ mod tests {
             reason: None,
             unread: None,
         };
+        let binding = PullFileBinding {
+            instance_id: "github-instance".into(),
+            repository_id: repository.id.clone(),
+            repository_provider_id: repository.provider_id.clone(),
+            pull_id: subject.id.clone(),
+            pull_provider_id: subject.provider_id.clone(),
+            number: subject.number.clone(),
+            context: context(),
+        };
+        let authorization_view = "3".to_owned();
+        let lease = PullFileLease {
+            run_id: RUN_ID.into(),
+            generation: GENERATION.into(),
+            account_id: account.id.clone(),
+            authorization_epoch: account.authorization_epoch.clone(),
+            authorization_view: authorization_view.clone(),
+            binding: binding.clone(),
+            source: source(PullFileSourceStrategy::GithubPullFiles),
+            provider_page_count: 0,
+            accepted_row_count: 0,
+            next_cursor: None,
+            seen_cursors: Vec::new(),
+        };
         PullFileCollectionRequest {
-            binding: PullFileBinding {
-                instance_id: "github-instance".into(),
-                repository_id: repository.id.clone(),
-                repository_provider_id: repository.provider_id.clone(),
-                pull_id: subject.id.clone(),
-                pull_provider_id: subject.provider_id.clone(),
-                number: subject.number.clone(),
-                context: context(),
-            },
+            binding,
             account,
-            authorization_view: "3".into(),
+            authorization_view,
             repository,
             subject,
-            continuation: None,
+            source: lease.source.clone(),
+            cursor: None,
             start_position: 0,
+            lease,
         }
     }
 
@@ -1539,22 +1588,42 @@ mod tests {
 
     #[test]
     fn github_exact_three_thousand_boundary_requires_provider_limit_evidence() {
-        let github_source = source(PullFileSourceStrategy::GithubPullFiles);
-        let request = PullFileCollectionRequest {
-            continuation: Some(PullFileContinuation {
-                cursor: "page-before-boundary".into(),
-                provider_page_count: 1,
-                seen_cursors: vec!["page-before-boundary".into()],
-                source: github_source.clone(),
-            }),
-            start_position: MAX_PULL_FILES - 1,
-            ..collection_request()
-        };
+        let mut request = collection_request();
+        for page_number in 1..MAX_PULL_FILE_PROVIDER_PAGES {
+            let start_position = request.lease.accepted_row_count;
+            let page = PullFileProviderPage {
+                context: context(),
+                files: provider_files_from(start_position, MAX_PULL_FILES_PER_PROVIDER_PAGE),
+                source: request.lease.source.clone(),
+                start_position,
+                next_cursor: Some(format!("cursor-{page_number}")),
+                cap: None,
+                freshness_seconds: 30,
+                cooldown_seconds: None,
+            };
+            let next = page.next_lease(&request).unwrap().unwrap();
+            request.source = next.source.clone();
+            request.cursor = next.next_cursor.clone();
+            request.start_position = next.accepted_row_count;
+            request.lease = next;
+        }
+        assert_eq!(
+            request.lease.provider_page_count,
+            MAX_PULL_FILE_PROVIDER_PAGES - 1
+        );
+        assert_eq!(
+            request.lease.accepted_row_count,
+            MAX_PULL_FILES - MAX_PULL_FILES_PER_PROVIDER_PAGE as u32
+        );
+
         let boundary = PullFileProviderPage {
             context: context(),
-            files: provider_files(1),
-            source: github_source,
-            start_position: MAX_PULL_FILES - 1,
+            files: provider_files_from(
+                request.lease.accepted_row_count,
+                MAX_PULL_FILES_PER_PROVIDER_PAGE,
+            ),
+            source: request.lease.source.clone(),
+            start_position: request.lease.accepted_row_count,
             next_cursor: None,
             cap: None,
             freshness_seconds: 30,
@@ -1584,7 +1653,7 @@ mod tests {
     }
 
     #[test]
-    fn continuation_counts_pages_from_one_and_rejects_every_cursor_cycle() {
+    fn lease_counts_pages_and_rows_and_rejects_cursor_cycles_and_position_jumps() {
         let first_request = collection_request();
         let first_page = PullFileProviderPage {
             context: context(),
@@ -1596,18 +1665,15 @@ mod tests {
             freshness_seconds: 30,
             cooldown_seconds: None,
         };
-        let first = first_page
-            .next_continuation(&first_request)
-            .unwrap()
-            .unwrap();
+        let first = first_page.next_lease(&first_request).unwrap().unwrap();
         assert_eq!(first.provider_page_count, 1);
+        assert_eq!(first.accepted_row_count, 1);
         assert_eq!(first.seen_cursors, ["cursor-a"]);
 
-        let second_request = PullFileCollectionRequest {
-            continuation: Some(first),
-            start_position: 1,
-            ..collection_request()
-        };
+        let mut second_request = collection_request();
+        second_request.lease = first;
+        second_request.cursor = second_request.lease.next_cursor.clone();
+        second_request.start_position = second_request.lease.accepted_row_count;
         let second_page = PullFileProviderPage {
             start_position: 1,
             next_cursor: Some("cursor-b".into()),
@@ -1621,18 +1687,15 @@ mod tests {
             ..second_page.clone()
         };
         assert!(switched_source.validate_for(&second_request).is_err());
-        let second = second_page
-            .next_continuation(&second_request)
-            .unwrap()
-            .unwrap();
+        let second = second_page.next_lease(&second_request).unwrap().unwrap();
         assert_eq!(second.provider_page_count, 2);
+        assert_eq!(second.accepted_row_count, 2);
         assert_eq!(second.seen_cursors, ["cursor-a", "cursor-b"]);
 
-        let cyclic_request = PullFileCollectionRequest {
-            continuation: Some(second),
-            start_position: 2,
-            ..collection_request()
-        };
+        let mut cyclic_request = collection_request();
+        cyclic_request.lease = second.clone();
+        cyclic_request.cursor = cyclic_request.lease.next_cursor.clone();
+        cyclic_request.start_position = cyclic_request.lease.accepted_row_count;
         let cyclic_page = PullFileProviderPage {
             start_position: 2,
             next_cursor: Some("cursor-a".into()),
@@ -1640,37 +1703,30 @@ mod tests {
         };
         assert!(cyclic_page.validate_for(&cyclic_request).is_err());
 
-        let last_request = PullFileCollectionRequest {
-            continuation: Some(PullFileContinuation {
-                cursor: "cursor-29".into(),
-                provider_page_count: MAX_PULL_FILE_PROVIDER_PAGES - 1,
-                seen_cursors: (1..MAX_PULL_FILE_PROVIDER_PAGES)
-                    .map(|page| format!("cursor-{page}"))
-                    .collect(),
-                source: source(PullFileSourceStrategy::GithubPullFiles),
-            }),
-            start_position: 29,
-            ..collection_request()
-        };
-        let nonterminal_thirtieth = PullFileProviderPage {
-            start_position: 29,
-            next_cursor: Some("cursor-30".into()),
-            ..first_page.clone()
-        };
-        assert!(nonterminal_thirtieth.validate_for(&last_request).is_err());
-        let terminal_thirtieth = PullFileProviderPage {
+        let position_jump = PullFileProviderPage {
+            start_position: MAX_PULL_FILES - 1,
             next_cursor: None,
-            ..nonterminal_thirtieth
+            ..second_page.clone()
         };
-        assert!(terminal_thirtieth.validate_for(&last_request).is_ok());
+        assert!(position_jump.validate_for(&cyclic_request).is_err());
 
-        let forged = PullFileContinuation {
-            cursor: "cursor-b".into(),
-            provider_page_count: 2,
-            seen_cursors: vec!["cursor-b".into(), "cursor-b".into()],
-            source: source(PullFileSourceStrategy::GithubPullFiles),
+        let forged_jump = PullFileLease {
+            provider_page_count: 1,
+            accepted_row_count: MAX_PULL_FILES - 1,
+            next_cursor: Some("cursor-a".into()),
+            seen_cursors: vec!["cursor-a".into()],
+            ..first_request.lease.clone()
         };
-        assert!(forged.validate().is_err());
+        assert!(forged_jump.validate().is_err());
+
+        let forged_cycle = PullFileLease {
+            provider_page_count: 2,
+            accepted_row_count: 2,
+            next_cursor: Some("cursor-b".into()),
+            seen_cursors: vec!["cursor-b".into(), "cursor-b".into()],
+            ..first_request.lease
+        };
+        assert!(forged_cycle.validate().is_err());
     }
 
     #[test]
@@ -1693,9 +1749,29 @@ mod tests {
             .base_repository_provider_id = "other-repository".into();
         assert!(wrong_base_context.validate().is_err());
 
-        let mut invalid_authorization_view = collection_request();
-        invalid_authorization_view.authorization_view = "0".into();
-        assert!(invalid_authorization_view.validate().is_err());
+        let mut changed_range = collection_request();
+        changed_range.binding.context.head_oid = OTHER.into();
+        assert!(changed_range.validate().is_err());
+
+        let mut changed_epoch = collection_request();
+        changed_epoch.account.authorization_epoch = "3".into();
+        assert!(changed_epoch.validate().is_err());
+
+        let mut changed_authorization_view = collection_request();
+        changed_authorization_view.authorization_view = "4".into();
+        assert!(changed_authorization_view.validate().is_err());
+
+        let mut changed_source_version = collection_request();
+        changed_source_version.source.adapter_version = 2;
+        assert!(changed_source_version.validate().is_err());
+
+        let mut changed_cursor = collection_request();
+        changed_cursor.cursor = Some("unleased-cursor".into());
+        assert!(changed_cursor.validate().is_err());
+
+        let mut changed_start_position = collection_request();
+        changed_start_position.start_position = 1;
+        assert!(changed_start_position.validate().is_err());
 
         let gitlab_page = PullFileProviderPage {
             context: context(),
@@ -1784,22 +1860,30 @@ mod tests {
         };
         assert!(local_cap.validate_for(&request).is_ok());
 
+        let local_source = source(PullFileSourceStrategy::LocalExactRange);
+        let mut local_request = collection_request();
+        local_request.source = local_source.clone();
+        local_request.lease.source = local_source.clone();
         let provider_cap_from_local_source = PullFileProviderPage {
-            source: source(PullFileSourceStrategy::LocalExactRange),
+            source: local_source.clone(),
             cap: Some(provider_cap),
             ..local_cap.clone()
         };
         assert!(
             provider_cap_from_local_source
-                .validate_for(&request)
+                .validate_for(&local_request)
                 .is_err()
         );
 
         let local_cap_from_local_source = PullFileProviderPage {
-            source: source(PullFileSourceStrategy::LocalExactRange),
+            source: local_source,
             ..local_cap
         };
-        assert!(local_cap_from_local_source.validate_for(&request).is_ok());
+        assert!(
+            local_cap_from_local_source
+                .validate_for(&local_request)
+                .is_ok()
+        );
     }
 
     #[test]
