@@ -185,29 +185,65 @@ async fn treats_special_unicode_paths_as_one_literal_identity() {
     let repo = test_repo();
     let selected_path = ":(glob)[x]*雪?.txt";
     let unrelated_path = "x-unrelated-雪a.txt";
-    repo.create_file(selected_path, "selected root\n");
-    repo.create_file(unrelated_path, "unrelated root\n");
-    repo.git(&[
-        "--literal-pathspecs",
-        "add",
-        "--",
-        selected_path,
-        unrelated_path,
+    // Git trees can contain names that the Windows working tree cannot create.
+    // Build exact blobs/trees directly so every platform tests the same path.
+    fn input(repo: &TestRepo, args: &[&str], value: &[u8]) -> String {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+        let mut child = Command::new("git")
+            .current_dir(repo.path())
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("fixture git process");
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(value)
+            .expect("fixture stdin");
+        let output = child.wait_with_output().expect("fixture output");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout)
+            .expect("object ID")
+            .trim()
+            .to_owned()
+    }
+    let tree = |chosen: &str, unrelated: &str| {
+        let chosen = input(&repo, &["hash-object", "-w", "--stdin"], chosen.as_bytes());
+        let unrelated = input(
+            &repo,
+            &["hash-object", "-w", "--stdin"],
+            unrelated.as_bytes(),
+        );
+        input(
+            &repo,
+            &["mktree", "-z"],
+            format!(
+                "100644 blob {chosen}\t{selected_path}\0\
+                     100644 blob {unrelated}\t{unrelated_path}\0"
+            )
+            .as_bytes(),
+        )
+    };
+    let base_tree = tree("selected root\n", "unrelated root\n");
+    let base_oid = repo.git(&["commit-tree", &base_tree, "-m", "root"]);
+    let head_tree = tree("selected head\n", "unrelated head marker\n");
+    let head_oid = repo.git(&[
+        "commit-tree",
+        &head_tree,
+        "-p",
+        &base_oid,
+        "-m",
+        "both change",
     ]);
-    repo.commit("root");
-    let base_oid = repo.head_commit();
-
-    repo.create_file(selected_path, "selected head\n");
-    repo.create_file(unrelated_path, "unrelated head marker\n");
-    repo.git(&[
-        "--literal-pathspecs",
-        "add",
-        "--",
-        selected_path,
-        unrelated_path,
-    ]);
-    repo.commit("both change");
-    let head_oid = repo.head_commit();
+    repo.git(&["update-ref", "HEAD", &head_oid]);
 
     let result = selected(
         &repo,

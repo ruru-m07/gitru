@@ -339,3 +339,16 @@ publication and rendering are covered by the focused finite Rust/SDK/UI suites;
 the retained harness does not claim a live provider diff or OS file-picker test.
 No personal credential or production vault was read. Remote CI and other-platform
 execution for this final head remain separate gates. No PR is merged.
+
+### Windows fixture repair — 8 October 2026
+
+The exact-head Windows Rust job for `218c610` failed in
+`treats_special_unicode_paths_as_one_literal_identity` before reaching the
+production service: Windows rejected creation of `:(glob)[x]*雪?.txt` with OS
+error 123. The fixture now writes blobs and NUL-delimited trees with Git plumbing,
+then creates the two commits directly. Every platform exercises the same literal
+path and excludes the unrelated changed file without requiring that path to be
+representable in the host filesystem. Production code is unchanged. All 13
+`pull_file_service` cases pass on macOS after the change; new-head Windows CI
+remains the platform gate. The previous Windows failure is not recorded as a
+passing platform result.
