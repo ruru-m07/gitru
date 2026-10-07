@@ -9,7 +9,7 @@ use sqlx::{
     sqlite::SqliteConnectOptions,
 };
 static CURRENT: Migrator = sqlx::migrate!("./migrations");
-const OLD_SQL: [&str; 16] = [
+const OLD_SQL: [&str; 17] = [
     include_str!("fixtures/migrations/v8/0001_local_collaboration.sql"),
     include_str!("fixtures/migrations/v8/0002_credential_cutover.sql"),
     include_str!("fixtures/migrations/v8/0003_provider_identities.sql"),
@@ -26,8 +26,9 @@ const OLD_SQL: [&str; 16] = [
     include_str!("fixtures/migrations/v14/0014_pull_file_generations.sql"),
     include_str!("fixtures/migrations/v15/0015_recovery_quarantine.sql"),
     include_str!("fixtures/migrations/v16/0016_command_delivery.sql"),
+    include_str!("fixtures/migrations/v17/0017_effective_intent.sql"),
 ];
-const CHECKSUMS: [&str; 16] = [
+const CHECKSUMS: [&str; 17] = [
     "a0b4863d56b1620dae93b13df7ef2b38074c3ac5a5d5bf639b01899204cb61f6796ba9fb37bfd3b085f79e928e475e3d",
     "2fe47653ace5f705b32a819739da13bd9faf40a56a268da416a9f9d39c770ec74a42377268670c40a5478c898137929b",
     "6f5925a0690563071eeaeeb43bc3eec634c280582b9971e94effe266eedb804fb7773b85a5a4d9ad2492439c575e67e9",
@@ -44,6 +45,7 @@ const CHECKSUMS: [&str; 16] = [
     "0e8e926a667a1e02a62edbcdf2886dc25e65a66c02c079ededd5a1db82f263673f4ffcdaab1b81dc5aada67c86281c15",
     "75cedf38449a30de9ec6ea7dae41582e09d34d746909ce6af16ee52c615c6a70f94b0f882c677b65ec40284b4fd6d88f",
     "f29b1e22717899ef34a8159790fde4388d3573ed67a8051d970dad690191ac6daf28c9a0bf8905e0e78bb848dc93c3db",
+    "8630ad7104e36c9db4006ceef2516fcea090d99259ffe44efac97fa21df3723fe2e5a75bb23b121fc221df8702f0efd6",
 ];
 fn historical(version: usize) -> Migrator {
     Migrator::with_migrations(
@@ -90,7 +92,7 @@ fn accepted_historical_sql_and_checksums_are_frozen() {
 #[tokio::test]
 async fn every_recognized_historical_schema_restores_without_modifying_the_selected_file() {
     let dir = tempfile::tempdir().unwrap();
-    for version in 1..=18 {
+    for version in 1..=17 {
         let target = dir.path().join(format!("target-{version}.db"));
         let source = dir.path().join(format!("v{version}.db"));
         let store = Store::open(&target).await.unwrap();

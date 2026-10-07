@@ -57,7 +57,6 @@ fn request(facet: DetailFacet) -> ReviewRequest {
                 is_draft: Some(false),
                 reason: None,
                 unread: None,
-                native_inbox: None,
             },
             facet,
             cursor: None,
