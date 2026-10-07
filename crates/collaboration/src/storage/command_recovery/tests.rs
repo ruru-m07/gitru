@@ -45,6 +45,40 @@ impl CommandAdmissionPolicy for Admission {
         Ok(vec![])
     }
 }
+struct Delivery;
+#[async_trait::async_trait]
+impl crate::delivery::CommandDeliveryPolicy for Delivery {
+    fn operation_kind(&self) -> &'static str {
+        Payload::OPERATION_KIND
+    }
+    fn payload_version(&self) -> u32 {
+        1
+    }
+    async fn validate_claim(
+        &self,
+        _: &mut Transaction<'_, Sqlite>,
+        _: &DeliveryCommand,
+        _: &RemoteAccount,
+        _: &[u8],
+    ) -> Result<crate::delivery::ClaimDecision> {
+        unreachable!()
+    }
+    fn validate_evidence(
+        &self,
+        _: &DeliveryCommand,
+        _: crate::delivery::EvidencePurpose,
+        _: &crate::delivery::OperationEvidence,
+    ) -> bool {
+        false
+    }
+    async fn dispatch(
+        &self,
+        _: &crate::credentials::SecretToken,
+        _: crate::delivery::DispatchRequest,
+    ) -> crate::delivery::DeliveryReport {
+        unreachable!()
+    }
+}
 #[derive(Default)]
 struct Policy {
     reject_after_admission: bool,
@@ -410,7 +444,7 @@ async fn supersession_preserves_successor_dependency_without_fifo_deadlock() {
     };
     assert!(
         store
-            .claim_preparation(&next, &account, &clock)
+            .claim_preparation(&next, &account, &Delivery, &clock)
             .await
             .unwrap()
             .0
@@ -418,7 +452,7 @@ async fn supersession_preserves_successor_dependency_without_fifo_deadlock() {
     );
     assert!(
         store
-            .claim_preparation(&replacement, &account, &clock)
+            .claim_preparation(&replacement, &account, &Delivery, &clock)
             .await
             .unwrap()
             .0
@@ -950,7 +984,12 @@ async fn exact_effect_cap_replaces_attempted_conflict_and_failure_restores_origi
     };
     assert!(
         store
-            .claim_preparation(&replacement, &store.account("a").await.unwrap(), &clock)
+            .claim_preparation(
+                &replacement,
+                &store.account("a").await.unwrap(),
+                &Delivery,
+                &clock
+            )
             .await
             .unwrap()
             .0

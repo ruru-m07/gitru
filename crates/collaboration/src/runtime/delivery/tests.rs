@@ -1113,7 +1113,12 @@ async fn late_reconciliation_cannot_overwrite_a_cancelled_command() {
     let command = state(&runtime, FIRST).await;
     let (request, _) = runtime
         .store
-        .claim_reconciliation(&command, &account, &runtime.delivery_time().await)
+        .claim_reconciliation(
+            &command,
+            &account,
+            policy.as_ref(),
+            &runtime.delivery_time().await,
+        )
         .await
         .unwrap();
     let request = request.unwrap();
