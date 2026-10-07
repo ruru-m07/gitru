@@ -54,32 +54,44 @@ impl HarnessSession {
         }
         let persistent = PersistentState::open(&root, run_nonce)?;
         let store = Arc::new(Store::open(&database).await?);
-        let accounts = store.accounts().await?.accounts;
-        if !persistent.prepared && !accounts.is_empty() {
-            return Err(CollaborationError::new(
-                ErrorCode::NotReady,
-                "An interrupted fixture preparation was preserved",
-            ));
+        let validated_vault = async {
+            let accounts = store.accounts().await?.accounts;
+            if !persistent.prepared && !accounts.is_empty() {
+                return Err(CollaborationError::new(
+                    ErrorCode::NotReady,
+                    "An interrupted fixture preparation was preserved",
+                ));
+            }
+            if persistent.prepared
+                && (accounts.len() != 2
+                    || accounts.iter().any(|account| {
+                        [HarnessActorSlot::Primary, HarnessActorSlot::Alternate]
+                            .into_iter()
+                            .all(|slot| {
+                                let fixture = provider::account(slot);
+                                fixture.id != account.id
+                                    || fixture.actor_id != account.actor_id
+                                    || fixture.provider != account.provider
+                                    || fixture.host != account.host
+                            })
+                    }))
+            {
+                return Err(invalid());
+            }
+            vault::FixtureVault::new(root.clone(), run_nonce)
         }
-        if persistent.prepared
-            && (accounts.len() != 2
-                || accounts.iter().any(|account| {
-                    [HarnessActorSlot::Primary, HarnessActorSlot::Alternate]
-                        .into_iter()
-                        .all(|slot| {
-                            let fixture = provider::account(slot);
-                            fixture.id != account.id
-                                || fixture.actor_id != account.actor_id
-                                || fixture.provider != account.provider
-                                || fixture.host != account.host
-                        })
-                }))
-        {
-            return Err(invalid());
-        }
+        .await;
+        let vault = match validated_vault {
+            Ok(vault) => Arc::new(vault),
+            Err(error) => {
+                // A returned startup error must leave the root immediately
+                // reopenable. Drop alone only schedules conservative shutdown.
+                store.close().await?;
+                return Err(error);
+            }
+        };
         let clock = HarnessClock::new(persistent.utc_base, persistent.elapsed);
         let shared = SharedState::new(persistent);
-        let vault = Arc::new(vault::FixtureVault::new(root.clone(), run_nonce)?);
         let provider = Arc::new(provider::FixtureProvider {
             shared: shared.clone(),
             clock: clock.clone(),
