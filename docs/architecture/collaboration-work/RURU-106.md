@@ -1,7 +1,7 @@
 # RURU-106 — Consistent backup and explicit recovery
 
-Status: existing native core implemented; current-schema recovery and desktop
-integration remain in progress, 8 October 2026.
+Status: current-schema recovery core implemented; desktop integration and final
+combined validation remain in progress, 8 October 2026.
 Started on RURU-105 `6becdd5`, then rebased onto its signed `d776d663` head,
 including the Windows LF migration-fixture fix. This document is the continuation point.
 
@@ -169,7 +169,78 @@ work need explicit file ownership because they overlap active integration.
 Update this contract with actual implementation and test evidence as each
 checkpoint lands. Do not merge the PR without user authorization.
 
-## Boundary and user choice
+## Current recovery-core checkpoint — 8 October 2026
+
+The existing branch was forward-ported with signed commits onto frozen RURU-119
+`ff1fd0ec49a9265e5080ec16208d5923f4d07c18`; the signed continuation contract is
+`9123a95`. The restore ceiling is now **schema 15**. Migrations 0001–0014 remain
+byte-identical, with frozen fixtures and independent SHA-384 checksum literals.
+Selected files at every recognized version 1–14 migrate only in private staging;
+current version 15 also validates against the exact ledger and structural SQL.
+Unknown objects, corrupt records and unsupported future schemas are refused.
+
+The native verifier streams authored rows, bounds account and schema-object
+materialization, and checks the immutable envelope framing, submission hash,
+decomposed identity/payload/guards, dependency ordering, protections and attempt
+history. Unknown operation codecs preserve their exact bytes. Recovery retains
+commands, receipts, attempts, evidence, drafts and local intent; it does not
+rewrite old command epochs or reinterpret opaque payloads.
+
+Migration 0015 adds monotonic recovery generations and immutable account-scoped
+quarantine. Every restored potentially dispatchable command, including queued
+commands with no recorded attempts, gets quarantine for the new generation.
+Repeated restore preserves previous quarantine records. The native
+`command_quarantined_in` helper is intended for RURU-115's writer transaction
+that claims an attempt. A SQLite `BEFORE INSERT` guard independently refuses new
+`delivery_attempts` for quarantined commands, so omitting that helper cannot
+claim a restored create. Existing attempt rows remain intact. There is no
+generic quarantine-release API.
+
+Before provider projections are cleared, recovery vacuums a credential-scrubbed
+incoming snapshot into the retained evidence bundle. Its checksum participates
+in manifest format 2 and is rechecked before confirmation. This preserves
+command-protected bases and file artifacts without publishing stale provider
+authority. The older target is retained separately, including newer receipts.
+Credential references and cleanup records are physically removed from the
+installed candidate and incoming evidence; no vault operation occurs. Provider
+collections, search, validators, demand, file generations and retention cursors
+restart cleanly. Revision, authorization view, matching account epochs and
+recovery generation advance beyond both readable snapshots with checked
+overflow. Quarantine insertion and cache reset share one transaction.
+
+The native preview adds command counts, quarantined-command count, recovery
+generation and incoming-evidence retention. Filesystem paths stay inside Rust.
+The adjacent lifecycle lane changes `Store::close()` to reject stale writer
+handles, await readers and actual SQLx writer shutdown, then release the OS lease
+even if clones remain. Final Drop retains the lease through acknowledged writer
+cleanup; exceptional cleanup retains it until process exit. Runtime replacement
+requires successful shutdown. Desktop picker/session integration has separate
+ownership and validation; this core checkpoint does not claim UI completion.
+
+Current local evidence includes 14 original recovery integration cases, all
+historical migration versions, exact v14 command-history preservation, real
+SQLite interrupt and disk-full migration rollback/retry, zero-attempt quarantine
+after reauthentication, repeated restore/cold reopen, protected incoming
+artifacts, atomic rollback of fencing, native long remote paths, and malformed
+input/evidence refusal. Process-crash cases use synthetic child processes and
+retain the original transaction boundaries. The final core rerun passed **11
+native recovery cases** (one subprocess entry point is intentionally ignored
+outside its parent crash cases), **14 recovery integration cases**, and **4
+migration tests**. Strict `cargo clippy -p collaboration --all-targets -- -D
+warnings` passed. The adjacent lifecycle lane's complete collaboration crate
+rerun passed **692 tests across 25 suites**, with four intentionally ignored
+tests. Complete workspace/UI checks and new remote CI remain
+separate. No existing remote CI result covers this new source yet. Windows
+directory/rename durability under power loss remains the release boundary
+described in the continuation contract.
+
+## Historical v1/v2 implementation and evidence
+
+The following sections record the original native-core slice before this
+continuation. References to missing runtime ownership or a schema-2 ceiling are
+historical and are superseded by the current checkpoint above.
+
+### Boundary and user choice
 
 Rust owns the recovery API. A running `Store` can create a backup. Replacement
 requires every runtime/Store owner to shut down and releases the same writer

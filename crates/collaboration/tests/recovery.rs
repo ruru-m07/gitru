@@ -97,6 +97,7 @@ async fn cache_observation(store: &Store) {
                 selected: false,
             }],
             items: vec![],
+            endpoint_aliases: vec![],
             next_cursor: None,
             etag: Some("repository-validator".into()),
             last_modified: None,
@@ -135,6 +136,7 @@ async fn cache_observation(store: &Store) {
                 reason: None,
                 unread: None,
             }],
+            endpoint_aliases: vec![],
             next_cursor: None,
             etag: Some("item-validator".into()),
             last_modified: None,
@@ -147,7 +149,7 @@ async fn cache_observation(store: &Store) {
 }
 
 async fn close(store: Store, path: &Path) {
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     // SQLx's writer drop signals an asynchronous worker close. Explicitly
     // checkpoint through a temporary fixture connection before byte snapshots;
@@ -219,7 +221,7 @@ async fn active_wal_backup_preserves_authored_data_and_physically_redacts_refere
     let before = store.accounts().await.unwrap();
     let summary = store.backup_to(&backup).await.unwrap();
     assert_eq!(summary.revision, before.revision);
-    assert_eq!(summary.schema_version, 2);
+    assert_eq!(summary.schema_version, 15);
     assert_eq!((summary.accounts, summary.drafts), (2, 2));
     assert_eq!(
         summary.sha256,
@@ -475,10 +477,14 @@ async fn imported_cleanup_cannot_delete_current_installation_vault_entries() {
         .unwrap();
     let session = RecoverySession::prepare(&target, &backup).await.unwrap();
     let id = session.preview().confirmation_id.clone();
-    session
+    let receipt = session
         .confirm(&id, RestoreChoice::ReplaceCurrentData)
         .unwrap();
     assert_references_absent(&target, &[imported_mapping, current_reference]);
+    assert_references_absent(
+        &receipt.original_bundle.join("incoming-evidence.sqlite"),
+        &[imported_mapping, current_reference],
+    );
     let store = Arc::new(Store::open(&target).await.unwrap());
     let runtime = CollaborationRuntime::new(store.clone(), vault.clone(), Arc::new(NoNetwork));
     runtime.recover_credentials().await.unwrap();
@@ -486,7 +492,7 @@ async fn imported_cleanup_cannot_delete_current_installation_vault_entries() {
     assert!(vault.load(current_reference).unwrap().is_some());
     assert!(store.credential_reference("a").await.unwrap().is_none());
     assert_authored(&store, "a", A_BODY, "1").await;
-    store.close().await;
+    store.close().await.unwrap();
 }
 
 #[tokio::test]
@@ -845,7 +851,7 @@ async fn recognized_historical_v1_restore_migrates_staging_and_preserves_actor_d
     assert_authored(&restored, "c", "Carol draft after disconnect", "63").await;
     assert_authored(&restored, "d", "Dave draft awaiting reconnection", "79").await;
     assert_eq!(restored.accounts().await.unwrap().accounts.len(), 4);
-    assert_eq!(count(&target, "_sqlx_migrations").await, 2);
+    assert_eq!(count(&target, "_sqlx_migrations").await, 15);
     assert_eq!(count(&target, "account_credentials").await, 0);
     assert_eq!(count(&target, "credential_cleanup").await, 0);
     close(restored, &target).await;

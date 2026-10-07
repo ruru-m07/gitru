@@ -20,15 +20,35 @@ use uuid::Uuid;
 
 use crate::{
     AccountState, CollaborationError, ErrorCode, RemoteAccount,
-    storage::{MIGRATIONS, WriterLease, acquire_writer_lease, prepare_private_path, validate_identifier},
+    storage::{
+        MIGRATIONS, WriterLease, acquire_writer_lease, prepare_private_path, validate_identifier,
+    },
 };
+
+#[cfg(test)]
+mod current_tests;
+mod policy;
 
 type Result<T> = std::result::Result<T, CollaborationError>;
 // Raising this requires a reviewed restore policy, especially for future outbox
 // tables. Merely adding a migration does not authorize replay of imported data.
-const RESTORE_SCHEMA_POLICY: i64 = 2;
+const RESTORE_SCHEMA_POLICY: i64 = 15;
 const MAX_DATABASE_BYTES: u64 = 512 * 1024 * 1024;
 const SIDECARS: [&str; 3] = ["", "-wal", "-shm"];
+
+/// Delivery must call this under the same writer transaction as attempt claim.
+/// There is intentionally no generic release API: operation-specific evidence
+/// and an audited recovery resolution are required before that can be added.
+#[allow(dead_code, reason = "delivery claims land in RURU-115")]
+pub(crate) async fn command_quarantined_in(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    account_id: &str,
+    command_id: &str,
+) -> Result<bool> {
+    sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM command_recovery_quarantine WHERE account_id=? AND command_id=?)")
+        .bind(account_id).bind(command_id).fetch_one(&mut **tx)
+        .await.map_err(|_| storage())
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BackupSummary {
@@ -37,6 +57,7 @@ pub struct BackupSummary {
     pub schema_version: i64,
     pub accounts: u64,
     pub drafts: u64,
+    pub commands: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -51,6 +72,9 @@ pub struct RestorePreview {
     pub newer_current_drafts_remain_in_original_bundle: bool,
     pub reauthentication_required: bool,
     pub cached_provider_data_will_be_removed: bool,
+    pub recovery_generation: String,
+    pub quarantined_commands: u64,
+    pub incoming_evidence_retained: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -63,6 +87,7 @@ pub enum RestoreChoice {
 pub struct RestoreReceipt {
     pub original_bundle: PathBuf,
     pub revision: String,
+    pub recovery_generation: String,
 }
 
 pub struct RecoverySession {
@@ -70,6 +95,8 @@ pub struct RecoverySession {
     stage: TempDir,
     target: PathBuf,
     candidate: PathBuf,
+    incoming_evidence: PathBuf,
+    incoming_evidence_fingerprint: String,
     target_fingerprint: String,
     candidate_fingerprint: String,
     preview: RestorePreview,
@@ -87,12 +114,15 @@ struct Manifest {
     format: u32,
     confirmation_id: String,
     candidate_sha256: String,
+    #[serde(default)]
+    incoming_evidence_sha256: Option<String>,
     original: Vec<PreservedFile>,
 }
 
 struct CurrentState {
     summary: BackupSummary,
     authorization_view: i64,
+    recovery_generation: i64,
     epochs: HashMap<String, (String, String, String, i64)>,
 }
 
@@ -144,7 +174,21 @@ impl RecoverySession {
             .await
             .map_err(|_| invalid_backup())?;
         verify(&mut connection).await?;
-        let restored_revision = fence_restored_data(&mut connection, current.as_ref()).await?;
+        // Preserve protected comparison bases before rebuilding provider cache.
+        // The archived source has no credential references, including free pages.
+        sqlx::raw_sql("DELETE FROM account_credentials; DELETE FROM credential_cleanup;")
+            .execute(&mut connection)
+            .await
+            .map_err(|_| storage())?;
+        let incoming_evidence = stage.path().join("incoming-evidence.sqlite");
+        vacuum_into(&mut connection, &incoming_evidence).await?;
+        let mut evidence = connect(&incoming_evidence, true).await?;
+        verify(&mut evidence).await?;
+        evidence.close().await.map_err(|_| storage())?;
+        sync_file(&incoming_evidence)?;
+        let incoming_evidence_fingerprint = hash_file(&incoming_evidence)?;
+        let (restored_revision, recovery_generation, quarantined_commands) =
+            fence_restored_data(&mut connection, current.as_ref()).await?;
         let candidate = stage.path().join("candidate.sqlite");
         vacuum_into(&mut connection, &candidate).await?;
         connection.close().await.map_err(|_| storage())?;
@@ -165,12 +209,17 @@ impl RecoverySession {
             newer_current_drafts_remain_in_original_bundle: true,
             reauthentication_required: true,
             cached_provider_data_will_be_removed: true,
+            recovery_generation,
+            quarantined_commands,
+            incoming_evidence_retained: true,
         };
         Ok(Self {
             _lease: lease,
             stage,
             target: target.to_owned(),
             candidate,
+            incoming_evidence,
+            incoming_evidence_fingerprint,
             target_fingerprint: fingerprint,
             candidate_fingerprint,
             preview,
@@ -195,6 +244,7 @@ impl RecoverySession {
         }
         if database_fingerprint(&self.target)? != self.target_fingerprint
             || hash_file(&self.candidate)? != self.candidate_fingerprint
+            || hash_file(&self.incoming_evidence)? != self.incoming_evidence_fingerprint
         {
             return Err(stale());
         }
@@ -229,8 +279,18 @@ impl RecoverySession {
             if hash_file(&bundle_path.join("candidate.sqlite"))? != self.candidate_fingerprint {
                 return Err(stale());
             }
+            copy_private(
+                &self.incoming_evidence,
+                &bundle_path.join("incoming-evidence.sqlite"),
+            )?;
+            if hash_file(&bundle_path.join("incoming-evidence.sqlite"))?
+                != self.incoming_evidence_fingerprint
+            {
+                return Err(stale());
+            }
             let manifest = Manifest {
-                format: 1,
+                format: 2,
+                incoming_evidence_sha256: Some(self.incoming_evidence_fingerprint.clone()),
                 confirmation_id: self.preview.confirmation_id.clone(),
                 candidate_sha256: self.candidate_fingerprint.clone(),
                 original: originals,
@@ -257,6 +317,7 @@ impl RecoverySession {
         Ok(RestoreReceipt {
             original_bundle: archive,
             revision: self.restored_revision,
+            recovery_generation: self.preview.recovery_generation,
         })
     }
 }
@@ -451,10 +512,12 @@ async fn read_current(path: &Path) -> Result<Option<CurrentState>> {
             ))
         })
         .collect::<Result<_>>()?;
+    let recovery_generation = policy::generation(&mut connection, version).await?;
     connection.close().await.map_err(|_| storage())?;
     Ok(Some(CurrentState {
         summary,
         authorization_view,
+        recovery_generation,
         epochs,
     }))
 }
@@ -473,15 +536,24 @@ async fn summary(
         .await
         .map_err(|_| invalid_backup())?;
     let drafts: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM drafts")
-        .fetch_one(connection)
+        .fetch_one(&mut *connection)
         .await
         .map_err(|_| invalid_backup())?;
+    let commands = if version >= 13 {
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM commands")
+            .fetch_one(&mut *connection)
+            .await
+            .map_err(|_| invalid_backup())? as u64
+    } else {
+        0
+    };
     Ok(BackupSummary {
         sha256: checksum,
         revision: revision.to_string(),
         schema_version: version,
         accounts: accounts as u64,
         drafts: drafts as u64,
+        commands,
     })
 }
 
@@ -493,19 +565,20 @@ async fn verify(connection: &mut SqliteConnection) -> Result<i64> {
     if integrity != ["ok"] {
         return Err(invalid_backup());
     }
-    if !sqlx::query("PRAGMA foreign_key_check")
-        .fetch_all(&mut *connection)
+    if sqlx::query("PRAGMA foreign_key_check")
+        .fetch_optional(&mut *connection)
         .await
         .map_err(|_| invalid_backup())?
-        .is_empty()
+        .is_some()
     {
         return Err(invalid_backup());
     }
-    let rows =
-        sqlx::query("SELECT version,success,checksum FROM _sqlx_migrations ORDER BY version")
-            .fetch_all(&mut *connection)
-            .await
-            .map_err(|_| invalid_backup())?;
+    let rows = sqlx::query(
+        "SELECT version,success,checksum FROM _sqlx_migrations ORDER BY version LIMIT 16",
+    )
+    .fetch_all(&mut *connection)
+    .await
+    .map_err(|_| invalid_backup())?;
     let Some(last) = rows.last() else {
         return Err(invalid_backup());
     };
@@ -533,20 +606,31 @@ async fn verify(connection: &mut SqliteConnection) -> Result<i64> {
             .map_err(|_| storage())?;
     }
     let schema = "SELECT json_array(type,name,tbl_name,sql) FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' AND name<>'_sqlx_migrations' ORDER BY name";
-    let actual: Vec<String> = sqlx::query_scalar(schema)
-        .fetch_all(&mut *connection)
-        .await
-        .map_err(|_| invalid_backup())?;
     let known: Vec<String> = sqlx::query_scalar(schema)
         .fetch_all(&mut expected)
         .await
         .map_err(|_| storage())?;
     expected.close().await.map_err(|_| storage())?;
+    if sqlx::query("SELECT 1 FROM sqlite_schema WHERE length(sql)>65536 LIMIT 1")
+        .fetch_optional(&mut *connection)
+        .await
+        .map_err(|_| invalid_backup())?
+        .is_some()
+    {
+        return Err(invalid_backup());
+    }
+    let actual: Vec<String> = sqlx::query_scalar("SELECT json_array(type,name,tbl_name,sql) FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' AND name<>'_sqlx_migrations' ORDER BY name LIMIT ?")
+        .bind(known.len() as i64 + 1).fetch_all(&mut *connection)
+        .await.map_err(|_| invalid_backup())?;
     if actual != known {
         return Err(invalid_backup());
     }
     // Validate authored records and account/JSON identity before any candidate is
     // admitted. The low account bound matches Store's published contract.
+    if sqlx::query("SELECT 1 FROM accounts WHERE octet_length(json)>65536 OR octet_length(id)>1024 OR octet_length(actor_id)>1024 LIMIT 1")
+        .fetch_optional(&mut *connection).await.map_err(|_| invalid_backup())?.is_some() {
+        return Err(invalid_backup());
+    }
     let accounts = sqlx::query(
         "SELECT id,provider,host,actor_id,authorization_epoch,state,json FROM accounts LIMIT 101",
     )
@@ -562,7 +646,7 @@ async fn verify(connection: &mut SqliteConnection) -> Result<i64> {
         if account.id != column::<String>(&row, "id")?
             || account.host != column::<String>(&row, "host")?
             || account.actor_id != column::<String>(&row, "actor_id")?
-            || serde_json::to_value(&account.provider)
+            || serde_json::to_value(account.provider)
                 .map_err(|_| invalid_backup())?
                 .as_str()
                 != Some(column::<String>(&row, "provider")?.as_str())
@@ -591,23 +675,48 @@ async fn verify(connection: &mut SqliteConnection) -> Result<i64> {
             return Err(invalid_backup());
         }
     }
+    drop(drafts);
+    policy::verify_authored(connection, version).await?;
     Ok(version)
 }
 
 async fn fence_restored_data(
     connection: &mut SqliteConnection,
     current: Option<&CurrentState>,
-) -> Result<String> {
+) -> Result<(String, String, u64)> {
     let mut tx = connection.begin().await.map_err(|_| storage())?;
+    let previous_generation: i64 =
+        sqlx::query_scalar("SELECT generation FROM recovery_meta WHERE singleton=1")
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|_| invalid_backup())?;
+    let generation = previous_generation
+        .max(current.map_or(0, |s| s.recovery_generation))
+        .checked_add(1)
+        .ok_or_else(invalid_backup)?;
+    sqlx::query("UPDATE recovery_meta SET generation=? WHERE singleton=1")
+        .bind(generation)
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| invalid_backup())?;
+    sqlx::query("INSERT INTO command_recovery_quarantine(account_id,command_id,submission_hash,recovery_generation) SELECT account_id,command_id,submission_hash,? FROM commands WHERE state IN ('queued','sending','retry_wait','accepted','outcome_unknown','conflict')")
+        .bind(generation).execute(&mut *tx).await.map_err(|_| invalid_backup())?;
+    let quarantined: i64 = sqlx::query_scalar("SELECT count(*) FROM commands c WHERE EXISTS(SELECT 1 FROM command_recovery_quarantine q WHERE q.account_id=c.account_id AND q.command_id=c.command_id)")
+        .fetch_one(&mut *tx).await.map_err(|_| invalid_backup())?;
     for sql in [
+        "DELETE FROM detail_demand",
+        "DELETE FROM detail_observations",
         "DELETE FROM account_credentials",
         "DELETE FROM credential_cleanup",
         "DELETE FROM items_fts",
         "DELETE FROM items",
+        "DELETE FROM pull_file_blob_objects",
         "DELETE FROM scope_membership",
         "DELETE FROM sync_scopes",
         "DELETE FROM repositories",
         "DELETE FROM change_log",
+        "UPDATE cache_retention_state SET index_complete=1,index_cursor_account_id=NULL,index_cursor_subject_id=NULL,index_cursor_facet=NULL,eviction_cursor_revision=NULL,eviction_cursor_account_id=NULL,eviction_cursor_subject_id=NULL,eviction_cursor_facet=NULL,indexed_logical_bytes=0,indexed_facet_count=0 WHERE singleton=1",
+        "UPDATE pull_file_artifact_retention_cursor SET last_access_revision=NULL,account_id=NULL,subject_id=NULL,generation=NULL,file_key=NULL WHERE singleton=1",
     ] {
         sqlx::query(sql)
             .execute(&mut *tx)
@@ -630,7 +739,7 @@ async fn fence_restored_data(
             .filter(|(provider, host, actor, _)| {
                 account.host == *host
                     && account.actor_id == *actor
-                    && serde_json::to_value(&account.provider)
+                    && serde_json::to_value(account.provider)
                         .ok()
                         .and_then(|v| v.as_str().map(str::to_owned))
                         .as_deref()
@@ -691,7 +800,11 @@ async fn fence_restored_data(
         return Err(invalid_backup());
     }
     tx.commit().await.map_err(|_| storage())?;
-    Ok(revision.to_string())
+    Ok((
+        revision.to_string(),
+        generation.to_string(),
+        quarantined as u64,
+    ))
 }
 
 async fn vacuum_into(connection: &mut SqliteConnection, path: &Path) -> Result<()> {
@@ -849,8 +962,10 @@ fn read_manifest(pending: &Path) -> Result<Manifest> {
     let manifest: Manifest =
         serde_json::from_reader(File::open(manifest_path).map_err(|_| storage())?)
             .map_err(|_| invalid_backup())?;
-    if manifest.format != 1
-        || manifest.original.is_empty()
+    if !matches!(
+        (manifest.format, &manifest.incoming_evidence_sha256),
+        (1, None) | (2, Some(_))
+    ) || manifest.original.is_empty()
         || manifest.original.len() > 3
         || !manifest.original.iter().any(|f| f.suffix.is_empty())
         || manifest
@@ -871,6 +986,11 @@ fn read_manifest(pending: &Path) -> Result<Manifest> {
     Ok(manifest)
 }
 fn verify_original(pending: &Path, manifest: &Manifest) -> Result<()> {
+    if let Some(checksum) = &manifest.incoming_evidence_sha256
+        && hash_file(&pending.join("incoming-evidence.sqlite"))? != *checksum
+    {
+        return Err(invalid_backup());
+    }
     for original in &manifest.original {
         if hash_file(&append(&pending.join("original.sqlite"), &original.suffix))?
             != original.sha256
@@ -1011,7 +1131,7 @@ mod tests {
             .unwrap();
         connection.close().await.unwrap();
         let store = Store::open(path).await.unwrap();
-        store.close().await;
+        store.close().await.unwrap();
         drop(store);
     }
 
@@ -1029,7 +1149,7 @@ mod tests {
             })
             .await
             .unwrap();
-        store.close().await;
+        store.close().await.unwrap();
         drop(store);
     }
 
@@ -1111,7 +1231,7 @@ mod tests {
             draft.body,
             "Newer current draft must survive every interrupted restore 🦀"
         );
-        store.close().await;
+        store.close().await.unwrap();
         drop(store);
     }
 
@@ -1239,7 +1359,7 @@ mod tests {
                 .generation,
             "37"
         );
-        store.close().await;
+        store.close().await.unwrap();
         drop(store);
     }
 
@@ -1292,7 +1412,7 @@ mod tests {
                 .body,
             "Alice unsent draft with a newline\nand Unicode: café 🦀"
         );
-        restored.close().await;
+        restored.close().await.unwrap();
         drop(restored);
     }
 }
