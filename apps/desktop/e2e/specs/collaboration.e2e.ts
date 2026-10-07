@@ -386,6 +386,19 @@ describe("packaged collaboration recovery", () => {
           )) as { status: string; accounts: unknown[] };
           if (cli.status !== "not_installed" || cli.accounts.length !== 0)
             throw new Error("Recovery changed isolated CLI policy");
+          stage = "restore embedded Git route after recovery";
+          await click("Close");
+          await native.event.emitTo(
+            { kind: "Webview", label: "main" },
+            "gitru:e2e-collaboration-request",
+            { label: "main", action: "restore-embedded" },
+          );
+          await wait(
+            () =>
+              window.location.pathname === "/app/git" &&
+              new URLSearchParams(window.location.search).get("embedded") ===
+                "1",
+          );
           done({
             passed: true,
             before: before.revision,
