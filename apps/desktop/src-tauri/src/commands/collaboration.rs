@@ -16,6 +16,8 @@ mod command_recovery;
 mod diagnostics_export;
 mod draft_export;
 pub use command_recovery::*;
+mod text_edits;
+pub use text_edits::*;
 mod lifecycle;
 pub(super) use lifecycle::RecoveryTransition;
 use lifecycle::RuntimeSlot;
@@ -58,6 +60,7 @@ pub(super) enum Operation {
     Diagnostics,
     ExportDiagnostics,
     CommandRecovery,
+    TextEdit,
     Recovery,
     Capabilities,
     ContextualCapabilities,
@@ -620,6 +623,7 @@ mod tests {
         Operation::Draft,
         Operation::Drafts,
         Operation::ExportDraft,
+        Operation::TextEdit,
         Operation::Recovery,
         Operation::Capabilities,
         Operation::ContextualCapabilities,

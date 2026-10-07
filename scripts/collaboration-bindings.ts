@@ -17,6 +17,9 @@ const effective = await Bun.file(
 const commandRecovery = await Bun.file(
   new URL("crates/collaboration/src/command_recovery.rs", root),
 ).text();
+const textEdits = await Bun.file(
+  new URL("crates/collaboration/src/text_edits.rs", root),
+).text();
 const detail = await Bun.file(
   new URL("crates/collaboration/src/detail.rs", root),
 ).text();
@@ -295,6 +298,7 @@ generated = generated.replace(
 for (const source of [
   effective,
   commandRecovery,
+  textEdits,
   domain,
   error,
   detail,
@@ -374,6 +378,34 @@ generated = generated.replace(
   `$1.superRefine((check, context) => {
   if ((check.kind === "check_run") !== (check.state.kind === "check_run") || (check.kind === "commit_status") !== (check.state.kind === "commit_status") || (check.kind === "check_run" && check.allow_failure !== null)) {
     context.addIssue({ code: "custom", path: ["state"], message: "Check kind and native state family must match" });
+  }
+  });`,
+);
+const textEditSnapshotSchema =
+  /(export const TextEditSnapshotSchema = z\.object\(\{[\s\S]*?\n\}\));/;
+if (!textEditSnapshotSchema.test(generated))
+  throw new Error("Missing generated text-edit snapshot schema");
+generated = generated.replace(
+  textEditSnapshotSchema,
+  `$1.superRefine((snapshot, context) => {
+  const available = snapshot.availability === "available";
+  const completeBase = snapshot.context !== null && snapshot.title !== null && snapshot.reason === null && snapshot.pending_intent === null;
+  const unavailableShape = snapshot.context === null && snapshot.title === null && snapshot.body === null && snapshot.reason !== null;
+  const pendingMatches = (snapshot.reason === "pending_intent") === (snapshot.pending_intent !== null);
+  if ((available && !completeBase) || (!available && !unavailableShape) || !pendingMatches) {
+    context.addIssue({ code: "custom", path: ["availability"], message: "Text edit availability and native evidence must agree" });
+  }
+});`,
+);
+const textEditRequestSchema =
+  /(export const TextEditRequestSchema = z\.object\(\{[\s\S]*?\n\}\));/;
+if (!textEditRequestSchema.test(generated))
+  throw new Error("Missing generated text-edit request schema");
+generated = generated.replace(
+  textEditRequestSchema,
+  `$1.superRefine((request, context) => {
+  if (!request.accept_best_effort || (request.title === null && request.body === null)) {
+    context.addIssue({ code: "custom", path: ["accept_best_effort"], message: "Text edits require explicit best-effort acceptance and at least one changed field" });
   }
 });`,
 );

@@ -11,6 +11,7 @@ import type {
   PullFileQuery,
   RemoteAccount,
   ResourceLocator,
+  TextEditSnapshot,
 } from "@gitru/commands";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore } from "react";
@@ -53,6 +54,19 @@ export function commandRecoveryDetailQueryOptions(
       collaboration
         .forAccount(account)
         .commandRecoveryDetail(commandId, signal),
+  });
+}
+
+/** Cache-only edit base. Provider reads and delivery remain native-owned. */
+export function textEditQueryOptions(
+  account: RemoteAccount,
+  subjectId: string,
+) {
+  return queryOptions<TextEditSnapshot>({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.textEdit(account, subjectId),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).textEditSnapshot(subjectId, signal),
   });
 }
 

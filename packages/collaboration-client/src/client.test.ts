@@ -130,6 +130,8 @@ function transport(
     commandRecoveryAction: unexpected,
     commandRecoveryReplace: unexpected,
     commandRecoveryExport: unexpected,
+    textEditSnapshot: unexpected,
+    submitTextEdit: unexpected,
     accounts: unexpected,
     diagnostics: unexpected,
     exportDiagnostics: unexpected,
@@ -2379,6 +2381,7 @@ it("invalidates effective item, list/count/search and inbox consumers across ind
     limit: 50,
   });
   const draftKey = collaborationKeys.draft(account, "pull");
+  const textEditKey = collaborationKeys.textEdit(account, "pull");
   const otherActorKey = collaborationKeys.item(
     { ...account, id: "other-account" },
     "pull",
@@ -2392,6 +2395,7 @@ it("invalidates effective item, list/count/search and inbox consumers across ind
       commentsKey,
       otherBody,
       draftKey,
+      textEditKey,
       otherActorKey,
     ])
       cache.setQueryData(key, "saved");
@@ -2405,7 +2409,7 @@ it("invalidates effective item, list/count/search and inbox consumers across ind
   ]);
   await Promise.all(clients.map((client) => client.wake()));
   for (const cache of caches) {
-    for (const key of [itemKey, listKey, inboxKey, bodyKey])
+    for (const key of [itemKey, listKey, inboxKey, bodyKey, textEditKey])
       expect(cache.getQueryState(key)?.isInvalidated).toBe(true);
     for (const key of [commentsKey, otherBody, draftKey, otherActorKey])
       expect(cache.getQueryState(key)?.isInvalidated).toBe(false);

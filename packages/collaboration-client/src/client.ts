@@ -61,6 +61,10 @@ import {
   type SetLocalInboxStateRequest,
   type SyncDiagnosticsExportReceipt,
   type SyncDiagnosticsSnapshot,
+  type TextEditContext,
+  type TextEditReceipt,
+  type TextEditRequest,
+  type TextEditSnapshot,
   type TransportBindingRequest,
 } from "@gitru/commands";
 import type { QueryClient } from "@tanstack/react-query";
@@ -91,6 +95,11 @@ export interface CollaborationTransport extends DemandTransport {
     request: CommandRecoveryReplaceRequest,
   ): Promise<CommandRecoveryReceipt>;
   commandRecoveryExport(context: CommandRecoveryContext): Promise<boolean>;
+  textEditSnapshot(
+    accountId: string,
+    subjectId: string,
+  ): Promise<TextEditSnapshot>;
+  submitTextEdit(request: TextEditRequest): Promise<TextEditReceipt>;
   localLinks(localRepositoryId: string): Promise<LocalLinkInspection>;
   confirmLocalLink(
     request: ConfirmLocalLinkPreview,
@@ -189,6 +198,13 @@ export const collaborationKeys = {
       account.authorization_epoch,
       "command-recovery-detail",
       commandId,
+    ] as const,
+  textEdit: (account: RemoteAccount, subjectId: string) =>
+    [
+      ...collaborationKeys.account(account.id),
+      account.authorization_epoch,
+      "text-edit",
+      subjectId,
     ] as const,
   all: ["collaboration"] as const,
   localLinks: (localRepositoryId: string, version: number) =>
@@ -457,6 +473,14 @@ export class CollaborationClient {
         throw new StaleAuthorizationError();
       return { ...context };
     };
+    const reviewedTextEditContext = (context: TextEditContext) => {
+      if (
+        context.account_id !== account.id ||
+        context.authorization_epoch !== account.authorization_epoch
+      )
+        throw new StaleAuthorizationError();
+      return { ...context };
+    };
     return {
       commandRecoveryList: (
         query: Omit<CommandRecoveryQuery, "account_id">,
@@ -514,6 +538,36 @@ export class CollaborationClient {
         return this.fence.read(account.id, () =>
           this.transport.commandRecoveryExport(reviewed),
         );
+      },
+      textEditSnapshot: async (subjectId: string, signal?: AbortSignal) => {
+        const snapshot = await this.fence.read(
+          account.id,
+          () => this.transport.textEditSnapshot(account.id, subjectId),
+          signal,
+        );
+        if (
+          snapshot.context !== null &&
+          (snapshot.context.account_id !== account.id ||
+            snapshot.context.subject_id !== subjectId ||
+            snapshot.context.authorization_epoch !==
+              account.authorization_epoch ||
+            snapshot.context.authorization_view !== snapshot.authorization_view)
+        )
+          throw new StaleAuthorizationError();
+        this.acceptSnapshot(snapshot);
+        return snapshot;
+      },
+      submitTextEdit: async (request: TextEditRequest) => {
+        const context = reviewedTextEditContext(request.context);
+        const receipt = await this.fence.read(account.id, () =>
+          this.transport.submitTextEdit({ ...request, context }),
+        );
+        if (
+          receipt.account_id !== account.id ||
+          receipt.command_id !== request.command_id
+        )
+          throw new StaleAuthorizationError();
+        return receipt;
       },
       retainDemand: (target: DemandTarget) =>
         this.retainDemand(account, target),
@@ -1024,6 +1078,7 @@ function projectionAffected(key: readonly unknown[], scope: string) {
     return scope !== "drafts";
   if (scope.startsWith("effective:")) {
     const subject = scope.slice("effective:".length);
+    if (projection === "text-edit") return key[5] === subject;
     if (projection === "detail") {
       const query = key[5] as DetailQuery;
       return query.subject_id === subject && query.facet === "body";
@@ -1032,6 +1087,14 @@ function projectionAffected(key: readonly unknown[], scope: string) {
     // this account. Identity, capability and head-bound facets remain provider data.
     return (
       projection === "item" || projection === "items" || projection === "inbox"
+    );
+  }
+  if (projection === "text-edit") {
+    const subject = key[5];
+    return (
+      scope === "repositories" ||
+      scope.startsWith("repo:") ||
+      scope === `detail:${subject}:body`
     );
   }
   if (projection === "capabilities" || projection === "resource")

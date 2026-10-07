@@ -110,6 +110,8 @@ pub fn run() {
             commands::collaboration::collaboration_command_recovery_action,
             commands::collaboration::collaboration_command_recovery_replace,
             commands::collaboration::collaboration_command_recovery_export,
+            commands::collaboration::collaboration_text_edit_snapshot,
+            commands::collaboration::collaboration_submit_text_edit,
             commands::collaboration::collaboration_capabilities,
             commands::collaboration::collaboration_contextual_capabilities,
             commands::collaboration::collaboration_resolve_resource,

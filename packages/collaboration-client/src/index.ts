@@ -50,6 +50,8 @@ import {
   collaborationSaveTransportBinding,
   collaborationSelectRepository,
   collaborationSetLocalInboxState,
+  collaborationSubmitTextEdit,
+  collaborationTextEditSnapshot,
   collaborationValidateLocalNavigation,
 } from "@gitru/commands";
 import type { QueryClient } from "@tanstack/react-query";
@@ -177,6 +179,10 @@ export type {
   SyncRecoveryState,
   TaskActor,
   TaskV1,
+  TextEditContext,
+  TextEditReceipt,
+  TextEditRequest,
+  TextEditSnapshot,
   TransportBindingRequest,
 } from "@gitru/commands";
 export { StaleAuthorizationError } from "./authorization-fence";
@@ -208,6 +214,11 @@ export type InboxSemantics =
 export type ResourceFacet =
   import("@gitru/commands").ContextFacetCapability["facet"];
 export type ResourceKind = import("@gitru/commands").ResourceLocator["kind"];
+export type TextEditAvailability =
+  import("@gitru/commands").TextEditSnapshot["availability"];
+export type TextEditReason = NonNullable<
+  import("@gitru/commands").TextEditSnapshot["reason"]
+>;
 
 export const collaboration = new CollaborationClient({
   commandRecoveryList: (query) => collaborationCommandRecoveryList({ query }),
@@ -219,6 +230,9 @@ export const collaboration = new CollaborationClient({
     collaborationCommandRecoveryReplace({ request }),
   commandRecoveryExport: (context) =>
     collaborationCommandRecoveryExport({ context }),
+  textEditSnapshot: (accountId, subjectId) =>
+    collaborationTextEditSnapshot({ accountId, subjectId }),
+  submitTextEdit: (request) => collaborationSubmitTextEdit({ request }),
   demandActivity: () => collaborationDemandActivity({}),
   acquireDemand: (request) => collaborationAcquireDemand({ request }),
   renewDemand: (request) => collaborationRenewDemand({ request }),

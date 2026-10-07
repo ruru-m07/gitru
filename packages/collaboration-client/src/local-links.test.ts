@@ -86,6 +86,8 @@ function fixture() {
     commandRecoveryExport: async () => {
       throw new Error("Unexpected recovery operation");
     },
+    textEditSnapshot: unexpected,
+    submitTextEdit: unexpected,
     accounts: async () => ({
       accounts: [account],
       revision,

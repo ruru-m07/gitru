@@ -24,6 +24,7 @@ import { SavedDraftEditor } from "./private-draft";
 import { PullRequestCheckoutButton } from "./pull-checkout-dialog";
 import { ResourceCapabilityPanels } from "./resource-capability-panels";
 import { SelectedResourceHeader } from "./resource-metadata";
+import { ResourceTextEditor } from "./text-edit";
 
 export function SavedItemDetail({
   account,
@@ -173,6 +174,9 @@ export function SavedItemDetail({
             instanceId={instanceId}
             metadata={bodyData?.metadata ?? null}
           />
+          {kind !== "notification" ? (
+            <ResourceTextEditor account={account} subjectId={itemId} />
+          ) : null}
           {kind === "notification" || !canReadSaved(bodyPolicy) ? (
             <div className="mt-4 whitespace-pre-wrap break-words text-sm leading-relaxed">
               {item.body ??
@@ -181,7 +185,10 @@ export function SavedItemDetail({
                   : "This saved item has no description.")}
             </div>
           ) : null}
-          <ReadOnlyCapability policy={policy} />
+          {account.provider === "github" &&
+          account.host === "github.com" ? null : (
+            <ReadOnlyCapability policy={policy} />
+          )}
         </>
       ) : (
         <p className="text-sm text-muted-foreground">
