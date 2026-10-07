@@ -12,7 +12,9 @@ pub(crate) use registry::FACETS;
 pub use registry::{ProviderProfile, ProviderRegistry};
 pub use transport::{ProviderError, ProviderErrorKind};
 
-use crate::{CollaborationError, ErrorCode, credentials::SecretToken, detail::*, domain::*};
+use crate::{
+    CollaborationError, ErrorCode, credentials::SecretToken, detail::*, domain::*, pull_commits::*,
+};
 use async_trait::async_trait;
 
 #[derive(Debug, Clone)]
@@ -157,6 +159,17 @@ pub trait CollaborationProvider: Send + Sync + 'static {
         _token: &SecretToken,
         _request: DetailRequest,
     ) -> Result<DetailPage, ProviderError> {
+        Err(ProviderError {
+            kind: ProviderErrorKind::Unsupported,
+            retry_after_seconds: None,
+            account_cooldown_seconds: None,
+        })
+    }
+    async fn fetch_pull_commits(
+        &self,
+        _token: &SecretToken,
+        _request: PullCommitRequest,
+    ) -> Result<PullCommitProviderPage, ProviderError> {
         Err(ProviderError {
             kind: ProviderErrorKind::Unsupported,
             retry_after_seconds: None,

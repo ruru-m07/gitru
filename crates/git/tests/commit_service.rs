@@ -652,6 +652,99 @@ fn get_commit_by_invalid_id() {
     });
 }
 
+#[test]
+#[serial]
+fn commit_by_id_does_not_hydrate_missing_promisor_blobs() {
+    run_async(async {
+        let source = TestRepo::new();
+        source.commit_file("large.txt", &"a".repeat(200_000), "Initial content");
+        source.commit_file("large.txt", &"b".repeat(200_000), "Changed content");
+        let commit_oid = source.head_commit();
+        let blob_oid = source.git(&["rev-parse", "HEAD:large.txt"]);
+        let clone = TestRepo::blobless_clone(&source);
+        assert!(!clone.has_local_object(&blob_oid));
+
+        let service = setup_commit_service(&clone);
+        assert!(service.commit_by_id(&commit_oid).await.is_err());
+        assert!(
+            !clone.has_local_object(&blob_oid),
+            "local commit inspection must not hydrate a promisor blob"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn exact_commit_object_accepts_only_existing_commit_objects() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("README.md", "# Test", "Target commit");
+        let commit_oid = repo.head_commit();
+        let blob_oid = repo.git(&["rev-parse", "HEAD:README.md"]);
+        repo.git(&["tag", "-a", "annotated", "-m", "Annotated tag"]);
+        let tag_oid = repo.git(&["rev-parse", "refs/tags/annotated"]);
+
+        let service = setup_commit_service(&repo);
+
+        assert!(service.has_exact_commit_object(&commit_oid).await.unwrap());
+        assert!(!service.has_exact_commit_object(&blob_oid).await.unwrap());
+        assert!(!service.has_exact_commit_object(&tag_oid).await.unwrap());
+        assert!(
+            !service
+                .has_exact_commit_object("0000000000000000000000000000000000000000")
+                .await
+                .unwrap()
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn exact_commit_object_supports_sha256_repositories() {
+    run_async(async {
+        let Some(repo) = TestRepo::new_sha256() else {
+            eprintln!("installed Git does not support SHA-256 repositories; skipping");
+            return;
+        };
+        repo.commit_file("README.md", "# SHA-256", "Target commit");
+        let commit_oid = repo.head_commit();
+        let blob_oid = repo.git(&["rev-parse", "HEAD:README.md"]);
+        assert_eq!(commit_oid.len(), 64);
+        assert_eq!(blob_oid.len(), 64);
+
+        let service = setup_commit_service(&repo);
+        assert!(service.has_exact_commit_object(&commit_oid).await.unwrap());
+        assert!(!service.has_exact_commit_object(&blob_oid).await.unwrap());
+    });
+}
+
+#[test]
+#[serial]
+fn exact_commit_object_rejects_noncanonical_ids_and_ignores_replacements() {
+    run_async(async {
+        let repo = TestRepo::new();
+        repo.commit_file("README.md", "# Test", "Target commit");
+        let commit_oid = repo.head_commit();
+        let blob_oid = repo.git(&["rev-parse", "HEAD:README.md"]);
+        repo.git(&[
+            "update-ref",
+            &format!("refs/replace/{blob_oid}"),
+            &commit_oid,
+        ]);
+        let service = setup_commit_service(&repo);
+
+        assert!(!service.has_exact_commit_object(&blob_oid).await.unwrap());
+        for invalid in [
+            "abc123",
+            "ABCDEF0123456789ABCDEF0123456789ABCDEF01",
+            "-000000000000000000000000000000000000000",
+            "000000000000000000000000000000000000000g",
+        ] {
+            assert!(service.has_exact_commit_object(invalid).await.is_err());
+        }
+    });
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // EDGE CASES
 // ══════════════════════════════════════════════════════════════════════════════

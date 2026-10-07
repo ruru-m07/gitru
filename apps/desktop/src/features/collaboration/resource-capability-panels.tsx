@@ -26,6 +26,7 @@ import {
 import { ConversationCommentsPanel } from "./conversation-comments-panel";
 import { NativeParticipantsPanel } from "./native-participants-panel";
 import { NativeTasksPanel } from "./native-tasks-panel";
+import { PullCommitsPanel } from "./pull-commits-panel";
 
 const facetLabels: Record<DetailFacet, string> = {
   body: "Full description",
@@ -34,6 +35,7 @@ const facetLabels: Record<DetailFacet, string> = {
   checks: "Checks",
   participants: "Participants",
   tasks: "Tasks",
+  commits: "Commits",
 };
 
 export function ResourceCapabilityPanels({
@@ -41,11 +43,15 @@ export function ResourceCapabilityPanels({
   subjectId,
   kind,
   snapshot,
+  instanceId,
+  repositoryId,
 }: {
   account: RemoteAccount;
   subjectId: string;
   kind: RemoteItemKind;
   snapshot: ContextualCapabilitySnapshot | undefined;
+  instanceId: string;
+  repositoryId: string | null;
 }) {
   if (kind === "notification") return null;
   const facets: Array<{ detail: DetailFacet; capability: ResourceFacet }> = [
@@ -85,6 +91,22 @@ export function ResourceCapabilityPanels({
         authorizationView={snapshot?.authorization_view}
         policy={facetPolicy(snapshot, "comments")}
       />
+      {kind === "pull_request" ? (
+        <PullCommitsPanel
+          key={JSON.stringify([
+            "commits",
+            account.id,
+            account.actor_id,
+            account.authorization_epoch,
+            subjectId,
+          ])}
+          account={account}
+          subjectId={subjectId}
+          instanceId={instanceId}
+          repositoryId={repositoryId}
+          policy={facetPolicy(snapshot, "pull_commits")}
+        />
+      ) : null}
       {kind === "pull_request" ? (
         <NativeParticipantsPanel
           key={JSON.stringify([

@@ -257,12 +257,12 @@ impl DiffService {
                     parent_index.unwrap_or(1).max(1),
                 )
                 .await?;
-                self.load_blob_entry(&base, effective_before_path, &logical_before)
+                self.load_blob_entry(&base, effective_before_path, &logical_before, true)
                     .await
             } else {
                 match diff_scope {
                     DiffScope::Staged => {
-                        self.load_blob_entry("HEAD", effective_before_path, &logical_before)
+                        self.load_blob_entry("HEAD", effective_before_path, &logical_before, false)
                             .await
                     }
                     DiffScope::Unstaged => {
@@ -270,7 +270,7 @@ impl DiffService {
                             .await
                     }
                     DiffScope::Worktree => {
-                        self.load_blob_entry("HEAD", effective_before_path, &logical_before)
+                        self.load_blob_entry("HEAD", effective_before_path, &logical_before, false)
                             .await
                     }
                 }
@@ -281,7 +281,7 @@ impl DiffService {
 
         let after = if after_should_exist {
             if let Some(hash) = commit_hash {
-                self.load_blob_entry(hash, effective_after_path, &logical_after)
+                self.load_blob_entry(hash, effective_after_path, &logical_after, true)
                     .await
             } else {
                 match diff_scope {
@@ -319,14 +319,20 @@ impl DiffService {
         rev: &str,
         rev_path: &str,
         logical_path: &str,
+        local_only: bool,
     ) -> Option<AssetDiffEntry> {
         let spec = format!("{rev}:{rev_path}");
+        let options = if local_only {
+            GitRunOptions::local_only_read()
+        } else {
+            GitRunOptions::default_read()
+        };
         let bytes = self
             .ctx
             .runner
             .run_with_options_bytes_unlocked(
                 &["show", "--no-ext-diff", "--no-textconv", &spec],
-                GitRunOptions::default_read().allow_exit_codes(&[1, 128]),
+                options.allow_exit_codes(&[1, 128]),
             )
             .await
             .ok()?;
@@ -434,7 +440,7 @@ impl DiffService {
         let before = if before_should_exist {
             if let Some(reference) = stash_reference {
                 let base = format!("{reference}^1");
-                self.load_blob_text_file(&base, effective_before_path, &logical_before)
+                self.load_blob_text_file(&base, effective_before_path, &logical_before, false)
                     .await
             } else if let Some(hash) = commit_hash {
                 let base = resolve_commit_diff_base(
@@ -443,21 +449,31 @@ impl DiffService {
                     parent_index.unwrap_or(1).max(1),
                 )
                 .await?;
-                self.load_blob_text_file(&base, effective_before_path, &logical_before)
+                self.load_blob_text_file(&base, effective_before_path, &logical_before, true)
                     .await
             } else {
                 match diff_scope {
                     DiffScope::Staged => {
-                        self.load_blob_text_file("HEAD", effective_before_path, &logical_before)
-                            .await
+                        self.load_blob_text_file(
+                            "HEAD",
+                            effective_before_path,
+                            &logical_before,
+                            false,
+                        )
+                        .await
                     }
                     DiffScope::Unstaged => {
                         self.load_index_text_file(effective_before_path, &logical_before)
                             .await
                     }
                     DiffScope::Worktree => {
-                        self.load_blob_text_file("HEAD", effective_before_path, &logical_before)
-                            .await
+                        self.load_blob_text_file(
+                            "HEAD",
+                            effective_before_path,
+                            &logical_before,
+                            false,
+                        )
+                        .await
                     }
                 }
             }
@@ -467,10 +483,10 @@ impl DiffService {
 
         let after = if after_should_exist {
             if let Some(reference) = stash_reference {
-                self.load_blob_text_file(reference, effective_after_path, &logical_after)
+                self.load_blob_text_file(reference, effective_after_path, &logical_after, false)
                     .await
             } else if let Some(hash) = commit_hash {
-                self.load_blob_text_file(hash, effective_after_path, &logical_after)
+                self.load_blob_text_file(hash, effective_after_path, &logical_after, true)
                     .await
             } else {
                 match diff_scope {
@@ -500,14 +516,20 @@ impl DiffService {
         rev: &str,
         rev_path: &str,
         logical_path: &str,
+        local_only: bool,
     ) -> Option<DiffTextFile> {
         let spec = format!("{rev}:{rev_path}");
+        let options = if local_only {
+            GitRunOptions::local_only_read()
+        } else {
+            GitRunOptions::default_read()
+        };
         let bytes = self
             .ctx
             .runner
             .run_with_options_bytes_unlocked(
                 &["show", "--no-ext-diff", "--no-textconv", &spec],
-                GitRunOptions::default_read().allow_exit_codes(&[1, 128]),
+                options.allow_exit_codes(&[1, 128]),
             )
             .await
             .ok()?;
@@ -665,7 +687,7 @@ async fn fetch_patch_text_impl(
                 "--include-untracked".to_string(),
                 reference.to_string(),
             ],
-            GitRunOptions::default_read().allow_exit_codes(PATCH_ALLOW_EXIT_CODES),
+            GitRunOptions::local_only_read().allow_exit_codes(PATCH_ALLOW_EXIT_CODES),
             token,
         )
         .await?;
@@ -687,7 +709,7 @@ async fn fetch_patch_text_impl(
                 "--".to_string(),
                 file_path.to_string(),
             ],
-            GitRunOptions::default_read().allow_exit_codes(PATCH_ALLOW_EXIT_CODES),
+            GitRunOptions::local_only_read().allow_exit_codes(PATCH_ALLOW_EXIT_CODES),
             token,
         )
         .await?;
@@ -814,7 +836,7 @@ async fn resolve_commit_diff_base(
     let parents = runner
         .run_with_options_unlocked(
             &["show", "-s", "--format=%P", commit_hash],
-            GitRunOptions::default_read(),
+            GitRunOptions::local_only_read(),
         )
         .await?;
 

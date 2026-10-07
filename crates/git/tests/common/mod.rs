@@ -43,6 +43,70 @@ impl TestRepo {
         Self { dir }
     }
 
+    /// Create a SHA-256 repository when the installed Git supports the object
+    /// format. Callers may skip only on an explicit init failure.
+    pub fn new_sha256() -> Option<Self> {
+        let dir = TempDir::new().expect("failed to create temp dir");
+        let output = Command::new("git")
+            .current_dir(dir.path())
+            .args(["init", "--object-format=sha256", "-b", "main"])
+            .output()
+            .expect("failed to run SHA-256 git init");
+        if !output.status.success() {
+            return None;
+        }
+        for (key, value) in [
+            ("user.email", "test@example.com"),
+            ("user.name", "Test User"),
+        ] {
+            let output = Command::new("git")
+                .current_dir(dir.path())
+                .args(["config", key, value])
+                .output()
+                .expect("failed to configure SHA-256 test repository");
+            assert!(output.status.success(), "git config failed");
+        }
+        Some(Self { dir })
+    }
+
+    /// Clone a test repository as a blobless partial clone while keeping the
+    /// source available as a functioning promisor remote. Tests can therefore
+    /// prove that a read failed locally instead of silently hydrating objects.
+    pub fn blobless_clone(source: &Self) -> Self {
+        source.git(&["config", "uploadpack.allowFilter", "true"]);
+        let dir = TempDir::new().expect("failed to create partial clone dir");
+        let source_url = format!("file://{}", source.path().display());
+        let output = Command::new("git")
+            .args([
+                "clone",
+                "--quiet",
+                "--filter=blob:none",
+                "--no-checkout",
+                &source_url,
+            ])
+            .arg(dir.path())
+            .output()
+            .expect("failed to run partial git clone");
+        assert!(
+            output.status.success(),
+            "partial git clone failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        Self { dir }
+    }
+
+    /// Check the object database without allowing a promisor remote fetch.
+    pub fn has_local_object(&self, oid: &str) -> bool {
+        Command::new("git")
+            .current_dir(self.dir.path())
+            .env("GIT_NO_LAZY_FETCH", "1")
+            .args(["cat-file", "-e", oid])
+            .output()
+            .expect("failed to inspect local object")
+            .status
+            .success()
+    }
+
     /// Get the path to the repository.
     pub fn path(&self) -> &Path {
         self.dir.path()

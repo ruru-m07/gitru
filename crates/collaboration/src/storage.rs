@@ -21,6 +21,7 @@ pub(crate) mod facet_reconciliation;
 mod identities;
 mod local_links;
 pub(crate) mod notification_subjects;
+mod pull_commits;
 mod resource_metadata;
 pub mod retention;
 #[cfg(all(test, unix))]
@@ -141,6 +142,7 @@ impl Store {
                     "Collaboration database migration failed; the existing database was preserved",
                 )
             })?;
+        pull_commits::cleanup_abandoned_in(&mut writer).await?;
         secure_database_files(path)?;
         let readers = SqlitePoolOptions::new()
             .max_connections(3)

@@ -3,8 +3,8 @@ use collaboration::{
     AccountSnapshot, CapabilitySnapshot, ChangePage, CollaborationError, CollaborationRuntime,
     ContextCapabilityRequest, ContextualCapabilitySnapshot, DetailQuery, DetailSnapshot, DraftPage,
     DraftQuery, ErrorCode, GithubCliDiscovery, HydrateDetailRequest, ItemPage, ItemQuery,
-    ItemSnapshot, LocalDraft, RefreshReceipt, RefreshRequest, RemoteAccount, RepositorySnapshot,
-    ResourceLocator, ResourceResolution,
+    ItemSnapshot, LocalDraft, PullCommitQuery, PullCommitSnapshot, RefreshReceipt, RefreshRequest,
+    RemoteAccount, RepositorySnapshot, ResourceLocator, ResourceResolution,
 };
 use std::sync::Arc;
 use tauri::{State, Webview};
@@ -63,6 +63,7 @@ pub(super) enum Operation {
     ContextualCapabilities,
     ResolveResource,
     Detail,
+    PullCommits,
     HydrateDetail,
     DemandActivity,
     AcquireDemand,
@@ -76,6 +77,7 @@ pub(super) enum Operation {
     NotificationSubject,
     DiscoverNotificationSubject,
     PullCheckout,
+    PullCommitNavigation,
 }
 
 impl Operation {
@@ -435,6 +437,18 @@ pub async fn collaboration_detail(
     Ok(snapshot)
 }
 
+/// Cache-only ordered pull-request commit read. Provider hydration remains an
+/// explicit detail intent and never occurs on this query path.
+#[tauri::command]
+pub async fn collaboration_pull_commits(
+    query: PullCommitQuery,
+    view: Webview,
+    state: State<'_, CollaborationState>,
+) -> Result<PullCommitSnapshot, CollaborationError> {
+    authorize(&view, Operation::PullCommits)?;
+    state.get().await?.store().pull_commits(query).await
+}
+
 #[tauri::command]
 pub async fn collaboration_hydrate_detail(
     request: HydrateDetailRequest,
@@ -469,6 +483,7 @@ mod tests {
         Operation::ContextualCapabilities,
         Operation::ResolveResource,
         Operation::Detail,
+        Operation::PullCommits,
         Operation::HydrateDetail,
         Operation::DemandActivity,
         Operation::AcquireDemand,
@@ -478,6 +493,7 @@ mod tests {
         Operation::NotificationSubject,
         Operation::DiscoverNotificationSubject,
         Operation::PullCheckout,
+        Operation::PullCommitNavigation,
     ];
     const CREDENTIAL_OPERATIONS: &[Operation] = &[
         Operation::ConnectGithub,

@@ -701,6 +701,8 @@ fn queued(account: &RemoteAccount, index: usize, reason: scheduler::Admission) -
         pages: 0,
         detail_lease: None,
         detail_restarted: false,
+        pull_commit_lease: None,
+        pull_commit_restarted: false,
         local_budget_refusal: false,
     }
 }

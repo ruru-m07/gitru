@@ -482,7 +482,14 @@ async fn evict_in(
     policy: &CacheRetentionPolicy,
 ) -> Result<EvictionOutcome> {
     let rows = if let Some((revision, account, subject, facet)) = &state.eviction_cursor {
-        sqlx::query("SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM cache_retention_entries WHERE (last_observed_revision,account_id,subject_id,facet)>(?,?,?,?) ORDER BY last_observed_revision,account_id,subject_id,facet LIMIT ?")
+        // Keep each arm as an indexed range query so SQLite can merge the two
+        // ordered streams. Wrapping the union in a subquery forces a temporary
+        // B-tree and turns every resumed maintenance pass into a prefix scan.
+        sqlx::query("SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM cache_retention_entries WHERE (last_observed_revision,account_id,subject_id,facet)>(?,?,?,?) UNION ALL SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM pull_commit_retention WHERE (last_observed_revision,account_id,subject_id,facet)>(?,?,?,?) ORDER BY last_observed_revision,account_id,subject_id,facet LIMIT ?")
+            .bind(revision)
+            .bind(account)
+            .bind(subject)
+            .bind(facet)
             .bind(revision)
             .bind(account)
             .bind(subject)
@@ -492,7 +499,7 @@ async fn evict_in(
             .await
             .map_err(storage_error)?
     } else {
-        sqlx::query("SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM cache_retention_entries ORDER BY last_observed_revision,account_id,subject_id,facet LIMIT ?")
+        sqlx::query("SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM cache_retention_entries UNION ALL SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM pull_commit_retention ORDER BY last_observed_revision,account_id,subject_id,facet LIMIT ?")
             .bind(i64::from(policy.max_scan_facets))
             .fetch_all(&mut **tx)
             .await
@@ -534,13 +541,24 @@ async fn evict_in(
             .await
             .map_err(storage_error)?;
         if eligible {
-            let entry_rows: i64 = sqlx::query_scalar("SELECT count(*) FROM detail_entries WHERE account_id=? AND subject_id=? AND facet=?")
+            let entry_rows: i64 = if candidate.facet == "commits" {
+                sqlx::query_scalar(
+                    "SELECT count(*) FROM pull_commit_rows WHERE account_id=? AND subject_id=?",
+                )
                 .bind(&candidate.account_id)
                 .bind(&candidate.subject_id)
-                .bind(&candidate.facet)
                 .fetch_one(&mut **tx)
                 .await
-                .map_err(storage_error)?;
+                .map_err(storage_error)?
+            } else {
+                sqlx::query_scalar("SELECT count(*) FROM detail_entries WHERE account_id=? AND subject_id=? AND facet=?")
+                    .bind(&candidate.account_id)
+                    .bind(&candidate.subject_id)
+                    .bind(&candidate.facet)
+                    .fetch_one(&mut **tx)
+                    .await
+                    .map_err(storage_error)?
+            };
             let entry_rows =
                 u32::try_from(entry_rows).map_err(|_| CollaborationError::storage())?;
             if entry_rows > policy.max_entry_rows {
@@ -563,17 +581,47 @@ async fn evict_in(
                     .await
                     .map_err(storage_error)?;
             let revision = record_change(tx, &candidate.account_id, epoch, &scope, false).await?;
-            let result = sqlx::query(
-                "DELETE FROM detail_observations WHERE account_id=? AND subject_id=? AND facet=?",
-            )
-            .bind(&candidate.account_id)
-            .bind(&candidate.subject_id)
-            .bind(&candidate.facet)
-            .execute(&mut **tx)
-            .await
-            .map_err(storage_error)?;
-            if result.rows_affected() != 1 {
-                return Err(CollaborationError::storage());
+            if candidate.facet == "commits" {
+                sqlx::query("UPDATE pull_commit_facets SET active_generation=NULL,facet_revision=NULL WHERE account_id=? AND subject_id=?")
+                    .bind(&candidate.account_id).bind(&candidate.subject_id).execute(&mut **tx).await.map_err(storage_error)?;
+                sqlx::query(
+                    "DELETE FROM pull_commit_generations WHERE account_id=? AND subject_id=?",
+                )
+                .bind(&candidate.account_id)
+                .bind(&candidate.subject_id)
+                .execute(&mut **tx)
+                .await
+                .map_err(storage_error)?;
+                sqlx::query("DELETE FROM pull_commit_facets WHERE account_id=? AND subject_id=?")
+                    .bind(&candidate.account_id)
+                    .bind(&candidate.subject_id)
+                    .execute(&mut **tx)
+                    .await
+                    .map_err(storage_error)?;
+                let result = sqlx::query(
+                    "DELETE FROM pull_commit_retention WHERE account_id=? AND subject_id=?",
+                )
+                .bind(&candidate.account_id)
+                .bind(&candidate.subject_id)
+                .execute(&mut **tx)
+                .await
+                .map_err(storage_error)?;
+                if result.rows_affected() != 1 {
+                    return Err(CollaborationError::storage());
+                }
+            } else {
+                let result = sqlx::query(
+                    "DELETE FROM detail_observations WHERE account_id=? AND subject_id=? AND facet=?",
+                )
+                .bind(&candidate.account_id)
+                .bind(&candidate.subject_id)
+                .bind(&candidate.facet)
+                .execute(&mut **tx)
+                .await
+                .map_err(storage_error)?;
+                if result.rows_affected() != 1 {
+                    return Err(CollaborationError::storage());
+                }
             }
             let result = sqlx::query("UPDATE sync_scopes SET run_id=?,data_revision=?,completed_run_id=NULL,next_cursor=NULL,etag=NULL,last_modified=NULL,coverage_json=? WHERE account_id=? AND scope=?")
                 .bind(Uuid::new_v4().to_string())

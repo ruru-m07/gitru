@@ -1124,9 +1124,46 @@ impl Store {
         subject_id: &str,
         facet: DetailFacet,
     ) -> Result<DetailLease> {
+        self.begin_detail_with_authorization_view(account_id, epoch, subject_id, facet, None)
+            .await
+    }
+    pub(crate) async fn begin_detail_at_authorization_view(
+        &self,
+        account_id: &str,
+        epoch: &str,
+        subject_id: &str,
+        facet: DetailFacet,
+        authorization_view: &str,
+    ) -> Result<DetailLease> {
+        self.begin_detail_with_authorization_view(
+            account_id,
+            epoch,
+            subject_id,
+            facet,
+            Some(authorization_view),
+        )
+        .await
+    }
+    async fn begin_detail_with_authorization_view(
+        &self,
+        account_id: &str,
+        epoch: &str,
+        subject_id: &str,
+        facet: DetailFacet,
+        expected_authorization_view: Option<&str>,
+    ) -> Result<DetailLease> {
+        if facet == DetailFacet::Commits {
+            return Err(invalid_detail());
+        }
         let mut writer = self.inner.writer.lock().await;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         epoch_in(&mut tx, account_id, epoch).await?;
+        let (_, authorization_view) = metadata(&mut tx).await?;
+        if expected_authorization_view
+            .is_some_and(|expected| expected != authorization_view.as_str())
+        {
+            return Err(stale());
+        }
         let account = account_in(&mut tx, account_id, true).await?;
         let subject = subject_in(&mut tx, account_id, subject_id).await?;
         if facet.capability(&subject.kind).is_none() {
@@ -1188,7 +1225,6 @@ impl Store {
             false,
         )
         .await?;
-        let (_, authorization_view) = metadata(&mut tx).await?;
         let result = DetailLease {
             run_id,
             authorization_view,
@@ -1260,7 +1296,8 @@ pub(super) async fn apply_detail_in(
     tx: &mut Transaction<'_, Sqlite>,
     mut page: DetailCommit,
 ) -> Result<String> {
-    if page.entries.len() > 100
+    if page.facet == DetailFacet::Commits
+        || page.entries.len() > 100
         || page.source.source.is_empty()
         || page.source.source.len() > 256
         || page.source.adapter_version == 0

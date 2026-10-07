@@ -3,6 +3,7 @@ use super::*;
 use crate::contextual_capabilities::*;
 use crate::detail::{DetailAvailability, DetailFacet, DetailValueState};
 use crate::providers::{FACETS, ProviderProfile};
+use crate::pull_commits::PullCommitCompletenessState;
 
 #[derive(Default)]
 struct Evidence {
@@ -308,6 +309,7 @@ fn applicable(target: &CapabilityTarget, facet: ResourceFacet) -> bool {
                     | ResourceFacet::Checks
                     | ResourceFacet::Participants
                     | ResourceFacet::Tasks
+                    | ResourceFacet::PullCommits
                     | ResourceFacet::Merge
             ),
             Some(ResourceKind::Issue) => matches!(
@@ -526,6 +528,33 @@ async fn facet_evidence(
         return Ok(Evidence {
             reason: Some(ContextCapabilityReason::PermissionDenied),
             ..Evidence::default()
+        });
+    }
+    if facet == ResourceFacet::PullCommits
+        && let Some(subject_id) = &target.resource_id
+    {
+        let commits = super::pull_commits::capability_evidence_in(tx, account, subject_id).await?;
+        let observation = match commits.completeness.state {
+            PullCommitCompletenessState::Missing | PullCommitCompletenessState::Syncing => {
+                CapabilityObservation::NotLoaded
+            }
+            PullCommitCompletenessState::Complete if commits.row_count == 0 => {
+                CapabilityObservation::Empty
+            }
+            PullCommitCompletenessState::Complete => CapabilityObservation::Complete,
+            PullCommitCompletenessState::Capped | PullCommitCompletenessState::Partial => {
+                CapabilityObservation::Partial
+            }
+        };
+        return Ok(Evidence {
+            reason: commits
+                .denied
+                .then_some(ContextCapabilityReason::PermissionDenied),
+            recheckable: commits.denied && bound.resource_saved,
+            sync_denied: commits.denied,
+            observation: Some(observation),
+            sync: commits.sync,
+            synchronize_blocked: false,
         });
     }
     let detail = match facet {

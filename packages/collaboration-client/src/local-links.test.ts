@@ -95,11 +95,13 @@ function fixture() {
     contextualCapabilities: unexpected,
     resolveResource: unexpected,
     detail: unexpected,
+    pullCommits: unexpected,
     hydrateDetail: unexpected,
     notificationSubject: unexpected,
     discoverNotificationSubject: unexpected,
     planPullCheckout: unexpected,
     executePullCheckout: unexpected,
+    openLocalPullCommit: unexpected,
     demandActivity: unexpected,
     acquireDemand: unexpected,
     renewDemand: unexpected,
@@ -177,18 +179,27 @@ describe("account-independent authored links and authorized clone projections", 
     expect(key).not.toEqual(
       collaborationKeys.localClones(account, receipt.instance_id, "repo-b"),
     );
+    expect(key).not.toEqual(
+      collaborationKeys.localClones(
+        account,
+        receipt.instance_id,
+        "repo-a",
+        "fork-provider-id",
+      ),
+    );
   });
   it("captures the account epoch before clone reads even if the caller mutates its metadata object", async () => {
     const { client, transport } = fixture();
     const mutable = { ...account };
     const handle = client.forAccount(mutable);
     mutable.authorization_epoch = "changed";
-    await handle.localClones(receipt.instance_id, "repo-a");
+    await handle.localClones(receipt.instance_id, "repo-a", "fork-provider-id");
     expect(transport.localClones).toHaveBeenCalledExactlyOnceWith({
       account_id: account.id,
       authorization_epoch: account.authorization_epoch,
       instance_id: receipt.instance_id,
       repository_id: "repo-a",
+      source_repository_provider_id: "fork-provider-id",
     });
   });
   it("fences pending global multi-account inspections before an account disconnect", async () => {
@@ -266,7 +277,7 @@ describe("account-independent authored links and authorized clone projections", 
       queryFn: ({ signal }) =>
         client
           .forAccount(account)
-          .localClones(receipt.instance_id, "repo-a", signal),
+          .localClones(receipt.instance_id, "repo-a", null, signal),
       staleTime: Infinity,
       retry: false,
     });

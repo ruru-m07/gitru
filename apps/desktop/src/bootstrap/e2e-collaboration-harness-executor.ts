@@ -11,6 +11,7 @@ import {
   collaborationSetDemandOwnerActivity,
   type DemandLeaseReceipt,
   type HarnessControlRequest,
+  type PullCommitSnapshot,
 } from "@gitru/commands";
 import { getCurrentWebview, Webview } from "@tauri-apps/api/webview";
 import {
@@ -26,6 +27,7 @@ import {
   type HarnessObsoleteReads,
   HarnessPeerLeaseSchema,
   type HarnessProbeSnapshot,
+  type HarnessPullCommitEvidence,
   type HarnessScenario,
   HarnessScenarioError,
   type HarnessScenarioResult,
@@ -56,6 +58,17 @@ function requiresHarnessBinding(action: HarnessAction): action is BoundAction {
 const BODY = {
   one: "RURU-103 primary body phase one — π 🌱",
   two: "RURU-103 primary body phase two — λ 🌿",
+} as const;
+const PULL_COMMITS = {
+  accountId: "ruru103:primary",
+  subjectId: "github:pull:9007199254742993",
+  baseOid: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  headOid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  sourceRepositoryProviderId: "9007199254741994",
+  oids: [
+    "cccccccccccccccccccccccccccccccccccccccc",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  ],
 } as const;
 const STEP_TIMEOUT_MS = 25_000;
 const SCENARIO_TIMEOUT_MS = 160_000;
@@ -158,6 +171,7 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
       disconnect: null,
     };
     let authority: HarnessAuthorityEvidence | null = null;
+    let pullCommits: HarnessPullCommitEvidence | null = null;
     let manualLease: DemandLeaseReceipt | null = null;
     let manualLeaseBaseline = 0;
     let stage = "read native fixture";
@@ -175,6 +189,59 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
 
     function require(condition: unknown) {
       if (!condition) throw new HarnessScenarioError({ kind: "assertion" });
+    }
+    function pullCommitEvidence(
+      accountId: string,
+      snapshot: PullCommitSnapshot,
+      before: { provider: string; vault: string },
+      after: { provider: string; vault: string },
+      cacheOnly: boolean,
+    ): HarnessPullCommitEvidence {
+      require(accountId === PULL_COMMITS.accountId);
+      require(snapshot.subject_id === PULL_COMMITS.subjectId);
+      require(snapshot.context);
+      if (!snapshot.context)
+        throw new HarnessScenarioError({ kind: "assertion" });
+      require(snapshot.context.base_oid === PULL_COMMITS.baseOid);
+      require(snapshot.context.head_oid === PULL_COMMITS.headOid);
+      require(
+        snapshot.context.source_repository_provider_id ===
+          PULL_COMMITS.sourceRepositoryProviderId,
+      );
+      require(/^[1-9]\d*$/.test(snapshot.context.metadata_facet_revision));
+      const facetRevision = snapshot.facet_revision;
+      require(facetRevision && /^[1-9]\d*$/.test(facetRevision));
+      if (!facetRevision) throw new HarnessScenarioError({ kind: "assertion" });
+      require(snapshot.completeness.state === "complete");
+      require(snapshot.completeness.reason === null);
+      require(snapshot.coverage.state === "complete");
+      require(!snapshot.coverage.remote_has_more);
+      require(snapshot.next_cursor === null);
+      require(snapshot.commits.length === PULL_COMMITS.oids.length);
+      for (const [position, oid] of PULL_COMMITS.oids.entries()) {
+        require(snapshot.commits[position]?.position === position);
+        require(snapshot.commits[position]?.oid === oid);
+      }
+      if (cacheOnly) {
+        require(before.provider === "0" && after.provider === "0");
+        require(before.vault === "0" && after.vault === "0");
+      } else {
+        require(BigInt(after.provider) > BigInt(before.provider));
+        require(BigInt(after.vault) > BigInt(before.vault));
+      }
+      return {
+        account_id: accountId,
+        subject_id: snapshot.subject_id,
+        context: snapshot.context,
+        facet_revision: facetRevision,
+        oids: snapshot.commits.map((commit) => commit.oid),
+        completeness: snapshot.completeness,
+        cache_only: cacheOnly,
+        provider_call_count_before: before.provider,
+        provider_call_count_after: after.provider,
+        vault_load_count_before: before.vault,
+        vault_load_count_after: after.vault,
+      };
     }
     function keep(snapshot: HarnessProbeSnapshot) {
       if (observations.length < 32) observations.push(snapshot);
@@ -1181,6 +1248,54 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
               ? true
               : null;
           });
+          stage = "publish exact pull commits before the retained checkpoint";
+          const fixture = current.core.actors.find(
+            (candidate) => candidate.slot === "primary",
+          );
+          require(fixture?.account_id === PULL_COMMITS.accountId);
+          require(fixture?.subject_id === PULL_COMMITS.subjectId);
+          if (!fixture) throw new HarnessScenarioError({ kind: "assertion" });
+          const accounts = await collaboration.accounts();
+          const account = accounts.accounts.find(
+            (candidate) => candidate.id === fixture.account_id,
+          );
+          require(account?.state === "active");
+          if (!account) throw new HarnessScenarioError({ kind: "assertion" });
+          const before = await status();
+          await collaboration.forAccount(account).hydrateDetail({
+            subject_id: fixture.subject_id,
+            facet: "commits",
+          });
+          const snapshot = await wait(async () => {
+            const candidate = await collaboration
+              .forAccount(account)
+              .pullCommits({
+                subject_id: fixture.subject_id,
+                cursor: null,
+                limit: 50,
+              });
+            return candidate.completeness.state === "complete"
+              ? candidate
+              : null;
+          });
+          const after = await status();
+          pullCommits = pullCommitEvidence(
+            account.id,
+            snapshot,
+            {
+              provider: before.core.provider_call_count,
+              vault: before.core.vault_load_count,
+            },
+            {
+              provider: after.core.provider_call_count,
+              vault: after.core.vault_load_count,
+            },
+            false,
+          );
+          require(
+            pullCommits.context.metadata_facet_revision ===
+              after.core.committed_facet_revision,
+          );
           await control("checkpoint_committed_before_hint");
         }
         require(current.checkpoint);
@@ -1191,8 +1306,14 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
           current.checkpoint && current.checkpoint.session_id !== sessionId,
         );
         require(current.core.calls.length === 0);
+        require(current.core.provider_call_count === "0");
+        require(current.core.vault_load_count === "0");
         require(current.core.demand_lease_count === 0);
         require(current.core.durable_detail_requests === 0);
+        const cacheOnlyBefore = {
+          provider: current.core.provider_call_count,
+          vault: current.core.vault_load_count,
+        };
         const accounts = await collaboration.accounts();
         for (const fixture of current.core.actors) {
           const account = accounts.accounts.find(
@@ -1216,6 +1337,28 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
               require(body.body.text === BODY.one);
               require(
                 body.evidence.facet_revision ===
+                  current.checkpoint.committed_facet_revision,
+              );
+              const snapshot = await collaboration
+                .forAccount(account)
+                .pullCommits({
+                  subject_id: fixture.subject_id,
+                  cursor: null,
+                  limit: 50,
+                });
+              const after = await status();
+              pullCommits = pullCommitEvidence(
+                account.id,
+                snapshot,
+                cacheOnlyBefore,
+                {
+                  provider: after.core.provider_call_count,
+                  vault: after.core.vault_load_count,
+                },
+                true,
+              );
+              require(
+                pullCommits.context.metadata_facet_revision ===
                   current.checkpoint.committed_facet_revision,
               );
             } else {
@@ -1313,6 +1456,7 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
       status: await status().catch(() => null),
       observations,
       authority,
+      pull_commits: pullCommits,
       obsolete_reads: obsoleteReads,
       failure,
       cleanup_failure: cleanupFailure,

@@ -164,6 +164,8 @@ export function SavedItemDetail({
         subjectId={itemId}
         kind={kind}
         snapshot={providerEnabled ? context.data : undefined}
+        instanceId={instanceId}
+        repositoryId={item?.repository_id ?? null}
       />
       <SavedDraftEditor account={account} subjectId={itemId} />
     </article>

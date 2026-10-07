@@ -11,6 +11,7 @@ import {
   HarnessFailureSchema,
   HarnessObsoleteReadsSchema,
   HarnessPeerLeaseSchema,
+  HarnessPullCommitEvidenceSchema,
   type HarnessRequest,
   HarnessRequestSchema,
   HarnessResultSchema,
@@ -37,6 +38,42 @@ const receipt = {
 };
 
 describe("retained collaboration renderer protocol", () => {
+  it("bounds restart pull-commit evidence to exact typed cache facts", () => {
+    const evidence = {
+      account_id: "ruru103:primary",
+      subject_id: "github:pull:9007199254742993",
+      context: {
+        base_oid: "b".repeat(40),
+        head_oid: "a".repeat(40),
+        source_repository_provider_id: "9007199254741994",
+        metadata_facet_revision: "21",
+      },
+      facet_revision: "24",
+      oids: ["c".repeat(40), "a".repeat(40)],
+      completeness: { state: "complete", reason: null },
+      cache_only: true,
+      provider_call_count_before: "0",
+      provider_call_count_after: "0",
+      vault_load_count_before: "0",
+      vault_load_count_after: "0",
+    };
+    expect(HarnessPullCommitEvidenceSchema.safeParse(evidence).success).toBe(
+      true,
+    );
+    expect(
+      HarnessPullCommitEvidenceSchema.safeParse({
+        ...evidence,
+        oids: Array.from({ length: 9 }, () => "c".repeat(40)),
+      }).success,
+    ).toBe(false);
+    expect(
+      HarnessPullCommitEvidenceSchema.safeParse({
+        ...evidence,
+        provider_response: "raw private payload",
+      }).success,
+    ).toBe(false);
+  });
+
   it("classifies failures without persisting arbitrary exception text", () => {
     expect(
       classifyHarnessFailure({ code: "permission_denied", message: "private" }),
@@ -191,6 +228,7 @@ describe("retained collaboration renderer protocol", () => {
       stage: "deny native controller from actual child",
       status: null,
       observations: [],
+      pull_commits: null,
     };
     expect(HarnessScenarioResultSchema.safeParse(result).success).toBe(true);
     for (const changed of [

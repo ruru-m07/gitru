@@ -170,6 +170,15 @@ fn optional<T>(
         Some(value) => parse(value).map(Some),
     }
 }
+fn repository_provider_id(
+    json: &Map<String, Value>,
+    key: &str,
+) -> Result<Option<String>, ProviderError> {
+    match json.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => native(value).map(Some).map_err(|_| invalid()),
+    }
+}
 fn web(value: &Value) -> FieldResult<String> {
     let value = string(value, 2048)?;
     web_url(&value).map_err(|_| FieldError::Invalid)?;
@@ -261,6 +270,7 @@ fn branch(
     name: &str,
     oid_value: Option<&Value>,
     field: MetadataField,
+    repository: Option<DetailRepositoryRef>,
 ) -> Result<(MetadataObservedField, Option<DetailBranch>), ProviderError> {
     let name = json
         .get(name)
@@ -280,7 +290,7 @@ fn branch(
         .map(|(name, oid)| DetailBranch {
             name,
             oid,
-            repository: None,
+            repository,
         });
     // Empty asynchronous SHAs/refs are unknown, not an authoritative deletion.
     Ok((
@@ -351,8 +361,34 @@ fn normalize(
             .ok_or(FieldError::Invalid));
         scalar!("merged_at", MergedAt, merged_at, |v| time(v)
             .map_err(|_| FieldError::Invalid));
-        let (observed, head) =
-            branch(&json, "source_branch", json.get("sha"), MetadataField::Head)?;
+        let target_repository =
+            repository_provider_id(&json, "target_project_id")?.map(|provider_id| {
+                DetailRepositoryRef {
+                    provider_id,
+                    full_name: request.repository.full_name.clone(),
+                    web_url: None,
+                }
+            });
+        let source_repository =
+            repository_provider_id(&json, "source_project_id")?.map(|provider_id| {
+                let full_name = if provider_id == request.repository.provider_id {
+                    request.repository.full_name.clone()
+                } else {
+                    provider_id.clone()
+                };
+                DetailRepositoryRef {
+                    provider_id,
+                    full_name,
+                    web_url: None,
+                }
+            });
+        let (observed, head) = branch(
+            &json,
+            "source_branch",
+            json.get("sha"),
+            MetadataField::Head,
+            source_repository,
+        )?;
         fields.push(observed);
         values.head = head;
         let diff = match json.get("diff_refs") {
@@ -378,6 +414,7 @@ fn normalize(
             diff.filter(|_| matching_diff)
                 .and_then(|d| d.get("start_sha")),
             MetadataField::Base,
+            target_repository,
         )?;
         fields.push(observed);
         values.base = base;

@@ -330,6 +330,26 @@ impl Store {
         repository_id: &str,
         epoch: &str,
     ) -> Result<Vec<LocalRepositoryLink>> {
+        self.local_links_for_resource_context(account_id, instance_id, repository_id, None, epoch)
+            .await
+    }
+
+    /// Read linked clones for the pull's target repository and, when currently
+    /// authorized, its exact source/fork repository. Provider IDs come from the
+    /// saved pull context; an unavailable source never weakens target access.
+    pub async fn local_links_for_resource_context(
+        &self,
+        account_id: &str,
+        instance_id: &str,
+        repository_id: &str,
+        source_repository_provider_id: Option<&str>,
+        epoch: &str,
+    ) -> Result<Vec<LocalRepositoryLink>> {
+        if source_repository_provider_id.is_some_and(|value| !plain(value, 512)) {
+            return Err(CollaborationError::invalid(
+                "Invalid source repository identity",
+            ));
+        }
         let mut tx = self.inner.readers.begin().await.map_err(storage_error)?;
         let account = account_in(&mut tx, account_id, true).await?;
         if account.authorization_epoch != epoch
@@ -353,7 +373,45 @@ impl Store {
                 .await
                 .map_err(storage_error)?,
         )?;
-        let rows = sqlx::query("SELECT * FROM local_repository_links WHERE account_id=? AND instance_id=? AND repository_provider_id=? AND actor_id=? ORDER BY id LIMIT 129").bind(account_id).bind(instance_id).bind(&repository.provider_id).bind(&account.actor_id).fetch_all(&mut *tx).await.map_err(storage_error)?;
+        let mut repositories = vec![repository];
+        if let Some(provider_id) = source_repository_provider_id
+            && provider_id != repositories[0].provider_id
+            && let Some(row) = sqlx::query(
+                "SELECT json,selected FROM repositories WHERE account_id=? AND provider_id=?",
+            )
+            .bind(account_id)
+            .bind(provider_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(storage_error)?
+        {
+            let source = repository_from_row(&row)?;
+            if identities::accessible(&mut tx, account_id, &source.id, ResourceKind::Repository)
+                .await?
+            {
+                repositories.push(source);
+            }
+        }
+        let mut query = sqlx::QueryBuilder::<Sqlite>::new(
+            "SELECT * FROM local_repository_links WHERE account_id=",
+        );
+        query
+            .push_bind(account_id)
+            .push(" AND instance_id=")
+            .push_bind(instance_id)
+            .push(" AND actor_id=")
+            .push_bind(&account.actor_id)
+            .push(" AND repository_provider_id IN (");
+        let mut separated = query.separated(",");
+        for repository in &repositories {
+            separated.push_bind(&repository.provider_id);
+        }
+        separated.push_unseparated(") ORDER BY id LIMIT 129");
+        let rows = query
+            .build()
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(storage_error)?;
         if rows.len() > MAX_LINKS {
             return Err(CollaborationError::invalid(
                 "Too many linked local repositories",
@@ -361,7 +419,15 @@ impl Store {
         }
         let links = rows
             .iter()
-            .map(|row| read_link(row, LocalLinkState::RemoteChanged, Some(repository.clone())))
+            .map(|row| {
+                let provider_id = row.get::<&str, _>("repository_provider_id");
+                let repository = repositories
+                    .iter()
+                    .find(|repository| repository.provider_id == provider_id)
+                    .cloned()
+                    .ok_or_else(CollaborationError::storage)?;
+                read_link(row, LocalLinkState::RemoteChanged, Some(repository))
+            })
             .collect::<Result<Vec<_>>>()?;
         tx.commit().await.map_err(storage_error)?;
         Ok(links)

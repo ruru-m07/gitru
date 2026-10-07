@@ -106,6 +106,70 @@ async fn explicit_accounts_and_multiple_clones_are_independent_authored_choices(
 }
 
 #[tokio::test]
+async fn pull_context_includes_authorized_source_repository_clones() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::open(directory.path().join("db")).await.unwrap();
+    let account = seed(&store, "a").await;
+    page(
+        &store,
+        "a",
+        vec![
+            RemoteRepository {
+                id: "repo".into(),
+                account_id: "a".into(),
+                provider_id: "1".into(),
+                full_name: "owner/project".into(),
+                name: "project".into(),
+                web_url: "https://github.com/owner/project".into(),
+                description: None,
+                default_branch: None,
+                selected: true,
+            },
+            RemoteRepository {
+                id: "fork-repo".into(),
+                account_id: "a".into(),
+                provider_id: "2".into(),
+                full_name: "fork/project".into(),
+                name: "project".into(),
+                web_url: "https://github.com/fork/project".into(),
+                description: None,
+                default_branch: None,
+                selected: false,
+            },
+        ],
+    )
+    .await;
+    let mut fork = query();
+    fork.local_repository_id = "fork-clone".into();
+    fork.registration_proof = Some("fork-worktree-proof".into());
+    fork.remote_digest = Some("fork-semantic-digest".into());
+    fork.endpoints[0].path = "fork/project.git".into();
+    let source_link = confirm(&store, fork, "a", None).await;
+    let instance = store.provider_instance("a").await.unwrap();
+
+    assert!(
+        store
+            .local_links_for_resource("a", &instance.id, "repo", &account.authorization_epoch)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let range_links = store
+        .local_links_for_resource_context(
+            "a",
+            &instance.id,
+            "repo",
+            Some("2"),
+            &account.authorization_epoch,
+        )
+        .await
+        .unwrap();
+    assert_eq!(range_links.len(), 1);
+    assert_eq!(range_links[0].id, source_link.link.id);
+    assert_eq!(range_links[0].repository_provider_id, "2");
+}
+
+#[tokio::test]
 async fn grant_cutover_hides_cache_but_preserves_link_and_newer_draft_and_removal() {
     let directory = tempfile::tempdir().unwrap();
     let store = Store::open(directory.path().join("db")).await.unwrap();

@@ -47,6 +47,7 @@ pub struct LocalCloneRequest {
     pub account_id: String,
     pub instance_id: String,
     pub repository_id: String,
+    pub source_repository_provider_id: Option<String>,
     pub authorization_epoch: String,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -634,10 +635,11 @@ pub async fn collaboration_local_clones(
     let runtime = state.get().await?;
     let links = runtime
         .store()
-        .local_links_for_resource(
+        .local_links_for_resource_context(
             &request.account_id,
             &request.instance_id,
             &request.repository_id,
+            request.source_repository_provider_id.as_deref(),
             &request.authorization_epoch,
         )
         .await?;
@@ -698,10 +700,11 @@ pub async fn collaboration_local_clones(
     // Access may have changed during filesystem work: never expose the earlier list.
     let authorized = runtime
         .store()
-        .local_links_for_resource(
+        .local_links_for_resource_context(
             &request.account_id,
             &request.instance_id,
             &request.repository_id,
+            request.source_repository_provider_id.as_deref(),
             &request.authorization_epoch,
         )
         .await?;

@@ -13,6 +13,7 @@ pub(super) const MERGE_REQUEST_QUERY: &str =
     "state=all&scope=all&order_by=created_at&sort=asc&per_page=50";
 pub(super) const ISSUE_QUERY: &str =
     "state=all&scope=all&issue_type=issue&pagination=keyset&order_by=id&sort=asc&per_page=50";
+const PULL_COMMIT_PAGE_SIZE: u64 = 100;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ItemRoute {
@@ -41,12 +42,13 @@ pub(super) enum FeedPosition {
         after: Option<u64>,
     },
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Operation {
     User,
     Projects,
     Feed { project: u64, route: ItemRoute },
     Detail,
+    PullCommits { project: u64, iid: u64, page: u64 },
 }
 
 pub(super) struct GitlabHttp {
@@ -125,6 +127,38 @@ impl GitlabHttp {
             .join(&format!("projects/{project}/{}/{iid}", route.segment()))
             .map_err(|_| invalid())
     }
+    pub(super) fn pull_commits(&self, project: u64, iid: u64) -> Result<Url, ProviderError> {
+        if project == 0 || iid == 0 {
+            return Err(invalid());
+        }
+        let mut url = self
+            .base
+            .join(&format!("projects/{project}/merge_requests/{iid}/commits"))
+            .map_err(|_| invalid())?;
+        url.query_pairs_mut()
+            .append_pair("per_page", &PULL_COMMIT_PAGE_SIZE.to_string())
+            .append_pair("page", "1");
+        Ok(url)
+    }
+    pub(super) fn pull_commit_continuation(
+        &self,
+        raw: &str,
+        project: u64,
+        iid: u64,
+        expected_page: u64,
+    ) -> Result<Url, ProviderError> {
+        let url = self.check_resource_raw(raw)?;
+        if self.operation(&url)?
+            != (Operation::PullCommits {
+                project,
+                iid,
+                page: expected_page,
+            })
+        {
+            return Err(invalid());
+        }
+        Ok(url)
+    }
     pub(super) fn resource_continuation(
         &self,
         raw: &str,
@@ -184,6 +218,20 @@ impl GitlabHttp {
             .first()
             .and_then(|v| positive_id(v))
             .ok_or_else(invalid)?;
+        if parts.len() == 4
+            && parts.get(1) == Some(&"merge_requests")
+            && parts.get(3) == Some(&"commits")
+        {
+            let iid = parts
+                .get(2)
+                .and_then(|value| positive_id(value))
+                .ok_or_else(invalid)?;
+            return Ok(Operation::PullCommits {
+                project,
+                iid,
+                page: pull_commit_page(url, project, iid)?,
+            });
+        }
         let route = match parts.get(1) {
             Some(&"merge_requests") => ItemRoute::MergeRequests,
             Some(&"issues") => ItemRoute::Issues,
@@ -359,6 +407,13 @@ impl GitlabHttp {
                         Operation::Feed { project, route } => {
                             self.resource_continuation(next, project, route)
                         }
+                        Operation::PullCommits { project, iid, page } => self
+                            .pull_commit_continuation(
+                                next,
+                                project,
+                                iid,
+                                page.checked_add(1).ok_or_else(invalid)?,
+                            ),
                         _ => Err(invalid()),
                     }
                     .map_err(|e| with_quota(e, observed_cooldown))?;
@@ -412,6 +467,34 @@ impl GitlabHttp {
             )
         })?
     }
+}
+
+fn pull_commit_page(url: &Url, project: u64, iid: u64) -> Result<u64, ProviderError> {
+    let mut pairs = std::collections::HashMap::new();
+    for (key, value) in url.query_pairs() {
+        if pairs.insert(key.to_string(), value.to_string()).is_some() {
+            return Err(invalid());
+        }
+    }
+    if pairs.remove("per_page").as_deref() != Some("100") {
+        return Err(invalid());
+    }
+    let page = pairs
+        .remove("page")
+        .as_deref()
+        .and_then(positive_id)
+        .ok_or_else(invalid)?;
+    if pairs
+        .remove("id")
+        .is_some_and(|value| value != project.to_string())
+        || pairs
+            .remove("merge_request_iid")
+            .is_some_and(|value| value != iid.to_string())
+        || !pairs.is_empty()
+    {
+        return Err(invalid());
+    }
+    Ok(page)
 }
 
 pub(super) fn positive_id(raw: &str) -> Option<u64> {

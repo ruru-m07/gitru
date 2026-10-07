@@ -10,7 +10,11 @@ pub const ALTERNATE_ACCOUNT: &str = "ruru103:alternate";
 pub const REPOSITORY_ID: &str = "github:repository:9007199254741993";
 pub const SUBJECT_ID: &str = "github:pull:9007199254742993";
 pub const HEAD_OID: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+pub const BASE_OID: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+pub const FIRST_COMMIT_OID: &str = "cccccccccccccccccccccccccccccccccccccccc";
+pub const SOURCE_REPOSITORY_PROVIDER_ID: &str = "9007199254741994";
 const BODY_SOURCE: &str = "fixture/ruru103/body/v1";
+const PULL_COMMITS_SOURCE: &str = "fixture/ruru103/pull-commits/v1";
 const MAX_CALLS: usize = 128;
 const GATE_TIMEOUT_SECONDS: u64 = 60;
 
@@ -290,6 +294,7 @@ impl CollaborationProvider for FixtureProvider {
                                 ResourceFacet::PullRequests
                                     | ResourceFacet::Issues
                                     | ResourceFacet::PullDetails
+                                    | ResourceFacet::PullCommits
                             );
                     FacetCapability {
                         facet,
@@ -453,12 +458,20 @@ impl CollaborationProvider for FixtureProvider {
                 head: Some(DetailBranch {
                     name: "fixture".into(),
                     oid: HEAD_OID.into(),
-                    repository: None,
+                    repository: Some(DetailRepositoryRef {
+                        provider_id: SOURCE_REPOSITORY_PROVIDER_ID.into(),
+                        full_name: "x-ruru103/project-fork".into(),
+                        web_url: Some("https://github.com/x-ruru103/project-fork".into()),
+                    }),
                 }),
                 base: Some(DetailBranch {
                     name: "main".into(),
-                    oid: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into(),
-                    repository: None,
+                    oid: BASE_OID.into(),
+                    repository: Some(DetailRepositoryRef {
+                        provider_id: "9007199254741993".into(),
+                        full_name: "x-ruru103/project".into(),
+                        web_url: Some("https://github.com/x-ruru103/project".into()),
+                    }),
                 }),
                 ..ResourceMetadataValues::default()
             },
@@ -495,6 +508,102 @@ impl CollaborationProvider for FixtureProvider {
             next_cursor: None,
             etag: Some(etag),
             not_modified,
+            freshness_seconds: 5,
+            cooldown_seconds: None,
+        })
+    }
+
+    async fn fetch_pull_commits(
+        &self,
+        token: &SecretToken,
+        request: PullCommitRequest,
+    ) -> Result<PullCommitProviderPage, ProviderError> {
+        let slot = Self::slot(token, &request.account)?;
+        if self
+            .profile(&request.account)
+            .facet(ResourceFacet::PullCommits)
+            .state
+            != CapabilityState::Supported
+            || request.repository.id != REPOSITORY_ID
+            || request.repository.provider_id != "9007199254741993"
+            || request.repository.account_id != request.account.id
+            || request.subject.id != SUBJECT_ID
+            || request.subject.provider_id != "9007199254742993"
+            || request.subject.account_id != request.account.id
+            || request.subject.repository_id.as_deref() != Some(REPOSITORY_ID)
+            || request.subject.kind != RemoteItemKind::PullRequest
+            || request.subject.number.as_deref() != Some("1")
+            || request.subject.head_oid.as_deref() != Some(HEAD_OID)
+            || request.context.base_oid != BASE_OID
+            || request.context.head_oid != HEAD_OID
+            || request.context.source_repository_provider_id != SOURCE_REPOSITORY_PROVIDER_ID
+            || request.context.metadata_facet_revision.is_empty()
+            || request.cursor.is_some()
+            || request.start_position != 0
+        {
+            return Err(ProviderError::new(ProviderErrorKind::InvalidResponse));
+        }
+        let phase = self
+            .call(slot, &request.account, "pull_commits", false)
+            .await?;
+        if let Some(error) = Self::phase_error(phase) {
+            return Err(error);
+        }
+        let actor = PullCommitActor {
+            name: "Ruru 103".into(),
+            provider: Some(DetailActor {
+                provider_id: "103001".into(),
+                login: "ruru103-primary".into(),
+                web_url: Some("https://github.com/ruru103-primary".into()),
+            }),
+        };
+        Ok(PullCommitProviderPage {
+            context: request.context,
+            commits: vec![
+                ProviderPullCommit {
+                    oid: FIRST_COMMIT_OID.into(),
+                    summary: "Retain pull commits locally".into(),
+                    message: PullCommitMessage {
+                        state: PullCommitMessageState::Known,
+                        text: Some(
+                            "Retain pull commits locally\n\nSynthetic restart fixture.".into(),
+                        ),
+                    },
+                    author: actor.clone(),
+                    committer: Some(actor.clone()),
+                    authored_at: Some("2026-10-01T00:01:00Z".into()),
+                    committed_at: Some("2026-10-01T00:01:00Z".into()),
+                    parent_oids: vec![BASE_OID.into()],
+                    web_url: Some(format!(
+                        "https://github.com/x-ruru103/project-fork/commit/{FIRST_COMMIT_OID}"
+                    )),
+                },
+                ProviderPullCommit {
+                    oid: HEAD_OID.into(),
+                    summary: "Complete retained pull range".into(),
+                    message: PullCommitMessage {
+                        state: PullCommitMessageState::Known,
+                        text: Some("Complete retained pull range".into()),
+                    },
+                    author: actor.clone(),
+                    committer: Some(actor),
+                    authored_at: Some("2026-10-01T00:02:00Z".into()),
+                    committed_at: Some("2026-10-01T00:02:00Z".into()),
+                    parent_oids: vec![FIRST_COMMIT_OID.into()],
+                    web_url: Some(format!(
+                        "https://github.com/x-ruru103/project-fork/commit/{HEAD_OID}"
+                    )),
+                },
+            ],
+            order: PullCommitProviderOrder::BaseToHead,
+            source: PullCommitSource {
+                source: PULL_COMMITS_SOURCE.into(),
+                adapter_version: 1,
+            },
+            start_position: 0,
+            next_cursor: None,
+            cap_reason: None,
+            remote_has_more: false,
             freshness_seconds: 5,
             cooldown_seconds: None,
         })

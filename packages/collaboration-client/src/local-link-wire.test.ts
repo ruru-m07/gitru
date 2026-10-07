@@ -124,6 +124,7 @@ describe("generated local-link IPC wire", () => {
       account_id: link.account_id,
       instance_id: link.instance_id,
       repository_id: link.repository_id,
+      source_repository_provider_id: null,
       authorization_epoch: "9007199254740993",
     };
     invoke.mockResolvedValueOnce({

@@ -45,6 +45,9 @@ mod harness;
 #[cfg(test)]
 mod notification_subject_tests;
 mod notification_subjects;
+#[cfg(test)]
+mod pull_commit_tests;
+mod pull_commits;
 mod scheduler;
 
 const MAX_QUEUED_SCOPES: usize = 128;
@@ -80,6 +83,8 @@ struct Job {
     pages: usize,
     detail_lease: Option<DetailLease>,
     detail_restarted: bool,
+    pull_commit_lease: Option<PullCommitLease>,
+    pull_commit_restarted: bool,
     local_budget_refusal: bool,
 }
 
@@ -900,14 +905,25 @@ impl CollaborationRuntime {
         let continue_page = result.is_ok_and(|more| more) && epoch_is_current;
         let interested = scheduler.demands.interested(&job);
         let explicit = scheduler.explicit_keys.contains(&job.key);
+        let page_limit = if matches!(
+            job.kind,
+            JobKind::Detail {
+                facet: DetailFacet::Commits,
+                ..
+            }
+        ) {
+            MAX_PULL_COMMIT_PAGES as usize
+        } else {
+            MAX_PAGES_PER_REFRESH
+        };
         if continue_page
-            && job.pages < MAX_PAGES_PER_REFRESH
+            && job.pages < page_limit
             && (matches!(job.kind, JobKind::Feed(_)) || interested || explicit)
         {
             scheduler.requeue(job);
             return true;
         }
-        if continue_page && job.pages >= MAX_PAGES_PER_REFRESH {
+        if continue_page && job.pages >= page_limit {
             scheduler
                 .due
                 .insert(job.key.clone(), self.deadline_after(10));

@@ -370,6 +370,8 @@ impl CollaborationRuntime {
             pages: 0,
             detail_lease: None,
             detail_restarted: false,
+            pull_commit_lease: None,
+            pull_commit_restarted: false,
             local_budget_refusal: false,
         };
         if blocked {
@@ -416,6 +418,19 @@ impl CollaborationRuntime {
                 }
             }
             JobKind::Detail { subject_id, facet } => {
+                if *facet == DetailFacet::Commits {
+                    let snapshot = self
+                        .store
+                        .pull_commit_demand_state(&account.id, subject_id)
+                        .await?;
+                    if snapshot.context.is_none()
+                        || snapshot.completeness.is_missing()
+                        || snapshot.freshness != DetailFreshness::Fresh
+                    {
+                        return Ok(self.now());
+                    }
+                    return Ok(cached.unwrap_or_else(|| self.deadline_after(60)));
+                }
                 let (evidence, metadata, deadlines) = self
                     .store
                     .demand_detail_state(&account.id, subject_id, *facet)

@@ -56,6 +56,51 @@ impl CollaborationRuntime {
             )
             .await?;
         self.publish(revision);
+        // Commit membership requires the exact Body metadata range. Persist
+        // both intents before bounded admission so queue pressure cannot drop
+        // the original commit request while Body hydration is deferred.
+        if request.facet == DetailFacet::Commits {
+            let snapshot = self
+                .store
+                .pull_commits(PullCommitQuery {
+                    account_id: account.id.clone(),
+                    subject_id: subject.id.clone(),
+                    cursor: None,
+                    limit: 1,
+                })
+                .await?;
+            if snapshot.context.is_none() {
+                self.require_detail(&account, &subject, DetailFacet::Body)
+                    .await?;
+                let revision = self
+                    .store
+                    .request_detail(
+                        &account.id,
+                        &account.authorization_epoch,
+                        &subject.id,
+                        DetailFacet::Body,
+                    )
+                    .await?;
+                self.publish(revision);
+                match self
+                    .enqueue_work_reason(
+                        account.clone(),
+                        Some(repository.clone()),
+                        JobKind::Detail {
+                            subject_id: subject.id.clone(),
+                            facet: DetailFacet::Body,
+                        },
+                        DetailFacet::Body.scope(&subject.id),
+                        scheduler::Admission::Explicit,
+                    )
+                    .await
+                {
+                    Ok(_) => self.notify.notify_one(),
+                    Err(error) if error.code == ErrorCode::Busy => {}
+                    Err(error) => return Err(error),
+                }
+            }
+        }
         let job_id = self
             .enqueue_work(
                 account,
@@ -144,6 +189,9 @@ impl CollaborationRuntime {
         subject_id: &str,
         facet: DetailFacet,
     ) -> Result<bool, CollaborationError> {
+        if facet == DetailFacet::Commits {
+            return self.sync_pull_commit_page(job, subject_id).await;
+        }
         self.ensure_demand_dispatch(job).await?;
         let (account, token, mut lease) = {
             let _lifecycle = self.lifecycle.lock().await;

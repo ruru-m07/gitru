@@ -7,6 +7,7 @@ pub mod collaboration_harness;
 pub mod collaboration_local_links;
 pub mod collaboration_notification_subjects;
 pub mod collaboration_pull_checkout;
+pub mod collaboration_pull_commit_navigation;
 pub mod commit;
 pub mod diff;
 pub mod history;

@@ -15,6 +15,7 @@ pub(super) enum Route {
     PullRequests(String),
     PullRequest(String, u64),
     Tasks(String, u64),
+    Commits(String, u64),
 }
 
 pub(super) struct BitbucketHttp {
@@ -62,7 +63,8 @@ impl BitbucketHttp {
             }
             Route::PullRequests(repository)
             | Route::PullRequest(repository, _)
-            | Route::Tasks(repository, _) => {
+            | Route::Tasks(repository, _)
+            | Route::Commits(repository, _) => {
                 if super::canonical_uuid(repository)? != *repository {
                     return Err(invalid());
                 }
@@ -71,6 +73,9 @@ impl BitbucketHttp {
                     Route::PullRequest(_, id) if *id > 0 => format!("{path}/{id}"),
                     Route::Tasks(_, id) if *id > 0 && *id <= i64::MAX as u64 => {
                         format!("{path}/{id}/tasks?pagelen=50")
+                    }
+                    Route::Commits(_, id) if *id > 0 && *id <= i64::MAX as u64 => {
+                        format!("{path}/{id}/commits?pagelen=50")
                     }
                     Route::PullRequests(_) => format!(
                         "{path}?state=OPEN&state=MERGED&state=DECLINED&state=SUPERSEDED&pagelen=50&sort=id"

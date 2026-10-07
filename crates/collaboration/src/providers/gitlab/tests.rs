@@ -169,6 +169,7 @@ fn implemented_read_profile_never_infers_future_permissions() {
                     | ResourceFacet::Issues
                     | ResourceFacet::PullDetails
                     | ResourceFacet::IssueDetails
+                    | ResourceFacet::PullCommits
             ) {
                 CapabilityState::Supported
             } else {

@@ -15,6 +15,17 @@ const allowedPhases = [
   "crash-after-commit",
   "restart",
 ];
+const pullCommitFixture = {
+  accountId: "ruru103:primary",
+  subjectId: "github:pull:9007199254742993",
+  baseOid: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  headOid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  sourceRepositoryProviderId: "9007199254741994",
+  oids: [
+    "cccccccccccccccccccccccccccccccccccccccc",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  ],
+} as const;
 if (!allowedPhases.includes(phase))
   throw new Error("Unknown retained native harness runner phase");
 
@@ -54,6 +65,49 @@ async function scenario(name: HarnessScenario) {
   // non-null narrow type for the phase assertions after the strict receipt.
   if (!receipt.status) throw new Error("Retained scenario status is missing");
   return { ...receipt, status: receipt.status };
+}
+
+function requirePullCommitFixture(
+  result: HarnessScenarioResult,
+  cacheOnly: boolean,
+) {
+  const evidence = result.pull_commits;
+  if (!evidence) throw new Error("Retained pull-commit evidence is missing");
+  if (
+    evidence.account_id !== pullCommitFixture.accountId ||
+    evidence.subject_id !== pullCommitFixture.subjectId ||
+    evidence.context.base_oid !== pullCommitFixture.baseOid ||
+    evidence.context.head_oid !== pullCommitFixture.headOid ||
+    evidence.context.source_repository_provider_id !==
+      pullCommitFixture.sourceRepositoryProviderId ||
+    evidence.context.metadata_facet_revision !==
+      result.status?.checkpoint?.committed_facet_revision ||
+    !/^[1-9]\d*$/.test(evidence.facet_revision) ||
+    evidence.oids.length !== pullCommitFixture.oids.length ||
+    evidence.oids.some((oid, index) => oid !== pullCommitFixture.oids[index]) ||
+    evidence.completeness.state !== "complete" ||
+    evidence.completeness.reason !== null ||
+    evidence.cache_only !== cacheOnly
+  )
+    throw new Error("Retained pull-commit evidence changed exact context");
+  if (cacheOnly) {
+    if (
+      evidence.provider_call_count_before !== "0" ||
+      evidence.provider_call_count_after !== "0" ||
+      evidence.vault_load_count_before !== "0" ||
+      evidence.vault_load_count_after !== "0"
+    )
+      throw new Error(
+        "Restarted pull-commit presentation accessed provider credentials",
+      );
+  } else if (
+    BigInt(evidence.provider_call_count_after) <=
+      BigInt(evidence.provider_call_count_before) ||
+    BigInt(evidence.vault_load_count_after) <=
+      BigInt(evidence.vault_load_count_before)
+  ) {
+    throw new Error("Phase-one pull commits were not provider hydrated");
+  }
 }
 
 describe("retained native collaboration synchronization", () => {
@@ -138,6 +192,12 @@ describe("retained native collaboration synchronization", () => {
         throw new Error(
           "Crash qualification did not launch a fresh native process",
         );
+      if (result.status.checkpoint.kind === "committed_before_hint")
+        requirePullCommitFixture(result, true);
+      else if (result.pull_commits !== null)
+        throw new Error(
+          "Pre-commit restart unexpectedly exposed pull-commit evidence",
+        );
     });
   } else {
     it("reaches a native issued checkpoint for the launch-owned hard crash", async () => {
@@ -153,6 +213,12 @@ describe("retained native collaboration synchronization", () => {
         );
       if (result.status.checkpoint.session_id !== result.status.core.session_id)
         throw new Error("Native crash checkpoint belongs to a retired session");
+      if (name === "crash-after-commit")
+        requirePullCommitFixture(result, false);
+      else if (result.pull_commits !== null)
+        throw new Error(
+          "Pre-commit crash unexpectedly exposed pull-commit evidence",
+        );
       // The outer runner performs and verifies the exact owned process kill.
       // A test receipt is only checkpoint evidence, never a simulated crash.
     });

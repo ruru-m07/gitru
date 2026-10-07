@@ -78,7 +78,7 @@ pub struct ProviderProfile {
     pub inbox_semantics: InboxSemantics,
 }
 
-pub const FACETS: [ResourceFacet; 12] = [
+pub const FACETS: [ResourceFacet; 13] = [
     ResourceFacet::Repositories,
     ResourceFacet::PullRequests,
     ResourceFacet::Issues,
@@ -90,6 +90,7 @@ pub const FACETS: [ResourceFacet; 12] = [
     ResourceFacet::Checks,
     ResourceFacet::Participants,
     ResourceFacet::Tasks,
+    ResourceFacet::PullCommits,
     ResourceFacet::Merge,
 ];
 

@@ -322,6 +322,7 @@ pub enum ResourceFacet {
     Checks,
     Participants,
     Tasks,
+    PullCommits,
     Merge,
 }
 

@@ -14,6 +14,7 @@ use tokio::time::{sleep, timeout};
 pub struct GitRunOptions {
     pub timeout: Duration,
     pub allow_failure_codes: &'static [i32],
+    pub local_only: bool,
 }
 
 impl GitRunOptions {
@@ -21,6 +22,16 @@ impl GitRunOptions {
         Self {
             timeout: Duration::from_secs(30),
             allow_failure_codes: &[],
+            local_only: false,
+        }
+    }
+
+    /// Prevent an otherwise read-only Git command from consulting replacement
+    /// refs or lazily fetching missing objects from a promisor remote.
+    pub fn local_only_read() -> Self {
+        Self {
+            local_only: true,
+            ..Self::default_read()
         }
     }
 
@@ -595,6 +606,10 @@ async fn run_git_command_once_output(
     for (key, value) in env {
         command.env(key, value);
     }
+    if options.local_only {
+        command.env("GIT_NO_LAZY_FETCH", "1");
+        command.env("GIT_NO_REPLACE_OBJECTS", "1");
+    }
     command.args(args);
     command.stdin(if input.is_some() {
         Stdio::piped()
@@ -1029,6 +1044,15 @@ mod tests {
         let opts = GitRunOptions::default_read();
         assert_eq!(opts.timeout, Duration::from_secs(30));
         assert!(opts.allow_failure_codes.is_empty());
+        assert!(!opts.local_only);
+    }
+
+    #[test]
+    fn local_only_read_disables_object_hydration() {
+        let opts = GitRunOptions::local_only_read();
+        assert_eq!(opts.timeout, Duration::from_secs(30));
+        assert!(opts.allow_failure_codes.is_empty());
+        assert!(opts.local_only);
     }
 
     #[test]

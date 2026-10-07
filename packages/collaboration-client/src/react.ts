@@ -4,6 +4,7 @@ import type {
   DetailQuery,
   DraftQuery,
   ItemQuery,
+  PullCommitQuery,
   RemoteAccount,
   ResourceLocator,
 } from "@gitru/commands";
@@ -275,6 +276,29 @@ export function useCollaborationDetail(
   return useQuery({ ...detailQueryOptions(account, query), enabled });
 }
 
+/** Ordered cache-only pull commit page; visible demand drives native sync. */
+export function pullCommitsQueryOptions(
+  account: RemoteAccount,
+  query: Omit<PullCommitQuery, "account_id">,
+) {
+  const fullQuery = { ...query, account_id: account.id };
+  return queryOptions({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.pullCommits(account, fullQuery),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).pullCommits(query, signal),
+  });
+}
+
+export function usePullCommits(
+  account: RemoteAccount,
+  query: Omit<PullCommitQuery, "account_id">,
+  enabled = true,
+) {
+  useCollaborationVersion();
+  return useQuery({ ...pullCommitsQueryOptions(account, query), enabled });
+}
+
 /** Local Git/SQLite only; no provider request or automatic link selection. */
 export function localLinksQueryOptions(
   localRepositoryId: string,
@@ -297,14 +321,25 @@ export function localClonesQueryOptions(
   account: RemoteAccount,
   instanceId: string,
   repositoryId: string,
+  sourceRepositoryProviderId: string | null = null,
 ) {
   return queryOptions({
     ...localQueryPolicy,
-    queryKey: collaborationKeys.localClones(account, instanceId, repositoryId),
+    queryKey: collaborationKeys.localClones(
+      account,
+      instanceId,
+      repositoryId,
+      sourceRepositoryProviderId,
+    ),
     queryFn: ({ signal }) =>
       collaboration
         .forAccount(account)
-        .localClones(instanceId, repositoryId, signal),
+        .localClones(
+          instanceId,
+          repositoryId,
+          sourceRepositoryProviderId,
+          signal,
+        ),
     staleTime: 0,
     gcTime: 0,
   });
@@ -313,9 +348,17 @@ export function useLocalClones(
   account: RemoteAccount,
   instanceId: string,
   repositoryId: string,
+  sourceRepositoryProviderId: string | null = null,
 ) {
   useCollaborationVersion();
-  return useQuery(localClonesQueryOptions(account, instanceId, repositoryId));
+  return useQuery(
+    localClonesQueryOptions(
+      account,
+      instanceId,
+      repositoryId,
+      sourceRepositoryProviderId,
+    ),
+  );
 }
 
 /** Local identity/provenance only. Discovery is an explicit, separate intent. */

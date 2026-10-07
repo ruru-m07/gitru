@@ -140,6 +140,7 @@ async fn actual_probe_uses_sensitive_bearer_uuid_routes_without_requiring_pull_g
                     | ResourceFacet::PullDetails
                     | ResourceFacet::Participants
                     | ResourceFacet::Tasks
+                    | ResourceFacet::PullCommits
             )
         );
         if matches!(facet.facet, ResourceFacet::Issues | ResourceFacet::Inbox) {

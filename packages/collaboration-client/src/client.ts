@@ -30,9 +30,13 @@ import {
   type LocalTransportBinding,
   type NotificationSubjectQuery,
   type NotificationSubjectSnapshot,
+  type OpenLocalPullCommitReceipt,
+  type OpenLocalPullCommitRequest,
   type PullCheckoutPlan,
   type PullCheckoutPlanRequest,
   type CollaborationPullCheckoutReceipt as PullCheckoutReceipt,
+  type PullCommitQuery,
+  type PullCommitSnapshot,
   type RefreshReceipt,
   type RefreshRequest,
   type RemoteAccount,
@@ -106,6 +110,7 @@ export interface CollaborationTransport extends DemandTransport {
     locator: ResourceLocator,
   ): Promise<ResourceResolution>;
   detail(query: DetailQuery): Promise<DetailSnapshot>;
+  pullCommits(query: PullCommitQuery): Promise<PullCommitSnapshot>;
   hydrateDetail(request: HydrateDetailRequest): Promise<RefreshReceipt>;
   notificationSubject(
     query: NotificationSubjectQuery,
@@ -117,6 +122,9 @@ export interface CollaborationTransport extends DemandTransport {
   executePullCheckout(
     request: ExecutePullCheckoutRequest,
   ): Promise<PullCheckoutReceipt>;
+  openLocalPullCommit(
+    request: OpenLocalPullCommitRequest,
+  ): Promise<OpenLocalPullCommitReceipt>;
   listen(onWake: () => void): Promise<() => void>;
 }
 
@@ -128,6 +136,7 @@ export const collaborationKeys = {
     account: RemoteAccount,
     instanceId: string,
     repositoryId: string,
+    sourceRepositoryProviderId: string | null = null,
   ) =>
     [
       ...collaborationKeys.account(account.id),
@@ -136,6 +145,7 @@ export const collaborationKeys = {
       account.actor_id,
       instanceId,
       repositoryId,
+      sourceRepositoryProviderId,
     ] as const,
   accounts: (version: number) =>
     ["collaboration", "accounts", version] as const,
@@ -196,6 +206,13 @@ export const collaborationKeys = {
       ...collaborationKeys.account(account.id),
       account.authorization_epoch,
       "detail",
+      query,
+    ] as const,
+  pullCommits: (account: RemoteAccount, query: PullCommitQuery) =>
+    [
+      ...collaborationKeys.account(account.id),
+      account.authorization_epoch,
+      "pull-commits",
       query,
     ] as const,
   notificationSubject: (account: RemoteAccount, notificationId: string) =>
@@ -379,6 +396,7 @@ export class CollaborationClient {
       localClones: (
         instanceId: string,
         repositoryId: string,
+        sourceRepositoryProviderId: string | null = null,
         signal?: AbortSignal,
       ) =>
         this.fence.read(
@@ -389,6 +407,7 @@ export class CollaborationClient {
               authorization_epoch: cloneAccount.authorization_epoch,
               instance_id: instanceId,
               repository_id: repositoryId,
+              source_repository_provider_id: sourceRepositoryProviderId,
             }),
           signal,
         ),
@@ -421,6 +440,15 @@ export class CollaborationClient {
       detail: (query: Omit<DetailQuery, "account_id">, signal?: AbortSignal) =>
         read(
           () => this.transport.detail({ ...query, account_id: account.id }),
+          signal,
+        ),
+      pullCommits: (
+        query: Omit<PullCommitQuery, "account_id">,
+        signal?: AbortSignal,
+      ) =>
+        read(
+          () =>
+            this.transport.pullCommits({ ...query, account_id: account.id }),
           signal,
         ),
       hydrateDetail: (
@@ -468,6 +496,19 @@ export class CollaborationClient {
       // the client fence invalidates while the IPC request is in flight.
       executePullCheckout: (planId: string) =>
         this.transport.executePullCheckout({ plan_id: planId }),
+      openLocalPullCommit: (
+        request: Omit<
+          OpenLocalPullCommitRequest,
+          "account_id" | "authorization_epoch"
+        >,
+      ) =>
+        this.fence.read(cloneAccount.id, () =>
+          this.transport.openLocalPullCommit({
+            ...request,
+            account_id: cloneAccount.id,
+            authorization_epoch: cloneAccount.authorization_epoch,
+          }),
+        ),
       refresh: (request: Omit<RefreshRequest, "account_id">) =>
         this.transport.refresh({ ...request, account_id: account.id }),
       selectRepository: (repositoryId: string, selected: boolean) =>
@@ -605,6 +646,18 @@ export class CollaborationClient {
           // Authored writes have their own generation/authorization fences.
           if (change.scope !== "drafts")
             await queryClient.cancelQueries(affectedQueries);
+          if (pullCommitContextChanged(change.scope)) {
+            // Repository membership and Body observations can replace or omit
+            // the exact base/head/source range. Reset matching commit
+            // projections before their active refetch so React cannot keep
+            // rendering the superseded generation.
+            void queryClient.resetQueries({
+              queryKey: collaborationKeys.account(change.account_id),
+              predicate: (query: { queryKey: readonly unknown[] }) =>
+                query.queryKey[4] === "pull-commits" &&
+                projectionAffected(query.queryKey, change.scope),
+            });
+          }
           void queryClient.invalidateQueries(affectedQueries);
         }
         if (
@@ -736,6 +789,15 @@ function projectionAffected(key: readonly unknown[], scope: string) {
       scope === `detail:${query.subject_id}:${query.facet}`
     );
   }
+  if (projection === "pull-commits") {
+    const query = key[5] as PullCommitQuery;
+    return (
+      scope === "repositories" ||
+      scope.startsWith("repo:") ||
+      scope === `detail:${query.subject_id}:body` ||
+      scope === `detail:${query.subject_id}:commits`
+    );
+  }
   if (scope === "repositories")
     return (
       projection === "repositories" ||
@@ -754,6 +816,14 @@ function projectionAffected(key: readonly unknown[], scope: string) {
   if (query.kind !== kind) return false;
   if (query.repository_id === null) return true;
   return scope === `repo:${query.repository_id}:${query.kind}`;
+}
+
+function pullCommitContextChanged(scope: string) {
+  return (
+    scope === "repositories" ||
+    scope.startsWith("repo:") ||
+    (scope.startsWith("detail:") && scope.endsWith(":body"))
+  );
 }
 
 /** Errors from tokens/provider payloads are never echoed into rendered UI. */

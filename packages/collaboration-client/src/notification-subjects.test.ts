@@ -130,6 +130,7 @@ function fixture() {
     contextualCapabilities: unexpected,
     resolveResource: unexpected,
     detail: vi.fn(async () => body("current saved body")),
+    pullCommits: unexpected,
     hydrateDetail: unexpected,
     notificationSubject: vi.fn(async () => {
       const current = snapshot(revision);
@@ -148,6 +149,7 @@ function fixture() {
     })),
     planPullCheckout: unexpected,
     executePullCheckout: unexpected,
+    openLocalPullCommit: unexpected,
     localLinks: unexpected,
     confirmLocalLink: unexpected,
     removeLocalLink: unexpected,

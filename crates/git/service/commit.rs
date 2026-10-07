@@ -22,6 +22,31 @@ impl CommitService {
         Self { ctx }
     }
 
+    /// Check whether one exact, canonical object ID is already a commit in the
+    /// local object database. This is deliberately read-only and disables both
+    /// replacement objects and partial-clone lazy fetching so callers cannot
+    /// turn local navigation into an implicit network operation.
+    pub async fn has_exact_commit_object(&self, oid: &str) -> Result<bool, String> {
+        if !matches!(oid.len(), 40 | 64)
+            || !oid
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err("Invalid canonical commit object ID".to_string());
+        }
+
+        let mut transaction = self.ctx.runner.transaction().await?;
+        let (output, status) = transaction
+            .sensitive_read(&["cat-file", "-t", oid], 16)
+            .await
+            .map_err(|_| "Failed to inspect local commit object".to_string())?;
+        match status {
+            0 => Ok(output.as_slice() == b"commit\n" || output.as_slice() == b"commit"),
+            1 | 128 => Ok(false),
+            _ => Err("Failed to inspect local commit object".to_string()),
+        }
+    }
+
     #[logger::logger]
     pub async fn last_commit(&self) -> Result<CommitInfo, String> {
         let runner = self.ctx.runner.clone();
@@ -68,11 +93,12 @@ impl CommitService {
                         .run_with_options(
                             &[
                                 "show",
+                                "--no-ext-diff",
                                 "-s",
                                 "--format=%H%x1f%an%x1f%ae%x1f%at%x1f%cn%x1f%ce%x1f%ct%x1f%s%x1f%b",
                                 &hash,
                             ],
-                            GitRunOptions::default_read(),
+                            GitRunOptions::local_only_read(),
                         )
                         .await?;
 
@@ -80,16 +106,23 @@ impl CommitService {
 
                     let stats_output = runner
                         .run_with_options(
-                            &["show", "--shortstat", "--format=", &hash],
-                            GitRunOptions::default_read(),
+                            &["show", "--no-ext-diff", "--shortstat", "--format=", &hash],
+                            GitRunOptions::local_only_read(),
                         )
                         .await?;
 
                     let stats = parse_shortstat(&stats_output);
                     let files_output = runner
                         .run_with_options(
-                            &["show", "--name-status", "-z", "--format=", &hash],
-                            GitRunOptions::default_read(),
+                            &[
+                                "show",
+                                "--no-ext-diff",
+                                "--name-status",
+                                "-z",
+                                "--format=",
+                                &hash,
+                            ],
+                            GitRunOptions::local_only_read(),
                         )
                         .await?;
                     let files = parse_name_status_z(files_output.as_bytes())?;

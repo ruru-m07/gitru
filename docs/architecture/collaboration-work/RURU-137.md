@@ -1,8 +1,8 @@
 # RURU-137 — Cached pull request commit lists
 
-Status: In Progress in Linear; implementation contract frozen before source changes on 7 October 2026.
+Status: Locally qualified on 7 October 2026; draft publication and exact-head remote CI remain pending.
 
-Baseline: signed RURU-136 draft [PR #167](https://github.com/ruru-m07/gitru/pull/167) exact head `9548c53cf3c926a47e474d8d9b9511bc41e99d41`, which contains the signed RURU-77 pull-detail prerequisite. RURU-136 is locally qualified and its exact-head remote matrix is still running; this branch is stacked and must not claim that pending evidence.
+Baseline: signed RURU-136 draft [PR #167](https://github.com/ruru-m07/gitru/pull/167) exact head `9548c53cf3c926a47e474d8d9b9511bc41e99d41`, which contains the signed RURU-77 pull-detail prerequisite. All 14 checks reported for that exact head pass, including Rust, ordinary packaged E2E and the collaboration harness on Linux, macOS and Windows plus Cloudflare, Vercel and CodeRabbit. This branch is stacked and does not turn that ancestor result into evidence for its own source head.
 
 Live issue: [RURU-137](https://linear.app/catra/issue/RURU-137/cache-and-navigate-the-pull-request-commit-list), “Cache and navigate the pull request commit list”.
 
@@ -28,7 +28,8 @@ PullCommit
   position               base-nearest zero-based order
   summary
   message                 known / omitted / oversized
-  author and committer    bounded name plus optional provider presentation
+  author                  bounded name plus optional provider presentation
+  committer               same shape when the provider exposes this Git fact
   authored_at / committed_at
   parent_oids
   web_url                 optional validated provider URL
@@ -68,7 +69,7 @@ Initial adapters:
 
 * GitHub uses `GET /repos/{owner}/{repo}/pulls/{number}/commits`, validates immutable repository/pull addressing and follows only checked pagination links. The documented endpoint exposes at most 250 commits, so a terminal result of 250 is published as provider-capped rather than guessed complete. See [GitHub REST pull requests](https://docs.github.com/en/rest/pulls/pulls?apiVersion=latest#list-commits-on-a-pull-request).
 * GitLab uses `GET /projects/:id/merge_requests/:iid/commits`, binds the numeric target project and merge-request IID, validates returned commit identities and caps the normalized generation locally. See [GitLab merge request commits](https://docs.gitlab.com/api/merge_requests/#retrieve-merge-request-commits).
-* Bitbucket Cloud uses the pull-request commit collection and follows its opaque `next` links only after transport origin and exact-route validation. See [Bitbucket Cloud REST](https://developer.atlassian.com/cloud/bitbucket/rest/).
+* Bitbucket Cloud uses the pull-request commit collection and follows its opaque `next` links only after transport origin and exact-route validation. Its Cloud commit representation exposes `author` and `date` without a distinct committer, so the normalized committer remains unknown rather than copying author data into a fact the provider did not return. See [Bitbucket Cloud REST](https://developer.atlassian.com/cloud/bitbucket/rest/).
 
 A provider advertises `pull_commits` only when its adapter and contract fixtures are installed. Unknown fields remain additive. Unsupported providers return a typed unsupported capability instead of an empty list.
 
@@ -112,8 +113,20 @@ Required focused evidence includes:
 * linked-clone available/missing/blob/tag/stale-link/cross-account cases in SHA-1 and SHA-256 repositories;
 * keyboard-accessible UI states and packaged restart coverage.
 
+## Implemented behavior and local evidence
+
+Migration 0011 and the pull-commit store now publish bounded staging generations atomically against the exact authorized Body base, head, source repository and metadata revision. GitHub, GitLab and Bitbucket Cloud adapters normalize their native commit collections into the common model while preserving provider ordering evidence, truthful caps, validated continuation authority and provider-specific missing fields. Contextual capability evidence is derived from the same active generation and commit scope, so missing, syncing, empty, complete, partial, capped, offline and denied remain distinct.
+
+The runtime durably retains the original commit demand when Body context is missing or changes, admits Body hydration through the shared scheduler, and retries commits only after a valid context exists. Renderer queries remain local-only. The panel resets incompatible repository or Body query state immediately and uses the generated native navigation receipt to open only an exact cached member present as a local commit object in the linked target or source clone. Git reads set `GIT_NO_LAZY_FETCH=1`, disable replacement objects and external diff execution, and do not hydrate promisor objects.
+
+Final serialized `make verify` passes 670 frontend/SDK/UI tests with one platform skip, lint, type checks, the production desktop build, Rust formatting, workspace Clippy and every default Rust suite. Focused provider, runtime, storage, navigation, client and UI regressions cover paging drift, authorization/context changes, caps, retention, SHA-1/SHA-256, missing/blob/tag objects and promisor repositories. Normal `make typegen` succeeds with 123 generated commands.
+
+The feature-gated harness passes 20 native tests, its full collaboration suites and warning-denied Clippy. A real release-mode packaged five-process run passes the ordinary scenarios, both hard-crash checkpoints and both independent restarts. The crash-after phase publishes the exact two-row generation; the new process reads the same account, subject, base, head, source repository, Body metadata revision, order and complete/no-cap evidence before acquiring fresh interest, with provider and vault counters remaining `0 -> 0`. Local artifact: `artifacts/e2e-harness/2026-10-07T17-58-07-291Z-32420`.
+
+An independent final source review found no remaining release blocker. This is local macOS and fixture evidence. Exact-head remote CI, live private-provider/PAT/keyring behavior and other-platform packaged execution remain separate gates.
+
 ## Ownership and delivery evidence
 
 This worktree owns the typed commit models/store/runtime/provider modules, the narrow local navigation command, generated IPC/client bindings, the PR detail commit panel and focused tests, this work note, and concise root progress records. It does not implement checks, changed files, reviews, remote writes, merge, provider webhooks, cloning or implicit fetch.
 
-No implementation or validation result is claimed by this contract commit. `make typegen`, focused suites, serialized `make verify`, packaged E2E and an exact-head remote matrix are separate gates. Live private-provider and real credential-manager behavior remain separate from fixture evidence.
+The signed pre-code contract remains the authority for scope. Draft publication must retain this issue's stack base and attach the resulting PR before Linear moves to review. No credential was inspected, no Gitru cloud account was required, and no merge is authorized.

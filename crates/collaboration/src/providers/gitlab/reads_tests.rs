@@ -8,6 +8,7 @@ use crate::resource_metadata::MetadataField;
 use serde_json::{Value, json};
 
 const PROJECT: u64 = 9007199254740993;
+const SOURCE_PROJECT: u64 = 9007199254740997;
 const NATIVE: u64 = 9007199254741993;
 const HEAD: &str = "1111111111111111111111111111111111111111";
 const BASE: &str = "2222222222222222222222222222222222222222";
@@ -39,13 +40,14 @@ pub(crate) fn selected_repository(project_id: u64, path: &str) -> RemoteReposito
     repository
 }
 pub(crate) fn merge_request(native: u64, project: u64, iid: u64) -> Value {
-    json!({"id":native,"iid":iid,"project_id":project,"target_project_id":project,"title":"MR Δ 🚀","description":"independent Body","state":"opened","created_at":"2026-10-01T00:00:00Z","updated_at":"2026-10-04T00:00:00Z","web_url":format!("https://gitlab.com/org/subgroup/project/-/merge_requests/{iid}"),"author":{"id":9007199254741111_u64,"username":"author","web_url":"https://gitlab.com/author"},"labels":["bug",{"id":9007199254742222_u64,"name":"native","color":"#aabbcc"}],"assignees":[],"milestone":{"id":9007199254743333_u64,"iid":8,"title":"Next","state":"active","web_url":"https://gitlab.com/org/subgroup/project/-/milestones/8"},"draft":false,"merged_at":null,"source_branch":"feature","target_branch":"main","sha":HEAD,"diff_refs":{"head_sha":HEAD,"start_sha":BASE,"base_sha":MERGE_BASE}})
+    json!({"id":native,"iid":iid,"project_id":project,"target_project_id":project,"source_project_id":SOURCE_PROJECT,"title":"MR Δ 🚀","description":"independent Body","state":"opened","created_at":"2026-10-01T00:00:00Z","updated_at":"2026-10-04T00:00:00Z","web_url":format!("https://gitlab.com/org/subgroup/project/-/merge_requests/{iid}"),"author":{"id":9007199254741111_u64,"username":"author","web_url":"https://gitlab.com/author"},"labels":["bug",{"id":9007199254742222_u64,"name":"native","color":"#aabbcc"}],"assignees":[],"milestone":{"id":9007199254743333_u64,"iid":8,"title":"Next","state":"active","web_url":"https://gitlab.com/org/subgroup/project/-/milestones/8"},"draft":false,"merged_at":null,"source_branch":"feature","target_branch":"main","sha":HEAD,"diff_refs":{"head_sha":HEAD,"start_sha":BASE,"base_sha":MERGE_BASE}})
 }
 pub(crate) fn issue(native: u64, project: u64, iid: u64) -> Value {
     let mut value = merge_request(native, project, iid);
     let object = value.as_object_mut().unwrap();
     for key in [
         "target_project_id",
+        "source_project_id",
         "draft",
         "merged_at",
         "source_branch",
@@ -485,6 +487,28 @@ async fn singleton_body_and_metadata_have_independent_endpoint_authority() {
     assert_eq!(metadata.values.head.as_ref().unwrap().oid, HEAD);
     assert_eq!(metadata.values.base.as_ref().unwrap().oid, BASE);
     assert_ne!(metadata.values.base.as_ref().unwrap().oid, MERGE_BASE);
+    let head_repository = metadata
+        .values
+        .head
+        .as_ref()
+        .unwrap()
+        .repository
+        .as_ref()
+        .unwrap();
+    assert_eq!(head_repository.provider_id, SOURCE_PROJECT.to_string());
+    assert_eq!(head_repository.full_name, SOURCE_PROJECT.to_string());
+    assert!(head_repository.web_url.is_none());
+    let base_repository = metadata
+        .values
+        .base
+        .as_ref()
+        .unwrap()
+        .repository
+        .as_ref()
+        .unwrap();
+    assert_eq!(base_repository.provider_id, PROJECT.to_string());
+    assert_eq!(base_repository.full_name, "org/subgroup/project");
+    assert!(base_repository.web_url.is_none());
     assert_eq!(
         observed(&page, MetadataField::MergedAt),
         DetailValueState::Known
@@ -494,6 +518,79 @@ async fn singleton_body_and_metadata_have_independent_endpoint_authority() {
         "GET /api/v4/projects/{PROJECT}/merge_requests/67 HTTP/1.1"
     )));
     assert!(!calls[0].to_ascii_lowercase().contains("if-none-match"));
+}
+
+#[tokio::test]
+async fn singleton_repository_identity_uses_exact_ids_without_inventing_omitted_values() {
+    for change in 0..4 {
+        let mut payload = merge_request(NATIVE, PROJECT, 67);
+        match change {
+            0 => {
+                payload.as_object_mut().unwrap().remove("target_project_id");
+            }
+            1 => {
+                payload.as_object_mut().unwrap().remove("source_project_id");
+            }
+            2 => payload["source_project_id"] = Value::Null,
+            _ => payload["source_project_id"] = json!(PROJECT),
+        }
+        let (provider, task) = server(|_| vec![response(200, "", &body(&payload))]);
+        let page = provider
+            .fetch_detail(&token(), detail(RemoteItemKind::PullRequest))
+            .await
+            .unwrap();
+        let metadata = page.metadata.as_ref().unwrap();
+        assert_eq!(
+            observed(&page, MetadataField::Head),
+            DetailValueState::Known
+        );
+        assert_eq!(
+            observed(&page, MetadataField::Base),
+            DetailValueState::Known
+        );
+        let head_repository = metadata.values.head.as_ref().unwrap().repository.as_ref();
+        let base_repository = metadata.values.base.as_ref().unwrap().repository.as_ref();
+        if change == 0 {
+            assert!(base_repository.is_none());
+        } else {
+            assert_eq!(base_repository.unwrap().provider_id, PROJECT.to_string());
+        }
+        if matches!(change, 1 | 2) {
+            assert!(head_repository.is_none());
+        } else if change == 3 {
+            let repository = head_repository.unwrap();
+            assert_eq!(repository.provider_id, PROJECT.to_string());
+            assert_eq!(repository.full_name, "org/subgroup/project");
+        } else {
+            assert_eq!(
+                head_repository.unwrap().provider_id,
+                SOURCE_PROJECT.to_string()
+            );
+        }
+        task.join().unwrap();
+    }
+}
+
+#[tokio::test]
+async fn singleton_repository_identity_rejects_malformed_or_conflicting_ids() {
+    for change in 0..4 {
+        let mut payload = merge_request(NATIVE, PROJECT, 67);
+        match change {
+            0 => payload["target_project_id"] = json!(PROJECT + 1),
+            1 => payload["target_project_id"] = json!(PROJECT.to_string()),
+            2 => payload["source_project_id"] = json!(0),
+            _ => payload["source_project_id"] = json!(SOURCE_PROJECT.to_string()),
+        }
+        let (provider, task) =
+            server(|_| vec![response(200, "RateLimit-Remaining: 0\r\n", &body(&payload))]);
+        let error = provider
+            .fetch_detail(&token(), detail(RemoteItemKind::PullRequest))
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, ProviderErrorKind::InvalidResponse);
+        assert_eq!(error.account_cooldown_seconds, Some(60));
+        task.join().unwrap();
+    }
 }
 
 #[tokio::test]

@@ -24,7 +24,9 @@ import {
   collaborationLocalClones,
   collaborationLocalLinks,
   collaborationNotificationSubject,
+  collaborationOpenLocalPullCommit,
   collaborationPlanPullCheckout,
+  collaborationPullCommits,
   collaborationRefresh,
   collaborationReleaseDemand,
   collaborationRemoveLocalLink,
@@ -89,10 +91,19 @@ export type {
   NativeDetailPayload,
   NotificationSubjectQuery,
   NotificationSubjectSnapshot,
+  OpenLocalPullCommitReceipt,
+  OpenLocalPullCommitRequest,
   ParticipantUser,
   ParticipantV1,
   PullCheckoutPlan,
   PullCheckoutPlanRequest,
+  PullCommit,
+  PullCommitActor,
+  PullCommitCompleteness,
+  PullCommitContext,
+  PullCommitMessage,
+  PullCommitQuery,
+  PullCommitSnapshot,
   ReleaseDemandRequest,
   RemoteAccount,
   RemoteItem,
@@ -184,6 +195,7 @@ export const collaboration = new CollaborationClient({
   resolveResource: (accountId, locator) =>
     collaborationResolveResource({ accountId, locator }),
   detail: (query) => collaborationDetail({ query }),
+  pullCommits: (query) => collaborationPullCommits({ query }),
   hydrateDetail: (request) => collaborationHydrateDetail({ request }),
   notificationSubject: (query) => collaborationNotificationSubject({ query }),
   discoverNotificationSubject: (request) =>
@@ -191,6 +203,8 @@ export const collaboration = new CollaborationClient({
   planPullCheckout: (request) => collaborationPlanPullCheckout({ request }),
   executePullCheckout: (request) =>
     collaborationExecutePullCheckout({ request }),
+  openLocalPullCommit: (request) =>
+    collaborationOpenLocalPullCommit({ request }),
   listen: (onWake) =>
     getCurrentWebview().listen<{ revision: string }>(
       "gitru:collaboration-change",

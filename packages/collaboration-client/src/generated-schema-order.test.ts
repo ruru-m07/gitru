@@ -179,10 +179,87 @@ export const KeySchema = "key";
     const generated = await import("@gitru/commands");
     expect(
       Object.keys(generated).filter((name) => name.endsWith("Schema")),
-    ).toHaveLength(331);
+    ).toHaveLength(345);
     expect(
       generated.TaskV1Schema.shape.content.parse({ state: "known", text: "" }),
     ).toEqual({ state: "known", text: "" });
     expect(generated.NativeDetailPayloadSchema.options).toHaveLength(2);
+  });
+
+  it("parses the nullable pull-commit cache and local-navigation wire contract", async () => {
+    const generated = await import("@gitru/commands");
+    const oid = "a".repeat(40);
+    const parsed = generated.PullCommitSnapshotSchema.parse({
+      subject_id: "github:pull:repository:67",
+      context: {
+        base_oid: "b".repeat(40),
+        head_oid: oid,
+        source_repository_provider_id: "source-1",
+        metadata_facet_revision: "10",
+      },
+      commits: [
+        {
+          oid,
+          position: 0,
+          summary: "Cached commit",
+          message: { state: "omitted", text: null },
+          author: { name: "Author", provider: null },
+          committer: null,
+          authored_at: null,
+          committed_at: null,
+          parent_oids: [],
+          web_url: null,
+        },
+      ],
+      next_cursor: null,
+      completeness: { state: "capped", reason: "provider_limit" },
+      coverage: {
+        state: "partial",
+        validated_at: null,
+        remote_has_more: true,
+      },
+      sync: {
+        state: "idle",
+        last_success_at: null,
+        next_retry_at: null,
+        error: null,
+      },
+      freshness: "unknown",
+      facet_revision: null,
+      revision: "12",
+      authorization_view: "3",
+    });
+    expect(parsed.completeness).toEqual({
+      state: "capped",
+      reason: "provider_limit",
+    });
+    expect(parsed.commits[0]?.committer).toBeNull();
+    expect(() =>
+      generated.PullCommitCompletenessSchema.parse({
+        state: "complete",
+        reason: "provider_limit",
+      }),
+    ).toThrow(/cap reason/);
+    expect(
+      generated.LocalCloneRequestSchema.parse({
+        account_id: "account",
+        instance_id: "github:https://github.com/",
+        repository_id: "target",
+        source_repository_provider_id: null,
+        authorization_epoch: "7",
+      }).source_repository_provider_id,
+    ).toBeNull();
+    expect(
+      generated.OpenLocalPullCommitRequestSchema.parse({
+        account_id: "account",
+        authorization_epoch: "7",
+        subject_id: "github:pull:repository:67",
+        commit_oid: oid,
+        facet_revision: "11",
+        local_repository_id: "11111111-1111-4111-8111-111111111111",
+        link_id: "link",
+        link_generation: "9",
+      }).commit_oid,
+    ).toBe(oid);
   });
 });

@@ -28,6 +28,11 @@ const native = vi.hoisted(() => ({
   release: vi.fn(),
   renew: vi.fn(),
   accounts: vi.fn(),
+  forAccount: vi.fn(),
+  draft: vi.fn(),
+  detail: vi.fn(),
+  pullCommits: vi.fn(),
+  hydrateDetail: vi.fn(),
 }));
 vi.mock("@gitru/commands", async (original) => ({
   ...(await original<object>()),
@@ -41,7 +46,11 @@ vi.mock("@gitru/commands", async (original) => ({
   collaborationRenewDemand: native.renew,
 }));
 vi.mock("@gitru/collaboration-client", () => ({
-  collaboration: { wake: native.wake, accounts: native.accounts },
+  collaboration: {
+    wake: native.wake,
+    accounts: native.accounts,
+    forAccount: native.forAccount,
+  },
 }));
 vi.mock("@tauri-apps/api/webview", () => ({
   getCurrentWebview: () => ({
@@ -129,6 +138,12 @@ beforeEach(() => {
   } satisfies HarnessViewManifest);
   native.inspectOwner.mockResolvedValue({ generation: "7", active: true });
   native.setOwner.mockResolvedValue({ generation: "7", active: true });
+  native.forAccount.mockImplementation(() => ({
+    draft: native.draft,
+    detail: native.detail,
+    pullCommits: native.pullCommits,
+    hydrateDetail: native.hydrateDetail,
+  }));
   native.control.mockImplementation(async ({ request }) => {
     events.push(`control:${request.action}:${request.core_action ?? "none"}`);
     return { status: structuredClone(current), gate_id: null };
@@ -457,6 +472,128 @@ async function orderingFixture() {
     documentVisibility,
   };
 }
+
+describe("retained restart pull-commit acceptance", () => {
+  it("presents the exact saved snapshot before fresh interest without provider hydration", async () => {
+    const { probe } = await orderingFixture();
+    const account = {
+      id: "ruru103:primary",
+      provider: "github" as const,
+      host: "github.com",
+      actor_id: "103001",
+      login: "ruru103-primary",
+      display_name: null,
+      authorization_epoch: "1",
+      state: "active" as const,
+      notifications_supported: false,
+    };
+    current.core.actors = [
+      {
+        slot: "primary",
+        account_id: account.id,
+        authorization_epoch: account.authorization_epoch,
+        instance_id: "github:github.com",
+        repository_id: "github:repository:9007199254741993",
+        subject_id: "github:pull:9007199254742993",
+      },
+    ];
+    current.core.committed_phase = "one";
+    current.core.committed_facet_revision = "21";
+    current.core.revision = "24";
+    current.process_id = 104;
+    current.checkpoint = {
+      run_nonce: "run-103",
+      session_id: "retired-session",
+      scenario_generation: "1",
+      kind: "committed_before_hint",
+      gate_id: null,
+      committed_phase: "one",
+      committed_facet_revision: "21",
+      process_id: 103,
+    };
+    native.accounts.mockResolvedValue({
+      accounts: [account],
+      revision: "24",
+      authorization_view: "1",
+    });
+    native.draft.mockResolvedValue({ generation: "1" });
+    native.detail.mockResolvedValue({
+      body: {
+        state: "known",
+        text: "RURU-103 primary body phase one — π 🌱",
+      },
+      evidence: { facet_revision: "21" },
+    });
+    native.pullCommits.mockResolvedValue({
+      subject_id: "github:pull:9007199254742993",
+      context: {
+        base_oid: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        head_oid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        source_repository_provider_id: "9007199254741994",
+        metadata_facet_revision: "21",
+      },
+      commits: [
+        {
+          position: 0,
+          oid: "cccccccccccccccccccccccccccccccccccccccc",
+        },
+        {
+          position: 1,
+          oid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        },
+      ],
+      next_cursor: null,
+      completeness: { state: "complete", reason: null },
+      coverage: {
+        state: "complete",
+        validated_at: "2026-10-01T00:00:00Z",
+        remote_has_more: false,
+      },
+      sync: {
+        state: "ready",
+        last_success_at: "2026-10-01T00:00:00Z",
+        next_retry_at: null,
+        error: null,
+      },
+      freshness: "fresh",
+      facet_revision: "24",
+      revision: "24",
+      authorization_view: "1",
+    });
+
+    executor = await installCollaborationHarnessExecutor(probe);
+    const result = HarnessScenarioResultSchema.parse(
+      await executor.runScenario("restart"),
+    );
+
+    expect(result.outcome).toBe("passed");
+    expect(result.pull_commits).toMatchObject({
+      account_id: account.id,
+      subject_id: "github:pull:9007199254742993",
+      context: {
+        base_oid: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        head_oid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        source_repository_provider_id: "9007199254741994",
+        metadata_facet_revision: "21",
+      },
+      facet_revision: "24",
+      oids: [
+        "cccccccccccccccccccccccccccccccccccccccc",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      ],
+      completeness: { state: "complete", reason: null },
+      cache_only: true,
+      provider_call_count_before: "0",
+      provider_call_count_after: "0",
+      vault_load_count_before: "0",
+      vault_load_count_after: "0",
+    });
+    expect(native.pullCommits).toHaveBeenCalledOnce();
+    expect(native.hydrateDetail).not.toHaveBeenCalled();
+    expect(current.core.provider_call_count).toBe("0");
+    expect(current.core.vault_load_count).toBe("0");
+  });
+});
 
 /** This models ordering receipts, not native storage or SDK fence behavior. */
 async function retentionOrderingFixture({

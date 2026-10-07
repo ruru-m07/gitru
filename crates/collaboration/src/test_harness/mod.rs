@@ -11,7 +11,8 @@ pub(crate) use clock::HarnessClock;
 pub use domain::*;
 pub use files::APPLICATION_ID;
 pub use provider::{
-    ALTERNATE_ACCOUNT, PRIMARY_ACCOUNT, REPOSITORY_ID, SUBJECT_ID, account_id, fixture_body,
+    ALTERNATE_ACCOUNT, BASE_OID, FIRST_COMMIT_OID, HEAD_OID, PRIMARY_ACCOUNT, REPOSITORY_ID,
+    SOURCE_REPOSITORY_PROVIDER_ID, SUBJECT_ID, account_id, fixture_body,
 };
 
 use crate::{credentials::CredentialVault, *};

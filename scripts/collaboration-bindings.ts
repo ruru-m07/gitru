@@ -35,6 +35,9 @@ const localLinks = await Bun.file(
 const notificationSubjects = await Bun.file(
   new URL("crates/collaboration/src/notification_subjects.rs", root),
 ).text();
+const pullCommits = await Bun.file(
+  new URL("crates/collaboration/src/pull_commits.rs", root),
+).text();
 const gitRemotes = await Bun.file(
   new URL("crates/git/models/remotes.rs", root),
 ).text();
@@ -72,6 +75,12 @@ const nativeOnlyTypes = new Set([
   "DetailEnumeration",
   "DetailHeadScope",
   "DetailReconciliation",
+  "ProviderPullCommit",
+  "PullCommitProviderOrder",
+  "PullCommitSource",
+  "PullCommitBinding",
+  "PullCommitMembershipRequest",
+  "PullCommitMembershipReceipt",
   "HarnessCoreRequest",
   "HarnessCoreReceipt",
 ]);
@@ -163,6 +172,7 @@ for (const source of [
   demand,
   localLinks,
   notificationSubjects,
+  pullCommits,
   gitRemotes,
   linkCommands,
   repositoryInfo,
@@ -269,6 +279,18 @@ generated = generated.replace(
 );
 if (generated.includes("WebviewSchema"))
   throw new Error("Unexpected injected Webview remains in generated types");
+const pullCommitCompletenessSchema =
+  /(export const PullCommitCompletenessSchema = z\.object\(\{[\s\S]*?\n\}\));/;
+if (!pullCommitCompletenessSchema.test(generated))
+  throw new Error("Missing generated pull-commit completeness schema");
+generated = generated.replace(
+  pullCommitCompletenessSchema,
+  `$1.superRefine((value, context) => {
+  if ((value.state === "capped") !== (value.reason !== null)) {
+    context.addIssue({ code: "custom", path: ["reason"], message: "A pull-commit cap reason is valid only for capped snapshots" });
+  }
+});`,
+);
 generated = orderGeneratedSchemas(generated.replace(/[\t ]+$/gm, ""));
 await Bun.write(output, generated);
 

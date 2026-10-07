@@ -103,6 +103,45 @@ async fn detail(session: &HarnessSession, slot: HarnessActorSlot) -> DetailSnaps
         .await
         .unwrap()
 }
+async fn pull_commits(session: &HarnessSession) -> PullCommitSnapshot {
+    session
+        .store
+        .pull_commits(PullCommitQuery {
+            account_id: PRIMARY_ACCOUNT.into(),
+            subject_id: SUBJECT_ID.into(),
+            cursor: None,
+            limit: 50,
+        })
+        .await
+        .unwrap()
+}
+fn assert_fixture_pull_commits(snapshot: &PullCommitSnapshot) {
+    assert_eq!(snapshot.subject_id, SUBJECT_ID);
+    let context = snapshot
+        .context
+        .as_ref()
+        .expect("published commit fixture has exact context");
+    assert_eq!(context.base_oid, BASE_OID);
+    assert_eq!(context.head_oid, HEAD_OID);
+    assert_eq!(
+        context.source_repository_provider_id,
+        SOURCE_REPOSITORY_PROVIDER_ID
+    );
+    assert!(context.metadata_facet_revision.parse::<u64>().unwrap() > 0);
+    assert!(snapshot.facet_revision.is_some());
+    assert_eq!(
+        snapshot
+            .commits
+            .iter()
+            .map(|commit| (commit.position, commit.oid.as_str()))
+            .collect::<Vec<_>>(),
+        vec![(0, FIRST_COMMIT_OID), (1, HEAD_OID)]
+    );
+    assert_eq!(snapshot.completeness, PullCommitCompleteness::complete());
+    assert_eq!(snapshot.coverage.state, CoverageState::Complete);
+    assert!(!snapshot.coverage.remote_has_more);
+    assert!(snapshot.next_cursor.is_none());
+}
 async fn held(session: &HarnessSession, gate: &str) {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
@@ -1075,6 +1114,64 @@ async fn independent_cold_reopen_retains_committed_local_phase_without_automatic
         status.committed_facet_revision,
         before.evidence.facet_revision
     );
+}
+
+#[tokio::test]
+async fn independent_cold_reopen_reads_exact_pull_commits_without_provider_or_vault_access() {
+    let run = Run::new();
+    let session = prepared(&run).await;
+    session
+        .runtime
+        .hydrate_detail(HydrateDetailRequest {
+            account_id: PRIMARY_ACCOUNT.into(),
+            authorization_epoch: "1".into(),
+            subject_id: SUBJECT_ID.into(),
+            facet: DetailFacet::Body,
+        })
+        .await
+        .unwrap();
+    assert!(session.runtime.harness_run_next().await);
+    session
+        .runtime
+        .hydrate_detail(HydrateDetailRequest {
+            account_id: PRIMARY_ACCOUNT.into(),
+            authorization_epoch: "1".into(),
+            subject_id: SUBJECT_ID.into(),
+            facet: DetailFacet::Commits,
+        })
+        .await
+        .unwrap();
+    assert!(session.runtime.harness_run_next().await);
+
+    let before = pull_commits(&session).await;
+    assert_fixture_pull_commits(&before);
+    let before_status = session.control.status(&run.nonce).await.unwrap();
+    assert_eq!(before_status.provider_call_count, "3");
+    assert_eq!(before_status.vault_load_count, "2");
+    assert_eq!(before_status.durable_detail_requests, 0);
+    let original_session = before_status.session_id;
+    session.store.close().await;
+    drop(session);
+
+    let session = run.open().await;
+    let reopened = session.control.status(&run.nonce).await.unwrap();
+    assert_ne!(reopened.session_id, original_session);
+    assert_eq!(reopened.provider_call_count, "0");
+    assert_eq!(reopened.vault_load_count, "0");
+    assert_eq!(reopened.demand_lease_count, 0);
+    assert_eq!(reopened.durable_detail_requests, 0);
+
+    let after = pull_commits(&session).await;
+    assert_fixture_pull_commits(&after);
+    assert_eq!(after.context, before.context);
+    assert_eq!(after.commits, before.commits);
+    assert_eq!(after.facet_revision, before.facet_revision);
+    assert_eq!(after.authorization_view, before.authorization_view);
+    assert_eq!(after.revision, before.revision);
+    let queried = session.control.status(&run.nonce).await.unwrap();
+    assert_eq!(queried.provider_call_count, "0");
+    assert_eq!(queried.vault_load_count, "0");
+    assert!(!session.runtime.harness_run_next().await);
 }
 
 #[tokio::test]

@@ -9,6 +9,7 @@ import type {
   ItemSnapshot,
   PullCheckoutPlan,
   CollaborationPullCheckoutReceipt as PullCheckoutReceipt,
+  PullCommitSnapshot,
   RemoteAccount,
   RemoteItem,
   RepositorySnapshot,
@@ -126,11 +127,13 @@ function transport(
     contextualCapabilities: unexpected,
     resolveResource: unexpected,
     detail: unexpected,
+    pullCommits: unexpected,
     hydrateDetail: unexpected,
     notificationSubject: unexpected,
     discoverNotificationSubject: unexpected,
     planPullCheckout: unexpected,
     executePullCheckout: unexpected,
+    openLocalPullCommit: unexpected,
     demandActivity: unexpected,
     acquireDemand: unexpected,
     renewDemand: unexpected,
@@ -739,6 +742,106 @@ describe("CollaborationClient", () => {
     expect(cache.getQueryData(key)).toEqual(saved);
     expect(cache.getQueryState(other)?.isInvalidated).toBe(false);
     expect(cache.getQueryState(draft)?.isInvalidated).toBe(false);
+    unsubscribe();
+    stop();
+    cache.clear();
+  });
+  it.each([
+    {
+      changeScope: "detail:pull:body",
+      source: "body-context",
+    },
+    {
+      changeScope: "repo:repo-1:pull_request",
+      source: "repository pull-request",
+    },
+  ])("hides a superseded pull-commit generation before its $source refetch resolves", async ({
+    changeScope,
+  }) => {
+    let next = changePage("1");
+    const refreshed = deferred<PullCommitSnapshot>();
+    const pullCommits = vi.fn(() => refreshed.promise);
+    const client = new CollaborationClient(
+      transport({
+        pullCommits,
+        listen: async () => () => {},
+        changesSince: async () => next,
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    const query = {
+      account_id: account.id,
+      subject_id: "pull",
+      cursor: null,
+      limit: 50,
+    };
+    const key = collaborationKeys.pullCommits(account, query);
+    const stale: PullCommitSnapshot = {
+      subject_id: "pull",
+      context: {
+        base_oid: "b".repeat(40),
+        head_oid: "a".repeat(40),
+        source_repository_provider_id: "fork-1",
+        metadata_facet_revision: "1",
+      },
+      commits: [
+        {
+          oid: "a".repeat(40),
+          position: 0,
+          summary: "superseded",
+          message: { state: "known", text: "superseded" },
+          author: { name: "Author", provider: null },
+          committer: null,
+          authored_at: null,
+          committed_at: null,
+          parent_oids: ["b".repeat(40)],
+          web_url: null,
+        },
+      ],
+      next_cursor: null,
+      completeness: { state: "complete", reason: null },
+      coverage: page.coverage,
+      sync: page.sync,
+      freshness: "fresh",
+      facet_revision: "1",
+      revision: "1",
+      authorization_view: "1",
+    };
+    cache.setQueryData(key, stale);
+    const observer = new QueryObserver(cache, {
+      queryKey: key,
+      queryFn: ({ signal }) =>
+        client.forAccount(account).pullCommits(query, signal),
+      staleTime: Infinity,
+      retry: false,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+
+    next = changePage("2", "1", [
+      {
+        revision: "2",
+        account_id: account.id,
+        scope: changeScope,
+        reset: false,
+      },
+    ]);
+    await client.wake();
+
+    expect(cache.getQueryData(key)).toBeUndefined();
+    expect(observer.getCurrentResult().data).toBeUndefined();
+    expect(pullCommits).toHaveBeenCalled();
+    refreshed.resolve({
+      ...stale,
+      context: null,
+      commits: [],
+      completeness: { state: "missing", reason: null },
+      freshness: "unknown",
+      facet_revision: null,
+      revision: "2",
+    });
+    await refreshed.promise;
     unsubscribe();
     stop();
     cache.clear();

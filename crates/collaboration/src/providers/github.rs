@@ -7,6 +7,7 @@ use super::{
 };
 use serde::Deserialize;
 mod comments;
+mod commits;
 mod issue_details;
 mod notification_subject_discovery;
 pub mod notification_subjects;
@@ -69,8 +70,10 @@ impl CollaborationProvider for GithubProvider {
             if matches!(
                 facet.facet,
                 ResourceFacet::PullDetails | ResourceFacet::IssueDetails
-            ) || facet.facet == ResourceFacet::Comments
-                && account.provider == ProviderKind::Github
+            ) || matches!(
+                facet.facet,
+                ResourceFacet::Comments | ResourceFacet::PullCommits
+            ) && account.provider == ProviderKind::Github
                 && account.host == "github.com"
             {
                 facet.state = CapabilityState::Supported;
@@ -109,6 +112,14 @@ impl CollaborationProvider for GithubProvider {
             }
             RemoteItemKind::Notification => Err(ProviderError::new(ProviderErrorKind::Unsupported)),
         }
+    }
+
+    async fn fetch_pull_commits(
+        &self,
+        token: &SecretToken,
+        request: PullCommitRequest,
+    ) -> Result<PullCommitProviderPage, ProviderError> {
+        self.request_pull_commits(token, request).await
     }
 
     async fn probe(&self, token: &SecretToken) -> Result<VerifiedAccount, ProviderError> {
@@ -360,6 +371,8 @@ impl CollaborationProvider for GithubProvider {
 
 #[cfg(test)]
 mod comments_tests;
+#[cfg(test)]
+mod commits_tests;
 
 fn notification_access(token: &SecretToken, scopes: &str) -> bool {
     // gh commonly stores an existing OAuth user token. It is not a PAT, but

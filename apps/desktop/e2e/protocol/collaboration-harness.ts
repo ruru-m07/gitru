@@ -5,6 +5,8 @@ import {
   ErrorCodeSchema,
   HarnessStatusSchema,
   type HarnessViewManifest,
+  PullCommitCompletenessSchema,
+  PullCommitContextSchema,
 } from "@gitru/commands";
 import { z } from "zod";
 
@@ -433,6 +435,26 @@ export type HarnessAuthorityEvidence = z.infer<
   typeof HarnessAuthorityEvidenceSchema
 >;
 
+const commitOid = z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/);
+export const HarnessPullCommitEvidenceSchema = z
+  .object({
+    account_id: z.string().min(1).max(256),
+    subject_id: z.string().min(1).max(512),
+    context: PullCommitContextSchema,
+    facet_revision: decimal,
+    oids: z.array(commitOid).min(1).max(8),
+    completeness: PullCommitCompletenessSchema,
+    cache_only: z.boolean(),
+    provider_call_count_before: decimal,
+    provider_call_count_after: decimal,
+    vault_load_count_before: decimal,
+    vault_load_count_after: decimal,
+  })
+  .strict();
+export type HarnessPullCommitEvidence = z.infer<
+  typeof HarnessPullCommitEvidenceSchema
+>;
+
 const scenarioStatus = HarnessStatusSchema.refine(
   (value) =>
     value.core.actors.length <= 2 &&
@@ -471,6 +493,7 @@ export const HarnessScenarioResultSchema = z
     status: scenarioStatus.nullable(),
     observations: z.array(HarnessProbeSnapshotSchema).max(32),
     authority: HarnessAuthorityEvidenceSchema.nullable().optional(),
+    pull_commits: HarnessPullCommitEvidenceSchema.nullable(),
     obsolete_reads: HarnessObsoleteReadsSchema.optional(),
     failure: HarnessFailureSchema.nullable().optional(),
     cleanup_failure: HarnessFailureSchema.nullable().optional(),

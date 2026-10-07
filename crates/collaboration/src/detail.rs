@@ -15,16 +15,18 @@ pub enum DetailFacet {
     Checks,
     Participants,
     Tasks,
+    Commits,
 }
 
 impl DetailFacet {
-    pub(crate) const ALL: [Self; 6] = [
+    pub(crate) const ALL: [Self; 7] = [
         Self::Body,
         Self::Comments,
         Self::Reviews,
         Self::Checks,
         Self::Participants,
         Self::Tasks,
+        Self::Commits,
     ];
     pub(crate) fn field_limit(self) -> usize {
         if self == Self::Tasks { 12 } else { 6 }
@@ -40,6 +42,7 @@ impl DetailFacet {
             (Self::Checks, RemoteItemKind::PullRequest) => Some(ResourceFacet::Checks),
             (Self::Participants, RemoteItemKind::PullRequest) => Some(ResourceFacet::Participants),
             (Self::Tasks, RemoteItemKind::PullRequest) => Some(ResourceFacet::Tasks),
+            (Self::Commits, RemoteItemKind::PullRequest) => Some(ResourceFacet::PullCommits),
             _ => None,
         }
     }
@@ -51,6 +54,7 @@ impl DetailFacet {
             Self::Checks => "checks",
             Self::Participants => "participants",
             Self::Tasks => "tasks",
+            Self::Commits => "commits",
         }
     }
     pub fn scope(self, subject_id: &str) -> String {
@@ -70,6 +74,7 @@ impl DetailFacet {
                 "checks" => Self::Checks,
                 "participants" => Self::Participants,
                 "tasks" => Self::Tasks,
+                "commits" => Self::Commits,
                 _ => return None,
             },
         ))
@@ -162,6 +167,7 @@ impl DetailField {
         match facet {
             DetailFacet::Participants => self.is_participant(),
             DetailFacet::Tasks => self.is_task(),
+            DetailFacet::Commits => false,
             _ => !self.is_participant() && !self.is_task(),
         }
     }
