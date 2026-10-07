@@ -3415,3 +3415,29 @@ In Review in [#171](https://github.com/ruru-m07/gitru/pull/171), exact head
 Windows remains pending. Deployment checks pass. CodeRabbit's draft-skipped
 success is not independent code review. No merge, personal credential inspection,
 live provider qualification or production-vault validation was performed.
+
+### RURU-119 complete local qualification — 8 October 2026
+
+RURU-119 source `df54c444771d5c6b671080eafc6c4b3daf3c44ab` now passes
+full `make verify`: 712 frontend tests with one platform skip and 1,076 Rust tests
+with five standalone helper ignores, plus all lint/types/build/format/Clippy.
+The real macOS release retained harness passes all five processes. Its exact
+scope, hash and focused adapter/storage/UI evidence are recorded in the
+[RURU-119 work note](./collaboration-work/RURU-119.md). This is local synthetic
+and packaged evidence; live providers, production vaults and new-head remote CI
+are not inferred.
+
+The final feature includes bounded selected diff hydration for GitHub, GitLab and
+Bitbucket Cloud, cache-only list/artifact queries, virtualized file navigation
+and explicit linked-clone reads. Equivalent Body validation preserves current
+range authority; actual range changes retire it atomically. Local publication
+checks caller and clone-link ownership inside the SQLite writer transaction.
+Binary content without saved bytes remains omission, and no raw whole-pull
+fallback or image-byte fetch is claimed.
+
+At 7 October 20:27 UTC, RURU-114 draft #171 also passes all 14 reported remote
+checks, including Windows. RURU-106 continues in its existing draft #145 on this
+new schema stack: current-schema preservation, restored-command quarantine,
+owned runtime drain/restart and native recovery dialogs are being integrated.
+RURU-125 is independently measuring the actual packaged local data path with
+synthetic data. All branches remain unmerged.

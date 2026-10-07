@@ -2290,3 +2290,19 @@ hydration and the frontend are being integrated; final combined validation and
 PR publication remain outstanding. The architecture progress section records
 the focused evidence and limits. All worktrees remain on `/Volumes/Lexar` and
 the no-merge and no-personal-credential constraints remain in force.
+
+### Local files qualification and recovery continuation — 8 October 2026
+
+RURU-119's signed source `df54c444771d5c6b671080eafc6c4b3daf3c44ab` passes
+full local verification (712 frontend tests/one platform skip; 1,076 Rust tests/
+five helper ignores) and the real five-process macOS retained harness. The
+work note records exact evidence and deferred live-provider/platform boundaries.
+Publish this bounded read-only slice on RURU-114; do not open a duplicate.
+
+RURU-114 #171 now has all 14 reported remote checks passing. Existing RURU-106
+#145 is being continued on the current schema with recovery metadata migration
+0015, immutable command quarantine and native runtime shutdown/restart; it stays
+In Progress until integrated recovery UI and qualification pass. RURU-125's
+isolated native measurement lane is In Progress. RURU-115 remains dependent on
+RURU-106; restored commands must never bypass quarantine merely after reconnect.
+No merge or personal credential validation is authorized by these checkpoints.

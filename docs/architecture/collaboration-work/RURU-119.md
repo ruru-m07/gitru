@@ -315,3 +315,27 @@ separate from deterministic fixtures.
    reviewable stacked draft PR, attach it to Linear and monitor exact-head CI.
 
 No merge is authorized.
+
+## Integrated local qualification — 8 October 2026
+
+The signed implementation is `df54c444771d5c6b671080eafc6c4b3daf3c44ab`
+(on RURU-114 `de0e245d5b10bbebb9b66ad78d92febe084a986b`). Normal
+`make typegen` emits 129 commands and the generated schema inventory is 386.
+Full `make verify` exits successfully: 712 frontend/SDK/UI tests pass with one
+platform-only skip, all lint/types/build/format/strict workspace Clippy gates
+pass, and 1,076 default Rust tests pass with five intentionally ignored
+standalone subprocess entrypoints. The collaboration slice contributes 656
+passing tests and three helper ignores; selected provider tests include 17 cases,
+with 11 file-runtime cases, 17 storage-file cases, four native writer races and
+five frozen-v13 migration cases. The Git accelerator passes 13 integration cases.
+
+The real macOS release-mode retained harness also passes all five processes:
+main scenarios, crash-before/restart-before and crash-after/restart-after. Run
+`2026-10-07T20-42-09-968Z-80050` records binary SHA-256
+`4a27f0d3d339362da655c35bca1396e71534d883d7a398ad3fceb9b4849578c6`.
+This qualifies the existing real-webview lifecycle, generated IPC and durable
+restart integration against this source. Selected-file provider transport,
+publication and rendering are covered by the focused finite Rust/SDK/UI suites;
+the retained harness does not claim a live provider diff or OS file-picker test.
+No personal credential or production vault was read. Remote CI and other-platform
+execution for this final head remain separate gates. No PR is merged.
