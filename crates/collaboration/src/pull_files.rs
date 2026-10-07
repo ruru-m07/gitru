@@ -714,6 +714,11 @@ impl PullFileCollectionRequest {
             || self.binding.number != self.subject.number
             || self.binding != self.lease.binding
             || self.source != self.lease.source
+            || self
+                .source
+                .strategy
+                .provider()
+                .is_some_and(|provider| provider != self.account.provider)
             || self.cursor != self.lease.next_cursor
             || self.start_position != self.lease.accepted_row_count
         {
@@ -1784,6 +1789,15 @@ mod tests {
             cooldown_seconds: None,
         };
         assert!(gitlab_page.validate_for(&request).is_err());
+
+        let mut wrong_provider_request = collection_request();
+        wrong_provider_request.account.provider = ProviderKind::Gitlab;
+        assert!(wrong_provider_request.validate().is_err());
+
+        let mut local_request = collection_request();
+        local_request.source = source(PullFileSourceStrategy::LocalExactRange);
+        local_request.lease.source = local_request.source.clone();
+        assert!(local_request.validate().is_ok());
 
         let serialized =
             serde_json::to_string(&source(PullFileSourceStrategy::GithubPullFiles)).unwrap();
