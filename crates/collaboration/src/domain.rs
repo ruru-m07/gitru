@@ -364,6 +364,9 @@ pub struct DraftPage {
 #[derive(Debug, Clone)]
 pub struct StoredScope {
     pub run_id: String,
+    /// Captured before feed HTTP; canonical delivery can fence a held response
+    /// without restarting the accepted traversal or changing its membership.
+    pub data_revision: i64,
     pub next_cursor: Option<String>,
     pub etag: Option<String>,
     pub last_modified: Option<String>,
