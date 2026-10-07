@@ -141,7 +141,9 @@ pub fn is_valid_pull_file_path(value: &str) -> bool {
     if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
         return false;
     }
-    !value.split(['/', '\\']).any(|component| component == "..")
+    !value
+        .split(['/', '\\'])
+        .any(|component| component.is_empty() || component == "." || component == "..")
 }
 
 /// Exact Body-derived authority for one file generation.
@@ -590,6 +592,8 @@ pub struct PullFileContinuation {
     pub cursor: String,
     pub provider_page_count: u32,
     pub seen_cursors: Vec<String>,
+    /// Exact first-page strategy/version; later pages may not switch either.
+    pub source: PullFileSource,
 }
 
 impl PullFileContinuation {
@@ -599,6 +603,10 @@ impl PullFileContinuation {
             || self.seen_cursors.len() != self.provider_page_count as usize
             || self.seen_cursors.last() != Some(&self.cursor)
         {
+            return Err(invalid_pull_file());
+        }
+        self.source.validate()?;
+        if !self.source.strategy.supports_collection() {
             return Err(invalid_pull_file());
         }
         let mut unique = HashSet::with_capacity(self.seen_cursors.len());
@@ -643,6 +651,7 @@ impl PullFileBinding {
 #[derive(Debug, Clone)]
 pub struct PullFileCollectionRequest {
     pub account: RemoteAccount,
+    pub authorization_view: String,
     pub repository: RemoteRepository,
     pub subject: RemoteItem,
     pub binding: PullFileBinding,
@@ -654,6 +663,7 @@ impl PullFileCollectionRequest {
     pub fn validate(&self) -> Result<()> {
         validate_identifier(&self.account.id)?;
         validate_revision(&self.account.authorization_epoch)?;
+        validate_revision(&self.authorization_view)?;
         validate_identifier(&self.repository.id)?;
         validate_identifier(&self.repository.provider_id)?;
         validate_identifier(&self.subject.id)?;
@@ -717,7 +727,15 @@ impl PullFileProviderPage {
                 .provider()
                 .is_some_and(|provider| provider != request.account.provider)
             || self.cap.is_some_and(|cap| !cap.is_valid())
+            || self.source.strategy.provenance() == PullFileProvenance::LocalExactRange
+                && self
+                    .cap
+                    .is_some_and(|cap| cap.provenance == PullFileCapProvenance::Provider)
             || self.cap.is_some() && self.next_cursor.is_some()
+            || request
+                .continuation
+                .as_ref()
+                .is_some_and(|continuation| continuation.source != self.source)
         {
             return Err(invalid_pull_file());
         }
@@ -726,6 +744,15 @@ impl PullFileProviderPage {
             .checked_add(u32::try_from(self.files.len()).map_err(|_| invalid_pull_file())?)
             .ok_or_else(invalid_pull_file)?;
         if terminal_position > MAX_PULL_FILES {
+            return Err(invalid_pull_file());
+        }
+        if terminal_position == MAX_PULL_FILES
+            && self.source.strategy == PullFileSourceStrategy::GithubPullFiles
+            && !self.cap.is_some_and(|cap| {
+                cap.provenance == PullFileCapProvenance::Provider
+                    && cap.reason == PullFileCapReason::ProviderFileLimit
+            })
+        {
             return Err(invalid_pull_file());
         }
         self.source.validate()?;
@@ -776,6 +803,7 @@ impl PullFileProviderPage {
             cursor: cursor.clone(),
             provider_page_count,
             seen_cursors,
+            source: self.source.clone(),
         };
         continuation.validate()?;
         Ok(Some(continuation))
@@ -838,6 +866,7 @@ impl PullFileDiffRequest {
 pub struct PullFileGenerationReceipt {
     pub account_id: String,
     pub authorization_epoch: String,
+    pub authorization_view: String,
     pub subject_id: String,
     pub generation: String,
     pub file_facet_revision: String,
@@ -848,6 +877,7 @@ impl PullFileGenerationReceipt {
     pub fn validate(&self) -> Result<()> {
         validate_identifier(&self.account_id)?;
         validate_revision(&self.authorization_epoch)?;
+        validate_revision(&self.authorization_view)?;
         validate_identifier(&self.subject_id)?;
         validate_generation(&self.generation)?;
         validate_revision(&self.file_facet_revision)?;
@@ -855,11 +885,54 @@ impl PullFileGenerationReceipt {
     }
 
     pub fn is_exact_for(&self, request: &PullFileDiffRequest) -> bool {
-        self.account_id == request.account_id
+        self.validate().is_ok()
+            && request.validate().is_ok()
+            && self.account_id == request.account_id
             && self.authorization_epoch == request.authorization_epoch
             && self.subject_id == request.subject_id
             && self.file_facet_revision == request.file_facet_revision
             && self.context.is_exact(&request.context)
+    }
+}
+
+/// Store-resolved membership of one selected file in the active generation.
+/// The renderer supplies only the request key; storage supplies this receipt
+/// after resolving the exact row and current authorization fence.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PullFileMembershipReceipt {
+    pub account_id: String,
+    pub authorization_epoch: String,
+    pub authorization_view: String,
+    pub subject_id: String,
+    pub generation: String,
+    pub file_facet_revision: String,
+    pub context: PullFileContext,
+    pub file_key: String,
+    pub identity: PullFileIdentity,
+}
+
+impl PullFileMembershipReceipt {
+    pub fn validate(&self) -> Result<()> {
+        validate_identifier(&self.account_id)?;
+        validate_revision(&self.authorization_epoch)?;
+        validate_revision(&self.authorization_view)?;
+        validate_identifier(&self.subject_id)?;
+        validate_generation(&self.generation)?;
+        validate_revision(&self.file_facet_revision)?;
+        self.context.validate()?;
+        validate_file_key(&self.file_key)?;
+        self.identity.validate()
+    }
+
+    pub fn is_exact_for(&self, request: &PullFileDiffRequest) -> bool {
+        self.validate().is_ok()
+            && request.validate().is_ok()
+            && self.account_id == request.account_id
+            && self.authorization_epoch == request.authorization_epoch
+            && self.subject_id == request.subject_id
+            && self.file_facet_revision == request.file_facet_revision
+            && self.context.is_exact(&request.context)
+            && self.file_key == request.file_key
     }
 }
 
@@ -900,16 +973,48 @@ impl PullFileBlobReferences {
     }
 }
 
+/// Source-specific exact-range validation evidence. Local Git object checks do
+/// not fabricate a provider-validation timestamp.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PullFileArtifactValidation {
+    Provider { provider_validated_at: String },
+    LocalExactRange { local_validated_at: String },
+}
+
+impl PullFileArtifactValidation {
+    fn validate(&self) -> Result<()> {
+        match self {
+            Self::Provider {
+                provider_validated_at,
+            } => validate_canonical_utc_timestamp(provider_validated_at),
+            Self::LocalExactRange { local_validated_at } => {
+                validate_canonical_utc_timestamp(local_validated_at)
+            }
+        }
+    }
+
+    const fn provenance(&self) -> PullFileProvenance {
+        match self {
+            Self::Provider { .. } => PullFileProvenance::Provider,
+            Self::LocalExactRange { .. } => PullFileProvenance::LocalExactRange,
+        }
+    }
+}
+
 /// One bounded selected-diff artifact for an exact generation and file key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PullFileArtifact {
     pub account_id: String,
     pub authorization_epoch: String,
+    pub authorization_view: String,
     pub subject_id: String,
     pub generation: String,
     pub file_key: String,
+    pub identity: PullFileIdentity,
     pub context: PullFileContext,
     pub source: Option<PullFileSource>,
+    pub validation: Option<PullFileArtifactValidation>,
     pub content_state: PullFileContentState,
     pub unified_text: Option<String>,
     pub blob_references: PullFileBlobReferences,
@@ -918,9 +1023,11 @@ pub struct PullFileArtifact {
     pub content_type: Option<String>,
     pub binary_hint: PullFileFlag,
     pub image_hint: PullFileFlag,
-    pub provider_validated_at: Option<String>,
     pub last_access_revision: String,
+    /// Decoded/semantic content bytes computed by native admission, never an
+    /// adapter- or renderer-supplied accounting claim.
     pub logical_bytes: String,
+    /// Retained content bytes computed by storage after persistence.
     pub on_disk_bytes: String,
 }
 
@@ -928,12 +1035,17 @@ impl PullFileArtifact {
     pub fn validate(&self) -> Result<()> {
         validate_identifier(&self.account_id)?;
         validate_revision(&self.authorization_epoch)?;
+        validate_revision(&self.authorization_view)?;
         validate_identifier(&self.subject_id)?;
         validate_generation(&self.generation)?;
         validate_file_key(&self.file_key)?;
+        self.identity.validate()?;
         self.context.validate()?;
         if let Some(source) = &self.source {
             source.validate()?;
+        }
+        if let Some(validation) = &self.validation {
+            validation.validate()?;
         }
         self.blob_references.validate()?;
         for oid in [&self.old_blob_oid, &self.new_blob_oid]
@@ -947,17 +1059,22 @@ impl PullFileArtifact {
         if let Some(content_type) = &self.content_type {
             validate_label(content_type, MAX_CONTENT_TYPE_BYTES)?;
         }
-        if let Some(validated_at) = &self.provider_validated_at {
-            validate_canonical_utc_timestamp(validated_at)?;
-        }
         validate_revision(&self.last_access_revision)?;
         let logical_bytes = validate_decimal(&self.logical_bytes)?;
         let on_disk_bytes = validate_decimal(&self.on_disk_bytes)?;
 
+        let source_validation_matches = self
+            .source
+            .as_ref()
+            .zip(self.validation.as_ref())
+            .is_some_and(|(source, validation)| {
+                source.strategy.provenance() == validation.provenance()
+            });
+
         match self.content_state {
             PullFileContentState::NotLoaded => {
                 if self.source.is_some()
-                    || self.provider_validated_at.is_some()
+                    || self.validation.is_some()
                     || self.unified_text.is_some()
                     || !self.blob_references.is_empty()
                     || logical_bytes != 0
@@ -968,8 +1085,7 @@ impl PullFileArtifact {
             }
             PullFileContentState::Text => {
                 let text = self.unified_text.as_ref().ok_or_else(invalid_pull_file)?;
-                if self.source.is_none()
-                    || self.provider_validated_at.is_none()
+                if !source_validation_matches
                     || !self.blob_references.is_empty()
                     || text.len() > MAX_PULL_FILE_TEXT_BYTES
                     || logical_bytes != text.len() as u64
@@ -979,8 +1095,7 @@ impl PullFileArtifact {
                 }
             }
             PullFileContentState::Binary | PullFileContentState::Image => {
-                if self.source.is_none()
-                    || self.provider_validated_at.is_none()
+                if !source_validation_matches
                     || self.unified_text.is_some()
                     || self.blob_references.is_empty()
                 {
@@ -990,8 +1105,7 @@ impl PullFileArtifact {
             PullFileContentState::Omitted
             | PullFileContentState::Unsupported
             | PullFileContentState::Unavailable => {
-                if self.source.is_none()
-                    || self.provider_validated_at.is_none()
+                if !source_validation_matches
                     || self.unified_text.is_some()
                     || !self.blob_references.is_empty()
                     || logical_bytes != 0
@@ -1001,8 +1115,7 @@ impl PullFileArtifact {
                 }
             }
             PullFileContentState::Oversized => {
-                if self.source.is_none()
-                    || self.provider_validated_at.is_none()
+                if !source_validation_matches
                     || self.unified_text.is_some()
                     || !self.blob_references.is_empty()
                     || on_disk_bytes != 0
@@ -1017,14 +1130,20 @@ impl PullFileArtifact {
     pub fn is_exact_for(
         &self,
         request: &PullFileDiffRequest,
-        active: &PullFileGenerationReceipt,
+        membership: &PullFileMembershipReceipt,
     ) -> bool {
-        active.is_exact_for(request)
-            && self.account_id == active.account_id
-            && self.authorization_epoch == active.authorization_epoch
-            && self.subject_id == active.subject_id
-            && self.generation == active.generation
-            && self.context.is_exact(&active.context)
+        self.validate().is_ok()
+            && request.validate().is_ok()
+            && membership.validate().is_ok()
+            && membership.is_exact_for(request)
+            && self.account_id == membership.account_id
+            && self.authorization_epoch == membership.authorization_epoch
+            && self.authorization_view == membership.authorization_view
+            && self.subject_id == membership.subject_id
+            && self.generation == membership.generation
+            && self.context.is_exact(&membership.context)
+            && self.file_key == membership.file_key
+            && self.identity == membership.identity
             && self.account_id == request.account_id
             && self.authorization_epoch == request.authorization_epoch
             && self.subject_id == request.subject_id
@@ -1155,6 +1274,7 @@ mod tests {
                 context: context(),
             },
             account,
+            authorization_view: "3".into(),
             repository,
             subject,
             continuation: None,
@@ -1166,11 +1286,16 @@ mod tests {
         PullFileArtifact {
             account_id: "account".into(),
             authorization_epoch: "2".into(),
+            authorization_view: "3".into(),
             subject_id: "pull-1".into(),
             generation: GENERATION.into(),
             file_key: "file:001".into(),
+            identity: provider_file().identity,
             context: context(),
             source: Some(source(PullFileSourceStrategy::GithubPullFiles)),
+            validation: Some(PullFileArtifactValidation::Provider {
+                provider_validated_at: "2026-10-07T12:00:00Z".into(),
+            }),
             content_state: PullFileContentState::Text,
             unified_text: Some(text.into()),
             blob_references: PullFileBlobReferences::default(),
@@ -1179,7 +1304,6 @@ mod tests {
             content_type: Some("text/x-diff".into()),
             binary_hint: PullFileFlag::Known(false),
             image_hint: PullFileFlag::Known(false),
-            provider_validated_at: Some("2026-10-07T12:00:00Z".into()),
             last_access_revision: "20".into(),
             logical_bytes: text.len().to_string(),
             on_disk_bytes: text.len().to_string(),
@@ -1190,10 +1314,25 @@ mod tests {
         PullFileGenerationReceipt {
             account_id: "account".into(),
             authorization_epoch: "2".into(),
+            authorization_view: "3".into(),
             subject_id: "pull-1".into(),
             generation: GENERATION.into(),
             file_facet_revision: "19".into(),
             context: context(),
+        }
+    }
+
+    fn membership_receipt() -> PullFileMembershipReceipt {
+        PullFileMembershipReceipt {
+            account_id: "account".into(),
+            authorization_epoch: "2".into(),
+            authorization_view: "3".into(),
+            subject_id: "pull-1".into(),
+            generation: GENERATION.into(),
+            file_facet_revision: "19".into(),
+            context: context(),
+            file_key: "file:001".into(),
+            identity: provider_file().identity,
         }
     }
 
@@ -1268,6 +1407,11 @@ mod tests {
             "../secret",
             "src/../secret",
             "src\\..\\secret",
+            "./src.rs",
+            "src/./file.rs",
+            "src//file.rs",
+            "src/",
+            "src\\.\\file.rs",
             "src/control\n.rs",
         ] {
             assert!(!is_valid_pull_file_path(path), "accepted {path:?}");
@@ -1394,6 +1538,52 @@ mod tests {
     }
 
     #[test]
+    fn github_exact_three_thousand_boundary_requires_provider_limit_evidence() {
+        let github_source = source(PullFileSourceStrategy::GithubPullFiles);
+        let request = PullFileCollectionRequest {
+            continuation: Some(PullFileContinuation {
+                cursor: "page-before-boundary".into(),
+                provider_page_count: 1,
+                seen_cursors: vec!["page-before-boundary".into()],
+                source: github_source.clone(),
+            }),
+            start_position: MAX_PULL_FILES - 1,
+            ..collection_request()
+        };
+        let boundary = PullFileProviderPage {
+            context: context(),
+            files: provider_files(1),
+            source: github_source,
+            start_position: MAX_PULL_FILES - 1,
+            next_cursor: None,
+            cap: None,
+            freshness_seconds: 30,
+            cooldown_seconds: None,
+        };
+        assert!(boundary.validate_for(&request).is_err());
+
+        let local_cap = PullFileProviderPage {
+            cap: Some(PullFileCapEvidence {
+                provenance: PullFileCapProvenance::Local,
+                reason: PullFileCapReason::LocalFileLimit,
+                remote_has_more: PullFileFlag::Unknown,
+            }),
+            ..boundary.clone()
+        };
+        assert!(local_cap.validate_for(&request).is_err());
+
+        let provider_cap = PullFileProviderPage {
+            cap: Some(PullFileCapEvidence {
+                provenance: PullFileCapProvenance::Provider,
+                reason: PullFileCapReason::ProviderFileLimit,
+                remote_has_more: PullFileFlag::Unknown,
+            }),
+            ..boundary
+        };
+        assert!(provider_cap.validate_for(&request).is_ok());
+    }
+
+    #[test]
     fn continuation_counts_pages_from_one_and_rejects_every_cursor_cycle() {
         let first_request = collection_request();
         let first_page = PullFileProviderPage {
@@ -1423,6 +1613,14 @@ mod tests {
             next_cursor: Some("cursor-b".into()),
             ..first_page.clone()
         };
+        let switched_source = PullFileProviderPage {
+            source: PullFileSource {
+                strategy: PullFileSourceStrategy::GithubPullFiles,
+                adapter_version: 2,
+            },
+            ..second_page.clone()
+        };
+        assert!(switched_source.validate_for(&second_request).is_err());
         let second = second_page
             .next_continuation(&second_request)
             .unwrap()
@@ -1449,6 +1647,7 @@ mod tests {
                 seen_cursors: (1..MAX_PULL_FILE_PROVIDER_PAGES)
                     .map(|page| format!("cursor-{page}"))
                     .collect(),
+                source: source(PullFileSourceStrategy::GithubPullFiles),
             }),
             start_position: 29,
             ..collection_request()
@@ -1469,6 +1668,7 @@ mod tests {
             cursor: "cursor-b".into(),
             provider_page_count: 2,
             seen_cursors: vec!["cursor-b".into(), "cursor-b".into()],
+            source: source(PullFileSourceStrategy::GithubPullFiles),
         };
         assert!(forged.validate().is_err());
     }
@@ -1492,6 +1692,10 @@ mod tests {
             .context
             .base_repository_provider_id = "other-repository".into();
         assert!(wrong_base_context.validate().is_err());
+
+        let mut invalid_authorization_view = collection_request();
+        invalid_authorization_view.authorization_view = "0".into();
+        assert!(invalid_authorization_view.validate().is_err());
 
         let gitlab_page = PullFileProviderPage {
             context: context(),
@@ -1579,6 +1783,23 @@ mod tests {
             ..provider_page
         };
         assert!(local_cap.validate_for(&request).is_ok());
+
+        let provider_cap_from_local_source = PullFileProviderPage {
+            source: source(PullFileSourceStrategy::LocalExactRange),
+            cap: Some(provider_cap),
+            ..local_cap.clone()
+        };
+        assert!(
+            provider_cap_from_local_source
+                .validate_for(&request)
+                .is_err()
+        );
+
+        let local_cap_from_local_source = PullFileProviderPage {
+            source: source(PullFileSourceStrategy::LocalExactRange),
+            ..local_cap
+        };
+        assert!(local_cap_from_local_source.validate_for(&request).is_ok());
     }
 
     #[test]
@@ -1620,23 +1841,50 @@ mod tests {
         assert!(request.validate().is_ok());
         let active = generation_receipt();
         assert!(active.validate().is_ok());
-        assert!(text_artifact("").is_exact_for(&request, &active));
+        let membership = membership_receipt();
+        assert!(membership.validate().is_ok());
+        assert!(text_artifact("").is_exact_for(&request, &membership));
 
         let mut stale_epoch = text_artifact("");
         stale_epoch.authorization_epoch = "1".into();
-        assert!(!stale_epoch.is_exact_for(&request, &active));
+        assert!(!stale_epoch.is_exact_for(&request, &membership));
 
-        let stale_generation = PullFileGenerationReceipt {
+        let stale_generation = PullFileMembershipReceipt {
             generation: "123e4567-e89b-12d3-a456-426614174099".into(),
-            ..active.clone()
+            ..membership.clone()
         };
         assert!(!text_artifact("").is_exact_for(&request, &stale_generation));
 
-        let stale_facet = PullFileGenerationReceipt {
+        let stale_facet = PullFileMembershipReceipt {
             file_facet_revision: "18".into(),
-            ..active.clone()
+            ..membership.clone()
         };
         assert!(!text_artifact("").is_exact_for(&request, &stale_facet));
+
+        let stale_view = PullFileMembershipReceipt {
+            authorization_view: "4".into(),
+            ..membership.clone()
+        };
+        assert!(!text_artifact("").is_exact_for(&request, &stale_view));
+
+        let stale_identity = PullFileMembershipReceipt {
+            identity: PullFileIdentity {
+                old_path: Some("other-old.rs".into()),
+                new_path: Some("other-new.rs".into()),
+            },
+            ..membership.clone()
+        };
+        assert!(!text_artifact("").is_exact_for(&request, &stale_identity));
+
+        let invalid_membership = PullFileMembershipReceipt {
+            authorization_view: "0".into(),
+            ..membership.clone()
+        };
+        assert!(!text_artifact("").is_exact_for(&request, &invalid_membership));
+
+        let mut invalid_artifact = text_artifact("text");
+        invalid_artifact.logical_bytes = "3".into();
+        assert!(!invalid_artifact.is_exact_for(&request, &membership));
 
         let decimal_generation = PullFileGenerationReceipt {
             generation: "19".into(),
@@ -1655,6 +1903,7 @@ mod tests {
                 ..request.clone()
             };
             assert!(malformed.validate().is_err());
+            assert!(!text_artifact("").is_exact_for(&malformed, &membership));
         }
     }
 
@@ -1667,6 +1916,9 @@ mod tests {
 
         let binary = PullFileArtifact {
             source: Some(source(PullFileSourceStrategy::LocalExactRange)),
+            validation: Some(PullFileArtifactValidation::LocalExactRange {
+                local_validated_at: "2026-10-07T12:00:00Z".into(),
+            }),
             content_state: PullFileContentState::Binary,
             unified_text: None,
             blob_references: PullFileBlobReferences {
@@ -1697,7 +1949,7 @@ mod tests {
 
         let not_loaded = PullFileArtifact {
             source: None,
-            provider_validated_at: None,
+            validation: None,
             content_state: PullFileContentState::NotLoaded,
             unified_text: None,
             logical_bytes: "0".into(),
@@ -1725,6 +1977,9 @@ mod tests {
 
         let mut remote_blob = PullFileArtifact {
             source: Some(source(PullFileSourceStrategy::LocalExactRange)),
+            validation: Some(PullFileArtifactValidation::LocalExactRange {
+                local_validated_at: "2026-10-07T12:00:00Z".into(),
+            }),
             content_state: PullFileContentState::Image,
             unified_text: None,
             blob_references: PullFileBlobReferences {
@@ -1740,13 +1995,25 @@ mod tests {
         assert!(remote_blob.validate().is_ok());
 
         let mut non_utc = text_artifact("text");
-        non_utc.provider_validated_at = Some("2026-10-07T17:30:00+05:30".into());
+        non_utc.validation = Some(PullFileArtifactValidation::Provider {
+            provider_validated_at: "2026-10-07T17:30:00+05:30".into(),
+        });
         assert!(non_utc.validate().is_err());
-        non_utc.provider_validated_at = Some("2026-10-07T12:00:00+00:00".into());
+        non_utc.validation = Some(PullFileArtifactValidation::Provider {
+            provider_validated_at: "2026-10-07T12:00:00+00:00".into(),
+        });
         assert!(non_utc.validate().is_err());
         let mut missing_validation = text_artifact("text");
-        missing_validation.provider_validated_at = None;
+        missing_validation.validation = None;
         assert!(missing_validation.validate().is_err());
+
+        let mut false_provider_evidence = text_artifact("text");
+        false_provider_evidence.source = Some(source(PullFileSourceStrategy::LocalExactRange));
+        assert!(false_provider_evidence.validate().is_err());
+        false_provider_evidence.validation = Some(PullFileArtifactValidation::LocalExactRange {
+            local_validated_at: "2026-10-07T12:00:00Z".into(),
+        });
+        assert!(false_provider_evidence.validate().is_ok());
 
         let retained_oversized_size = PullFileArtifact {
             content_state: PullFileContentState::Oversized,
