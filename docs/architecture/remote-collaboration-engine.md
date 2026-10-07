@@ -3259,3 +3259,22 @@ This R103 evidence is local macOS evidence at the integrated source head. The ol
 is required after publishing the restacked draft. No personal credential, live
 provider, Gitru cloud account, keyring, other-platform, CodeQL or merge result is
 inferred. R99 recovery/export continues to precede destructive R104 retention.
+
+### RURU-136 pull checkout published for review — 7 October 2026
+
+Draft [#167](https://github.com/ruru-m07/gitru/pull/167) publishes the provider-
+independent local checkout flow at signed source/evidence head
+`39dc8d7a4bd69efff999479f6a46cb29a05cac37`, stacked on exact signed RURU-104
+head `44a94ee69e1d739b55adfdfec666dbacf89e266c`. The cached provider head stays an
+observation: native code resolves a linked clone, binds the credential-free
+transport identity and exact OID, performs a ref-free fetch only when necessary,
+and never creates or rewrites a remote.
+
+Existing target branches are serialized with a prepared Git ref transaction that
+supports Git's active object/ref backend, while direct-ref and exact branch/OID
+checks bound the switch. Final local `make verify` passes 661 frontend/SDK/UI
+tests with one platform skip, 891 Rust tests with four ignored, lint, types,
+production build, format and workspace Clippy. Packaged macOS E2E passes both
+specs and all three scenarios; the focused checkout integration passes 26/26.
+Exact-head remote CI, Windows, live-provider and real credential-manager behavior
+remain pending and separate. RURU-136 stays In Progress and draft/unmerged.

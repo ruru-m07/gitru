@@ -206,8 +206,9 @@ narrow endpoint-to-saved-repository matching in collaboration local links, a thi
 Tauri plan/execute module and registration, generated command output, SDK wrappers,
 the PR detail dialog and focused tests, and this record. It does not touch RURU-104
 retention files, command outbox/delivery, provider HTTP adapters, account vaults,
-clone flows, remote management, or root architecture/backlog files. Generated
-`packages/commands` output is produced only by `make typegen` and never hand edited.
+clone flows, or remote management. Root architecture/backlog edits only record
+the published result and evidence. Generated `packages/commands` output is
+produced only by `make typegen` and never hand edited.
 
 Bounds: at most 64 live plans, a two minute plan lifetime, 255 bytes per Git ref
 or branch component, canonical lowercase 40/64-hex Git object IDs, existing

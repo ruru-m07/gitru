@@ -188,7 +188,7 @@ Then implement [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-
 | [RURU-118: Show cached checks and commit statuses for the current PR head](https://linear.app/catra/issue/RURU-118/show-cached-checks-and-commit-statuses-for-the-current-pr-head) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details) |
 | [RURU-119: Add cached PR changed-file and diff navigation](https://linear.app/catra/issue/RURU-119/add-cached-pr-changed-file-and-diff-navigation) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-98](https://linear.app/catra/issue/RURU-98/add-foreground-demand-leases-to-the-native-sync-scheduler) |
 | [RURU-124: Add local inbox snooze, bookmark and disposition state](https://linear.app/catra/issue/RURU-124/add-local-inbox-snooze-bookmark-and-disposition-state) | Backlog | [RURU-79](https://linear.app/catra/issue/RURU-79/resolve-inbox-notifications-to-cached-pr-and-issue-subjects) |
-| [RURU-136: Check out pull request branches through the local Git workflow](https://linear.app/catra/issue/RURU-136/check-out-pull-request-branches-through-the-local-git-workflow) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-96](https://linear.app/catra/issue/RURU-96/link-local-git-remotes-to-collaboration-repositories-and-accounts) |
+| [RURU-136: Check out pull request branches through the local Git workflow](https://linear.app/catra/issue/RURU-136/check-out-pull-request-branches-through-the-local-git-workflow) | In Progress | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-96](https://linear.app/catra/issue/RURU-96/link-local-git-remotes-to-collaboration-repositories-and-accounts) |
 | [RURU-137: Cache and navigate the pull request commit list](https://linear.app/catra/issue/RURU-137/cache-and-navigate-the-pull-request-commit-list) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details) |
 
 ### Sync, storage and performance
@@ -888,7 +888,7 @@ Acceptance criteria:
 
 ## RURU-136: Check out pull request branches through the local Git workflow
 
-Planning key: C47. Group: Read experience. Priority: Medium. State: Backlog.
+Planning key: C47. Group: Read experience. Priority: Medium. State: In Progress.
 Linear: [RURU-136](https://linear.app/catra/issue/RURU-136/check-out-pull-request-branches-through-the-local-git-workflow).
 Prerequisites: [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-96](https://linear.app/catra/issue/RURU-96/link-local-git-remotes-to-collaboration-repositories-and-accounts).
 
@@ -2198,3 +2198,20 @@ matrix. The original R103 ancestor's 14/14 checks do not qualify this head. Keep
 R103 In Review and unmerged; no live-provider, personal credential, keyring,
 other-platform or CodeQL result is inferred. Integrate R99 recovery/export before
 starting destructive R104 retention.
+
+### RURU-136 pull checkout published for review — 7 October 2026
+
+Draft [#167](https://github.com/ruru-m07/gitru/pull/167) publishes the provider-
+independent local checkout flow at signed source/evidence head
+`39dc8d7a4bd69efff999479f6a46cb29a05cac37`, stacked on exact signed RURU-104
+head `44a94ee69e1d739b55adfdfec666dbacf89e266c`. The native boundary resolves a
+linked clone, binds the cached provider OID and credential-free endpoint, fetches
+without rewriting remotes when needed, serializes an existing branch with a
+prepared Git ref transaction, and verifies branch/OID before reporting success.
+
+Final local `make verify` passes 661 frontend/SDK/UI tests with one platform skip,
+891 Rust tests with four ignored, lint, types, production build, format and
+workspace Clippy. Packaged macOS E2E passes both specs and all three scenarios;
+the focused checkout integration passes 26/26. Exact-head remote CI, Windows,
+live-provider and real credential-manager behavior remain pending and separate.
+RURU-136 stays In Progress and draft/unmerged.
