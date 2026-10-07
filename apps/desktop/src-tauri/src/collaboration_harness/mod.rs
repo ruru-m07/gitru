@@ -4,7 +4,7 @@ pub use domain::*;
 
 use crate::commands::collaboration::CollaborationState;
 use collaboration::{
-    ChangeHint, CollaborationError, CollaborationRuntime, ErrorCode, test_harness::*,
+    test_harness::*, ChangeHint, CollaborationError, CollaborationRuntime, ErrorCode,
 };
 use serde::Deserialize;
 use std::{

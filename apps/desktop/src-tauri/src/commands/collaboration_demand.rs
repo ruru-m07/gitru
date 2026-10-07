@@ -1,5 +1,5 @@
 //! The native caller supplies lease ownership; content views cannot activate peers.
-use super::collaboration::{CollaborationState, Operation, authorize, caller_allowed};
+use super::collaboration::{authorize, caller_allowed, CollaborationState, Operation};
 use collaboration::{
     AcquireDemandRequest, CollaborationError, DemandLeaseReceipt, DemandOwnerActivity,
     DemandRenewalReceipt, ErrorCode, ReleaseDemandRequest, RenewDemandRequest,

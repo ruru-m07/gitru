@@ -481,7 +481,7 @@ pub async fn collaboration_hydrate_detail(
 
 #[cfg(test)]
 mod tests {
-    use super::{Operation, caller_allowed};
+    use super::{caller_allowed, Operation};
 
     const DOMAIN_OPERATIONS: &[Operation] = &[
         Operation::Accounts,
