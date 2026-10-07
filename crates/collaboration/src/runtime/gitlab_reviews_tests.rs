@@ -356,3 +356,158 @@ async fn bounded_gitlab_threads_publish_partial_and_malformed_native_replacement
     }
     runtime.shutdown().await.unwrap();
 }
+
+struct HeldReview {
+    inner: providers::gitlab::GitlabProvider,
+    entered: Notify,
+    release: Notify,
+}
+#[async_trait::async_trait]
+impl CollaborationProvider for HeldReview {
+    fn kind(&self) -> ProviderKind {
+        ProviderKind::Gitlab
+    }
+    fn profile(&self, account: &RemoteAccount) -> ProviderProfile {
+        self.inner.profile(account)
+    }
+    async fn probe(&self, _: &SecretToken) -> Result<VerifiedAccount, ProviderError> {
+        panic!("fixture must not probe")
+    }
+    async fn fetch_page(
+        &self,
+        _: &SecretToken,
+        _: FeedRequest,
+    ) -> Result<FetchPage, ProviderError> {
+        panic!("fixture must not dispatch feeds")
+    }
+    async fn fetch_detail(
+        &self,
+        token: &SecretToken,
+        request: DetailRequest,
+    ) -> Result<DetailPage, ProviderError> {
+        self.inner.fetch_detail(token, request).await
+    }
+    async fn fetch_reviews(
+        &self,
+        token: &SecretToken,
+        request: ReviewRequest,
+    ) -> Result<DetailPage, ProviderError> {
+        let page = self.inner.fetch_reviews(token, request).await?;
+        self.entered.notify_one();
+        self.release.notified().await;
+        Ok(page)
+    }
+}
+#[tokio::test]
+async fn held_gitlab_review_cannot_cross_summary_head_or_authorization_epoch() {
+    for replace_epoch in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(dir.path().join("held.sqlite")).await.unwrap());
+        let account = seed(&store).await;
+        let (provider, http) = server(|_| {
+            vec![
+                response(200, "", &merge_request(999, 123, 67).to_string()),
+                response(200, "RateLimit-Remaining: 0\r\n", &discussions()),
+            ]
+        });
+        let provider = Arc::new(HeldReview {
+            inner: provider,
+            entered: Notify::new(),
+            release: Notify::new(),
+        });
+        let runtime = Arc::new(CollaborationRuntime::new(
+            store.clone(),
+            Arc::new(Vault::default()),
+            provider.clone(),
+        ));
+        runtime
+            .hydrate_detail(HydrateDetailRequest {
+                account_id: ACCOUNT.into(),
+                authorization_epoch: account.authorization_epoch.clone(),
+                subject_id: SUBJECT.into(),
+                facet: DetailFacet::ReviewThreads,
+            })
+            .await
+            .unwrap();
+        assert!(runtime.run_next().await); // Body context first.
+        let job = {
+            let runtime = runtime.clone();
+            tokio::spawn(async move { runtime.run_next().await })
+        };
+        tokio::time::timeout(Duration::from_secs(5), provider.entered.notified())
+            .await
+            .unwrap();
+        if replace_epoch {
+            store
+                .stage_credential(ACCOUNT, "synthetic-replacement-reference")
+                .await
+                .unwrap();
+            store
+                .commit_account_credential(
+                    RemoteAccount {
+                        authorization_epoch: "3".into(),
+                        ..account.clone()
+                    },
+                    "synthetic-replacement-reference",
+                )
+                .await
+                .unwrap();
+        } else {
+            let mut subject = store.detail_subject(ACCOUNT, SUBJECT).await.unwrap();
+            subject.head_oid = Some("e".repeat(40));
+            subject.updated_at = "2026-10-09T00:00:00Z".into();
+            let scope = format!("repo:{REPOSITORY}:pull_request");
+            let run_id = store
+                .begin_sync(ACCOUNT, &account.authorization_epoch, &scope)
+                .await
+                .unwrap();
+            store
+                .apply_page(PageCommit {
+                    account_id: ACCOUNT.into(),
+                    authorization_epoch: account.authorization_epoch.clone(),
+                    scope,
+                    run_id,
+                    repositories: vec![],
+                    items: vec![subject],
+                    endpoint_aliases: vec![],
+                    next_cursor: None,
+                    etag: None,
+                    last_modified: None,
+                    not_modified: false,
+                    complete: true,
+                    observed_at: "2026-10-09T00:00:00Z".into(),
+                })
+                .await
+                .unwrap();
+        }
+        let after_change = store.revision().await.unwrap();
+        provider.release.notify_one();
+        assert!(
+            tokio::time::timeout(Duration::from_secs(5), job)
+                .await
+                .unwrap()
+                .unwrap()
+        );
+        let budget = store.scope_state(ACCOUNT, "provider:rest").await.unwrap();
+        if replace_epoch {
+            assert_eq!(store.revision().await.unwrap(), after_change);
+            assert!(budget.is_none_or(|scope| scope.sync.next_retry_at.is_none()));
+            assert!(store.detail_subject(ACCOUNT, SUBJECT).await.is_err());
+        } else {
+            assert!(
+                store
+                    .detail(query(DetailFacet::ReviewThreads))
+                    .await
+                    .unwrap()
+                    .entries
+                    .is_empty()
+            );
+            assert!(
+                budget.unwrap().sync.next_retry_at.is_some(),
+                "same-epoch rejected read still consumed provider quota"
+            );
+        }
+        assert_eq!(http.join().unwrap().len(), 2);
+        runtime.shutdown().await.unwrap();
+    }
+}
