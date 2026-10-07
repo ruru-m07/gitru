@@ -80,13 +80,14 @@ impl CollaborationRuntime {
                     return Ok(true);
                 };
                 let result = bounded(policy.reconcile(&token, request.clone())).await;
-                let (report, error) = match result {
-                    Some(Ok(report)) => (report, None),
-                    Some(Err(error)) => (DeliveryReport::unknown(), Some(error)),
-                    None => (DeliveryReport::unknown(), None),
+                let report = match result {
+                    Some(Ok(report)) => report,
+                    Some(Err(error)) => DeliveryReport {
+                        provider_error: Some(error),
+                        ..DeliveryReport::unknown()
+                    },
+                    None => DeliveryReport::unknown(),
                 };
-                // Record unresolved evidence/state first even if saving a shared
-                // quota observation subsequently fails.
                 self.complete_delivery_turn(
                     &request.command,
                     &account,
@@ -95,9 +96,6 @@ impl CollaborationRuntime {
                     report,
                 )
                 .await?;
-                if let Some(error) = error {
-                    self.delivery_provider_error(&account, &error).await?;
-                }
                 return Ok(true);
             }
             let (request, revision) = self
@@ -121,12 +119,17 @@ impl CollaborationRuntime {
             let preparation = match bounded(policy.prepare(&token, &request)).await {
                 Some(Ok(value)) => value,
                 Some(Err(error)) => {
-                    self.defer_delivery_turn(
-                        &command,
-                        error.retry_after_seconds.unwrap_or(60).max(1),
-                    )
-                    .await?;
-                    self.delivery_provider_error(&account, &error).await?;
+                    let deferred = self
+                        .defer_delivery_turn(
+                            &command,
+                            error.retry_after_seconds.unwrap_or(60).max(1),
+                        )
+                        .await;
+                    // Observed account facts survive an unrelated command
+                    // transaction failure. Preserve the primary error if both fail.
+                    let observed = self.delivery_provider_error(&account, &error).await;
+                    deferred?;
+                    observed?;
                     return Ok(true);
                 }
                 None => {
@@ -134,14 +137,22 @@ impl CollaborationRuntime {
                     return Ok(true);
                 }
             };
-            self.check_provider_budget(&account).await?;
+            if let Some(cooldown) = preparation.account_cooldown_seconds {
+                self.persist_rate_limit(&account, cooldown, None).await?;
+            }
+            if let Err(error) = self.check_provider_budget(&account).await {
+                if error.code == ErrorCode::RateLimited {
+                    return Ok(true);
+                }
+                return Err(error);
+            }
             let claim = self
                 .store
                 .claim_delivery(
                     &command,
                     &account,
                     policy.as_ref(),
-                    &preparation,
+                    &preparation.bytes,
                     &self.delivery_time().await,
                 )
                 .await?;
@@ -246,7 +257,7 @@ impl CollaborationRuntime {
             report.outcome = DeliveryOutcome::Unknown;
         }
         let delay = report.retry_after_seconds.unwrap_or(60).max(1);
-        let revision = self
+        let completion = self
             .store
             .complete_delivery(
                 command,
@@ -259,11 +270,26 @@ impl CollaborationRuntime {
                     next: &self.delivery_future(delay).await,
                 },
             )
-            .await?;
-        self.publish(revision);
-        if let Some(cooldown) = report.account_cooldown_seconds {
-            self.persist_rate_limit(account, cooldown, None).await?;
+            .await;
+        if let Ok(revision) = &completion {
+            self.publish(revision.clone());
         }
+        // The operation outcome and account response facts have independent
+        // durability. Try both observations even if finalization rolled back;
+        // never discard a captured cooldown or 401 because result SQL failed.
+        let quota = if let Some(cooldown) = report.account_cooldown_seconds {
+            self.persist_rate_limit(account, cooldown, None).await
+        } else {
+            Ok(())
+        };
+        let provider = if let Some(error) = &report.provider_error {
+            self.delivery_provider_error(account, error).await
+        } else {
+            Ok(())
+        };
+        completion?;
+        quota?;
+        provider?;
         Ok(())
     }
     async fn delivery_provider_error(
@@ -271,19 +297,20 @@ impl CollaborationRuntime {
         account: &RemoteAccount,
         error: &ProviderError,
     ) -> Result<(), CollaborationError> {
-        if let Some(cooldown) =
+        let quota = if let Some(cooldown) =
             error
                 .account_cooldown_seconds
                 .or(if error.kind == ProviderErrorKind::RateLimited {
                     error.retry_after_seconds.or(Some(60))
                 } else {
                     None
-                })
-        {
-            self.persist_rate_limit(account, cooldown, None).await?;
-        }
-        if error.kind == ProviderErrorKind::Authentication {
-            let revision = self
+                }) {
+            self.persist_rate_limit(account, cooldown, None).await
+        } else {
+            Ok(())
+        };
+        let authentication = if error.kind == ProviderErrorKind::Authentication {
+            let result = self
                 .store
                 .set_sync_status(
                     &account.id,
@@ -296,11 +323,17 @@ impl CollaborationRuntime {
                         error: Some(error.clone().into()),
                     },
                 )
-                .await?;
-            self.publish(revision);
-            self.reset_account_scheduler(&account.id).await;
-        }
-        Ok(())
+                .await;
+            if let Ok(revision) = &result {
+                self.publish(revision.clone());
+                self.reset_account_scheduler(&account.id).await;
+            }
+            result.map(|_| ())
+        } else {
+            Ok(())
+        };
+        quota?;
+        authentication
     }
     async fn defer_delivery_turn(
         &self,

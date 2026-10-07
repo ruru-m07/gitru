@@ -13,7 +13,9 @@ RURU-95 credential cutover and RURU-106 recovery/schema 0015. The branch is
 `ruru/ruru-115-durable-delivery`. Live Linear RURU-115 is In Progress with RURU-95,
 RURU-106 and RURU-114 prerequisites; no duplicate delivery PR exists. Those
 prerequisites remain review stacks, not merged releases. RURU-106 final combined
-and packaged qualification belongs to its coordinator.
+and packaged qualification belongs to its coordinator. Before publication this
+branch was rebased, preserving signed scoped commits, onto its final published
+RURU-106 head `3e4627be0fd633f2042be6f62b1de0e6dbd029ee`.
 
 This slice owns native delivery policy/state, migration 0016, storage transitions,
 provider-registry integration, bounded runtime scheduling and synthetic tests.
@@ -247,3 +249,30 @@ These are local synthetic results, not live provider or new-head remote CI claim
 No public IPC signature changes are required; generated bindings remain untouched.
 No personal credential, live collaboration database, cloud login, provider write
 or merge was used for this qualification.
+
+
+## Independent review follow-up — 7 October 22:06 UTC
+
+Successful read preparation now returns typed bytes plus an optional shared quota
+observation. The worker persists that observation before its final budget/attempt
+claim, so a successful prerequisite response exhausting quota leaves a queued
+command with zero attempts, including after cold restart.
+
+Delivery reports also carry a separate typed provider error. An authentication
+failure invalidates the captured account epoch while retaining the ambiguous
+command and its original intent; it cannot by itself prove rejection or safe
+retry. Result persistence, quota observation and authentication invalidation are
+attempted independently. A failed command transaction or finalization callback
+cannot skip a known cooldown or credential failure, and a quota-only persistence
+failure cannot skip account invalidation. The primary operation error remains the
+returned error if more than one independent write fails. All observations retain
+the same captured authorization epoch fence.
+
+Independent review's preparation quota, post-response quota-loss and dispatch
+credential-signalling findings are addressed. Local focused delivery coverage
+passed 24 parent cases plus one ignored subprocess helper, followed by the new
+authentication fault matrix (result-write failure and quota-write failure). Strict
+all-target collaboration Clippy passed. These cases include a cold restart,
+forced SQLite scheduling errors, result finalization rollback, and an invalid
+credential preventing a second command from dispatching. Final whole-workspace
+`make verify` is running on the rebased source; no remote CI claim is made here.

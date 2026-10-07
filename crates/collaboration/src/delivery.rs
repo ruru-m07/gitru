@@ -188,6 +188,10 @@ pub(crate) struct DeliveryReport {
     pub outcome: DeliveryOutcome,
     pub retry_after_seconds: Option<u64>,
     pub account_cooldown_seconds: Option<u64>,
+    /// Credential/quota observations are separate from proof of the operation
+    /// outcome: for example, a 401 must stop account dispatch without implying
+    /// that an ambiguous remote create was safely rejected.
+    pub provider_error: Option<ProviderError>,
 }
 impl DeliveryReport {
     pub fn unknown() -> Self {
@@ -195,8 +199,15 @@ impl DeliveryReport {
             outcome: DeliveryOutcome::Unknown,
             retry_after_seconds: None,
             account_cooldown_seconds: None,
+            provider_error: None,
         }
     }
+}
+
+pub(crate) struct DeliveryPreparation {
+    pub bytes: Vec<u8>,
+    /// Successful prerequisite reads can exhaust the same quota as mutations.
+    pub account_cooldown_seconds: Option<u64>,
 }
 
 pub(crate) enum ClaimDecision {
@@ -216,8 +227,11 @@ pub(crate) trait CommandDeliveryPolicy: Send + Sync {
         &self,
         _token: &SecretToken,
         _request: &ReconcileRequest,
-    ) -> Result<Vec<u8>, ProviderError> {
-        Ok(vec![])
+    ) -> Result<DeliveryPreparation, ProviderError> {
+        Ok(DeliveryPreparation {
+            bytes: vec![],
+            account_cooldown_seconds: None,
+        })
     }
     async fn validate_claim(
         &self,

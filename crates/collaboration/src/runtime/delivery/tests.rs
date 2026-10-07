@@ -11,7 +11,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Mutex as StdMutex,
-        atomic::{AtomicBool, AtomicU8, AtomicUsize},
+        atomic::{AtomicBool, AtomicU8, AtomicU64, AtomicUsize},
     },
 };
 const FIRST: &str = "123e4567-e89b-12d3-a456-426614174000";
@@ -105,6 +105,8 @@ struct Policy {
     hold: AtomicBool,
     release: Notify,
     prepare_hold: AtomicBool,
+    prepare_cooldown: AtomicU64,
+    result_cooldown: AtomicU64,
     prepare_entered: Notify,
     prepare_release: Notify,
     guard: AtomicBool,
@@ -121,6 +123,8 @@ impl Policy {
             hold: AtomicBool::new(false),
             release: Notify::new(),
             prepare_hold: AtomicBool::new(false),
+            prepare_cooldown: AtomicU64::new(0),
+            result_cooldown: AtomicU64::new(0),
             prepare_entered: Notify::new(),
             prepare_release: Notify::new(),
             guard: AtomicBool::new(true),
@@ -146,7 +150,18 @@ impl Policy {
                 _ => DeliveryOutcome::Unknown,
             },
             retry_after_seconds: Some(1),
-            account_cooldown_seconds: None,
+            account_cooldown_seconds: match self.result_cooldown.load(Ordering::SeqCst) {
+                0 => None,
+                value => Some(value),
+            },
+            provider_error: None,
+        }
+    }
+    fn quota_error(&self) -> ProviderError {
+        ProviderError {
+            kind: ProviderErrorKind::RateLimited,
+            retry_after_seconds: Some(1),
+            account_cooldown_seconds: Some(120),
         }
     }
     fn receipt_key(command: &DeliveryCommand) -> String {
@@ -193,15 +208,24 @@ impl CommandDeliveryPolicy for Policy {
         &self,
         _: &SecretToken,
         _: &ReconcileRequest,
-    ) -> Result<Vec<u8>, ProviderError> {
+    ) -> Result<DeliveryPreparation, ProviderError> {
         if self.prepare_hold.load(Ordering::SeqCst) {
             self.prepare_entered.notify_one();
             self.prepare_release.notified().await;
         }
+        if self.mode.load(Ordering::SeqCst) == 10 {
+            return Err(self.quota_error());
+        }
         if self.mode.load(Ordering::SeqCst) == 9 {
             return Err(ProviderError::new(ProviderErrorKind::Offline));
         }
-        Ok(vec![1, 2, 3])
+        Ok(DeliveryPreparation {
+            bytes: vec![1, 2, 3],
+            account_cooldown_seconds: match self.prepare_cooldown.load(Ordering::SeqCst) {
+                0 => None,
+                value => Some(value),
+            },
+        })
     }
     async fn validate_claim(
         &self,
@@ -297,9 +321,21 @@ impl CommandDeliveryPolicy for Policy {
                 outcome: DeliveryOutcome::Confirmed(OperationEvidence::native("forged.2xx")),
                 retry_after_seconds: None,
                 account_cooldown_seconds: None,
+                provider_error: None,
             },
             7 => panic!("synthetic adapter panicked after remote effect"),
             8 => std::future::pending().await,
+            11 => DeliveryReport {
+                provider_error: Some(ProviderError {
+                    kind: ProviderErrorKind::Authentication,
+                    retry_after_seconds: None,
+                    account_cooldown_seconds: match self.result_cooldown.load(Ordering::SeqCst) {
+                        0 => None,
+                        value => Some(value),
+                    },
+                }),
+                ..DeliveryReport::unknown()
+            },
             _ => panic!("unexpected mode"),
         }
     }
@@ -314,6 +350,9 @@ impl CommandDeliveryPolicy for Policy {
             ProviderInstance::for_account(&request.account).unwrap().id
         );
         self.probes.fetch_add(1, Ordering::SeqCst);
+        if self.mode.load(Ordering::SeqCst) == 10 {
+            return Err(self.quota_error());
+        }
         if self.mode.load(Ordering::SeqCst) == 3 {
             return Ok(self.report(&request.command, "fixture.safe"));
         }
@@ -1091,4 +1130,208 @@ async fn late_reconciliation_cannot_overwrite_a_cancelled_command() {
     assert!(state(&runtime, FIRST).await.evidence.is_empty());
     assert_eq!(policy.effects(), [FIRST]);
     runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn successful_preparation_quota_is_durable_before_attempt_claim_and_survives_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("state.db");
+    let policy = Arc::new(Policy::new(dir.path().join("remote")));
+    policy.prepare_cooldown.store(120, Ordering::SeqCst);
+    let (before, account, _) = runtime(&path, policy.clone(), true).await;
+    admit(&before, &account, FIRST, "issue", vec![]).await;
+    assert!(before.run_delivery_next().await.unwrap());
+    let command = state(&before, FIRST).await;
+    assert_eq!(command.state, DeliveryState::Queued);
+    assert_eq!(command.attempt_count, 0);
+    assert!(
+        before
+            .store
+            .scope_state("a", "provider:rest")
+            .await
+            .unwrap()
+            .unwrap()
+            .sync
+            .next_retry_at
+            .is_some()
+    );
+    assert!(policy.effects().is_empty());
+    before.shutdown().await.unwrap();
+    policy.prepare_cooldown.store(0, Ordering::SeqCst);
+    let store = Arc::new(Store::open(&path).await.unwrap());
+    let mut registry = ProviderRegistry::default();
+    registry.register(Arc::new(ReadProvider)).unwrap();
+    registry
+        .register_delivery(
+            &ProviderInstance::public(ProviderKind::Github),
+            policy.clone(),
+        )
+        .unwrap();
+    let mut after = CollaborationRuntime::with_registry(store, Arc::new(Vault), registry);
+    let clock = Arc::new(TestClock::new());
+    after.clock = clock.clone();
+    assert!(!after.run_delivery_next().await.unwrap());
+    assert_eq!(state(&after, FIRST).await.attempt_count, 0);
+    clock.advance(121);
+    assert!(after.run_delivery_next().await.unwrap());
+    assert_eq!(state(&after, FIRST).await.state, DeliveryState::Confirmed);
+    assert_eq!(policy.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(policy.effects(), [FIRST]);
+    after.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn result_finalization_failure_still_persists_observed_quota() {
+    let dir = tempfile::tempdir().unwrap();
+    let policy = Arc::new(Policy::new(dir.path().join("remote")));
+    policy.result_cooldown.store(120, Ordering::SeqCst);
+    policy.finalize_fail.store(true, Ordering::SeqCst);
+    let (runtime, account, clock) =
+        runtime(&dir.path().join("state.db"), policy.clone(), true).await;
+    admit(&runtime, &account, FIRST, "issue", vec![]).await;
+    assert!(runtime.run_delivery_next().await.is_err());
+    assert_eq!(state(&runtime, FIRST).await.state, DeliveryState::Sending);
+    assert!(state(&runtime, FIRST).await.evidence.is_empty());
+    assert!(
+        runtime
+            .store
+            .scope_state("a", "provider:rest")
+            .await
+            .unwrap()
+            .unwrap()
+            .sync
+            .next_retry_at
+            .is_some()
+    );
+    policy.finalize_fail.store(false, Ordering::SeqCst);
+    assert!(runtime.run_delivery_next().await.unwrap()); // Native crash recovery is local.
+    assert_eq!(state(&runtime, FIRST).await.state, DeliveryState::Unknown);
+    assert!(!runtime.run_delivery_next().await.unwrap());
+    assert_eq!(policy.probes.load(Ordering::SeqCst), 0);
+    clock.advance(121);
+    assert!(runtime.run_delivery_next().await.unwrap());
+    assert_eq!(state(&runtime, FIRST).await.state, DeliveryState::Confirmed);
+    assert_eq!(policy.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(policy.effects(), [FIRST]);
+    runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn preparation_and_reconciliation_errors_preserve_quota_after_scheduling_failure() {
+    for reconcile in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.db");
+        let policy = Arc::new(Policy::new(dir.path().join("remote")));
+        let (runtime, account, clock) = runtime(&path, policy.clone(), true).await;
+        admit(&runtime, &account, FIRST, "issue", vec![]).await;
+        if reconcile {
+            policy.mode.store(2, Ordering::SeqCst);
+            assert!(runtime.run_delivery_next().await.unwrap());
+            assert_eq!(state(&runtime, FIRST).await.state, DeliveryState::Unknown);
+            clock.advance(61);
+        }
+        policy.mode.store(10, Ordering::SeqCst);
+        // Claiming the finite read is allowed; its subsequent outcome/defer fails.
+        sql(&path, "CREATE TRIGGER fail_schedule BEFORE UPDATE ON command_delivery WHEN NEW.next_action_at IS NOT NULL BEGIN SELECT RAISE(ABORT,'synthetic schedule fault'); END;").await;
+        assert!(runtime.run_delivery_next().await.is_err());
+        assert!(
+            runtime
+                .store
+                .scope_state("a", "provider:rest")
+                .await
+                .unwrap()
+                .unwrap()
+                .sync
+                .next_retry_at
+                .is_some()
+        );
+        sql(&path, "DROP TRIGGER fail_schedule;").await;
+        let probes = policy.probes.load(Ordering::SeqCst);
+        assert!(!runtime.run_delivery_next().await.unwrap());
+        assert_eq!(policy.probes.load(Ordering::SeqCst), probes);
+        assert_eq!(
+            state(&runtime, FIRST).await.attempt_count,
+            if reconcile { 1 } else { 0 }
+        );
+        clock.advance(121);
+        policy.mode.store(0, Ordering::SeqCst);
+        assert!(runtime.run_delivery_next().await.unwrap());
+        assert_eq!(state(&runtime, FIRST).await.state, DeliveryState::Confirmed);
+        assert_eq!(policy.calls.load(Ordering::SeqCst), 1);
+        runtime.shutdown().await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn dispatch_authentication_failure_retains_unknown_intent_and_stops_account_delivery() {
+    let dir = tempfile::tempdir().unwrap();
+    let policy = Arc::new(Policy::new(dir.path().join("remote")));
+    policy.mode.store(11, Ordering::SeqCst);
+    let (runtime, account, _) = runtime(&dir.path().join("state.db"), policy.clone(), true).await;
+    admit(&runtime, &account, FIRST, "issue", vec![]).await;
+    admit(&runtime, &account, SECOND, "other", vec![]).await;
+    let original = state(&runtime, FIRST).await;
+    assert!(runtime.run_delivery_next().await.unwrap());
+    let command = state(&runtime, FIRST).await;
+    assert_eq!(command.state, DeliveryState::Unknown);
+    assert_eq!(command.attempt_count, 1);
+    assert!(command.evidence.is_empty());
+    assert_eq!(command.canonical_envelope, original.canonical_envelope);
+    assert_eq!(command.authorization_epoch, original.authorization_epoch);
+    assert_eq!(
+        runtime.store.account("a").await.unwrap().state,
+        AccountState::AuthRequired
+    );
+    assert!(!runtime.run_delivery_next().await.unwrap());
+    assert_eq!(state(&runtime, SECOND).await.attempt_count, 0);
+    assert_eq!(policy.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(policy.probes.load(Ordering::SeqCst), 0);
+    assert!(policy.effects().is_empty());
+    runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn dispatch_auth_observation_survives_independent_result_and_quota_faults() {
+    for quota_fault in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.db");
+        let policy = Arc::new(Policy::new(dir.path().join("remote")));
+        policy.mode.store(11, Ordering::SeqCst);
+        policy.result_cooldown.store(120, Ordering::SeqCst);
+        let (runtime, account, _) = runtime(&path, policy.clone(), true).await;
+        admit(&runtime, &account, FIRST, "issue", vec![]).await;
+        admit(&runtime, &account, SECOND, "other", vec![]).await;
+        if quota_fault {
+            sql(&path, "CREATE TRIGGER fail_quota BEFORE INSERT ON sync_scopes WHEN NEW.scope='provider:rest' BEGIN SELECT RAISE(ABORT,'synthetic quota fault'); END;").await;
+        } else {
+            sql(&path, "CREATE TRIGGER fail_result BEFORE UPDATE ON delivery_attempts BEGIN SELECT RAISE(ABORT,'synthetic result fault'); END;").await;
+        }
+        assert!(runtime.run_delivery_next().await.is_err());
+        let command = state(&runtime, FIRST).await;
+        assert_eq!(
+            command.state,
+            if quota_fault {
+                DeliveryState::Unknown
+            } else {
+                DeliveryState::Sending
+            }
+        );
+        assert_eq!(command.attempt_count, 1);
+        assert!(command.evidence.is_empty());
+        assert_eq!(
+            runtime.store.account("a").await.unwrap().state,
+            AccountState::AuthRequired
+        );
+        if quota_fault {
+            sql(&path, "DROP TRIGGER fail_quota;").await;
+        } else {
+            sql(&path, "DROP TRIGGER fail_result;").await;
+        }
+        // Auth-required accounts leave the candidate query altogether.
+        assert!(!runtime.run_delivery_next().await.unwrap());
+        assert_eq!(state(&runtime, SECOND).await.attempt_count, 0);
+        assert_eq!(policy.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(policy.probes.load(Ordering::SeqCst), 0);
+        runtime.shutdown().await.unwrap();
+    }
 }
