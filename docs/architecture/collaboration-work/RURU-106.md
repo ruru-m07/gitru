@@ -7,6 +7,16 @@ including the Windows LF migration-fixture fix. This document is the continuatio
 
 ## Final local qualification — 8 October 2026
 
+Remote CI exposed a feature-harness startup error path that returned before its
+asynchronous SQLite shutdown released the writer lease. Reopening the preserved
+cache immediately then returned Busy. Failed harness startup now awaits explicit
+store close before returning its original validation error. The existing
+interrupted-preparation regression and all 20 harness session tests pass locally;
+no production writer-lock guarantee is weakened. The earlier Ubuntu formatting
+job also timed out downloading system packages before running code checks; that
+infrastructure failure is separate from this reproduced startup bug. Remote
+checks must be rerun on the repaired head.
+
 Signed integration source `7bd1e37db444539c81e3d4f1805a128f8c9ab00f` is based on
 RURU-119 `08a2db3c4d66269ce72bc5a780e9deda78a57f43`. Full `make verify`
 passes 727 frontend tests with one platform skip, all lint/type/production-build
