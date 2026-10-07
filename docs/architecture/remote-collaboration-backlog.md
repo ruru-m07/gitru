@@ -201,7 +201,7 @@ Then implement [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-
 | [RURU-103: Prove sync and revision recovery across real native webviews](https://linear.app/catra/issue/RURU-103/prove-sync-and-revision-recovery-across-real-native-webviews) | Backlog | [RURU-98](https://linear.app/catra/issue/RURU-98/add-foreground-demand-leases-to-the-native-sync-scheduler) |
 | [RURU-104: Implement bounded cache retention, pins and WAL maintenance](https://linear.app/catra/issue/RURU-104/implement-bounded-cache-retention-pins-and-wal-maintenance) | Backlog | [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-99](https://linear.app/catra/issue/RURU-99/recover-private-drafts-after-disconnect-or-missing-subjects) |
 | [RURU-106: Add consistent collaboration backup and restore recovery](https://linear.app/catra/issue/RURU-106/add-consistent-collaboration-backup-and-restore-recovery) | Backlog | [RURU-105](https://linear.app/catra/issue/RURU-105/test-schema-evolution-and-recoverable-migration-failures) |
-| [RURU-125: Measure cached navigation latency and memory through native IPC](https://linear.app/catra/issue/RURU-125/measure-cached-navigation-latency-and-memory-through-native-ipc) | Backlog | [RURU-121](https://linear.app/catra/issue/RURU-121/add-bounded-frontend-prefetch-and-cached-navigation), [RURU-103](https://linear.app/catra/issue/RURU-103/prove-sync-and-revision-recovery-across-real-native-webviews) |
+| [RURU-125: Measure cached navigation latency and memory through native IPC](https://linear.app/catra/issue/RURU-125/measure-cached-navigation-latency-and-memory-through-native-ipc) | In Progress | [RURU-121](https://linear.app/catra/issue/RURU-121/add-bounded-frontend-prefetch-and-cached-navigation), [RURU-103](https://linear.app/catra/issue/RURU-103/prove-sync-and-revision-recovery-across-real-native-webviews) |
 | [RURU-126: Expose safe local sync diagnostics and actionable retry states](https://linear.app/catra/issue/RURU-126/expose-safe-local-sync-diagnostics-and-actionable-retry-states) | Backlog | [RURU-102](https://linear.app/catra/issue/RURU-102/add-fair-rate-budgets-and-scheduler-lifecycle-recovery), [RURU-125](https://linear.app/catra/issue/RURU-125/measure-cached-navigation-latency-and-memory-through-native-ipc) |
 | [RURU-107: Verify collaboration vaults and storage on supported desktop platforms](https://linear.app/catra/issue/RURU-107/verify-collaboration-vaults-and-storage-on-supported-desktop-platforms) | Backlog | [RURU-105](https://linear.app/catra/issue/RURU-105/test-schema-evolution-and-recoverable-migration-failures), [RURU-103](https://linear.app/catra/issue/RURU-103/prove-sync-and-revision-recovery-across-real-native-webviews), [RURU-95](https://linear.app/catra/issue/RURU-95/make-credential-replacement-recover-safely-after-a-process-crash) |
 
@@ -536,7 +536,7 @@ Acceptance criteria:
 
 ## RURU-125: Measure cached navigation latency and memory through native IPC
 
-Planning key: C22. Group: Performance. Priority: High. State: Backlog.
+Planning key: C22. Group: Performance. Priority: High. State: In Progress.
 Linear: [RURU-125](https://linear.app/catra/issue/RURU-125/measure-cached-navigation-latency-and-memory-through-native-ipc).
 Prerequisites: [RURU-121](https://linear.app/catra/issue/RURU-121/add-bounded-frontend-prefetch-and-cached-navigation), [RURU-103](https://linear.app/catra/issue/RURU-103/prove-sync-and-revision-recovery-across-real-native-webviews).
 
@@ -544,9 +544,15 @@ Measure the actual SQLite → generated IPC → React useful-content path rather
 
 Acceptance criteria:
 
-- [ ] Define repeatable hardware/datasets including 10k cached items, cold restart and multiple native views.
-- [ ] Record p50/p95/p99, payload sizes, startup time, Rust/webview memory and disk/WAL growth against architecture section 18.
-- [ ] Document bottlenecks and add justified performance regression checks; separate warm storage latency from end-to-end UI latency.
+- [x] Define repeatable hardware/datasets including 10k cached items, cold restart and multiple native views.
+- [x] Record p50/p95/p99, payload sizes, startup time, Rust/webview memory and disk/WAL growth against architecture section 18; unsupported WebKit attribution is explicit missing evidence.
+- [x] Document bottlenecks and add justified performance correctness gates; separate warm storage latency from end-to-end UI latency.
+
+Local macOS evidence is recorded in
+[the RURU-125 work note](./collaboration-work/RURU-125.md). Warm useful-content
+and SDK/IPC targets pass; cold cached landing misses the provisional 500 ms target.
+Remote CI, other platforms and the larger section 18 memory fixture remain open
+qualification boundaries.
 
 ## RURU-126: Expose safe local sync diagnostics and actionable retry states
 

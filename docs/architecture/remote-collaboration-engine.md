@@ -3373,3 +3373,31 @@ frontend/build and deployment checks while native, E2E and retained harness
 checks are pending. Draft-skip bot status does not constitute a substantive
 code review. These are live remote statuses, separate from RURU-114 local
 qualification; none of these PRs is merged.
+
+### RURU-125 native cached-navigation baseline — 8 October 2026
+
+RURU-125 is implemented and locally measured from exact signed RURU-114 head
+`de0e245d5b10bbebb9b66ad78d92febe084a986b`. Its feature-only packaged harness
+seeds 10,000 deterministic pull summaries across two accounts and ten selected
+repositories, then exercises the normal SQLite → generated IPC/SDK → TanStack →
+React path in two retained native views. A distinct process reopens the saved
+cache. Exact useful content, 125-command generated validation and unchanged
+provider/vault counters are correctness gates; no personal credential or live
+provider is used. See [the measurement record](./collaboration-work/RURU-125.md).
+
+The retained macOS report identifies source
+`e136d9cf933e986018b00f2ad561fbba9b9b11a1` and release executable SHA-256
+`af31149f21d80f22904a78239826d7a32970df7c4131e80b8dd23c9f8d5c5d6b` on an
+Apple M4 with 16 GiB. Across seed and restart views, React list/search/detail p95
+is at most 51 ms and generated SDK/IPC p95 at most 7 ms, passing the provisional
+100/30 ms warm targets. The fresh main view reaches exact cached content 2,010 ms
+after runtime readiness, missing the provisional 500 ms cold target. Repeated
+contextual-capability projection peaks at 43.943 ms p95 and is a measured native
+optimization candidate.
+
+Native RSS is 150.03 MiB after seed and 145.48 MiB after restart. WebKit RSS is
+explicitly missing because no process was a proven native descendant, so combined
+memory is not claimed. The database/WAL/shared-memory set is 45,486,168 bytes and
+does not grow during restart. This 10,000-summary run does not qualify section
+18's 100,000-summary/500,000-child memory target; storage medium classification,
+other platforms, live-provider behavior and remote CI remain separate evidence.

@@ -1,7 +1,7 @@
 # RURU-125 — Native cached-navigation performance
 
-Status: pre-code measurement contract, 8 October 2026. This isolated managed
-worktree starts at signed RURU-114 head
+Status: implemented and measured locally on macOS, 8 October 2026. This isolated
+managed worktree starts at signed RURU-114 head
 `de0e245d5b10bbebb9b66ad78d92febe084a986b` (PR #171). RURU-103's real native
 webview harness and RURU-121's bounded cached-navigation implementation are
 ancestors. RURU-119 is being integrated separately; its measurements must not be
@@ -67,3 +67,108 @@ protocol/native tests, normal local checks and the packaged measurement. Preserv
 the raw artifact path and summarize actual evidence in this note and the shared
 architecture progress record before opening a signed scoped PR. Remote CI,
 platform-specific measurements and live-provider evidence stay separate.
+
+## Implemented benchmark
+
+The feature-only `collaboration-harness` now seeds two synthetic accounts, five
+selected repositories per account and 5,000 pull summaries per account. It uses
+fixed clocks, bounded 100-row seed pages, deterministic detail records and 30
+known search needles. Seeding and measurement run against an isolated SQLite
+database and fake vault with provider networking denied. Normal builds register
+none of the seed or benchmark controls.
+
+The packaged runner measures a real React collaboration workspace in two retained
+native views. Each sample waits for exact useful list, search or detail content,
+then records the React useful-content boundary, the generated SDK/IPC call and a
+same-query TanStack memory read separately. The seed process collects 30 main-view
+samples and 10 child-view samples. A distinct packaged process reopens the saved
+database and collects 10 samples in each view. Native SQLite projection timings
+are recorded from the ordinary commands in a bounded 512-entry harness buffer.
+
+Process RSS comes from `ps` and is accepted only for the exact native PID or
+proven descendants. Database, WAL and shared-memory byte sizes are sampled before
+and after each phase. The runner records the source commit, release executable
+SHA-256, hardware and storage probes. It checks that provider calls and vault
+loads do not increase.
+
+## Measured baseline
+
+The retained local report is
+`artifacts/collaboration-performance/2026-10-07T20-59-32-918Z-23699/performance-report.json`.
+Artifacts are intentionally ignored by Git; the identifying evidence is:
+
+- source: `e136d9cf933e986018b00f2ad561fbba9b9b11a1`
+- build: `release/no-bundle/collaboration-harness`
+- executable SHA-256:
+  `af31149f21d80f22904a78239826d7a32970df7c4131e80b8dd23c9f8d5c5d6b`
+- machine: Apple M4, arm64, 10 logical CPUs, 16 GiB, macOS/Darwin `27.0.0`
+- fixture location: `/Volumes/Lexar`; the OS storage probe did not establish its
+  device location or solid-state property, so the report classifies the medium as
+  `unverified`
+
+Nearest-rank distributions use integer-millisecond browser observations. Main
+seed uses 30 samples; the retained child and both cold-restart views use 10 each.
+
+| Phase/view | React list p50/p95/p99 | React search p50/p95/p99 | React detail p50/p95/p99 | SDK list/search/detail p95 |
+| --- | ---: | ---: | ---: | ---: |
+| Seed main | 30/42/60 ms | 20/22/23 ms | 30/32/32 ms | 2/2/2 ms |
+| Seed child | 31/51/51 ms | 20/22/22 ms | 30/30/30 ms | 3/2/2 ms |
+| Restart main | 40/51/51 ms | 20/32/32 ms | 30/32/32 ms | 5/7/4 ms |
+| Restart child | 38/50/50 ms | 20/22/22 ms | 30/32/32 ms | 2/2/2 ms |
+
+The 50-row list response is 32,231 bytes, the deterministic search response is
+904–905 bytes and the detail response is 681 bytes. Same-query memory reads round
+to 0 ms at the runner's integer-millisecond resolution; this establishes only
+that they are below that observer's resolution, not that their cost is zero.
+
+The fresh process opened the native collaboration runtime in 7.876 ms. Its main
+view reached exact useful cached content 2,010 ms after runtime readiness and
+1,958 ms after document navigation. The retained child reached it 13,794 ms after
+runtime readiness and 10,169 ms after its navigation. Seed startup includes the
+10,000-row seed and is recorded separately: 229.321 ms native open, 23,193 ms
+main readiness-to-useful and 37,853 ms child readiness-to-useful. Process-launch
+latency is not claimed because the runner does not establish a shared trustworthy
+launch clock.
+
+The native Rust process used 157,319,168 bytes (150.03 MiB) RSS after seed and
+152,551,424 bytes (145.48 MiB) after restart. No WebKit process was a proven
+descendant, so WebKit aggregate and per-view RSS are explicitly missing. The
+seeded database was 40,521,728 bytes, with a 4,931,672-byte WAL and 32,768-byte
+shared-memory file (45,486,168 bytes total); all three sizes were unchanged by the
+restart measurement.
+
+Ordinary item projections stayed below 9.546 ms p95. Contextual-capability
+projection p95 reached 43.943 ms in the seed child and 36.868 ms in the restart
+main view, with a 54.946 ms seed-main p99. The end-to-end SDK samples stayed below
+7 ms p95, but repeated contextual-capability projection is the clearest measured
+native optimization candidate.
+
+## Target assessment and limits
+
+The section 18 warm useful-content target passes: every measured list, search and
+detail p95 is at most 51 ms against the provisional 100 ms target. The local
+generated SDK/IPC target passes at no more than 7 ms p95 against 30 ms. The cold cached
+landing target does not pass: the fresh main view took 2,010 ms after runtime
+readiness against the provisional 500 ms target. This is a measured baseline and
+optimization input, not a universal timing gate from one workstation.
+
+This 10,000-summary fixture does not qualify the 100,000-summary,
+500,000-child-record or combined sub-100-MiB memory target. Combined collaboration
+memory is unknown because WebKit RSS could not be attributed. It also supplies no
+Windows/Linux performance, live-provider, personal credential, production
+keyring, internal-SSD or remote-CI evidence.
+
+## Validation
+
+Normal `make typegen` generated 125 commands. Final full `make verify` passed 688
+frontend tests with one platform skip, lint, types, the production desktop build,
+Rust formatting, workspace Clippy and every default Rust suite. The final release
+harness build and both packaged processes passed; exact content, two retained
+views, generated IPC validation and unchanged provider/vault counters are hard
+correctness gates.
+
+The first packaged attempt stopped because the workspace deterministically opened
+the alternate account while the assertion expected the primary account. Pinning
+the measured account fixed the fixture and demonstrates that wrong-account useful
+content cannot be counted as a successful fast render. Remote CI and other
+platforms remain separate evidence.
