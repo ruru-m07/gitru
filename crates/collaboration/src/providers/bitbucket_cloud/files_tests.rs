@@ -202,3 +202,82 @@ async fn diffstat_total_cannot_change_or_disappear_to_fabricate_completion() {
         assert_eq!(calls.join().unwrap().len(), 2);
     }
 }
+
+fn text_response(content_type: &str, text: &str) -> String {
+    format!(
+        "HTTP/1.1 200 Fixture\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{text}",
+        text.len()
+    )
+}
+#[tokio::test]
+async fn selected_topic_path_requires_exact_single_diff_section() {
+    let patch = "diff --git a/file1 b/file1\n--- a/file1\n+++ b/file1\n@@ -1 +1 @@\n-old\n+new\n";
+    for (text, accepted) in [
+        (patch.to_string(), true),
+        (patch.replace("file1", "file2"), false),
+        (format!("{patch}{patch}"), false),
+    ] {
+        let (provider, calls) = server(|_| {
+            vec![
+                response(200, "", &json!({"values":[row(1)],"size":1})),
+                text_response("text/plain; charset=utf-8", &text),
+            ]
+        });
+        let input = request();
+        let page = provider
+            .fetch_pull_files(&token(), input.clone())
+            .await
+            .unwrap();
+        let selected =
+            crate::providers::pull_files::selected_fixture(&input, page.files[0].clone(), 0);
+        let content = provider.fetch_pull_file_artifact(&token(), selected).await;
+        assert_eq!(content.is_ok(), accepted);
+        if let Ok(content) = content {
+            assert_eq!(content.unified_text.as_deref(), Some(patch));
+        }
+        let calls = calls.join().unwrap();
+        assert!(calls[1].contains(&format!(
+            "/diff/{HEAD}..{BASE}?topic=true&renames=true&context=3&binary=false&path=file1 "
+        )));
+        assert!(!calls[1].contains("merge="));
+    }
+}
+#[tokio::test]
+async fn selected_diff_content_type_and_size_are_bounded_without_partial_text() {
+    for (mime, text, state) in [
+        ("text/html", "<html>login</html>".into(), None),
+        (
+            "text/plain",
+            "x".repeat(MAX_PULL_FILE_LINE_BYTES + 1),
+            Some(PullFileContentState::Oversized),
+        ),
+        (
+            "text/plain",
+            "diff --git a/file1 b/file1\nBinary files a/file1 and b/file1 differ\n".into(),
+            Some(PullFileContentState::Omitted),
+        ),
+    ] {
+        let (provider, calls) = server(|_| {
+            vec![
+                response(200, "", &json!({"values":[row(1)],"size":1})),
+                text_response(mime, &text),
+            ]
+        });
+        let input = request();
+        let page = provider
+            .fetch_pull_files(&token(), input.clone())
+            .await
+            .unwrap();
+        let selected =
+            crate::providers::pull_files::selected_fixture(&input, page.files[0].clone(), 0);
+        let result = provider.fetch_pull_file_artifact(&token(), selected).await;
+        if let Some(state) = state {
+            let content = result.unwrap();
+            assert_eq!(content.content_state, state);
+            assert!(content.unified_text.is_none());
+        } else {
+            assert!(result.is_err());
+        }
+        calls.join().unwrap();
+    }
+}

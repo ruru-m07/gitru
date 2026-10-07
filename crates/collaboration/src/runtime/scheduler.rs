@@ -37,7 +37,9 @@ impl Scheduler {
         }
         if !matches!(
             kind,
-            JobKind::Detail { .. } | JobKind::NotificationSubject { .. }
+            JobKind::Detail { .. }
+                | JobKind::PullFileArtifact { .. }
+                | JobKind::NotificationSubject { .. }
         ) {
             return false;
         }
@@ -171,7 +173,9 @@ impl Scheduler {
                     && self.interactive(job)
                     && matches!(
                         job.kind,
-                        JobKind::Detail { .. } | JobKind::NotificationSubject { .. }
+                        JobKind::Detail { .. }
+                            | JobKind::PullFileArtifact { .. }
+                            | JobKind::NotificationSubject { .. }
                     )
             });
         let has_index = interactive
@@ -185,7 +189,9 @@ impl Scheduler {
                 && (!interactive
                     || matches!(
                         job.kind,
-                        JobKind::Detail { .. } | JobKind::NotificationSubject { .. }
+                        JobKind::Detail { .. }
+                            | JobKind::PullFileArtifact { .. }
+                            | JobKind::NotificationSubject { .. }
                     ) == detail)
         };
         let accounts: BTreeSet<_> = self
@@ -233,7 +239,13 @@ impl CollaborationRuntime {
         scope: String,
         reason: Admission,
     ) -> Result<String, CollaborationError> {
-        let key = format!("{}:{}:{scope}", account.id, account.authorization_epoch);
+        let mut key = format!("{}:{}:{scope}", account.id, account.authorization_epoch);
+        if let JobKind::PullFileArtifact { request } = &kind {
+            key.push_str(&format!(
+                ":artifact:{}:{}",
+                request.file_facet_revision, request.file_key
+            ));
+        }
         let state = self.store.scope_state(&account.id, &scope).await?;
         let strict = state
             .as_ref()
@@ -402,6 +414,16 @@ impl CollaborationRuntime {
         }
         let seconds = match kind {
             JobKind::NotificationSubject { .. } => return Ok(self.now()),
+            JobKind::PullFileArtifact { request } => {
+                let artifact = self.store.pull_file_artifact((**request).clone()).await?;
+                return Ok(
+                    if artifact.artifact.is_none() || artifact.freshness != DetailFreshness::Fresh {
+                        self.now()
+                    } else {
+                        self.deadline_after(60)
+                    },
+                );
+            }
             JobKind::Feed(FeedKind::Repositories) => {
                 if reason == Admission::Foreground {
                     120

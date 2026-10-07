@@ -3,7 +3,7 @@
 use super::*;
 use crate::storage::PullFileCommit;
 
-fn file_source(account: &RemoteAccount) -> Result<PullFileSource, CollaborationError> {
+pub(super) fn file_source(account: &RemoteAccount) -> Result<PullFileSource, CollaborationError> {
     let strategy = match account.provider {
         ProviderKind::Github => PullFileSourceStrategy::GithubPullFiles,
         ProviderKind::Gitlab => PullFileSourceStrategy::GitlabMergeRequestDiffs,
@@ -31,15 +31,28 @@ enum Preparation {
 impl CollaborationRuntime {
     /// Admit an already bounded native local-Git observation through the same
     /// current-generation and authorization fence used by provider artifacts.
-    pub async fn save_local_pull_file_artifact(
+    pub async fn save_local_pull_file_artifact<F>(
         &self,
         request: PullFileDiffRequest,
         membership: PullFileMembershipReceipt,
         artifact: PullFileArtifact,
-    ) -> Result<String, CollaborationError> {
+        query: crate::LocalLinkQuery,
+        link: crate::LocalLinkVersion,
+        validate_owner: F,
+    ) -> Result<String, CollaborationError>
+    where
+        F: Fn() -> Result<(), CollaborationError> + Send,
+    {
         let revision = self
             .store
-            .apply_pull_file_artifact(request, membership, artifact)
+            .apply_local_pull_file_artifact_checked(
+                request,
+                membership,
+                artifact,
+                query,
+                link,
+                validate_owner,
+            )
             .await?;
         self.publish(revision.clone());
         Ok(revision)

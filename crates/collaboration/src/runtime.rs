@@ -34,6 +34,7 @@ mod demand_tests;
 pub(crate) mod detail_tests;
 mod details;
 mod feeds;
+mod file_artifacts;
 #[cfg(test)]
 mod github_comments_tests;
 #[cfg(test)]
@@ -65,6 +66,9 @@ macro_rules! credential_boundary {
 
 #[derive(Clone)]
 enum JobKind {
+    PullFileArtifact {
+        request: Box<PullFileDiffRequest>,
+    },
     NotificationSubject {
         intent: NotificationDiscoveryIntent,
     },
@@ -889,6 +893,9 @@ impl CollaborationRuntime {
             }
         }
         let result = match job.kind.clone() {
+            JobKind::PullFileArtifact { request } => {
+                self.sync_pull_file_artifact(&mut job, *request).await
+            }
             JobKind::NotificationSubject { intent } => {
                 self.sync_notification_subject(&intent).await
             }
@@ -914,6 +921,19 @@ impl CollaborationRuntime {
         let mut scheduler = self.scheduler.lock().await;
         scheduler.demands.expire(self.now());
         job.pages += 1;
+        let retry_selected = matches!(job.kind, JobKind::PullFileArtifact { .. })
+            && epoch_is_current
+            && job.pages < 5
+            && result.as_ref().is_err_and(|error| {
+                matches!(
+                    error.code,
+                    ErrorCode::Network | ErrorCode::Provider | ErrorCode::RateLimited
+                )
+            });
+        if retry_selected {
+            scheduler.deferred.push_back(job);
+            return true;
+        }
         let continue_page = result.is_ok_and(|more| more) && epoch_is_current;
         let interested = scheduler.demands.interested(&job);
         let explicit = scheduler.explicit_keys.contains(&job.key);

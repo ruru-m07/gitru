@@ -5,7 +5,11 @@ pub mod bitbucket_cloud;
 mod contract_tests;
 pub mod github;
 pub mod gitlab;
+mod pull_file_selection;
 mod pull_files;
+pub use pull_file_selection::{
+    PullFileArtifactRead, PullFileSelectedRequest, PullFileSourceRequest,
+};
 mod registry;
 mod transport;
 
@@ -199,6 +203,20 @@ pub trait CollaborationProvider: Send + Sync + 'static {
         &self,
         _token: &SecretToken,
         _request: PullFileCollectionRequest,
+    ) -> Result<PullFileRangeValidationResult, ProviderError> {
+        Err(ProviderError::new(ProviderErrorKind::Unsupported))
+    }
+    async fn fetch_pull_file_artifact(
+        &self,
+        _token: &SecretToken,
+        _request: PullFileSelectedRequest,
+    ) -> Result<PullFileArtifactRead, ProviderError> {
+        Err(ProviderError::new(ProviderErrorKind::Unsupported))
+    }
+    async fn validate_selected_pull_file_range(
+        &self,
+        _token: &SecretToken,
+        _request: PullFileSelectedRequest,
     ) -> Result<PullFileRangeValidationResult, ProviderError> {
         Err(ProviderError::new(ProviderErrorKind::Unsupported))
     }

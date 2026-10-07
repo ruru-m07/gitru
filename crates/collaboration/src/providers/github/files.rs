@@ -4,8 +4,8 @@ use super::*;
 use crate::providers::pull_files as common;
 use serde_json::{Map, Value};
 
-fn identity(request: &PullFileCollectionRequest) -> Result<(String, u64), ProviderError> {
-    common::validate_request(
+fn identity(request: &PullFileSourceRequest) -> Result<(String, u64), ProviderError> {
+    common::validate_source_request(
         request,
         ProviderKind::Github,
         "github.com",
@@ -104,7 +104,8 @@ impl GithubProvider {
         token: &SecretToken,
         request: PullFileCollectionRequest,
     ) -> Result<PullFileProviderPage, ProviderError> {
-        let (parent, _) = identity(&request)?;
+        request.validate().map_err(|_| common::invalid())?;
+        let (parent, _) = identity(&PullFileSourceRequest::from(&request))?;
         let path = format!("{parent}/files");
         let initial = self
             .http
@@ -159,10 +160,54 @@ impl GithubProvider {
         result.map_err(|error| common::quota(error, response.cooldown_seconds))
     }
 
+    pub(super) async fn request_selected_pull_file(
+        &self,
+        token: &SecretToken,
+        request: PullFileSelectedRequest,
+    ) -> Result<PullFileArtifactRead, ProviderError> {
+        request.validate().map_err(|_| common::invalid())?;
+        let (parent, _) = identity(&request.resource)?;
+        let path = format!("{parent}/files");
+        let ordinal = request.file.provider_position;
+        let url = self.http.endpoint(&format!(
+            "{}?per_page=1&page={}",
+            path.trim_start_matches('/'),
+            ordinal + 1
+        ))?;
+        let response = self
+            .http
+            .get_selected_pull_file(url, token, &path, ordinal)
+            .await?;
+        let result = (|| {
+            let rows: Vec<Map<String, Value>> =
+                serde_json::from_slice(&response.body).map_err(|_| common::invalid())?;
+            if rows.len() != 1 {
+                return Err(common::invalid());
+            }
+            let observed = file(&rows[0])?;
+            common::selected_content(
+                &request,
+                &observed,
+                rows[0].get("patch"),
+                response.cooldown_seconds,
+            )
+        })();
+        result.map_err(|error| common::quota(error, response.cooldown_seconds))
+    }
+
     pub(super) async fn request_pull_file_range(
         &self,
         token: &SecretToken,
         request: PullFileCollectionRequest,
+    ) -> Result<PullFileRangeValidationResult, ProviderError> {
+        request.validate().map_err(|_| common::invalid())?;
+        self.request_file_source_range(token, PullFileSourceRequest::from(&request))
+            .await
+    }
+    pub(super) async fn request_file_source_range(
+        &self,
+        token: &SecretToken,
+        request: PullFileSourceRequest,
     ) -> Result<PullFileRangeValidationResult, ProviderError> {
         let (path, pull) = identity(&request)?;
         let response = self

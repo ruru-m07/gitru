@@ -50,6 +50,7 @@ enum Operation {
     Detail,
     PullCommits { project: u64, iid: u64, page: u64 },
     PullFiles { project: u64, iid: u64, page: u64 },
+    SelectedPullFile { project: u64, iid: u64, page: u64 },
 }
 
 pub(super) struct GitlabHttp {
@@ -173,6 +174,19 @@ impl GitlabHttp {
             .append_pair("page", "1");
         Ok(url)
     }
+    pub(super) fn selected_pull_file(
+        &self,
+        project: u64,
+        iid: u64,
+        ordinal: u32,
+    ) -> Result<Url, ProviderError> {
+        if ordinal >= crate::MAX_PULL_FILES {
+            return Err(invalid());
+        }
+        let mut url = self.pull_files(project, iid)?;
+        url.set_query(Some(&format!("per_page=1&page={}", ordinal + 1)));
+        Ok(url)
+    }
     pub(super) fn pull_file_continuation(
         &self,
         raw: &str,
@@ -273,6 +287,16 @@ impl GitlabHttp {
                 .get(2)
                 .and_then(|value| positive_id(value))
                 .ok_or_else(invalid)?;
+            if url
+                .query_pairs()
+                .any(|(key, value)| key == "per_page" && value == "1")
+            {
+                let page = pull_file_page(url, project, iid, "1")?;
+                if page > u64::from(crate::MAX_PULL_FILES) {
+                    return Err(invalid());
+                }
+                return Ok(Operation::SelectedPullFile { project, iid, page });
+            }
             return Ok(Operation::PullFiles {
                 project,
                 iid,
@@ -461,6 +485,15 @@ impl GitlabHttp {
                                 iid,
                                 page.checked_add(1).ok_or_else(invalid)?,
                             ),
+                        Operation::SelectedPullFile { project, iid, page } => {
+                            let url = self.check_resource_raw(next)?;
+                            if url.path() != original.path()
+                                || pull_file_page(&url, project, iid, "1")? != page + 1
+                            {
+                                return Err(with_quota(invalid(), observed_cooldown));
+                            }
+                            Ok(url)
+                        }
                         Operation::PullFiles { project, iid, page } => self.pull_file_continuation(
                             next,
                             project,
@@ -523,13 +556,16 @@ impl GitlabHttp {
 }
 
 fn pull_commit_page(url: &Url, project: u64, iid: u64) -> Result<u64, ProviderError> {
+    pull_file_page(url, project, iid, "100")
+}
+fn pull_file_page(url: &Url, project: u64, iid: u64, per_page: &str) -> Result<u64, ProviderError> {
     let mut pairs = std::collections::HashMap::new();
     for (key, value) in url.query_pairs() {
         if pairs.insert(key.to_string(), value.to_string()).is_some() {
             return Err(invalid());
         }
     }
-    if pairs.remove("per_page").as_deref() != Some("100") {
+    if pairs.remove("per_page").as_deref() != Some(per_page) {
         return Err(invalid());
     }
     let page = pairs

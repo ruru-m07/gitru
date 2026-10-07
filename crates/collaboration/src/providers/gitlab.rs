@@ -221,6 +221,24 @@ impl CollaborationProvider for GitlabProvider {
     ) -> Result<PullFileProviderPage, ProviderError> {
         self.request_pull_files(token, request).await
     }
+    async fn fetch_pull_file_artifact(
+        &self,
+        token: &SecretToken,
+        request: PullFileSelectedRequest,
+    ) -> Result<PullFileArtifactRead, ProviderError> {
+        self.request_selected_pull_file(token, request).await
+    }
+    async fn validate_selected_pull_file_range(
+        &self,
+        token: &SecretToken,
+        request: PullFileSelectedRequest,
+    ) -> Result<PullFileRangeValidationResult, ProviderError> {
+        request
+            .validate()
+            .map_err(|_| ProviderError::new(ProviderErrorKind::InvalidResponse))?;
+        self.request_file_source_range(token, request.resource)
+            .await
+    }
     async fn validate_pull_file_range(
         &self,
         token: &SecretToken,

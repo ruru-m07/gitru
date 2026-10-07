@@ -322,6 +322,17 @@ impl GithubHttp {
             .await
     }
 
+    pub(crate) async fn get_selected_pull_file(
+        &self,
+        url: Url,
+        token: &SecretToken,
+        expected_path: &str,
+        ordinal: u32,
+    ) -> Result<HttpPage, ProviderError> {
+        self.get_bounded_collection(url, token, expected_path, u64::from(ordinal) + 1, 1, 3000)
+            .await
+    }
+
     async fn get_bounded_collection(
         &self,
         url: Url,

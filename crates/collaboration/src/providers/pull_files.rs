@@ -8,8 +8,8 @@ pub(super) fn invalid() -> ProviderError {
     ProviderError::new(ProviderErrorKind::InvalidResponse)
 }
 
-pub(super) fn validate_request(
-    request: &PullFileCollectionRequest,
+pub(super) fn validate_source_request(
+    request: &PullFileSourceRequest,
     provider: ProviderKind,
     host: &str,
     strategy: PullFileSourceStrategy,
@@ -239,7 +239,7 @@ pub(super) fn page(
     Ok(page)
 }
 pub(super) fn validated_range(
-    request: &PullFileCollectionRequest,
+    request: &PullFileSourceRequest,
     validation: PullFileRangeValidation,
     count: Option<u32>,
     cap: Option<PullFileCapEvidence>,
@@ -328,4 +328,69 @@ pub(super) fn continue_request(
     request.lease = page.next_lease(request).unwrap().unwrap();
     request.cursor = request.lease.next_cursor.clone();
     request.start_position = request.lease.accepted_row_count;
+}
+
+pub(super) fn selected_content(
+    request: &PullFileSelectedRequest,
+    observed: &ProviderPullFile,
+    patch: Option<&Value>,
+    cooldown_seconds: Option<u64>,
+) -> Result<PullFileArtifactRead, ProviderError> {
+    if observed.identity != request.membership.identity
+        || observed.provider_file_id != request.file.file.provider_file_id
+    {
+        return Err(quota(invalid(), cooldown_seconds));
+    }
+    let (content_state, unified_text) = if observed.provider_too_large == PullFileFlag::Known(true)
+    {
+        (PullFileContentState::Oversized, None)
+    } else if observed.provider_collapsed == PullFileFlag::Known(true) {
+        (PullFileContentState::Omitted, None)
+    } else {
+        match patch {
+            None | Some(Value::Null) => (PullFileContentState::Omitted, None),
+            Some(Value::String(patch)) => {
+                match crate::pull_files::diff::bounded_pull_file_text(patch) {
+                    Ok(text) => (PullFileContentState::Text, Some(text)),
+                    Err(error) if error.is_oversized() => (PullFileContentState::Oversized, None),
+                    Err(_) => return Err(quota(invalid(), cooldown_seconds)),
+                }
+            }
+            _ => return Err(quota(invalid(), cooldown_seconds)),
+        }
+    };
+    Ok(PullFileArtifactRead {
+        content_state,
+        unified_text,
+        binary_hint: observed.binary,
+        cooldown_seconds,
+    })
+}
+
+#[cfg(test)]
+pub(super) fn selected_fixture(
+    request: &PullFileCollectionRequest,
+    file: ProviderPullFile,
+    ordinal: u32,
+) -> PullFileSelectedRequest {
+    PullFileSelectedRequest {
+        resource: PullFileSourceRequest::from(request),
+        membership: PullFileMembershipReceipt {
+            account_id: request.account.id.clone(),
+            authorization_epoch: request.account.authorization_epoch.clone(),
+            authorization_view: request.authorization_view.clone(),
+            subject_id: request.subject.id.clone(),
+            generation: request.lease.generation.clone(),
+            file_facet_revision: "1".into(),
+            context: request.binding.context.clone(),
+            file_key: "selected-fixture".into(),
+            identity: file.identity.clone(),
+        },
+        file: PullFile {
+            file_key: "selected-fixture".into(),
+            context: request.binding.context.clone(),
+            provider_position: ordinal,
+            file,
+        },
+    }
 }

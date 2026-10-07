@@ -5,8 +5,8 @@ use crate::providers::pull_files as common;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
-fn identity(request: &PullFileCollectionRequest) -> Result<(String, u64), ProviderError> {
-    common::validate_request(
+fn identity(request: &PullFileSourceRequest) -> Result<(String, u64), ProviderError> {
+    common::validate_source_request(
         request,
         ProviderKind::BitbucketCloud,
         "bitbucket.org",
@@ -105,7 +105,8 @@ impl BitbucketCloudProvider {
         token: &SecretToken,
         request: PullFileCollectionRequest,
     ) -> Result<PullFileProviderPage, ProviderError> {
-        let (repository, _) = identity(&request)?;
+        request.validate().map_err(|_| common::invalid())?;
+        let (repository, _) = identity(&PullFileSourceRequest::from(&request))?;
         let route = Route::PullFiles {
             repository,
             base: request.binding.context.base_oid.clone(),
@@ -182,6 +183,15 @@ impl BitbucketCloudProvider {
         token: &SecretToken,
         request: PullFileCollectionRequest,
     ) -> Result<PullFileRangeValidationResult, ProviderError> {
+        request.validate().map_err(|_| common::invalid())?;
+        self.request_file_source_range(token, PullFileSourceRequest::from(&request))
+            .await
+    }
+    pub(super) async fn request_file_source_range(
+        &self,
+        token: &SecretToken,
+        request: PullFileSourceRequest,
+    ) -> Result<PullFileRangeValidationResult, ProviderError> {
         let (repository, pull) = identity(&request)?;
         let route = Route::PullRequest(repository.clone(), pull);
         let response = self
@@ -226,5 +236,291 @@ impl BitbucketCloudProvider {
             )
         })();
         result.map_err(|e| quota(e, response.cooldown))
+    }
+}
+
+impl BitbucketCloudProvider {
+    pub(super) async fn request_selected_pull_file(
+        &self,
+        token: &SecretToken,
+        request: PullFileSelectedRequest,
+    ) -> Result<PullFileArtifactRead, ProviderError> {
+        request.validate().map_err(|_| common::invalid())?;
+        let (repository, _) = identity(&request.resource)?;
+        let context = &request.resource.binding.context;
+        let selected = &request.membership.identity;
+        let path = selected
+            .new_path
+            .as_ref()
+            .or(selected.old_path.as_ref())
+            .ok_or_else(common::invalid)?;
+        let response = self
+            .http
+            .selected_diff(
+                &repository,
+                &context.base_oid,
+                &context.head_oid,
+                path,
+                token,
+            )
+            .await?;
+        let (content_state, unified_text, binary_hint) = match response.text {
+            Err(error) if error.is_oversized() => (
+                PullFileContentState::Oversized,
+                None,
+                request.file.file.binary,
+            ),
+            Err(_) => return Err(common::quota(common::invalid(), response.cooldown)),
+            Ok(text) if text.is_empty() => (
+                PullFileContentState::Omitted,
+                None,
+                request.file.file.binary,
+            ),
+            Ok(text) => {
+                validate_selected_diff(&text, selected)
+                    .map_err(|error| common::quota(error, response.cooldown))?;
+                if text
+                    .lines()
+                    .any(|line| line.starts_with("Binary files ") || line == "GIT binary patch")
+                {
+                    (
+                        PullFileContentState::Omitted,
+                        None,
+                        PullFileFlag::Known(true),
+                    )
+                } else {
+                    (
+                        PullFileContentState::Text,
+                        Some(text),
+                        request.file.file.binary,
+                    )
+                }
+            }
+        };
+        Ok(PullFileArtifactRead {
+            content_state,
+            unified_text,
+            binary_hint,
+            cooldown_seconds: response.cooldown,
+        })
+    }
+}
+
+/// Path filtering can include a directory prefix. A successful text artifact
+/// must contain exactly one diff section whose old/new paths match membership.
+fn validate_selected_diff(text: &str, identity: &PullFileIdentity) -> Result<(), ProviderError> {
+    let old = identity
+        .old_path
+        .as_ref()
+        .or(identity.new_path.as_ref())
+        .ok_or_else(common::invalid)?;
+    let new = identity
+        .new_path
+        .as_ref()
+        .or(identity.old_path.as_ref())
+        .ok_or_else(common::invalid)?;
+    let mut section = false;
+    let mut hunk = false;
+    let mut sides = [false; 2];
+    let mut moves = [false; 2];
+    let mut move_kind = None;
+    let mut modes = [false; 2];
+    let mut binary = false;
+    for line in text.lines() {
+        if let Some(paths) = line.strip_prefix("diff --git ") {
+            if section {
+                return Err(common::invalid());
+            }
+            section = true;
+            if paths != format!("a/{old} b/{new}") {
+                let (left, remainder) = header_path(paths)?;
+                let (right, rest) =
+                    header_path(remainder.strip_prefix(' ').ok_or_else(common::invalid)?)?;
+                if !rest.is_empty() || left != format!("a/{old}") || right != format!("b/{new}") {
+                    return Err(common::invalid());
+                }
+            }
+            continue;
+        }
+        if !section {
+            return Err(common::invalid());
+        }
+        if line.starts_with("@@") {
+            if !sides.into_iter().all(|seen| seen) {
+                return Err(common::invalid());
+            }
+            hunk = true;
+            continue;
+        }
+        if hunk {
+            continue;
+        }
+        for (index, prefix, path, side) in [
+            (0, "--- ", identity.old_path.as_ref(), "a"),
+            (1, "+++ ", identity.new_path.as_ref(), "b"),
+        ] {
+            if let Some(raw) = line.strip_prefix(prefix) {
+                let actual = entire_path(raw)?;
+                let expected =
+                    path.map_or_else(|| "/dev/null".into(), |path| format!("{side}/{path}"));
+                if sides[index] || actual != expected {
+                    return Err(common::invalid());
+                }
+                sides[index] = true;
+            }
+        }
+        for (kind, prefix, index, path) in [
+            ("rename", "rename from ", 0, old),
+            ("rename", "rename to ", 1, new),
+            ("copy", "copy from ", 0, old),
+            ("copy", "copy to ", 1, new),
+        ] {
+            if let Some(raw) = line.strip_prefix(prefix) {
+                if moves[index]
+                    || move_kind.is_some_and(|previous| previous != kind)
+                    || entire_path(raw)? != *path
+                {
+                    return Err(common::invalid());
+                }
+                moves[index] = true;
+                move_kind = Some(kind);
+            }
+        }
+        for (index, prefix) in [(0, "old mode "), (1, "new mode ")] {
+            if let Some(mode) = line.strip_prefix(prefix) {
+                if modes[index]
+                    || mode.len() != 6
+                    || !mode.bytes().all(|byte| (b'0'..=b'7').contains(&byte))
+                {
+                    return Err(common::invalid());
+                }
+                modes[index] = true;
+            }
+        }
+        binary |= line.starts_with("Binary files ") || line == "GIT binary patch";
+    }
+    let independent_paths =
+        sides.into_iter().all(|seen| seen) || moves.into_iter().all(|seen| seen);
+    let only_mode =
+        old == new && modes.into_iter().all(|seen| seen) && !hunk && move_kind.is_none();
+    // Binary content is never retained; this permits the standard header-only
+    // omission marker without asserting an ambiguous textual file pairing.
+    if section && (independent_paths || only_mode || binary && !hunk) {
+        Ok(())
+    } else {
+        Err(common::invalid())
+    }
+}
+fn entire_path(value: &str) -> Result<String, ProviderError> {
+    if value.starts_with('"') {
+        let (path, remainder) = quoted_path(value)?;
+        if !remainder.is_empty() {
+            return Err(common::invalid());
+        }
+        Ok(path)
+    } else {
+        Ok(value.into())
+    }
+}
+fn header_path(value: &str) -> Result<(String, &str), ProviderError> {
+    if value.starts_with('"') {
+        quoted_path(value)
+    } else if let Some((path, remainder)) = value.split_once(' ') {
+        Ok((path.into(), &value[value.len() - remainder.len() - 1..]))
+    } else {
+        Ok((value.into(), ""))
+    }
+}
+fn quoted_path(value: &str) -> Result<(String, &str), ProviderError> {
+    let bytes = value.as_bytes();
+    if bytes.first() != Some(&b'"') {
+        return Err(common::invalid());
+    }
+    let mut out = Vec::new();
+    let mut i = 1;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'"' => {
+                return Ok((
+                    String::from_utf8(out).map_err(|_| common::invalid())?,
+                    &value[i + 1..],
+                ));
+            }
+            b'\\' => {
+                i += 1;
+                let byte = *bytes.get(i).ok_or_else(common::invalid)?;
+                match byte {
+                    b'"' | b'\\' => out.push(byte),
+                    b'0'..=b'3' => {
+                        let second = *bytes
+                            .get(i + 1)
+                            .filter(|b| (b'0'..=b'7').contains(b))
+                            .ok_or_else(common::invalid)?;
+                        let third = *bytes
+                            .get(i + 2)
+                            .filter(|b| (b'0'..=b'7').contains(b))
+                            .ok_or_else(common::invalid)?;
+                        out.push((byte - b'0') * 64 + (second - b'0') * 8 + third - b'0');
+                        i += 2;
+                    }
+                    _ => return Err(common::invalid()),
+                }
+            }
+            byte => out.push(byte),
+        }
+        i += 1;
+    }
+    Err(common::invalid())
+}
+
+#[cfg(test)]
+mod selected_parser_tests {
+    use super::*;
+    fn identity(old: &str, new: &str) -> PullFileIdentity {
+        PullFileIdentity {
+            old_path: Some(old.into()),
+            new_path: Some(new.into()),
+        }
+    }
+    #[test]
+    fn independent_rename_paths_resolve_ambiguous_combined_header() {
+        let one = identity("foo b/bar", "baz");
+        let two = identity("foo", "bar b/baz");
+        let ambiguous = "diff --git a/foo b/bar b/baz\n";
+        assert!(validate_selected_diff(ambiguous, &one).is_err());
+        assert!(validate_selected_diff(ambiguous, &two).is_err());
+        let resolved =
+            format!("{ambiguous}similarity index 100%\nrename from foo b/bar\nrename to baz\n");
+        assert!(validate_selected_diff(&resolved, &one).is_ok());
+        assert!(validate_selected_diff(&resolved, &two).is_err());
+    }
+    #[test]
+    fn whitespace_quoted_octal_mixed_headers_and_mode_only_are_bound() {
+        let selected = identity("with space", "new space");
+        let text = "diff --git a/with space b/new space\n--- a/with space\n+++ b/new space\n@@ -1 +1 @@\n-a\n+b\n";
+        assert!(validate_selected_diff(text, &selected).is_ok());
+        let unicode = identity("é", "new");
+        let quoted = r#"diff --git "a/\303\251" b/new
+--- "a/\303\251"
++++ b/new
+@@ -1 +1 @@
+-a
++b
+"#;
+        assert!(validate_selected_diff(quoted, &unicode).is_ok());
+        let mode = "diff --git a/with space b/with space\nold mode 100644\nnew mode 100755\n";
+        assert!(validate_selected_diff(mode, &identity("with space", "with space")).is_ok());
+    }
+    #[test]
+    fn hunk_before_header_repeated_sides_and_second_sections_fail() {
+        let selected = identity("a", "a");
+        for text in [
+            "@@ -1 +1 @@\n-a\n+b\n",
+            "diff --git a/a b/a\n@@ -1 +1 @@\n-a\n+b\n",
+            "diff --git a/a b/a\n--- a/a\n--- a/a\n+++ b/a\n",
+            "diff --git a/a b/a\n--- a/a\n+++ b/a\ndiff --git a/a b/a\n",
+        ] {
+            assert!(validate_selected_diff(text, &selected).is_err());
+        }
     }
 }

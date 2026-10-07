@@ -217,3 +217,87 @@ async fn asynchronous_missing_diff_refs_are_retryable_with_quota() {
         calls.join().unwrap();
     }
 }
+
+#[tokio::test]
+async fn selected_ordinal_preserves_collapsed_oversized_and_omitted_states() {
+    for state in ["text", "collapsed", "too_large", "omitted"] {
+        let mut observed = row(1);
+        match state {
+            "collapsed" => observed["collapsed"] = json!(true),
+            "too_large" => observed["too_large"] = json!(true),
+            "omitted" => observed["diff"] = Value::Null,
+            _ => {}
+        }
+        let (provider, calls) = server(|_| {
+            vec![
+                response(200, "", &json!([row(1)]).to_string()),
+                response(200, "", &json!([observed]).to_string()),
+                response(200, "", &parent().to_string()),
+            ]
+        });
+        let input = request();
+        let page = provider
+            .fetch_pull_files(&token(), input.clone())
+            .await
+            .unwrap();
+        let selected =
+            crate::providers::pull_files::selected_fixture(&input, page.files[0].clone(), 129);
+        let content = provider
+            .fetch_pull_file_artifact(&token(), selected.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            content.content_state,
+            match state {
+                "text" => PullFileContentState::Text,
+                "too_large" => PullFileContentState::Oversized,
+                _ => PullFileContentState::Omitted,
+            }
+        );
+        assert_eq!(content.unified_text.is_some(), state == "text");
+        provider
+            .validate_selected_pull_file_range(&token(), selected)
+            .await
+            .unwrap();
+        let calls = calls.join().unwrap();
+        assert!(
+            calls[1].starts_with(
+                "GET /api/v4/projects/123/merge_requests/67/diffs?per_page=1&page=130 "
+            )
+        );
+    }
+}
+#[tokio::test]
+async fn selected_identity_and_page_limit_are_fenced_before_parent_validation() {
+    let (provider, calls) = server(|_| {
+        vec![
+            response(200, "", &json!([row(1)]).to_string()),
+            response(
+                200,
+                "RateLimit-Remaining: 0\r\n",
+                &json!([row(2)]).to_string(),
+            ),
+        ]
+    });
+    let input = request();
+    let page = provider
+        .fetch_pull_files(&token(), input.clone())
+        .await
+        .unwrap();
+    let selected = crate::providers::pull_files::selected_fixture(&input, page.files[0].clone(), 0);
+    let mut malformed = selected.clone();
+    malformed.file.provider_position = MAX_PULL_FILES;
+    assert!(
+        provider
+            .fetch_pull_file_artifact(&token(), malformed)
+            .await
+            .is_err()
+    );
+    let error = provider
+        .fetch_pull_file_artifact(&token(), selected)
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, ProviderErrorKind::InvalidResponse);
+    assert!(error.account_cooldown_seconds.is_some());
+    assert_eq!(calls.join().unwrap().len(), 2);
+}

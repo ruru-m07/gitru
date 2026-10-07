@@ -4,8 +4,8 @@ use super::*;
 use crate::providers::pull_files as common;
 use serde_json::{Map, Value};
 
-fn identity(request: &PullFileCollectionRequest) -> Result<(u64, u64), ProviderError> {
-    common::validate_request(
+fn identity(request: &PullFileSourceRequest) -> Result<(u64, u64), ProviderError> {
+    common::validate_source_request(
         request,
         ProviderKind::Gitlab,
         "gitlab.com",
@@ -123,7 +123,8 @@ impl GitlabProvider {
         token: &SecretToken,
         request: PullFileCollectionRequest,
     ) -> Result<PullFileProviderPage, ProviderError> {
-        let (project, iid) = identity(&request)?;
+        request.validate().map_err(|_| common::invalid())?;
+        let (project, iid) = identity(&PullFileSourceRequest::from(&request))?;
         let initial = self.http.pull_files(project, iid)?;
         let cursor = common::Cursor::open(&request, initial.to_string())?;
         let url = self.http.pull_file_continuation(
@@ -165,10 +166,42 @@ impl GitlabProvider {
         })();
         result.map_err(|e| with_quota(e, response.cooldown))
     }
+    pub(super) async fn request_selected_pull_file(
+        &self,
+        token: &SecretToken,
+        request: PullFileSelectedRequest,
+    ) -> Result<PullFileArtifactRead, ProviderError> {
+        request.validate().map_err(|_| common::invalid())?;
+        let (project, iid) = identity(&request.resource)?;
+        let url = self
+            .http
+            .selected_pull_file(project, iid, request.file.provider_position)?;
+        let response = self.http.get(url, token).await?;
+        let result = (|| {
+            let rows: Vec<Map<String, Value>> =
+                serde_json::from_slice(&response.body).map_err(|_| common::invalid())?;
+            if rows.len() != 1 {
+                return Err(common::invalid());
+            }
+            let observed = file(&rows[0])?;
+            common::selected_content(&request, &observed, rows[0].get("diff"), response.cooldown)
+        })();
+        result.map_err(|error| common::quota(error, response.cooldown))
+    }
+
     pub(super) async fn request_pull_file_range(
         &self,
         token: &SecretToken,
         request: PullFileCollectionRequest,
+    ) -> Result<PullFileRangeValidationResult, ProviderError> {
+        request.validate().map_err(|_| common::invalid())?;
+        self.request_file_source_range(token, PullFileSourceRequest::from(&request))
+            .await
+    }
+    pub(super) async fn request_file_source_range(
+        &self,
+        token: &SecretToken,
+        request: PullFileSourceRequest,
     ) -> Result<PullFileRangeValidationResult, ProviderError> {
         let (project, iid) = identity(&request)?;
         let response = self

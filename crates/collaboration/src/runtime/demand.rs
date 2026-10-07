@@ -115,6 +115,12 @@ impl CollaborationRuntime {
         if automatic {
             let target = match &job.kind {
                 JobKind::NotificationSubject { .. } => return Err(stale()),
+                JobKind::PullFileArtifact { request } => DemandTarget {
+                    kind: DemandTargetKind::Detail,
+                    repository_id: None,
+                    subject_id: Some(request.subject_id.clone()),
+                    facet: Some(DetailFacet::Files),
+                },
                 JobKind::Detail { subject_id, facet } => DemandTarget {
                     kind: DemandTargetKind::Detail,
                     repository_id: None,

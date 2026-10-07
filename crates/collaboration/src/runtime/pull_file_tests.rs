@@ -32,6 +32,10 @@ impl CredentialVault for Vault {
 }
 struct Provider {
     body_calls: AtomicUsize,
+    artifact_calls: AtomicUsize,
+    artifact_cooldown: Option<u64>,
+    artifact_error: Option<ProviderError>,
+    artifact_hold: Option<Arc<Notify>>,
     starts: StdMutex<Vec<u32>>,
     validation_calls: AtomicUsize,
     pages: u32,
@@ -45,6 +49,10 @@ impl Provider {
     fn new(pages: u32) -> Self {
         Self {
             body_calls: AtomicUsize::new(0),
+            artifact_calls: AtomicUsize::new(0),
+            artifact_cooldown: None,
+            artifact_error: None,
+            artifact_hold: None,
             starts: StdMutex::new(vec![]),
             validation_calls: AtomicUsize::new(0),
             pages,
@@ -187,6 +195,51 @@ impl CollaborationProvider for Provider {
                 .page_cooldown
                 .filter(|(position, _)| *position == request.start_position)
                 .map(|(_, wait)| wait),
+        })
+    }
+    async fn fetch_pull_file_artifact(
+        &self,
+        _: &SecretToken,
+        request: PullFileSelectedRequest,
+    ) -> Result<PullFileArtifactRead, ProviderError> {
+        request.validate().unwrap();
+        self.artifact_calls.fetch_add(1, Ordering::SeqCst);
+        if let Some(hold) = &self.artifact_hold {
+            self.entered.notify_one();
+            hold.notified().await;
+        }
+        if let Some(error) = &self.artifact_error {
+            return Err(error.clone());
+        }
+        Ok(PullFileArtifactRead {
+            content_state: PullFileContentState::Text,
+            unified_text: Some("@@ -1 +1 @@\n-old\n+new\n".into()),
+            binary_hint: PullFileFlag::Unknown,
+            cooldown_seconds: self.artifact_cooldown,
+        })
+    }
+    async fn validate_selected_pull_file_range(
+        &self,
+        _: &SecretToken,
+        request: PullFileSelectedRequest,
+    ) -> Result<PullFileRangeValidationResult, ProviderError> {
+        request.validate().unwrap();
+        self.validation_calls.fetch_add(1, Ordering::SeqCst);
+        if let Some(error) = self.validation_error.lock().unwrap().clone() {
+            return Err(error);
+        }
+        let context = request.resource.binding.context;
+        Ok(PullFileRangeValidationResult {
+            validation: PullFileRangeValidation {
+                base_oid: context.base_oid,
+                head_oid: context.head_oid,
+                merge_base_oid: context.merge_base_oid,
+                base_repository_provider_id: context.base_repository_provider_id,
+                source_repository_provider_id: context.source_repository_provider_id,
+            },
+            expected_file_count: Some(self.pages),
+            collection_cap: None,
+            cooldown_seconds: self.validation_cooldown,
         })
     }
     async fn validate_pull_file_range(
@@ -501,4 +554,170 @@ async fn account_disconnect_during_file_read_blocks_parent_validation_and_public
     hold.notify_one();
     assert!(task.await.unwrap());
     assert_eq!(provider.validation_calls.load(Ordering::SeqCst), 0);
+}
+
+async fn selected_request(
+    runtime: &CollaborationRuntime,
+    account: &RemoteAccount,
+) -> PullFileDiffRequest {
+    let snapshot = runtime.store.pull_files(query(account)).await.unwrap();
+    PullFileDiffRequest {
+        account_id: account.id.clone(),
+        authorization_epoch: account.authorization_epoch.clone(),
+        subject_id: "pull".into(),
+        file_facet_revision: snapshot.facet_revision.unwrap(),
+        context: snapshot.context.unwrap(),
+        file_key: snapshot.files[0].file_key.clone(),
+    }
+}
+#[tokio::test]
+async fn selected_hydration_coalesces_and_never_fetches_during_local_query() {
+    let dir = tempfile::tempdir().unwrap();
+    let provider = Arc::new(Provider::new(1));
+    let (runtime, vault, account) =
+        fixture(&dir.path().join("files.sqlite"), provider.clone()).await;
+    hydrate(&runtime, &account).await;
+    complete(&runtime, &account).await;
+    let request = selected_request(&runtime, &account).await;
+    let loads = vault.loads.load(Ordering::SeqCst);
+    let empty = runtime
+        .store
+        .pull_file_artifact(request.clone())
+        .await
+        .unwrap();
+    assert!(empty.artifact.is_none());
+    assert_eq!(vault.loads.load(Ordering::SeqCst), loads);
+    let one = runtime.hydrate_pull_file(request.clone()).await.unwrap();
+    let two = runtime.hydrate_pull_file(request.clone()).await.unwrap();
+    assert_eq!(one.job_id, two.job_id);
+    assert!(runtime.run_next().await);
+    let artifact = runtime
+        .store
+        .pull_file_artifact(request)
+        .await
+        .unwrap()
+        .artifact
+        .unwrap();
+    assert_eq!(
+        artifact.unified_text.as_deref(),
+        Some("@@ -1 +1 @@\n-old\n+new\n")
+    );
+    assert!(matches!(
+        artifact.validation,
+        Some(PullFileArtifactValidation::Provider { .. })
+    ));
+    assert_eq!(provider.artifact_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.validation_calls.load(Ordering::SeqCst), 2);
+}
+#[tokio::test]
+async fn selected_successful_read_quota_blocks_second_request_and_defers_without_bytes() {
+    let dir = tempfile::tempdir().unwrap();
+    let provider = Arc::new(Provider {
+        artifact_cooldown: Some(600),
+        ..Provider::new(1)
+    });
+    let (runtime, _, account) = fixture(&dir.path().join("files.sqlite"), provider.clone()).await;
+    hydrate(&runtime, &account).await;
+    complete(&runtime, &account).await;
+    let request = selected_request(&runtime, &account).await;
+    runtime.hydrate_pull_file(request.clone()).await.unwrap();
+    assert!(runtime.run_next().await);
+    assert!(
+        runtime
+            .store
+            .pull_file_artifact(request)
+            .await
+            .unwrap()
+            .artifact
+            .is_none()
+    );
+    assert_eq!(provider.validation_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(runtime.scheduler.lock().await.deferred.len(), 1);
+    for _ in 0..3 {
+        runtime.run_next().await;
+    }
+    assert_eq!(provider.artifact_calls.load(Ordering::SeqCst), 1);
+}
+#[tokio::test]
+async fn selected_stale_generation_is_rejected_before_vault_or_provider_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let provider = Arc::new(Provider::new(1));
+    let (runtime, vault, account) =
+        fixture(&dir.path().join("files.sqlite"), provider.clone()).await;
+    hydrate(&runtime, &account).await;
+    complete(&runtime, &account).await;
+    let old = selected_request(&runtime, &account).await;
+    hydrate(&runtime, &account).await;
+    assert!(runtime.run_next().await);
+    assert_ne!(
+        runtime
+            .store
+            .pull_files(query(&account))
+            .await
+            .unwrap()
+            .facet_revision
+            .as_ref(),
+        Some(&old.file_facet_revision)
+    );
+    let loads = vault.loads.load(Ordering::SeqCst);
+    assert!(runtime.hydrate_pull_file(old).await.is_err());
+    assert_eq!(vault.loads.load(Ordering::SeqCst), loads);
+    assert_eq!(provider.artifact_calls.load(Ordering::SeqCst), 0);
+}
+#[tokio::test]
+async fn selected_disconnect_during_read_blocks_fresh_parent_and_admission() {
+    let dir = tempfile::tempdir().unwrap();
+    let hold = Arc::new(Notify::new());
+    let provider = Arc::new(Provider {
+        artifact_hold: Some(hold.clone()),
+        ..Provider::new(1)
+    });
+    let (runtime, _, account) = fixture(&dir.path().join("files.sqlite"), provider.clone()).await;
+    hydrate(&runtime, &account).await;
+    complete(&runtime, &account).await;
+    let request = selected_request(&runtime, &account).await;
+    // Clear the notification produced by collection enumeration.
+    provider.entered.notified().await;
+    runtime.hydrate_pull_file(request.clone()).await.unwrap();
+    let running = runtime.clone();
+    let task = tokio::spawn(async move { running.run_next().await });
+    provider.entered.notified().await;
+    runtime.disconnect(&account.id).await.unwrap();
+    hold.notify_one();
+    assert!(task.await.unwrap());
+    assert_eq!(provider.validation_calls.load(Ordering::SeqCst), 1);
+    assert!(runtime.store.pull_file_artifact(request).await.is_err());
+}
+#[tokio::test]
+async fn selected_offline_read_is_deferred_with_bounded_retry_and_no_parent_request() {
+    let dir = tempfile::tempdir().unwrap();
+    let provider = Arc::new(Provider {
+        artifact_error: Some(ProviderError::new(ProviderErrorKind::Offline)),
+        ..Provider::new(1)
+    });
+    let (runtime, _, account) = fixture(&dir.path().join("files.sqlite"), provider.clone()).await;
+    hydrate(&runtime, &account).await;
+    complete(&runtime, &account).await;
+    let request = selected_request(&runtime, &account).await;
+    runtime.hydrate_pull_file(request.clone()).await.unwrap();
+    assert!(runtime.run_next().await);
+    assert_eq!(runtime.scheduler.lock().await.deferred.len(), 1);
+    let status = runtime
+        .store
+        .scope_state(&account.id, &DetailFacet::Files.scope("pull"))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(status.sync.state, SyncState::Offline);
+    assert!(status.sync.next_retry_at.is_some());
+    assert!(
+        runtime
+            .store
+            .pull_file_artifact(request)
+            .await
+            .unwrap()
+            .artifact
+            .is_none()
+    );
+    assert_eq!(provider.validation_calls.load(Ordering::SeqCst), 1);
 }

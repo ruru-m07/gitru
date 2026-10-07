@@ -183,3 +183,94 @@ async fn collection_only_dispatches_one_request_even_when_quota_is_exhausted() {
     assert!(page.files.is_empty() && page.cooldown_seconds.is_some());
     assert_eq!(calls.join().unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn selected_ordinal_is_narrow_and_patch_omission_is_not_empty_text() {
+    for patch in [Some("@@ -1 +1 @@\n-old\n+new"), Some(""), None] {
+        let mut observed = row(1);
+        observed["patch"] = patch.map_or(Value::Null, |text| json!(text));
+        let (provider, calls) = server(|_| {
+            vec![
+                response(200, "", &json!([row(1)])),
+                response(200, "", &json!([observed])),
+                response(200, "", &parent()),
+            ]
+        });
+        let input = request();
+        let page = provider
+            .fetch_pull_files(&token(), input.clone())
+            .await
+            .unwrap();
+        let selected =
+            crate::providers::pull_files::selected_fixture(&input, page.files[0].clone(), 999);
+        let content = provider
+            .fetch_pull_file_artifact(&token(), selected.clone())
+            .await
+            .unwrap();
+        assert_eq!(content.unified_text.as_deref(), patch);
+        assert_eq!(
+            content.content_state,
+            if patch.is_some() {
+                PullFileContentState::Text
+            } else {
+                PullFileContentState::Omitted
+            }
+        );
+        provider
+            .validate_selected_pull_file_range(&token(), selected)
+            .await
+            .unwrap();
+        let calls = calls.join().unwrap();
+        assert!(calls[1].starts_with("GET /repositories/123/pulls/67/files?per_page=1&page=1000 "));
+        assert!(calls[2].starts_with("GET /repositories/123/pulls/67 "));
+    }
+}
+#[tokio::test]
+async fn selected_mismatched_or_multiple_rows_are_rejected_and_quota_retained() {
+    for rows in [json!([row(2)]), json!([row(1), row(2)])] {
+        let (provider, calls) = server(|_| {
+            vec![
+                response(200, "", &json!([row(1)])),
+                response(200, "X-RateLimit-Remaining: 0\r\n", &rows),
+            ]
+        });
+        let input = request();
+        let page = provider
+            .fetch_pull_files(&token(), input.clone())
+            .await
+            .unwrap();
+        let selected =
+            crate::providers::pull_files::selected_fixture(&input, page.files[0].clone(), 0);
+        let error = provider
+            .fetch_pull_file_artifact(&token(), selected)
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, ProviderErrorKind::InvalidResponse);
+        assert!(error.account_cooldown_seconds.is_some());
+        assert_eq!(calls.join().unwrap().len(), 2);
+    }
+}
+#[tokio::test]
+async fn selected_patch_line_limit_reports_oversized_without_prefix() {
+    let mut observed = row(1);
+    observed["patch"] = json!("x".repeat(MAX_PULL_FILE_LINE_BYTES + 1));
+    let (provider, calls) = server(|_| {
+        vec![
+            response(200, "", &json!([row(1)])),
+            response(200, "", &json!([observed])),
+        ]
+    });
+    let input = request();
+    let page = provider
+        .fetch_pull_files(&token(), input.clone())
+        .await
+        .unwrap();
+    let selected = crate::providers::pull_files::selected_fixture(&input, page.files[0].clone(), 0);
+    let content = provider
+        .fetch_pull_file_artifact(&token(), selected)
+        .await
+        .unwrap();
+    assert_eq!(content.content_state, PullFileContentState::Oversized);
+    assert!(content.unified_text.is_none());
+    calls.join().unwrap();
+}
