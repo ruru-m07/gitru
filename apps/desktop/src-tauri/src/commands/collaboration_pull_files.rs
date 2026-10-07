@@ -1,14 +1,15 @@
 //! Local queries and explicit, caller-bound selected-file hydration.
 use super::{
-    collaboration::{authorize, CollaborationState, Operation},
-    collaboration_local_links::{observe, CallerProof},
+    collaboration::{CollaborationState, Operation, authorize},
+    collaboration_local_links::{CallerProof, observe},
 };
 use collaboration::{
-    local_links::LocalLinkState, storage::PullFileSelection, CollaborationError, ErrorCode,
-    LocalLinkQuery, PullFileArtifact, PullFileArtifactSnapshot, PullFileArtifactValidation,
-    PullFileBlobReferences, PullFileContentState, PullFileContext, PullFileDiffRequest,
-    PullFileFlag, PullFileMembershipReceipt, PullFileQuery, PullFileSnapshot, PullFileSource,
-    PullFileSourceStrategy, RefreshReceipt,
+    CollaborationError, ErrorCode, LocalLinkQuery, LocalLinkVersion, PullFileArtifact,
+    PullFileArtifactSnapshot, PullFileArtifactValidation, PullFileBlobReferences,
+    PullFileContentState, PullFileContext, PullFileDiffRequest, PullFileFlag,
+    PullFileMembershipReceipt, PullFileQuery, PullFileSnapshot, PullFileSource,
+    PullFileSourceStrategy, RefreshReceipt, local_links::LocalLinkState,
+    storage::PullFileSelection,
 };
 use git::{
     core::RepoServices,
@@ -191,7 +192,7 @@ fn local_artifact(
             return Err(CollaborationError::new(
                 ErrorCode::NotFound,
                 "This saved file diff is unavailable in the selected local clone",
-            ))
+            ));
         }
     };
     let bytes = unified_text.as_ref().map_or(0, String::len).to_string();
@@ -281,7 +282,17 @@ pub async fn collaboration_load_local_pull_file(
         return Err(stale());
     }
     runtime
-        .save_local_pull_file_artifact(selected_request.clone(), selected.membership, artifact)
+        .save_local_pull_file_artifact(
+            selected_request.clone(),
+            selected.membership,
+            artifact,
+            clone.query,
+            LocalLinkVersion {
+                id: request.link_id,
+                generation: request.link_generation,
+            },
+            || caller.validate_under_writer(&app),
+        )
         .await?;
     let snapshot = runtime.store().pull_file_artifact(selected_request).await?;
     caller.validate(&view, &app)?;

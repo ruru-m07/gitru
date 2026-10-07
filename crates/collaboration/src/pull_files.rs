@@ -4,8 +4,8 @@
 //! local path or accepts a renderer-selected provider URL as fetch authority.
 
 use crate::{
-    AccountState, CollaborationError, Coverage, DetailFreshness, ProviderKind, RemoteAccount, RemoteItem, RemoteItemKind,
-    RemoteRepository, SyncStatus, is_canonical_commit_oid,
+    AccountState, CollaborationError, Coverage, DetailFreshness, ProviderKind, RemoteAccount,
+    RemoteItem, RemoteItemKind, RemoteRepository, SyncStatus, is_canonical_commit_oid,
 };
 use chrono::{DateTime, SecondsFormat};
 use serde::{Deserialize, Serialize};
