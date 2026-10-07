@@ -351,6 +351,116 @@ async fn tampered_protected_evidence_refuses_confirmation_before_target_mutation
     assert!(!pending_path(&target).exists());
 }
 
+async fn materialize_v14_detail_schema(db: &mut SqliteConnection) {
+    // Migration 0018 deliberately rebuilds these tables to extend the facet
+    // constraints. This test constructs a byte-faithful v14 backup from a
+    // current store, so restore the earlier constraints and the original
+    // cache-retention SQL before removing the later migration ledger rows.
+    sqlx::raw_sql(
+        r#"
+CREATE TABLE detail_observations_v14_restore (
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
+    subject_id TEXT NOT NULL,
+    facet TEXT NOT NULL CHECK(facet IN ('body','comments','reviews','checks','participants','tasks')),
+    authorization_epoch TEXT NOT NULL,
+    facet_revision TEXT NOT NULL,
+    body_json TEXT NOT NULL,
+    source_json TEXT NOT NULL,
+    value_source_json TEXT,
+    observed_state TEXT NOT NULL,
+    stale_at TEXT,
+    PRIMARY KEY(account_id,subject_id,facet)
+);
+CREATE TABLE detail_entries_v14_restore (
+    account_id TEXT NOT NULL,
+    subject_id TEXT NOT NULL,
+    facet TEXT NOT NULL,
+    id TEXT NOT NULL,
+    json TEXT NOT NULL,
+    last_seen_run TEXT NOT NULL,
+    PRIMARY KEY(account_id,subject_id,facet,id),
+    FOREIGN KEY(account_id,subject_id,facet) REFERENCES detail_observations_v14_restore(account_id,subject_id,facet) ON DELETE CASCADE
+);
+CREATE TABLE detail_resource_metadata_v14_restore (
+    account_id TEXT NOT NULL,
+    subject_id TEXT NOT NULL,
+    facet TEXT NOT NULL DEFAULT 'body' CHECK(facet='body'),
+    authorization_epoch TEXT NOT NULL,
+    metadata_json TEXT NOT NULL,
+    source_json TEXT NOT NULL,
+    PRIMARY KEY(account_id,subject_id),
+    FOREIGN KEY(account_id,subject_id,facet) REFERENCES detail_observations_v14_restore(account_id,subject_id,facet) ON DELETE CASCADE
+);
+CREATE TABLE detail_demand_v14_restore (
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
+    subject_id TEXT NOT NULL,
+    facet TEXT NOT NULL CHECK(facet IN ('body','comments','reviews','checks','participants','tasks','commits','files')),
+    authorization_epoch TEXT NOT NULL,
+    requested INTEGER NOT NULL DEFAULT 1 CHECK(requested IN (0,1)),
+    PRIMARY KEY(account_id,subject_id,facet)
+);
+CREATE TEMP TABLE cache_retention_entries_v14_restore AS SELECT * FROM cache_retention_entries;
+INSERT INTO detail_observations_v14_restore SELECT * FROM detail_observations;
+INSERT INTO detail_entries_v14_restore SELECT * FROM detail_entries;
+INSERT INTO detail_resource_metadata_v14_restore SELECT * FROM detail_resource_metadata;
+INSERT INTO detail_demand_v14_restore SELECT * FROM detail_demand;
+DROP TRIGGER cache_retention_entries_aggregate_insert;
+DROP TRIGGER cache_retention_entries_aggregate_update;
+DROP TRIGGER cache_retention_entries_aggregate_delete;
+DROP TABLE cache_retention_entries;
+DROP TABLE detail_resource_metadata;
+DROP TABLE detail_entries;
+DROP TABLE detail_demand;
+DROP TABLE detail_observations;
+ALTER TABLE detail_observations_v14_restore RENAME TO detail_observations;
+ALTER TABLE detail_entries_v14_restore RENAME TO detail_entries;
+ALTER TABLE detail_resource_metadata_v14_restore RENAME TO detail_resource_metadata;
+ALTER TABLE detail_demand_v14_restore RENAME TO detail_demand;
+CREATE TABLE cache_retention_entries (
+    account_id TEXT NOT NULL,
+    subject_id TEXT NOT NULL,
+    facet TEXT NOT NULL,
+    logical_bytes INTEGER NOT NULL CHECK(logical_bytes >= 0),
+    last_observed_revision INTEGER NOT NULL CHECK(last_observed_revision > 0),
+    PRIMARY KEY(account_id,subject_id,facet),
+    FOREIGN KEY(account_id,subject_id,facet)
+        REFERENCES detail_observations(account_id,subject_id,facet)
+        ON DELETE CASCADE
+);
+INSERT INTO cache_retention_entries SELECT * FROM cache_retention_entries_v14_restore;
+DROP TABLE cache_retention_entries_v14_restore;
+CREATE INDEX cache_retention_eviction_order
+ON cache_retention_entries(last_observed_revision,account_id,subject_id,facet);
+CREATE TRIGGER cache_retention_entries_aggregate_insert
+AFTER INSERT ON cache_retention_entries
+BEGIN
+    UPDATE cache_retention_state
+    SET indexed_logical_bytes=indexed_logical_bytes+NEW.logical_bytes,
+        indexed_facet_count=indexed_facet_count+1
+    WHERE singleton=1;
+END;
+CREATE TRIGGER cache_retention_entries_aggregate_update
+AFTER UPDATE OF logical_bytes ON cache_retention_entries
+BEGIN
+    UPDATE cache_retention_state
+    SET indexed_logical_bytes=indexed_logical_bytes-OLD.logical_bytes+NEW.logical_bytes
+    WHERE singleton=1;
+END;
+CREATE TRIGGER cache_retention_entries_aggregate_delete
+AFTER DELETE ON cache_retention_entries
+BEGIN
+    UPDATE cache_retention_state
+    SET indexed_logical_bytes=indexed_logical_bytes-OLD.logical_bytes,
+        indexed_facet_count=indexed_facet_count-1
+    WHERE singleton=1;
+END;
+"#,
+    )
+    .execute(&mut *db)
+    .await
+    .unwrap();
+}
+
 #[tokio::test]
 async fn frozen_v14_command_history_migrates_and_preserves_terminal_receipts() {
     let dir = tempfile::tempdir().unwrap();
@@ -366,6 +476,7 @@ async fn frozen_v14_command_history_migrates_and_preserves_terminal_receipts() {
     // Materialize exactly the pre-0015 schema with production-sealed v1 bytes.
     // The separate migration fixture pins all 0001..0014 SQL/checksums.
     let mut db = connect(&backup, false).await.unwrap();
+    materialize_v14_detail_schema(&mut db).await;
     sqlx::raw_sql("DROP VIEW effective_items; DROP TABLE effective_items_fts; DROP TABLE effective_item_overrides; DROP TABLE effective_item_revisions; DROP TABLE command_effects; DROP INDEX command_effect_targets; DROP INDEX command_delivery_pending; DROP INDEX command_delivery_target_order; DROP INDEX command_delivery_active_accounts; DROP TRIGGER command_delivery_admitted; DROP TABLE delivery_resolutions; DROP TABLE delivery_attempt_context; DROP TABLE command_delivery; DROP TRIGGER quarantined_attempt_refused; DROP TABLE command_recovery_quarantine; DROP TABLE recovery_meta; DELETE FROM _sqlx_migrations WHERE version>=15;").execute(&mut db).await.unwrap();
     assert_eq!(verify(&mut db).await.unwrap(), 14);
     db.close().await.unwrap();
