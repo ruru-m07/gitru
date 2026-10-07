@@ -16,6 +16,7 @@ import {
   collaborationDiscoverNotificationSubject,
   collaborationDraft,
   collaborationDrafts,
+  collaborationExecutePullCheckout,
   collaborationExportDraft,
   collaborationHydrateDetail,
   collaborationItem,
@@ -23,6 +24,7 @@ import {
   collaborationLocalClones,
   collaborationLocalLinks,
   collaborationNotificationSubject,
+  collaborationPlanPullCheckout,
   collaborationRefresh,
   collaborationReleaseDemand,
   collaborationRemoveLocalLink,
@@ -67,6 +69,7 @@ export type {
   DraftPage,
   DraftQuery,
   DraftSummary,
+  ExecutePullCheckoutRequest,
   GithubCliAccount,
   GithubCliDiscovery,
   HydrateDetailRequest,
@@ -87,6 +90,9 @@ export type {
   NotificationSubjectSnapshot,
   ParticipantUser,
   ParticipantV1,
+  PullCheckoutPlan,
+  PullCheckoutPlanRequest,
+  PullCheckoutReceipt,
   ReleaseDemandRequest,
   RemoteAccount,
   RemoteItem,
@@ -182,6 +188,9 @@ export const collaboration = new CollaborationClient({
   notificationSubject: (query) => collaborationNotificationSubject({ query }),
   discoverNotificationSubject: (request) =>
     collaborationDiscoverNotificationSubject({ request }),
+  planPullCheckout: (request) => collaborationPlanPullCheckout({ request }),
+  executePullCheckout: (request) =>
+    collaborationExecutePullCheckout({ request }),
   listen: (onWake) =>
     getCurrentWebview().listen<{ revision: string }>(
       "gitru:collaboration-change",

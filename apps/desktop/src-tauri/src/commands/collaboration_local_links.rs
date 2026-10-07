@@ -223,11 +223,11 @@ pub(crate) fn lifetime_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct CallerProof {
-    label: String,
-    url: String,
-    owners: Vec<(String, u64)>,
-    native_identity: usize,
-    incarnation: u64,
+    pub(super) label: String,
+    pub(super) url: String,
+    pub(super) owners: Vec<(String, u64)>,
+    pub(super) native_identity: usize,
+    pub(super) incarnation: u64,
 }
 impl CallerProof {
     pub(super) fn capture(view: &Webview, app: &AppHandle) -> Result<Self, CollaborationError> {
@@ -389,7 +389,7 @@ fn endpoints(remotes: &RemoteSnapshot) -> Vec<LocalRemoteEndpoint> {
         })
         .collect()
 }
-async fn observe(
+pub(super) async fn observe(
     app: &AppHandle,
     id: &str,
 ) -> Result<

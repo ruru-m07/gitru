@@ -20,6 +20,7 @@ import {
   resourceCapabilityTarget,
 } from "./capability-policy";
 import { SavedDraftEditor } from "./private-draft";
+import { PullRequestCheckoutButton } from "./pull-checkout-dialog";
 import { ResourceCapabilityPanels } from "./resource-capability-panels";
 import { SelectedResourceHeader } from "./resource-metadata";
 
@@ -130,6 +131,12 @@ export function SavedItemDetail({
         <>
           <SelectedResourceHeader
             item={item}
+            metadata={bodyData?.metadata ?? null}
+          />
+          <PullRequestCheckoutButton
+            account={account}
+            item={item}
+            instanceId={instanceId}
             metadata={bodyData?.metadata ?? null}
           />
           {kind === "notification" || !canReadSaved(bodyPolicy) ? (

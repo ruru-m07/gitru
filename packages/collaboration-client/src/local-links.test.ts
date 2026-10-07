@@ -98,6 +98,8 @@ function fixture() {
     hydrateDetail: unexpected,
     notificationSubject: unexpected,
     discoverNotificationSubject: unexpected,
+    planPullCheckout: unexpected,
+    executePullCheckout: unexpected,
     demandActivity: unexpected,
     acquireDemand: unexpected,
     renewDemand: unexpected,

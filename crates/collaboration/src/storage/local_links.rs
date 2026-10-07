@@ -366,6 +366,126 @@ impl Store {
         tx.commit().await.map_err(storage_error)?;
         Ok(links)
     }
+
+    /// Resolve a saved PR head repository to one existing, effective fetch
+    /// remote after revalidating the authored base-repository link. The caller
+    /// supplies the head identity from this Store's own typed detail snapshot.
+    pub async fn pull_checkout_link_source(
+        &self,
+        request: PullCheckoutLinkRequest,
+    ) -> Result<PullCheckoutLinkSource> {
+        validate_query(&request.query)?;
+        for value in [
+            &request.account_id,
+            &request.authorization_epoch,
+            &request.instance_id,
+            &request.repository_id,
+            &request.link.id,
+            &request.link.generation,
+        ] {
+            validate_identifier(value)?;
+        }
+        if !plain(&request.head_repository.provider_id, 256)
+            || !path(&request.head_repository.full_name)
+        {
+            return Err(CollaborationError::invalid(
+                "Invalid saved pull request head repository",
+            ));
+        }
+        let remote_digest = request.query.remote_digest.clone().ok_or_else(stale_link)?;
+        let mut tx = self.inner.readers.begin().await.map_err(storage_error)?;
+        let account = account_in(&mut tx, &request.account_id, true).await?;
+        if account.authorization_epoch != request.authorization_epoch
+            || identities::instance_in(&mut tx, &account).await?.id != request.instance_id
+        {
+            return Err(stale_link());
+        }
+        if !identities::accessible(
+            &mut tx,
+            &request.account_id,
+            &request.repository_id,
+            ResourceKind::Repository,
+        )
+        .await?
+        {
+            return Err(CollaborationError::new(
+                ErrorCode::PermissionDenied,
+                "Saved repository access is unavailable",
+            ));
+        }
+        let base_repository = repository_from_row(
+            &sqlx::query("SELECT json,selected FROM repositories WHERE account_id=? AND id=?")
+                .bind(&request.account_id)
+                .bind(&request.repository_id)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(storage_error)?,
+        )?;
+        let snapshot = snapshot_in(&mut tx, &request.query).await?;
+        let linked = snapshot.links.iter().any(|link| {
+            link.id == request.link.id
+                && link.generation == request.link.generation
+                && link.state == LocalLinkState::Linked
+                && link.local_repository_id == request.query.local_repository_id
+                && link.account_id == request.account_id
+                && link.actor_id == account.actor_id
+                && link.instance_id == request.instance_id
+                && link.repository_id == request.repository_id
+                && link.repository_provider_id == base_repository.provider_id
+        });
+        if !linked {
+            return Err(stale_link());
+        }
+        let mut bindings = bindings_in(&mut tx).await?;
+        bindings.extend(public_bindings());
+        let source_endpoint = checkout_source(
+            &request.query.endpoints,
+            &bindings,
+            &request.instance_id,
+            &request.head_repository.full_name,
+        )?;
+        tx.commit().await.map_err(storage_error)?;
+        Ok(PullCheckoutLinkSource {
+            local_repository_id: request.query.local_repository_id,
+            base_repository,
+            source_endpoint,
+            remote_digest,
+            authorization_view: snapshot.authorization_view,
+        })
+    }
+}
+
+fn checkout_source(
+    endpoints: &[LocalRemoteEndpoint],
+    bindings: &[LocalTransportBinding],
+    instance_id: &str,
+    repository_full_name: &str,
+) -> Result<LocalRemoteEndpoint> {
+    let mut matches = endpoints
+        .iter()
+        .filter(|endpoint| endpoint.direction == LinkDirection::Fetch && endpoint.ordinal == 0)
+        .filter_map(|endpoint| {
+            mapped(endpoint, bindings)
+                .ok()
+                .filter(|(binding, path)| {
+                    binding.instance_id == instance_id && path == repository_full_name
+                })
+                .map(|_| endpoint.clone())
+        })
+        .collect::<Vec<_>>();
+    matches.sort_by(|left, right| left.remote_name.cmp(&right.remote_name));
+    matches.dedup_by(|left, right| left.remote_name == right.remote_name);
+    match matches.len() {
+        1 => Ok(matches.remove(0)),
+        0 => Err(CollaborationError::new(
+            ErrorCode::NotFound,
+            "No existing fetch remote matches the saved pull request source repository",
+        )),
+        _ => Err(CollaborationError::new(
+            ErrorCode::NotReady,
+            "More than one fetch remote matches the saved pull request source repository",
+        )),
+    }
 }
 
 fn stale_link() -> CollaborationError {
@@ -1111,5 +1231,89 @@ mod failure_tests {
         );
         assert_eq!(error.code, ErrorCode::Storage);
         assert_eq!(store.local_link_snapshot(query).await.unwrap(), before);
+    }
+
+    #[test]
+    fn checkout_source_selects_only_the_forks_primary_fetch_endpoint() {
+        let instance = ProviderInstance::public(ProviderKind::Github).id;
+        let endpoints = vec![
+            LocalRemoteEndpoint {
+                remote_name: "origin".into(),
+                direction: LinkDirection::Fetch,
+                ordinal: 0,
+                transport: LinkTransport::Https,
+                host: "github.com".into(),
+                port: 443,
+                path: "base/project.git".into(),
+            },
+            LocalRemoteEndpoint {
+                remote_name: "fork".into(),
+                direction: LinkDirection::Fetch,
+                ordinal: 0,
+                transport: LinkTransport::Ssh,
+                host: "github.com".into(),
+                port: 22,
+                path: "actor/project.git".into(),
+            },
+            LocalRemoteEndpoint {
+                remote_name: "fork".into(),
+                direction: LinkDirection::Fetch,
+                ordinal: 1,
+                transport: LinkTransport::Https,
+                host: "github.com".into(),
+                port: 443,
+                path: "other/project.git".into(),
+            },
+            LocalRemoteEndpoint {
+                remote_name: "push-fork".into(),
+                direction: LinkDirection::Push,
+                ordinal: 0,
+                transport: LinkTransport::Https,
+                host: "github.com".into(),
+                port: 443,
+                path: "actor/project.git".into(),
+            },
+        ];
+        let source =
+            checkout_source(&endpoints, &public_bindings(), &instance, "actor/project").unwrap();
+        assert_eq!(source.remote_name, "fork");
+        assert_eq!(source.direction, LinkDirection::Fetch);
+        assert_eq!(source.ordinal, 0);
+    }
+
+    #[test]
+    fn checkout_source_fails_closed_for_missing_or_ambiguous_fork_remotes() {
+        let instance = ProviderInstance::public(ProviderKind::Github).id;
+        let endpoint = |name: &str| LocalRemoteEndpoint {
+            remote_name: name.into(),
+            direction: LinkDirection::Fetch,
+            ordinal: 0,
+            transport: LinkTransport::Https,
+            host: "github.com".into(),
+            port: 443,
+            path: "actor/project.git".into(),
+        };
+        assert_eq!(
+            checkout_source(
+                &[endpoint("origin")],
+                &public_bindings(),
+                &instance,
+                "missing/project",
+            )
+            .unwrap_err()
+            .code,
+            ErrorCode::NotFound
+        );
+        assert_eq!(
+            checkout_source(
+                &[endpoint("origin"), endpoint("fork")],
+                &public_bindings(),
+                &instance,
+                "actor/project",
+            )
+            .unwrap_err()
+            .code,
+            ErrorCode::NotReady
+        );
     }
 }

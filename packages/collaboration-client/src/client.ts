@@ -13,6 +13,7 @@ import {
   type DiscoverNotificationSubjectRequest,
   type DraftPage,
   type DraftQuery,
+  type ExecutePullCheckoutRequest,
   type GithubCliDiscovery,
   type HydrateDetailRequest,
   type ItemPage,
@@ -29,6 +30,9 @@ import {
   type LocalTransportBinding,
   type NotificationSubjectQuery,
   type NotificationSubjectSnapshot,
+  type PullCheckoutPlan,
+  type PullCheckoutPlanRequest,
+  type PullCheckoutReceipt,
   type RefreshReceipt,
   type RefreshRequest,
   type RemoteAccount,
@@ -109,6 +113,10 @@ export interface CollaborationTransport extends DemandTransport {
   discoverNotificationSubject(
     request: DiscoverNotificationSubjectRequest,
   ): Promise<RefreshReceipt>;
+  planPullCheckout(request: PullCheckoutPlanRequest): Promise<PullCheckoutPlan>;
+  executePullCheckout(
+    request: ExecutePullCheckoutRequest,
+  ): Promise<PullCheckoutReceipt>;
   listen(onWake: () => void): Promise<() => void>;
 }
 
@@ -428,6 +436,38 @@ export class CollaborationClient {
             authorization_epoch: account.authorization_epoch,
           }),
         ),
+      planPullCheckout: (
+        request: Omit<
+          PullCheckoutPlanRequest,
+          "account_id" | "authorization_epoch"
+        >,
+      ) => {
+        const {
+          instance_id,
+          subject_id,
+          local_repository_id,
+          link_id,
+          link_generation,
+          local_branch,
+        } = request;
+        return this.fence.read(cloneAccount.id, () =>
+          this.transport.planPullCheckout({
+            account_id: cloneAccount.id,
+            authorization_epoch: cloneAccount.authorization_epoch,
+            instance_id,
+            subject_id,
+            local_repository_id,
+            link_id,
+            link_generation,
+            ...(local_branch === undefined ? {} : { local_branch }),
+          }),
+        );
+      },
+      // Native execution owns the final caller/epoch/link admission gates. A
+      // returned receipt is authoritative for the local Git mutation, even if
+      // the client fence invalidates while the IPC request is in flight.
+      executePullCheckout: (planId: string) =>
+        this.transport.executePullCheckout({ plan_id: planId }),
       refresh: (request: Omit<RefreshRequest, "account_id">) =>
         this.transport.refresh({ ...request, account_id: account.id }),
       selectRepository: (repositoryId: string, selected: boolean) =>

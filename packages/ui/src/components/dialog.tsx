@@ -79,6 +79,16 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
+function DialogPanel({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="dialog-panel"
+      className={cn("min-w-0", className)}
+      {...props}
+    />
+  );
+}
+
 function DialogFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -125,6 +135,7 @@ export {
   DialogPopup,
   DialogPopup as DialogContent,
   DialogHeader,
+  DialogPanel,
   DialogFooter,
   DialogTitle,
   DialogDescription,

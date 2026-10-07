@@ -2020,6 +2020,7 @@ dependencies = [
  "git2",
  "log",
  "logger",
+ "rustls",
  "serde",
  "serde_json",
  "serial_test",

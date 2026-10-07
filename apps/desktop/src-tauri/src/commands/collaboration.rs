@@ -19,6 +19,7 @@ pub struct CollaborationState {
     draft_export: tokio::sync::Mutex<()>,
     pub(super) demand_hosts: tokio::sync::Mutex<std::collections::HashMap<String, bool>>,
     pub(super) local_link_previews: super::collaboration_local_links::LocalLinkPreviews,
+    pub(super) pull_checkout_plans: super::collaboration_pull_checkout::PullCheckoutPlans,
     pub(super) webview_lifetimes: super::collaboration_local_links::NativeWebviewLifetimes,
 }
 
@@ -74,6 +75,7 @@ pub(super) enum Operation {
     TransportBindings,
     NotificationSubject,
     DiscoverNotificationSubject,
+    PullCheckout,
 }
 
 impl Operation {
@@ -475,6 +477,7 @@ mod tests {
         Operation::LocalLinks,
         Operation::NotificationSubject,
         Operation::DiscoverNotificationSubject,
+        Operation::PullCheckout,
     ];
     const CREDENTIAL_OPERATIONS: &[Operation] = &[
         Operation::ConnectGithub,

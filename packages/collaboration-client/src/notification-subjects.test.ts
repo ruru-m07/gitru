@@ -146,6 +146,8 @@ function fixture() {
     discoverNotificationSubject: vi.fn(async () => ({
       job_id: "native-finite-intent",
     })),
+    planPullCheckout: unexpected,
+    executePullCheckout: unexpected,
     localLinks: unexpected,
     confirmLocalLink: unexpected,
     removeLocalLink: unexpected,

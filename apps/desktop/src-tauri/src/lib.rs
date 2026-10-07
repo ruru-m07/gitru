@@ -115,6 +115,8 @@ pub fn run() {
             commands::collaboration_local_links::collaboration_validate_local_navigation,
             commands::collaboration_notification_subjects::collaboration_notification_subject,
             commands::collaboration_notification_subjects::collaboration_discover_notification_subject,
+            commands::collaboration_pull_checkout::collaboration_plan_pull_checkout,
+            commands::collaboration_pull_checkout::collaboration_execute_pull_checkout,
             ipc::commands::add_local_git_repo,
             ipc::commands::clone_repository,
             ipc::commands::cancel_clone_repository,

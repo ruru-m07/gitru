@@ -7,6 +7,8 @@ import type {
   DetailSnapshot,
   ItemPage,
   ItemSnapshot,
+  PullCheckoutPlan,
+  PullCheckoutReceipt,
   RemoteAccount,
   RemoteItem,
   RepositorySnapshot,
@@ -67,6 +69,33 @@ const changePage = (
   has_more: false,
   changes,
 });
+const checkoutPlan: PullCheckoutPlan = {
+  plan_id: "opaque-plan",
+  local_repository_id: "registered-a",
+  local_repository_name: "project",
+  source_repository: "owner/project",
+  source_remote: "origin",
+  source_branch: "feature",
+  expected_oid: "a".repeat(40),
+  local_branch: "review/42",
+  metadata_validated_at: "2026-10-05T00:00:00Z",
+  metadata_stale: false,
+  inspection: {
+    current_branch: "main",
+    current_head_oid: "b".repeat(40),
+    detached: false,
+    dirty: false,
+    operation: "clean",
+    object_available: true,
+    action: "create_branch",
+  },
+};
+const checkoutReceipt: PullCheckoutReceipt = {
+  local_repository_id: checkoutPlan.local_repository_id,
+  branch: checkoutPlan.local_branch,
+  oid: checkoutPlan.expected_oid,
+  fetched: false,
+};
 
 function transport(
   overrides: Partial<CollaborationTransport> = {},
@@ -99,6 +128,8 @@ function transport(
     hydrateDetail: unexpected,
     notificationSubject: unexpected,
     discoverNotificationSubject: unexpected,
+    planPullCheckout: unexpected,
+    executePullCheckout: unexpected,
     demandActivity: unexpected,
     acquireDemand: unexpected,
     renewDemand: unexpected,
@@ -1347,6 +1378,83 @@ describe("CollaborationClient", () => {
       generation: "1",
     });
     await expect(saved).rejects.toBeInstanceOf(StaleAuthorizationError);
+  });
+
+  it("injects a captured account epoch and forwards only checkout planning identifiers", async () => {
+    const planPullCheckout = vi.fn(async () => checkoutPlan);
+    const executePullCheckout = vi.fn(async () => checkoutReceipt);
+    const client = new CollaborationClient(
+      transport({ planPullCheckout, executePullCheckout }),
+    );
+    const mutable = { ...account };
+    const checkout = client.forAccount(mutable);
+    mutable.id = "mutated-account";
+    mutable.authorization_epoch = "mutated-epoch";
+    const request = {
+      instance_id: "github:https://github.com/",
+      subject_id: "pull-42",
+      local_repository_id: "registered-a",
+      link_id: "link-a",
+      link_generation: "7",
+      local_branch: "review/42",
+      path: "/caller-controlled/path",
+      url: "https://attacker.invalid/repository",
+      remote: "caller-remote",
+      oid: "c".repeat(40),
+    };
+
+    await expect(checkout.planPullCheckout(request)).resolves.toBe(
+      checkoutPlan,
+    );
+    expect(planPullCheckout).toHaveBeenCalledExactlyOnceWith({
+      account_id: account.id,
+      authorization_epoch: account.authorization_epoch,
+      instance_id: request.instance_id,
+      subject_id: request.subject_id,
+      local_repository_id: request.local_repository_id,
+      link_id: request.link_id,
+      link_generation: request.link_generation,
+      local_branch: request.local_branch,
+    });
+    await expect(checkout.executePullCheckout("opaque-plan")).resolves.toBe(
+      checkoutReceipt,
+    );
+    expect(executePullCheckout).toHaveBeenCalledExactlyOnceWith({
+      plan_id: "opaque-plan",
+    });
+  });
+
+  it("fences a delayed plan but preserves an authoritative native execution receipt", async () => {
+    const pendingPlan = deferred<PullCheckoutPlan>();
+    const pendingReceipt = deferred<PullCheckoutReceipt>();
+    const client = new CollaborationClient(
+      transport({
+        disconnect: async () => "2",
+        planPullCheckout: () => pendingPlan.promise,
+        executePullCheckout: () => pendingReceipt.promise,
+      }),
+    );
+    const checkout = client.forAccount(account);
+    const planned = checkout.planPullCheckout({
+      instance_id: "github:https://github.com/",
+      subject_id: "pull-42",
+      local_repository_id: "registered-a",
+      link_id: "link-a",
+      link_generation: "7",
+    });
+    const executed = checkout.executePullCheckout("opaque-plan");
+    const stalePlan = expect(planned).rejects.toBeInstanceOf(
+      StaleAuthorizationError,
+    );
+    const authoritativeReceipt =
+      expect(executed).resolves.toBe(checkoutReceipt);
+
+    await client.disconnect(account.id);
+    pendingPlan.resolve(checkoutPlan);
+    pendingReceipt.resolve(checkoutReceipt);
+
+    await stalePlan;
+    await authoritativeReceipt;
   });
 });
 

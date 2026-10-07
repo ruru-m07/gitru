@@ -47,7 +47,7 @@ pub struct LocalTransportBinding {
 
 /// Constructed by the native caller from a trusted RepoManager registration and
 /// a new safe Git observation, never accepted verbatim from JavaScript.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalLinkQuery {
     pub local_repository_id: String,
     pub registration_proof: Option<String>,
@@ -131,6 +131,28 @@ pub struct LocalLinkVersion {
 pub struct LocalLinkWriteReceipt {
     pub link: LocalRepositoryLink,
     pub revision: String,
+    pub authorization_view: String,
+}
+
+/// Native-only request assembled from a saved PR detail and a fresh local Git
+/// observation. Renderer input must never construct this value directly.
+#[derive(Debug, Clone)]
+pub struct PullCheckoutLinkRequest {
+    pub query: LocalLinkQuery,
+    pub account_id: String,
+    pub authorization_epoch: String,
+    pub instance_id: String,
+    pub repository_id: String,
+    pub link: LocalLinkVersion,
+    pub head_repository: crate::DetailRepositoryRef,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PullCheckoutLinkSource {
+    pub local_repository_id: String,
+    pub base_repository: RemoteRepository,
+    pub source_endpoint: LocalRemoteEndpoint,
+    pub remote_digest: String,
     pub authorization_view: String,
 }
 

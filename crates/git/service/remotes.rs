@@ -13,6 +13,7 @@ pub struct RemotesService {
 }
 
 /// Native-only filesystem coordinates, never an IPC response or link authority.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NativeWorktreePaths {
     pub worktree: std::path::PathBuf,
     pub git_dir: std::path::PathBuf,
@@ -33,35 +34,42 @@ impl RemotesService {
                 .transaction()
                 .await
                 .map_err(|_| RemoteObservationError::Unavailable)?;
-            let mut remaining = 16384usize;
-            let mut paths = Vec::new();
-            for args in [
-                &["rev-parse", "--show-toplevel"][..],
-                &["rev-parse", "--absolute-git-dir"][..],
-                &["rev-parse", "--path-format=absolute", "--git-common-dir"][..],
-            ] {
-                let bytes = read(&mut tx, args, &mut remaining, &[]).await?;
-                let value = std::str::from_utf8(&bytes)
-                    .map_err(|_| RemoteObservationError::InvalidConfiguration)?
-                    .strip_suffix('\n')
-                    .ok_or(RemoteObservationError::InvalidConfiguration)?;
-                if value.chars().any(char::is_control) {
-                    return Err(RemoteObservationError::InvalidConfiguration);
-                }
-                let path = std::path::PathBuf::from(value)
-                    .canonicalize()
-                    .map_err(|_| RemoteObservationError::Unavailable)?;
-                paths.push(path);
-            }
-            let mut paths = paths.into_iter();
-            Ok(NativeWorktreePaths {
-                worktree: paths.next().ok_or(RemoteObservationError::Unavailable)?,
-                git_dir: paths.next().ok_or(RemoteObservationError::Unavailable)?,
-                common_dir: paths.next().ok_or(RemoteObservationError::Unavailable)?,
-            })
+            self.worktree_paths_in(&mut tx).await
         })
         .await
         .map_err(|_| RemoteObservationError::Timeout)?
+    }
+
+    pub(crate) async fn worktree_paths_in(
+        &self,
+        tx: &mut GitCommandTransaction,
+    ) -> Result<NativeWorktreePaths, RemoteObservationError> {
+        let mut remaining = 16384usize;
+        let mut paths = Vec::new();
+        for args in [
+            &["rev-parse", "--show-toplevel"][..],
+            &["rev-parse", "--absolute-git-dir"][..],
+            &["rev-parse", "--path-format=absolute", "--git-common-dir"][..],
+        ] {
+            let bytes = read(tx, args, &mut remaining, &[]).await?;
+            let value = std::str::from_utf8(&bytes)
+                .map_err(|_| RemoteObservationError::InvalidConfiguration)?
+                .strip_suffix('\n')
+                .ok_or(RemoteObservationError::InvalidConfiguration)?;
+            if value.chars().any(char::is_control) {
+                return Err(RemoteObservationError::InvalidConfiguration);
+            }
+            let path = std::path::PathBuf::from(value)
+                .canonicalize()
+                .map_err(|_| RemoteObservationError::Unavailable)?;
+            paths.push(path);
+        }
+        let mut paths = paths.into_iter();
+        Ok(NativeWorktreePaths {
+            worktree: paths.next().ok_or(RemoteObservationError::Unavailable)?,
+            git_dir: paths.next().ok_or(RemoteObservationError::Unavailable)?,
+            common_dir: paths.next().ok_or(RemoteObservationError::Unavailable)?,
+        })
     }
 
     pub async fn snapshot(&self) -> Result<RemoteSnapshot, RemoteObservationError> {
@@ -78,10 +86,18 @@ impl RemotesService {
             .transaction()
             .await
             .map_err(|_| Error::Unavailable)?;
+        self.snapshot_in(&mut tx).await
+    }
+
+    pub(crate) async fn snapshot_in(
+        &self,
+        tx: &mut GitCommandTransaction,
+    ) -> Result<RemoteSnapshot, RemoteObservationError> {
+        use RemoteObservationError as Error;
         let mut remaining = MAX_OUTPUT;
         for directory in ["remotes", "branches"] {
             let bytes = read(
-                &mut tx,
+                tx,
                 &["rev-parse", "--git-path", directory],
                 &mut remaining,
                 &[],
@@ -108,25 +124,19 @@ impl RemotesService {
                 Err(_) => return Err(Error::Unavailable),
             }
         }
-        let before = read(
-            &mut tx,
-            &["config", "--null", "--list"],
-            &mut remaining,
-            &[],
-        )
-        .await?;
+        let before = read(tx, &["config", "--null", "--list"], &mut remaining, &[]).await?;
         let names = config_names(&before)?;
         let mut remotes = Vec::new();
         for name in names {
             let fetch = read(
-                &mut tx,
+                tx,
                 &["remote", "get-url", "--all", "--", &name],
                 &mut remaining,
                 &[2],
             )
             .await?;
             let push = read(
-                &mut tx,
+                tx,
                 &["remote", "get-url", "--push", "--all", "--", &name],
                 &mut remaining,
                 &[2],
@@ -138,13 +148,7 @@ impl RemotesService {
                 push_urls: urls(&push)?,
             });
         }
-        let after = read(
-            &mut tx,
-            &["config", "--null", "--list"],
-            &mut remaining,
-            &[],
-        )
-        .await?;
+        let after = read(tx, &["config", "--null", "--list"], &mut remaining, &[]).await?;
         if before != after {
             return Err(Error::Changed);
         }

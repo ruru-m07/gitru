@@ -27,7 +27,10 @@ pub async fn observe_registered_repository(
     Ok(RegisteredRemoteObservation { proof, remotes })
 }
 
-fn registration_proof(
+/// Recompute registration identity from already-inspected native worktree
+/// coordinates. This performs filesystem identity checks only and is safe to
+/// use while the Git command transaction remains held.
+pub fn registration_proof(
     repo: &RepositoryInfo,
     paths: &NativeWorktreePaths,
 ) -> Result<String, RemoteObservationError> {
