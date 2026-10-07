@@ -2,6 +2,7 @@
 #[cfg(test)]
 extern crate self as collaboration;
 pub mod checks;
+pub mod command_recovery;
 pub mod commands;
 pub mod contextual_capabilities;
 pub mod credentials;
@@ -32,6 +33,7 @@ pub mod tasks;
 pub mod test_harness;
 
 pub use checks::*;
+pub use command_recovery::*;
 pub use commands::*;
 pub use contextual_capabilities::*;
 pub use demand::*;
