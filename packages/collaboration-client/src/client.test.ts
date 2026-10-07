@@ -164,6 +164,7 @@ function transport(
     removeTransportBinding: unexpected,
     localClones: unexpected,
     validateLocalNavigation: unexpected,
+    listenRuntimeReset: async () => () => {},
     listenLocalChanges: async () => () => {},
     listen: unexpected,
     ...overrides,
@@ -172,10 +173,12 @@ function transport(
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((finish) => {
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((finish, fail) => {
     resolve = finish;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 const locator: ResourceLocator = {
@@ -2020,4 +2023,139 @@ describe("authored draft recovery", () => {
     stop();
     cache.clear();
   });
+});
+
+it("fences late native reads and resets provider projections across recovery without erasing unsaved draft context", async () => {
+  let reset: (() => void) | undefined;
+  const remove = vi.fn();
+  const oldRead = deferred<CapabilitySnapshot>();
+  const client = new CollaborationClient(
+    transport({
+      listen: async () => () => {},
+      listenRuntimeReset: async (listener) => {
+        reset = listener;
+        return remove;
+      },
+      changesSince: async () => changePage("1"),
+      capabilities: () => oldRead.promise,
+    }),
+  );
+  const cache = new QueryClient();
+  const stop = client.installBridge(cache);
+  await client.wake();
+  const key = collaborationKeys.capabilities(account);
+  const draftKey = collaborationKeys.draft(account, "retained");
+  cache.setQueryData(key, capability);
+  cache.setQueryData(draftKey, {
+    body: "Keep the author's text",
+    generation: "2",
+  });
+  const pending = client.forAccount(account).capabilities();
+  const rejected = expect(pending).rejects.toBeInstanceOf(
+    StaleAuthorizationError,
+  );
+  reset?.();
+  expect(cache.getQueryData(key)).toBeUndefined();
+  expect(cache.getQueryData(draftKey)).toEqual({
+    body: "Keep the author's text",
+    generation: "2",
+  });
+  expect(cache.getQueryState(draftKey)?.isInvalidated).toBe(true);
+  oldRead.resolve(capability);
+  await rejected;
+  stop();
+  expect(remove).toHaveBeenCalledTimes(1);
+  cache.setQueryData(key, capability);
+  reset?.();
+  expect(cache.getQueryData(key)).toEqual(capability);
+  cache.clear();
+});
+
+it("removes a recovery listener that attaches after the bridge is disposed", async () => {
+  const installed = deferred<() => void>();
+  const remove = vi.fn();
+  const client = new CollaborationClient(
+    transport({
+      listen: async () => () => {},
+      listenRuntimeReset: () => installed.promise,
+      changesSince: async () => changePage("1"),
+    }),
+  );
+  const cache = new QueryClient();
+  const stop = client.installBridge(cache);
+  stop();
+  installed.resolve(remove);
+  await vi.waitFor(() => expect(remove).toHaveBeenCalledTimes(1));
+  cache.clear();
+});
+
+it.each([
+  "reject",
+  "resolve",
+] as const)("restarts catch-up across native recovery and fences an old %s completion", async (completion) => {
+  let reset: (() => void) | undefined;
+  const oldRead = deferred<ChangePage>();
+  const freshRead = deferred<ChangePage>();
+  const changesSince = vi
+    .fn()
+    .mockResolvedValueOnce(changePage("1"))
+    .mockImplementationOnce(() => oldRead.promise)
+    .mockImplementationOnce(() => freshRead.promise);
+  const client = new CollaborationClient(
+    transport({
+      listen: async () => () => {},
+      listenRuntimeReset: async (listener) => {
+        reset = listener;
+        return () => {};
+      },
+      changesSince,
+      capabilities: async () => ({
+        ...capability,
+        revision: "3",
+        authorization_view: "3",
+      }),
+    }),
+  );
+  const changed = vi.fn();
+  const unsubscribe = client.subscribeChanges(changed);
+  const cache = new QueryClient();
+  const stop = client.installBridge(cache);
+  await vi.waitFor(() => expect(changesSince).toHaveBeenCalledTimes(1));
+  const retired = client.wake();
+  reset?.();
+  await vi.waitFor(() => expect(changesSince).toHaveBeenCalledTimes(3));
+  // Restart ignores the old cursor and never waits for its pending request.
+  expect(changesSince.mock.calls).toEqual([["0"], ["1"], ["0"]]);
+  freshRead.resolve(
+    changePage("3", "3", [
+      { revision: "3", account_id: account.id, scope: "drafts", reset: false },
+    ]),
+  );
+  await vi.waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
+  if (completion === "reject") {
+    oldRead.reject({ code: "not_ready", message: "Retired runtime" });
+  } else {
+    oldRead.resolve(
+      changePage("2", "1", [
+        {
+          revision: "2",
+          account_id: account.id,
+          scope: "drafts",
+          reset: false,
+        },
+      ]),
+    );
+  }
+  await retired;
+  expect(changed.mock.calls).toEqual([
+    [{ revision: "3", account_id: account.id, scope: "drafts", reset: false }],
+  ]);
+  await expect(
+    client.forAccount(account).capabilities(),
+  ).resolves.toMatchObject({
+    authorization_view: "3",
+  });
+  unsubscribe();
+  stop();
+  cache.clear();
 });

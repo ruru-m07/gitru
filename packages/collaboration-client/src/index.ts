@@ -202,6 +202,8 @@ export const collaboration = new CollaborationClient({
   validateLocalNavigation: (request) =>
     collaborationValidateLocalNavigation({ request }),
   listenLocalChanges: (onWake) => listen("gitru://repository-changed", onWake),
+  listenRuntimeReset: (onReset) =>
+    listen("gitru:collaboration-runtime-reset", onReset),
   accounts: () => collaborationAccounts({}),
   connectGithub: (token) => collaborationConnectGithub({ token }),
   connectGitlab: (token) => collaborationConnectGitlab({ token }),

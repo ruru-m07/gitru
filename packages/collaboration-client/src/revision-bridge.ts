@@ -46,6 +46,7 @@ export class RevisionBridge<TChange> {
     private readonly transport: RevisionTransport<TChange>,
     private readonly apply: (
       batch: RevisionBatch<TChange>,
+      isCurrent: () => boolean,
     ) => void | Promise<void>,
     private readonly onError: () => void = () => {},
   ) {}
@@ -76,7 +77,8 @@ export class RevisionBridge<TChange> {
     this.running = run;
     void run.finally(() => {
       if (this.running === run) this.running = null;
-      if (this.dirty && !this.stopped) void this.wake();
+      if (this.dirty && !this.stopped && generation === this.generation)
+        void this.wake();
     });
     return run;
   }
@@ -88,6 +90,13 @@ export class RevisionBridge<TChange> {
     this.running = null;
     this.unlisten?.();
     this.unlisten = null;
+  }
+
+  /** Native ownership changed, including cancellation at the same revision. */
+  restart(): Promise<void> {
+    this.stop();
+    this.cursor = null;
+    return this.start();
   }
 
   private async drain(generation: number): Promise<void> {
@@ -115,11 +124,16 @@ export class RevisionBridge<TChange> {
         if (batch.hasMore && batch.toInclusive === this.cursor) {
           throw new Error("Collaboration catch-up did not advance");
         }
-        await this.apply(batch);
+        await this.apply(
+          batch,
+          () => !this.stopped && generation === this.generation,
+        );
         if (this.stopped || generation !== this.generation) return;
         this.cursor = batch.toInclusive;
         this.dirty ||= batch.hasMore;
       } catch {
+        // A retired read must not consume a wake for its replacement runtime.
+        if (this.stopped || generation !== this.generation) return;
         // A later native wake/focus/online event retries. Never busy-loop errors.
         this.dirty = false;
         this.onError();

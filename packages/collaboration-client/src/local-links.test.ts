@@ -121,6 +121,7 @@ function fixture() {
       reset_required: false,
     }),
     listen: async () => () => {},
+    listenRuntimeReset: async () => () => {},
     listenLocalChanges: async (next: () => void) => {
       hint = next;
       return () => {};

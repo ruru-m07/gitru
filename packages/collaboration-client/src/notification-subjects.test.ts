@@ -163,6 +163,7 @@ function fixture() {
     removeTransportBinding: unexpected,
     localClones: unexpected,
     validateLocalNavigation: unexpected,
+    listenRuntimeReset: async () => () => {},
     listenLocalChanges: async () => () => {},
     demandActivity: unexpected,
     acquireDemand: unexpected,

@@ -85,6 +85,7 @@ export interface CollaborationTransport extends DemandTransport {
     request: LocalNavigationRequest,
   ): Promise<LocalNavigationReceipt>;
   listenLocalChanges(onWake: () => void): Promise<() => void>;
+  listenRuntimeReset(onReset: () => void): Promise<() => void>;
   accounts(): Promise<AccountSnapshot>;
   connectGithub(token: string): Promise<RemoteAccount>;
   connectGitlab(token: string): Promise<RemoteAccount>;
@@ -368,7 +369,7 @@ export class CollaborationClient {
       signal,
     );
   }
-  async invalidateLocalLinks() {
+  async invalidateLocalLinks(isCurrent: () => boolean = () => true) {
     this.fence.invalidate(LOCAL_LINKS_SCOPE);
     if (!this.queryClient) return;
     const affected = {
@@ -378,6 +379,7 @@ export class CollaborationClient {
           query.queryKey[4] === "local-clones"),
     };
     await this.queryClient.cancelQueries(affected);
+    if (!isCurrent()) return;
     await this.queryClient.invalidateQueries(affected);
   }
 
@@ -700,6 +702,21 @@ export class CollaborationClient {
     const stopDeadlines = installCapabilityDeadlines(queryClient);
     let disposed = false;
     let stopLocalChanges: (() => void) | undefined;
+    let stopRuntimeReset: (() => void) | undefined;
+    void this.transport
+      .listenRuntimeReset(() => {
+        if (disposed) return;
+        // Recovery replaces native runtime ownership independently of provider
+        // revisions. Fence in-flight snapshots immediately, including a cancel
+        // that reopens the same database revision under a fresh native owner.
+        this.resetLocalView();
+        void this.bridge?.restart();
+      })
+      .then((remove) => {
+        if (disposed) remove();
+        else stopRuntimeReset = remove;
+      })
+      .catch(() => {});
     void this.transport
       .listenLocalChanges(() => {
         if (!disposed) void this.invalidateLocalLinks();
@@ -724,7 +741,7 @@ export class CollaborationClient {
           };
         },
       },
-      async (batch) => {
+      async (batch, isCurrent) => {
         const authorizationChanged =
           this.authorizationView !== null &&
           batch.authorizationView !== this.authorizationView;
@@ -741,7 +758,8 @@ export class CollaborationClient {
               change.scope.startsWith("local_link:"),
           )
         )
-          await this.invalidateLocalLinks();
+          await this.invalidateLocalLinks(isCurrent);
+        if (!isCurrent()) return;
         for (const change of batch.changes) {
           if (change.reset) this.clearAccount(change.account_id);
           for (const listener of this.changeListeners) listener(change);
@@ -756,6 +774,7 @@ export class CollaborationClient {
           // Authored writes have their own generation/authorization fences.
           if (change.scope !== "drafts")
             await queryClient.cancelQueries(affectedQueries);
+          if (!isCurrent()) return;
           if (pullRangeContextChanged(change.scope)) {
             // Repository membership and Body observations can replace or omit
             // the exact base/head/source range. Reset matching commit
@@ -792,6 +811,7 @@ export class CollaborationClient {
     return () => {
       disposed = true;
       stopLocalChanges?.();
+      stopRuntimeReset?.();
       stopDeadlines();
       this.demands.stop();
       bridge.stop();
