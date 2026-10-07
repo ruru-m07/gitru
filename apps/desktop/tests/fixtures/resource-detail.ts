@@ -63,6 +63,7 @@ export function fixtureMetadata(
         },
       },
       merged_at: null,
+      merge_base_oid: null,
     },
     fields: fields.map((field) => ({
       field,

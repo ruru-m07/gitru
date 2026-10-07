@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use uuid::Uuid;
 
+pub mod diff;
+
 pub const MAX_PULL_FILES: u32 = 3_000;
 pub const MAX_PULL_FILE_PROVIDER_PAGES: u32 = 30;
 pub const MAX_PULL_FILES_PER_PROVIDER_PAGE: usize = 100;
@@ -149,8 +151,12 @@ pub fn is_valid_pull_file_path(value: &str) -> bool {
 /// Exact Body-derived authority for one file generation.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct PullFileContext {
+    /// Provider-observed target tip, not necessarily the diff's merge base.
     pub base_oid: String,
     pub head_oid: String,
+    /// Unknown never means `base_oid`. Current source strategies compare the
+    /// merge base to the head, rather than the two branch tips directly.
+    pub merge_base_oid: Option<String>,
     pub base_repository_provider_id: String,
     pub source_repository_provider_id: String,
     pub body_metadata_facet_revision: String,
@@ -160,6 +166,10 @@ impl PullFileContext {
     pub fn validate(&self) -> Result<()> {
         if !is_canonical_pull_file_oid(&self.base_oid)
             || !is_canonical_pull_file_oid(&self.head_oid)
+            || self
+                .merge_base_oid
+                .as_ref()
+                .is_some_and(|oid| !is_canonical_pull_file_oid(oid))
         {
             return Err(invalid_pull_file());
         }
@@ -173,11 +183,14 @@ impl PullFileContext {
         self == other
     }
 
-    /// Terminal publication checks the four freshly observed provider facts;
+    /// Terminal publication checks every freshly observed comparison fact;
     /// the Body revision remains bound by this context itself.
     pub fn matches_range_validation(&self, validation: &PullFileRangeValidation) -> bool {
-        self.base_oid == validation.base_oid
+        self.validate().is_ok()
+            && validation.validate().is_ok()
+            && self.base_oid == validation.base_oid
             && self.head_oid == validation.head_oid
+            && self.merge_base_oid == validation.merge_base_oid
             && self.base_repository_provider_id == validation.base_repository_provider_id
             && self.source_repository_provider_id == validation.source_repository_provider_id
     }
@@ -188,6 +201,7 @@ impl PullFileContext {
 pub struct PullFileRangeValidation {
     pub base_oid: String,
     pub head_oid: String,
+    pub merge_base_oid: Option<String>,
     pub base_repository_provider_id: String,
     pub source_repository_provider_id: String,
 }
@@ -196,6 +210,10 @@ impl PullFileRangeValidation {
     pub fn validate(&self) -> Result<()> {
         if !is_canonical_pull_file_oid(&self.base_oid)
             || !is_canonical_pull_file_oid(&self.head_oid)
+            || self
+                .merge_base_oid
+                .as_ref()
+                .is_some_and(|oid| !is_canonical_pull_file_oid(oid))
         {
             return Err(invalid_pull_file());
         }
@@ -332,9 +350,15 @@ pub struct ProviderPullFile {
     pub additions: PullFileCount,
     pub deletions: PullFileCount,
     pub total_changes: PullFileCount,
+    pub old_mode: Option<String>,
+    pub new_mode: Option<String>,
     pub mode_changed: PullFileFlag,
     pub binary: PullFileFlag,
     pub generated: PullFileFlag,
+    /// Explicit endpoint omission signals. Unknown is retained for providers
+    /// which do not report these facts; neither flag proves binary content.
+    pub provider_collapsed: PullFileFlag,
+    pub provider_too_large: PullFileFlag,
     pub diff_hint: PullFileDiffHint,
 }
 
@@ -347,6 +371,11 @@ impl ProviderPullFile {
         validate_label(&self.provider_change_kind, MAX_PULL_FILE_NATIVE_STATE_BYTES)?;
         self.additions.validate()?;
         self.deletions.validate()?;
+        for mode in [&self.old_mode, &self.new_mode].into_iter().flatten() {
+            if mode.len() != 6 || !mode.bytes().all(|byte| (b'0'..=b'7').contains(&byte)) {
+                return Err(invalid_pull_file());
+            }
+        }
         self.total_changes.validate()
     }
 }
@@ -522,7 +551,17 @@ pub enum PullFileSourceStrategy {
     LocalExactRange,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PullFileComparisonSemantics {
+    MergeBaseToHead,
+}
+
 impl PullFileSourceStrategy {
+    /// Current provider endpoints all implement pull-request (three-dot)
+    /// comparisons. LocalExactRange resolves a unique merge base first.
+    pub const fn comparison_semantics(self) -> PullFileComparisonSemantics {
+        PullFileComparisonSemantics::MergeBaseToHead
+    }
     pub const fn provenance(self) -> PullFileProvenance {
         match self {
             Self::LocalExactRange => PullFileProvenance::LocalExactRange,
@@ -586,7 +625,7 @@ fn validate_provider_cursor(value: &str) -> Result<()> {
 
 /// Storage-issued authority for exactly one staging generation. Renderer-facing
 /// query and hydration types never contain or construct this value.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PullFileLease {
     pub run_id: String,
     pub generation: String,
@@ -646,7 +685,7 @@ impl PullFileLease {
 }
 
 /// Trusted native routing facts resolved before an adapter is called.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PullFileBinding {
     pub instance_id: String,
     pub repository_id: String,
@@ -1009,8 +1048,13 @@ impl PullFileBlobReferences {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PullFileArtifactValidation {
-    Provider { provider_validated_at: String },
-    LocalExactRange { local_validated_at: String },
+    Provider {
+        provider_validated_at: String,
+    },
+    LocalExactRange {
+        local_validated_at: String,
+        resolved_merge_base_oid: String,
+    },
 }
 
 impl PullFileArtifactValidation {
@@ -1019,8 +1063,15 @@ impl PullFileArtifactValidation {
             Self::Provider {
                 provider_validated_at,
             } => validate_canonical_utc_timestamp(provider_validated_at),
-            Self::LocalExactRange { local_validated_at } => {
-                validate_canonical_utc_timestamp(local_validated_at)
+            Self::LocalExactRange {
+                local_validated_at,
+                resolved_merge_base_oid,
+            } => {
+                validate_canonical_utc_timestamp(local_validated_at)?;
+                if !is_canonical_pull_file_oid(resolved_merge_base_oid) {
+                    return Err(invalid_pull_file());
+                }
+                Ok(())
             }
         }
     }
@@ -1077,6 +1128,18 @@ impl PullFileArtifact {
         }
         if let Some(validation) = &self.validation {
             validation.validate()?;
+            if let PullFileArtifactValidation::LocalExactRange {
+                resolved_merge_base_oid,
+                ..
+            } = validation
+                && self
+                    .context
+                    .merge_base_oid
+                    .as_ref()
+                    .is_some_and(|observed| observed != resolved_merge_base_oid)
+            {
+                return Err(invalid_pull_file());
+            }
         }
         self.blob_references.validate()?;
         for oid in [&self.old_blob_oid, &self.new_blob_oid]
@@ -1184,6 +1247,9 @@ impl PullFileArtifact {
 }
 
 fn valid_text_shape(text: &str) -> bool {
+    if text.contains('\0') {
+        return false;
+    }
     let mut lines = 0usize;
     for line in text.as_bytes().split(|byte| *byte == b'\n') {
         lines += 1;
@@ -1209,6 +1275,7 @@ mod tests {
         PullFileContext {
             base_oid: BASE.into(),
             head_oid: HEAD.into(),
+            merge_base_oid: None,
             base_repository_provider_id: "base-repository".into(),
             source_repository_provider_id: "source-repository".into(),
             body_metadata_facet_revision: "17".into(),
@@ -1227,9 +1294,13 @@ mod tests {
             additions: PullFileCount::Known("2".into()),
             deletions: PullFileCount::Known("1".into()),
             total_changes: PullFileCount::Known("3".into()),
+            old_mode: Some("100644".into()),
+            new_mode: Some("100755".into()),
             mode_changed: PullFileFlag::Known(false),
             binary: PullFileFlag::Unknown,
             generated: PullFileFlag::Known(false),
+            provider_collapsed: PullFileFlag::Unknown,
+            provider_too_large: PullFileFlag::Unknown,
             diff_hint: PullFileDiffHint::Candidate,
         }
     }
@@ -1406,6 +1477,10 @@ mod tests {
                 ..context()
             },
             PullFileContext {
+                merge_base_oid: Some(OTHER.into()),
+                ..context()
+            },
+            PullFileContext {
                 base_repository_provider_id: "other-base".into(),
                 ..context()
             },
@@ -1424,6 +1499,7 @@ mod tests {
         let validation = PullFileRangeValidation {
             base_oid: BASE.into(),
             head_oid: HEAD.into(),
+            merge_base_oid: None,
             base_repository_provider_id: "base-repository".into(),
             source_repository_provider_id: "source-repository".into(),
         };
@@ -1434,6 +1510,21 @@ mod tests {
             ..validation
         };
         assert!(!exact.matches_range_validation(&mismatched));
+
+        let divergent = PullFileContext {
+            merge_base_oid: Some(OTHER.into()),
+            ..exact.clone()
+        };
+        assert!(divergent.validate().is_ok());
+        let observed = PullFileRangeValidation {
+            base_oid: BASE.into(),
+            head_oid: HEAD.into(),
+            merge_base_oid: Some(OTHER.into()),
+            base_repository_provider_id: "base-repository".into(),
+            source_repository_provider_id: "source-repository".into(),
+        };
+        assert!(divergent.matches_range_validation(&observed));
+        assert!(!exact.matches_range_validation(&observed));
 
         let mut uppercase = context();
         uppercase.head_oid = HEAD.to_uppercase();
@@ -2016,6 +2107,7 @@ mod tests {
             source: Some(source(PullFileSourceStrategy::LocalExactRange)),
             validation: Some(PullFileArtifactValidation::LocalExactRange {
                 local_validated_at: "2026-10-07T12:00:00Z".into(),
+                resolved_merge_base_oid: BASE.into(),
             }),
             content_state: PullFileContentState::Binary,
             unified_text: None,
@@ -2077,6 +2169,7 @@ mod tests {
             source: Some(source(PullFileSourceStrategy::LocalExactRange)),
             validation: Some(PullFileArtifactValidation::LocalExactRange {
                 local_validated_at: "2026-10-07T12:00:00Z".into(),
+                resolved_merge_base_oid: BASE.into(),
             }),
             content_state: PullFileContentState::Image,
             unified_text: None,
@@ -2110,6 +2203,7 @@ mod tests {
         assert!(false_provider_evidence.validate().is_err());
         false_provider_evidence.validation = Some(PullFileArtifactValidation::LocalExactRange {
             local_validated_at: "2026-10-07T12:00:00Z".into(),
+            resolved_merge_base_oid: BASE.into(),
         });
         assert!(false_provider_evidence.validate().is_ok());
 

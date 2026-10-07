@@ -36,16 +36,22 @@ the current pull Body metadata:
 ```text
 base_oid
 head_oid
+merge_base_oid (optional provider observation)
 base_repository_provider_id
 source_repository_provider_id
 body_metadata_facet_revision
 ```
 
+`base_oid` is the provider-observed target tip, not the merge base. Every current
+closed source strategy has `MergeBaseToHead` semantics. An absent merge-base OID
+means the provider did not expose it; it never means to compare the two tips
+directly. A newly observed merge base changes context and starts a new generation.
+
 The context uses provider-observed Git object IDs as opaque, canonical lowercase
 hex values accepted by the existing 40/64-character rules. The source repository
 is retained for forked pulls. An adapter echoes the complete context on every
 page. A terminal page is published only after a fresh provider parent-range
-validation still matches all four remote facts. A Body refresh, head/base change,
+validation still matches every comparison fact. A Body refresh, head/base change,
 source-repository change, authorization-epoch change, or account replacement
 retires the old generation from current capability evidence in one transaction.
 
@@ -161,14 +167,20 @@ Reference: [GitHub list pull request files](https://docs.github.com/en/rest/pull
 Use the current merge-request diffs API and preserve `overflow`, `collapsed`,
 `too_large`, `generated_file`, old/new paths and modes. `access_raw_diffs` is an
 explicit higher-cost fallback through Gitaly and remains subject to Gitru’s byte
-limits; it is never an automatic unbounded retry. The merge request’s diff refs
-must exactly match the captured base/head before publication.
+limits; it is never an automatic unbounded retry. The merge request's `diff_refs.start_sha`, `base_sha` and `head_sha` must match
+the captured target tip, merge base and head independently before publication.
+Ordinary divergent branches are valid. Asynchronously missing diff refs do not
+become empty or permanently unsupported results. The current `/diffs` response
+has no top-level overflow flag; fresh `changes_count` evidence qualifies terminal
+completeness, with `1000+` retained as a provider limit and unknown counts unable
+to prove a complete enumeration.
 
 Reference: [GitLab merge request diffs](https://docs.gitlab.com/api/merge_requests/#list-merge-request-diffs).
 
 ### Bitbucket Cloud
 
-Use pull-request diffstat for summaries and a bounded exact-spec diff request for
+Use a fixed-origin, exact-spec diffstat with explicit `topic=true` for summaries
+and a bounded exact-spec diff request with the same semantics for
 selected content. Do not use the removed `merge=true` behavior: Atlassian removed
 that parameter on 4 September 2026. Preserve rename source/destination and binary
 or truncation evidence. Revalidate source and destination commit hashes before
@@ -181,10 +193,15 @@ and [Bitbucket Cloud changelog](https://developer.atlassian.com/cloud/bitbucket/
 
 An explicitly linked local clone is an optional accelerator and offline source,
 never implicit provider authority. Rust resolves the saved repository link and
-requires both exact base and head objects with `git cat-file -e`. It then invokes
+requires both exact base and head objects with `git cat-file -e`, resolves
+`git merge-base --all`, and requires exactly one canonical result. If the
+provider supplied a merge-base OID it must equal that result. The local artifact
+records the resolved merge base as additional evidence and compares it to the
+head; it never substitutes a direct tip-to-tip diff. It then invokes
 Git with literal pathspec handling, no external diff driver, no textconv, no
 replace objects, no hooks and no implicit fetch. The engine records
-`local_exact_range` provenance. A missing object returns a clear local-unavailable
+`local_exact_range` provenance for this merge-base comparison. Multiple best
+merge bases are unavailable locally. A missing object returns a clear local-unavailable
 state and may leave provider hydration pending; it never fetches automatically.
 
 Local results and provider results share the exact range/file identity but retain
