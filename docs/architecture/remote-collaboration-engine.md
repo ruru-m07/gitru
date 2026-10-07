@@ -3331,3 +3331,45 @@ done, snoozed and bookmarked generation-1 projections without increasing
 provider/vault counters, and the fresh restart reads byte-equivalent SQLite
 evidence with provider and vault access both `0 -> 0`. Remote CI, other platforms
 and live provider/PAT/keyring behavior remain separate gates. No PR is merged.
+
+### RURU-114 durable command admission — 8 October 2026
+
+RURU-114 now builds on signed RURU-124 `4d31a40743d3e203f2fc1027f17b4ae292268478`
+(draft #169). The signed native source is
+`bc01d7d0044d0325437d28dbb1a37598eb0e4837`; its
+[implementation contract](./collaboration-work/RURU-114.md) records the exact
+scope and evidence. Migration 0013 persists immutable canonical envelopes,
+account-local order and revision receipts, same-account predecessor hashes,
+reserved attempts/evidence, and normalized entity/facet/blob protections.
+
+The native policy hook admits only reviewed operation/version codecs. Exact
+retries compare bytes and decomposed facts before returning the original
+receipt; an old epoch remains fenced even when its authored receipt survives
+reconnect. One writer transaction commits intent, dependencies, protections and
+change-log revision before a response. Local fixtures hard-kill that transaction
+before and after commit and recover one cold receipt without provider or vault
+access. Retention reads a partial index of currently required protections;
+terminal history and immutable receipt/evidence rows stay durable without
+turning cache eviction into a history scan.
+
+Focused native qualification passes 13 admission tests (plus an ignored standalone
+child helper which the crash test executes), 5 frozen-v12 migration tests,
+formatting/diff checks and strict collaboration Clippy. Real SQLite FULL and
+INTERRUPT, partial schema failure and newer/checksum refusal preserve historical
+accounts, drafts, cache, local inbox state and ledger bytes. Full `make verify` passes on the signed source: 683 frontend tests (one
+platform fixture skipped), all lint/type/build gates, workspace strict Clippy and
+every default Rust workspace suite, including 349 collaboration library tests
+with two standalone subprocess helpers ignored. Remote CI and other-platform
+execution remain separate. No public IPC, remote mutation UI, provider delivery,
+optimistic projection, blob-byte store or merge is introduced by this slice.
+
+Publication checkpoint at 7 October 19:38 UTC: RURU-124 draft
+[#169](https://github.com/ruru-m07/gitru/pull/169) has passing Rust checks on
+macOS, Linux and Windows, plus passing macOS/Linux packaged E2E and retained
+harness checks; Windows E2E and retained harness remain pending. Independent
+RURU-118 draft [#170](https://github.com/ruru-m07/gitru/pull/170), at
+`e75bf77b920c9f1198d4e7d825cf829298209f5b` on the RURU-137 branch, has passing
+frontend/build and deployment checks while native, E2E and retained harness
+checks are pending. Draft-skip bot status does not constitute a substantive
+code review. These are live remote statuses, separate from RURU-114 local
+qualification; none of these PRs is merged.

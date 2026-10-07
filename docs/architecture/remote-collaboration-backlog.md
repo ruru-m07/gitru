@@ -690,7 +690,7 @@ Acceptance criteria:
 
 ## RURU-114: Add durable command admission and outbox schema
 
-Planning key: C33. Group: Offline writes. Priority: High. State: Backlog.
+Planning key: C33. Group: Offline writes. Priority: High. State: In Progress (native admission locally qualified; publication/remote CI pending).
 Linear: [RURU-114](https://linear.app/catra/issue/RURU-114/add-durable-command-admission-and-outbox-schema).
 Prerequisites: [RURU-104](https://linear.app/catra/issue/RURU-104/implement-bounded-cache-retention-pins-and-wal-maintenance), [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and), [RURU-105](https://linear.app/catra/issue/RURU-105/test-schema-evolution-and-recoverable-migration-failures).
 
@@ -698,10 +698,17 @@ Introduce operation-specific immutable intent, separate from provider base obser
 
 Acceptance criteria:
 
-- [ ] Persist command UUID, canonical submission/hash, account epoch, target, guards and submitted dependencies atomically with its local receipt.
-- [ ] Duplicate identical submissions reuse receipts; changed payload with the same UUID is rejected.
-- [ ] Forward migrations preserve original intent hashes and drafts; fake-provider/storage tests cover crash/restart and concurrent admission.
-- [ ] Integrate retention protection for command targets, predecessor receipts and attempt evidence; eviction tests prove pending/conflicted/unknown commands retain the references needed for recovery.
+- [x] Persist command UUID, canonical submission/hash, account epoch, target, guards and submitted dependencies atomically with its local receipt.
+- [x] Duplicate identical submissions reuse receipts; changed payload with the same UUID is rejected.
+- [x] Forward migrations preserve original intent hashes and drafts; fake-provider/storage tests cover crash/restart and concurrent admission.
+- [x] Integrate retention protection for command targets, predecessor receipts and attempt evidence; eviction tests prove pending/conflicted/unknown commands retain the references needed for recovery.
+
+Implementation record: [RURU-114](./collaboration-work/RURU-114.md), signed source
+`bc01d7d0044d0325437d28dbb1a37598eb0e4837`, stacked on RURU-124 migration 0012.
+Focused 13 native and 5 migration tests, independent-review corrections and full
+`make verify` pass. Publication and remote CI remain pending. No public operation/IPC or dispatch exists yet.
+Normalized blob references persist; actual attachment-byte recovery requires the
+future blob store. Remote CI is not inferred from these local fixtures.
 
 ## RURU-115: Implement outbox delivery and ambiguous-outcome recovery
 

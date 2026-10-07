@@ -1,8 +1,8 @@
 # RURU-114 — Durable command admission and outbox schema
 
-Status: pre-code contract frozen on 7 October 2026. Implementation waits only for the concurrently active RURU-124 migration to freeze so this branch can stack on it and take the next schema version without renumbering either review.
+Status: native admission locally qualified on 8 October 2026 at signed source `bc01d7d0044d0325437d28dbb1a37598eb0e4837`. Independent review corrections and full local verification pass. No RURU-114 PR is open yet; publication and remote CI remain the next gates.
 
-Baseline: exact signed RURU-137 evidence head `0da82cc7e5a3543512be683e68ac074f8d9689cd` in an isolated managed worktree on the external volume. The declared RURU-76, RURU-97, RURU-105 and RURU-104 prerequisites are implemented in this ancestry and remain In Review; none is claimed merged. No RURU-114 branch, worktree or pull request existed at the live audit.
+Baseline: exact signed RURU-124 evidence head `4d31a40743d3e203f2fc1027f17b4ae292268478` (draft PR #169), stacked on RURU-137 in an isolated managed worktree on the external volume. The declared RURU-76, RURU-97, RURU-105 and RURU-104 prerequisites are implemented in this ancestry and remain In Review; none is claimed merged. The native canonical-model commits were rebased with signatures onto this exact dependency; no competing migration 0012 was introduced.
 
 Live issue: [RURU-114](https://linear.app/catra/issue/RURU-114/add-durable-command-admission-and-outbox-schema), “Add durable command admission and outbox schema”.
 
@@ -30,13 +30,13 @@ CommandReceipt
   submission_hash            lowercase SHA-256 of the domain-separated envelope
   enqueue_order              durable account-local order
   admitted_revision          committed collaboration revision
-  state                      queued for this slice
+  admitted_at                immutable UTC admission timestamp
   duplicate                  true only for an identical retry
 ```
 
 Admission accepts a sealed Rust value produced by an operation codec. The store does not accept a renderer-supplied provider name, host, raw URL, arbitrary SQL state, delivery state or already-computed hash. The account determines provider installation and actor. A future generated IPC command must parse an operation-specific DTO before it reaches this generic store.
 
-Initial code may include one feature/test-only fixture operation so storage can be proven without prematurely exposing title, comment, merge or inbox writes. Production operation variants land with their owning issues. Unknown operation or payload versions fail closed.
+Only test fixture operation codecs currently construct submissions. Production operation variants land with their owning issues. The native policy must match both the sealed operation kind and payload version before any transaction can admit it; unknown versions fail closed.
 
 ## Canonical immutable submission
 
@@ -48,7 +48,7 @@ Payload migrations may add a derived execution representation in a separate tabl
 
 ## Schema
 
-RURU-124 owns migration 0012 on the concurrent stack. RURU-114 will rebase onto its frozen source before schema work and use the next migration, expected `0013_command_admission.sql`; it must not publish a competing 0012.
+RURU-124 migration 0012 is frozen in the baseline. RURU-114 adds `0013_command_admission.sql`. The admission receipt records immutable commit facts; current delivery state is stored separately and will gain its own query/transition API in RURU-115. Admission always inserts `queued`.
 
 The forward migration adds:
 
@@ -66,14 +66,15 @@ All relations include `account_id`; cross-account dependencies and target protec
 
 One serialized writer transaction:
 
-1. validates bounds and canonical UUID;
-2. reads the account/provider identity and requires the exact active authorization epoch supplied when the operation was composed;
-3. invokes the operation codec's local admission policy, including target kind, current cached identity/base requirements and supported offline admission;
-4. resolves every dependency under the same account, captures its immutable hash and rejects duplicates, missing predecessors, forward/self edges and a dependency count above the bound;
-5. constructs canonical envelope bytes and computes the domain-separated hash internally;
-6. on an existing `(account_id, command_id)`, compares the complete stored envelope and decomposed facts; exact equality returns its original receipt with `duplicate=true`, otherwise returns a typed idempotency conflict;
-7. otherwise allocates account-local enqueue order and one collaboration revision, inserts command, dependencies and normalized retention protections, emits a bounded `commands` change record, and commits;
-8. returns the receipt only after the durable commit.
+1. accepts only a bounded sealed native submission and matches its operation kind/version to the native policy;
+2. requires the exact active account authorization epoch supplied when the operation was composed;
+3. on an existing `(account_id, command_id)`, compares the stored envelope, payload, guards, hash, ordered dependencies and every decomposed immutable fact; identical retries return the original receipt with `duplicate=true`, otherwise a typed idempotency conflict;
+4. for new intent, invokes the operation's local policy against the same writer snapshot, including target/base identity and supported offline admission;
+5. resolves every ordered dependency under the same account and captures its immutable hash; missing/cross-account/forward edges fail before admission, while construction rejects self/duplicate edges and more than 64 dependencies;
+6. allocates account-local enqueue order and one collaboration revision, inserts the exact previously sealed envelope plus dependencies and normalized retention protections, and emits a bounded `commands` change record;
+7. commits before returning the receipt.
+
+Retry ordering is deliberate: an already committed identical intent does not rerun mutable base policy, so a lost response remains recoverable after cache changes. Active epoch validation still applies; disconnected/replaced accounts can read their authored receipt through the native recovery query but cannot resubmit old intent. The generic layer recomputes neither renderer JSON nor a caller-supplied digest: reviewed crate-private codecs seal and hash the complete envelope before storage receives it.
 
 No provider/vault/scheduler work occurs in admission. A SQLite error or process crash before commit leaves no partial command, dependency, protection, revision or receipt. A crash after commit can lose the caller response but an identical retry returns the same receipt and revision. Concurrent identical submissions converge on one row; concurrent changed submissions produce one winner and one typed conflict.
 
@@ -119,4 +120,21 @@ Default `make verify`, focused fault tests, formatting/Clippy and `git diff --ch
 
 This worktree owns the RURU-114 contract, next command migration after RURU-124, command domain/canonicalization/store modules, retention protection integration and focused native tests. It does not touch provider adapters, scheduler delivery, optimistic UI, generated IPC without a public API, credentials, Gitru cloud, or the RURU-118/RURU-124 worktrees.
 
-Delivery order is deliberate: freeze this contract, wait for RURU-124's migration/source commit, rebase this branch on that exact signed head, then implement and publish a stacked draft. No merge is authorized.
+Delivery order is deliberate: this branch is rebased on the exact signed RURU-124 head, owns migration 0013, and will publish a stacked draft only after source review and local checks. No merge is authorized.
+
+## Implementation evidence — 8 October 2026
+
+* Native `storage::command_admission` has a crate-private operation policy, immutable receipt lookup, and exact retry/dependency admission. Only test codecs construct operations in this slice; no public IPC signature changed, so type generation is not required.
+* SQL protects immutable command facts/dependencies/evidence and policy-produced protection identities, constrains account partitions, caps evidence at 128 rows/64 KiB per row, and orders attempt identities. Dispatch transitions are deferred to RURU-115.
+* Retention uses a partial index of required normalized references, maintained by transactional command/dependency triggers so terminal receipt history does not become an eviction scan. It preserves targets of six pending/recovery states, including terminal predecessors still needed by pending successors. Commands, receipts, attempts and evidence are never ordinary cache victims. Blob references are durable normalized records; there is no blob-store eviction implementation in this slice, so actual attachment recovery remains future work.
+* `cargo test -p collaboration --lib command_admission`: **13 passed**, one subprocess helper ignored as a standalone test; the parent executes that helper for two real hard-kill/cold-reopen boundaries. Focused tests also cover concurrent admission, Unicode, changed guards/operation, hash-plus-byte collision defense, transaction rollback, dependency/account isolation, protection bounds, recovery after disconnect and an `EXPLAIN QUERY PLAN` assertion for the actual retention query.
+* `cargo test -p collaboration --test command_migrations`: **5 passed**. Frozen v12 source/seed bytes retain original account/draft/cache/local-inbox/ledger rows through upgrade. Real `SQLITE_FULL` and `SQLITE_INTERRUPT`, partial-schema failure, checksum mismatch and newer-schema refusal preserve prior bytes; corrected retries succeed.
+* `make verify` passes on final signed source `bc01d7d0044d0325437d28dbb1a37598eb0e4837`: 683 frontend tests (one platform fixture skipped), all lint/type/build gates, workspace formatting and warning-denied Clippy, all default Rust workspace suites, including 349 collaboration library tests (two standalone subprocess helpers ignored) and all integration suites. The new worktree dependencies were installed with `bun install --frozen-lockfile --backend=copyfile`; no lockfile changed. Focused checks and `git diff --check` also pass. Full local log: `/tmp/gitru-ruru-114-verify-final.log`.
+* No remote CI, other-platform execution, real provider request, credential-store access, packaged UI or dispatch/attachment recovery is claimed by these local fixtures.
+
+Independent source review found that normalized protection identities also need
+immutable update/delete guards because exact retries intentionally skip local
+policy. Signed follow-up `bc01d7d0044d0325437d28dbb1a37598eb0e4837` adds those
+guards, validates derived required-flag updates against authoritative command and
+dependency state, and proves both rejection and valid terminal-state propagation.
+The corrected focused admission suite remains 13/13 passing.
