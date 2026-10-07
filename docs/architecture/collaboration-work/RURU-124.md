@@ -67,7 +67,9 @@ InboxPage
 
 SetLocalInboxStateRequest
   account_id, authorization_epoch, notification_id
-  disposition, bookmarked, snoozed_until
+  mutation                   disposition | bookmark
+  disposition/snoozed_until  present only for disposition mutation
+  bookmarked                 present only for bookmark mutation
   expected_generation
 ```
 
@@ -105,8 +107,10 @@ returns the newly derived local snapshot. A stale CAS or epoch does not mutate
 the row.
 
 Bookmarks are independent. Changing disposition or snooze never clears a
-bookmark, and toggling a bookmark never changes disposition or provider state.
-The renderer submits the complete prior snapshot with its expected generation;
+bookmark, and toggling a bookmark never changes disposition, its captured
+activity basis or provider state. The mutation kind is explicit so bookmarking
+a row that new provider activity has re-surfaced cannot accidentally reapply its
+superseded done/snooze intent. The renderer submits the expected generation;
 concurrent windows receive `stale_view`, reload and preserve the winning action.
 
 ## Effective state and new activity
