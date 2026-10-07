@@ -4,6 +4,7 @@ extern crate self as collaboration;
 pub mod commands;
 pub mod contextual_capabilities;
 pub mod credentials;
+pub(crate) mod delivery;
 pub mod demand;
 pub mod detail;
 pub mod domain;

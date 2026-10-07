@@ -17,6 +17,7 @@ use uuid::Uuid;
 
 pub(crate) mod command_admission;
 mod contextual_capabilities;
+pub(crate) mod delivery;
 mod shutdown;
 use shutdown::NativeWriter;
 pub(crate) mod details;

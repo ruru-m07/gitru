@@ -172,9 +172,47 @@ impl FeedKind {
 #[derive(Clone, Default)]
 pub struct ProviderRegistry {
     adapters: HashMap<String, (ProviderInstance, Arc<dyn CollaborationProvider>)>,
+    delivery: HashMap<(String, String, u32), Arc<dyn crate::delivery::CommandDeliveryPolicy>>,
 }
 
 impl ProviderRegistry {
+    #[allow(dead_code, reason = "operation codecs land in downstream issues")]
+    pub(crate) fn register_delivery(
+        &mut self,
+        instance: &ProviderInstance,
+        policy: Arc<dyn crate::delivery::CommandDeliveryPolicy>,
+    ) -> Result<(), CollaborationError> {
+        self.adapter(instance)?;
+        let kind = policy.operation_kind();
+        let version = policy.payload_version();
+        if kind.is_empty()
+            || kind.len() > 128
+            || version == 0
+            || !kind.as_bytes()[0].is_ascii_lowercase()
+            || !kind.bytes().all(|b| {
+                b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'-')
+            })
+        {
+            return Err(CollaborationError::invalid("Invalid delivery policy"));
+        }
+        let key = (instance.id.clone(), kind.into(), version);
+        if self.delivery.contains_key(&key) {
+            return Err(CollaborationError::invalid("Duplicate delivery policy"));
+        }
+        self.delivery.insert(key, policy);
+        Ok(())
+    }
+    pub(crate) fn delivery_policy(
+        &self,
+        instance: &ProviderInstance,
+        kind: &str,
+        version: u32,
+    ) -> Option<Arc<dyn crate::delivery::CommandDeliveryPolicy>> {
+        self.adapter(instance).ok()?;
+        self.delivery
+            .get(&(instance.id.clone(), kind.into(), version))
+            .cloned()
+    }
     pub fn register(
         &mut self,
         adapter: Arc<dyn CollaborationProvider>,

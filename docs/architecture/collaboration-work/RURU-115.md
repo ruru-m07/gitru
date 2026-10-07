@@ -1,7 +1,8 @@
 # RURU-115 — Durable delivery and ambiguous-outcome recovery
 
-Status: bounded implementation contract, 7 October 2026 21:10 UTC. No delivery
-implementation or remote write is claimed at this checkpoint.
+Status: native implementation qualified for review, 7 October 2026 21:51 UTC.
+Whole-workspace validation and PR publication follow the final RURU-106 base.
+Real provider mutation codecs remain in their operation-specific issues.
 
 ## Baseline and ownership
 
@@ -9,7 +10,7 @@ This managed external-volume worktree starts at signed RURU-106
 `e3e32bcd3bbed5e00f676e54c91fa22eb5174a1b`, including final RURU-119
 `218c61024cf5c9c557f4642a8a429742e10bc571`, RURU-114 admission/schema 0013,
 RURU-95 credential cutover and RURU-106 recovery/schema 0015. The branch is
-`ruru/ruru-115-durable-delivery`. Live Linear RURU-115 is Backlog with RURU-95,
+`ruru/ruru-115-durable-delivery`. Live Linear RURU-115 is In Progress with RURU-95,
 RURU-106 and RURU-114 prerequisites; no duplicate delivery PR exists. Those
 prerequisites remain review stacks, not merged releases. RURU-106 final combined
 and packaged qualification belongs to its coordinator.
@@ -193,3 +194,56 @@ UTC anchor advanced by monotonic elapsed time, removing the per-command timer ca
 provider budgets keep their separate existing wall-time plus monotonic gates.
 Suspension continues to respect the platform monotonic clock; cold restart begins
 a fresh UTC anchor and checks persisted deadlines before admission.
+
+
+## Native implementation checkpoint — 7 October 21:51 UTC
+
+The operation registry, native storage transitions and runtime background lane are
+implemented. Production provider adapters register no mutation codecs. Every
+mutation attempt records `started`, its current authorization and its separate
+execution base before dispatch. Accepted/unknown work can only enter bounded
+read-only reconciliation; generic transport failures and unverified adapter
+claims cannot schedule a repeated create. The worker records an immutable
+resolution-to-evidence relation and calls the policy's `finalize_in` hook in the
+same writer transaction before confirmation. Future effect-bearing policies must
+materialize the provider base there; RURU-116 can attach its target replay to the
+central `transition_in` hook after the state change.
+
+Preparation and reconciliation consume a durable eight-probe budget before
+external work. Successful attempt admission resets that read budget; attempts
+are separately capped at eight, with a 30-day automatic-dispatch age limit.
+Proofs and execution bases are bounded at 64KiB each, and new proof history has
+an aggregate 1MiB admission budget. Existing schema-0013 history remains bounded
+by its historical 128-record schema and is never truncated. Reaching a bound
+retains the intent and its normalized retention protections for explicit future
+resolution. Restored quarantine is never removed, including after strong proof
+of non-delivery. An old authorization epoch cannot gain replacement dispatch
+rights; a fresh credential for the same actor may perform only reconciliation.
+
+One native-owned operation holds the existing dispatch and credential lifecycle
+lanes for finite provider calls. The call timeout is 30 seconds; adapter panic or
+cancellation produces an unknown outcome. Caller cancellation does not abandon
+result storage, and shutdown drains the owned operation before actual SQLite
+closure. Provider account cooldowns remain shared with reads. Command deadlines
+use one process UTC/monotonic anchor rather than per-command timers; they retain
+full requested durations across the native persisted deadline. Account cursors
+are proportional to configured accounts and are cleared on account retirement;
+a huge command history cannot fill a global timer map. At most 32 pending keys
+are inspected per turn using explicit index seeks, with account rotation.
+
+Local qualification: the complete collaboration crate passed **714 tests, with
+five standalone helpers ignored**, across 26 suites including doc tests. A final
+focused late-cancellation case also passes: a held reconciliation cannot overwrite
+a cancelled state even if another native caller omitted a metadata generation
+advance. Strict all-target collaboration Clippy passes after that guard. The
+combined delivery coverage comprises 20 parent cases and one subprocess entry
+point. Five actual child-process exits cover before claim commit, after claim,
+after independently persisted remote effect, before result commit and after it.
+Synthetic timeout/panic, SQL claim/result faults, atomic canonical materialization,
+restore plus actor reauthentication, eight-probe/attempt limits, quota/clock
+changes, 129 simultaneously waiting intents and account isolation are covered.
+These are local synthetic results, not live provider or new-head remote CI claims.
+
+No public IPC signature changes are required; generated bindings remain untouched.
+No personal credential, live collaboration database, cloud login, provider write
+or merge was used for this qualification.

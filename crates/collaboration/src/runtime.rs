@@ -27,6 +27,7 @@ mod bitbucket_tests;
 mod clock;
 #[cfg(test)]
 mod clock_lifecycle_tests;
+mod delivery;
 mod demand;
 #[cfg(test)]
 mod demand_tests;
@@ -116,6 +117,9 @@ struct Scheduler {
     manual_keys: std::collections::HashSet<String>,
     foreground_keys: std::collections::HashSet<String>,
     detail_cursor: Option<DetailDemand>,
+    delivery_account_cursor: Option<String>,
+    delivery_cursors: HashMap<String, String>,
+    delivery_clock: Option<(DateTime<Utc>, Instant)>,
 }
 
 #[derive(Clone)]
@@ -254,7 +258,12 @@ impl CollaborationRuntime {
                 // a later tick can recover, and local calls report their errors.
                 let _ = runtime.recover_credentials().await;
                 let _ = runtime.enqueue_due().await;
-                while runtime.run_next().await {
+                loop {
+                    let delivered = runtime.run_delivery_next().await.unwrap_or(false);
+                    let read = runtime.run_next().await;
+                    if !delivered && !read {
+                        break;
+                    }
                     let _ = runtime.enqueue_due().await;
                     tokio::task::yield_now().await;
                 }
@@ -1138,6 +1147,7 @@ impl CollaborationRuntime {
 
     async fn reset_account_scheduler(&self, account_id: &str) {
         let mut scheduler = self.scheduler.lock().await;
+        scheduler.delivery_cursors.remove(account_id);
         let prefix = format!("{account_id}:");
         scheduler.queue.retain(|job| job.account.id != account_id);
         scheduler
@@ -1181,6 +1191,17 @@ impl CollaborationRuntime {
         account: &RemoteAccount,
         job: &mut Job,
     ) -> Result<(), CollaborationError> {
+        let result = self.check_provider_budget(account).await;
+        if result.is_err() {
+            job.local_budget_refusal = true;
+        }
+        result
+    }
+
+    async fn check_provider_budget(
+        &self,
+        account: &RemoteAccount,
+    ) -> Result<(), CollaborationError> {
         // Serialize the check with accepted durable writes and live installation.
         // The full persisted deadline is reread after every bounded live wake.
         let scheduler = self.scheduler.lock().await;
@@ -1210,7 +1231,6 @@ impl CollaborationRuntime {
                     .min(u32::MAX as u64) as u32,
             );
             // This is a local admission refusal, not another quota observation.
-            job.local_budget_refusal = true;
             return Err(error);
         }
         Ok(())
