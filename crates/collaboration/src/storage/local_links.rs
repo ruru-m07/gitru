@@ -573,7 +573,7 @@ fn path(value: &str) -> bool {
             .split('/')
             .all(|p| !p.is_empty() && p != "." && p != ".." && !p.starts_with('~'))
 }
-fn validate_query(query: &LocalLinkQuery) -> Result<()> {
+pub(super) fn validate_query(query: &LocalLinkQuery) -> Result<()> {
     validate_identifier(&query.local_repository_id)?;
     if query.endpoints.len() > MAX_ENDPOINTS
         || query.registration_proof.is_some() != query.remote_digest.is_some()
@@ -907,7 +907,7 @@ async fn resolve_endpoint(
     Ok(result)
 }
 
-async fn snapshot_in(
+pub(super) async fn snapshot_in(
     tx: &mut Transaction<'_, Sqlite>,
     query: &LocalLinkQuery,
 ) -> Result<LocalLinkSnapshot> {

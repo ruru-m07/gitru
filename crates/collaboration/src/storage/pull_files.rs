@@ -455,19 +455,35 @@ impl Store {
         commit.page.validate_for(&native)?;
         let published = commit.page.next_cursor.is_none();
         let row_count = lease.accepted_row_count + commit.page.files.len() as u32;
-        let cap = commit.page.cap.or(commit.collection_cap);
-        if commit
-            .page
-            .cap
-            .zip(commit.collection_cap)
-            .is_some_and(|(a, b)| a != b)
-            || lease.source.strategy == PullFileSourceStrategy::LocalExactRange
-                && cap.is_some_and(|cap| cap.provenance == PullFileCapProvenance::Provider)
-            || cap.is_some_and(|cap| !cap.is_valid())
-            || !published
-                && (commit.terminal_validation.is_some()
-                    || commit.expected_file_count.is_some()
-                    || commit.collection_cap.is_some())
+        let caps = [commit.page.cap, commit.collection_cap];
+        let mut cap = commit.page.cap.or(commit.collection_cap);
+        if let Some(ref mut cap) = cap {
+            // The traversal's stopping reason takes precedence. Independent
+            // parent cap evidence can strengthen known remote continuation.
+            cap.remote_has_more = if caps
+                .into_iter()
+                .flatten()
+                .any(|c| c.remote_has_more == PullFileFlag::Known(true))
+            {
+                PullFileFlag::Known(true)
+            } else if caps
+                .into_iter()
+                .flatten()
+                .any(|c| c.remote_has_more == PullFileFlag::Known(false))
+            {
+                PullFileFlag::Known(false)
+            } else {
+                PullFileFlag::Unknown
+            };
+        }
+        if caps.into_iter().flatten().any(|cap| {
+            !cap.is_valid()
+                || lease.source.strategy == PullFileSourceStrategy::LocalExactRange
+                    && cap.provenance == PullFileCapProvenance::Provider
+        }) || !published
+            && (commit.terminal_validation.is_some()
+                || commit.expected_file_count.is_some()
+                || commit.collection_cap.is_some())
         {
             return Err(invalid());
         }
@@ -807,94 +823,84 @@ impl Store {
         &self,
         request: PullFileDiffRequest,
         membership: PullFileMembershipReceipt,
-        mut artifact: PullFileArtifact,
+        artifact: PullFileArtifact,
     ) -> Result<String> {
-        if !artifact.is_exact_for(&request, &membership) {
+        // Local observations require current caller/link authority under this
+        // writer; provider code cannot bypass that gate by changing provenance.
+        if artifact
+            .source
+            .as_ref()
+            .is_some_and(|s| s.strategy == PullFileSourceStrategy::LocalExactRange)
+        {
             return Err(invalid());
         }
         let mut writer = self.inner.writer.lock().await;
         let mut tx = writer.begin().await.map_err(storage_error)?;
+        let revision = admit_artifact_in(&mut tx, request, membership, artifact).await?;
+        tx.commit().await.map_err(storage_error)?;
+        Ok(revision)
+    }
+    /// Caller validation is synchronous under the writer and immediately before
+    /// commit. The closure must never await or dispatch to the UI thread.
+    pub async fn apply_local_pull_file_artifact_checked<F>(
+        &self,
+        request: PullFileDiffRequest,
+        membership: PullFileMembershipReceipt,
+        artifact: PullFileArtifact,
+        query: crate::LocalLinkQuery,
+        link: crate::LocalLinkVersion,
+        validate_owner: F,
+    ) -> Result<String>
+    where
+        F: Fn() -> Result<()> + Send,
+    {
+        request.validate()?;
+        local_links::validate_query(&query)?;
+        validate_identifier(&link.id)?;
+        positive_revision(&link.generation)?;
+        if query.registration_proof.is_none()
+            || artifact
+                .source
+                .as_ref()
+                .is_none_or(|s| s.strategy != PullFileSourceStrategy::LocalExactRange)
+            || !matches!(
+                artifact.validation,
+                Some(PullFileArtifactValidation::LocalExactRange { .. })
+            )
+        {
+            return Err(invalid());
+        }
+        let mut writer = self.inner.writer.lock().await;
+        validate_owner()?;
+        let mut tx = writer.begin().await.map_err(storage_error)?;
         let selected = selection_in(&mut tx, &request).await?;
-        if selected.membership != membership {
+        let local = local_links::snapshot_in(&mut tx, &query).await?;
+        if selected.membership != membership
+            || local.authorization_view != membership.authorization_view
+            || !local.links.iter().any(|current| {
+                current.id == link.id
+                    && current.generation == link.generation
+                    && current.state == crate::LocalLinkState::Linked
+                    && current.local_repository_id == query.local_repository_id
+                    && current.account_id == selected.account.id
+                    && current.actor_id == selected.account.actor_id
+                    && current.instance_id == selected.binding.instance_id
+                    && current.repository.as_ref().is_some_and(|repository| {
+                        repository.account_id == selected.account.id
+                            && repository.id == current.repository_id
+                            && repository.provider_id == current.repository_provider_id
+                    })
+                    && ((current.repository_id == selected.binding.repository_id
+                        && current.repository_provider_id
+                            == selected.binding.repository_provider_id)
+                        || current.repository_provider_id
+                            == selected.binding.context.source_repository_provider_id)
+            })
+        {
             return Err(stale());
         }
-        if artifact
-            .source
-            .as_ref()
-            .and_then(|s| s.strategy.provider())
-            .is_some_and(|p| p != selected.account.provider)
-        {
-            return Err(invalid());
-        }
-        if artifact.identity.old_path.is_none() && artifact.blob_references.old.is_some()
-            || artifact.identity.new_path.is_none() && artifact.blob_references.new.is_some()
-        {
-            return Err(invalid());
-        }
-        let old_blobs = artifact_blob_ids_in(
-            &mut tx,
-            &request.account_id,
-            &request.subject_id,
-            &membership.generation,
-            Some(&request.file_key),
-        )
-        .await?;
-        let mut bytes = artifact.unified_text.as_ref().map_or(0, |s| s.len() as i64);
-        for (reference, oid) in [
-            (&artifact.blob_references.old, &artifact.old_blob_oid),
-            (&artifact.blob_references.new, &artifact.new_blob_oid),
-        ] {
-            if let Some(reference) = reference {
-                let blob=sqlx::query("SELECT oid,content_type,length(bytes) AS size FROM pull_file_blob_objects WHERE account_id=? AND blob_id=?")
-                    .bind(&request.account_id).bind(reference).fetch_optional(&mut *tx).await.map_err(storage_error)?.ok_or_else(invalid)?;
-                if oid
-                    .as_ref()
-                    .is_some_and(|oid| blob.get::<Option<String>, _>("oid").as_ref() != Some(oid))
-                    || artifact
-                        .content_type
-                        .as_ref()
-                        .is_some_and(|value| value != blob.get::<&str, _>("content_type"))
-                {
-                    return Err(invalid());
-                }
-                bytes += blob.get::<i64, _>("size");
-            }
-        }
-        if bytes > MAX_PULL_FILE_TEXT_BYTES as i64
-            || artifact.logical_bytes != bytes.to_string()
-            || artifact.on_disk_bytes != bytes.to_string()
-        {
-            return Err(invalid());
-        }
-        let revision = record_change(
-            &mut tx,
-            &request.account_id,
-            positive_revision(&request.authorization_epoch)?,
-            &scope(&request.subject_id),
-            false,
-        )
-        .await?;
-        artifact.last_access_revision = revision.clone();
-        let text = artifact.unified_text.take();
-        let json = encode(&artifact)?;
-        if json.len() > 65_536 {
-            return Err(invalid());
-        }
-        sqlx::query("INSERT INTO pull_file_artifacts(account_id,subject_id,generation,file_key,metadata_json,unified_text,logical_bytes,last_access_revision) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(account_id,subject_id,generation,file_key) DO UPDATE SET metadata_json=excluded.metadata_json,unified_text=excluded.unified_text,logical_bytes=excluded.logical_bytes,last_access_revision=excluded.last_access_revision")
-            .bind(&request.account_id).bind(&request.subject_id).bind(&membership.generation).bind(&request.file_key).bind(json).bind(text).bind(bytes).bind(positive_revision(&revision)?).execute(&mut *tx).await.map_err(storage_error)?;
-        sqlx::query("DELETE FROM pull_file_blob_references WHERE account_id=? AND subject_id=? AND generation=? AND file_key=?")
-            .bind(&request.account_id).bind(&request.subject_id).bind(&membership.generation).bind(&request.file_key).execute(&mut *tx).await.map_err(storage_error)?;
-        for (side, reference) in [
-            ("old", artifact.blob_references.old),
-            ("new", artifact.blob_references.new),
-        ] {
-            if let Some(reference) = reference {
-                sqlx::query("INSERT INTO pull_file_blob_references(account_id,subject_id,generation,file_key,side,blob_id) VALUES(?,?,?,?,?,?)")
-                    .bind(&request.account_id).bind(&request.subject_id).bind(&membership.generation).bind(&request.file_key).bind(side).bind(reference).execute(&mut *tx).await.map_err(storage_error)?;
-            }
-        }
-        cleanup_blob_ids_in(&mut tx, &request.account_id, &old_blobs).await?;
-        refresh_retention_in(&mut tx, &request.account_id, &request.subject_id).await?;
+        let revision = admit_artifact_in(&mut tx, request, membership, artifact).await?;
+        validate_owner()?;
         tx.commit().await.map_err(storage_error)?;
         Ok(revision)
     }
@@ -941,6 +947,99 @@ impl Store {
             freshness,
         })
     }
+}
+
+async fn admit_artifact_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    request: PullFileDiffRequest,
+    membership: PullFileMembershipReceipt,
+    mut artifact: PullFileArtifact,
+) -> Result<String> {
+    if !artifact.is_exact_for(&request, &membership) {
+        return Err(invalid());
+    }
+    let selected = selection_in(tx, &request).await?;
+    if selected.membership != membership {
+        return Err(stale());
+    }
+    if artifact
+        .source
+        .as_ref()
+        .and_then(|s| s.strategy.provider())
+        .is_some_and(|p| p != selected.account.provider)
+    {
+        return Err(invalid());
+    }
+    if artifact.identity.old_path.is_none() && artifact.blob_references.old.is_some()
+        || artifact.identity.new_path.is_none() && artifact.blob_references.new.is_some()
+    {
+        return Err(invalid());
+    }
+    let old_blobs = artifact_blob_ids_in(
+        tx,
+        &request.account_id,
+        &request.subject_id,
+        &membership.generation,
+        Some(&request.file_key),
+    )
+    .await?;
+    let mut bytes = artifact.unified_text.as_ref().map_or(0, |s| s.len() as i64);
+    for (reference, oid) in [
+        (&artifact.blob_references.old, &artifact.old_blob_oid),
+        (&artifact.blob_references.new, &artifact.new_blob_oid),
+    ] {
+        if let Some(reference) = reference {
+            let blob=sqlx::query("SELECT oid,content_type,length(bytes) AS size FROM pull_file_blob_objects WHERE account_id=? AND blob_id=?")
+                    .bind(&request.account_id).bind(reference).fetch_optional(&mut **tx).await.map_err(storage_error)?.ok_or_else(invalid)?;
+            if oid
+                .as_ref()
+                .is_some_and(|oid| blob.get::<Option<String>, _>("oid").as_ref() != Some(oid))
+                || artifact
+                    .content_type
+                    .as_ref()
+                    .is_some_and(|value| value != blob.get::<&str, _>("content_type"))
+            {
+                return Err(invalid());
+            }
+            bytes += blob.get::<i64, _>("size");
+        }
+    }
+    if bytes > MAX_PULL_FILE_TEXT_BYTES as i64
+        || artifact.logical_bytes != bytes.to_string()
+        || artifact.on_disk_bytes != bytes.to_string()
+    {
+        return Err(invalid());
+    }
+    let revision = record_change(
+        tx,
+        &request.account_id,
+        positive_revision(&request.authorization_epoch)?,
+        &scope(&request.subject_id),
+        false,
+    )
+    .await?;
+    artifact.last_access_revision = revision.clone();
+    let text = artifact.unified_text.take();
+    let json = encode(&artifact)?;
+    if json.len() > 65_536 {
+        return Err(invalid());
+    }
+    sqlx::query("INSERT INTO pull_file_artifacts(account_id,subject_id,generation,file_key,metadata_json,unified_text,logical_bytes,last_access_revision) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(account_id,subject_id,generation,file_key) DO UPDATE SET metadata_json=excluded.metadata_json,unified_text=excluded.unified_text,logical_bytes=excluded.logical_bytes,last_access_revision=excluded.last_access_revision")
+            .bind(&request.account_id).bind(&request.subject_id).bind(&membership.generation).bind(&request.file_key).bind(json).bind(text).bind(bytes).bind(positive_revision(&revision)?).execute(&mut **tx).await.map_err(storage_error)?;
+    sqlx::query("DELETE FROM pull_file_blob_references WHERE account_id=? AND subject_id=? AND generation=? AND file_key=?")
+            .bind(&request.account_id).bind(&request.subject_id).bind(&membership.generation).bind(&request.file_key).execute(&mut **tx).await.map_err(storage_error)?;
+    for (side, reference) in [
+        ("old", artifact.blob_references.old),
+        ("new", artifact.blob_references.new),
+    ] {
+        if let Some(reference) = reference {
+            sqlx::query("INSERT INTO pull_file_blob_references(account_id,subject_id,generation,file_key,side,blob_id) VALUES(?,?,?,?,?,?)")
+                    .bind(&request.account_id).bind(&request.subject_id).bind(&membership.generation).bind(&request.file_key).bind(side).bind(reference).execute(&mut **tx).await.map_err(storage_error)?;
+        }
+    }
+    cleanup_blob_ids_in(tx, &request.account_id, &old_blobs).await?;
+    refresh_retention_in(tx, &request.account_id, &request.subject_id).await?;
+    Ok(revision)
 }
 
 pub(super) async fn refresh_retention_in(
@@ -1235,3 +1334,7 @@ async fn cleanup_blob_ids_in(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "pull_files_tests.rs"]
+mod native_checks;
