@@ -1,7 +1,8 @@
 # RURU-125 — Native cached-navigation performance
 
-Status: implemented and measured locally on macOS, 8 October 2026. This isolated
-managed worktree starts at signed RURU-114 head
+Status: implemented and measured locally on macOS; draft
+[#173](https://github.com/ruru-m07/gitru/pull/173) is in review, 8 October 2026.
+This isolated managed worktree starts at signed RURU-114 head
 `de0e245d5b10bbebb9b66ad78d92febe084a986b` (PR #171). RURU-103's real native
 webview harness and RURU-121's bounded cached-navigation implementation are
 ancestors. RURU-119 is being integrated separately; its measurements must not be

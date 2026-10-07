@@ -3376,7 +3376,8 @@ qualification; none of these PRs is merged.
 
 ### RURU-125 native cached-navigation baseline — 8 October 2026
 
-RURU-125 is implemented and locally measured from exact signed RURU-114 head
+Draft [#173](https://github.com/ruru-m07/gitru/pull/173) publishes RURU-125's
+implemented and locally measured baseline from exact signed RURU-114 head
 `de0e245d5b10bbebb9b66ad78d92febe084a986b`. Its feature-only packaged harness
 seeds 10,000 deterministic pull summaries across two accounts and ten selected
 repositories, then exercises the normal SQLite → generated IPC/SDK → TanStack →
