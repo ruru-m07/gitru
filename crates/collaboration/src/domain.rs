@@ -276,6 +276,7 @@ pub struct SetLocalInboxStateRequest {
     pub account_id: String,
     pub authorization_epoch: String,
     pub notification_id: String,
+    pub expected_activity_updated_at: String,
     pub mutation: LocalInboxMutation,
     pub disposition: Option<LocalInboxDisposition>,
     pub bookmarked: Option<bool>,

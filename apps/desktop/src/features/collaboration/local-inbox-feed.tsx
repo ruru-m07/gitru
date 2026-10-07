@@ -80,6 +80,11 @@ export function LocalInboxFeed({
     (entry) => entry.item.id === selectedItem,
   );
 
+  useEffect(() => {
+    setSelectedItem(null);
+    setCursors([null]);
+  }, [account.id, account.authorization_epoch]);
+
   const invalidateInbox = useCallback(
     () =>
       cache.invalidateQueries({
@@ -95,9 +100,13 @@ export function LocalInboxFeed({
         if (
           change.account_id === account.id &&
           (change.scope === "notifications" ||
-            change.scope.startsWith("local_inbox:"))
-        )
-          setCursors((values) => (values.length > 1 ? [null] : values));
+            change.scope === "account" ||
+            change.scope.startsWith("local_inbox:") ||
+            change.reset)
+        ) {
+          setSelectedItem(null);
+          setCursors([null]);
+        }
       }),
     [account.id],
   );
@@ -142,6 +151,7 @@ export function LocalInboxFeed({
     try {
       await collaboration.forAccount(account).setLocalInboxState({
         notification_id: entry.item.id,
+        expected_activity_updated_at: entry.item.updated_at,
         mutation: operation.kind,
         disposition: operation.kind === "disposition" ? operation.value : null,
         bookmarked: operation.kind === "bookmark" ? operation.value : null,
@@ -154,6 +164,8 @@ export function LocalInboxFeed({
       await invalidateInbox();
     } catch (error) {
       setMutationError(collaborationErrorMessage(error));
+      setSelectedItem(null);
+      setCursors([null]);
       await invalidateInbox();
     } finally {
       setMutating(null);
@@ -349,12 +361,12 @@ export function LocalInboxFeed({
                       size="icon-sm"
                       disabled={mutating === entry.item.id}
                       aria-label={
-                        entry.local.effective_disposition === "done"
+                        entry.local.effective_disposition !== "inbox"
                           ? `Move ${entry.item.title} to local inbox`
                           : `Mark ${entry.item.title} locally done`
                       }
                       title={
-                        entry.local.effective_disposition === "done"
+                        entry.local.effective_disposition !== "inbox"
                           ? "Move to local inbox"
                           : "Mark locally done"
                       }
@@ -362,14 +374,14 @@ export function LocalInboxFeed({
                         void update(entry, {
                           kind: "disposition",
                           value:
-                            entry.local.effective_disposition === "done"
+                            entry.local.effective_disposition !== "inbox"
                               ? "inbox"
                               : "done",
                           snoozedUntil: null,
                         })
                       }
                     >
-                      {entry.local.effective_disposition === "done" ? (
+                      {entry.local.effective_disposition !== "inbox" ? (
                         <Undo2 aria-hidden="true" />
                       ) : (
                         <Check aria-hidden="true" />

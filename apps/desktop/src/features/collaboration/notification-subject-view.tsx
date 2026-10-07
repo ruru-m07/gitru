@@ -136,11 +136,13 @@ export function NotificationSubjectView({
           <p className="break-words text-sm">{original.title}</p>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             {original.reason ? <span>Reason: {original.reason}</span> : null}
-            {original.unread !== null ? (
-              <Badge variant="outline" size="sm">
-                {original.unread ? "Unread notification" : "Read notification"}
-              </Badge>
-            ) : null}
+            <Badge variant="outline" size="sm">
+              {original.unread === null
+                ? `Provider ${original.state}`
+                : original.unread
+                  ? "Provider unread"
+                  : "Provider read"}
+            </Badge>
             {localState ? (
               <Badge variant="outline" size="sm">
                 Local {localState.effective_disposition}

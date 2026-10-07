@@ -84,7 +84,9 @@ fn projected_state(
     };
     let authored_activity = parse_time(&saved.activity_updated_at)?;
     let snoozed_until = saved.snoozed_until.as_deref().map(parse_time).transpose()?;
-    let superseded_by_activity = item_time > authored_activity;
+    let suppresses_item = saved.disposition == LocalInboxDisposition::Done
+        || snoozed_until.is_some_and(|deadline| deadline > evaluated_at);
+    let superseded_by_activity = item_time > authored_activity && suppresses_item;
     let effective_disposition = if superseded_by_activity {
         LocalInboxEffectiveDisposition::Inbox
     } else if saved.disposition == LocalInboxDisposition::Done {
@@ -209,12 +211,13 @@ fn saved_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<Option<SavedLocalInbo
 
 impl Store {
     pub async fn inbox(&self, query: InboxQuery) -> Result<InboxPage> {
-        self.inbox_at(query, Utc::now()).await
+        self.inbox_at(query).await
     }
 
-    async fn inbox_at(&self, mut query: InboxQuery, now: DateTime<Utc>) -> Result<InboxPage> {
+    async fn inbox_at(&self, mut query: InboxQuery) -> Result<InboxPage> {
         validate_query(&query)?;
         let mut tx = self.inner.readers.begin().await.map_err(storage_error)?;
+        let now = Utc::now();
         account_in(&mut tx, &query.account_id, true).await?;
         let (revision, authorization_view) = metadata(&mut tx).await?;
         let projection_view = projection_view(&mut tx, &query.account_id).await?;
@@ -347,28 +350,22 @@ impl Store {
         &self,
         request: SetLocalInboxStateRequest,
     ) -> Result<LocalInboxWriteReceipt> {
-        self.set_local_inbox_state_at(request, Utc::now()).await
+        self.set_local_inbox_state_at(request).await
     }
 
     async fn set_local_inbox_state_at(
         &self,
         request: SetLocalInboxStateRequest,
-        now: DateTime<Utc>,
     ) -> Result<LocalInboxWriteReceipt> {
         validate_identifier(&request.notification_id)?;
         let expected_generation = parse_generation(&request.expected_generation, true)?;
+        let expected_activity_updated_at =
+            canonical_time(parse_time(&request.expected_activity_updated_at)?);
         let requested_snooze = request
             .snoozed_until
             .as_deref()
             .map(parse_time)
             .transpose()?;
-        if let Some(deadline) = requested_snooze
-            && (deadline <= now || deadline > now + chrono::Duration::days(MAX_SNOOZE_DAYS))
-        {
-            return Err(CollaborationError::invalid(
-                "Snooze deadline must be within the next 30 days",
-            ));
-        }
         let requested_snooze = requested_snooze.map(canonical_time);
         match request.mutation {
             LocalInboxMutation::Disposition => {
@@ -392,6 +389,14 @@ impl Store {
         }
         let mut writer = self.inner.writer.lock().await;
         let mut tx = writer.begin().await.map_err(storage_error)?;
+        let now = Utc::now();
+        if let Some(deadline) = requested_snooze.as_deref().map(parse_time).transpose()?
+            && (deadline <= now || deadline > now + chrono::Duration::days(MAX_SNOOZE_DAYS))
+        {
+            return Err(CollaborationError::invalid(
+                "Snooze deadline must be within the next 30 days",
+            ));
+        }
         epoch_in(&mut tx, &request.account_id, &request.authorization_epoch).await?;
         let activity_updated_at: Option<String> = sqlx::query_scalar(
             "SELECT n.updated_at FROM items n WHERE n.account_id=? AND n.id=? AND n.kind='notification' AND EXISTS(SELECT 1 FROM scope_membership m WHERE m.account_id=n.account_id AND m.scope='notifications' AND m.entity_id=n.id AND m.active=1) AND NOT EXISTS(SELECT 1 FROM sync_scopes s WHERE s.account_id=n.account_id AND s.scope='notifications' AND s.access_denied=1)",
@@ -402,6 +407,9 @@ impl Store {
         .await
         .map_err(storage_error)?;
         let activity_updated_at = activity_updated_at.ok_or_else(not_found)?;
+        if activity_updated_at != expected_activity_updated_at {
+            return Err(stale());
+        }
         let current = sqlx::query(
             "SELECT notification_id AS local_id,disposition AS local_disposition,bookmarked AS local_bookmarked,snoozed_until AS local_snoozed_until,activity_updated_at AS local_activity_updated_at,generation AS local_generation FROM local_inbox_state WHERE account_id=? AND notification_id=?",
         )
@@ -512,5 +520,24 @@ mod tests {
             LocalInboxEffectiveDisposition::Inbox
         );
         assert!(exact.bookmarked);
+        assert!(!exact.superseded_by_activity);
+
+        let bookmark_only = projected_state(
+            "2026-10-07T11:00:00Z",
+            Some(SavedLocalInboxState {
+                disposition: LocalInboxDisposition::Inbox,
+                bookmarked: true,
+                snoozed_until: None,
+                activity_updated_at: "2026-10-07T10:00:00Z".into(),
+                generation: 2,
+            }),
+            deadline,
+        )
+        .unwrap();
+        assert_eq!(
+            bookmark_only.effective_disposition,
+            LocalInboxEffectiveDisposition::Inbox
+        );
+        assert!(!bookmark_only.superseded_by_activity);
     }
 }

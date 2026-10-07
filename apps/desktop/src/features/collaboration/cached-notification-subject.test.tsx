@@ -314,7 +314,11 @@ describe("cached notification canonical subjects", () => {
       await screen.findByText("Full cached resource description"),
     ).toBeVisible();
     expect(screen.getByText("Reason: review_requested")).toBeVisible();
-    expect(screen.getByText("Unread notification")).toBeVisible();
+    expect(
+      within(screen.getByLabelText("Original notification")).getByText(
+        "Provider unread",
+      ),
+    ).toBeVisible();
     expect(
       screen.getByText(/does not mark the notification as read/),
     ).toBeVisible();
@@ -325,6 +329,31 @@ describe("cached notification canonical subjects", () => {
     expect(selection).not.toHaveBeenCalled();
     expect(refresh).not.toHaveBeenCalled();
     expect(hydrate).not.toHaveBeenCalled();
+  });
+
+  it("shows todo provider state beside local inbox state", async () => {
+    mockForegroundDemand();
+    mockTauriCommand("collaboration_item", (payload) => {
+      const { accountId, itemId } = payload as {
+        accountId: string;
+        itemId: string;
+      };
+      return {
+        item: itemId.startsWith("thread-")
+          ? {
+              ...thread,
+              id: itemId,
+              account_id: accountId,
+              unread: null,
+              state: "pending",
+            }
+          : savedSubject(fixtureAccount, itemId),
+        revision,
+        authorization_view: view,
+      };
+    });
+    await open();
+    expect(await screen.findByText("Provider pending")).toBeVisible();
   });
 
   it.each([

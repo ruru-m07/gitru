@@ -150,6 +150,7 @@ fn disposition_request(
         account_id: account_id.into(),
         authorization_epoch: "1".into(),
         notification_id: notification_id.into(),
+        expected_activity_updated_at: "2026-10-07T10:00:00Z".into(),
         mutation: LocalInboxMutation::Disposition,
         disposition: Some(disposition),
         bookmarked: None,
@@ -168,6 +169,7 @@ fn bookmark_request(
         account_id: account_id.into(),
         authorization_epoch: "1".into(),
         notification_id: notification_id.into(),
+        expected_activity_updated_at: "2026-10-07T10:00:00Z".into(),
         mutation: LocalInboxMutation::Bookmark,
         disposition: None,
         bookmarked: Some(bookmarked),
@@ -293,16 +295,80 @@ async fn local_done_and_bookmark_survive_restart_and_new_activity_resurfaces() {
         resurfaced.entries[0].local.effective_disposition,
         LocalInboxEffectiveDisposition::Inbox
     );
-    let toggled = reopened
-        .set_local_inbox_state(bookmark_request("a", "thread-1", "2", false))
-        .await
-        .unwrap();
+    let mut toggle = bookmark_request("a", "thread-1", "2", false);
+    toggle.expected_activity_updated_at = "2026-10-07T11:00:00Z".into();
+    let toggled = reopened.set_local_inbox_state(toggle).await.unwrap();
     assert!(!toggled.state.bookmarked);
     assert!(toggled.state.superseded_by_activity);
     assert_eq!(
         toggled.state.effective_disposition,
         LocalInboxEffectiveDisposition::Inbox,
         "bookmarking must not reapply the superseded done intent"
+    );
+}
+
+#[tokio::test]
+async fn unseen_provider_activity_fences_stale_local_actions() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::open(temp.path().join("collaboration.sqlite"))
+        .await
+        .unwrap();
+    store.upsert_account(account("a")).await.unwrap();
+    observe(
+        &store,
+        "a",
+        vec![notification("a", "thread", "2026-10-07T10:00:00Z", true)],
+    )
+    .await;
+    let inspected = store
+        .inbox(query("a", LocalInboxFilter::Inbox))
+        .await
+        .unwrap()
+        .entries
+        .remove(0);
+
+    observe(
+        &store,
+        "a",
+        vec![notification("a", "thread", "2026-10-07T11:00:00Z", false)],
+    )
+    .await;
+    let mut stale_done = disposition_request(
+        "a",
+        "thread",
+        &inspected.local.generation,
+        LocalInboxDisposition::Done,
+    );
+    stale_done.expected_activity_updated_at = inspected.item.updated_at.clone();
+    assert_eq!(
+        store
+            .set_local_inbox_state(stale_done)
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::StaleView
+    );
+    let mut stale_bookmark = bookmark_request("a", "thread", &inspected.local.generation, true);
+    stale_bookmark.expected_activity_updated_at = inspected.item.updated_at;
+    assert_eq!(
+        store
+            .set_local_inbox_state(stale_bookmark)
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::StaleView
+    );
+
+    let current = store
+        .inbox(query("a", LocalInboxFilter::Inbox))
+        .await
+        .unwrap();
+    assert_eq!(current.entries.len(), 1);
+    assert_eq!(current.entries[0].local.generation, "0");
+    assert!(!current.entries[0].local.bookmarked);
+    assert_eq!(
+        current.entries[0].item.updated_at,
+        "2026-10-07T11:00:00.000000000Z"
     );
 }
 
@@ -331,15 +397,10 @@ async fn filters_search_and_cursor_share_local_projection_authority() {
     assert!(first.next_cursor.is_some());
     paged.cursor = first.next_cursor.clone();
 
-    store
-        .set_local_inbox_state(disposition_request(
-            "a",
-            "thread-2",
-            "0",
-            LocalInboxDisposition::Done,
-        ))
-        .await
-        .unwrap();
+    let mut mark_second_done =
+        disposition_request("a", "thread-2", "0", LocalInboxDisposition::Done);
+    mark_second_done.expected_activity_updated_at = "2026-10-07T09:00:00Z".into();
+    store.set_local_inbox_state(mark_second_done).await.unwrap();
     assert_eq!(
         store.inbox(paged).await.unwrap_err().code,
         ErrorCode::StaleView

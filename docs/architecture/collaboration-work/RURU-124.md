@@ -67,6 +67,7 @@ InboxPage
 
 SetLocalInboxStateRequest
   account_id, authorization_epoch, notification_id
+  expected_activity_updated_at exact provider activity observed by the caller
   mutation                   disposition | bookmark
   disposition/snoozed_until  present only for disposition mutation
   bookmarked                 present only for bookmark mutation
@@ -99,7 +100,8 @@ cannot cross accounts. No token, response body or mutable provider URL is saved.
 
 The native update command validates the active account and exact authorization
 epoch, requires a currently accessible notification row, compares the expected
-generation and captures the current saved provider activity time internally. It
+generation and exact provider activity observed by the caller, then captures
+that current saved provider activity time internally. It
 rejects PR/issue IDs, retired or denied notification membership, malformed or
 non-future snooze deadlines and incompatible `done + snoozed_until` input. A
 successful write increments the generation, records a `local_inbox` change and
@@ -111,7 +113,8 @@ bookmark, and toggling a bookmark never changes disposition, its captured
 activity basis or provider state. The mutation kind is explicit so bookmarking
 a row that new provider activity has re-surfaced cannot accidentally reapply its
 superseded done/snooze intent. The renderer submits the expected generation;
-concurrent windows receive `stale_view`, reload and preserve the winning action.
+concurrent windows or provider-activity races receive `stale_view`, reload and
+preserve the winning observation/action.
 
 ## Effective state and new activity
 

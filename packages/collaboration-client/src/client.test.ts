@@ -1505,6 +1505,7 @@ describe("CollaborationClient", () => {
     });
     await handle.setLocalInboxState({
       notification_id: "notification-a",
+      expected_activity_updated_at: "2026-10-07T00:00:00Z",
       mutation: "disposition",
       disposition: "done",
       bookmarked: null,
@@ -1515,6 +1516,7 @@ describe("CollaborationClient", () => {
       account_id: account.id,
       authorization_epoch: account.authorization_epoch,
       notification_id: "notification-a",
+      expected_activity_updated_at: "2026-10-07T00:00:00Z",
       mutation: "disposition",
       disposition: "done",
       bookmarked: null,
@@ -1548,6 +1550,7 @@ describe("CollaborationClient", () => {
     );
     const pending = client.forAccount(account).setLocalInboxState({
       notification_id: "notification-a",
+      expected_activity_updated_at: "2026-10-07T00:00:00Z",
       mutation: "disposition",
       disposition: "done",
       bookmarked: null,

@@ -292,6 +292,7 @@ describe("ordinary collaboration workspace across provider policies", () => {
         account_id: fixtureAccount.id,
         authorization_epoch: fixtureAccount.authorization_epoch,
         notification_id: notification.id,
+        expected_activity_updated_at: notification.updated_at,
         mutation: "bookmark",
         disposition: null,
         bookmarked: true,
@@ -310,6 +311,7 @@ describe("ordinary collaboration workspace across provider policies", () => {
         account_id: fixtureAccount.id,
         authorization_epoch: fixtureAccount.authorization_epoch,
         notification_id: notification.id,
+        expected_activity_updated_at: notification.updated_at,
         mutation: "disposition",
         disposition: "done",
         bookmarked: null,
@@ -331,6 +333,7 @@ describe("ordinary collaboration workspace across provider policies", () => {
       account_id: fixtureAccount.id,
       authorization_epoch: fixtureAccount.authorization_epoch,
       notification_id: notification.id,
+      expected_activity_updated_at: notification.updated_at,
       mutation: "disposition",
       disposition: "inbox",
       bookmarked: null,
@@ -382,6 +385,108 @@ describe("ordinary collaboration workspace across provider policies", () => {
         name: `Mark ${notification.title} locally done`,
       }),
     ).toBeEnabled();
+  });
+
+  it("moves an active local snooze directly back to the inbox", async () => {
+    contextMock("native_notifications");
+    const notification = {
+      ...fixtureItem,
+      kind: "notification" as const,
+      state: "unread",
+      unread: true,
+    };
+    mockTauriCommandResult("collaboration_inbox", {
+      ...fixtureInboxPage(),
+      entries: [
+        {
+          item: notification,
+          local: {
+            ...fixtureLocalInboxState(notification),
+            effective_disposition: "snoozed",
+            snoozed_until: "2099-10-07T12:00:00Z",
+            generation: "2",
+          },
+        },
+      ],
+    });
+    const write = mockTauriCommandResult(
+      "collaboration_set_local_inbox_state",
+      {
+        state: fixtureLocalInboxState(notification),
+        revision: "11",
+        authorization_view: "1",
+      },
+    );
+    const user = userEvent.setup();
+    await mount(<CollaborationWorkspace kind="notification" />);
+    await user.click(
+      await screen.findByRole("button", {
+        name: `Move ${notification.title} to local inbox`,
+      }),
+    );
+    expect(write).toHaveBeenCalledWith({
+      request: {
+        account_id: fixtureAccount.id,
+        authorization_epoch: fixtureAccount.authorization_epoch,
+        notification_id: notification.id,
+        expected_activity_updated_at: notification.updated_at,
+        mutation: "disposition",
+        disposition: "inbox",
+        bookmarked: null,
+        snoozed_until: null,
+        expected_generation: "2",
+      },
+    });
+  });
+
+  it("returns external notification changes to page one and closes stale detail", async () => {
+    contextMock("native_notifications");
+    const notification = {
+      ...fixtureItem,
+      kind: "notification" as const,
+      state: "unread",
+      unread: true,
+    };
+    const cursors: Array<string | null> = [];
+    mockTauriCommand("collaboration_inbox", (payload) => {
+      const { query } = payload as { query: { cursor: string | null } };
+      cursors.push(query.cursor);
+      return {
+        ...fixtureInboxPage([notification]),
+        next_cursor: query.cursor ? null : "second-page",
+      };
+    });
+    let onChange:
+      | ((change: import("@gitru/commands").CollaborationChange) => void)
+      | undefined;
+    vi.spyOn(collaboration, "subscribeChanges").mockImplementation(
+      (listener) => {
+        onChange = listener;
+        return () => {};
+      },
+    );
+    const user = userEvent.setup();
+    await mount(<CollaborationWorkspace kind="notification" />);
+    await user.click(
+      await screen.findByRole("button", { name: "Next saved page" }),
+    );
+    await waitFor(() => expect(cursors).toContain("second-page"));
+    await user.click(screen.getByText(notification.title));
+    expect(screen.getByLabelText("Notification subject")).toBeVisible();
+    await act(async () => {
+      onChange?.({
+        account_id: fixtureAccount.id,
+        revision: "11",
+        scope: "notifications",
+        reset: false,
+      });
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Next saved page" }),
+      ).toBeEnabled(),
+    );
+    expect(screen.queryByLabelText("Notification subject")).toBeNull();
   });
 
   it("returns paged inboxes to the SQLite root when a snooze deadline arrives", async () => {
