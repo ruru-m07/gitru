@@ -3,11 +3,11 @@ CREATE TABLE command_effects (
     account_id TEXT NOT NULL,
     command_id TEXT NOT NULL,
     submission_hash BLOB NOT NULL CHECK(typeof(submission_hash)='blob' AND length(submission_hash)=32),
-    version INTEGER NOT NULL CHECK(version>0),
+    version INTEGER NOT NULL CHECK(version=1),
     patch_json TEXT NOT NULL CHECK(json_valid(patch_json) AND octet_length(patch_json)<=131072),
     PRIMARY KEY(account_id,command_id),
     FOREIGN KEY(account_id,command_id,submission_hash) REFERENCES commands(account_id,command_id,submission_hash) ON DELETE RESTRICT
-);
+) STRICT;
 CREATE TRIGGER command_effects_immutable BEFORE UPDATE ON command_effects
 BEGIN SELECT RAISE(ABORT,'immutable command effect'); END;
 CREATE TRIGGER command_effects_retained BEFORE DELETE ON command_effects
@@ -25,7 +25,7 @@ CREATE TABLE effective_item_overrides (
     pending_json TEXT NOT NULL CHECK(json_valid(pending_json)),
     PRIMARY KEY(account_id,id),
     FOREIGN KEY(account_id,id) REFERENCES items(account_id,id) ON DELETE CASCADE
-);
+) STRICT;
 CREATE VIRTUAL TABLE effective_items_fts USING fts5(account_id UNINDEXED,id UNINDEXED,title,body);
 CREATE TABLE effective_item_revisions (
     account_id TEXT NOT NULL,
@@ -35,7 +35,7 @@ CREATE TABLE effective_item_revisions (
     revision INTEGER NOT NULL CHECK(revision>0),
     PRIMARY KEY(account_id,id),
     FOREIGN KEY(account_id,id) REFERENCES items(account_id,id) ON DELETE CASCADE
-);
+) STRICT;
 CREATE INDEX effective_scope_revision ON effective_item_revisions(account_id,kind,repository_id,revision);
 CREATE VIEW effective_items AS
 SELECT i.account_id,i.id,i.repository_id,i.kind,coalesce(e.state,i.state) AS state,
