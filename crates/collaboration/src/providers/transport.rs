@@ -607,7 +607,11 @@ impl GithubHttp {
                 .as_secs();
             let reset_wait = header_number(response.headers(), "x-ratelimit-reset")
                 .map(|reset| reset.saturating_sub(now).max(1));
-            let cooldown = (remaining == Some(0)).then(|| reset_wait.unwrap_or(60));
+            let cooldown = (remaining == Some(0))
+                .then(|| reset_wait.unwrap_or(60))
+                .into_iter()
+                .chain(header_number(response.headers(), "retry-after").map(|wait| wait.max(1)))
+                .max();
             if status.is_redirection() && status != StatusCode::NOT_MODIFIED {
                 if redirect == MAX_REDIRECTS {
                     return Err(ProviderError::new(ProviderErrorKind::InvalidResponse)
@@ -938,5 +942,18 @@ mod tests {
             .unwrap_err();
         assert_eq!(error.retry_after_seconds, Some(172800));
         request.join().unwrap();
+    }
+    #[tokio::test]
+    async fn successful_point_read_preserves_retry_after_without_primary_exhaustion() {
+        let (http,task)=server("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nRetry-After: 120\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}".into());
+        let page = http
+            .get_point(
+                http.endpoint("notifications/threads/101").unwrap(),
+                &SecretToken::new("synthetic_token".into()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(page.cooldown_seconds, Some(120));
+        task.join().unwrap();
     }
 }
