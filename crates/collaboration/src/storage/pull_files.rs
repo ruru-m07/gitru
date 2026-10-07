@@ -337,7 +337,7 @@ impl Store {
         source: PullFileSource,
     ) -> Result<PullFileLease> {
         source.validate()?;
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         epoch_in(&mut tx, account_id, epoch).await?;
         let captured = capture_in(&mut tx, account_id, subject_id).await?;
@@ -443,7 +443,7 @@ impl Store {
         let lease = &commit.request.lease;
         let account = &lease.account_id;
         let subject = &lease.binding.pull_id;
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         epoch_in(&mut tx, account, &lease.authorization_epoch).await?;
         if denied_in(&mut tx, account, subject).await?
@@ -834,7 +834,7 @@ impl Store {
         {
             return Err(invalid());
         }
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let revision = admit_artifact_in(&mut tx, request, membership, artifact).await?;
         tx.commit().await.map_err(storage_error)?;
@@ -870,7 +870,7 @@ impl Store {
         {
             return Err(invalid());
         }
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         validate_owner()?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let selected = selection_in(&mut tx, &request).await?;

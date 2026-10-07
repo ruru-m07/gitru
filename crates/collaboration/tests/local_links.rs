@@ -404,7 +404,7 @@ async fn explicit_alias_base_path_and_port_are_exact_and_persisted() {
             .is_empty()
     );
     let linked = confirm(&store, q.clone(), "a", None).await;
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let reopened = Store::open(path).await.unwrap();
     assert_eq!(

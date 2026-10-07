@@ -10,35 +10,23 @@ use collaboration::{
 use std::sync::Arc;
 use tauri::{State, Webview};
 use tauri_plugin_dialog::DialogExt;
-use tokio::sync::OnceCell;
 
 mod draft_export;
+mod lifecycle;
+pub(super) use lifecycle::RecoveryTransition;
+use lifecycle::RuntimeSlot;
 
 #[derive(Default)]
 pub struct CollaborationState {
-    pub runtime: OnceCell<Result<Arc<CollaborationRuntime>, CollaborationError>>,
+    native_database_path: std::sync::OnceLock<std::path::PathBuf>,
+    pub(crate) runtime: RuntimeSlot,
+    services: std::sync::Mutex<Vec<tokio::task::JoinHandle<()>>>,
+    transition: tokio::sync::Mutex<()>,
     draft_export: tokio::sync::Mutex<()>,
     pub(super) demand_hosts: tokio::sync::Mutex<std::collections::HashMap<String, bool>>,
     pub(super) local_link_previews: super::collaboration_local_links::LocalLinkPreviews,
     pub(super) pull_checkout_plans: super::collaboration_pull_checkout::PullCheckoutPlans,
     pub(super) webview_lifetimes: super::collaboration_local_links::NativeWebviewLifetimes,
-}
-
-impl CollaborationState {
-    pub(super) async fn get(&self) -> Result<&Arc<CollaborationRuntime>, CollaborationError> {
-        // Initialization starts during setup. A bounded wait makes startup reads
-        // resilient without blocking the app shell or requiring network access.
-        for _ in 0..100 {
-            if let Some(result) = self.runtime.get() {
-                return result.as_ref().map_err(Clone::clone);
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-        }
-        Err(CollaborationError::new(
-            ErrorCode::NotReady,
-            "Collaboration storage is still starting",
-        ))
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -62,6 +50,7 @@ pub(super) enum Operation {
     Draft,
     Drafts,
     ExportDraft,
+    Recovery,
     Capabilities,
     ContextualCapabilities,
     ResolveResource,
@@ -492,7 +481,7 @@ pub async fn collaboration_hydrate_detail(
 
 #[cfg(test)]
 mod tests {
-    use super::{caller_allowed, Operation};
+    use super::{Operation, caller_allowed};
 
     const DOMAIN_OPERATIONS: &[Operation] = &[
         Operation::Accounts,
@@ -508,6 +497,7 @@ mod tests {
         Operation::Draft,
         Operation::Drafts,
         Operation::ExportDraft,
+        Operation::Recovery,
         Operation::Capabilities,
         Operation::ContextualCapabilities,
         Operation::ResolveResource,

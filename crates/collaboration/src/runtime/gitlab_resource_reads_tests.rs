@@ -509,7 +509,7 @@ async fn actual_gitlab_common_reads_capabilities_and_independent_body_survive_co
         .unwrap();
     let calls = fixture.count();
     let loads = vault.loads.load(Ordering::SeqCst);
-    database.close().await;
+    database.close().await.unwrap();
     drop(runtime);
     drop(database);
     let reopened = store(dir.path()).await;
@@ -865,7 +865,7 @@ async fn actual_gitlab_cross_project_issue_copy_keeps_native_identity_and_privat
 
     let calls = fixture.count();
     let loads = vault.loads.load(Ordering::SeqCst);
-    database.close().await;
+    database.close().await.unwrap();
     drop(runtime);
     drop(database);
     let reopened = store(dir.path()).await;

@@ -994,7 +994,7 @@ impl Store {
         subject_id: &str,
         facet: DetailFacet,
     ) -> Result<String> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         epoch_in(&mut tx, account_id, epoch).await?;
         let subject = subject_in(&mut tx, account_id, subject_id).await?;
@@ -1093,7 +1093,7 @@ impl Store {
         subject_id: &str,
         facet: DetailFacet,
     ) -> Result<()> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         epoch_in(&mut tx, account_id, epoch).await?;
         sqlx::query("UPDATE detail_demand SET requested=0 WHERE account_id=? AND subject_id=? AND facet=? AND authorization_epoch=?")
@@ -1110,7 +1110,7 @@ impl Store {
         facet: DetailFacet,
         lease: &DetailLease,
     ) -> Result<()> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         validate_lease_in(&mut tx, account_id, epoch, subject_id, facet, lease).await?;
         sqlx::query("UPDATE detail_demand SET requested=0 WHERE account_id=? AND subject_id=? AND facet=? AND authorization_epoch=?")
@@ -1156,7 +1156,7 @@ impl Store {
         if matches!(facet, DetailFacet::Commits | DetailFacet::Files) {
             return Err(invalid_detail());
         }
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         epoch_in(&mut tx, account_id, epoch).await?;
         let (_, authorization_view) = metadata(&mut tx).await?;
@@ -1251,7 +1251,7 @@ impl Store {
     }
 
     pub async fn apply_detail(&self, page: DetailCommit) -> Result<String> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let revision = apply_detail_in(&mut tx, page).await?;
         tx.commit().await.map_err(storage_error)?;
@@ -1268,7 +1268,7 @@ impl Store {
         facet: DetailFacet,
         lease: &DetailLease,
     ) -> Result<String> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         validate_lease_in(&mut tx, account_id, epoch, subject_id, facet, lease).await?;
         let scope = facet.scope(subject_id);

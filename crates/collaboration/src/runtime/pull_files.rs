@@ -43,6 +43,7 @@ impl CollaborationRuntime {
     where
         F: Fn() -> Result<(), CollaborationError> + Send,
     {
+        let _operation = self.acquire_operation()?;
         let revision = self
             .store
             .apply_local_pull_file_artifact_checked(

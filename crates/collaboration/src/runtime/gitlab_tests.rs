@@ -346,7 +346,7 @@ async fn probe_quota_commits_before_refresh_and_survives_cold_runtime_restart() 
     assert!(!runtime.run_next().await);
     assert_eq!(vault.loads.load(Ordering::SeqCst), 0);
     assert_eq!(task.join().unwrap().len(), 2);
-    database.close().await;
+    database.close().await.unwrap();
     drop(runtime);
     drop(database);
     let reopened = store(dir.path()).await;
@@ -419,7 +419,7 @@ async fn actual_keyset_resume_rename_selection_and_complete_absence_use_shared_s
         .unwrap();
     assert_eq!(partial.coverage.state, CoverageState::Partial);
     assert!(partial.next_cursor.is_some());
-    database.close().await;
+    database.close().await.unwrap();
     drop(runtime);
     drop(database);
     let database = store(dir.path()).await;
@@ -684,7 +684,7 @@ async fn unavailable_retry_after_survives_manual_admission_and_runtime_restart()
         .next_retry_at;
     runtime.refresh(refresh(&account)).await.unwrap();
     assert!(!runtime.run_next().await);
-    database.close().await;
+    database.close().await.unwrap();
     drop(runtime);
     drop(database);
     let database = store(dir.path()).await;
@@ -778,7 +778,7 @@ async fn failed_replacement_probe_preserves_proven_actor_backoff_without_promoti
         }
         assert_eq!(vault.loads.load(Ordering::SeqCst), 0);
         assert_eq!(task.join().unwrap().len(), 4);
-        database.close().await;
+        database.close().await.unwrap();
         drop(runtime);
         drop(database);
         let database = store(dir.path()).await;

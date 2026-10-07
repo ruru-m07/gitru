@@ -24,6 +24,7 @@ impl CollaborationRuntime {
         &self,
         request: PullFileDiffRequest,
     ) -> Result<RefreshReceipt, CollaborationError> {
+        let _operation = self.acquire_operation()?;
         request.validate()?;
         let selected = self.store.pull_file_selection(request.clone()).await?;
         self.require_detail(&selected.account, &selected.subject, DetailFacet::Files)

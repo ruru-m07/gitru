@@ -14,6 +14,9 @@ pub mod notification_subjects;
 pub mod participants;
 pub mod providers;
 pub mod pull_commits;
+#[cfg(test)]
+#[path = "../tests/support/pull_file_fixture.rs"]
+pub(crate) mod pull_file_fixture;
 pub mod pull_files;
 pub mod recovery;
 pub mod resource_metadata;

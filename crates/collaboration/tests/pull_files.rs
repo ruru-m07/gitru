@@ -24,7 +24,7 @@ async fn pages_stay_invisible_until_exact_terminal_publication_and_resume_after_
     assert!(!first.published);
     assert!(snapshot(&store).await.files.is_empty());
     let next = first.next_lease.unwrap();
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let store = Store::open(&path).await.unwrap();
     assert_eq!(
@@ -302,7 +302,7 @@ async fn artifact_is_separate_exact_bounded_and_accounted_from_native_bytes() {
             .await
             .is_err()
     );
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let store = Store::open(&path).await.unwrap();
     assert!(
@@ -564,7 +564,7 @@ async fn inactive_account_denial_and_changed_epoch_hide_cache_and_clean_staging_
     .unwrap();
     assert!(snapshot(&store).await.files.is_empty());
     assert!(store.pull_file_request(&lease).await.is_err());
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let store = Store::open(&path).await.unwrap();
     assert_eq!(

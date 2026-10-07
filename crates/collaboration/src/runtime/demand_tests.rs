@@ -1226,7 +1226,7 @@ async fn closed_offline_interest_does_not_survive_restart_but_saved_values_and_d
             .await,
         Ok(())
     );
-    runtime.store.close().await;
+    runtime.store.close().await.unwrap();
     drop(runtime);
     let store = Arc::new(Store::open(&path).await.unwrap());
     let mut reopened = CollaborationRuntime::new(store, vault, provider.clone());

@@ -405,7 +405,7 @@ async fn cache_and_read_intent_survive_restart_without_new_http_or_summary_autho
         .request_detail("a", "1", "pull", DetailFacet::Reviews)
         .await
         .unwrap();
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let store = Store::open(path).await.unwrap();
     assert_eq!(

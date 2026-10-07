@@ -267,6 +267,7 @@ async fn local_done_and_bookmark_survive_restart_and_new_activity_resurfaces() {
             .code,
         ErrorCode::StaleView
     );
+    store.close().await.unwrap();
     drop(store);
 
     let reopened = Store::open(&path).await.unwrap();
@@ -497,6 +498,7 @@ async fn snooze_and_access_validation_are_local_account_scoped() {
         store.set_local_inbox_state(missing).await.unwrap_err().code,
         ErrorCode::NotFound
     );
+    store.close().await.unwrap();
     drop(store);
     let reopened = Store::open(&path).await.unwrap();
     let persisted = reopened

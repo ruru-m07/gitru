@@ -425,7 +425,7 @@ impl Store {
         epoch: &str,
         subject_id: &str,
     ) -> Result<PullCommitLease> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         epoch_in(&mut tx, account_id, epoch).await?;
         let captured = capture_pull_in(&mut tx, account_id, subject_id, true).await?;
@@ -531,7 +531,7 @@ impl Store {
             normalized.push(value);
         }
         commit.page.commits = normalized;
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         epoch_in(&mut tx, &commit.account_id, &commit.authorization_epoch).await?;
         let row = sqlx::query("SELECT subject_id,authorization_epoch,authorization_view,binding_json,context_json,source_json,provider_order,expected_cursor,page_count,row_count FROM pull_commit_generations WHERE account_id=? AND generation=? AND run_id=? AND state='staging'")

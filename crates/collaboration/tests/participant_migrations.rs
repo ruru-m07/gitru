@@ -309,7 +309,7 @@ async fn frozen_v7_upgrade_preserves_every_row_and_immediate_cold_reads() {
     for _ in 0..2 {
         let store = Store::open(&path).await.unwrap();
         assert_cold_saved_reads(&store).await;
-        store.close().await;
+        store.close().await.unwrap();
         drop(store);
         let mut connection = connect(&path).await;
         assert_eq!(snapshot(&mut connection).await, before);
@@ -388,7 +388,7 @@ async fn actual_participant_rebuild_rolls_back_after_old_parent_drop() {
     // The same intact historical file can immediately bootstrap normally.
     let store = Store::open(&path).await.unwrap();
     assert_cold_saved_reads(&store).await;
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let mut connection = connect(&path).await;
     assert_eq!(snapshot(&mut connection).await, before);
@@ -511,7 +511,7 @@ async fn frozen_draft_generations_keep_cas_after_upgrade_and_cold_reopen() {
     let saved = store.save_draft(original).await.unwrap();
     assert_eq!(saved.generation, "38");
     assert_eq!(store.revision().await.unwrap(), "9005");
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let reopened = Store::open(&path).await.unwrap();
     assert_eq!(reopened.revision().await.unwrap(), "9005");
@@ -532,5 +532,5 @@ async fn frozen_draft_generations_keep_cas_after_upgrade_and_cold_reopen() {
             .generation,
         "51"
     );
-    reopened.close().await;
+    reopened.close().await.unwrap();
 }

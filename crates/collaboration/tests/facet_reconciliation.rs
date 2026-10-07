@@ -537,7 +537,7 @@ async fn persisted_traversal_proof_resumes_after_cold_reopen_and_fences_old_gene
         .begin_detail("a", "1", "pull", DetailFacet::Comments)
         .await
         .unwrap();
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let store = Store::open(directory.path().join("facet.sqlite"))
         .await
@@ -707,7 +707,7 @@ async fn legacy_and_unknown_traversal_evidence_keep_saved_data_without_resume_or
             initial.whole_scope = complete;
             initial.next_cursor = (!complete).then(|| "old-cursor".into());
             store.apply_detail(initial).await.unwrap();
-            store.close().await;
+            store.close().await.unwrap();
             drop(store);
 
             // Native-only synthetic historical/future JSON fixture. SQL schema

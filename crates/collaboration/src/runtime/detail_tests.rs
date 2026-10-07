@@ -288,7 +288,7 @@ async fn bounded_partial_traversal_resumes_from_committed_checkpoint_after_resta
         .unwrap();
     assert_eq!(partial.entries.len(), 10);
     assert_eq!(partial.evidence.coverage.state, CoverageState::Partial);
-    runtime.store.close().await;
+    runtime.store.close().await.unwrap();
     drop(runtime);
     let store = Arc::new(Store::open(path).await.unwrap());
     let runtime = CollaborationRuntime::new(store, vault, provider.clone());
@@ -457,7 +457,7 @@ async fn provider_cooldown_preserves_saved_detail_and_blocks_other_facets_after_
         .unwrap();
     assert_eq!(saved.body.text.as_deref(), Some("detail body"));
     assert_eq!(saved.evidence.sync.state, SyncState::RateLimited);
-    runtime.store.close().await;
+    runtime.store.close().await.unwrap();
     drop(runtime);
     let runtime = CollaborationRuntime::new(
         Arc::new(Store::open(path).await.unwrap()),
@@ -570,7 +570,7 @@ async fn repeatedly_drifting_adapter_stops_after_one_restart_and_cold_restart_ha
     assert_eq!(provider.calls.load(Ordering::SeqCst), 4);
     let runtime_owner = Arc::downgrade(&runtime);
     let store_owner = Arc::downgrade(&runtime.store);
-    runtime.store.close().await;
+    runtime.store.close().await.unwrap();
     drop(runtime);
     assert!(runtime_owner.upgrade().is_none());
     assert!(store_owner.upgrade().is_none());

@@ -17,6 +17,8 @@ use uuid::Uuid;
 
 pub(crate) mod command_admission;
 mod contextual_capabilities;
+mod shutdown;
+use shutdown::NativeWriter;
 pub(crate) mod details;
 pub(crate) mod facet_reconciliation;
 mod identities;
@@ -53,14 +55,15 @@ pub struct Store {
 }
 
 struct Inner {
-    writer: Mutex<SqliteConnection>,
+    writer: NativeWriter,
     readers: SqlitePool,
     path: PathBuf,
     maintenance: Mutex<()>,
     noop_wal_checkpoint_supported: bool,
     // Drop connection handles before releasing the final writer owner's
     // lease. Keeping the file avoids unlink/recreate races between instances.
-    _writer_lease: WriterLease,
+    writer_lease: Mutex<Option<WriterLease>>,
+    shutdown: Mutex<()>,
 }
 
 pub(crate) struct WriterLease {
@@ -71,7 +74,7 @@ impl Drop for WriterLease {
     fn drop(&mut self) {
         // Closing only our descriptor can leave a Unix flock held by a
         // concurrent fork until it executes. Explicitly release the lock
-        // when the final Inner owner drops, never when a Store clone closes.
+        // after actual writer closure, including explicit close on any clone.
         // On failure, File drop still closes our descriptor; the OS also
         // releases the lease on process exit, including crashes.
         let _ = self.file.unlock();
@@ -97,7 +100,12 @@ struct DraftCursor {
 
 impl Store {
     pub async fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let path = path.as_ref();
+        let path = path.as_ref().to_path_buf();
+        tokio::spawn(async move { Self::open_owned(&path).await })
+            .await
+            .map_err(|_| CollaborationError::storage())?
+    }
+    async fn open_owned(path: &Path) -> Result<Self> {
         prepare_private_path(path)?;
         let writer_lease = acquire_writer_lease(path)?;
         crate::recovery::require_no_pending_restore(path)?;
@@ -106,10 +114,15 @@ impl Store {
             .foreign_keys(true)
             .synchronous(SqliteSynchronous::Full)
             .busy_timeout(Duration::from_secs(2))
+            .optimize_on_close(false, None)
             .statement_cache_capacity(64)
             .row_buffer_size(128)
             .command_buffer_size(32);
-        let mut writer = SqliteConnection::connect_with(
+        let mut pending = shutdown::PendingWriter {
+            connection: None,
+            lease: Some(writer_lease),
+        };
+        let writer = SqliteConnection::connect_with(
             &base
                 .clone()
                 .create_if_missing(true)
@@ -117,29 +130,32 @@ impl Store {
         )
         .await
         .map_err(storage_error)?;
-        secure_database_files(path)?;
-        let version: String = sqlx::query_scalar("SELECT sqlite_version()")
-            .fetch_one(&mut writer)
-            .await
-            .map_err(storage_error)?;
-        if !fixed_sqlite_version(&version) {
-            return Err(CollaborationError::new(
-                ErrorCode::Storage,
-                "Collaboration requires SQLite with the WAL-reset fix",
-            ));
-        }
-        let fts: i64 = sqlx::query_scalar("SELECT sqlite_compileoption_used('ENABLE_FTS5')")
-            .fetch_one(&mut writer)
-            .await
-            .map_err(storage_error)?;
-        if fts != 1 {
-            return Err(CollaborationError::new(
-                ErrorCode::Storage,
-                "Collaboration requires SQLite FTS5",
-            ));
-        }
-        MIGRATIONS
-            .run_direct(None, &mut writer, false)
+        pending.connection = Some(writer);
+        let initialized = async {
+            let writer = pending.connection.as_mut().expect("new SQLite writer");
+            secure_database_files(path)?;
+            let version: String = sqlx::query_scalar("SELECT sqlite_version()")
+                .fetch_one(&mut *writer)
+                .await
+                .map_err(storage_error)?;
+            if !fixed_sqlite_version(&version) {
+                return Err(CollaborationError::new(
+                    ErrorCode::Storage,
+                    "Collaboration requires SQLite with the WAL-reset fix",
+                ));
+            }
+            let fts: i64 = sqlx::query_scalar("SELECT sqlite_compileoption_used('ENABLE_FTS5')")
+                .fetch_one(&mut *writer)
+                .await
+                .map_err(storage_error)?;
+            if fts != 1 {
+                return Err(CollaborationError::new(
+                    ErrorCode::Storage,
+                    "Collaboration requires SQLite FTS5",
+                ));
+            }
+            MIGRATIONS
+            .run_direct(None, &mut *writer, false)
             .await
             .map_err(|_| {
                 CollaborationError::new(
@@ -147,32 +163,42 @@ impl Store {
                     "Collaboration database migration failed; the existing database was preserved",
                 )
             })?;
-        pull_commits::cleanup_abandoned_in(&mut writer).await?;
-        pull_files::cleanup_abandoned_in(&mut writer).await?;
-        secure_database_files(path)?;
-        let readers = SqlitePoolOptions::new()
-            .max_connections(3)
-            .min_connections(1)
-            .acquire_timeout(Duration::from_secs(2))
-            .connect_with(base.read_only(true).pragma("query_only", "ON"))
-            .await
-            .map_err(storage_error)?;
+            pull_commits::cleanup_abandoned_in(&mut *writer).await?;
+            pull_files::cleanup_abandoned_in(&mut *writer).await?;
+            secure_database_files(path)?;
+            let readers = SqlitePoolOptions::new()
+                .max_connections(3)
+                .min_connections(1)
+                .acquire_timeout(Duration::from_secs(2))
+                .connect_with(base.read_only(true).pragma("query_only", "ON"))
+                .await
+                .map_err(storage_error)?;
+            Ok::<_, CollaborationError>((readers, version))
+        }
+        .await;
+        let (readers, version) = match initialized {
+            Ok(initialized) => initialized,
+            Err(error) => {
+                pending.close().await?;
+                return Err(error);
+            }
+        };
         Ok(Self {
             inner: Arc::new(Inner {
-                writer: Mutex::new(writer),
+                writer: NativeWriter::new(
+                    pending
+                        .connection
+                        .take()
+                        .expect("initialized SQLite writer"),
+                ),
                 readers,
                 path: path.to_path_buf(),
                 maintenance: Mutex::new(()),
                 noop_wal_checkpoint_supported: sqlite_version_at_least(&version, (3, 51, 0)),
-                _writer_lease: writer_lease,
+                writer_lease: Mutex::new(pending.lease.take()),
+                shutdown: Mutex::new(()),
             }),
         })
-    }
-
-    /// Explicit shutdown is useful in packaged-runtime and reopen tests.
-    pub async fn close(&self) {
-        self.inner.readers.close().await;
-        // The connection closes when the final Store owner is dropped.
     }
 
     /// A verified, WAL-consistent export. Credentials and their vault references
@@ -181,7 +207,7 @@ impl Store {
         &self,
         path: impl AsRef<Path>,
     ) -> Result<crate::recovery::BackupSummary> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         crate::recovery::backup_from(&mut writer, path.as_ref()).await
     }
 
@@ -232,7 +258,7 @@ impl Store {
     /// Account metadata alone is useful for local fixtures. Native authentication
     /// must use commit_account_credential so epoch and reference move together.
     pub async fn upsert_account(&self, account: RemoteAccount) -> Result<RemoteAccount> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         upsert_account_in(&mut tx, &account).await?;
         tx.commit().await.map_err(storage_error)?;
@@ -244,7 +270,7 @@ impl Store {
     pub async fn stage_credential(&self, account_id: &str, reference: &str) -> Result<()> {
         validate_identifier(account_id)?;
         validate_identifier(reference)?;
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let pending: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM credential_cleanup")
             .fetch_one(&mut *tx)
@@ -304,7 +330,7 @@ impl Store {
         if let Some(deadline) = &quota_deadline {
             validate_provider_deadline(deadline)?;
         }
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let staged: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM credential_cleanup WHERE credential_ref=? AND account_id=? AND state='staged')")
             .bind(reference).bind(&account.id).fetch_one(&mut *tx).await.map_err(storage_error)?;
@@ -356,7 +382,7 @@ impl Store {
         error: Option<CollaborationError>,
     ) -> Result<String> {
         validate_provider_deadline(&proposed)?;
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let account = account_in(&mut tx, account_id, false).await?;
         if account.authorization_epoch != epoch {
@@ -398,7 +424,7 @@ impl Store {
     }
 
     pub async fn finish_credential_cleanup(&self, reference: &str) -> Result<()> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         sqlx::query("DELETE FROM credential_cleanup WHERE credential_ref=? AND NOT EXISTS(SELECT 1 FROM account_credentials WHERE credential_ref=?)")
             .bind(reference).bind(reference).execute(&mut *writer).await.map_err(storage_error)?;
         Ok(())
@@ -421,14 +447,14 @@ impl Store {
         reference: &str,
         next_retry_at: i64,
     ) -> Result<()> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         sqlx::query("UPDATE credential_cleanup SET attempts=min(attempts+1,20),next_retry_at=? WHERE credential_ref=?")
             .bind(next_retry_at).bind(reference).execute(&mut *writer).await.map_err(storage_error)?;
         Ok(())
     }
 
     pub async fn disconnect(&self, account_id: &str) -> Result<String> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let mut account = account_in(&mut tx, account_id, false).await?;
         let epoch = positive_revision(&account.authorization_epoch)?
@@ -575,7 +601,7 @@ impl Store {
         repository_id: &str,
         selected: bool,
     ) -> Result<String> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let account = account_in(&mut tx, account_id, true).await?;
         let result = sqlx::query("UPDATE repositories SET selected=? WHERE account_id=? AND id=?")
@@ -786,7 +812,7 @@ impl Store {
 
     pub async fn begin_sync(&self, account_id: &str, epoch: &str, scope: &str) -> Result<String> {
         validate_scope(scope)?;
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         epoch_in(&mut tx, account_id, epoch).await?;
         ensure_selected_scope(&mut tx, account_id, scope).await?;
@@ -846,7 +872,7 @@ impl Store {
                 "Unmodified response cannot contain observations",
             ));
         }
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         epoch_in(&mut tx, &page.account_id, &page.authorization_epoch).await?;
         let account = account_in(&mut tx, &page.account_id, true).await?;
@@ -1054,7 +1080,7 @@ impl Store {
         status: SyncStatus,
     ) -> Result<String> {
         validate_scope(scope)?;
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         epoch_in(&mut tx, account_id, epoch).await?;
         notification_subjects::capture_in(&mut tx, account_id).await?;
@@ -1185,7 +1211,7 @@ impl Store {
             return Err(CollaborationError::invalid("Draft exceeds the text limit"));
         }
         let expected = revision_number(&draft.generation)?;
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         // Drafts remain editable offline and after account disconnection.
         let account = account_in(&mut tx, &draft.account_id, false).await?;

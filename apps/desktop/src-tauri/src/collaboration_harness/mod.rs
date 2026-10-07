@@ -4,7 +4,7 @@ pub use domain::*;
 
 use crate::commands::collaboration::CollaborationState;
 use collaboration::{
-    test_harness::*, ChangeHint, CollaborationError, CollaborationRuntime, ErrorCode,
+    ChangeHint, CollaborationError, CollaborationRuntime, ErrorCode, test_harness::*,
 };
 use serde::Deserialize;
 use std::{
@@ -288,6 +288,8 @@ pub fn setup(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     let nonce = std::env::var(NONCE_ENV).map_err(|_| invalid())?;
     let launch = LaunchRoot::open(&app.config().identifier, PathBuf::from(root), nonce)?;
     let checkpoint = launch.retained_checkpoint()?;
+    app.state::<CollaborationState>()
+        .configure_database_path(launch.file("collaboration.sqlite")?)?;
     app.manage(HarnessState::default());
     let handle = app.handle().clone();
     tauri::async_runtime::spawn(async move {
@@ -323,7 +325,7 @@ pub fn setup(app: &App) -> Result<(), Box<dyn std::error::Error>> {
             let mut changes = harness.runtime.subscribe();
             let relay = harness.clone();
             let event_handle = handle.clone();
-            tauri::async_runtime::spawn(async move {
+            let relay_task = tokio::spawn(async move {
                 loop {
                     match changes.recv().await {
                         Ok(hint) => relay.relay_hint(&event_handle, hint),
@@ -332,9 +334,12 @@ pub fn setup(app: &App) -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             });
-            crate::commands::collaboration_demand::observe_window_activity(
-                handle.clone(),
-                harness.runtime.clone(),
+            handle.state::<CollaborationState>().own_service(relay_task);
+            handle.state::<CollaborationState>().own_service(
+                crate::commands::collaboration_demand::observe_window_activity(
+                    handle.clone(),
+                    harness.runtime.clone(),
+                ),
             );
             if harness
                 .control

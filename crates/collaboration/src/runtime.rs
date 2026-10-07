@@ -53,6 +53,8 @@ mod pull_commits;
 mod pull_file_tests;
 mod pull_files;
 mod scheduler;
+mod shutdown;
+pub use shutdown::RuntimeOperation;
 
 const MAX_QUEUED_SCOPES: usize = 128;
 const MAX_PAGES_PER_REFRESH: usize = 10;
@@ -129,6 +131,7 @@ pub struct CollaborationRuntime {
     scheduler: Arc<Mutex<Scheduler>>,
     notify: Arc<Notify>,
     started: Arc<AtomicBool>,
+    lifetime: Arc<shutdown::RuntimeLifetime>,
     changes: broadcast::Sender<ChangeHint>,
 }
 
@@ -163,6 +166,7 @@ impl CollaborationRuntime {
             scheduler: Arc::new(Mutex::new(Scheduler::default())),
             notify: Arc::new(Notify::new()),
             started: Arc::new(AtomicBool::new(false)),
+            lifetime: Arc::new(shutdown::RuntimeLifetime::default()),
             changes,
         }
     }
@@ -173,6 +177,12 @@ impl CollaborationRuntime {
     }
 
     pub async fn discover_github_cli(&self) -> GithubCliDiscovery {
+        let Ok(_operation) = self.acquire_operation() else {
+            return GithubCliDiscovery {
+                status: GithubCliStatus::Unavailable,
+                accounts: vec![],
+            };
+        };
         self.github_cli.discover().await
     }
 
@@ -180,6 +190,7 @@ impl CollaborationRuntime {
         &self,
         candidate_id: &str,
     ) -> Result<RemoteAccount, CollaborationError> {
+        let _operation = self.acquire_operation()?;
         let (expected_login, token) = self.github_cli.import(candidate_id).await?;
         self.connect_owned_token(
             ProviderInstance::public(ProviderKind::Github),
@@ -198,6 +209,7 @@ impl CollaborationRuntime {
     }
 
     pub async fn save_draft(&self, draft: LocalDraft) -> Result<LocalDraft, CollaborationError> {
+        let _operation = self.acquire_operation()?;
         let draft = self.store.save_draft(draft).await?;
         self.publish(self.store.revision().await?);
         Ok(draft)
@@ -207,6 +219,7 @@ impl CollaborationRuntime {
         &self,
         request: SetLocalInboxStateRequest,
     ) -> Result<LocalInboxWriteReceipt, CollaborationError> {
+        let _operation = self.acquire_operation()?;
         let receipt = self.store.set_local_inbox_state(request).await?;
         self.publish(receipt.revision.clone());
         Ok(receipt)
@@ -215,12 +228,18 @@ impl CollaborationRuntime {
     /// Idempotent process-level startup. A weak owner permits normal application
     /// teardown; the background loop does not keep an otherwise dropped runtime.
     pub fn start_background(self: Arc<Self>) {
+        let Ok(mut background) = self.lifetime.background.lock() else {
+            return;
+        };
+        if self.is_stopping() {
+            return;
+        }
         if self.started.swap(true, Ordering::AcqRel) {
             return;
         }
         let owner = Arc::downgrade(&self);
         let notify = self.notify.clone();
-        tokio::spawn(async move {
+        *background = Some(tokio::spawn(async move {
             let mut timer = tokio::time::interval(Duration::from_secs(10));
             timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
@@ -228,6 +247,9 @@ impl CollaborationRuntime {
                 let Some(runtime) = owner.upgrade() else {
                     break;
                 };
+                if runtime.is_stopping() {
+                    break;
+                }
                 // A damaged database does not terminate scheduling permanently;
                 // a later tick can recover, and local calls report their errors.
                 let _ = runtime.recover_credentials().await;
@@ -237,7 +259,7 @@ impl CollaborationRuntime {
                     tokio::task::yield_now().await;
                 }
             }
-        });
+        }));
     }
 
     pub async fn connect_github(&self, token: String) -> Result<RemoteAccount, CollaborationError> {
@@ -276,20 +298,12 @@ impl CollaborationRuntime {
         token: SecretToken,
         expected_login: Option<String>,
     ) -> Result<RemoteAccount, CollaborationError> {
-        // Once staging can begin, the runtime owns completion. Dropping the IPC
-        // requester cannot race janitor deletion against a delayed vault write.
-        let runtime = self.clone();
-        tokio::spawn(async move {
-            let result = runtime
+        self.owned_operation(move |runtime| async move {
+            runtime
                 .connect_provider_token(instance, token, expected_login.as_deref())
-                .await;
-            // Release the owned storage/runtime before notifying the requester
-            // that completion has finished (also relevant to reopen tests).
-            drop(runtime);
-            result
+                .await
         })
         .await
-        .map_err(|_| vault_error())?
     }
 
     async fn connect_provider_token(
@@ -460,6 +474,13 @@ impl CollaborationRuntime {
     }
 
     pub async fn disconnect(&self, account_id: &str) -> Result<String, CollaborationError> {
+        let account_id = account_id.to_string();
+        self.owned_operation(
+            move |runtime| async move { runtime.disconnect_inner(&account_id).await },
+        )
+        .await
+    }
+    async fn disconnect_inner(&self, account_id: &str) -> Result<String, CollaborationError> {
         let _lifecycle = self.lifecycle.lock().await;
         credential_boundary!("before_disconnect");
         let reference = self.store.credential_reference(account_id).await?;
@@ -485,6 +506,7 @@ impl CollaborationRuntime {
         repository_id: &str,
         selected: bool,
     ) -> Result<String, CollaborationError> {
+        let _operation = self.acquire_operation()?;
         let _lifecycle = self.lifecycle.lock().await;
         let account = self.active_account(account_id).await?;
         let revision = self
@@ -535,6 +557,7 @@ impl CollaborationRuntime {
         &self,
         request: RefreshRequest,
     ) -> Result<RefreshReceipt, CollaborationError> {
+        let _operation = self.acquire_operation()?;
         let account = self.active_account(&request.account_id).await?;
         let mut first_job = None;
         if let Some(repository_id) = request.repository_id {
@@ -674,6 +697,7 @@ impl CollaborationRuntime {
         &self,
         request: ContextCapabilityRequest,
     ) -> Result<ContextualCapabilitySnapshot, CollaborationError> {
+        let _operation = self.acquire_operation()?;
         self.store
             .contextual_capabilities(request, |account, instance| {
                 match self.registry.adapter(instance) {
@@ -689,6 +713,7 @@ impl CollaborationRuntime {
         &self,
         account_id: &str,
     ) -> Result<CapabilitySnapshot, CollaborationError> {
+        let _operation = self.acquire_operation()?;
         let snapshot = self.store.accounts().await?;
         let account = snapshot
             .accounts
@@ -850,6 +875,9 @@ impl CollaborationRuntime {
     }
 
     async fn run_next(&self) -> bool {
+        let Ok(_operation) = self.acquire_operation() else {
+            return false;
+        };
         // Public actions can wake the engine concurrently, but provider reads
         // remain one lane. The next wake handles any newly admitted interest.
         let Ok(_dispatch) = self.dispatch.try_lock() else {
@@ -1224,6 +1252,10 @@ impl CollaborationRuntime {
     /// Restart recovery and periodic cleanup use the same bounded durable queue.
     /// Staged replacements are abandoned, never promoted without a live probe.
     pub async fn recover_credentials(&self) -> Result<(), CollaborationError> {
+        self.owned_operation(|runtime| async move { runtime.recover_credentials_inner().await })
+            .await
+    }
+    async fn recover_credentials_inner(&self) -> Result<(), CollaborationError> {
         let _lifecycle = self.lifecycle.lock().await;
         self.cleanup_credentials_locked().await
     }

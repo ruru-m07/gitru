@@ -92,7 +92,7 @@ impl Store {
             .into());
         }
         let guards = encode_guards(submission.guards())?;
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         epoch_in(
             &mut tx,

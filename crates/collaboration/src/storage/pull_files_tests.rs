@@ -1,11 +1,9 @@
 //! Native writer-admission races share the public storage fixture.
 use super::*;
-use crate as collaboration;
 use crate::local_links::*;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-#[path = "../../tests/support/pull_file_fixture.rs"]
-mod fixture;
+use crate::pull_file_fixture as fixture;
 use fixture::*;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 async fn linked_fixture() -> (
     tempfile::TempDir,
@@ -70,7 +68,7 @@ async fn linked_fixture() -> (
 async fn retired_local_diff_caller_waiting_for_writer_cannot_admit_artifact() {
     let (_dir, store, request, membership, artifact, query, link) = linked_fixture().await;
     let before = store.pull_file_artifact(request.clone()).await.unwrap();
-    let writer = store.inner.writer.lock().await;
+    let writer = store.inner.writer.acquire().await.unwrap();
     let alive = Arc::new(AtomicBool::new(true));
     let owner = alive.clone();
     let worker = store.clone();
@@ -150,7 +148,7 @@ async fn removed_or_replaced_link_while_local_commit_waits_is_rechecked_in_write
     for replace in [false, true] {
         let (_dir, store, request, membership, artifact, query, link) = linked_fixture().await;
         let before = store.pull_file_artifact(request.clone()).await.unwrap();
-        let mut writer = store.inner.writer.lock().await;
+        let mut writer = store.inner.writer.acquire().await.unwrap();
         let worker = store.clone();
         let saved_request = request.clone();
         let saved_link = link.clone();

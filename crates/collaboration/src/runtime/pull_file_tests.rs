@@ -477,6 +477,7 @@ async fn nonterminal_quota_checkpoint_survives_cold_store_reopen() {
         .unwrap()
         .unwrap();
     assert_eq!(lease.accepted_row_count, 1);
+    runtime.shutdown().await.unwrap();
     drop(runtime);
     let store = Store::open(&path).await.unwrap();
     let resumed = store

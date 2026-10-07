@@ -88,7 +88,7 @@ async fn new_merge_base_field_requires_observation_after_legacy_snapshot() {
     )
     .await;
     assert!(store.apply_detail(page).await.is_err());
-    store.close().await;
+    store.close().await.unwrap();
 }
 
 async fn observation(
@@ -188,7 +188,7 @@ async fn known_null_body_preserves_rich_metadata_restart_and_partition_access() 
         })
         .await
         .unwrap();
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let store = Store::open(&path).await.unwrap();
     assert_eq!(
@@ -327,7 +327,7 @@ async fn body_only_representation_omits_metadata_before_304_and_restart() {
     page.not_modified = true;
     page.etag = Some("\"body-only\"".into());
     store.apply_detail(page).await.unwrap();
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let store = Store::open(&path).await.unwrap();
     let current = store.detail(query(&a.id, DetailFacet::Body)).await.unwrap();

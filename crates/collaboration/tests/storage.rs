@@ -292,7 +292,7 @@ async fn offline_reopen_retains_local_rows_coverage_and_drafts() {
             )
             .await
             .unwrap();
-        store.close().await;
+        store.close().await.unwrap();
     }
     let store = Store::open(&path).await.unwrap();
     let snapshot = store.query_items(query("a")).await.unwrap();
@@ -769,7 +769,7 @@ async fn catchup_advances_bounded_scanned_revisions_and_draft_generation_is_guar
 }
 
 #[tokio::test]
-async fn one_storage_owner_is_enforced_and_process_lease_releases_on_drop() {
+async fn one_storage_owner_is_enforced_and_explicit_close_releases_the_lease() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("db");
     let owner = Store::open(&path).await.unwrap();
@@ -783,7 +783,7 @@ async fn one_storage_owner_is_enforced_and_process_lease_releases_on_drop() {
         Store::open(&path).await.err().unwrap().code,
         ErrorCode::Busy
     );
-    clone.close().await;
+    clone.close().await.unwrap();
     drop(clone);
     let reopened = Store::open(&path).await.unwrap();
     assert_eq!(reopened.revision().await.unwrap(), "0");
@@ -858,7 +858,7 @@ async fn newer_schema_is_refused_without_erasing_user_intent() {
             })
             .await
             .unwrap();
-        store.close().await;
+        store.close().await.unwrap();
     }
     let mut connection =
         sqlx::SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&path))
@@ -1298,7 +1298,7 @@ async fn recovery_enumerates_only_authored_drafts_after_disconnect_and_restart()
         .await
         .unwrap();
     store.disconnect("a").await.unwrap();
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let store = Store::open(&path).await.unwrap();
     let recovered = store

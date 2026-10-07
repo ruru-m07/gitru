@@ -239,6 +239,9 @@ impl CollaborationRuntime {
         scope: String,
         reason: Admission,
     ) -> Result<String, CollaborationError> {
+        if self.is_stopping() {
+            return Err(shutdown::stopped());
+        }
         let mut key = format!("{}:{}:{scope}", account.id, account.authorization_epoch);
         if let JobKind::PullFileArtifact { request } = &kind {
             key.push_str(&format!(

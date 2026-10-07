@@ -6,6 +6,7 @@ impl CollaborationRuntime {
         &self,
         query: NotificationSubjectQuery,
     ) -> Result<NotificationSubjectSnapshot, CollaborationError> {
+        let _operation = self.acquire_operation()?;
         self.store
             .notification_subject(query, |account, instance, kind| {
                 let Ok(adapter) = self.registry.adapter(instance) else {
@@ -25,6 +26,7 @@ impl CollaborationRuntime {
         &self,
         request: DiscoverNotificationSubjectRequest,
     ) -> Result<RefreshReceipt, CollaborationError> {
+        let _operation = self.acquire_operation()?;
         self.discover_notification_subject_checked(request, || Ok(()))
             .await
     }
@@ -37,6 +39,7 @@ impl CollaborationRuntime {
     where
         F: Fn() -> Result<(), CollaborationError>,
     {
+        let _operation = self.acquire_operation()?;
         let query = NotificationSubjectQuery {
             account_id: request.account_id.clone(),
             authorization_epoch: request.authorization_epoch.clone(),

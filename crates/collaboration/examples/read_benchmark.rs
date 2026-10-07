@@ -145,6 +145,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "local identity: 10000 cached rows, 200 reads, p50={}us p95={}us",
         samples[100], samples[190]
     );
-    store.close().await;
+    store.close().await.unwrap();
     Ok(())
 }

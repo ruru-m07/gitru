@@ -387,7 +387,7 @@ impl Store {
                 }
             }
         }
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let now = Utc::now();
         if let Some(deadline) = requested_snooze.as_deref().map(parse_time).transpose()?

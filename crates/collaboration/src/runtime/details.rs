@@ -27,6 +27,7 @@ impl CollaborationRuntime {
         &self,
         request: HydrateDetailRequest,
     ) -> Result<RefreshReceipt, CollaborationError> {
+        let _operation = self.acquire_operation()?;
         let account = self.active_account(&request.account_id).await?;
         if account.authorization_epoch != request.authorization_epoch {
             return Err(stale());

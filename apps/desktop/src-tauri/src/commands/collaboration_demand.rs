@@ -1,5 +1,5 @@
 //! The native caller supplies lease ownership; content views cannot activate peers.
-use super::collaboration::{authorize, caller_allowed, CollaborationState, Operation};
+use super::collaboration::{CollaborationState, Operation, authorize, caller_allowed};
 use collaboration::{
     AcquireDemandRequest, CollaborationError, DemandLeaseReceipt, DemandOwnerActivity,
     DemandRenewalReceipt, ErrorCode, ReleaseDemandRequest, RenewDemandRequest,
@@ -244,8 +244,8 @@ pub async fn collaboration_dispose_demand_owner(
 pub(crate) fn observe_window_activity(
     app: AppHandle,
     runtime: std::sync::Arc<collaboration::CollaborationRuntime>,
-) {
-    tauri::async_runtime::spawn(async move {
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
         let mut timer = tokio::time::interval(std::time::Duration::from_secs(1));
         timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
@@ -276,7 +276,7 @@ pub(crate) fn observe_window_activity(
                 }
             }
         }
-    });
+    })
 }
 
 #[cfg(test)]

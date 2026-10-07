@@ -1061,7 +1061,7 @@ async fn current_provenance_and_retained_private_authority_survive_cold_reopen()
     discover(&store, "a", NOTIFICATION, SUBJECT, "9001").await;
     let authored = draft(&store, "a", SUBJECT).await;
     let canonical = resolve(&store, "a", NOTIFICATION).await.subject.unwrap();
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let reopened = Store::open(dir.path().join("fixture.sqlite"))
         .await
@@ -1080,7 +1080,7 @@ async fn current_provenance_and_retained_private_authority_survive_cold_reopen()
     );
     inbox(&reopened, "a", vec![]).await;
     inbox(&reopened, "a", vec![]).await;
-    reopened.close().await;
+    reopened.close().await.unwrap();
     drop(reopened);
     let final_store = Store::open(dir.path().join("fixture.sqlite"))
         .await

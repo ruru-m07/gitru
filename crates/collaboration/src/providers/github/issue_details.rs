@@ -898,7 +898,7 @@ mod tests {
             validated.body.text.as_deref(),
             Some("Newer authoritative Markdown")
         );
-        store.close().await;
+        store.close().await.unwrap();
         drop(store);
         let store = Store::open(&path).await.expect("cold native reopen");
         let reopened = read(&store, &request).await;
