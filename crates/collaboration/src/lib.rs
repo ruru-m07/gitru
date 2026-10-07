@@ -29,6 +29,7 @@ pub mod reviews;
 pub mod runtime;
 pub mod storage;
 pub mod tasks;
+pub mod text_edits;
 #[cfg(feature = "test-harness")]
 pub mod test_harness;
 
@@ -53,3 +54,4 @@ pub use runtime::CollaborationRuntime;
 pub use storage::Store;
 pub use storage::notification_subjects::{NotificationDiscoveryIntent, NotificationDiscoveryLease};
 pub use tasks::*;
+pub use text_edits::*;
