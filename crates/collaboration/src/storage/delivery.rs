@@ -27,7 +27,7 @@ impl Store {
         after: Option<&str>,
         limit: usize,
     ) -> Result<Vec<(String, String)>> {
-        sqlx::query_as("SELECT account_id,command_id FROM commands INDEXED BY command_delivery_pending WHERE account_id=? AND command_id>? AND state IN ('queued','sending','retry_wait','accepted','outcome_unknown') ORDER BY command_id LIMIT ?")
+        sqlx::query_as("SELECT account_id,command_id FROM commands INDEXED BY command_delivery_pending WHERE account_id=? AND command_id>? AND state IN ('queued','sending','retry_wait','accepted','outcome_unknown') AND NOT EXISTS(SELECT 1 FROM command_user_controls u WHERE u.account_id=commands.account_id AND u.command_id=commands.command_id AND u.paused=1) ORDER BY command_id LIMIT ?")
             .bind(account).bind(after.unwrap_or("")).bind((limit as i64).clamp(1,CANDIDATE_PAGE))
             .fetch_all(&self.inner.readers).await.map_err(storage_error)
     }
@@ -429,7 +429,10 @@ async fn authorize_in(
     account: &RemoteAccount,
     now: &DeliveryTime,
 ) -> Result<String> {
-    if command.account_id != account.id || command.attention.is_some() {
+    if command.account_id != account.id
+        || command.attention.is_some()
+        || super::command_recovery::paused_in(tx, &command.account_id, &command.command_id).await?
+    {
         return Err(stale());
     }
     let instance = binding_in(tx, command, account).await?;
@@ -481,7 +484,7 @@ async fn exact_in(
     }
     Ok(current)
 }
-async fn load_in(
+pub(super) async fn load_in(
     tx: &mut Transaction<'_, Sqlite>,
     account: &str,
     id: &str,
@@ -544,7 +547,7 @@ async fn load_in(
         evidence,
     })
 }
-async fn transition_in(
+pub(super) async fn transition_in(
     tx: &mut Transaction<'_, Sqlite>,
     command: &DeliveryCommand,
     state: DeliveryState,
@@ -632,8 +635,11 @@ fn checkpoint(_name: &str) {
 }
 
 async fn blocked_in(tx: &mut Transaction<'_, Sqlite>, command: &DeliveryCommand) -> Result<bool> {
-    let blocked:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM command_dependencies d JOIN commands p ON p.account_id=d.account_id AND p.command_id=d.predecessor_id WHERE d.account_id=? AND d.command_id=? AND (p.state<>'confirmed' OR NOT EXISTS(SELECT 1 FROM delivery_resolutions r WHERE r.account_id=p.account_id AND r.command_id=p.command_id AND r.purpose='confirmed'))) OR EXISTS(SELECT 1 FROM commands p WHERE p.account_id=? AND p.target_kind=? AND p.target_id=? AND p.enqueue_order<? AND p.state IN ('queued','sending','retry_wait','accepted','outcome_unknown','conflict'))")
-            .bind(&command.account_id).bind(&command.command_id).bind(&command.account_id).bind(&command.target_kind).bind(&command.target_id).bind(command.enqueue_order).fetch_one(&mut **tx).await.map_err(storage_error)?;
+    let order = super::command_recovery::execution_order_in(tx, command).await?;
+    // Original submitted dependencies are never rewritten or satisfied by a
+    // supersession. A blocked successor needs its own reviewed new submission.
+    let blocked:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM command_dependencies d JOIN commands p ON p.account_id=d.account_id AND p.command_id=d.predecessor_id WHERE d.account_id=? AND d.command_id=? AND (p.state<>'confirmed' OR NOT EXISTS(SELECT 1 FROM delivery_resolutions r WHERE r.account_id=p.account_id AND r.command_id=p.command_id AND r.purpose='confirmed'))) OR EXISTS(SELECT 1 FROM commands p LEFT JOIN command_supersessions s ON s.account_id=p.account_id AND s.replacement_id=p.command_id WHERE p.account_id=? AND p.target_kind=? AND p.target_id=? AND coalesce(s.execution_order,p.enqueue_order)<? AND p.state IN ('queued','sending','retry_wait','accepted','outcome_unknown','conflict'))")
+        .bind(&command.account_id).bind(&command.command_id).bind(&command.account_id).bind(&command.target_kind).bind(&command.target_id).bind(order).fetch_one(&mut **tx).await.map_err(storage_error)?;
     Ok(blocked)
 }
 

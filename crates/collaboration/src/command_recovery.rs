@@ -1,5 +1,6 @@
 //! Local review of durable intent. These DTOs never grant provider authority.
 use serde::{Deserialize, Serialize};
+pub(crate) mod policy;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommandRecoveryQuery {

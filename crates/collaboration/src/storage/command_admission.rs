@@ -90,127 +90,15 @@ impl Store {
         submission: &CommandSubmission,
         policy: &P,
     ) -> AdmissionResult<CommandReceipt> {
-        if submission.operation().kind() != P::OPERATION_KIND
-            || submission.operation().payload_version() != P::PAYLOAD_VERSION
-        {
-            return Err(CollaborationError::new(
-                ErrorCode::Unsupported,
-                "Unsupported collaboration command version",
-            )
-            .into());
-        }
-        let guards = encode_guards(submission.guards())?;
         let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
-        epoch_in(
-            &mut tx,
-            submission.account_id(),
-            submission.authorization_epoch(),
-        )
-        .await?;
-        if let Some(row) = sqlx::query("SELECT * FROM commands WHERE account_id=? AND command_id=?")
-            .bind(submission.account_id())
-            .bind(submission.command_id())
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(storage_error)?
-        {
-            let dependencies: Vec<String> = sqlx::query_scalar("SELECT predecessor_id FROM command_dependencies WHERE account_id=? AND command_id=? ORDER BY ordinal")
-                .bind(submission.account_id()).bind(submission.command_id())
-                .fetch_all(&mut *tx).await.map_err(storage_error)?;
-            if !exact_stored_submission(&row, submission, &guards, &dependencies) {
-                return Err(CommandAdmissionError::IdempotencyConflict);
-            }
-            // Do not rerun mutable base policy for an already committed intent.
-            // A lost response remains recoverable after the cache changes.
-            let receipt = receipt_from_row(&row, true)?;
-            tx.commit().await.map_err(storage_error)?;
-            return Ok(receipt);
-        }
-        let account = account_in(&mut tx, submission.account_id(), true).await?;
-        let protections = policy.validate(&mut tx, &account, submission).await?;
-        if protections.len() > MAX_PROTECTIONS {
-            return Err(CollaborationError::invalid("Too many command protections").into());
-        }
-        let mut protections = protections;
-        protections.push(CommandProtection::Entity(submission.target().id().into()));
-        if let Some(repository) = submission.target().repository_id() {
-            protections.push(CommandProtection::Entity(repository.into()));
-        }
-        protections.sort_by(|left, right| left.columns().cmp(&right.columns()));
-        protections.dedup();
-        if protections.len() > MAX_PROTECTIONS {
-            return Err(CollaborationError::invalid("Too many command protections").into());
-        }
-        for protection in &protections {
-            let (_, id, _) = protection.columns();
-            validate_identifier(id)?;
-        }
-        let mut dependencies = Vec::with_capacity(submission.dependencies().len());
-        for id in submission.dependencies() {
-            let hash: Option<Vec<u8>> = sqlx::query_scalar(
-                "SELECT submission_hash FROM commands WHERE account_id=? AND command_id=?",
-            )
-            .bind(submission.account_id())
-            .bind(id)
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(storage_error)?;
-            dependencies.push((id, hash.ok_or(CommandAdmissionError::MissingPredecessor)?));
-        }
-        let last_order: i64 = sqlx::query_scalar(
-            "SELECT coalesce(max(enqueue_order),0) FROM commands WHERE account_id=?",
-        )
-        .bind(submission.account_id())
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(storage_error)?;
-        let order = last_order
-            .checked_add(1)
-            .ok_or_else(CollaborationError::storage)?;
-        let revision = record_change(
-            &mut tx,
-            submission.account_id(),
-            positive_revision(submission.authorization_epoch())?,
-            "commands",
-            false,
-        )
-        .await?;
-        let admitted_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        sqlx::query("INSERT INTO commands(account_id,command_id,authorization_epoch,envelope_version,operation_kind,payload_version,target_kind,target_id,repository_id,canonical_envelope,payload_bytes,guard_bytes,submission_hash,enqueue_order,admitted_revision,admitted_at,state) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'queued')")
-            .bind(submission.account_id()).bind(submission.command_id())
-            .bind(positive_revision(submission.authorization_epoch())?).bind(i64::from(COMMAND_ENVELOPE_VERSION))
-            .bind(submission.operation().kind()).bind(i64::from(submission.operation().payload_version()))
-            .bind(submission.target().kind().storage_name()).bind(submission.target().id()).bind(submission.target().repository_id())
-            .bind(submission.canonical_envelope()).bind(submission.payload_bytes()).bind(&guards).bind(submission.submission_hash().as_slice())
-            .bind(order).bind(positive_revision(&revision)?).bind(&admitted_at)
-            .execute(&mut *tx).await.map_err(storage_error)?;
-        for (ordinal, (id, hash)) in dependencies.into_iter().enumerate() {
-            sqlx::query("INSERT INTO command_dependencies(account_id,command_id,ordinal,predecessor_id,predecessor_hash) VALUES(?,?,?,?,?)")
-                .bind(submission.account_id()).bind(submission.command_id()).bind(ordinal as i64).bind(id).bind(hash)
-                .execute(&mut *tx).await.map_err(storage_error)?;
-        }
-        for protection in protections {
-            let (kind, id, facet) = protection.columns();
-            sqlx::query("INSERT INTO command_target_protections(account_id,command_id,reference_kind,reference_id,facet) VALUES(?,?,?,?,?)")
-                .bind(submission.account_id()).bind(submission.command_id()).bind(kind).bind(id).bind(facet)
-                .execute(&mut *tx).await.map_err(storage_error)?;
-        }
-        super::effective::admit_in(&mut tx, submission, policy.effect(submission)?).await?;
+        let receipt = admit_in(&mut tx, submission, policy).await?;
         #[cfg(test)]
         tests::crash_checkpoint("before_commit");
         tx.commit().await.map_err(storage_error)?;
         #[cfg(test)]
         tests::crash_checkpoint("after_commit");
-        Ok(CommandReceipt {
-            account_id: submission.account_id().into(),
-            command_id: submission.command_id().into(),
-            submission_hash: *submission.submission_hash(),
-            enqueue_order: order as u64,
-            admitted_revision: revision,
-            admitted_at,
-            duplicate: false,
-        })
+        Ok(receipt)
     }
 
     /// Authored receipts remain available for recovery after disconnection.
@@ -236,6 +124,128 @@ impl Store {
         tx.commit().await.map_err(storage_error)?;
         Ok(receipt)
     }
+}
+
+/// Shared exact admission protocol for a native recovery transaction. The caller
+/// owns commit; a supersession edge and the new receipt therefore cannot split.
+pub(crate) async fn admit_in<P: CommandAdmissionPolicy>(
+    tx: &mut Transaction<'_, Sqlite>,
+    submission: &CommandSubmission,
+    policy: &P,
+) -> AdmissionResult<CommandReceipt> {
+    if submission.operation().kind() != P::OPERATION_KIND
+        || submission.operation().payload_version() != P::PAYLOAD_VERSION
+    {
+        return Err(CollaborationError::new(
+            ErrorCode::Unsupported,
+            "Unsupported collaboration command version",
+        )
+        .into());
+    }
+    let guards = encode_guards(submission.guards())?;
+    epoch_in(
+        tx,
+        submission.account_id(),
+        submission.authorization_epoch(),
+    )
+    .await?;
+    if let Some(row) = sqlx::query("SELECT * FROM commands WHERE account_id=? AND command_id=?")
+        .bind(submission.account_id())
+        .bind(submission.command_id())
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(storage_error)?
+    {
+        let dependencies: Vec<String> = sqlx::query_scalar("SELECT predecessor_id FROM command_dependencies WHERE account_id=? AND command_id=? ORDER BY ordinal")
+            .bind(submission.account_id()).bind(submission.command_id())
+            .fetch_all(&mut **tx).await.map_err(storage_error)?;
+        if !exact_stored_submission(&row, submission, &guards, &dependencies) {
+            return Err(CommandAdmissionError::IdempotencyConflict);
+        }
+        // Do not rerun mutable base policy for an already committed intent.
+        // A lost response remains recoverable after the cache changes.
+        let receipt = receipt_from_row(&row, true)?;
+        return Ok(receipt);
+    }
+    let account = account_in(tx, submission.account_id(), true).await?;
+    let protections = policy.validate(tx, &account, submission).await?;
+    if protections.len() > MAX_PROTECTIONS {
+        return Err(CollaborationError::invalid("Too many command protections").into());
+    }
+    let mut protections = protections;
+    protections.push(CommandProtection::Entity(submission.target().id().into()));
+    if let Some(repository) = submission.target().repository_id() {
+        protections.push(CommandProtection::Entity(repository.into()));
+    }
+    protections.sort_by(|left, right| left.columns().cmp(&right.columns()));
+    protections.dedup();
+    if protections.len() > MAX_PROTECTIONS {
+        return Err(CollaborationError::invalid("Too many command protections").into());
+    }
+    for protection in &protections {
+        let (_, id, _) = protection.columns();
+        validate_identifier(id)?;
+    }
+    let mut dependencies = Vec::with_capacity(submission.dependencies().len());
+    for id in submission.dependencies() {
+        let hash: Option<Vec<u8>> = sqlx::query_scalar(
+            "SELECT submission_hash FROM commands WHERE account_id=? AND command_id=?",
+        )
+        .bind(submission.account_id())
+        .bind(id)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(storage_error)?;
+        dependencies.push((id, hash.ok_or(CommandAdmissionError::MissingPredecessor)?));
+    }
+    let last_order: i64 = sqlx::query_scalar(
+        "SELECT coalesce(max(enqueue_order),0) FROM commands WHERE account_id=?",
+    )
+    .bind(submission.account_id())
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(storage_error)?;
+    let order = last_order
+        .checked_add(1)
+        .ok_or_else(CollaborationError::storage)?;
+    let revision = record_change(
+        tx,
+        submission.account_id(),
+        positive_revision(submission.authorization_epoch())?,
+        "commands",
+        false,
+    )
+    .await?;
+    let admitted_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    sqlx::query("INSERT INTO commands(account_id,command_id,authorization_epoch,envelope_version,operation_kind,payload_version,target_kind,target_id,repository_id,canonical_envelope,payload_bytes,guard_bytes,submission_hash,enqueue_order,admitted_revision,admitted_at,state) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'queued')")
+        .bind(submission.account_id()).bind(submission.command_id())
+        .bind(positive_revision(submission.authorization_epoch())?).bind(i64::from(COMMAND_ENVELOPE_VERSION))
+        .bind(submission.operation().kind()).bind(i64::from(submission.operation().payload_version()))
+        .bind(submission.target().kind().storage_name()).bind(submission.target().id()).bind(submission.target().repository_id())
+        .bind(submission.canonical_envelope()).bind(submission.payload_bytes()).bind(&guards).bind(submission.submission_hash().as_slice())
+        .bind(order).bind(positive_revision(&revision)?).bind(&admitted_at)
+        .execute(&mut **tx).await.map_err(storage_error)?;
+    for (ordinal, (id, hash)) in dependencies.into_iter().enumerate() {
+        sqlx::query("INSERT INTO command_dependencies(account_id,command_id,ordinal,predecessor_id,predecessor_hash) VALUES(?,?,?,?,?)")
+            .bind(submission.account_id()).bind(submission.command_id()).bind(ordinal as i64).bind(id).bind(hash)
+            .execute(&mut **tx).await.map_err(storage_error)?;
+    }
+    for protection in protections {
+        let (kind, id, facet) = protection.columns();
+        sqlx::query("INSERT INTO command_target_protections(account_id,command_id,reference_kind,reference_id,facet) VALUES(?,?,?,?,?)")
+            .bind(submission.account_id()).bind(submission.command_id()).bind(kind).bind(id).bind(facet)
+            .execute(&mut **tx).await.map_err(storage_error)?;
+    }
+    super::effective::admit_in(tx, submission, policy.effect(submission)?).await?;
+    Ok(CommandReceipt {
+        account_id: submission.account_id().into(),
+        command_id: submission.command_id().into(),
+        submission_hash: *submission.submission_hash(),
+        enqueue_order: order as u64,
+        admitted_revision: revision,
+        admitted_at,
+        duplicate: false,
+    })
 }
 
 fn receipt_from_row(row: &sqlx::sqlite::SqliteRow, duplicate: bool) -> Result<CommandReceipt> {

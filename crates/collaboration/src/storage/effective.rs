@@ -79,7 +79,7 @@ pub(crate) async fn refresh_target_in(
     .fetch_optional(&mut **tx)
     .await
     .map_err(storage_error)?;
-    let rows=sqlx::query("SELECT c.command_id,c.state,e.patch_json,e.version FROM commands c JOIN command_effects e USING(account_id,command_id) WHERE c.account_id=? AND c.target_id=? AND c.authorization_epoch=? AND c.state IN ('queued','sending','retry_wait','accepted','outcome_unknown','conflict') AND NOT EXISTS(SELECT 1 FROM command_recovery_quarantine q WHERE q.account_id=c.account_id AND q.command_id=c.command_id) ORDER BY c.enqueue_order LIMIT ?")
+    let rows=sqlx::query("SELECT c.command_id,c.state,e.patch_json,e.version FROM commands c JOIN command_effects e USING(account_id,command_id) LEFT JOIN command_supersessions s ON s.account_id=c.account_id AND s.replacement_id=c.command_id WHERE c.account_id=? AND c.target_id=? AND c.authorization_epoch=? AND c.state IN ('queued','sending','retry_wait','accepted','outcome_unknown','conflict') AND NOT EXISTS(SELECT 1 FROM command_recovery_quarantine q WHERE q.account_id=c.account_id AND q.command_id=c.command_id) ORDER BY coalesce(s.execution_order,c.enqueue_order),c.enqueue_order LIMIT ?")
         .bind(account_id).bind(target_id).bind(positive_revision(&account.authorization_epoch)?).bind(MAX_ACTIVE_EFFECTS+1)
         .fetch_all(&mut **tx).await.map_err(storage_error)?;
     if rows.len() > MAX_ACTIVE_EFFECTS as usize {

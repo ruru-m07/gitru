@@ -173,9 +173,47 @@ impl FeedKind {
 pub struct ProviderRegistry {
     adapters: HashMap<String, (ProviderInstance, Arc<dyn CollaborationProvider>)>,
     delivery: HashMap<(String, String, u32), Arc<dyn crate::delivery::CommandDeliveryPolicy>>,
+    recovery: HashMap<
+        (String, String, u32),
+        Arc<dyn crate::command_recovery::policy::CommandRecoveryPolicy>,
+    >,
 }
 
 impl ProviderRegistry {
+    #[allow(dead_code, reason = "operation codecs land in downstream issues")]
+    pub(crate) fn register_recovery(
+        &mut self,
+        instance: &ProviderInstance,
+        policy: Arc<dyn crate::command_recovery::policy::CommandRecoveryPolicy>,
+    ) -> Result<(), CollaborationError> {
+        self.adapter(instance)?;
+        let key = (
+            instance.id.clone(),
+            policy.operation_kind().to_owned(),
+            policy.payload_version(),
+        );
+        if policy.instance_id() != instance.id
+            || !self.delivery.contains_key(&key)
+            || self.recovery.contains_key(&key)
+        {
+            return Err(CollaborationError::invalid(
+                "Missing delivery or duplicate recovery policy",
+            ));
+        }
+        self.recovery.insert(key, policy);
+        Ok(())
+    }
+    pub(crate) fn recovery_policy(
+        &self,
+        instance: &ProviderInstance,
+        kind: &str,
+        version: u32,
+    ) -> Option<Arc<dyn crate::command_recovery::policy::CommandRecoveryPolicy>> {
+        self.adapter(instance).ok()?;
+        self.recovery
+            .get(&(instance.id.clone(), kind.into(), version))
+            .cloned()
+    }
     #[allow(dead_code, reason = "operation codecs land in downstream issues")]
     pub(crate) fn register_delivery(
         &mut self,

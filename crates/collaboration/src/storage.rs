@@ -16,6 +16,7 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 pub(crate) mod command_admission;
+pub(crate) mod command_recovery;
 mod contextual_capabilities;
 pub(crate) mod delivery;
 pub(crate) mod effective;
