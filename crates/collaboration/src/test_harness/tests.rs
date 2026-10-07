@@ -189,6 +189,40 @@ async fn prepared_fixture_has_real_selected_cache_and_separate_actor_draft_cas()
     assert_eq!(status.provider_call_count, "0");
     assert_eq!(status.vault_store_count, "2");
     assert_eq!(status.durable_detail_requests, 0);
+    let inbox = session
+        .store
+        .inbox(InboxQuery {
+            account_id: PRIMARY_ACCOUNT.into(),
+            remote_state: None,
+            local_state: LocalInboxFilter::All,
+            search: None,
+            cursor: None,
+            limit: 100,
+        })
+        .await
+        .unwrap();
+    assert_eq!(inbox.entries.len(), 3);
+    assert_eq!(
+        inbox
+            .entries
+            .iter()
+            .map(|entry| entry.item.id.as_str())
+            .collect::<std::collections::BTreeSet<_>>(),
+        [
+            DONE_NOTIFICATION_ID,
+            SNOOZED_NOTIFICATION_ID,
+            BOOKMARKED_NOTIFICATION_ID,
+        ]
+        .into_iter()
+        .collect()
+    );
+    assert!(inbox.entries.iter().all(|entry| {
+        entry.local.generation == "0"
+            && entry.local.effective_disposition == LocalInboxEffectiveDisposition::Inbox
+            && !entry.local.bookmarked
+    }));
+    assert_eq!(status.provider_call_count, "0");
+    assert_eq!(status.vault_load_count, "0");
     for slot in [HarnessActorSlot::Primary, HarnessActorSlot::Alternate] {
         assert!(
             session

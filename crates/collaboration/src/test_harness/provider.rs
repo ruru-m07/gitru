@@ -13,6 +13,9 @@ pub const HEAD_OID: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 pub const BASE_OID: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 pub const FIRST_COMMIT_OID: &str = "cccccccccccccccccccccccccccccccccccccccc";
 pub const SOURCE_REPOSITORY_PROVIDER_ID: &str = "9007199254741994";
+pub const DONE_NOTIFICATION_ID: &str = "github:notification:9007199254744991";
+pub const SNOOZED_NOTIFICATION_ID: &str = "github:notification:9007199254744992";
+pub const BOOKMARKED_NOTIFICATION_ID: &str = "github:notification:9007199254744993";
 const BODY_SOURCE: &str = "fixture/ruru103/body/v1";
 const PULL_COMMITS_SOURCE: &str = "fixture/ruru103/pull-commits/v1";
 const MAX_CALLS: usize = 128;
@@ -99,6 +102,47 @@ pub(super) fn subject(account: &RemoteAccount, observed_at: &str) -> RemoteItem 
         reason: None,
         unread: None,
     }
+}
+
+pub(super) fn notifications(account: &RemoteAccount, observed_at: &str) -> Vec<RemoteItem> {
+    [
+        (
+            DONE_NOTIFICATION_ID,
+            "9007199254744991",
+            "Local done restart fixture",
+        ),
+        (
+            SNOOZED_NOTIFICATION_ID,
+            "9007199254744992",
+            "Local snooze restart fixture",
+        ),
+        (
+            BOOKMARKED_NOTIFICATION_ID,
+            "9007199254744993",
+            "Local bookmark restart fixture",
+        ),
+    ]
+    .into_iter()
+    .map(|(id, provider_id, title)| RemoteItem {
+        id: id.into(),
+        account_id: account.id.clone(),
+        repository_id: Some(REPOSITORY_ID.into()),
+        provider_id: provider_id.into(),
+        kind: RemoteItemKind::Notification,
+        number: Some("1".into()),
+        title: title.into(),
+        body: None,
+        body_omitted: false,
+        author: Some("ruru103-reviewer".into()),
+        web_url: Some("https://github.com/x-ruru103/project/pull/1".into()),
+        state: "pending".into(),
+        updated_at: observed_at.into(),
+        head_oid: None,
+        is_draft: None,
+        reason: Some("review_requested".into()),
+        unread: Some(true),
+    })
+    .collect()
 }
 
 pub(super) struct FixtureProvider {

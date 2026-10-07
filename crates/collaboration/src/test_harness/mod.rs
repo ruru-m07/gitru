@@ -11,7 +11,8 @@ pub(crate) use clock::HarnessClock;
 pub use domain::*;
 pub use files::APPLICATION_ID;
 pub use provider::{
-    ALTERNATE_ACCOUNT, BASE_OID, FIRST_COMMIT_OID, HEAD_OID, PRIMARY_ACCOUNT, REPOSITORY_ID,
+    ALTERNATE_ACCOUNT, BASE_OID, BOOKMARKED_NOTIFICATION_ID, DONE_NOTIFICATION_ID,
+    FIRST_COMMIT_OID, HEAD_OID, PRIMARY_ACCOUNT, REPOSITORY_ID, SNOOZED_NOTIFICATION_ID,
     SOURCE_REPOSITORY_PROVIDER_ID, SUBJECT_ID, account_id, fixture_body,
 };
 
@@ -363,6 +364,32 @@ impl HarnessControl {
                 .store
                 .select_repository(&account.id, REPOSITORY_ID, true)
                 .await?;
+            if slot == HarnessActorSlot::Primary {
+                let scope = "notifications";
+                let run = self
+                    .0
+                    .store
+                    .begin_sync(&account.id, &account.authorization_epoch, scope)
+                    .await?;
+                self.0
+                    .store
+                    .apply_page(PageCommit {
+                        account_id: account.id.clone(),
+                        authorization_epoch: account.authorization_epoch.clone(),
+                        scope: scope.into(),
+                        run_id: run,
+                        repositories: vec![],
+                        items: provider::notifications(&account, &at),
+                        endpoint_aliases: vec![],
+                        next_cursor: None,
+                        etag: None,
+                        last_modified: None,
+                        not_modified: false,
+                        complete: true,
+                        observed_at: at.clone(),
+                    })
+                    .await?;
+            }
             for (scope, items) in [
                 (
                     format!("repo:{REPOSITORY_ID}:pull_request"),

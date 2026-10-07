@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { browser } from "@wdio/globals";
 import {
@@ -26,6 +26,29 @@ const pullCommitFixture = {
     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   ],
 } as const;
+const localInboxFixture = [
+  {
+    id: "github:notification:9007199254744991",
+    disposition: "done",
+    effective: "done",
+    bookmarked: false,
+    snoozed: false,
+  },
+  {
+    id: "github:notification:9007199254744992",
+    disposition: "inbox",
+    effective: "snoozed",
+    bookmarked: false,
+    snoozed: true,
+  },
+  {
+    id: "github:notification:9007199254744993",
+    disposition: "inbox",
+    effective: "inbox",
+    bookmarked: true,
+    snoozed: false,
+  },
+] as const;
 if (!allowedPhases.includes(phase))
   throw new Error("Unknown retained native harness runner phase");
 
@@ -108,6 +131,44 @@ function requirePullCommitFixture(
   ) {
     throw new Error("Phase-one pull commits were not provider hydrated");
   }
+}
+
+function requireLocalInboxFixture(
+  result: HarnessScenarioResult,
+  operation: "write" | "restart_read",
+) {
+  const evidence = result.local_inbox;
+  if (
+    !evidence ||
+    evidence.account_id !== "ruru103:primary" ||
+    evidence.operation !== operation ||
+    evidence.entries.length !== localInboxFixture.length ||
+    evidence.provider_call_count_before !==
+      evidence.provider_call_count_after ||
+    evidence.vault_load_count_before !== evidence.vault_load_count_after
+  )
+    throw new Error("Retained local inbox evidence changed its fixed boundary");
+  for (const [index, expected] of localInboxFixture.entries()) {
+    const actual = evidence.entries[index];
+    if (
+      actual?.notification_id !== expected.id ||
+      actual.disposition !== expected.disposition ||
+      actual.effective_disposition !== expected.effective ||
+      actual.bookmarked !== expected.bookmarked ||
+      Boolean(actual.snoozed_until) !== expected.snoozed ||
+      actual.superseded_by_activity ||
+      actual.generation !== "1"
+    )
+      throw new Error("Retained local inbox projection changed");
+  }
+  if (
+    operation === "restart_read" &&
+    (evidence.provider_call_count_before !== "0" ||
+      evidence.provider_call_count_after !== "0" ||
+      evidence.vault_load_count_before !== "0" ||
+      evidence.vault_load_count_after !== "0")
+  )
+    throw new Error("Restarted local inbox read accessed provider credentials");
 }
 
 describe("retained native collaboration synchronization", () => {
@@ -198,6 +259,36 @@ describe("retained native collaboration synchronization", () => {
         throw new Error(
           "Pre-commit restart unexpectedly exposed pull-commit evidence",
         );
+      if (result.status.checkpoint.kind === "committed_before_hint") {
+        requireLocalInboxFixture(result, "restart_read");
+        const artifactRoot = process.env.GITRU_E2E_ARTIFACTS;
+        if (!artifactRoot)
+          throw new Error("Retained harness artifact root is missing");
+        const prior = HarnessScenarioResultSchema.parse(
+          JSON.parse(
+            readFileSync(
+              resolve(
+                artifactRoot,
+                "..",
+                "after",
+                "scenario-crash-after-commit.json",
+              ),
+              "utf8",
+            ),
+          ),
+        );
+        if (
+          JSON.stringify(prior.local_inbox?.entries) !==
+          JSON.stringify(result.local_inbox?.entries)
+        )
+          throw new Error(
+            "Fresh process did not read the exact persisted local inbox projection",
+          );
+      } else if (result.local_inbox !== null) {
+        throw new Error(
+          "Pre-commit restart unexpectedly exposed local inbox evidence",
+        );
+      }
     });
   } else {
     it("reaches a native issued checkpoint for the launch-owned hard crash", async () => {
@@ -218,6 +309,12 @@ describe("retained native collaboration synchronization", () => {
       else if (result.pull_commits !== null)
         throw new Error(
           "Pre-commit crash unexpectedly exposed pull-commit evidence",
+        );
+      if (name === "crash-after-commit")
+        requireLocalInboxFixture(result, "write");
+      else if (result.local_inbox !== null)
+        throw new Error(
+          "Pre-commit crash unexpectedly exposed local inbox evidence",
         );
       // The outer runner performs and verifies the exact owned process kill.
       // A test receipt is only checkpoint evidence, never a simulated crash.

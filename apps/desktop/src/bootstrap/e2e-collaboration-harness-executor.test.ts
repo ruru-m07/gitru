@@ -33,6 +33,8 @@ const native = vi.hoisted(() => ({
   detail: vi.fn(),
   pullCommits: vi.fn(),
   hydrateDetail: vi.fn(),
+  inbox: vi.fn(),
+  setLocalInboxState: vi.fn(),
 }));
 vi.mock("@gitru/commands", async (original) => ({
   ...(await original<object>()),
@@ -143,6 +145,8 @@ beforeEach(() => {
     detail: native.detail,
     pullCommits: native.pullCommits,
     hydrateDetail: native.hydrateDetail,
+    inbox: native.inbox,
+    setLocalInboxState: native.setLocalInboxState,
   }));
   native.control.mockImplementation(async ({ request }) => {
     events.push(`control:${request.action}:${request.core_action ?? "none"}`);
@@ -560,6 +564,84 @@ describe("retained restart pull-commit acceptance", () => {
       revision: "24",
       authorization_view: "1",
     });
+    const activity = "2026-10-08T00:00:00.000000000Z";
+    const local = (
+      id: string,
+      disposition: "inbox" | "done",
+      effective: "inbox" | "snoozed" | "done",
+      bookmarked: boolean,
+      snoozedUntil: string | null,
+    ) => ({
+      item: {
+        id,
+        account_id: account.id,
+        repository_id: "github:repository:9007199254741993",
+        provider_id: id.split(":").at(-1) ?? id,
+        kind: "notification" as const,
+        number: "1",
+        title: id,
+        body: null,
+        body_omitted: false,
+        author: "ruru103-reviewer",
+        web_url: "https://github.com/x-ruru103/project/pull/1",
+        state: "pending",
+        updated_at: activity,
+        head_oid: null,
+        is_draft: null,
+        reason: "review_requested",
+        unread: true,
+      },
+      local: {
+        disposition,
+        effective_disposition: effective,
+        bookmarked,
+        snoozed_until: snoozedUntil,
+        activity_updated_at: activity,
+        superseded_by_activity: false,
+        generation: "1",
+      },
+    });
+    native.inbox.mockResolvedValue({
+      entries: [
+        local(
+          "github:notification:9007199254744991",
+          "done",
+          "done",
+          false,
+          null,
+        ),
+        local(
+          "github:notification:9007199254744992",
+          "inbox",
+          "snoozed",
+          false,
+          "2026-10-15T00:00:00.000000000Z",
+        ),
+        local(
+          "github:notification:9007199254744993",
+          "inbox",
+          "inbox",
+          true,
+          null,
+        ),
+      ],
+      revision: "27",
+      authorization_view: "1",
+      next_cursor: null,
+      coverage: {
+        state: "complete",
+        validated_at: activity,
+        remote_has_more: false,
+      },
+      sync: {
+        state: "ready",
+        last_success_at: activity,
+        next_retry_at: null,
+        error: null,
+      },
+      evaluated_at: activity,
+      next_local_change_at: "2026-10-15T00:00:00.000000000Z",
+    });
 
     executor = await installCollaborationHarnessExecutor(probe);
     const result = HarnessScenarioResultSchema.parse(
@@ -588,7 +670,40 @@ describe("retained restart pull-commit acceptance", () => {
       vault_load_count_before: "0",
       vault_load_count_after: "0",
     });
+    expect(result.local_inbox).toMatchObject({
+      account_id: account.id,
+      operation: "restart_read",
+      entries: [
+        {
+          notification_id: "github:notification:9007199254744991",
+          effective_disposition: "done",
+          generation: "1",
+        },
+        {
+          notification_id: "github:notification:9007199254744992",
+          effective_disposition: "snoozed",
+          generation: "1",
+        },
+        {
+          notification_id: "github:notification:9007199254744993",
+          bookmarked: true,
+          generation: "1",
+        },
+      ],
+      provider_call_count_before: "0",
+      provider_call_count_after: "0",
+      vault_load_count_before: "0",
+      vault_load_count_after: "0",
+    });
     expect(native.pullCommits).toHaveBeenCalledOnce();
+    expect(native.inbox).toHaveBeenCalledExactlyOnceWith({
+      remote_state: null,
+      local_state: "all",
+      search: null,
+      cursor: null,
+      limit: 100,
+    });
+    expect(native.setLocalInboxState).not.toHaveBeenCalled();
     expect(native.hydrateDetail).not.toHaveBeenCalled();
     expect(current.core.provider_call_count).toBe("0");
     expect(current.core.vault_load_count).toBe("0");

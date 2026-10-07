@@ -455,6 +455,47 @@ export type HarnessPullCommitEvidence = z.infer<
   typeof HarnessPullCommitEvidenceSchema
 >;
 
+const utcTimestamp = z
+  .string()
+  .min(20)
+  .max(40)
+  .regex(
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/,
+  );
+export const HarnessLocalInboxEvidenceSchema = z
+  .object({
+    account_id: z.literal("ruru103:primary"),
+    operation: z.enum(["write", "restart_read"]),
+    entries: z
+      .array(
+        z
+          .object({
+            notification_id: z.enum([
+              "github:notification:9007199254744991",
+              "github:notification:9007199254744992",
+              "github:notification:9007199254744993",
+            ]),
+            disposition: z.enum(["inbox", "done"]),
+            effective_disposition: z.enum(["inbox", "snoozed", "done"]),
+            bookmarked: z.boolean(),
+            snoozed_until: utcTimestamp.nullable(),
+            activity_updated_at: utcTimestamp,
+            superseded_by_activity: z.boolean(),
+            generation: decimal,
+          })
+          .strict(),
+      )
+      .length(3),
+    provider_call_count_before: decimal,
+    provider_call_count_after: decimal,
+    vault_load_count_before: decimal,
+    vault_load_count_after: decimal,
+  })
+  .strict();
+export type HarnessLocalInboxEvidence = z.infer<
+  typeof HarnessLocalInboxEvidenceSchema
+>;
+
 const scenarioStatus = HarnessStatusSchema.refine(
   (value) =>
     value.core.actors.length <= 2 &&
@@ -494,6 +535,7 @@ export const HarnessScenarioResultSchema = z
     observations: z.array(HarnessProbeSnapshotSchema).max(32),
     authority: HarnessAuthorityEvidenceSchema.nullable().optional(),
     pull_commits: HarnessPullCommitEvidenceSchema.nullable(),
+    local_inbox: HarnessLocalInboxEvidenceSchema.nullable(),
     obsolete_reads: HarnessObsoleteReadsSchema.optional(),
     failure: HarnessFailureSchema.nullable().optional(),
     cleanup_failure: HarnessFailureSchema.nullable().optional(),

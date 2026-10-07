@@ -11,6 +11,7 @@ import {
   collaborationSetDemandOwnerActivity,
   type DemandLeaseReceipt,
   type HarnessControlRequest,
+  type InboxPage,
   type PullCommitSnapshot,
 } from "@gitru/commands";
 import { getCurrentWebview, Webview } from "@tauri-apps/api/webview";
@@ -24,6 +25,7 @@ import {
   type HarnessAuthorityEvidence,
   type HarnessFailure,
   type HarnessFailureContext,
+  type HarnessLocalInboxEvidence,
   type HarnessObsoleteReads,
   HarnessPeerLeaseSchema,
   type HarnessProbeSnapshot,
@@ -69,6 +71,12 @@ const PULL_COMMITS = {
     "cccccccccccccccccccccccccccccccccccccccc",
     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   ],
+} as const;
+const LOCAL_INBOX = {
+  accountId: "ruru103:primary",
+  doneId: "github:notification:9007199254744991",
+  snoozedId: "github:notification:9007199254744992",
+  bookmarkedId: "github:notification:9007199254744993",
 } as const;
 const STEP_TIMEOUT_MS = 25_000;
 const SCENARIO_TIMEOUT_MS = 160_000;
@@ -172,6 +180,7 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
     };
     let authority: HarnessAuthorityEvidence | null = null;
     let pullCommits: HarnessPullCommitEvidence | null = null;
+    let localInbox: HarnessLocalInboxEvidence | null = null;
     let manualLease: DemandLeaseReceipt | null = null;
     let manualLeaseBaseline = 0;
     let stage = "read native fixture";
@@ -237,6 +246,84 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
         oids: snapshot.commits.map((commit) => commit.oid),
         completeness: snapshot.completeness,
         cache_only: cacheOnly,
+        provider_call_count_before: before.provider,
+        provider_call_count_after: after.provider,
+        vault_load_count_before: before.vault,
+        vault_load_count_after: after.vault,
+      };
+    }
+    function localInboxEvidence(
+      snapshot: InboxPage,
+      before: { provider: string; vault: string },
+      after: { provider: string; vault: string },
+      operation: HarnessLocalInboxEvidence["operation"],
+    ): HarnessLocalInboxEvidence {
+      require(snapshot.entries.length === 3);
+      require(snapshot.next_cursor === null);
+      const byId = new Map(
+        snapshot.entries.map((entry) => [entry.item.id, entry] as const),
+      );
+      const done = byId.get(LOCAL_INBOX.doneId);
+      const snoozed = byId.get(LOCAL_INBOX.snoozedId);
+      const bookmarked = byId.get(LOCAL_INBOX.bookmarkedId);
+      require(done && snoozed && bookmarked);
+      if (!done || !snoozed || !bookmarked)
+        throw new HarnessScenarioError({ kind: "assertion" });
+      require(
+        done.local.disposition === "done" &&
+          done.local.effective_disposition === "done" &&
+          !done.local.bookmarked &&
+          done.local.snoozed_until === null &&
+          !done.local.superseded_by_activity &&
+          done.local.generation === "1",
+      );
+      require(
+        snoozed.local.disposition === "inbox" &&
+          snoozed.local.effective_disposition === "snoozed" &&
+          !snoozed.local.bookmarked &&
+          snoozed.local.snoozed_until !== null &&
+          !snoozed.local.superseded_by_activity &&
+          snoozed.local.generation === "1",
+      );
+      require(
+        bookmarked.local.disposition === "inbox" &&
+          bookmarked.local.effective_disposition === "inbox" &&
+          bookmarked.local.bookmarked &&
+          bookmarked.local.snoozed_until === null &&
+          !bookmarked.local.superseded_by_activity &&
+          bookmarked.local.generation === "1",
+      );
+      require(
+        snoozed.local.snoozed_until &&
+          Date.parse(snoozed.local.snoozed_until) >
+            Date.parse(snapshot.evaluated_at),
+      );
+      require(
+        before.provider === after.provider && before.vault === after.vault,
+      );
+      if (operation === "restart_read")
+        require(
+          before.provider === "0" &&
+            after.provider === "0" &&
+            before.vault === "0" &&
+            after.vault === "0",
+        );
+      return {
+        account_id: LOCAL_INBOX.accountId,
+        operation,
+        entries: [done, snoozed, bookmarked].map((entry) => ({
+          notification_id: entry.item.id as
+            | typeof LOCAL_INBOX.doneId
+            | typeof LOCAL_INBOX.snoozedId
+            | typeof LOCAL_INBOX.bookmarkedId,
+          disposition: entry.local.disposition,
+          effective_disposition: entry.local.effective_disposition,
+          bookmarked: entry.local.bookmarked,
+          snoozed_until: entry.local.snoozed_until,
+          activity_updated_at: entry.local.activity_updated_at,
+          superseded_by_activity: entry.local.superseded_by_activity,
+          generation: entry.local.generation,
+        })) as HarnessLocalInboxEvidence["entries"],
         provider_call_count_before: before.provider,
         provider_call_count_after: after.provider,
         vault_load_count_before: before.vault,
@@ -1296,6 +1383,80 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
             pullCommits.context.metadata_facet_revision ===
               after.core.committed_facet_revision,
           );
+          stage = "persist local inbox intents before the retained checkpoint";
+          const inboxBefore = await status();
+          const accountInbox = collaboration.forAccount(account);
+          const initialInbox = await accountInbox.inbox({
+            remote_state: null,
+            local_state: "all",
+            search: null,
+            cursor: null,
+            limit: 100,
+          });
+          const initialById = new Map(
+            initialInbox.entries.map(
+              (entry) => [entry.item.id, entry] as const,
+            ),
+          );
+          const done = initialById.get(LOCAL_INBOX.doneId);
+          const snoozed = initialById.get(LOCAL_INBOX.snoozedId);
+          const bookmarked = initialById.get(LOCAL_INBOX.bookmarkedId);
+          require(
+            done?.local.generation === "0" &&
+              snoozed?.local.generation === "0" &&
+              bookmarked?.local.generation === "0",
+          );
+          if (!done || !snoozed || !bookmarked)
+            throw new HarnessScenarioError({ kind: "assertion" });
+          await accountInbox.setLocalInboxState({
+            notification_id: done.item.id,
+            expected_activity_updated_at: done.item.updated_at,
+            mutation: "disposition",
+            disposition: "done",
+            bookmarked: null,
+            snoozed_until: null,
+            expected_generation: done.local.generation,
+          });
+          await accountInbox.setLocalInboxState({
+            notification_id: snoozed.item.id,
+            expected_activity_updated_at: snoozed.item.updated_at,
+            mutation: "disposition",
+            disposition: "inbox",
+            bookmarked: null,
+            snoozed_until: new Date(
+              Date.now() + 7 * 24 * 60 * 60 * 1_000,
+            ).toISOString(),
+            expected_generation: snoozed.local.generation,
+          });
+          await accountInbox.setLocalInboxState({
+            notification_id: bookmarked.item.id,
+            expected_activity_updated_at: bookmarked.item.updated_at,
+            mutation: "bookmark",
+            disposition: null,
+            bookmarked: true,
+            snoozed_until: null,
+            expected_generation: bookmarked.local.generation,
+          });
+          const persistedInbox = await accountInbox.inbox({
+            remote_state: null,
+            local_state: "all",
+            search: null,
+            cursor: null,
+            limit: 100,
+          });
+          const inboxAfter = await status();
+          localInbox = localInboxEvidence(
+            persistedInbox,
+            {
+              provider: inboxBefore.core.provider_call_count,
+              vault: inboxBefore.core.vault_load_count,
+            },
+            {
+              provider: inboxAfter.core.provider_call_count,
+              vault: inboxAfter.core.vault_load_count,
+            },
+            "write",
+          );
           await control("checkpoint_committed_before_hint");
         }
         require(current.checkpoint);
@@ -1315,6 +1476,7 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
           vault: current.core.vault_load_count,
         };
         const accounts = await collaboration.accounts();
+        let retainedInbox: InboxPage | null = null;
         for (const fixture of current.core.actors) {
           const account = accounts.accounts.find(
             (candidate) => candidate.id === fixture.account_id,
@@ -1361,6 +1523,13 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
                 pullCommits.context.metadata_facet_revision ===
                   current.checkpoint.committed_facet_revision,
               );
+              retainedInbox = await collaboration.forAccount(account).inbox({
+                remote_state: null,
+                local_state: "all",
+                search: null,
+                cursor: null,
+                limit: 100,
+              });
             } else {
               require(current.checkpoint?.kind === "before_commit");
               require(current.core.committed_phase === null);
@@ -1368,7 +1537,22 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
             }
           }
         }
-        require((await status()).core.provider_call_count === "0");
+        const cacheOnlyAfter = await status();
+        require(cacheOnlyAfter.core.provider_call_count === "0");
+        if (current.checkpoint?.kind === "committed_before_hint") {
+          require(retainedInbox);
+          if (!retainedInbox)
+            throw new HarnessScenarioError({ kind: "assertion" });
+          localInbox = localInboxEvidence(
+            retainedInbox,
+            cacheOnlyBefore,
+            {
+              provider: cacheOnlyAfter.core.provider_call_count,
+              vault: cacheOnlyAfter.core.vault_load_count,
+            },
+            "restart_read",
+          );
+        }
         stage = "fresh real interest alone acquires a new Body";
         await mount("main", "primary");
         await rendered("main", "one");
@@ -1457,6 +1641,7 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
       observations,
       authority,
       pull_commits: pullCommits,
+      local_inbox: localInbox,
       obsolete_reads: obsoleteReads,
       failure,
       cleanup_failure: cleanupFailure,

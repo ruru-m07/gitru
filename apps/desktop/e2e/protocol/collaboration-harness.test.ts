@@ -9,6 +9,7 @@ import {
   HarnessAuthorityEvidenceSchema,
   HarnessFailureContextSchema,
   HarnessFailureSchema,
+  HarnessLocalInboxEvidenceSchema,
   HarnessObsoleteReadsSchema,
   HarnessPeerLeaseSchema,
   HarnessPullCommitEvidenceSchema,
@@ -70,6 +71,62 @@ describe("retained collaboration renderer protocol", () => {
       HarnessPullCommitEvidenceSchema.safeParse({
         ...evidence,
         provider_response: "raw private payload",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("bounds local inbox restart evidence to the three fixed projections", () => {
+    const entry = {
+      notification_id: "github:notification:9007199254744991",
+      disposition: "done",
+      effective_disposition: "done",
+      bookmarked: false,
+      snoozed_until: null,
+      activity_updated_at: "2026-10-08T00:00:00.000000000Z",
+      superseded_by_activity: false,
+      generation: "1",
+    } as const;
+    const evidence = {
+      account_id: "ruru103:primary",
+      operation: "restart_read",
+      entries: [
+        entry,
+        {
+          ...entry,
+          notification_id: "github:notification:9007199254744992",
+          disposition: "inbox",
+          effective_disposition: "snoozed",
+          snoozed_until: "2026-10-15T00:00:00.000000000Z",
+        },
+        {
+          ...entry,
+          notification_id: "github:notification:9007199254744993",
+          disposition: "inbox",
+          effective_disposition: "inbox",
+          bookmarked: true,
+        },
+      ],
+      provider_call_count_before: "0",
+      provider_call_count_after: "0",
+      vault_load_count_before: "0",
+      vault_load_count_after: "0",
+    };
+    expect(HarnessLocalInboxEvidenceSchema.safeParse(evidence).success).toBe(
+      true,
+    );
+    expect(
+      HarnessLocalInboxEvidenceSchema.safeParse({
+        ...evidence,
+        entries: [...evidence.entries, entry],
+      }).success,
+    ).toBe(false);
+    expect(
+      HarnessLocalInboxEvidenceSchema.safeParse({
+        ...evidence,
+        entries: [
+          { ...entry, notification_id: "provider-selected-id" },
+          ...evidence.entries.slice(1),
+        ],
       }).success,
     ).toBe(false);
   });
@@ -229,6 +286,7 @@ describe("retained collaboration renderer protocol", () => {
       status: null,
       observations: [],
       pull_commits: null,
+      local_inbox: null,
     };
     expect(HarnessScenarioResultSchema.safeParse(result).success).toBe(true);
     for (const changed of [
