@@ -943,3 +943,118 @@ async fn empty_complete_and_three_thousand_file_cap_are_explicit_and_pages_bound
     }
     assert_eq!(count, 3000);
 }
+
+#[tokio::test]
+async fn repeated_full_generations_cannot_strand_cache_above_the_retention_row_budget() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("cache.db");
+    let store = Store::open(&path).await.unwrap();
+    let a = seed(&store, "a").await;
+    for run in 0..2 {
+        let mut lease = store
+            .begin_pull_files("a", &a.authorization_epoch, "pull", source())
+            .await
+            .unwrap();
+        for page in 0..30 {
+            let paths: Vec<String> = (0..100)
+                .map(|i| format!("run-{run}/file-{}", page * 100 + i))
+                .collect();
+            let refs = paths.iter().map(String::as_str).collect::<Vec<_>>();
+            let cursor = format!("page-{}", page + 1);
+            let mut value = commit(
+                &store,
+                &lease,
+                &refs,
+                (page < 29).then_some(cursor.as_str()),
+            )
+            .await;
+            if page == 29 {
+                value.page.cap = Some(PullFileCapEvidence {
+                    provenance: PullFileCapProvenance::Provider,
+                    reason: PullFileCapReason::ProviderFileLimit,
+                    remote_has_more: PullFileFlag::Unknown,
+                });
+            }
+            if let Some(next) = store.apply_pull_files(value).await.unwrap().next_lease {
+                lease = next;
+            }
+        }
+    }
+    let mut db = database(&path).await;
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM pull_file_rows")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        6000
+    );
+    let active: String = sqlx::query_scalar("SELECT active_generation FROM pull_file_facets")
+        .fetch_one(&mut db)
+        .await
+        .unwrap();
+    let policy = CacheRetentionPolicy {
+        target_logical_bytes: 0,
+        max_evict_facets: 1,
+        checkpoint_wal: false,
+        ..Default::default()
+    };
+    for _ in 0..5 {
+        let report = store.run_cache_maintenance(policy.clone()).await.unwrap();
+        assert!(report.evicted_entry_rows <= policy.max_entry_rows);
+        assert!(report.scanned_facets <= policy.max_scan_facets);
+        let count: i64 = sqlx::query_scalar("SELECT count(*) FROM pull_file_rows")
+            .fetch_one(&mut db)
+            .await
+            .unwrap();
+        if count < 6000 {
+            assert_eq!(count, 3000);
+            assert_eq!(
+                sqlx::query_scalar::<_, String>("SELECT active_generation FROM pull_file_facets")
+                    .fetch_one(&mut db)
+                    .await
+                    .unwrap(),
+                active
+            );
+            return;
+        }
+    }
+    panic!("obsolete generation remained stranded above bounded eviction budget");
+}
+
+#[tokio::test]
+async fn replacing_native_blob_artifact_reclaims_only_unreferenced_unprotected_objects() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("cache.db");
+    let store = Store::open(&path).await.unwrap();
+    let a = seed(&store, "a").await;
+    let saved = publish(&store, &a, &["a"]).await;
+    let req = request(&saved, &a);
+    let m = store
+        .verify_pull_file_membership(req.clone())
+        .await
+        .unwrap();
+    let mut db = database(&path).await;
+    sqlx::query("INSERT INTO pull_file_blob_objects VALUES('a','native-blob',NULL,'application/octet-stream',x'010203')").execute(&mut db).await.unwrap();
+    let mut blob = artifact(&m, "");
+    blob.content_state = PullFileContentState::Binary;
+    blob.unified_text = None;
+    blob.blob_references.new = Some("native-blob".into());
+    blob.content_type = Some("application/octet-stream".into());
+    blob.logical_bytes = "3".into();
+    blob.on_disk_bytes = "3".into();
+    store
+        .apply_pull_file_artifact(req.clone(), m.clone(), blob)
+        .await
+        .unwrap();
+    store
+        .apply_pull_file_artifact(req, m.clone(), artifact(&m, "text"))
+        .await
+        .unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM pull_file_blob_objects")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        0
+    );
+}

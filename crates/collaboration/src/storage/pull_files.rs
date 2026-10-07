@@ -712,6 +712,19 @@ impl Store {
         {
             return Err(invalid());
         }
+        if artifact.identity.old_path.is_none() && artifact.blob_references.old.is_some()
+            || artifact.identity.new_path.is_none() && artifact.blob_references.new.is_some()
+        {
+            return Err(invalid());
+        }
+        let old_blobs = artifact_blob_ids_in(
+            &mut tx,
+            &request.account_id,
+            &request.subject_id,
+            &membership.generation,
+            Some(&request.file_key),
+        )
+        .await?;
         let mut bytes = artifact.unified_text.as_ref().map_or(0, |s| s.len() as i64);
         for (reference, oid) in [
             (&artifact.blob_references.old, &artifact.old_blob_oid),
@@ -766,6 +779,7 @@ impl Store {
                     .bind(&request.account_id).bind(&request.subject_id).bind(&membership.generation).bind(&request.file_key).bind(side).bind(reference).execute(&mut *tx).await.map_err(storage_error)?;
             }
         }
+        cleanup_blob_ids_in(&mut tx, &request.account_id, &old_blobs).await?;
         refresh_retention_in(&mut tx, &request.account_id, &request.subject_id).await?;
         tx.commit().await.map_err(storage_error)?;
         Ok(revision)
@@ -899,6 +913,8 @@ pub(super) async fn evict_subject_in(
     account: &str,
     subject: &str,
 ) -> Result<()> {
+    let blobs:Vec<String>=sqlx::query_scalar("SELECT DISTINCT blob_id FROM pull_file_blob_references WHERE account_id=? AND subject_id=?")
+        .bind(account).bind(subject).fetch_all(&mut **tx).await.map_err(storage_error)?;
     sqlx::query("UPDATE pull_file_facets SET active_generation=NULL,facet_revision=NULL WHERE account_id=? AND subject_id=?").bind(account).bind(subject).execute(&mut **tx).await.map_err(storage_error)?;
     sqlx::query("DELETE FROM pull_file_generations WHERE account_id=? AND subject_id=?")
         .bind(account)
@@ -912,6 +928,7 @@ pub(super) async fn evict_subject_in(
         .execute(&mut **tx)
         .await
         .map_err(storage_error)?;
+    cleanup_blob_ids_in(tx, account, &blobs).await?;
     refresh_retention_in(tx, account, subject).await
 }
 
@@ -959,7 +976,9 @@ pub(super) async fn evict_artifacts_in(
                     .await
                     .map_err(storage_error)?;
             record_change(tx, account, epoch, &scope(subject), false).await?;
+            let blobs = artifact_blob_ids_in(tx, account, subject, generation, Some(file)).await?;
             sqlx::query("DELETE FROM pull_file_artifacts WHERE account_id=? AND subject_id=? AND generation=? AND file_key=?").bind(account).bind(subject).bind(generation).bind(file).execute(&mut **tx).await.map_err(storage_error)?;
+            cleanup_blob_ids_in(tx, account, &blobs).await?;
             refresh_retention_in(tx, account, subject).await?;
             let size: i64 = row.get("size");
             remaining = remaining.saturating_sub(size);
@@ -1025,4 +1044,80 @@ pub(super) async fn capability_evidence_in(
         denied: false,
         sync,
     })
+}
+
+/// Remove at most one bounded, unpublished historical generation. Keeping this
+/// distinct from whole-subject eviction prevents two full 3,000-file runs from
+/// exceeding the maintenance row budget forever.
+pub(super) async fn evict_superseded_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    account: &str,
+    subject: &str,
+    max_rows: u32,
+) -> Result<Option<(u32, u64)>> {
+    let row=sqlx::query("SELECT generation,row_count FROM pull_file_generations WHERE state='superseded' AND account_id=? AND subject_id=? ORDER BY generation LIMIT 1")
+        .bind(account).bind(subject).fetch_optional(&mut **tx).await.map_err(storage_error)?;
+    let Some(row) = row else { return Ok(None) };
+    let count =
+        u32::try_from(row.get::<i64, _>("row_count")).map_err(|_| CollaborationError::storage())?;
+    if count > max_rows {
+        return Ok(None);
+    }
+    let generation: &str = row.get("generation");
+    let before: i64 = sqlx::query_scalar(
+        "SELECT logical_bytes FROM pull_file_retention WHERE account_id=? AND subject_id=?",
+    )
+    .bind(account)
+    .bind(subject)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(storage_error)?;
+    let blobs = artifact_blob_ids_in(tx, account, subject, generation, None).await?;
+    let epoch: i64 = sqlx::query_scalar("SELECT authorization_epoch FROM accounts WHERE id=?")
+        .bind(account)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(storage_error)?;
+    record_change(tx, account, epoch, &scope(subject), false).await?;
+    sqlx::query("DELETE FROM pull_file_generations WHERE account_id=? AND subject_id=? AND generation=? AND state='superseded'").bind(account).bind(subject).bind(generation).execute(&mut **tx).await.map_err(storage_error)?;
+    cleanup_blob_ids_in(tx, account, &blobs).await?;
+    refresh_retention_in(tx, account, subject).await?;
+    let after: i64 = sqlx::query_scalar(
+        "SELECT logical_bytes FROM pull_file_retention WHERE account_id=? AND subject_id=?",
+    )
+    .bind(account)
+    .bind(subject)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(storage_error)?;
+    Ok(Some((
+        count,
+        u64::try_from(before - after).map_err(|_| CollaborationError::storage())?,
+    )))
+}
+async fn artifact_blob_ids_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    account: &str,
+    subject: &str,
+    generation: &str,
+    file: Option<&str>,
+) -> Result<Vec<String>> {
+    if let Some(file) = file {
+        sqlx::query_scalar("SELECT blob_id FROM pull_file_blob_references WHERE account_id=? AND subject_id=? AND generation=? AND file_key=?")
+            .bind(account).bind(subject).bind(generation).bind(file).fetch_all(&mut **tx).await.map_err(storage_error)
+    } else {
+        sqlx::query_scalar("SELECT DISTINCT blob_id FROM pull_file_blob_references WHERE account_id=? AND subject_id=? AND generation=?")
+            .bind(account).bind(subject).bind(generation).fetch_all(&mut **tx).await.map_err(storage_error)
+    }
+}
+async fn cleanup_blob_ids_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    account: &str,
+    blobs: &[String],
+) -> Result<()> {
+    for blob in blobs {
+        sqlx::query("DELETE FROM pull_file_blob_objects WHERE account_id=? AND blob_id=? AND NOT EXISTS(SELECT 1 FROM pull_file_blob_references r WHERE r.account_id=pull_file_blob_objects.account_id AND r.blob_id=pull_file_blob_objects.blob_id) AND NOT EXISTS(SELECT 1 FROM command_target_protections p WHERE p.account_id=pull_file_blob_objects.account_id AND p.reference_id=pull_file_blob_objects.blob_id AND p.reference_kind='blob' AND p.required=1)")
+            .bind(account).bind(blob).execute(&mut **tx).await.map_err(storage_error)?;
+    }
+    Ok(())
 }

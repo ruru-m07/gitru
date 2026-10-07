@@ -571,6 +571,31 @@ async fn evict_in(
                 )
                 .await?);
         if eligible {
+            if candidate.facet == "files" {
+                let available_rows = policy
+                    .max_entry_rows
+                    .saturating_sub(outcome.evicted_entry_rows);
+                if let Some((rows, bytes)) = super::pull_files::evict_superseded_in(
+                    tx,
+                    &candidate.account_id,
+                    &candidate.subject_id,
+                    available_rows,
+                )
+                .await?
+                {
+                    outcome.evicted_facets += 1;
+                    outcome.evicted_entry_rows += rows;
+                    outcome.freed_logical_bytes += bytes;
+                    remaining_bytes = remaining_bytes.saturating_sub(bytes);
+                    last_cursor = Some((
+                        candidate.revision,
+                        candidate.account_id.clone(),
+                        candidate.subject_id.clone(),
+                        candidate.facet.clone(),
+                    ));
+                    continue;
+                }
+            }
             let entry_rows: i64 = if candidate.facet == "files" {
                 sqlx::query_scalar(
                     "SELECT count(*) FROM pull_file_rows WHERE account_id=? AND subject_id=?",
