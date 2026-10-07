@@ -83,6 +83,7 @@ pub(crate) async fn mutate(
         .map_err(|_| ProviderError::new(ProviderErrorKind::Authentication))?;
     auth.set_sensitive(true);
     let mut observed = None;
+    let mut observed_error = None;
     tokio::time::timeout(Duration::from_secs(20), async {
         let mut request = client
             .request(method, url)
@@ -166,11 +167,15 @@ pub(crate) async fn mutate(
                 .chain(cooldown)
                 .max();
         }
+        observed_error = provider_error.clone();
         let fail = || {
-            provider_error
-                .clone()
-                .unwrap_or_else(invalid)
-                .with_cooldown(cooldown)
+            let mut error = provider_error.clone().unwrap_or_else(invalid);
+            error.account_cooldown_seconds = error
+                .account_cooldown_seconds
+                .into_iter()
+                .chain(cooldown)
+                .max();
+            error
         };
         // Never follow redirects. Even same-origin redirects lack operation proof.
         if status.is_redirection() && status != StatusCode::NOT_MODIFIED {
@@ -237,7 +242,16 @@ pub(crate) async fn mutate(
         })
     })
     .await
-    .map_err(|_| ProviderError::new(ProviderErrorKind::Offline).with_cooldown(observed))?
+    .map_err(|_| {
+        let mut error =
+            observed_error.unwrap_or_else(|| ProviderError::new(ProviderErrorKind::Offline));
+        error.account_cooldown_seconds = error
+            .account_cooldown_seconds
+            .into_iter()
+            .chain(observed)
+            .max();
+        error
+    })?
 }
 
 #[cfg(test)]
@@ -384,5 +398,31 @@ mod tests {
             .unwrap();
         assert_eq!(error.account_cooldown_seconds, Some(42));
         let _ = task.join();
+    }
+    #[tokio::test]
+    async fn malformed_denials_keep_auth_and_default_rate_observations() {
+        for (status, kind, quota) in [
+            ("401 Unauthorized", ProviderErrorKind::Authentication, None),
+            (
+                "429 Too Many Requests",
+                ProviderErrorKind::RateLimited,
+                Some(60),
+            ),
+        ] {
+            let (http, task) = server(status, "Content-Type: text/html\r\n", "provider denial");
+            let error = http
+                .mutate_native(
+                    &token(),
+                    Method::PATCH,
+                    http.endpoint("notifications/threads/1").unwrap(),
+                    vec![],
+                )
+                .await
+                .err()
+                .unwrap();
+            assert_eq!(error.kind, kind);
+            assert_eq!(error.account_cooldown_seconds, quota);
+            task.join().unwrap();
+        }
     }
 }
