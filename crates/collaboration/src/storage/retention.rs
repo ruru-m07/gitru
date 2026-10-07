@@ -532,10 +532,11 @@ async fn evict_in(
         }
         outcome.scanned_facets += 1;
         let scope = format!("detail:{}:{}", candidate.subject_id, candidate.facet);
-        let eligible: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts a JOIN items i ON i.account_id=a.id AND i.id=? AND i.kind IN ('pull_request','issue') JOIN account_instances ai ON ai.account_id=a.id JOIN resource_identities ri ON ri.account_id=a.id AND ri.instance_id=ai.instance_id AND ri.entity_id=i.id AND ri.kind=i.kind JOIN sync_scopes s ON s.account_id=a.id AND s.scope=? WHERE a.id=? AND json_extract(s.sync_json,'$.state')<>'syncing' AND NOT EXISTS(SELECT 1 FROM cache_pins p WHERE p.account_id=a.id AND p.instance_id=ai.instance_id AND p.entity_id=i.id) AND NOT EXISTS(SELECT 1 FROM detail_demand d WHERE d.account_id=a.id AND d.subject_id=i.id AND d.facet=? AND d.requested=1))")
+        let eligible: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts a JOIN items i ON i.account_id=a.id AND i.id=? AND i.kind IN ('pull_request','issue') JOIN account_instances ai ON ai.account_id=a.id JOIN resource_identities ri ON ri.account_id=a.id AND ri.instance_id=ai.instance_id AND ri.entity_id=i.id AND ri.kind=i.kind JOIN sync_scopes s ON s.account_id=a.id AND s.scope=? WHERE a.id=? AND json_extract(s.sync_json,'$.state')<>'syncing' AND NOT EXISTS(SELECT 1 FROM cache_pins p WHERE p.account_id=a.id AND p.instance_id=ai.instance_id AND p.entity_id=i.id) AND NOT EXISTS(SELECT 1 FROM detail_demand d WHERE d.account_id=a.id AND d.subject_id=i.id AND d.facet=? AND d.requested=1) AND NOT EXISTS(SELECT 1 FROM command_target_protections p WHERE p.account_id=a.id AND p.reference_id=i.id AND p.required=1 AND (p.reference_kind='entity' OR (p.reference_kind='facet' AND p.facet=?))))")
             .bind(&candidate.subject_id)
             .bind(&scope)
             .bind(&candidate.account_id)
+            .bind(&candidate.facet)
             .bind(&candidate.facet)
             .fetch_one(&mut **tx)
             .await

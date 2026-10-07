@@ -86,6 +86,15 @@ pub enum CommandTargetKind {
 }
 
 impl CommandTargetKind {
+    pub(crate) const fn storage_name(self) -> &'static str {
+        match self {
+            Self::Repository => "repository",
+            Self::PullRequest => "pull_request",
+            Self::Issue => "issue",
+            Self::Notification => "notification",
+        }
+    }
+
     const fn canonical_tag(self) -> u8 {
         match self {
             Self::Repository => 1,
@@ -275,6 +284,7 @@ impl CommandSubmission {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct CommandDraft<P> {
     pub command_id: String,
     pub account_id: String,
@@ -382,7 +392,7 @@ pub(crate) fn seal_command<P: CommandPayloadCodec>(
     })
 }
 
-fn encode_guards(guards: &[CommandGuard]) -> Result<Vec<u8>> {
+pub(crate) fn encode_guards(guards: &[CommandGuard]) -> Result<Vec<u8>> {
     let mut sequence = CanonicalFields::new(MAX_COMMAND_ENVELOPE_BYTES);
     for (index, guard) in guards.iter().enumerate() {
         let tag = u16::try_from(index + 1).map_err(|_| invalid_command())?;
