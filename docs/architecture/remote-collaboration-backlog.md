@@ -185,7 +185,7 @@ Then implement [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-
 | [RURU-79: Resolve inbox notifications to cached PR and issue subjects](https://linear.app/catra/issue/RURU-79/resolve-inbox-notifications-to-cached-pr-and-issue-subjects) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
 | [RURU-122: Cache and display conversation comments and activity timelines](https://linear.app/catra/issue/RURU-122/cache-and-display-conversation-comments-and-activity-timelines) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details) |
 | [RURU-123: Cache PR review summaries and review threads with head context](https://linear.app/catra/issue/RURU-123/cache-pr-review-summaries-and-review-threads-with-head-context) | Backlog | [RURU-122](https://linear.app/catra/issue/RURU-122/cache-and-display-conversation-comments-and-activity-timelines), [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details) |
-| [RURU-118: Show cached checks and commit statuses for the current PR head](https://linear.app/catra/issue/RURU-118/show-cached-checks-and-commit-statuses-for-the-current-pr-head) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details) |
+| [RURU-118: Show cached checks and commit statuses for the current PR head](https://linear.app/catra/issue/RURU-118/show-cached-checks-and-commit-statuses-for-the-current-pr-head) | In Progress | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details) |
 | [RURU-119: Add cached PR changed-file and diff navigation](https://linear.app/catra/issue/RURU-119/add-cached-pr-changed-file-and-diff-navigation) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-98](https://linear.app/catra/issue/RURU-98/add-foreground-demand-leases-to-the-native-sync-scheduler) |
 | [RURU-124: Add local inbox snooze, bookmark and disposition state](https://linear.app/catra/issue/RURU-124/add-local-inbox-snooze-bookmark-and-disposition-state) | Backlog | [RURU-79](https://linear.app/catra/issue/RURU-79/resolve-inbox-notifications-to-cached-pr-and-issue-subjects) |
 | [RURU-136: Check out pull request branches through the local Git workflow](https://linear.app/catra/issue/RURU-136/check-out-pull-request-branches-through-the-local-git-workflow) | In Progress | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-96](https://linear.app/catra/issue/RURU-96/link-local-git-remotes-to-collaboration-repositories-and-accounts) |
@@ -382,7 +382,7 @@ Acceptance criteria:
 
 ## RURU-118: Show cached checks and commit statuses for the current PR head
 
-Planning key: C11. Group: Read experience. Priority: Medium. State: Backlog.
+Planning key: C11. Group: Read experience. Priority: Medium. State: In Progress.
 Linear: [RURU-118](https://linear.app/catra/issue/RURU-118/show-cached-checks-and-commit-statuses-for-the-current-pr-head).
 Prerequisites: [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details).
 
@@ -390,9 +390,17 @@ Introduce a head-scoped checks/status facet that can later support guarded revie
 
 Acceptance criteria:
 
-- [ ] Checks and statuses bind to exact head OIDs; prior-head results remain clearly historical.
-- [ ] Partial coverage, missing permission or a changed head cannot produce an authoritative all-checks-passed state.
-- [ ] Coalesced background hydration and local-only UI reads pass fake-provider, restart and stale-head tests.
+- [x] Checks and statuses bind to exact head OIDs; prior-head results remain clearly historical.
+- [x] Partial coverage, missing permission or a changed head cannot produce an authoritative all-checks-passed state.
+- [x] Coalesced background hydration and local-only UI reads pass fake-provider, restart and stale-head tests.
+
+Signed source `f2c6f2e769c70e83531f047e8ef718508489bb52` and its fixture-local
+evidence are recorded in the [RURU-118 work note](./collaboration-work/RURU-118.md).
+Final serialized `make verify` passes 681 frontend/SDK/UI tests with one platform
+skip, lint, types, production build, formatting, warning-denied Clippy and every
+default Rust suite. Review publication, exact-head remote CI, packaged execution,
+and live provider/PAT/keyring sampling remain separate gates, so the issue stays
+In Progress and unmerged.
 
 ## RURU-119: Add cached PR changed-file and diff navigation
 

@@ -1,86 +1,72 @@
 # RURU-118 — Cached current-head checks and commit statuses
 
-Status: pre-code contract frozen on 7 October 2026. Implementation and validation remain pending.
+Status: source implementation complete and locally qualified on 8 October 2026 at signed source `f2c6f2e769c70e83531f047e8ef718508489bb52`. Review publication, exact-head remote CI, packaged execution, and live-provider sampling remain separate gates.
 
-Baseline: exact signed RURU-137 evidence head `0da82cc7e5a3543512be683e68ac074f8d9689cd`, stacked through the signed RURU-77 pull-detail contract. RURU-118 was Backlog with no PR, worktree, branch, comment, or duplicate implementation at the live pre-code audit. RURU-77 is In Review in draft PR #150 and is implemented in this ancestry; no merge is inferred.
+Baseline: exact signed RURU-137 evidence head `0da82cc7e5a3543512be683e68ac074f8d9689cd`, stacked through the signed RURU-77 pull-detail contract. The pre-code contract is signed at `613409bc99705b88574f45e7a660c28c3e4842ee`. RURU-118 is In Progress and has no review PR yet. RURU-77 is implemented in this ancestry; no merge is inferred.
 
 Live issue: [RURU-118](https://linear.app/catra/issue/RURU-118/show-cached-checks-and-commit-statuses-for-the-current-pr-head), “Show cached checks and commit statuses for the current PR head”.
 
-## Outcome
+## Implemented outcome
 
-A pull request detail renders its saved check runs and commit statuses immediately from SQLite, including after restart and while offline. Every row and every aggregate is bound to the exact current pull-request head OID captured from authorized Body metadata. A previous-head success remains saved only as historical/stale evidence and can never authorize an “all passed” result for a new head.
+Pull request details can render saved check runs and commit statuses immediately from SQLite, including after restart and while the provider and credential vault remain unopened. The common `CheckV1` model keeps check-run lifecycle/conclusion separate from commit-status state and carries a bounded name, description, producer, timestamps, and provider-native `allow_failure` evidence. An exact canonical head OID is stored on every row.
 
-This slice is read-only. It does not rerun jobs, create statuses, merge, inspect ambient credentials, add TypeScript provider HTTP, or make Gitru cloud sign-in a prerequisite.
+The shared aggregate is presentation evidence only. It reports an authoritative pass or failure only when the saved facet is ready, fresh, idle, complete, has no unread local continuation, has at least one row, and every row belongs to the caller's current head. Empty, pending, unknown, capped, partial, syncing, missing, unavailable, stale, and foreign-head sets remain non-authoritative. `allow_failure` is retained for display and never silently converts a failed status into a universal merge-safe success.
 
-## Existing engine seam
+This slice is read-only. It does not rerun jobs, create statuses, inspect required-check or branch-protection policy, merge, inspect ambient credentials, add TypeScript provider HTTP, or make Gitru cloud sign-in a prerequisite.
 
-Use the existing `DetailFacet::Checks` and `ResourceFacet::Checks` lifecycle rather than adding a second checks store. The inherited runtime already coalesces durable detail demand, schedules native provider work, persists pages before publishing revisions, and exposes cache-only renderer queries. Its detail reconciliation evidence already records `CurrentHead`; storage requires a trusted `DetailSubjectBinding`, exact head OID on every row, and rejects continuations after summary or Body head drift.
+## Native data and authority path
 
-The checks implementation therefore owns provider normalization, capability advertisement, focused exact-head fixtures, and a dedicated cached panel. It may extend the shared detail validation only when required by a typed common field. It does not weaken generic authorization, cursor, coverage, freshness, retry, retention, or subscription rules.
+The implementation reuses `DetailFacet::Checks`, the existing independent detail observations/entries, sync scopes, foreground demand, authorization fencing, and retention accounting. There is no schema migration or second checks store. `NativeDetailPayload::CheckV1` and `DetailField::Check` extend the versioned native detail representation, while generated IPC exposes the same cache-only detail query.
 
-## Common row contract
-
-The v1 common projection uses bounded `DetailEntry` fields with one stable provider-owned row identity:
+Checks dispatch requires an authorized Body-derived `CheckContext`:
 
 ```text
-id             adapter namespace + native immutable row id
-provider_id    provider immutable check/status id or stable native key
-title          check name or status context
-author         optional bounded producer/app/creator presentation
-state          normalized lifecycle/outcome, preserving unknown native values safely
-body           known / omitted / oversized provider description or summary
-updated_at     comparable row timestamp when the endpoint supplies one
-head_oid       exact canonical SHA-1 or SHA-256 OID from the captured PR head
+head_oid
+source_repository_provider_id
+metadata_facet_revision
 ```
 
-Check runs and legacy/external commit statuses remain distinct identities even when their display names match. Known normalized states are `queued`, `running`, `pending`, `success`, `failure`, `neutral`, `cancelled`, `timed_out`, `action_required`, `skipped`, and `stale`; an unknown provider state is displayed as unknown and never treated as passing. Provider-specific raw state remains bounded in the saved state string when it cannot be mapped without loss.
+Missing or conflicting Body range metadata records Body demand before Checks can dispatch. The runtime validates account epoch, authorization view, provider instance, selected target repository, subject binding, exact head, source repository, Body facet revision, traversal generation, and cursor both before provider HTTP and before publication. A Body refresh, including the same head with a new Body revision or source repository, retires queued validators/cursors and rejects an old in-flight page. Prior-context rows remain retained but stale and non-authoritative.
 
-The common renderer does not infer required-check policy, branch protection, mergeability, or approval. “All reported checks passed” is only a presentation over a same-head snapshot when coverage is complete, access is available, synchronization is not actively replacing the generation, at least one row exists, and every row is a terminal passing outcome. Partial/uncertain/capped coverage, no rows, permission loss, offline-first missing data, unknown outcomes, a changed head, queued/running work, and stale evidence all produce a non-authoritative explanation instead.
+## Provider implementations
 
-## Provider reads
+All network work stays in Rust behind the account-selected provider adapter.
 
-All network work remains in Rust and uses the account-selected provider adapter and trusted repository/subject binding.
+* GitHub reads the exact fork/source repository ID and immutable head SHA. It combines `GET /repositories/{source}/commits/{sha}/status?per_page=50` with `GET /repositories/{source}/commits/{sha}/check-runs?filter=latest&per_page=50`. Status and check-run totals are tracked independently and must remain stable through continuation. Each family is capped at 500 rows; either cap makes the combined reconciliation uncertain. Pagination pins the route, page order, page size, and `filter=latest`. Quota reported by the first family prevents the second request.
+* GitLab reads `GET /projects/{target}/repository/commits/{sha}/statuses?all=false&order_by=id&sort=asc&per_page=100&page=…`, validates every returned SHA, monotonic native ID, total, and exact next route, and caps at 1,000 rows/10 pages. `failed` and `canceled` normalize to failure; `pending` and `running` normalize to pending; unknown bounded states remain unknown. `allow_failure` remains explicit provider evidence.
+* Bitbucket Cloud reads the exact captured source repository UUID and head through `/repositories/{source}/commit/{sha}/statuses?pagelen=100`. Opaque continuations remain fixed-origin and exact-route, page fingerprints reject loops, returned commit links prove the captured head OID, and traversal caps at 1,000 rows/10 pages. The captured repository UUID and continuation route bind the source repository separately.
 
-* GitHub combines the latest check runs for the exact head SHA with current commit statuses. Check runs use `GET /repos/{owner}/{repo}/commits/{ref}/check-runs?filter=latest&per_page=100`; the API documents a 1,000-check-suite limit, so that condition is explicit partial coverage. Commit statuses use the exact SHA and bounded pagination. Classic PATs need private-repository `repo`; fine-grained tokens expose separate read permissions for Checks and Commit statuses. A denial cannot become an empty successful set. Official references: [check runs](https://docs.github.com/en/rest/checks/runs?apiVersion=2026-03-10#list-check-runs-for-a-git-reference) and [commit statuses](https://docs.github.com/en/rest/commits/statuses?apiVersion=2026-03-10#list-commit-statuses-for-a-reference).
-* GitLab reads `GET /projects/:id/repository/commits/:sha/statuses` against the numeric target project and exact head SHA. It requests latest statuses, follows bounded provider pagination, validates every returned `sha`, and preserves `allow_failure` only as provider-native presentation; an allowed failure is not silently converted into a universal merge-safe success. Official reference: [GitLab commit statuses](https://docs.gitlab.com/api/commits/#list-commit-statuses).
-* Bitbucket Cloud reads `GET /repositories/{workspace}/{repo_slug}/commit/{commit}/statuses` against the captured head. Opaque `next` links are accepted only through the existing fixed-origin/exact-route continuation validator, and every returned commit link must resolve to the captured OID. Official reference: [Bitbucket Cloud commit statuses](https://developer.atlassian.com/cloud/bitbucket/rest/api-group-commit-statuses/#api-repositories-workspace-repo-slug-commit-commit-statuses-get).
+Adapters advertise Checks only with their implementation present. Authentication, permission, quota, transient, malformed, foreign-head, duplicate, contradictory-total, hostile-continuation, oversized-field, unknown-state, empty, and capped outcomes stay typed and cannot become false empty or false green evidence. Provider responses retain the existing 4 MiB transport ceiling; cursors remain versioned, context-bound, and capped at 4 KiB.
 
-An adapter advertises Checks only after its implementation and fixtures exist. Unsupported providers stay typed unsupported. Unknown response fields are additive; malformed identity, head, pagination, URL, state shape, or over-bound payload rejects the page atomically.
+## Renderer behavior
 
-## Paging, completeness and bounds
+`CachedChecksPanel` uses generated local IPC through `@gitru/collaboration-client`. The query identity includes the saved Body head and facet revision. Body or repository change events synchronously clear affected cached check and commit projections before active refetch, so a previous green generation cannot flash as current. Local reads do not hydrate; visible demand and the explicit **Sync checks** action enqueue native intent.
 
-Provider cursors are opaque, versioned, account/actor/epoch/repository/subject/head/strategy-bound, and capped at 4 KiB. Initial and continued requests use the exact immutable head OID, never a mutable branch name. A cursor cannot change endpoint family, filters, page order, repository, subject, or head.
+The panel gives semantic text and icon/color-independent states for missing, unavailable/denied, loading, syncing, stale, partial, empty, pending, failed, passed, and unknown observations. It labels non-authoritative evidence explicitly, reads every saved local page for the aggregate, displays only the bounded first page, and says that it does not determine required checks or merge eligibility. Authorization/facet-bound local cursors fail closed if the generation changes during that read.
 
-Each provider page is at most 100 rows. One traversal is bounded to 20 pages and 1,000 normalized rows. Duplicate row identities, cursor loops/regression/skips, contradictory totals, foreign continuations, or a changed head fail closed. Full coverage is published only after a terminal traversal under a reconciliation strategy that can account for all intended endpoint families. Reaching a documented/provider/local cap publishes partial evidence, never complete emptiness or all-passed authority.
+## Local evidence
 
-Names are at most 16 KiB through the shared limit, state strings 256 bytes, descriptions 65,536 bytes, timestamps RFC 3339 up to 128 bytes, URLs are not accepted as navigation authority, and provider responses retain the existing 4 MiB transport ceiling.
+The following source-local checks pass on the implementation worktree:
 
-## Head changes, access and offline behavior
+* normal `make typegen`: 123 generated commands;
+* final serialized `make verify`: 681 frontend/SDK/UI tests passed with one platform skip, plus lint, desktop/E2E types, the production desktop build, Rust formatting, warning-denied workspace Clippy, and every default Rust suite;
+* the collaboration library reports 353 passed tests with one ignored process helper, plus all integration suites, including 19 facet reconciliation and 13 contextual capability tests;
+* `bun --cwd packages/collaboration-client test`: 156/156 tests;
+* focused desktop checks panel/contextual workspace tests: 17/17 tests;
+* GitHub's focused check adapter suite: 11/11, including invalid initial `CheckContext` rejection before HTTP;
+* two independent source/test audits reported no remaining blocker after the local paging/type boundary and GitHub context validation repairs;
+* formatting and diff whitespace checks.
 
-The trusted Body facet supplies the current head. Missing Body context schedules/coalesces Body hydration before Checks and preserves the original demand. A summary-only head cannot establish check authority. Any account epoch, authorization view, repository binding, Body metadata revision, or head change fences an in-flight page and makes the old snapshot stale before a replacement can publish.
+The source commit is signed and signature-verified locally. Packaged desktop/restart execution, remote CI, review publication, live GitHub/GitLab/Bitbucket accounts, private PAT scopes, production keyrings, Gitru cloud services, other-platform behavior, and provider-hosted required-check policy have not been exercised by this local fixture evidence.
 
-Authentication or permission failures update typed capability/sync evidence and keep retained private bytes unreadable under policy. Offline, rate-limited, and transient failures may leave a same-context cached snapshot readable with its saved freshness and sync state. They cannot upgrade partial coverage, clear a known snapshot, or relabel old-head results as current.
+## Remaining gates
 
-## Frontend query and subscription behavior
-
-The panel reads only generated local IPC through `@gitru/collaboration-client`. Visible demand and manual synchronization enqueue native intent; React query functions never call provider APIs. The panel renders missing, loading/syncing, stale, partial, denied, offline, empty, running, failed, passed, and unknown states distinctly. A head or Body revision change clears incompatible query data before refetch so prior-head green rows do not flash as current.
-
-The list is keyboard-readable, uses semantic status text in addition to color/icons, and bounds the first local page. It retains provider-neutral wording; native provider states can appear as secondary text without provider branches in common view logic.
-
-## Required evidence
-
-* fake-provider exact-head complete, empty, partial, permission, offline, rate-limit, restart, coalescing, and stale-head tests;
-* old-epoch and changed-Body/head completion rejection before publication;
-* local cache reopen before fresh interest with zero provider/vault calls;
-* provider fixtures for empty, multipage, malformed, duplicate, foreign-head, unknown-state, oversized, cap, permission, and quota responses;
-* contextual capability evidence for missing, syncing, complete-empty/nonempty, partial, offline, and denied;
-* frontend local-only reads, aggregate safety, query reset on head context change, and accessible state copy;
-* normal `make typegen`, focused suites, `make verify`, and packaged restart coverage when the public/native surface or retained harness changes.
-
-Local validation, exact-head remote CI, live public-provider sampling, private PAT/keyring behavior, and other-platform packaged execution are separate evidence. No merge is authorized.
+1. Freeze and signature-verify the scoped evidence commit.
+2. Publish a reviewable draft stacked on the exact RURU-137 base, attach it, and record exact-head remote CI separately.
+3. Keep live private-provider/PAT/keyring and packaged multi-platform validation as explicit follow-up evidence; do not infer them from fixtures.
 
 ## Ownership
 
-Branch `ruru/ruru-118-cached-checks` in the external managed worktree owns this contract; the provider check/status normalizers and fixtures; narrow common detail validation if needed; provider capability advertisement; generated IPC/client output only through `make typegen`; a dedicated cached checks panel and tests; and concise architecture/backlog progress records.
+Branch `ruru/ruru-118-cached-checks` in the external managed worktree owns this document; check models and aggregation; provider adapters/fixtures; narrow shared detail validation; Body/check-context fences; generated IPC/client integration; the dedicated local-only checks panel/tests; and architecture/backlog progress records.
 
-It does not touch the active RURU-137 or RURU-124 worktrees, change credential flows, add remote writes, implement guarded merge or required-check policy, or claim enterprise/Data Center support.
+It does not own the RURU-137 or RURU-124 worktrees, credential flows, remote writes, guarded merge, required-check policy, enterprise/Data Center support, or the RURU-119 diff slice.
