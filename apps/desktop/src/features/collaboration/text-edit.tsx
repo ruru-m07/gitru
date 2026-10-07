@@ -272,8 +272,9 @@ function TextEditForm({
           onCheckedChange={(checked) => setConsent(checked === true)}
         />
         <span id={consentId}>
-          I understand GitHub applies this as a best-effort update, so a remote
-          edit made at the same time may win.
+          I understand GitHub applies this as a best-effort update, so a
+          simultaneous edit may overwrite my change, or my change may overwrite
+          theirs.
         </span>
       </div>
       {baseChanged ? (
