@@ -1,8 +1,8 @@
 # RURU-128 — GitLab discussions and approval observations
 
-Status: implementation locally qualified, 8 October 2026; clean prerequisite restack and draft publication remain in progress. The original pre-code contract was signed as `fb1b5e1`.
+Status: clean scoped source replay complete, 8 October 2026; final-tree qualification and draft publication are in progress. The original pre-code contract was signed as `fb1b5e1`.
 
-[Linear RURU-128](https://linear.app/catra/issue/RURU-128/add-gitlab-discussion-and-approval-detail-facets) adds read-only GitLab.com collaboration facets through the existing native provider, SQLite detail projections, scheduler and cache-only UI. Initial isolated managed worktree starts at signed R127 `cfc5b2345f9ab2ac2ac813e4e05c497a679a8fb7` on `/Volumes/Lexar`. Signed prerequisite merge `c347e7d` consumes frozen R123 `f83b5fb`, R118 checks and the canonical recovery/delivery/intent lineage through schema 0018. R128 introduces no migration or parallel review storage.
+[Linear RURU-128](https://linear.app/catra/issue/RURU-128/add-gitlab-discussion-and-approval-detail-facets) adds read-only GitLab.com collaboration facets through the existing native provider, SQLite detail projections, scheduler and cache-only UI. The isolated managed worktree on `/Volumes/Lexar` was initially based on R127, but final scoped history replays only the R128 commits atop clean signed R123 `5a30303`. Its explicit integration base combines the existing R126, R118 and finalized R116 prerequisites through schema 0018. R127 to-do inbox changes are not inherited or required. R128 introduces no migration or parallel review storage.
 
 ## Source contract and scope
 
@@ -31,7 +31,7 @@ Shared local readers and subscriptions return immediately from SQLite and retain
 
 1. Sign this contract, record live blockers and agree R123 model seam.
 2. Add bounded GitLab wire normalization and secure native routes in this isolated worktree; no shared model changes until R123 freezes.
-3. Integrate exact signed R123/R118 prerequisites, then map GitLab data through the shared runtime, cache and panels. Preserve the R127 todo grants and native identities.
+3. Integrate exact signed R123/R118 prerequisites, then map GitLab data through the shared runtime, cache and panels. Preserve exact selected-repository membership and native identities.
 4. Add finite provider HTTP, storage/runtime restart/context, and shared UI tests with divergent native fields and missing/unknown evidence.
 5. Run normal `make typegen`, focused checks and full `make verify`; publish a signed reviewable draft, attach it and update Linear plus architecture/backlog with exact evidence. Remote CI and live provider/platform execution remain separate gates.
 
@@ -42,7 +42,7 @@ All feature edits belong only to `/Volumes/Lexar/.codex/wt/ruru-128-gitlab-detai
 - Native review-focused checks pass, including finite actual HTTP parsing/routes, quota preservation, caps, missing approval commit anchors, typed native DTO validation, and exact Body → review fetch → SQLite → fully closed offline reopen.
 - Held GitLab responses cannot cross a summary head change or a credential epoch cutover. Same-epoch rejected data still records consumed quota; an old epoch cannot mutate the new account budget.
 - A second native runtime fixture publishes 50 retained notes from a 51-note discussion as partial. Invalid native counts, OIDs and dates reject atomically without replacing the saved notes.
-- `make typegen` succeeds with 137 commands; the generated schema inventory is 433 and includes the boxed provider-tagged native position graph. SDK tests pass 187/187; the independent GitLab note display tests pass 3/3.
+- `make typegen` succeeds with 137 commands; the generated schema inventory is 431 and includes the boxed provider-tagged native position graph. SDK tests pass 187/187; the independent GitLab note display tests pass 3/3.
 - GitLab regression tests pass 106/106 before the final two added finite collection cases; the final focused adapter suite passes 17/17, native runtime cases pass 3/3, and integrated common/GitLab UI checks pass 6/6. The preliminary full crate run found inherited R123 schema-18 recovery and legacy capability/lifecycle fixture failures; signed canonical prerequisite fixes are now integrated.
 - Full `make verify` passes at signed source `440f6fe`: 766 frontend tests / one platform skip; 1,251 Rust reported passes / seven standalone helper ignores; lint, types, desktop build, formatting and strict workspace Clippy. This exact checkpoint is preserved on `ruru/ruru-128-pre-restack-440f6fe`; its log is `/tmp/gitru-r128-pre-restack-verify.log`.
-- Publication is held for clean dependency topology. R123 is preparing an explicit integration-only base from its intended prerequisite PRs. Replay only the R128 feature commits onto the final R123 head, remove the unrelated R127 ancestry (R128 has no strict todo API dependency), regenerate bindings and requalify. Preserve the existing checkpoint; never reset away uncommitted work. No PR has been opened yet. These are local synthetic checks; remote CI, live GitLab accounts, provider mutation, personal credentials and GUI/platform execution remain unclaimed.
+- Clean replay is complete atop signed R123 `5a30303`, with no R127 or old R128 ancestry. The prior implementation is preserved on `ruru/ruru-128-pre-restack`. Only the selected-repository read slice is inherited; the synthetic fixture no longer depends on the unrelated native inbox extension. Bindings are regenerated (137 commands / 431 schemas). Final-tree `make verify` is required before draft publication; no PR has been opened yet. These are local synthetic checks; remote CI, live GitLab accounts, provider mutation, personal credentials and GUI/platform execution remain unclaimed.
