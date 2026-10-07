@@ -10,10 +10,14 @@ const CURRENT: &str = "FROM notification_subject_selectors s JOIN accounts a ON 
 // contradict that resource. Retained/hidden canonical claims still participate.
 const IMMUTABLE_UNAMBIGUOUS: &str = "NOT EXISTS(SELECT 1 FROM resource_aliases own WHERE own.account_id=i.account_id AND own.instance_id=i.instance_id AND own.kind=i.kind AND own.entity_id=i.entity_id AND own.alias_kind='native' AND (EXISTS(SELECT 1 FROM resource_aliases other WHERE other.account_id=own.account_id AND other.instance_id=own.instance_id AND other.kind=own.kind AND other.alias_kind=own.alias_kind AND other.value=own.value AND other.repository_path=own.repository_path AND other.entity_id<>own.entity_id) OR EXISTS(SELECT 1 FROM pending_endpoint_aliases p JOIN resource_identities other ON other.account_id=p.account_id AND other.instance_id=p.instance_id AND other.kind=p.kind AND other.repository_provider_id=p.repository_provider_id AND other.number=p.number WHERE p.account_id=own.account_id AND p.instance_id=own.instance_id AND p.kind=own.kind AND p.native_identity=own.value AND own.repository_path='' AND other.entity_id<>own.entity_id)))";
 
+// Retained JSON from a prior adapter cannot borrow another provider's selector
+// semantics. GitLab grants always require the same observed immutable target.
+const NATIVE_SUBJECT_MATCH: &str = "((a.provider='github' AND json_extract(s.mapping_json,'$.value.subject_provider_id') IS NULL AND ((s.kind='pull_request' AND json_extract(s.mapping_json,'$.value.representation')='github_pull_request') OR (s.kind='issue' AND json_extract(s.mapping_json,'$.value.representation')='github_issue'))) OR (a.provider='gitlab' AND json_extract(s.mapping_json,'$.value.subject_provider_id')=i.provider_id AND ((s.kind='pull_request' AND json_extract(s.mapping_json,'$.value.representation')='gitlab_merge_request') OR (s.kind='issue' AND json_extract(s.mapping_json,'$.value.representation')='gitlab_issue'))))";
+
 fn provenance_sql(select: &str) -> String {
     let detail_scopes = super::details::scope_sql_list("i.entity_id");
     format!(
-        "{select} {CURRENT} AND s.account_id=i.account_id AND s.kind=i.kind AND s.instance_id=i.instance_id AND s.repository_provider_id=i.repository_provider_id AND s.number=i.number AND {IMMUTABLE_UNAMBIGUOUS} AND (SELECT count(*) FROM resource_identities c WHERE c.account_id=i.account_id AND c.instance_id=i.instance_id AND c.kind=i.kind AND c.repository_provider_id=i.repository_provider_id AND c.number=i.number)=1 AND NOT EXISTS(SELECT 1 FROM sync_scopes d WHERE d.account_id=i.account_id AND d.access_denied=1 AND d.scope IN ('repo:'||r.id||':'||i.kind,{detail_scopes},'notification_subject:'||s.notification_id))"
+        "{select} {CURRENT} AND s.account_id=i.account_id AND s.kind=i.kind AND s.instance_id=i.instance_id AND s.repository_provider_id=i.repository_provider_id AND s.number=i.number AND {NATIVE_SUBJECT_MATCH} AND {IMMUTABLE_UNAMBIGUOUS} AND (SELECT count(*) FROM resource_identities c WHERE c.account_id=i.account_id AND c.instance_id=i.instance_id AND c.kind=i.kind AND c.repository_provider_id=i.repository_provider_id AND c.number=i.number)=1 AND NOT EXISTS(SELECT 1 FROM sync_scopes d WHERE d.account_id=i.account_id AND d.access_denied=1 AND d.scope IN ('repo:'||r.id||':'||i.kind,{detail_scopes},'notification_subject:'||s.notification_id))"
     )
 }
 
@@ -156,6 +160,7 @@ fn validate_mapping(
     mapping: &NotificationSubjectMapping,
     repo: &RemoteRepository,
     same_observation: bool,
+    provider: ProviderKind,
 ) -> Result<()> {
     if encode(mapping)?.len() > 4096 {
         return Err(CollaborationError::invalid(
@@ -164,20 +169,34 @@ fn validate_mapping(
     }
     if let NotificationSubjectMapping::Selector(s) = mapping {
         let positive = |s: &str| s.parse::<u64>().is_ok_and(|v| v > 0 && v.to_string() == s);
+        let representation_matches = match (provider, s.kind, s.representation) {
+            (
+                ProviderKind::Github,
+                NotificationSubjectKind::PullRequest,
+                NotificationSubjectRepresentation::GithubPullRequest,
+            )
+            | (
+                ProviderKind::Github,
+                NotificationSubjectKind::Issue,
+                NotificationSubjectRepresentation::GithubIssue,
+            ) => s.subject_provider_id.is_none(),
+            (
+                ProviderKind::Gitlab,
+                NotificationSubjectKind::PullRequest,
+                NotificationSubjectRepresentation::GitlabMergeRequest,
+            )
+            | (
+                ProviderKind::Gitlab,
+                NotificationSubjectKind::Issue,
+                NotificationSubjectRepresentation::GitlabIssue,
+            ) => s.subject_provider_id.as_deref().is_some_and(positive),
+            _ => false,
+        };
         if !positive(&s.number)
             || !positive(&s.repository_provider_id)
             || s.repository_provider_id != repo.provider_id
             || (same_observation && s.repository_path != repo.full_name)
-            || !matches!(
-                (s.kind, s.representation),
-                (
-                    NotificationSubjectKind::PullRequest,
-                    NotificationSubjectRepresentation::GithubPullRequest
-                ) | (
-                    NotificationSubjectKind::Issue,
-                    NotificationSubjectRepresentation::GithubIssue
-                )
-            )
+            || !representation_matches
         {
             return Err(CollaborationError::invalid(
                 "Notification selector has the wrong immutable parent",
@@ -259,7 +278,7 @@ pub(super) async fn observe_in(
             .await
             .map_err(storage_error)?;
         let repo = repository_from_row(&row)?;
-        validate_mapping(&mapping, &repo, true)?;
+        validate_mapping(&mapping, &repo, true, account.provider)?;
         let json = encode(&mapping)?;
         let previous:Option<(String,String)>=sqlx::query_as("SELECT mapping_json,selector_generation FROM notification_subject_selectors WHERE account_id=? AND notification_id=?").bind(&account.id).bind(&item.id).fetch_optional(&mut **tx).await.map_err(storage_error)?;
         let generation = previous
@@ -372,7 +391,7 @@ async fn current_in(
             .unwrap_or(NotificationSubjectMapping::Fallback(
                 NotificationSubjectFallbackReason::MissingSubjectUrl,
             ));
-    validate_mapping(&mapping, &repository, false)?;
+    validate_mapping(&mapping, &repository, false, account.provider)?;
     let mut claims = Vec::new();
     let mut immutable_alias_ambiguous = false;
     if let NotificationSubjectMapping::Selector(s) = &mapping {
@@ -383,6 +402,7 @@ async fn current_in(
         let sql = format!(
             "SELECT entity_id,provider_id,{IMMUTABLE_UNAMBIGUOUS} AS immutable_unambiguous FROM resource_identities i WHERE account_id=? AND instance_id=? AND kind=? AND repository_provider_id=? AND number=? LIMIT 2"
         );
+        let mut locator_claims = 0;
         for row in sqlx::QueryBuilder::<Sqlite>::new(sql)
             .build()
             .bind(&account.id)
@@ -394,6 +414,13 @@ async fn current_in(
             .await
             .map_err(storage_error)?
         {
+            locator_claims += 1;
+            if s.subject_provider_id
+                .as_ref()
+                .is_some_and(|expected| expected != &row.get::<String, _>("provider_id"))
+            {
+                continue;
+            }
             immutable_alias_ambiguous |= !row.get::<bool, _>("immutable_unambiguous");
             claims.push(CanonicalResource {
                 account_id: account.id.clone(),
@@ -403,6 +430,9 @@ async fn current_in(
                 provider_id: row.get("provider_id"),
             });
         }
+        // Exact target evidence must not erase an existing ambiguous locator.
+        // This agrees with the same conservative count guard in provenance SQL.
+        immutable_alias_ambiguous |= locator_claims > 1;
     }
     Ok(Ok(Current {
         account,
@@ -1180,12 +1210,17 @@ impl Store {
 }
 
 fn safe_fallback(current: &Current) -> Option<String> {
-    // Public GitHub is the implemented adapter; future instances must own their routes.
-    if current.account.provider != ProviderKind::Github || current.account.host != "github.com" {
+    let gitlab =
+        current.account.provider == ProviderKind::Gitlab && current.account.host == "gitlab.com";
+    let github =
+        current.account.provider == ProviderKind::Github && current.account.host == "github.com";
+    if !gitlab && !github {
         return None;
     }
     let path = &current.repository.full_name;
-    if path.split('/').count() != 2
+    if path.len() > 1024
+        || (github && path.split('/').count() != 2)
+        || (gitlab && !path.contains('/'))
         || path.split('/').any(|s| {
             s.is_empty()
                 || s == "."
@@ -1197,19 +1232,18 @@ fn safe_fallback(current: &Current) -> Option<String> {
     {
         return None;
     }
+    let host = if gitlab { "gitlab.com" } else { "github.com" };
     Some(
         if let NotificationSubjectMapping::Selector(s) = &current.mapping {
-            format!(
-                "https://github.com/{path}/{}/{}",
-                if s.kind == NotificationSubjectKind::PullRequest {
-                    "pull"
-                } else {
-                    "issues"
-                },
-                s.number
-            )
+            let route = match (gitlab, s.kind) {
+                (true, NotificationSubjectKind::PullRequest) => "-/merge_requests",
+                (true, NotificationSubjectKind::Issue) => "-/issues",
+                (false, NotificationSubjectKind::PullRequest) => "pull",
+                (false, NotificationSubjectKind::Issue) => "issues",
+            };
+            format!("https://{host}/{path}/{route}/{}", s.number)
         } else {
-            format!("https://github.com/{path}")
+            format!("https://{host}/{path}")
         },
     )
 }

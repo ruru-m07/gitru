@@ -37,6 +37,7 @@ fn request(kind: Kind) -> TrustedNotificationSubjectRequest {
             selected: false,
         },
         selector: NotificationSubjectSelector {
+            subject_provider_id: None,
             kind,
             repository_provider_id: "9007199254741021".into(),
             number: if kind == Kind::PullRequest {

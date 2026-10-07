@@ -1,6 +1,8 @@
 //! Synthetic second-provider qualification; no production credential or API.
 #[path = "gitlab_resource_reads_tests.rs"]
 mod resource_reads_tests;
+#[path = "gitlab_todo_tests.rs"]
+mod todo_tests;
 
 use super::*;
 use crate::{
@@ -388,8 +390,10 @@ async fn actual_keyset_resume_rename_selection_and_complete_absence_use_shared_s
                 "",
                 &serde_json::json!([project(2, "group/second")]).to_string(),
             ),
-            // Selecting a repository now admits its actual common MR/issue
-            // feeds. Drain those before this repository-only reconciliation.
+            // The resumed account refresh also admits pending/done todos;
+            // selected MR/issue jobs interleave between those two pages.
+            response(200, "", "[]"),
+            response(200, "", "[]"),
             response(200, "", "[]"),
             response(200, "", "[]"),
             response(
@@ -457,8 +461,9 @@ async fn actual_keyset_resume_rename_selection_and_complete_absence_use_shared_s
         .select_repository(&account.id, &repository.id, true)
         .await
         .unwrap();
-    assert!(runtime.run_next().await);
-    assert!(runtime.run_next().await);
+    for _ in 0..4 {
+        assert!(runtime.run_next().await);
+    }
     let before = database
         .scope_state(&account.id, "repositories")
         .await
@@ -520,11 +525,13 @@ async fn actual_keyset_resume_rename_selection_and_complete_absence_use_shared_s
             .is_err()
     );
     let calls = task.join().unwrap();
-    assert_eq!(calls.len(), 9);
+    assert_eq!(calls.len(), 11);
     assert!(calls[3].contains("id_after=1"));
-    assert!(calls[4].starts_with("GET /api/v4/projects/1/merge_requests?"));
-    assert!(calls[5].starts_with("GET /api/v4/projects/1/issues?"));
-    assert!(calls[6].starts_with("GET /api/v4/projects?"));
+    assert!(calls[4].starts_with("GET /api/v4/todos?state=pending"));
+    assert!(calls[5].starts_with("GET /api/v4/projects/1/merge_requests?"));
+    assert!(calls[6].starts_with("GET /api/v4/projects/1/issues?"));
+    assert!(calls[7].starts_with("GET /api/v4/todos?state=done"));
+    assert!(calls[8].starts_with("GET /api/v4/projects?"));
 }
 
 #[tokio::test]

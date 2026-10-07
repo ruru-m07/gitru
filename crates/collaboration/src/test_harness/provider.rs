@@ -84,6 +84,7 @@ pub(super) fn repository(account: &RemoteAccount) -> RemoteRepository {
 
 pub(super) fn subject(account: &RemoteAccount, observed_at: &str) -> RemoteItem {
     RemoteItem {
+        native_inbox: None,
         id: SUBJECT_ID.into(),
         account_id: account.id.clone(),
         repository_id: Some(REPOSITORY_ID.into()),
@@ -124,6 +125,7 @@ pub(super) fn notifications(account: &RemoteAccount, observed_at: &str) -> Vec<R
     ]
     .into_iter()
     .map(|(id, provider_id, title)| RemoteItem {
+        native_inbox: None,
         id: id.into(),
         account_id: account.id.clone(),
         repository_id: Some(REPOSITORY_ID.into()),

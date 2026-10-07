@@ -158,13 +158,14 @@ async fn projects_keep_large_ids_subgroups_unicode_and_server_keyset_continuatio
 fn implemented_read_profile_never_infers_future_permissions() {
     let provider = GitlabProvider::new().unwrap();
     let profile = provider.profile(&request().account);
-    assert_eq!(profile.inbox_semantics, InboxSemantics::None);
+    assert_eq!(profile.inbox_semantics, InboxSemantics::Todos);
     for facet in super::super::FACETS {
         assert_eq!(
             profile.facet(facet).state,
             if matches!(
                 facet,
                 ResourceFacet::Repositories
+                    | ResourceFacet::Inbox
                     | ResourceFacet::PullRequests
                     | ResourceFacet::Issues
                     | ResourceFacet::PullDetails
@@ -178,10 +179,7 @@ fn implemented_read_profile_never_infers_future_permissions() {
             }
         );
     }
-    assert_eq!(
-        profile.facet(ResourceFacet::Inbox).reason,
-        Some(CapabilityReason::ProviderSemantics)
-    );
+    assert_eq!(profile.facet(ResourceFacet::Inbox).reason, None);
 }
 
 #[tokio::test]
@@ -197,9 +195,10 @@ async fn unsupported_feed_detail_and_foreign_installation_make_zero_requests() {
     );
     let mut input = request();
     input.kind = FeedKind::Notifications;
+    input.account.state = AccountState::AuthRequired;
     assert_eq!(
         provider.fetch_page(&token(), input).await.unwrap_err().kind,
-        ProviderErrorKind::Unsupported
+        ProviderErrorKind::Authentication
     );
     let mut input = request();
     input.account.host = "gitlab.company.invalid".into();

@@ -49,6 +49,7 @@ const page = {
         is_draft: null,
         reason: "review_requested",
         unread: true,
+        native_inbox: null,
       },
       local: localState,
     },
@@ -133,5 +134,67 @@ describe("generated local inbox IPC wire", () => {
         expected_generation: 9007199254740992,
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("generated native todo wire", () => {
+  it.each([
+    "pending",
+    "done",
+  ] as const)("preserves %s completion independently of local disposition", (completion) => {
+    const parsed = InboxPageSchema.parse({
+      ...page,
+      entries: [
+        {
+          ...page.entries[0],
+          item: {
+            ...page.entries[0].item,
+            id: "gitlab:todo:9007199254740993",
+            provider_id: "9007199254740993",
+            state: completion,
+            unread: null,
+            native_inbox: {
+              source: "todo",
+              completion,
+              action: "mentioned",
+              target_type: "MergeRequest",
+            },
+          },
+        },
+      ],
+    });
+    expect(parsed.entries[0].item.native_inbox).toEqual({
+      source: "todo",
+      completion,
+      action: "mentioned",
+      target_type: "MergeRequest",
+    });
+    expect(parsed.entries[0].item.unread).toBeNull();
+    expect(parsed.entries[0].local.disposition).toBe("done");
+    expect(parsed.entries[0].item.provider_id).toBe("9007199254740993");
+  });
+  it("rejects missing completion, unknown completion and provider unread masquerading as a todo", () => {
+    for (const native_inbox of [
+      { source: "todo", action: "mentioned", target_type: "Issue" },
+      {
+        source: "todo",
+        completion: "read",
+        action: "mentioned",
+        target_type: "Issue",
+      },
+      { source: "todo", unread: true },
+      { source: "unknown", completion: "pending" },
+    ])
+      expect(
+        InboxPageSchema.safeParse({
+          ...page,
+          entries: [
+            {
+              ...page.entries[0],
+              item: { ...page.entries[0].item, native_inbox },
+            },
+          ],
+        }).success,
+      ).toBe(false);
   });
 });

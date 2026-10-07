@@ -377,7 +377,7 @@ export function ConnectGitlabForm() {
       </div>
       <p className="text-xs leading-relaxed text-muted-foreground">
         Connect with a personal access token to browse your repositories, merge
-        requests, and issues. GitLab inbox isn’t supported in Gitru yet.
+        requests, issues, and to-dos. To-do completion is managed in GitLab.
       </p>
       <Field name="gitlab-token">
         <FieldLabel htmlFor={tokenId}>GitLab personal access token</FieldLabel>

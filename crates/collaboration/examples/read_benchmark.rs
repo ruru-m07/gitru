@@ -56,6 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|offset| {
                 let number = batch * 100 + offset;
                 RemoteItem {
+                    native_inbox: None,
                     id: format!("benchmark-item-{number:05}"),
                     account_id: account.id.clone(),
                     repository_id: Some(repository.id.clone()),

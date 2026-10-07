@@ -777,6 +777,7 @@ async fn notification_point_discovery_accounts_the_shared_detail_transaction() {
             vec![NotificationSubjectObservation {
                 notification_id: "notification".into(),
                 mapping: NotificationSubjectMapping::Selector(NotificationSubjectSelector {
+                    subject_provider_id: None,
                     kind: NotificationSubjectKind::PullRequest,
                     repository_provider_id: "1".into(),
                     number: "68".into(),

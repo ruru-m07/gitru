@@ -650,6 +650,7 @@ describe("generated collaboration wire contract", () => {
           is_draft: null,
           reason: null,
           unread: true,
+          native_inbox: null,
         },
       ],
       revision: "5",

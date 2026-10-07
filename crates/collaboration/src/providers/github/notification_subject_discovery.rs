@@ -71,6 +71,7 @@ fn validate_request(
         || request.selector.repository_path != request.repository.full_name
         || !valid_repository_path(&request.repository.full_name)
         || !canonical_positive(&request.repository.provider_id)
+        || request.selector.subject_provider_id.is_some()
         || !canonical_positive(&request.selector.number)
         || !canonical_positive(&request.account.authorization_epoch)
         || !canonical_positive(&request.authorization_view)
@@ -213,6 +214,7 @@ fn normalize_response(
     // A temporary DTO carries only the now-verified native coordinates. The
     // canonical storage identity may already have a different opaque local ID.
     let mut subject = RemoteItem {
+        native_inbox: None,
         id: format!(
             "github:{}:{native_id}",
             if kind == RemoteItemKind::PullRequest {

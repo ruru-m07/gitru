@@ -62,7 +62,7 @@ enum PullCommitPreparation {
     NeedsBody {
         account: RemoteAccount,
         repository: RemoteRepository,
-        subject: RemoteItem,
+        subject: Box<RemoteItem>,
     },
 }
 
@@ -238,7 +238,7 @@ impl CollaborationRuntime {
                         return Ok(PullCommitPreparation::NeedsBody {
                             account,
                             repository,
-                            subject,
+                            subject: Box::new(subject),
                         });
                     }
                     Err(error) => return Err(error),

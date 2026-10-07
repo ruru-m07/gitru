@@ -45,6 +45,7 @@ pub(super) enum FeedPosition {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Operation {
     User,
+    Todos { done: bool, page: u64 },
     Projects,
     Feed { project: u64, route: ItemRoute },
     Detail,
@@ -85,6 +86,24 @@ impl GitlabHttp {
     }
     pub(super) fn user(&self) -> Url {
         self.base.join("user").expect("constant route")
+    }
+    pub(super) fn todos(&self, done: bool, page: u64) -> Result<Url, ProviderError> {
+        if page == 0 {
+            return Err(invalid());
+        }
+        let mut url = self.base.join("todos").map_err(|_| invalid())?;
+        url.query_pairs_mut()
+            .append_pair("state", if done { "done" } else { "pending" })
+            .append_pair("per_page", "50")
+            .append_pair("page", &page.to_string());
+        Ok(url)
+    }
+    fn todo_continuation(&self, raw: &str, done: bool, page: u64) -> Result<Url, ProviderError> {
+        let url = self.check_raw(raw)?;
+        if self.operation(&url)? != (Operation::Todos { done, page }) {
+            return Err(invalid());
+        }
+        Ok(url)
     }
     pub(super) fn projects(&self) -> Url {
         self.base
@@ -247,6 +266,28 @@ impl GitlabHttp {
         Ok(url)
     }
     fn operation(&self, url: &Url) -> Result<Operation, ProviderError> {
+        if url.path() == self.base.join("todos").map_err(|_| invalid())?.path() {
+            let mut pairs = std::collections::HashMap::new();
+            for (key, value) in url.query_pairs() {
+                if pairs.insert(key.to_string(), value.to_string()).is_some() {
+                    return Err(invalid());
+                }
+            }
+            let done = match pairs.remove("state").as_deref() {
+                Some("pending") => false,
+                Some("done") => true,
+                _ => return Err(invalid()),
+            };
+            let page = pairs
+                .remove("page")
+                .as_deref()
+                .and_then(positive_id)
+                .ok_or_else(invalid)?;
+            if pairs.remove("per_page").as_deref() != Some("50") || !pairs.is_empty() {
+                return Err(invalid());
+            }
+            return Ok(Operation::Todos { done, page });
+        }
         if *url == self.user() {
             return Ok(Operation::User);
         }
@@ -475,6 +516,11 @@ impl GitlabHttp {
                 if let Some(next) = &next {
                     let validated = match operation {
                         Operation::Projects => self.continuation(next),
+                        Operation::Todos { done, page } => self.todo_continuation(
+                            next,
+                            done,
+                            page.checked_add(1).ok_or_else(invalid)?,
+                        ),
                         Operation::Feed { project, route } => {
                             self.resource_continuation(next, project, route)
                         }

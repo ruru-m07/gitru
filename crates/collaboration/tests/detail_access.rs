@@ -26,6 +26,7 @@ fn account(id: &str, host: &str) -> RemoteAccount {
 
 fn subject(account: &str, id: &str) -> RemoteItem {
     RemoteItem {
+        native_inbox: None,
         id: id.into(),
         account_id: account.into(),
         repository_id: Some(REPOSITORY.into()),

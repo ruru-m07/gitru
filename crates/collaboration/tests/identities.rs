@@ -35,6 +35,7 @@ fn item(
     number: &str,
 ) -> RemoteItem {
     RemoteItem {
+        native_inbox: None,
         id: id.into(),
         account_id: account.into(),
         repository_id: Some(repo.into()),

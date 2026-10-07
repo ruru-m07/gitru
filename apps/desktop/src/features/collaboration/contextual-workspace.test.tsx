@@ -172,6 +172,15 @@ describe("ordinary collaboration workspace across provider policies", () => {
           kind: "notification",
           state,
           unread: semantics === "todos" ? null : true,
+          native_inbox:
+            semantics === "todos"
+              ? {
+                  source: "todo",
+                  completion: "pending",
+                  action: "mentioned",
+                  target_type: "MergeRequest",
+                }
+              : { source: "notification", unread: true },
         },
       ]);
     });
@@ -253,6 +262,7 @@ describe("ordinary collaboration workspace across provider policies", () => {
       kind: "notification" as const,
       state: "unread",
       unread: true,
+      native_inbox: null,
     };
     mockTauriCommandResult(
       "collaboration_inbox",
@@ -355,6 +365,7 @@ describe("ordinary collaboration workspace across provider policies", () => {
       kind: "notification" as const,
       state: "unread",
       unread: true,
+      native_inbox: null,
     };
     const inbox = mockTauriCommandResult(
       "collaboration_inbox",
@@ -394,6 +405,7 @@ describe("ordinary collaboration workspace across provider policies", () => {
       kind: "notification" as const,
       state: "unread",
       unread: true,
+      native_inbox: null,
     };
     mockTauriCommandResult("collaboration_inbox", {
       ...fixtureInboxPage(),
@@ -446,6 +458,7 @@ describe("ordinary collaboration workspace across provider policies", () => {
       kind: "notification" as const,
       state: "unread",
       unread: true,
+      native_inbox: null,
     };
     const cursors: Array<string | null> = [];
     mockTauriCommand("collaboration_inbox", (payload) => {
@@ -496,6 +509,7 @@ describe("ordinary collaboration workspace across provider policies", () => {
       kind: "notification" as const,
       state: "unread",
       unread: true,
+      native_inbox: null,
     };
     const deadline = new Date(Date.now() + 1_000).toISOString();
     const cursors: Array<string | null> = [];

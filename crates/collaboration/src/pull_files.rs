@@ -1380,6 +1380,7 @@ mod tests {
             selected: true,
         };
         let subject = RemoteItem {
+            native_inbox: None,
             id: "pull-1".into(),
             account_id: account.id.clone(),
             repository_id: Some(repository.id.clone()),

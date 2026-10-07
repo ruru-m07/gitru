@@ -101,6 +101,7 @@ export type {
   LocalTransportBinding,
   MetadataFieldEvidence,
   NativeDetailPayload,
+  NativeInboxState,
   NotificationSubjectQuery,
   NotificationSubjectSnapshot,
   OpenLocalPullCommitReceipt,
@@ -141,6 +142,7 @@ export type {
   SetLocalInboxStateRequest,
   TaskActor,
   TaskV1,
+  TodoCompletion,
   TransportBindingRequest,
 } from "@gitru/commands";
 export { StaleAuthorizationError } from "./authorization-fence";
