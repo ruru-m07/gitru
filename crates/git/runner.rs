@@ -319,7 +319,19 @@ impl GitCommandTransaction {
         args: &[&str],
         maximum: usize,
     ) -> Result<(Vec<u8>, i32), crate::models::remotes::RemoteObservationError> {
-        self.sensitive_read_inner(args, maximum, None).await
+        self.sensitive_read_inner(args, maximum, None, false).await
+    }
+
+    /// Bounded local-only metadata/content read. In addition to the sensitive
+    /// command policy, this forbids every Git transport and disables pagers,
+    /// system attributes and lazy object hydration. Callers must still pass
+    /// command-specific defenses such as `--no-ext-diff` and `--no-textconv`.
+    pub(crate) async fn sensitive_local_read(
+        &mut self,
+        args: &[&str],
+        maximum: usize,
+    ) -> Result<(Vec<u8>, i32), crate::models::remotes::RemoteObservationError> {
+        self.sensitive_read_inner(args, maximum, None, true).await
     }
 
     /// Run a sensitive command with one private command-scope Git config
@@ -333,7 +345,7 @@ impl GitCommandTransaction {
         value: &str,
         protocol: SensitiveRemoteProtocol,
     ) -> Result<(Vec<u8>, i32), crate::models::remotes::RemoteObservationError> {
-        self.sensitive_read_inner(args, maximum, Some((key, value, protocol)))
+        self.sensitive_read_inner(args, maximum, Some((key, value, protocol)), false)
             .await
     }
 
@@ -342,6 +354,7 @@ impl GitCommandTransaction {
         args: &[&str],
         maximum: usize,
         private_config: Option<(&str, &str, SensitiveRemoteProtocol)>,
+        local_only: bool,
     ) -> Result<(Vec<u8>, i32), crate::models::remotes::RemoteObservationError> {
         use crate::models::remotes::RemoteObservationError as Error;
         let binary = git_binary_path().map_err(|_| Error::Unavailable)?;
@@ -358,6 +371,9 @@ impl GitCommandTransaction {
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
         configure_sensitive_command(&mut command, std::env::vars_os().map(|(key, _)| key));
+        if local_only {
+            configure_local_only_read(&mut command);
+        }
         if let Some((key, value, protocol)) = private_config {
             configure_private_transport(&mut command, key, value, protocol);
         }
@@ -437,6 +453,12 @@ fn configure_sensitive_command(
                 || upper == "GIT_EXEC_PATH"
                 || upper == "GIT_ALLOW_PROTOCOL"
                 || upper == "GIT_PROTOCOL_FROM_USER"
+                || upper == "GIT_EXTERNAL_DIFF"
+                || upper == "GIT_DIFF_OPTS"
+                || upper == "GIT_PAGER"
+                || upper == "GIT_ATTR_NOSYSTEM"
+                || upper == "GIT_CONFIG_NOSYSTEM"
+                || upper == "GIT_LITERAL_PATHSPECS"
                 || matches!(
                     upper.as_str(),
                     "GIT_DIR"
@@ -469,6 +491,23 @@ fn configure_sensitive_command(
     // commands while retaining normal OpenSSH config, agent and key discovery.
     command.env("GIT_SSH_COMMAND", SENSITIVE_SSH_COMMAND);
     command.env("GIT_SSH_VARIANT", "ssh");
+}
+
+fn configure_local_only_read(command: &mut tokio::process::Command) {
+    command.env("GIT_ALLOW_PROTOCOL", "");
+    command.env("GIT_PROTOCOL_FROM_USER", "0");
+    command.env("GIT_NO_LAZY_FETCH", "1");
+    command.env("GIT_NO_REPLACE_OBJECTS", "1");
+    command.env("GIT_ATTR_NOSYSTEM", "1");
+    command.env("GIT_CONFIG_NOSYSTEM", "1");
+    command.env("GIT_LITERAL_PATHSPECS", "1");
+    command.env(
+        "GIT_GRAFT_FILE",
+        if cfg!(windows) { "NUL" } else { "/dev/null" },
+    );
+    command.env("GIT_PAGER", "cat");
+    command.env("PAGER", "cat");
+    command.env("LC_ALL", "C");
 }
 
 fn configure_private_transport(
