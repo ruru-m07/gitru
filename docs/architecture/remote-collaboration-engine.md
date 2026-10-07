@@ -3318,10 +3318,16 @@ provider activity re-surfaces done or snoozed rows even when remotely read.
 
 Local qualification passes normal 125-command type generation, every default
 collaboration Rust suite, warning-denied collaboration/native Clippy, 27 native
-caller-policy tests, 156 collaboration-client tests and 234 desktop
+caller-policy tests, 156 collaboration-client tests and 237 desktop
 collaboration tests plus their type/lint gates, Rust formatting and diff checks.
 Focused controls cover cold restart, account/access/CAS isolation, all filters,
 literal search and stable cursors, exact snooze expiry, cache clear and stale UI
-recovery. Packaged multi-process restart, remote CI, other platforms and live
-provider/PAT/keyring behavior remain separate gates. No PR is published or
-merged by this local source checkpoint.
+recovery. Local actions also fence the exact provider activity the renderer saw;
+external activity/account changes clear stale detail and paged cursors.
+
+The signed release-mode five-process harness passes from source head
+`cc832aa7672729a7762adc9b0059d77d409cf3d8`: crash-after-commit persists exact
+done, snoozed and bookmarked generation-1 projections without increasing
+provider/vault counters, and the fresh restart reads byte-equivalent SQLite
+evidence with provider and vault access both `0 -> 0`. Remote CI, other platforms
+and live provider/PAT/keyring behavior remain separate gates. No PR is merged.

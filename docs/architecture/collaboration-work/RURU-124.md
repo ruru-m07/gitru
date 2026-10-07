@@ -253,25 +253,37 @@ snoozed rows, including remotely read rows; equal and older observations do not.
 The same native query applies provider/local filters, literal FTS search,
 pagination, badge pages and the next relevant UTC transition.
 
+The final admission fence compares both the caller's expected CAS generation and
+the exact provider activity timestamp that was visible when the action was
+chosen. A provider observation that wins the serialized writer race returns
+`stale_view` without changing authored state. “New activity” is shown only when
+that observation actually overrides an active done or future-snooze intent;
+bookmark-only and expired-snooze rows do not claim a superseding event.
+
 Generated IPC now exposes the two cache-local commands through
 `@gitru/commands`; the collaboration client fences reads and writes by account
 epoch and invalidates inbox projections for both provider and local revisions.
-The desktop Inbox presents provider and local selectors/badges separately and
-offers keyboard-accessible bookmark, one-hour snooze, local Done and Move to
-inbox controls. A stale CAS reloads SQLite. Deadline handling returns paged
-views to their first page, checks at most once per minute while active and
-rechecks after focus; it still makes no exact alarm or correct-system-clock
-claim.
+The desktop Inbox presents provider and local selectors/badges separately,
+always labels the provider state, and offers keyboard-accessible bookmark,
+one-hour snooze, local Done and Move to inbox controls. Done and active-snooze
+rows can return directly to Inbox. A stale CAS, account/epoch cut or external
+notification/local-state change closes stale detail and returns pagination to
+the SQLite root. Deadline handling does the same at expiry, checks at most once
+per minute while active and rechecks after focus; it still makes no exact alarm
+or correct-system-clock claim.
 
 Local source qualification at this worktree passes:
 
+* full `make verify`, including 683 frontend tests with one platform fixture
+  skipped, lint/type/build gates, warning-denied workspace Clippy and every
+  default Rust workspace test;
 * `make typegen` with 125 generated commands;
-* `cargo test -p collaboration`, including six focused local-inbox integration
+* `cargo test -p collaboration`, including seven focused local-inbox integration
   cases, the exact-deadline unit control and the frozen-v1 migration upgrade;
 * `cargo clippy -p collaboration -p gitru --all-targets -- -D warnings`;
 * `cargo test -p gitru` with 27 passing native caller-policy tests;
 * collaboration-client typecheck/lint and 156 tests across 19 files;
-* desktop typecheck/lint and 234 collaboration feature tests across 18 files;
+* desktop typecheck/lint and 237 collaboration feature tests across 18 files;
 * `cargo fmt --all --check` and `git diff --check`.
 
 The focused native cases also prove restart persistence for done, bookmark and
@@ -281,7 +293,15 @@ filter; search/cursor invalidation; past, invalid and over-30-day deadline
 rejection; and authored-state survival across provider-cache clearing. The
 queries and writes call no adapter, vault or Gitru cloud service.
 
-Packaged multi-process restart qualification, fresh remote CI, other-platform
-execution and live-provider/PAT/keyring behavior remain separate gates. No
-personal credential or provider endpoint was used, no provider write was added,
-and no PR is published or merged by this source checkpoint.
+The retained release-mode five-process harness passed from signed source head
+`cc832aa7672729a7762adc9b0059d77d409cf3d8`. The crash-after-commit process
+wrote exact generation-1 done, snoozed and bookmarked projections while provider
+calls stayed `3 -> 3` and vault loads stayed `2 -> 2`. The fresh restart process
+read byte-equivalent entry evidence from the same SQLite database with provider
+calls `0 -> 0` and vault loads `0 -> 0`. The local artifact is
+`artifacts/e2e-harness/2026-10-07T18-59-55-857Z-31542` and retains the existing
+exact pull-commit restart proof as well.
+
+Fresh remote CI, other-platform execution and live-provider/PAT/keyring behavior
+remain separate gates. No personal credential or provider endpoint was used and
+no provider write was added. No merge is authorized.
