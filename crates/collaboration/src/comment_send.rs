@@ -95,6 +95,8 @@ pub struct CreatedCommentReceipt {
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreatedCommentPage {
+    pub account_id: String,
+    pub subject_id: String,
     pub comments: Vec<CreatedCommentReceipt>,
     pub next_cursor: Option<String>,
     pub revision: String,
