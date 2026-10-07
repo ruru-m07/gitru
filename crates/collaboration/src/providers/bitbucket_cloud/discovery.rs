@@ -255,6 +255,7 @@ impl BitbucketCloudProvider {
                 | Route::PullRequest(..)
                 | Route::Tasks(..)
                 | Route::Commits(..)
+                | Route::PullFiles { .. }
                 | Route::Statuses(..)
                 | Route::Commit(..) => {
                     return Err(invalid());

@@ -9,6 +9,7 @@ use serde::Deserialize;
 mod checks;
 mod comments;
 mod commits;
+mod files;
 mod issue_details;
 mod notification_subject_discovery;
 pub mod notification_subjects;
@@ -73,7 +74,10 @@ impl CollaborationProvider for GithubProvider {
                 ResourceFacet::PullDetails | ResourceFacet::IssueDetails
             ) || matches!(
                 facet.facet,
-                ResourceFacet::Comments | ResourceFacet::PullCommits | ResourceFacet::Checks
+                ResourceFacet::Comments
+                    | ResourceFacet::PullCommits
+                    | ResourceFacet::PullFiles
+                    | ResourceFacet::Checks
             ) && account.provider == ProviderKind::Github
                 && account.host == "github.com"
             {
@@ -115,6 +119,38 @@ impl CollaborationProvider for GithubProvider {
         }
     }
 
+    async fn fetch_pull_files(
+        &self,
+        token: &SecretToken,
+        request: PullFileCollectionRequest,
+    ) -> Result<PullFileProviderPage, ProviderError> {
+        self.request_pull_files(token, request).await
+    }
+    async fn fetch_pull_file_artifact(
+        &self,
+        token: &SecretToken,
+        request: PullFileSelectedRequest,
+    ) -> Result<PullFileArtifactRead, ProviderError> {
+        self.request_selected_pull_file(token, request).await
+    }
+    async fn validate_selected_pull_file_range(
+        &self,
+        token: &SecretToken,
+        request: PullFileSelectedRequest,
+    ) -> Result<PullFileRangeValidationResult, ProviderError> {
+        request
+            .validate()
+            .map_err(|_| ProviderError::new(ProviderErrorKind::InvalidResponse))?;
+        self.request_file_source_range(token, request.resource)
+            .await
+    }
+    async fn validate_pull_file_range(
+        &self,
+        token: &SecretToken,
+        request: PullFileCollectionRequest,
+    ) -> Result<PullFileRangeValidationResult, ProviderError> {
+        self.request_pull_file_range(token, request).await
+    }
     async fn fetch_checks(
         &self,
         token: &SecretToken,
@@ -867,3 +903,6 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod files_tests;

@@ -16,6 +16,11 @@ pub(super) enum Route {
     PullRequest(String, u64),
     Tasks(String, u64),
     Commits(String, u64),
+    PullFiles {
+        repository: String,
+        base: String,
+        head: String,
+    },
     Statuses(String, String),
     Commit(String, String),
 }
@@ -62,6 +67,23 @@ impl BitbucketHttp {
                     return Err(invalid());
                 }
                 format!("repositories/%7B{workspace}%7D?role=member&pagelen=50")
+            }
+            Route::PullFiles {
+                repository,
+                base,
+                head,
+            } => {
+                if super::canonical_uuid(repository)? != *repository
+                    || !crate::is_canonical_pull_file_oid(base)
+                    || !crate::is_canonical_pull_file_oid(head)
+                {
+                    return Err(invalid());
+                }
+                // Bitbucket spec order is source..destination (opposite git diff).
+                // topic=true selects the PR merge-base comparison explicitly.
+                format!(
+                    "repositories/%7B%7D/%7B{repository}%7D/diffstat/{head}..{base}?topic=true&renames=true&pagelen=100"
+                )
             }
             Route::PullRequests(repository)
             | Route::PullRequest(repository, _)
@@ -371,4 +393,126 @@ pub(super) fn quota(mut error: ProviderError, wait: Option<u64>) -> ProviderErro
 
 pub(super) fn invalid() -> ProviderError {
     ProviderError::new(ProviderErrorKind::InvalidResponse)
+}
+
+pub(super) struct SelectedDiff {
+    pub text: Result<String, crate::pull_files::diff::PullFileTextError>,
+    pub cooldown: Option<u64>,
+}
+impl BitbucketHttp {
+    /// A single native-selected path, exact object range, and fixed origin.
+    /// No redirects, response links, or renderer URLs participate in routing.
+    pub(super) async fn selected_diff(
+        &self,
+        repository: &str,
+        base: &str,
+        head: &str,
+        path: &str,
+        token: &SecretToken,
+    ) -> Result<SelectedDiff, ProviderError> {
+        use crate::pull_files::diff::{PullFileTextCollector, PullFileTextError};
+        if super::canonical_uuid(repository)? != repository
+            || !crate::is_canonical_pull_file_oid(base)
+            || !crate::is_canonical_pull_file_oid(head)
+            || path.is_empty()
+            || path.len() > crate::MAX_PULL_FILE_PATH_BYTES
+            || path.chars().any(char::is_control)
+        {
+            return Err(invalid());
+        }
+        let mut url = self
+            .base
+            .join(&format!(
+                "repositories/%7B%7D/%7B{repository}%7D/diff/{head}..{base}"
+            ))
+            .map_err(|_| invalid())?;
+        url.query_pairs_mut()
+            .append_pair("topic", "true")
+            .append_pair("renames", "true")
+            .append_pair("context", "3")
+            .append_pair("binary", "false")
+            .append_pair("path", path);
+        let mut authorization =
+            header::HeaderValue::from_str(&format!("Bearer {}", token.expose()))
+                .map_err(|_| ProviderError::new(ProviderErrorKind::Authentication))?;
+        authorization.set_sensitive(true);
+        let mut cooldown = None;
+        tokio::time::timeout(Duration::from_secs(20), async {
+            let mut response = self
+                .client
+                .get(url)
+                .header(header::AUTHORIZATION, authorization)
+                .header(header::ACCEPT, "text/plain")
+                .header(header::USER_AGENT, "Gitru-Desktop")
+                .send()
+                .await
+                .map_err(|error| {
+                    ProviderError::new(if error.is_connect() || error.is_timeout() {
+                        ProviderErrorKind::Offline
+                    } else {
+                        ProviderErrorKind::Unavailable
+                    })
+                })?;
+            cooldown = retry_after(response.headers());
+            let status = response.status();
+            if status == StatusCode::TOO_MANY_REQUESTS {
+                return Err(rate_limited(cooldown.unwrap_or(60)));
+            }
+            let kind = match status {
+                StatusCode::OK => None,
+                StatusCode::UNAUTHORIZED => Some(ProviderErrorKind::Authentication),
+                StatusCode::FORBIDDEN => Some(ProviderErrorKind::Permission),
+                StatusCode::NOT_FOUND | StatusCode::GONE => Some(ProviderErrorKind::NotFound),
+                _ if status.is_server_error() || status == StatusCode::REQUEST_TIMEOUT => {
+                    Some(ProviderErrorKind::Unavailable)
+                }
+                _ => Some(ProviderErrorKind::InvalidResponse),
+            };
+            if let Some(kind) = kind {
+                return Err(quota(ProviderError::new(kind), cooldown));
+            }
+            let content_type = response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.split(';').next())
+                .map(str::trim);
+            if !matches!(
+                content_type,
+                Some("text/plain" | "text/x-diff" | "text/x-patch")
+            ) {
+                return Err(quota(invalid(), cooldown));
+            }
+            if response
+                .content_length()
+                .is_some_and(|length| length > crate::MAX_PULL_FILE_TEXT_BYTES as u64)
+            {
+                return Ok(SelectedDiff {
+                    text: Err(PullFileTextError::ByteLimit),
+                    cooldown,
+                });
+            }
+            let mut collector = PullFileTextCollector::new();
+            while let Some(chunk) = response
+                .chunk()
+                .await
+                .map_err(|_| quota(ProviderError::new(ProviderErrorKind::Unavailable), cooldown))?
+            {
+                if let Err(error) = collector.push(&chunk) {
+                    // Dropping response aborts remaining transport bytes; never
+                    // cache a prefix or continue draining a whole PR response.
+                    return Ok(SelectedDiff {
+                        text: Err(error),
+                        cooldown,
+                    });
+                }
+            }
+            Ok(SelectedDiff {
+                text: collector.finish(),
+                cooldown,
+            })
+        })
+        .await
+        .map_err(|_| quota(ProviderError::new(ProviderErrorKind::Offline), cooldown))?
+    }
 }

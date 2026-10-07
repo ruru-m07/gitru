@@ -230,7 +230,7 @@ async fn seed_open_for(
 async fn seed(root: &Path) -> (RemoteAccount, String, LocalDraft) {
     let (store, _, _, runtime) = runtime(root).await;
     let seeded = seed_open(&store, &runtime).await;
-    store.close().await;
+    store.close().await.unwrap();
     drop(runtime);
     assert_eq!(
         Arc::strong_count(&store),
@@ -782,7 +782,7 @@ async fn gitlab_replacement_process_crashes_preserve_exact_grant_reference_and_p
         let directory = tempfile::tempdir().unwrap();
         let (store, _, _, runtime) = runtime_for(directory.path(), ProviderKind::Gitlab).await;
         let (old, old_ref, draft) = seed_open_for(&store, &runtime, ProviderKind::Gitlab).await;
-        store.close().await;
+        store.close().await.unwrap();
         drop(runtime);
         drop(store);
         kill_at_for(directory.path(), boundary, "replace", ProviderKind::Gitlab).await;
@@ -948,7 +948,7 @@ async fn gitlab_probe_quota_is_atomic_with_cutover_and_never_shortens_retained_b
                 )
                 .await
                 .unwrap();
-            store.close().await;
+            store.close().await.unwrap();
             drop(runtime);
             drop(store);
             Some(deadline)

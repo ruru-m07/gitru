@@ -1,4 +1,5 @@
 //! Typed local detail observations. Summary endpoints have no authority here.
+use crate::PendingItemIntent;
 use crate::resource_metadata::ResourceMetadataSnapshot;
 use crate::{
     CapabilityReason, CollaborationError, Coverage, NativeDetailPayload, RemoteItemKind,
@@ -16,10 +17,11 @@ pub enum DetailFacet {
     Participants,
     Tasks,
     Commits,
+    Files,
 }
 
 impl DetailFacet {
-    pub(crate) const ALL: [Self; 7] = [
+    pub(crate) const ALL: [Self; 8] = [
         Self::Body,
         Self::Comments,
         Self::Reviews,
@@ -27,6 +29,7 @@ impl DetailFacet {
         Self::Participants,
         Self::Tasks,
         Self::Commits,
+        Self::Files,
     ];
     pub(crate) fn field_limit(self) -> usize {
         if self == Self::Tasks { 12 } else { 6 }
@@ -43,6 +46,7 @@ impl DetailFacet {
             (Self::Participants, RemoteItemKind::PullRequest) => Some(ResourceFacet::Participants),
             (Self::Tasks, RemoteItemKind::PullRequest) => Some(ResourceFacet::Tasks),
             (Self::Commits, RemoteItemKind::PullRequest) => Some(ResourceFacet::PullCommits),
+            (Self::Files, RemoteItemKind::PullRequest) => Some(ResourceFacet::PullFiles),
             _ => None,
         }
     }
@@ -55,6 +59,7 @@ impl DetailFacet {
             Self::Participants => "participants",
             Self::Tasks => "tasks",
             Self::Commits => "commits",
+            Self::Files => "files",
         }
     }
     pub fn scope(self, subject_id: &str) -> String {
@@ -75,6 +80,7 @@ impl DetailFacet {
                 "participants" => Self::Participants,
                 "tasks" => Self::Tasks,
                 "commits" => Self::Commits,
+                "files" => Self::Files,
                 _ => return None,
             },
         ))
@@ -172,7 +178,7 @@ impl DetailField {
             DetailFacet::Participants => self.is_participant(),
             DetailFacet::Tasks => self.is_task(),
             DetailFacet::Checks => self.is_check() || self == Self::HeadOid,
-            DetailFacet::Commits => false,
+            DetailFacet::Commits | DetailFacet::Files => false,
             _ => !self.is_participant() && !self.is_task() && !self.is_check(),
         }
     }
@@ -265,6 +271,8 @@ pub struct DetailQuery {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DetailSnapshot {
     pub subject_id: String,
+    /// Authored fields shown over the saved provider evidence below.
+    pub pending_intent: Option<PendingItemIntent>,
     pub body: DetailValue,
     pub metadata: Option<ResourceMetadataSnapshot>,
     pub entries: Vec<DetailEntry>,

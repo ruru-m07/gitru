@@ -29,6 +29,7 @@ pub(super) async fn invalidate_declared_head_in(
     subject: &str,
     head: Option<&str>,
 ) -> Result<()> {
+    super::pull_files::head_observed_in(tx, account, subject, head).await?;
     let rows = sqlx::query("SELECT facet,source_json FROM detail_observations WHERE account_id=? AND subject_id=? AND facet<>'body' AND authorization_epoch=?")
         .bind(&account.id).bind(subject).bind(&account.authorization_epoch).fetch_all(&mut **tx).await.map_err(storage_error)?;
     for row in rows {
@@ -104,6 +105,7 @@ struct DetailCursor {
     facet: DetailFacet,
     authorization_view: String,
     facet_revision: Option<String>,
+    effective_revision: String,
     last_id: String,
 }
 
@@ -1120,6 +1122,7 @@ impl Store {
             detail_evidence_in(&mut tx, &account, &query.subject_id, query.facet).await?;
         let mut result = DetailSnapshot {
             subject_id: query.subject_id.clone(),
+            pending_intent: None,
             body: DetailValue::default(),
             metadata: None,
             entries: vec![],
@@ -1136,6 +1139,12 @@ impl Store {
             result.metadata =
                 super::resource_metadata::read_in(&mut tx, &account, &query.subject_id).await?;
         }
+        let effective_revision = if query.facet == DetailFacet::Body {
+            super::effective::subject_revision_in(&mut tx, &query.account_id, &query.subject_id)
+                .await?
+        } else {
+            "0".into()
+        };
         let mut after = String::new();
         if let Some(cursor) = query.cursor {
             let cursor: DetailCursor =
@@ -1145,6 +1154,7 @@ impl Store {
                 || cursor.facet != query.facet
                 || cursor.authorization_view != result.authorization_view
                 || cursor.facet_revision != result.evidence.facet_revision
+                || cursor.effective_revision != effective_revision
             {
                 return Err(stale());
             }
@@ -1159,6 +1169,30 @@ impl Store {
         for row in rows.into_iter().take(query.limit as usize) {
             result.entries.push(decode(row.get("json"))?);
         }
+        if query.facet == DetailFacet::Body {
+            result.pending_intent =
+                super::effective::pending_in(&mut tx, &query.account_id, &[&query.subject_id])
+                    .await?
+                    .pop();
+            if let Some(patch) =
+                super::effective::patch_in(&mut tx, &query.account_id, &query.subject_id).await?
+            {
+                if let Some(body) = patch.body {
+                    result.body = DetailValue {
+                        state: crate::DetailValueState::Known,
+                        text: body.text,
+                    };
+                }
+                if let Some(metadata) = &mut result.metadata {
+                    if let Some(title) = patch.title {
+                        metadata.values.title = Some(title);
+                    }
+                    if let Some(state) = patch.state {
+                        metadata.values.state = Some(state);
+                    }
+                }
+            }
+        }
         if has_more {
             result.next_cursor = Some(encode(&DetailCursor {
                 account: query.account_id,
@@ -1166,6 +1200,7 @@ impl Store {
                 facet: query.facet,
                 authorization_view: result.authorization_view.clone(),
                 facet_revision: result.evidence.facet_revision.clone(),
+                effective_revision,
                 last_id: result.entries.last().ok_or_else(invalid_detail)?.id.clone(),
             })?);
         }
@@ -1179,7 +1214,7 @@ impl Store {
         subject_id: &str,
         facet: DetailFacet,
     ) -> Result<String> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         epoch_in(&mut tx, account_id, epoch).await?;
         let subject = subject_in(&mut tx, account_id, subject_id).await?;
@@ -1278,7 +1313,7 @@ impl Store {
         subject_id: &str,
         facet: DetailFacet,
     ) -> Result<()> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         epoch_in(&mut tx, account_id, epoch).await?;
         sqlx::query("UPDATE detail_demand SET requested=0 WHERE account_id=? AND subject_id=? AND facet=? AND authorization_epoch=?")
@@ -1295,7 +1330,7 @@ impl Store {
         facet: DetailFacet,
         lease: &DetailLease,
     ) -> Result<()> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         validate_lease_in(&mut tx, account_id, epoch, subject_id, facet, lease).await?;
         sqlx::query("UPDATE detail_demand SET requested=0 WHERE account_id=? AND subject_id=? AND facet=? AND authorization_epoch=?")
@@ -1338,10 +1373,10 @@ impl Store {
         facet: DetailFacet,
         expected_authorization_view: Option<&str>,
     ) -> Result<DetailLease> {
-        if facet == DetailFacet::Commits {
+        if matches!(facet, DetailFacet::Commits | DetailFacet::Files) {
             return Err(invalid_detail());
         }
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         epoch_in(&mut tx, account_id, epoch).await?;
         let (_, authorization_view) = metadata(&mut tx).await?;
@@ -1456,7 +1491,7 @@ impl Store {
     }
 
     pub async fn apply_detail(&self, page: DetailCommit) -> Result<String> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let revision = apply_detail_in(&mut tx, page).await?;
         tx.commit().await.map_err(storage_error)?;
@@ -1473,7 +1508,7 @@ impl Store {
         facet: DetailFacet,
         lease: &DetailLease,
     ) -> Result<String> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         validate_lease_in(&mut tx, account_id, epoch, subject_id, facet, lease).await?;
         let scope = facet.scope(subject_id);
@@ -1502,7 +1537,7 @@ pub(super) async fn apply_detail_in(
     tx: &mut Transaction<'_, Sqlite>,
     mut page: DetailCommit,
 ) -> Result<String> {
-    if page.facet == DetailFacet::Commits
+    if matches!(page.facet, DetailFacet::Commits | DetailFacet::Files)
         || page.entries.len() > 100
         || page.source.source.is_empty()
         || page.source.source.len() > 256
@@ -1798,6 +1833,8 @@ pub(super) async fn apply_detail_in(
             .bind(&page.account_id).bind(&page.subject_id).bind(tag(&page.facet)?).bind(&page.authorization_epoch).bind(&revision).bind(encode(&body)?).bind(encode(&native_source)?).bind(value_source.map(|s|encode(&s)).transpose()?).bind(tag(&observed_state)?).bind(stale_at).execute(&mut **tx).await.map_err(storage_error)?;
     if page.facet == DetailFacet::Body {
         super::resource_metadata::apply_in(tx, &page, &subject.kind).await?;
+        super::pull_files::body_observed_in(tx, &page.account_id, &page.subject_id, &revision)
+            .await?;
         let saved_metadata = super::resource_metadata::read_in(tx, &account, &subject.id).await?;
         let saved_head = saved_metadata.as_ref().and_then(|metadata| {
             metadata

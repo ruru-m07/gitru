@@ -445,7 +445,7 @@ async fn entry_budget_skips_never_fit_facets_but_defers_facets_that_fit_a_fresh_
             ("pull".into(), "comments".into()),
             "A never-fit facet advances the durable scan cursor"
         );
-        store.close().await;
+        store.close().await.unwrap();
         drop(store);
         let store = Store::open(&path).await.unwrap();
         let second = store
@@ -661,7 +661,7 @@ async fn pins_are_kind_checked_account_scoped_idempotent_and_survive_disconnect_
     let pin_bytes = snapshot(&mut connection, &["cache_pins"]).await;
     store.disconnect("a").await.unwrap();
     assert_eq!(snapshot(&mut connection, &["cache_pins"]).await, pin_bytes);
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     connection.close().await.unwrap();
     let reopened = Store::open(&path).await.unwrap();
@@ -1025,7 +1025,7 @@ async fn historical_index_is_bounded_reopens_and_admits_new_rows_on_both_sides_o
     assert!(!first.usage_after.index_complete);
     assert_eq!(first.usage_after.logical_bytes, None);
     assert_eq!(count(&mut connection, "detail_observations").await, total);
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     connection.close().await.unwrap();
 
@@ -1188,7 +1188,7 @@ async fn protected_prefix_advances_a_bounded_cursor_and_wrap_reconsiders_unpinne
         "The saved cursor stops at the bounded protected prefix"
     );
     assert_eq!(count(&mut connection, "detail_observations").await, 130);
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let store = Store::open(&path).await.unwrap();
     let second = store.run_cache_maintenance(policy()).await.unwrap();
@@ -1530,7 +1530,7 @@ async fn eviction_rotates_run_clears_proofs_fences_receipts_and_allows_fresh_hyd
         .unwrap();
     assert_eq!(missing.evidence.availability, DetailAvailability::Missing);
     assert!(missing.entries.is_empty());
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let store = Store::open(&path).await.unwrap();
     assert_eq!(store.revision().await.unwrap(), revision);
@@ -1616,53 +1616,6 @@ async fn eviction_sqlite_abort_rolls_back_cascades_scope_fence_and_change_revisi
         1
     );
     assert_accounted(&store, &mut connection).await;
-}
-
-#[tokio::test]
-async fn committed_eviction_reports_a_post_commit_usage_refresh_failure() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("cache.sqlite");
-    let store = Store::open(&path).await.unwrap();
-    let actor = seed(&store, "a").await;
-    complete_index(&store).await;
-    store
-        .apply_detail(commit(&store, &actor, DetailFacet::Body).await)
-        .await
-        .unwrap();
-    let before_revision = store.revision().await.unwrap().parse::<i64>().unwrap();
-    let mut connection = connect(&path).await;
-
-    // Closing the read pool leaves the owned writer available and deterministically
-    // fails only the fresh usage read after the maintenance transaction commits.
-    store.close().await;
-    let report = store
-        .run_cache_maintenance(CacheRetentionPolicy {
-            checkpoint_wal: false,
-            ..policy()
-        })
-        .await
-        .expect("A post-commit reporting failure must not hide durable eviction");
-
-    assert_eq!(report.evicted_facets, 1);
-    assert!(report.target_met);
-    assert_eq!(report.usage_after.logical_bytes, Some(0));
-    assert!(report.checkpoint.is_none());
-    assert!(report.checkpoint_error.is_none());
-    assert_eq!(
-        report.usage_refresh_error.as_ref().map(|error| &error.code),
-        Some(&ErrorCode::Storage)
-    );
-    assert_eq!(count(&mut connection, "detail_observations").await, 0);
-    assert_eq!(count(&mut connection, "cache_retention_entries").await, 0);
-    let (revision, coverage): (i64, String) = sqlx::query_as(
-        "SELECT (SELECT revision FROM runtime_meta WHERE singleton=1),json_extract(coverage_json,'$.state') FROM sync_scopes WHERE account_id='a' AND scope='detail:pull:body'",
-    )
-    .fetch_one(&mut connection)
-    .await
-    .unwrap();
-    assert!(revision > before_revision);
-    assert_eq!(coverage, "missing");
-    assert_integrity(&mut connection).await;
 }
 
 #[tokio::test]

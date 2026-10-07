@@ -5,6 +5,11 @@ pub mod bitbucket_cloud;
 mod contract_tests;
 pub mod github;
 pub mod gitlab;
+mod pull_file_selection;
+mod pull_files;
+pub use pull_file_selection::{
+    PullFileArtifactRead, PullFileSelectedRequest, PullFileSourceRequest,
+};
 mod registry;
 mod transport;
 
@@ -14,6 +19,7 @@ pub use transport::{ProviderError, ProviderErrorKind};
 
 use crate::{
     CollaborationError, ErrorCode, credentials::SecretToken, detail::*, domain::*, pull_commits::*,
+    pull_files::*,
 };
 use async_trait::async_trait;
 
@@ -81,6 +87,16 @@ pub struct DetailPage {
     pub etag: Option<String>,
     pub not_modified: bool,
     pub freshness_seconds: u32,
+    pub cooldown_seconds: Option<u64>,
+}
+
+/// Fresh parent evidence; terminal activation must compare exact counts when
+/// available and preserve provider cap evidence even without a next page.
+#[derive(Debug, Clone)]
+pub struct PullFileRangeValidationResult {
+    pub validation: PullFileRangeValidation,
+    pub expected_file_count: Option<u32>,
+    pub collection_cap: Option<PullFileCapEvidence>,
     pub cooldown_seconds: Option<u64>,
 }
 
@@ -188,6 +204,34 @@ pub trait CollaborationProvider: Send + Sync + 'static {
             retry_after_seconds: None,
             account_cooldown_seconds: None,
         })
+    }
+    async fn fetch_pull_files(
+        &self,
+        _token: &SecretToken,
+        _request: PullFileCollectionRequest,
+    ) -> Result<PullFileProviderPage, ProviderError> {
+        Err(ProviderError::new(ProviderErrorKind::Unsupported))
+    }
+    async fn validate_pull_file_range(
+        &self,
+        _token: &SecretToken,
+        _request: PullFileCollectionRequest,
+    ) -> Result<PullFileRangeValidationResult, ProviderError> {
+        Err(ProviderError::new(ProviderErrorKind::Unsupported))
+    }
+    async fn fetch_pull_file_artifact(
+        &self,
+        _token: &SecretToken,
+        _request: PullFileSelectedRequest,
+    ) -> Result<PullFileArtifactRead, ProviderError> {
+        Err(ProviderError::new(ProviderErrorKind::Unsupported))
+    }
+    async fn validate_selected_pull_file_range(
+        &self,
+        _token: &SecretToken,
+        _request: PullFileSelectedRequest,
+    ) -> Result<PullFileRangeValidationResult, ProviderError> {
+        Err(ProviderError::new(ProviderErrorKind::Unsupported))
     }
     fn notification_subject_support(
         &self,

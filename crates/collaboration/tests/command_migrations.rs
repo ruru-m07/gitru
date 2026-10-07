@@ -115,7 +115,7 @@ async fn frozen_v12_upgrade_preserves_all_old_rows_and_original_ledger_bytes() {
     let ledger:Vec<String>=sqlx::query_scalar("SELECT json_array(version,description,installed_on,success,hex(checksum),execution_time) FROM _sqlx_migrations ORDER BY version").fetch_all(&mut connection).await.unwrap();
     connection.close().await.unwrap();
     let store = Store::open(&path).await.unwrap();
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let mut connection = connect(&path).await;
     assert_eq!(snapshot(&mut connection, &tables).await, before);
@@ -256,7 +256,7 @@ async fn fault_case(fault: Fault) {
     integrity(&mut connection).await;
     connection.close().await.unwrap();
     let store = Store::open(&path).await.unwrap();
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
 }
 #[tokio::test]

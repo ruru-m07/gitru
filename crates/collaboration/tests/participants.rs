@@ -233,7 +233,7 @@ async fn native_fields_merge_independently_and_cold_reopen_preserves_exact_saved
             .all(|field| field.validated_at == THIRD)
     );
     assert_eq!(store.draft("a", "pull").await.unwrap(), Some(draft.clone()));
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let reopened = Store::open(directory.path().join("participants.sqlite"))
         .await

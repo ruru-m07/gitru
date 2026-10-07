@@ -4,6 +4,7 @@ use crate::contextual_capabilities::*;
 use crate::detail::{DetailAvailability, DetailFacet, DetailValueState};
 use crate::providers::{FACETS, ProviderProfile};
 use crate::pull_commits::PullCommitCompletenessState;
+use crate::pull_files::PullFileCompletenessState;
 
 #[derive(Default)]
 struct Evidence {
@@ -310,6 +311,7 @@ fn applicable(target: &CapabilityTarget, facet: ResourceFacet) -> bool {
                     | ResourceFacet::Participants
                     | ResourceFacet::Tasks
                     | ResourceFacet::PullCommits
+                    | ResourceFacet::PullFiles
                     | ResourceFacet::Merge
             ),
             Some(ResourceKind::Issue) => matches!(
@@ -554,6 +556,33 @@ async fn facet_evidence(
             sync_denied: commits.denied,
             observation: Some(observation),
             sync: commits.sync,
+            synchronize_blocked: false,
+        });
+    }
+    if facet == ResourceFacet::PullFiles
+        && let Some(subject_id) = &target.resource_id
+    {
+        let files = super::pull_files::capability_evidence_in(tx, account, subject_id).await?;
+        let observation = match files.completeness.state {
+            PullFileCompletenessState::Missing | PullFileCompletenessState::Syncing => {
+                CapabilityObservation::NotLoaded
+            }
+            PullFileCompletenessState::Complete if files.row_count == 0 => {
+                CapabilityObservation::Empty
+            }
+            PullFileCompletenessState::Complete => CapabilityObservation::Complete,
+            PullFileCompletenessState::Capped | PullFileCompletenessState::Partial => {
+                CapabilityObservation::Partial
+            }
+        };
+        return Ok(Evidence {
+            reason: files
+                .denied
+                .then_some(ContextCapabilityReason::PermissionDenied),
+            recheckable: files.denied && bound.resource_saved,
+            sync_denied: files.denied,
+            observation: Some(observation),
+            sync: files.sync,
             synchronize_blocked: false,
         });
     }

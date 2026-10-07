@@ -522,7 +522,7 @@ async fn bitbucket_known_actor_invalid_presentation_keeps_quota_without_replacin
         assert!(!runtime.run_next().await);
         assert_eq!(vault.loads.load(Ordering::SeqCst), loads);
         assert_eq!(fixture.count(), calls + 1);
-        database.close().await;
+        database.close().await.unwrap();
         drop(runtime);
         drop(database);
         let reopened = store(dir.path()).await;
@@ -633,7 +633,7 @@ async fn bitbucket_uuid_rename_selection_and_private_draft_survive_inert_cold_re
     let snapshot = database.repositories(&account.id).await.unwrap();
     assert_eq!(snapshot.coverage.state, CoverageState::Complete);
     let calls = fixture.count();
-    database.close().await;
+    database.close().await.unwrap();
     drop(runtime);
     drop(database);
     let reopened = store(dir.path()).await;
@@ -917,7 +917,7 @@ async fn bitbucket_actual_permission_loss_and_replacement_never_cross_account_or
     );
     let other_rows = database.repositories(&other.id).await.unwrap();
     let calls = fixture.count();
-    database.close().await;
+    database.close().await.unwrap();
     drop(runtime);
     drop(database);
     let reopened = store(dir.path()).await;
@@ -986,7 +986,7 @@ async fn bitbucket_opaque_loop_history_survives_job_yield_reopen_and_rejected_pa
         rows, complete.repositories,
         "Partial pages do not infer historical absence"
     );
-    database.close().await;
+    database.close().await.unwrap();
     drop(runtime);
     drop(database);
     let reopened = store(dir.path()).await;
@@ -1129,7 +1129,7 @@ async fn bitbucket_twenty_page_cap_is_durable_across_jobs_reopen_and_manual_refr
         rows, complete.repositories,
         "Partial pages do not infer historical absence"
     );
-    database.close().await;
+    database.close().await.unwrap();
     drop(runtime);
     drop(database);
     let reopened = store(dir.path()).await;

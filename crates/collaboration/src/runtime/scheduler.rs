@@ -37,7 +37,9 @@ impl Scheduler {
         }
         if !matches!(
             kind,
-            JobKind::Detail { .. } | JobKind::NotificationSubject { .. }
+            JobKind::Detail { .. }
+                | JobKind::PullFileArtifact { .. }
+                | JobKind::NotificationSubject { .. }
         ) {
             return false;
         }
@@ -171,7 +173,9 @@ impl Scheduler {
                     && self.interactive(job)
                     && matches!(
                         job.kind,
-                        JobKind::Detail { .. } | JobKind::NotificationSubject { .. }
+                        JobKind::Detail { .. }
+                            | JobKind::PullFileArtifact { .. }
+                            | JobKind::NotificationSubject { .. }
                     )
             });
         let has_index = interactive
@@ -185,7 +189,9 @@ impl Scheduler {
                 && (!interactive
                     || matches!(
                         job.kind,
-                        JobKind::Detail { .. } | JobKind::NotificationSubject { .. }
+                        JobKind::Detail { .. }
+                            | JobKind::PullFileArtifact { .. }
+                            | JobKind::NotificationSubject { .. }
                     ) == detail)
         };
         let accounts: BTreeSet<_> = self
@@ -233,7 +239,16 @@ impl CollaborationRuntime {
         scope: String,
         reason: Admission,
     ) -> Result<String, CollaborationError> {
-        let key = format!("{}:{}:{scope}", account.id, account.authorization_epoch);
+        if self.is_stopping() {
+            return Err(shutdown::stopped());
+        }
+        let mut key = format!("{}:{}:{scope}", account.id, account.authorization_epoch);
+        if let JobKind::PullFileArtifact { request } = &kind {
+            key.push_str(&format!(
+                ":artifact:{}:{}",
+                request.file_facet_revision, request.file_key
+            ));
+        }
         let state = self.store.scope_state(&account.id, &scope).await?;
         let strict = state
             .as_ref()
@@ -403,6 +418,16 @@ impl CollaborationRuntime {
         }
         let seconds = match kind {
             JobKind::NotificationSubject { .. } => return Ok(self.now()),
+            JobKind::PullFileArtifact { request } => {
+                let artifact = self.store.pull_file_artifact((**request).clone()).await?;
+                return Ok(
+                    if artifact.artifact.is_none() || artifact.freshness != DetailFreshness::Fresh {
+                        self.now()
+                    } else {
+                        self.deadline_after(60)
+                    },
+                );
+            }
             JobKind::Feed(FeedKind::Repositories) => {
                 if reason == Admission::Foreground {
                     120
@@ -419,6 +444,30 @@ impl CollaborationRuntime {
                 }
             }
             JobKind::Detail { subject_id, facet } => {
+                if *facet == DetailFacet::Files {
+                    let snapshot = self
+                        .store
+                        .pull_files(PullFileQuery {
+                            account_id: account.id.clone(),
+                            subject_id: subject_id.clone(),
+                            cursor: None,
+                            limit: 1,
+                        })
+                        .await?;
+                    if snapshot.context.is_none()
+                        || matches!(
+                            snapshot.completeness.state,
+                            PullFileCompletenessState::Missing
+                                | PullFileCompletenessState::Syncing
+                                | PullFileCompletenessState::Partial
+                        )
+                        || snapshot.freshness != DetailFreshness::Fresh
+                        || snapshot.sync.state == SyncState::Syncing
+                    {
+                        return Ok(self.now());
+                    }
+                    return Ok(cached.unwrap_or_else(|| self.deadline_after(60)));
+                }
                 if *facet == DetailFacet::Commits {
                     let snapshot = self
                         .store

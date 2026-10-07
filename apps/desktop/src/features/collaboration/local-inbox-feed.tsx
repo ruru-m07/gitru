@@ -76,6 +76,9 @@ export function LocalInboxFeed({
   const [mutating, setMutating] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const page = canReadSaved(policy) ? query.data : undefined;
+  const pendingSubjects = new Set(
+    page?.pending_intents.map((intent) => intent.subject_id),
+  );
   const selected = page?.entries.find(
     (entry) => entry.item.id === selectedItem,
   );
@@ -177,7 +180,7 @@ export function LocalInboxFeed({
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-2">
         <span className="text-xs text-muted-foreground">
           {page
-            ? `${page.entries.length} saved items${search ? " matching your search" : " on this page"}`
+            ? `${page.total_count} saved items${search ? " matching your search" : " matching these filters"}`
             : "Saved activity"}
         </span>
         {page ? (
@@ -298,6 +301,11 @@ export function LocalInboxFeed({
                               ? "Provider unread"
                               : "Provider read"}
                         </Badge>
+                        {pendingSubjects.has(entry.item.id) ? (
+                          <Badge variant="outline" size="sm">
+                            Pending changes
+                          </Badge>
+                        ) : null}
                         <Badge variant="outline" size="sm">
                           Local {entry.local.effective_disposition}
                         </Badge>

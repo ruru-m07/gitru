@@ -487,6 +487,11 @@ async fn singleton_body_and_metadata_have_independent_endpoint_authority() {
     assert_eq!(metadata.values.head.as_ref().unwrap().oid, HEAD);
     assert_eq!(metadata.values.base.as_ref().unwrap().oid, BASE);
     assert_ne!(metadata.values.base.as_ref().unwrap().oid, MERGE_BASE);
+    assert_eq!(metadata.values.merge_base_oid.as_deref(), Some(MERGE_BASE));
+    assert_eq!(
+        observed(&page, MetadataField::MergeBase),
+        DetailValueState::Known
+    );
     let head_repository = metadata
         .values
         .head
@@ -695,6 +700,18 @@ async fn async_refs_require_known_matching_head_before_validating_base() {
         assert!(metadata.values.base.is_none());
         assert_eq!(metadata.values.title.as_deref(), Some("MR Δ 🚀"));
         assert_eq!(metadata.values.state.as_deref(), Some("open"));
+        assert_eq!(
+            observed(&page, MetadataField::MergeBase),
+            DetailValueState::Omitted
+        );
+        assert!(
+            page.metadata
+                .as_ref()
+                .unwrap()
+                .values
+                .merge_base_oid
+                .is_none()
+        );
         task.join().unwrap();
     }
 }

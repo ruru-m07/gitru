@@ -63,6 +63,7 @@ export function fixtureMetadata(
         },
       },
       merged_at: null,
+      merge_base_oid: null,
     },
     fields: fields.map((field) => ({
       field,
@@ -84,6 +85,8 @@ export function fixtureBody(
   overrides: Partial<DetailSnapshot> = {},
 ): DetailSnapshot {
   return {
+    pending_intent: null,
+
     subject_id: fixtureItem.id,
     body: { state: "known", text: "Full cached resource description" },
     metadata: fixtureMetadata(),

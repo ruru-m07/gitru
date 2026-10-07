@@ -28,6 +28,7 @@ import { ConversationCommentsPanel } from "./conversation-comments-panel";
 import { NativeParticipantsPanel } from "./native-participants-panel";
 import { NativeTasksPanel } from "./native-tasks-panel";
 import { PullCommitsPanel } from "./pull-commits-panel";
+import { PullFilesPanel } from "./pull-files-panel";
 
 const facetLabels: Record<DetailFacet, string> = {
   body: "Full description",
@@ -37,6 +38,7 @@ const facetLabels: Record<DetailFacet, string> = {
   participants: "Participants",
   tasks: "Tasks",
   commits: "Commits",
+  files: "Files",
 };
 
 export function ResourceCapabilityPanels({
@@ -108,6 +110,22 @@ export function ResourceCapabilityPanels({
         authorizationView={snapshot?.authorization_view}
         policy={facetPolicy(snapshot, "comments")}
       />
+      {kind === "pull_request" ? (
+        <PullFilesPanel
+          key={JSON.stringify([
+            "files",
+            account.id,
+            account.actor_id,
+            account.authorization_epoch,
+            subjectId,
+          ])}
+          account={account}
+          subjectId={subjectId}
+          instanceId={instanceId}
+          repositoryId={repositoryId}
+          policy={facetPolicy(snapshot, "pull_files")}
+        />
+      ) : null}
       {kind === "pull_request" ? (
         <PullCommitsPanel
           key={JSON.stringify([
@@ -275,7 +293,10 @@ function ResourceFacetPanel({
                 </Badge>
               ) : null}
             </div>
-            {data.evidence.availability === "missing" ? (
+            {data.evidence.availability === "missing" &&
+            !data.pending_intent?.commands.some((command) =>
+              command.fields.includes("body"),
+            ) ? (
               <p className="text-xs text-muted-foreground">
                 Not saved on this device yet. Sync this facet to load it.
               </p>

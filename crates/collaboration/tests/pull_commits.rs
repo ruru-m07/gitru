@@ -887,7 +887,7 @@ async fn drift_and_restart_never_replace_the_readable_generation() {
     assert_eq!(error.code, ErrorCode::StaleView);
     let retained = store.pull_commits(query("a", None, 100)).await.unwrap();
     assert_eq!(retained.commits, before.commits);
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let reopened = Store::open(&path).await.unwrap();
     let after_restart = reopened.pull_commits(query("a", None, 100)).await.unwrap();
@@ -1627,7 +1627,7 @@ async fn retention_counts_staging_and_active_rows_and_honors_authored_pins() {
             .commits
             .is_empty()
     );
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let reopened = Store::open(&path).await.unwrap();
     assert!(

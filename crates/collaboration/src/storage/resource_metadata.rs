@@ -3,7 +3,7 @@ use super::*;
 use crate::{detail::*, resource_metadata::*};
 
 const MAX_METADATA_BYTES: usize = 262_144;
-// Thirteen fields can grow their RFC3339 validation strings during a 304.
+// Metadata fields can grow their RFC3339 validation strings during a 304.
 const VALIDATION_RESERVE_BYTES: usize = 8_192;
 
 pub(super) async fn read_in(
@@ -74,6 +74,7 @@ fn copy_field(
         MetadataField::IsDraft => target.is_draft = source.is_draft,
         MetadataField::Head => target.head = source.head.clone(),
         MetadataField::Base => target.base = source.base.clone(),
+        MetadataField::MergeBase => target.merge_base_oid = source.merge_base_oid.clone(),
         MetadataField::MergedAt => target.merged_at = source.merged_at.clone(),
     }
 }
@@ -105,7 +106,7 @@ fn validate(observation: &ResourceMetadataObservation) -> Result<()> {
     if !matches!(
         observation.kind,
         RemoteItemKind::PullRequest | RemoteItemKind::Issue
-    ) || observation.fields.len() > 13
+    ) || observation.fields.len() > MetadataField::COMMON.len() + MetadataField::PULL.len()
         || observation.fields.iter().enumerate().any(|(i, f)| {
             !f.field.supports(&observation.kind)
                 || observation.fields[..i]
@@ -145,6 +146,9 @@ fn validate(observation: &ResourceMetadataObservation) -> Result<()> {
         })
         || v.head.as_ref().is_some_and(|b| !branch(b))
         || v.base.as_ref().is_some_and(|b| !branch(b))
+        || v.merge_base_oid
+            .as_ref()
+            .is_some_and(|oid| !crate::is_canonical_commit_oid(oid))
         || encode(v)?.len() > MAX_METADATA_BYTES
     {
         return Err(invalid_detail());
@@ -186,6 +190,27 @@ pub(super) async fn apply_in(
                 })
                 .collect(),
         });
+    // Add newly understood fields to older snapshots with no authority. A 304
+    // cannot bless them; only a later explicit field observation can do so.
+    for field in MetadataField::COMMON
+        .into_iter()
+        .chain(if *kind == RemoteItemKind::PullRequest {
+            MetadataField::PULL.to_vec()
+        } else {
+            vec![]
+        })
+    {
+        if !saved.fields.iter().any(|evidence| evidence.field == field) {
+            saved.fields.push(MetadataFieldEvidence {
+                field,
+                saved_state: DetailValueState::NotLoaded,
+                observed_state: DetailValueState::NotLoaded,
+                validated_at: None,
+                stale_at: None,
+                source: None,
+            });
+        }
+    }
     let previous_source: Option<MetadataSource> = row
         .as_ref()
         .map(|r| decode(r.get("source_json")))

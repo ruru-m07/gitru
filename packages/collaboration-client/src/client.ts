@@ -21,6 +21,7 @@ import {
   type ItemPage,
   type ItemQuery,
   type ItemSnapshot,
+  type LoadLocalPullFileRequest,
   type LocalCloneRequest,
   type LocalCloneSnapshot,
   type LocalDraft,
@@ -40,6 +41,10 @@ import {
   type CollaborationPullCheckoutReceipt as PullCheckoutReceipt,
   type PullCommitQuery,
   type PullCommitSnapshot,
+  type PullFileArtifactSnapshot,
+  type PullFileDiffRequest,
+  type PullFileQuery,
+  type PullFileSnapshot,
   type RefreshReceipt,
   type RefreshRequest,
   type RemoteAccount,
@@ -82,6 +87,7 @@ export interface CollaborationTransport extends DemandTransport {
     request: LocalNavigationRequest,
   ): Promise<LocalNavigationReceipt>;
   listenLocalChanges(onWake: () => void): Promise<() => void>;
+  listenRuntimeReset(onReset: () => void): Promise<() => void>;
   accounts(): Promise<AccountSnapshot>;
   diagnostics(): Promise<SyncDiagnosticsSnapshot>;
   exportDiagnostics(): Promise<SyncDiagnosticsExportReceipt>;
@@ -123,6 +129,14 @@ export interface CollaborationTransport extends DemandTransport {
   ): Promise<ResourceResolution>;
   detail(query: DetailQuery): Promise<DetailSnapshot>;
   pullCommits(query: PullCommitQuery): Promise<PullCommitSnapshot>;
+  pullFiles(query: PullFileQuery): Promise<PullFileSnapshot>;
+  pullFileArtifact(
+    request: PullFileDiffRequest,
+  ): Promise<PullFileArtifactSnapshot>;
+  hydratePullFile(request: PullFileDiffRequest): Promise<RefreshReceipt>;
+  loadLocalPullFile(
+    request: LoadLocalPullFileRequest,
+  ): Promise<PullFileArtifactSnapshot>;
   hydrateDetail(request: HydrateDetailRequest): Promise<RefreshReceipt>;
   notificationSubject(
     query: NotificationSubjectQuery,
@@ -228,6 +242,20 @@ export const collaborationKeys = {
       account.authorization_epoch,
       "pull-commits",
       query,
+    ] as const,
+  pullFiles: (account: RemoteAccount, query: PullFileQuery) =>
+    [
+      ...collaborationKeys.account(account.id),
+      account.authorization_epoch,
+      "pull-files",
+      query,
+    ] as const,
+  pullFileArtifact: (account: RemoteAccount, request: PullFileDiffRequest) =>
+    [
+      ...collaborationKeys.account(account.id),
+      account.authorization_epoch,
+      "pull-file-artifact",
+      request,
     ] as const,
   notificationSubject: (account: RemoteAccount, notificationId: string) =>
     [
@@ -356,7 +384,7 @@ export class CollaborationClient {
       signal,
     );
   }
-  async invalidateLocalLinks() {
+  async invalidateLocalLinks(isCurrent: () => boolean = () => true) {
     this.fence.invalidate(LOCAL_LINKS_SCOPE);
     if (!this.queryClient) return;
     const affected = {
@@ -366,6 +394,7 @@ export class CollaborationClient {
           query.queryKey[4] === "local-clones"),
     };
     await this.queryClient.cancelQueries(affected);
+    if (!isCurrent()) return;
     await this.queryClient.invalidateQueries(affected);
   }
 
@@ -498,6 +527,56 @@ export class CollaborationClient {
           () =>
             this.transport.pullCommits({ ...query, account_id: account.id }),
           signal,
+        ),
+      pullFiles: (
+        query: Omit<PullFileQuery, "account_id">,
+        signal?: AbortSignal,
+      ) =>
+        read(
+          () => this.transport.pullFiles({ ...query, account_id: account.id }),
+          signal,
+        ),
+      pullFileArtifact: (
+        request: Omit<
+          PullFileDiffRequest,
+          "account_id" | "authorization_epoch"
+        >,
+        signal?: AbortSignal,
+      ) =>
+        read(
+          () =>
+            this.transport.pullFileArtifact({
+              ...request,
+              account_id: account.id,
+              authorization_epoch: account.authorization_epoch,
+            }),
+          signal,
+        ),
+      hydratePullFile: (
+        request: Omit<
+          PullFileDiffRequest,
+          "account_id" | "authorization_epoch"
+        >,
+      ) =>
+        this.fence.read(account.id, () =>
+          this.transport.hydratePullFile({
+            ...request,
+            account_id: account.id,
+            authorization_epoch: account.authorization_epoch,
+          }),
+        ),
+      loadLocalPullFile: (
+        request: Omit<
+          LoadLocalPullFileRequest,
+          "account_id" | "authorization_epoch"
+        >,
+      ) =>
+        read(() =>
+          this.transport.loadLocalPullFile({
+            ...request,
+            account_id: account.id,
+            authorization_epoch: account.authorization_epoch,
+          }),
         ),
       hydrateDetail: (
         request: Omit<
@@ -638,6 +717,21 @@ export class CollaborationClient {
     const stopDeadlines = installCapabilityDeadlines(queryClient);
     let disposed = false;
     let stopLocalChanges: (() => void) | undefined;
+    let stopRuntimeReset: (() => void) | undefined;
+    void this.transport
+      .listenRuntimeReset(() => {
+        if (disposed) return;
+        // Recovery replaces native runtime ownership independently of provider
+        // revisions. Fence in-flight snapshots immediately, including a cancel
+        // that reopens the same database revision under a fresh native owner.
+        this.resetLocalView();
+        void this.bridge?.restart();
+      })
+      .then((remove) => {
+        if (disposed) remove();
+        else stopRuntimeReset = remove;
+      })
+      .catch(() => {});
     void this.transport
       .listenLocalChanges(() => {
         if (!disposed) void this.invalidateLocalLinks();
@@ -662,7 +756,7 @@ export class CollaborationClient {
           };
         },
       },
-      async (batch) => {
+      async (batch, isCurrent) => {
         const authorizationChanged =
           this.authorizationView !== null &&
           batch.authorizationView !== this.authorizationView;
@@ -679,7 +773,8 @@ export class CollaborationClient {
               change.scope.startsWith("local_link:"),
           )
         )
-          await this.invalidateLocalLinks();
+          await this.invalidateLocalLinks(isCurrent);
+        if (!isCurrent()) return;
         for (const change of batch.changes) {
           if (change.reset) this.clearAccount(change.account_id);
           for (const listener of this.changeListeners) listener(change);
@@ -694,6 +789,7 @@ export class CollaborationClient {
           // Authored writes have their own generation/authorization fences.
           if (change.scope !== "drafts")
             await queryClient.cancelQueries(affectedQueries);
+          if (!isCurrent()) return;
           if (currentHeadContextChanged(change.scope)) {
             // Repository membership and Body observations can replace or omit
             // the exact base/head/source range. Reset matching commit and check
@@ -705,7 +801,11 @@ export class CollaborationClient {
             void queryClient.resetQueries({
               queryKey: collaborationKeys.account(change.account_id),
               predicate: (query: { queryKey: readonly unknown[] }) =>
-                currentHeadProjectionAffected(query.queryKey, change.scope),
+                currentHeadProjectionAffected(query.queryKey, change.scope) ||
+                ((query.queryKey[4] === "pull-commits" ||
+                  query.queryKey[4] === "pull-files" ||
+                  query.queryKey[4] === "pull-file-artifact") &&
+                  projectionAffected(query.queryKey, change.scope)),
             });
           }
           void queryClient.invalidateQueries(affectedQueries);
@@ -730,6 +830,7 @@ export class CollaborationClient {
     return () => {
       disposed = true;
       stopLocalChanges?.();
+      stopRuntimeReset?.();
       stopDeadlines();
       this.demands.stop();
       bridge.stop();
@@ -816,6 +917,18 @@ function isAuthoredDraft(key: readonly unknown[]) {
 
 function projectionAffected(key: readonly unknown[], scope: string) {
   const projection = key[4];
+  if (scope.startsWith("effective:")) {
+    const subject = scope.slice("effective:".length);
+    if (projection === "detail") {
+      const query = key[5] as DetailQuery;
+      return query.subject_id === subject && query.facet === "body";
+    }
+    // Item effects alter membership, counts and search in every saved list for
+    // this account. Identity, capability and head-bound facets remain provider data.
+    return (
+      projection === "item" || projection === "items" || projection === "inbox"
+    );
+  }
   if (projection === "capabilities" || projection === "resource")
     return scope !== "drafts";
   if (scope === "drafts")
@@ -846,6 +959,15 @@ function projectionAffected(key: readonly unknown[], scope: string) {
       scope.startsWith("repo:") ||
       scope === `detail:${query.subject_id}:body` ||
       scope === `detail:${query.subject_id}:commits`
+    );
+  }
+  if (projection === "pull-files" || projection === "pull-file-artifact") {
+    const request = key[5] as PullFileQuery | PullFileDiffRequest;
+    return (
+      scope === "repositories" ||
+      scope.startsWith("repo:") ||
+      scope === `detail:${request.subject_id}:body` ||
+      scope === `detail:${request.subject_id}:files`
     );
   }
   if (projection === "inbox")

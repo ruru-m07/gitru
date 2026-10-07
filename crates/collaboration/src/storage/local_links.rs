@@ -35,7 +35,7 @@ impl Store {
         if request.query.registration_proof.is_none() {
             return Err(stale_link());
         }
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         validate_owner()?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let snapshot = snapshot_in(&mut tx, &request.query).await?;
@@ -140,7 +140,7 @@ impl Store {
     {
         validate_identifier(id)?;
         let generation = positive_revision(generation)?;
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         validate_owner()?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let row = sqlx::query("SELECT account_id,local_repository_id FROM local_repository_links WHERE id=? AND generation=?").bind(id).bind(generation).fetch_optional(&mut *tx).await.map_err(storage_error)?.ok_or_else(stale_link)?;
@@ -180,7 +180,7 @@ impl Store {
         F: Fn() -> Result<()> + Send,
     {
         validate_binding(&request)?;
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         validate_owner()?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         if binding_generation(&mut tx).await? != request.expected_bindings_generation {
@@ -298,7 +298,7 @@ impl Store {
     {
         validate_identifier(id)?;
         let generation = positive_revision(generation)?;
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         validate_owner()?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         if binding_generation(&mut tx).await? != expected_bindings_generation {
@@ -573,7 +573,7 @@ fn path(value: &str) -> bool {
             .split('/')
             .all(|p| !p.is_empty() && p != "." && p != ".." && !p.starts_with('~'))
 }
-fn validate_query(query: &LocalLinkQuery) -> Result<()> {
+pub(super) fn validate_query(query: &LocalLinkQuery) -> Result<()> {
     validate_identifier(&query.local_repository_id)?;
     if query.endpoints.len() > MAX_ENDPOINTS
         || query.registration_proof.is_some() != query.remote_digest.is_some()
@@ -907,7 +907,7 @@ async fn resolve_endpoint(
     Ok(result)
 }
 
-async fn snapshot_in(
+pub(super) async fn snapshot_in(
     tx: &mut Transaction<'_, Sqlite>,
     query: &LocalLinkQuery,
 ) -> Result<LocalLinkSnapshot> {
@@ -1087,7 +1087,7 @@ mod failure_tests {
     async fn retired_native_caller_waiting_for_writer_cannot_commit() {
         let (_directory, store, request, before) = fixture().await;
         let query = request.query.clone();
-        let writer = store.inner.writer.lock().await;
+        let writer = store.inner.writer.acquire().await.unwrap();
         let authorized = Arc::new(AtomicBool::new(true));
         let owner = authorized.clone();
         let worker_store = store.clone();
@@ -1171,7 +1171,7 @@ mod failure_tests {
                 let writer = if after_write {
                     None
                 } else {
-                    Some(store.inner.writer.lock().await)
+                    Some(store.inner.writer.acquire().await.unwrap())
                 };
                 let active = Arc::new(AtomicBool::new(true));
                 let owner = active.clone();
@@ -1256,7 +1256,7 @@ mod failure_tests {
         let candidate = before.resolutions[0].candidates[0].id.clone();
         let inserted = Arc::new(AtomicBool::new(false));
         {
-            let mut writer = store.inner.writer.lock().await;
+            let mut writer = store.inner.writer.acquire().await.unwrap();
             let mut handle = writer.lock_handle().await.unwrap();
             let observed = inserted.clone();
             handle.set_update_hook(move |change| {
@@ -1286,7 +1286,7 @@ mod failure_tests {
             .await
             .unwrap_err();
         {
-            let mut writer = store.inner.writer.lock().await;
+            let mut writer = store.inner.writer.acquire().await.unwrap();
             let mut handle = writer.lock_handle().await.unwrap();
             handle.remove_update_hook();
             handle.remove_progress_handler();

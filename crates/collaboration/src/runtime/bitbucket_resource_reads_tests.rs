@@ -715,7 +715,7 @@ async fn bitbucket_compound_pull_identity_all_states_and_cached_body_survive_ren
     let saved_accounts = database.accounts().await.unwrap();
     let calls = fixture.count();
     let loads = vault.loads.load(Ordering::SeqCst);
-    database.close().await;
+    database.close().await.unwrap();
     drop(runtime);
     drop(database);
     let reopened = store(dir.path()).await;
@@ -1227,7 +1227,7 @@ async fn bitbucket_opaque_pull_loop_keeps_accepted_cursor_cache_and_backoff_acro
             .items,
         complete.items
     );
-    database.close().await;
+    database.close().await.unwrap();
     drop(runtime);
     drop(database);
     let reopened = store(dir.path()).await;
@@ -1286,7 +1286,7 @@ async fn bitbucket_opaque_pull_loop_keeps_accepted_cursor_cache_and_backoff_acro
             .items,
         complete.items
     );
-    reopened.close().await;
+    reopened.close().await.unwrap();
     drop(runtime);
     drop(reopened);
     let cold = store(dir.path()).await;
@@ -1385,7 +1385,7 @@ async fn bitbucket_pull_twenty_page_cap_persists_across_scheduler_yield_and_two_
             .items,
         complete.items
     );
-    database.close().await;
+    database.close().await.unwrap();
     drop(runtime);
     drop(database);
     let reopened = store(dir.path()).await;
@@ -1436,7 +1436,7 @@ async fn bitbucket_pull_twenty_page_cap_persists_across_scheduler_yield_and_two_
         complete.items,
         "partial empty pages cannot infer absence of prior authorized PRs"
     );
-    reopened.close().await;
+    reopened.close().await.unwrap();
     drop(runtime);
     drop(reopened);
     let cold = store(dir.path()).await;

@@ -220,7 +220,7 @@ Then implement [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-
 | Task | State | Blocked by |
 | --- | --- | --- |
 | [RURU-114: Add durable command admission and outbox schema](https://linear.app/catra/issue/RURU-114/add-durable-command-admission-and-outbox-schema) | Backlog | [RURU-104](https://linear.app/catra/issue/RURU-104/implement-bounded-cache-retention-pins-and-wal-maintenance), [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and), [RURU-105](https://linear.app/catra/issue/RURU-105/test-schema-evolution-and-recoverable-migration-failures) |
-| [RURU-115: Implement outbox delivery and ambiguous-outcome recovery](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery) | Backlog | [RURU-95](https://linear.app/catra/issue/RURU-95/make-credential-replacement-recover-safely-after-a-process-crash), [RURU-106](https://linear.app/catra/issue/RURU-106/add-consistent-collaboration-backup-and-restore-recovery), [RURU-114](https://linear.app/catra/issue/RURU-114/add-durable-command-admission-and-outbox-schema) |
+| [RURU-115: Implement outbox delivery and ambiguous-outcome recovery](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery) | In Review | [RURU-95](https://linear.app/catra/issue/RURU-95/make-credential-replacement-recover-safely-after-a-process-crash), [RURU-106](https://linear.app/catra/issue/RURU-106/add-consistent-collaboration-backup-and-restore-recovery), [RURU-114](https://linear.app/catra/issue/RURU-114/add-durable-command-admission-and-outbox-schema) |
 | [RURU-116: Project optimistic intent into local lists, details, counts and search](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search) | Backlog | [RURU-114](https://linear.app/catra/issue/RURU-114/add-durable-command-admission-and-outbox-schema), [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts) |
 | [RURU-117: Add conflict resolution and superseding-command recovery UI](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui) | Backlog | [RURU-116](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search), [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery) |
 | [RURU-129: Deliver queued issue and PR desired-state edits](https://linear.app/catra/issue/RURU-129/deliver-queued-issue-and-pr-desired-state-edits) | Backlog | [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details), [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui), [RURU-116](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search), [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details) |
@@ -737,7 +737,7 @@ future blob store. Remote CI is not inferred from these local fixtures.
 
 ## RURU-115: Implement outbox delivery and ambiguous-outcome recovery
 
-Planning key: C34. Group: Offline writes. Priority: High. State: Backlog.
+Planning key: C34. Group: Offline writes. Priority: High. State: In Review (native framework locally qualified; remote CI pending).
 Linear: [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery).
 Prerequisites: [RURU-95](https://linear.app/catra/issue/RURU-95/make-credential-replacement-recover-safely-after-a-process-crash), [RURU-106](https://linear.app/catra/issue/RURU-106/add-consistent-collaboration-backup-and-restore-recovery), [RURU-114](https://linear.app/catra/issue/RURU-114/add-durable-command-admission-and-outbox-schema).
 
@@ -745,10 +745,10 @@ Build a native delivery worker with durable attempt evidence and operation-speci
 
 Acceptance criteria:
 
-- [ ] Persist attempt start before dispatch and distinguish queued, sending, accepted, confirmed, rejected, conflict and outcome-unknown.
-- [ ] Crash at each boundary preserves evidence; accepted/202 acknowledgements are not treated as completion and ambiguous non-idempotent creates never blindly retry.
-- [ ] Account replacement/revocation fences delivery; dependent commands wait for proven predecessor results and quota/offline recovery is bounded.
-- [ ] Exercise backup → successful remote dispatch → restore: quarantine restored potentially sent commands and allow recovery only through operation-specific strong evidence, never automatic duplicate delivery.
+- [x] Persist attempt start before dispatch and distinguish queued, sending, accepted, confirmed, rejected, conflict and outcome-unknown.
+- [x] Crash at each boundary preserves evidence; accepted/202 acknowledgements are not treated as completion and ambiguous non-idempotent creates never blindly retry.
+- [x] Account replacement/revocation fences delivery; dependent commands wait for proven predecessor results and quota/offline recovery is bounded.
+- [x] Exercise backup → successful remote dispatch → restore: quarantine restored potentially sent commands and allow recovery only through operation-specific strong evidence, never automatic duplicate delivery.
 
 ## RURU-116: Project optimistic intent into local lists, details, counts and search
 
@@ -2294,3 +2294,132 @@ done, snoozed and bookmarked generation-1 projections without increasing
 provider/vault counters, and the fresh restart reads byte-equivalent SQLite
 evidence with provider and vault access both `0 -> 0`. Remote CI, other platforms
 and live provider/PAT/keyring behavior remain separate gates. No PR is merged.
+
+### Publication and next slice checkpoint — 8 October 2026
+
+RURU-124 is now In Review in draft [#169](https://github.com/ruru-m07/gitru/pull/169).
+Its exact final head `4d31a40743d3e203f2fc1027f17b4ae292268478` passes all
+14 reported remote checks. RURU-118 is In Review in draft
+[#170](https://github.com/ruru-m07/gitru/pull/170); exact head
+`e75bf77b920c9f1198d4e7d825cf829298209f5b` also passes all 14 reported checks,
+including the three-platform Rust, packaged E2E and retained harness matrix.
+RURU-114 is In Review in draft [#171](https://github.com/ruru-m07/gitru/pull/171)
+at `de0e245d5b10bbebb9b66ad78d92febe084a986b`. Its final local `make verify`
+passes; remote macOS/Linux checks pass while Windows is still pending at
+7 October 20:10 UTC. Draft-skip bot checks do not constitute code review.
+
+RURU-119 is the active bounded slice, stacked on RURU-114. Its signed contract,
+provider summary adapters, migration 0014 storage/retention, collection scheduler,
+and native local-Git selected-diff accelerator are implemented. Selected provider
+hydration and the frontend are being integrated; final combined validation and
+PR publication remain outstanding. The architecture progress section records
+the focused evidence and limits. All worktrees remain on `/Volumes/Lexar` and
+the no-merge and no-personal-credential constraints remain in force.
+
+### Local files qualification and recovery continuation — 8 October 2026
+
+RURU-119's signed source `df54c444771d5c6b671080eafc6c4b3daf3c44ab` passes
+full local verification (712 frontend tests/one platform skip; 1,076 Rust tests/
+five helper ignores) and the real five-process macOS retained harness. The
+work note records exact evidence and deferred live-provider/platform boundaries.
+Publish this bounded read-only slice on RURU-114; do not open a duplicate.
+
+RURU-114 #171 now has all 14 reported remote checks passing. Existing RURU-106
+#145 is being continued on the current schema with recovery metadata migration
+0015, immutable command quarantine and native runtime shutdown/restart; it stays
+In Progress until integrated recovery UI and qualification pass. RURU-125's
+isolated native measurement lane is In Progress. RURU-115 remains dependent on
+RURU-106; restored commands must never bypass quarantine merely after reconnect.
+No merge or personal credential validation is authorized by these checkpoints.
+
+
+### RURU-106 current-schema recovery workflow — 8 October 2026
+
+Existing draft [#145](https://github.com/ruru-m07/gitru/pull/145) now continues on
+RURU-119 `08a2db3` with signed integrated source `7bd1e37`. Migration 0015
+preserves immutable authored command/evidence bytes while quarantining every
+restored potentially dispatchable command, including queued commands with no
+recorded attempt. Verified incoming evidence and newer original data remain in
+separate native archives. All recognized v1–v14 snapshots migrate privately to
+schema 15; unknown schemas and malformed authored data fail closed.
+
+The Backups UI is available even when normal storage startup fails. Native file
+pickers and caller-bound, ten-minute confirmations govern backup/restore; native
+owned tasks drain requests and actual SQLite connections, finish confirmed
+replacement despite IPC cancellation, then rebuild runtime ownership. Abandoned
+previews resume storage. SDK catch-up generations and trusted visible-tab demand
+are re-established without accepting old in-flight data. Accounts require
+reauthentication and cannot release restored command quarantine.
+
+Local `make verify` passes 727 frontend cases/one platform skip and 1,115 Rust
+test executions/six standalone helper ignores, with all lint/type/build/fmt/
+Clippy gates. Actual macOS release E2E passes four scenarios across two specs,
+including backup/cancel/restore; the five-process retained crash/restart harness
+also passes. [The work note](./collaboration-work/RURU-106.md) records exact tested
+source, artifact paths, binary checksums and the test-only ancestry repair.
+Remote new-head CI, other-platform recovery, OS picker interaction and live
+provider/vault qualification remain separate. RURU-115 can now build its delivery
+framework on the explicit quarantine and runtime-lifetime contract. No merge.
+
+
+### RURU-115 durable delivery framework — 7 October 2026
+
+The native framework is implemented on final RURU-106 `3e4627b`, with signed
+reviewed source `5741de2`. Migration 0016 preserves immutable per-attempt execution
+context and operation evidence through explicitly verified historical restores.
+A committed attempt precedes dispatch; accepted receipts remain distinct from
+confirmation. Unknown creates enter bounded read-only reconciliation, and
+restored quarantine never permits a new dispatch. Credential epochs, exact
+provider instances, dependency proof, target order, shared quota and native owned
+shutdown fence every turn. Canonical materialization runs in the same transaction
+as confirmation, with a central target-transition seam for RURU-116.
+
+Successful preparation can report exhausted quota before attempt admission.
+Command transaction failures do not suppress independent quota/authentication
+observations; a mutation credential failure retains ambiguous intent while
+retiring the captured account authorization. Production providers register no
+write codecs in this framework; operation-specific follow-ups own those codecs.
+
+Full local `make verify` passes 727 frontend cases/one platform skip and 1,143 Rust
+test executions/seven standalone helper ignores, including lint/types/build/fmt
+and strict workspace Clippy. Independent native review found no remaining blocker
+after three quota/auth fixes. Twenty-five delivery parent cases include five
+actual process-exit boundaries, restore after remote success, SQL faults, quota
+across cold restart, cancellation/drain and account isolation. [The contract and
+qualification note](./collaboration-work/RURU-115.md) retains the exact evidence.
+Remote CI and live provider mutation behavior remain separate, unclaimed gates.
+The change is prepared as a draft stacked on RURU-106; no merge is authorized.
+
+
+### RURU-116 durable effective projections — 8 October 2026
+
+Implemented on the RURU-115 delivery framework, with signed source `42c270c`.
+Frozen migration 0017 retains immutable typed command effects and sparse derived
+item/search projections. Local lists, details, filtered counts, inbox and literal
+search read the same SQLite state; pending metadata makes queued, accepted and
+ambiguous intent visible. Account/epoch/visibility fences remain authoritative,
+and intent never changes provider head, permission or hydration evidence.
+
+Confirmation requires a transaction-owned canonical observation covering every
+authored field before its effect can retire. A default no-op finalizer fails
+closed. Rejection replays successors, stale provider feeds cannot undo a newer
+canonical confirmation, and rollback preserves authored bytes. Restore retains
+effects but quarantines delivery and clears derived projections. Partial indexes
+bound active replay by target and authorization epoch. SDK revision hints cancel
+held reads and invalidate all affected consumers across retained clients.
+
+Full local `make verify` at `42c270c` passes 731 frontend tests/one platform skip,
+1,165 Rust test executions/seven standalone helper ignores, lint/types/build,
+formatting and strict workspace Clippy. `make typegen` generated 135 commands and
+402 schema exports. Integration `e5f2188` adds only the parent's failed-harness
+shutdown and Git lock-test corrections; focused validation of that delta is
+recorded in [the RURU-116 work note](./collaboration-work/RURU-116.md). Remote CI,
+packaged application qualification and live provider writes remain distinct.
+Production providers still register no write operation in this framework slice;
+RURU-117 and operation-specific follow-ups supply review/recovery and delivery.
+
+Remote checks also completed for existing PRs: RURU-119 #172 at `08a2db3`, RURU-125
+#173 at `8eccce4`, and RURU-127 #174 at `cfc5b23` each have all 14 reported status
+contexts passing, including Linux/macOS/Windows Rust, packaged desktop E2E and
+retained collaboration harness. These exact-head CI results do not qualify live
+provider credentials. All PRs remain open; none were merged.

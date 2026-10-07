@@ -235,7 +235,7 @@ async fn actual_partial_probe_preserves_old_grant_cache_draft_and_restart_backof
         assert_eq!(requests.len(), 2);
         assert!(requests[0].starts_with("GET /api/v4/user "));
         assert!(requests[1].starts_with("GET /api/v4/projects?"));
-        database.close().await;
+        database.close().await.unwrap();
         drop(runtime);
         drop(database);
         let reopened = Arc::new(Store::open(&path).await.unwrap());

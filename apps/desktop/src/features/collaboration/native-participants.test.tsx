@@ -131,6 +131,8 @@ function saved(actor = account, entries = [participant()]) {
   });
   body.evidence.authorization_epoch = actor.authorization_epoch;
   const participants = fixtureBody({
+    pending_intent: null,
+
     subject_id: subjectId,
     body: { state: "not_loaded", text: null },
     metadata: null,
@@ -256,6 +258,8 @@ function boundary(
     authorization_view: view,
   }));
   mockTauriCommand("collaboration_item", (payload) => ({
+    pending_intent: null,
+
     item: lookup((payload as { accountId: string }).accountId).summary,
     revision,
     authorization_view: view,

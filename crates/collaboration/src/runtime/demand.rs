@@ -6,6 +6,9 @@ pub(super) const RENEW_SECONDS: u32 = 15;
 const MAX_LEASES: usize = 128;
 const MAX_OWNER_LEASES: usize = 16;
 const MAX_OWNERS: usize = 128;
+// A recovery replacement keeps webviews alive. Never reuse an owner generation
+// across runtime instances in this process, even before its reset event arrives.
+static OWNER_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 #[derive(Clone)]
 pub(super) struct DemandLease {
@@ -21,15 +24,18 @@ pub(super) struct DemandLease {
 pub(super) struct Demands {
     pub owners: HashMap<String, DemandOwnerActivity>,
     pub leases: HashMap<String, DemandLease>,
-    sequence: u64,
     pub admission_cursor: usize,
     pub coverage_attempted: std::collections::HashSet<String>,
 }
 
 impl Demands {
-    fn generation(&mut self) -> Result<String, CollaborationError> {
-        self.sequence = self.sequence.checked_add(1).ok_or_else(busy)?;
-        Ok(self.sequence.to_string())
+    fn generation() -> Result<String, CollaborationError> {
+        let previous = OWNER_GENERATION
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+                value.checked_add(1)
+            })
+            .map_err(|_| busy())?;
+        Ok((previous + 1).to_string())
     }
     pub fn expire(&mut self, now: Instant) {
         self.leases.retain(|_, lease| lease.expires > now);
@@ -45,7 +51,7 @@ impl Demands {
             return Err(busy());
         }
         let activity = DemandOwnerActivity {
-            generation: self.generation()?,
+            generation: Self::generation()?,
             active: false,
         };
         self.owners.insert(owner.into(), activity.clone());
@@ -115,6 +121,12 @@ impl CollaborationRuntime {
         if automatic {
             let target = match &job.kind {
                 JobKind::NotificationSubject { .. } => return Err(stale()),
+                JobKind::PullFileArtifact { request } => DemandTarget {
+                    kind: DemandTargetKind::Detail,
+                    repository_id: None,
+                    subject_id: Some(request.subject_id.clone()),
+                    facet: Some(DetailFacet::Files),
+                },
                 JobKind::Detail { subject_id, facet } => DemandTarget {
                     kind: DemandTargetKind::Detail,
                     repository_id: None,
@@ -175,7 +187,7 @@ impl CollaborationRuntime {
                 .get(&owner)
                 .is_some_and(|activity| activity.active && activity.generation == generation)
             {
-                let generation = scheduler.demands.generation()?;
+                let generation = Demands::generation()?;
                 scheduler.demands.owners.insert(
                     owner.clone(),
                     DemandOwnerActivity {
@@ -346,6 +358,7 @@ impl CollaborationRuntime {
         &self,
         owner: &str,
     ) -> Result<DemandOwnerActivity, CollaborationError> {
+        let _operation = self.acquire_operation()?;
         self.prune_demands().await?;
         self.scheduler.lock().await.demands.activity(owner)
     }
@@ -356,6 +369,7 @@ impl CollaborationRuntime {
         expected_generation: &str,
         active: bool,
     ) -> Result<DemandOwnerActivity, CollaborationError> {
+        let _operation = self.acquire_operation()?;
         let mut scheduler = self.scheduler.lock().await;
         let old = scheduler.demands.activity(owner)?;
         if old.generation != expected_generation {
@@ -365,7 +379,7 @@ impl CollaborationRuntime {
             return Ok(old);
         }
         let activity = DemandOwnerActivity {
-            generation: scheduler.demands.generation()?,
+            generation: Demands::generation()?,
             active,
         };
         scheduler
@@ -386,6 +400,7 @@ impl CollaborationRuntime {
         owner: &str,
         expected_generation: &str,
     ) -> Result<(), CollaborationError> {
+        let _operation = self.acquire_operation()?;
         let mut scheduler = self.scheduler.lock().await;
         let Some(activity) = scheduler.demands.owners.get(owner) else {
             return Ok(());
@@ -408,6 +423,7 @@ impl CollaborationRuntime {
         owner: &str,
         request: AcquireDemandRequest,
     ) -> Result<DemandLeaseReceipt, CollaborationError> {
+        let _operation = self.acquire_operation()?;
         self.prune_demands().await?;
         let _lifecycle = self.lifecycle.lock().await;
         {
@@ -462,6 +478,7 @@ impl CollaborationRuntime {
         owner: &str,
         request: RenewDemandRequest,
     ) -> Result<DemandRenewalReceipt, CollaborationError> {
+        let _operation = self.acquire_operation()?;
         self.prune_demands().await?;
         if request.leases.is_empty()
             || request.leases.len() > MAX_OWNER_LEASES
@@ -547,6 +564,7 @@ impl CollaborationRuntime {
         owner: &str,
         request: ReleaseDemandRequest,
     ) -> Result<(), CollaborationError> {
+        let _operation = self.acquire_operation()?;
         let mut scheduler = self.scheduler.lock().await;
         if let Some(lease) = scheduler.demands.leases.get(&request.lease_id)
             && lease.owner != owner

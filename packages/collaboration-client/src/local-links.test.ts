@@ -100,6 +100,10 @@ function fixture() {
     resolveResource: unexpected,
     detail: unexpected,
     pullCommits: unexpected,
+    pullFiles: unexpected,
+    pullFileArtifact: unexpected,
+    hydratePullFile: unexpected,
+    loadLocalPullFile: unexpected,
     hydrateDetail: unexpected,
     notificationSubject: unexpected,
     discoverNotificationSubject: unexpected,
@@ -119,6 +123,7 @@ function fixture() {
       reset_required: false,
     }),
     listen: async () => () => {},
+    listenRuntimeReset: async () => () => {},
     listenLocalChanges: async (next: () => void) => {
       hint = next;
       return () => {};

@@ -602,7 +602,7 @@ impl Store {
         request: &DiscoverNotificationSubjectRequest,
         guard: impl Fn() -> Result<()>,
     ) -> Result<String> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         guard()?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let current = current_in(&mut tx, &query_for(request))
@@ -688,7 +688,7 @@ impl Store {
         &self,
         intent: &NotificationDiscoveryIntent,
     ) -> Result<NotificationDiscoveryLease> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let query = NotificationSubjectQuery {
             account_id: intent.account_id.clone(),
@@ -869,7 +869,7 @@ impl Store {
         &self,
         intent: &NotificationDiscoveryIntent,
     ) -> Result<String> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         epoch_in(&mut tx, &intent.account_id, &intent.authorization_epoch).await?;
         let changed=sqlx::query("UPDATE notification_subject_discovery SET requested=0,run_id=NULL WHERE account_id=? AND notification_id=? AND selector_generation=? AND intent_generation=? AND requested=1")
@@ -894,7 +894,7 @@ impl Store {
         lease: &NotificationDiscoveryLease,
         result: NotificationSubjectDiscovery,
     ) -> Result<String> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let current = validate_lease_in(&mut tx, lease).await?;
         let account = &current.account;
@@ -982,6 +982,7 @@ impl Store {
                 .await?;
                 sqlx::query("INSERT INTO items(account_id,id,repository_id,kind,state,updated_at,json) VALUES(?,?,?,?,?,?,?) ON CONFLICT(account_id,id) DO UPDATE SET repository_id=excluded.repository_id,kind=excluded.kind,state=excluded.state,updated_at=excluded.updated_at,json=excluded.json")
                     .bind(&account.id).bind(&subject.id).bind(&subject.repository_id).bind(tag(&subject.kind)?).bind(&subject.state).bind(&subject.updated_at).bind(encode(&subject)?).execute(&mut *tx).await.map_err(storage_error)?;
+                super::effective::refresh_target_in(&mut tx, &account.id, &subject.id).await?;
                 if !provenance_in(&mut tx, &account.id, &subject.id).await? {
                     return Err(stale());
                 }
@@ -1074,7 +1075,7 @@ impl Store {
         error: CollaborationError,
         next_retry_at: Option<String>,
     ) -> Result<String> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let current = validate_lease_in(&mut tx, lease).await?;
         let mut account = current.account;
@@ -1159,7 +1160,7 @@ impl Store {
         &self,
         intent: &NotificationDiscoveryIntent,
     ) -> Result<String> {
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         epoch_in(&mut tx, &intent.account_id, &intent.authorization_epoch).await?;
         let changed=sqlx::query("UPDATE notification_subject_discovery SET requested=0,outcome_reason=? WHERE account_id=? AND notification_id=? AND selector_generation=? AND intent_generation=? AND attempts>=3 AND requested=1")

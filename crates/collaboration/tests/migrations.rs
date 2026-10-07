@@ -257,7 +257,7 @@ async fn frozen_v1_opens_with_latest_schema_and_preserves_private_intent() {
     for _ in 0..2 {
         let store = Store::open(&path).await.unwrap();
         assert_historical_reads(&store).await;
-        store.close().await;
+        store.close().await.unwrap();
         drop(store);
         let mut connection = connect(&path).await;
         assert_eq!(snapshot(&mut connection).await, before);
@@ -309,7 +309,7 @@ async fn frozen_v1_upgrade_preserves_legacy_vault_references_and_cleanup_work() 
         );
         assert_eq!(due[0].reference, "c");
         assert_eq!(due[0].attempts, 0);
-        store.close().await;
+        store.close().await.unwrap();
         drop(store);
         let mut connection = connect(&path).await;
         assert_eq!(
@@ -330,7 +330,7 @@ async fn historical_v1_migrator_refuses_upgraded_storage_without_down_migrating_
     let path = temp.path().join("collaboration.db");
     frozen_v1(&path).await;
     let store = Store::open(&path).await.unwrap();
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let mut connection = connect(&path).await;
     let before = snapshot(&mut connection).await;
@@ -357,7 +357,7 @@ async fn historical_v1_migrator_refuses_upgraded_storage_without_down_migrating_
     connection.close().await.unwrap();
     let store = Store::open(&path).await.unwrap();
     assert_historical_reads(&store).await;
-    store.close().await;
+    store.close().await.unwrap();
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -376,7 +376,7 @@ async fn rejected_upgrade_preserves_data_and_releases_writer_lease(
     frozen_v1(&path).await;
     if upgraded {
         let store = Store::open(&path).await.unwrap();
-        store.close().await;
+        store.close().await.unwrap();
         drop(store);
     }
     let mut connection = connect(&path).await;
@@ -449,7 +449,7 @@ async fn rejected_upgrade_preserves_data_and_releases_writer_lease(
     connection.close().await.unwrap();
     let store = Store::open(&path).await.unwrap();
     assert_historical_reads(&store).await;
-    store.close().await;
+    store.close().await.unwrap();
 }
 
 #[tokio::test]
@@ -576,7 +576,7 @@ async fn migration_fault_rolls_back_and_can_retry(fault: Fault) {
     let path = temp.path().join("collaboration.db");
     frozen_v1(&path).await;
     let store = Store::open(&path).await.unwrap();
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let mut connection = connect(&path).await;
     let before = snapshot(&mut connection).await;
@@ -667,7 +667,7 @@ async fn migration_fault_rolls_back_and_can_retry(fault: Fault) {
     connection.close().await.unwrap();
     let store = Store::open(&path).await.unwrap();
     assert_historical_reads(&store).await;
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
 
     // Retry the unapplied version after correcting the fault fixture. The first
@@ -732,7 +732,7 @@ async fn process_crash_during_migration_releases_lease_and_preserves_intent() {
     let path = temp.path().join("collaboration.db");
     frozen_v1(&path).await;
     let store = Store::open(&path).await.unwrap();
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let mut connection = connect(&path).await;
     let before = snapshot(&mut connection).await;
@@ -779,7 +779,7 @@ async fn process_crash_during_migration_releases_lease_and_preserves_intent() {
     // unfinished migration and the OS must release the native Store lease.
     let store = Store::open(&path).await.unwrap();
     assert_historical_reads(&store).await;
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let mut connection = connect(&path).await;
     assert_eq!(snapshot(&mut connection).await, before);

@@ -6,6 +6,7 @@ mod checks;
 mod commits;
 mod discovery;
 mod feeds;
+mod files;
 mod participants;
 mod resource_details;
 mod tasks;
@@ -52,6 +53,7 @@ impl CollaborationProvider for BitbucketCloudProvider {
                             | ResourceFacet::Participants
                             | ResourceFacet::Tasks
                             | ResourceFacet::PullCommits
+                            | ResourceFacet::PullFiles
                             | ResourceFacet::Checks
                     ) {
                         CapabilityState::Supported
@@ -65,7 +67,9 @@ impl CollaborationProvider for BitbucketCloudProvider {
                         | ResourceFacet::Participants
                         | ResourceFacet::Tasks
                         | ResourceFacet::PullCommits
+                        | ResourceFacet::PullFiles
                         | ResourceFacet::Checks => None,
+
                         ResourceFacet::Issues | ResourceFacet::Inbox => {
                             Some(CapabilityReason::ProviderSemantics)
                         }
@@ -191,6 +195,38 @@ impl CollaborationProvider for BitbucketCloudProvider {
         }
     }
 
+    async fn fetch_pull_files(
+        &self,
+        token: &SecretToken,
+        request: PullFileCollectionRequest,
+    ) -> Result<PullFileProviderPage, ProviderError> {
+        self.request_pull_files(token, request).await
+    }
+    async fn fetch_pull_file_artifact(
+        &self,
+        token: &SecretToken,
+        request: PullFileSelectedRequest,
+    ) -> Result<PullFileArtifactRead, ProviderError> {
+        self.request_selected_pull_file(token, request).await
+    }
+    async fn validate_selected_pull_file_range(
+        &self,
+        token: &SecretToken,
+        request: PullFileSelectedRequest,
+    ) -> Result<PullFileRangeValidationResult, ProviderError> {
+        request
+            .validate()
+            .map_err(|_| ProviderError::new(ProviderErrorKind::InvalidResponse))?;
+        self.request_file_source_range(token, request.resource)
+            .await
+    }
+    async fn validate_pull_file_range(
+        &self,
+        token: &SecretToken,
+        request: PullFileCollectionRequest,
+    ) -> Result<PullFileRangeValidationResult, ProviderError> {
+        self.request_pull_file_range(token, request).await
+    }
     async fn fetch_pull_commits(
         &self,
         token: &SecretToken,
@@ -258,3 +294,6 @@ mod checks_tests;
 
 #[cfg(test)]
 mod tasks_tests;
+
+#[cfg(test)]
+mod files_tests;

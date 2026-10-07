@@ -319,7 +319,19 @@ impl GitCommandTransaction {
         args: &[&str],
         maximum: usize,
     ) -> Result<(Vec<u8>, i32), crate::models::remotes::RemoteObservationError> {
-        self.sensitive_read_inner(args, maximum, None).await
+        self.sensitive_read_inner(args, maximum, None, false).await
+    }
+
+    /// Bounded local-only metadata/content read. In addition to the sensitive
+    /// command policy, this forbids every Git transport and disables pagers,
+    /// system attributes and lazy object hydration. Callers must still pass
+    /// command-specific defenses such as `--no-ext-diff` and `--no-textconv`.
+    pub(crate) async fn sensitive_local_read(
+        &mut self,
+        args: &[&str],
+        maximum: usize,
+    ) -> Result<(Vec<u8>, i32), crate::models::remotes::RemoteObservationError> {
+        self.sensitive_read_inner(args, maximum, None, true).await
     }
 
     /// Run a sensitive command with one private command-scope Git config
@@ -333,7 +345,7 @@ impl GitCommandTransaction {
         value: &str,
         protocol: SensitiveRemoteProtocol,
     ) -> Result<(Vec<u8>, i32), crate::models::remotes::RemoteObservationError> {
-        self.sensitive_read_inner(args, maximum, Some((key, value, protocol)))
+        self.sensitive_read_inner(args, maximum, Some((key, value, protocol)), false)
             .await
     }
 
@@ -342,6 +354,7 @@ impl GitCommandTransaction {
         args: &[&str],
         maximum: usize,
         private_config: Option<(&str, &str, SensitiveRemoteProtocol)>,
+        local_only: bool,
     ) -> Result<(Vec<u8>, i32), crate::models::remotes::RemoteObservationError> {
         use crate::models::remotes::RemoteObservationError as Error;
         let binary = git_binary_path().map_err(|_| Error::Unavailable)?;
@@ -358,6 +371,9 @@ impl GitCommandTransaction {
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
         configure_sensitive_command(&mut command, std::env::vars_os().map(|(key, _)| key));
+        if local_only {
+            configure_local_only_read(&mut command);
+        }
         if let Some((key, value, protocol)) = private_config {
             configure_private_transport(&mut command, key, value, protocol);
         }
@@ -437,6 +453,12 @@ fn configure_sensitive_command(
                 || upper == "GIT_EXEC_PATH"
                 || upper == "GIT_ALLOW_PROTOCOL"
                 || upper == "GIT_PROTOCOL_FROM_USER"
+                || upper == "GIT_EXTERNAL_DIFF"
+                || upper == "GIT_DIFF_OPTS"
+                || upper == "GIT_PAGER"
+                || upper == "GIT_ATTR_NOSYSTEM"
+                || upper == "GIT_CONFIG_NOSYSTEM"
+                || upper == "GIT_LITERAL_PATHSPECS"
                 || matches!(
                     upper.as_str(),
                     "GIT_DIR"
@@ -469,6 +491,23 @@ fn configure_sensitive_command(
     // commands while retaining normal OpenSSH config, agent and key discovery.
     command.env("GIT_SSH_COMMAND", SENSITIVE_SSH_COMMAND);
     command.env("GIT_SSH_VARIANT", "ssh");
+}
+
+fn configure_local_only_read(command: &mut tokio::process::Command) {
+    command.env("GIT_ALLOW_PROTOCOL", "");
+    command.env("GIT_PROTOCOL_FROM_USER", "0");
+    command.env("GIT_NO_LAZY_FETCH", "1");
+    command.env("GIT_NO_REPLACE_OBJECTS", "1");
+    command.env("GIT_ATTR_NOSYSTEM", "1");
+    command.env("GIT_CONFIG_NOSYSTEM", "1");
+    command.env("GIT_LITERAL_PATHSPECS", "1");
+    command.env(
+        "GIT_GRAFT_FILE",
+        if cfg!(windows) { "NUL" } else { "/dev/null" },
+    );
+    command.env("GIT_PAGER", "cat");
+    command.env("PAGER", "cat");
+    command.env("LC_ALL", "C");
 }
 
 fn configure_private_transport(
@@ -1412,6 +1451,73 @@ mod tests {
     }
 
     // ── GitCommandRunner tests ───────────────────────────────────────
+
+    #[tokio::test]
+    async fn prepared_ref_lock_rejects_contention_without_using_timeout_fallback() {
+        let directory = tempfile::tempdir().unwrap();
+        let repository = git2::Repository::init(directory.path()).unwrap();
+        let reference = "refs/heads/pr/held-lock";
+        let signature = git2::Signature::now("Fixture", "fixture@example.invalid").unwrap();
+        let tree_id = repository.treebuilder(None).unwrap().write().unwrap();
+        let tree = repository.find_tree(tree_id).unwrap();
+        let expected = repository
+            .commit(
+                Some(reference),
+                &signature,
+                &signature,
+                "fixture",
+                &tree,
+                &[],
+            )
+            .unwrap();
+        let mut config = repository.config().unwrap();
+        for key in [
+            "core.filesRefLockTimeout",
+            "core.packedRefsTimeout",
+            "reftable.lockTimeout",
+        ] {
+            config.set_i64(key, -1).unwrap();
+            assert_eq!(config.get_i64(key).unwrap(), -1);
+        }
+        let foreign_lock = repository.path().join("refs/heads/pr/held-lock.lock");
+        std::fs::write(&foreign_lock, "held by another process").unwrap();
+        let runner = GitCommandRunner::new(directory.path().to_str().unwrap()).unwrap();
+        let mut transaction = runner.transaction().await.unwrap();
+
+        // Exercise the native lock protocol directly, without unrelated
+        // checkout inspections. Keep the production operation budget for slow
+        // process startup; an inherited -1 wait must hit the distinct timeout
+        // fallback and fail this assertion, not count as successful rejection.
+        let error = transaction
+            .prepare_ref_lock(reference, &expected.to_string(), Duration::from_secs(30))
+            .await
+            .err()
+            .expect("a foreign ref lock must prevent preparation");
+        assert_eq!(error, "Git ref changed");
+        assert_eq!(
+            std::fs::read_to_string(&foreign_lock).unwrap(),
+            "held by another process"
+        );
+        assert_eq!(
+            repository.find_reference(reference).unwrap().target(),
+            Some(expected)
+        );
+
+        // Prove the same ref, OID and protocol are valid once only our fixture
+        // lock is removed; a generic spawn/protocol failure cannot pass above.
+        std::fs::remove_file(&foreign_lock).unwrap();
+        let held = transaction
+            .prepare_ref_lock(reference, &expected.to_string(), Duration::from_secs(30))
+            .await
+            .expect("uncontended exact ref should prepare");
+        assert!(foreign_lock.exists());
+        held.release().await;
+        assert!(!foreign_lock.exists());
+        assert_eq!(
+            repository.find_reference(reference).unwrap().target(),
+            Some(expected)
+        );
+    }
 
     #[test]
     fn runner_rejects_invalid_path() {

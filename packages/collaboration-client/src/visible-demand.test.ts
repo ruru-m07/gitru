@@ -176,6 +176,8 @@ describe("visible demand hook lifecycle", () => {
       () => acquisition.promise,
     );
     vi.spyOn(collaboration.transport, "detail").mockResolvedValue({
+      pending_intent: null,
+
       subject_id: "issue:7",
       body: { state: "known", text: null },
       metadata: null,

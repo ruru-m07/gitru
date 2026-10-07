@@ -245,7 +245,7 @@ async fn twelve_task_fields_retain_own_clocks_and_content_omission_through_cold_
         THIRD
     );
     assert_eq!(store.draft("a", "pull").await.unwrap(), Some(draft.clone()));
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let reopened = Store::open(directory.path().join("tasks.sqlite"))
         .await
@@ -565,7 +565,7 @@ async fn mutable_task_paging_stays_partial_and_single_page_absence_and_local_key
     store.apply_detail(first).await.unwrap();
     assert_eq!(read(&store).await.entries.len(), 51);
     let saved = read(&store).await;
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let reopened = Store::open(directory.path().join("tasks.sqlite"))
         .await

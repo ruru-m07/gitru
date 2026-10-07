@@ -34,6 +34,21 @@ function valueReferences(node: ts.Node, names: Set<string>): Set<string> {
 
 /** Order eager generated schema values without printing or changing their AST. */
 export function orderGeneratedSchemas(source: string): string {
+  const diagnostics = ts.transpileModule(source, {
+    fileName: "generated-types.ts",
+    reportDiagnostics: true,
+    compilerOptions: {
+      target: ts.ScriptTarget.Latest,
+      module: ts.ModuleKind.ESNext,
+    },
+  }).diagnostics;
+  const syntaxError = diagnostics?.find(
+    (diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error,
+  );
+  if (syntaxError)
+    throw new Error(
+      `Invalid generated TypeScript: ${ts.flattenDiagnosticMessageText(syntaxError.messageText, " ")}`,
+    );
   const file = ts.createSourceFile(
     "generated-types.ts",
     source,

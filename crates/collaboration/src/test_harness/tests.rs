@@ -901,7 +901,7 @@ async fn durable_vault_and_real_quota_survive_cold_session_without_ephemeral_int
         .sync
         .next_retry_at;
     assert!(barrier.is_some());
-    session.store.close().await;
+    session.store.close().await.unwrap();
     drop(session);
     let session = run.open().await;
     session.runtime.recover_credentials().await.unwrap();
@@ -1173,7 +1173,7 @@ async fn independent_cold_reopen_retains_committed_local_phase_without_automatic
         .await
         .unwrap();
     let session_id = session.control.status(&run.nonce).await.unwrap().session_id;
-    session.store.close().await;
+    session.store.close().await.unwrap();
     drop(session);
 
     let session = run.open().await;
@@ -1252,7 +1252,7 @@ async fn independent_cold_reopen_reads_exact_pull_commits_without_provider_or_va
     assert_eq!(before_status.vault_load_count, "2");
     assert_eq!(before_status.durable_detail_requests, 0);
     let original_session = before_status.session_id;
-    session.store.close().await;
+    session.store.close().await.unwrap();
     drop(session);
 
     let session = run.open().await;
@@ -1316,7 +1316,7 @@ async fn independent_interrupted_preparation_preserves_committed_account_and_ref
     assert!(reference.is_some());
     assert!(!session.control.status(&run.nonce).await.unwrap().prepared);
     let revision = session.store.revision().await.unwrap();
-    session.store.close().await;
+    session.store.close().await.unwrap();
     drop(session);
 
     let reopened = HarnessSession::open(&run.root, &run.nonce, Arc::new(|_| true)).await;
@@ -1336,7 +1336,7 @@ async fn independent_interrupted_preparation_preserves_committed_account_and_ref
         reference
     );
     assert_eq!(store.revision().await.unwrap(), revision);
-    store.close().await;
+    store.close().await.unwrap();
 }
 
 #[tokio::test]
@@ -1349,7 +1349,7 @@ async fn independent_lost_marker_refuses_reopen_without_resetting_authored_cache
         .await
         .unwrap();
     let revision = session.store.revision().await.unwrap();
-    session.store.close().await;
+    session.store.close().await.unwrap();
     drop(session);
     fs::remove_file(run.root.join("harness-state.json")).unwrap();
 
@@ -1367,5 +1367,5 @@ async fn independent_lost_marker_refuses_reopen_without_resetting_authored_cache
         draft
     );
     assert_eq!(store.revision().await.unwrap(), revision);
-    store.close().await;
+    store.close().await.unwrap();
 }

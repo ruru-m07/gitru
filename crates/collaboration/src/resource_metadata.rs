@@ -17,6 +17,7 @@ pub enum MetadataField {
     IsDraft,
     Head,
     Base,
+    MergeBase,
     MergedAt,
 }
 
@@ -32,7 +33,13 @@ impl MetadataField {
         Self::Assignees,
         Self::Milestone,
     ];
-    pub const PULL: [Self; 4] = [Self::IsDraft, Self::Head, Self::Base, Self::MergedAt];
+    pub const PULL: [Self; 5] = [
+        Self::IsDraft,
+        Self::Head,
+        Self::Base,
+        Self::MergeBase,
+        Self::MergedAt,
+    ];
     pub fn supports(self, kind: &RemoteItemKind) -> bool {
         Self::COMMON.contains(&self)
             || *kind == RemoteItemKind::PullRequest && Self::PULL.contains(&self)
@@ -87,6 +94,7 @@ pub struct ResourceMetadataValues {
     pub is_draft: Option<bool>,
     pub head: Option<DetailBranch>,
     pub base: Option<DetailBranch>,
+    pub merge_base_oid: Option<String>,
     pub merged_at: Option<String>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

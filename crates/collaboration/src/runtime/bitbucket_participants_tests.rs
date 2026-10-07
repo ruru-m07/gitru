@@ -486,7 +486,7 @@ async fn bitbucket_participants_compound_actor_identity_rename_and_cold_saved_re
     ];
     let calls = fixture.count();
     let loads = vault.loads.load(Ordering::SeqCst);
-    database.close().await;
+    database.close().await.unwrap();
     drop(engine);
     drop(database);
     let reopened = store(dir.path()).await;
@@ -642,7 +642,7 @@ async fn bitbucket_participant_invalid_array_or_flag_preserves_cache_and_draft_w
         );
         let calls = fixture.count();
         let loads = vault.loads.load(Ordering::SeqCst);
-        database.close().await;
+        database.close().await.unwrap();
         drop(engine);
         drop(database);
         let reopened = store(dir.path()).await;

@@ -27,6 +27,7 @@ impl CollaborationRuntime {
         &self,
         request: HydrateDetailRequest,
     ) -> Result<RefreshReceipt, CollaborationError> {
+        let _operation = self.acquire_operation()?;
         let account = self.active_account(&request.account_id).await?;
         if account.authorization_epoch != request.authorization_epoch {
             return Err(stale());
@@ -108,6 +109,21 @@ impl CollaborationRuntime {
                         .await?;
                 }
                 Err(error) => return Err(error),
+            }
+        }
+        if request.facet == DetailFacet::Files {
+            let snapshot = self
+                .store
+                .pull_files(PullFileQuery {
+                    account_id: account.id.clone(),
+                    subject_id: subject.id.clone(),
+                    cursor: None,
+                    limit: 1,
+                })
+                .await?;
+            if snapshot.context.is_none() {
+                self.request_pull_file_body_context(&account, &repository, &subject)
+                    .await?;
             }
         }
         let job_id = self
@@ -200,6 +216,9 @@ impl CollaborationRuntime {
     ) -> Result<bool, CollaborationError> {
         if facet == DetailFacet::Commits {
             return self.sync_pull_commit_page(job, subject_id).await;
+        }
+        if facet == DetailFacet::Files {
+            return self.sync_pull_file_page(job, subject_id).await;
         }
         if facet == DetailFacet::Checks {
             match self.store.check_context(&job.account.id, subject_id).await {

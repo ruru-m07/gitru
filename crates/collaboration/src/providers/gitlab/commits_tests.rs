@@ -26,7 +26,7 @@ fn account() -> RemoteAccount {
     }
 }
 
-fn request(head: String) -> PullCommitRequest {
+pub(super) fn request(head: String) -> PullCommitRequest {
     PullCommitRequest {
         account: account(),
         repository: RemoteRepository {

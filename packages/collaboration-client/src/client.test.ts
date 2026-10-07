@@ -45,6 +45,9 @@ const snapshot: AccountSnapshot = {
   authorization_view: "1",
 };
 const page: ItemPage = {
+  total_count: 0,
+  pending_intents: [],
+
   items: [],
   revision: "1",
   authorization_view: "1",
@@ -62,6 +65,9 @@ const page: ItemPage = {
   },
 };
 const inboxPage: InboxPage = {
+  total_count: 0,
+  pending_intents: [],
+
   entries: [],
   revision: "1",
   authorization_view: "1",
@@ -144,6 +150,10 @@ function transport(
     resolveResource: unexpected,
     detail: unexpected,
     pullCommits: unexpected,
+    pullFiles: unexpected,
+    pullFileArtifact: unexpected,
+    hydratePullFile: unexpected,
+    loadLocalPullFile: unexpected,
     hydrateDetail: unexpected,
     notificationSubject: unexpected,
     discoverNotificationSubject: unexpected,
@@ -162,6 +172,7 @@ function transport(
     removeTransportBinding: unexpected,
     localClones: unexpected,
     validateLocalNavigation: unexpected,
+    listenRuntimeReset: async () => () => {},
     listenLocalChanges: async () => () => {},
     listen: unexpected,
     ...overrides,
@@ -170,10 +181,12 @@ function transport(
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((finish) => {
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((finish, fail) => {
     resolve = finish;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 const locator: ResourceLocator = {
@@ -579,6 +592,8 @@ describe("CollaborationClient", () => {
   });
   it("binds cache-only detail reads and explicit hydration without starting refresh from a read", async () => {
     const saved: DetailSnapshot = {
+      pending_intent: null,
+
       subject_id: "pull",
       body: { state: "known", text: null },
       metadata: null,
@@ -670,6 +685,8 @@ describe("CollaborationClient", () => {
     let next = changePage("1");
     const old = deferred<DetailSnapshot>();
     const saved: DetailSnapshot = {
+      pending_intent: null,
+
       subject_id: "pull",
       body: { state: "not_loaded", text: null },
       metadata: null,
@@ -862,6 +879,119 @@ describe("CollaborationClient", () => {
     stop();
     cache.clear();
   });
+  it("invalidates file list and artifact reads when selected file evidence changes", async () => {
+    let next = changePage("1");
+    const client = new CollaborationClient(
+      transport({
+        listen: async () => () => {},
+        changesSince: async () => next,
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    const context = {
+      base_oid: "a".repeat(40),
+      head_oid: "b".repeat(40),
+      merge_base_oid: null,
+      base_repository_provider_id: "target",
+      source_repository_provider_id: "source",
+      body_metadata_facet_revision: "1",
+    };
+    const query = {
+      account_id: account.id,
+      subject_id: "pull",
+      cursor: null,
+      limit: 100,
+    };
+    const request = {
+      account_id: account.id,
+      authorization_epoch: account.authorization_epoch,
+      subject_id: "pull",
+      file_facet_revision: "2",
+      context,
+      file_key: "file-a",
+    };
+    const listKey = collaborationKeys.pullFiles(account, query);
+    const artifactKey = collaborationKeys.pullFileArtifact(account, request);
+    cache.setQueryData(listKey, "saved file list");
+    cache.setQueryData(artifactKey, "saved selected artifact");
+
+    next = changePage("2", "1", [
+      {
+        revision: "2",
+        account_id: account.id,
+        scope: "detail:pull:files",
+        reset: false,
+      },
+    ]);
+    await client.wake();
+
+    expect(cache.getQueryData(listKey)).toBe("saved file list");
+    expect(cache.getQueryData(artifactKey)).toBe("saved selected artifact");
+    expect(cache.getQueryState(listKey)?.isInvalidated).toBe(true);
+    expect(cache.getQueryState(artifactKey)?.isInvalidated).toBe(true);
+    stop();
+    cache.clear();
+  });
+  it.each([
+    { scope: "detail:pull:body", source: "body context" },
+    {
+      scope: "repo:repo-1:pull_request",
+      source: "repository context",
+    },
+  ])("removes superseded file projections before a $source refresh", async ({
+    scope,
+  }) => {
+    let next = changePage("1");
+    const client = new CollaborationClient(
+      transport({
+        listen: async () => () => {},
+        changesSince: async () => next,
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    const context = {
+      base_oid: "a".repeat(40),
+      head_oid: "b".repeat(40),
+      merge_base_oid: null,
+      base_repository_provider_id: "target",
+      source_repository_provider_id: "source",
+      body_metadata_facet_revision: "1",
+    };
+    const listKey = collaborationKeys.pullFiles(account, {
+      account_id: account.id,
+      subject_id: "pull",
+      cursor: null,
+      limit: 100,
+    });
+    const artifactKey = collaborationKeys.pullFileArtifact(account, {
+      account_id: account.id,
+      authorization_epoch: account.authorization_epoch,
+      subject_id: "pull",
+      file_facet_revision: "2",
+      context,
+      file_key: "file-a",
+    });
+    cache.setQueryData(listKey, "superseded file list");
+    cache.setQueryData(artifactKey, "superseded selected artifact");
+
+    next = changePage("2", "1", [
+      {
+        revision: "2",
+        account_id: account.id,
+        scope,
+        reset: false,
+      },
+    ]);
+    await client.wake();
+    await vi.waitFor(() => expect(cache.getQueryData(listKey)).toBeUndefined());
+    expect(cache.getQueryData(artifactKey)).toBeUndefined();
+    stop();
+    cache.clear();
+  });
   it.each([
     {
       changeScope: "detail:pull:body",
@@ -1029,7 +1159,12 @@ describe("CollaborationClient", () => {
         ? beforeRepository
         : projection === "items"
           ? { ...page, items: [privateItem] }
-          : { item: privateItem, revision: "1", authorization_view: "1" };
+          : {
+              pending_intent: null,
+              item: privateItem,
+              revision: "1",
+              authorization_view: "1",
+            };
     const currentItem = { ...privateItem, body: "current private body" };
     const current =
       projection === "repositories"
@@ -1044,7 +1179,12 @@ describe("CollaborationClient", () => {
           }
         : projection === "items"
           ? { ...page, revision: "2", items: [currentItem] }
-          : { item: currentItem, revision: "2", authorization_view: "1" };
+          : {
+              pending_intent: null,
+              item: currentItem,
+              revision: "2",
+              authorization_view: "1",
+            };
     let next = changePage("1");
     const oldRead = deferred<ProviderSnapshot>();
     const read = vi
@@ -1140,6 +1280,8 @@ describe("CollaborationClient", () => {
     ]);
     await client.wake();
     oldRead.resolve({
+      pending_intent: null,
+
       item: privateItem,
       revision: "1",
       authorization_view: "1",
@@ -2042,4 +2184,288 @@ describe("authored draft recovery", () => {
     stop();
     cache.clear();
   });
+});
+
+it("fences late native reads and resets provider projections across recovery without erasing unsaved draft context", async () => {
+  let reset: (() => void) | undefined;
+  const remove = vi.fn();
+  const oldRead = deferred<CapabilitySnapshot>();
+  const client = new CollaborationClient(
+    transport({
+      listen: async () => () => {},
+      listenRuntimeReset: async (listener) => {
+        reset = listener;
+        return remove;
+      },
+      changesSince: async () => changePage("1"),
+      capabilities: () => oldRead.promise,
+    }),
+  );
+  const cache = new QueryClient();
+  const stop = client.installBridge(cache);
+  await client.wake();
+  const key = collaborationKeys.capabilities(account);
+  const draftKey = collaborationKeys.draft(account, "retained");
+  cache.setQueryData(key, capability);
+  cache.setQueryData(draftKey, {
+    body: "Keep the author's text",
+    generation: "2",
+  });
+  const pending = client.forAccount(account).capabilities();
+  const rejected = expect(pending).rejects.toBeInstanceOf(
+    StaleAuthorizationError,
+  );
+  reset?.();
+  expect(cache.getQueryData(key)).toBeUndefined();
+  expect(cache.getQueryData(draftKey)).toEqual({
+    body: "Keep the author's text",
+    generation: "2",
+  });
+  expect(cache.getQueryState(draftKey)?.isInvalidated).toBe(true);
+  oldRead.resolve(capability);
+  await rejected;
+  stop();
+  expect(remove).toHaveBeenCalledTimes(1);
+  cache.setQueryData(key, capability);
+  reset?.();
+  expect(cache.getQueryData(key)).toEqual(capability);
+  cache.clear();
+});
+
+it("removes a recovery listener that attaches after the bridge is disposed", async () => {
+  const installed = deferred<() => void>();
+  const remove = vi.fn();
+  const client = new CollaborationClient(
+    transport({
+      listen: async () => () => {},
+      listenRuntimeReset: () => installed.promise,
+      changesSince: async () => changePage("1"),
+    }),
+  );
+  const cache = new QueryClient();
+  const stop = client.installBridge(cache);
+  stop();
+  installed.resolve(remove);
+  await vi.waitFor(() => expect(remove).toHaveBeenCalledTimes(1));
+  cache.clear();
+});
+
+it.each([
+  "reject",
+  "resolve",
+] as const)("restarts catch-up across native recovery and fences an old %s completion", async (completion) => {
+  let reset: (() => void) | undefined;
+  const oldRead = deferred<ChangePage>();
+  const freshRead = deferred<ChangePage>();
+  const changesSince = vi
+    .fn()
+    .mockResolvedValueOnce(changePage("1"))
+    .mockImplementationOnce(() => oldRead.promise)
+    .mockImplementationOnce(() => freshRead.promise);
+  const client = new CollaborationClient(
+    transport({
+      listen: async () => () => {},
+      listenRuntimeReset: async (listener) => {
+        reset = listener;
+        return () => {};
+      },
+      changesSince,
+      capabilities: async () => ({
+        ...capability,
+        revision: "3",
+        authorization_view: "3",
+      }),
+    }),
+  );
+  const changed = vi.fn();
+  const unsubscribe = client.subscribeChanges(changed);
+  const cache = new QueryClient();
+  const stop = client.installBridge(cache);
+  await vi.waitFor(() => expect(changesSince).toHaveBeenCalledTimes(1));
+  const retired = client.wake();
+  reset?.();
+  await vi.waitFor(() => expect(changesSince).toHaveBeenCalledTimes(3));
+  // Restart ignores the old cursor and never waits for its pending request.
+  expect(changesSince.mock.calls).toEqual([["0"], ["1"], ["0"]]);
+  freshRead.resolve(
+    changePage("3", "3", [
+      { revision: "3", account_id: account.id, scope: "drafts", reset: false },
+    ]),
+  );
+  await vi.waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
+  if (completion === "reject") {
+    oldRead.reject({ code: "not_ready", message: "Retired runtime" });
+  } else {
+    oldRead.resolve(
+      changePage("2", "1", [
+        {
+          revision: "2",
+          account_id: account.id,
+          scope: "drafts",
+          reset: false,
+        },
+      ]),
+    );
+  }
+  await retired;
+  expect(changed.mock.calls).toEqual([
+    [{ revision: "3", account_id: account.id, scope: "drafts", reset: false }],
+  ]);
+  await expect(
+    client.forAccount(account).capabilities(),
+  ).resolves.toMatchObject({
+    authorization_view: "3",
+  });
+  unsubscribe();
+  stop();
+  cache.clear();
+});
+
+it("invalidates effective item, list/count/search and inbox consumers across independent clients without touching provider head proofs", async () => {
+  let next = changePage("1");
+  const clients = [0, 1].map(
+    () =>
+      new CollaborationClient(
+        transport({
+          listen: async () => () => {},
+          changesSince: async () => next,
+        }),
+      ),
+  );
+  const caches = clients.map(() => new QueryClient());
+  const stops = clients.map((client, i) => client.installBridge(caches[i]));
+  await Promise.all(clients.map((client) => client.wake()));
+  const itemKey = collaborationKeys.item(account, "pull");
+  const listKey = collaborationKeys.items(account, {
+    ...itemQuery,
+    account_id: account.id,
+    search: "changed",
+    state: "closed",
+  });
+  const inboxKey = collaborationKeys.inbox(account, {
+    account_id: account.id,
+    remote_state: "unread",
+    local_state: "all",
+    search: null,
+    cursor: null,
+    limit: 50,
+  });
+  const bodyKey = collaborationKeys.detail(account, {
+    account_id: account.id,
+    subject_id: "pull",
+    facet: "body",
+    cursor: null,
+    limit: 50,
+  });
+  const commentsKey = collaborationKeys.detail(account, {
+    account_id: account.id,
+    subject_id: "pull",
+    facet: "comments",
+    cursor: null,
+    limit: 50,
+  });
+  const otherBody = collaborationKeys.detail(account, {
+    account_id: account.id,
+    subject_id: "other",
+    facet: "body",
+    cursor: null,
+    limit: 50,
+  });
+  const draftKey = collaborationKeys.draft(account, "pull");
+  const otherActorKey = collaborationKeys.item(
+    { ...account, id: "other-account" },
+    "pull",
+  );
+  for (const cache of caches)
+    for (const key of [
+      itemKey,
+      listKey,
+      inboxKey,
+      bodyKey,
+      commentsKey,
+      otherBody,
+      draftKey,
+      otherActorKey,
+    ])
+      cache.setQueryData(key, "saved");
+  next = changePage("2", "1", [
+    {
+      revision: "2",
+      account_id: account.id,
+      scope: "effective:pull",
+      reset: false,
+    },
+  ]);
+  await Promise.all(clients.map((client) => client.wake()));
+  for (const cache of caches) {
+    for (const key of [itemKey, listKey, inboxKey, bodyKey])
+      expect(cache.getQueryState(key)?.isInvalidated).toBe(true);
+    for (const key of [commentsKey, otherBody, draftKey, otherActorKey])
+      expect(cache.getQueryState(key)?.isInvalidated).toBe(false);
+  }
+  stops.forEach((stop) => stop());
+  caches.forEach((cache) => cache.clear());
+});
+
+it("an effective-intent change cancels a held list response before it can overwrite committed pending values", async () => {
+  let next = changePage("1");
+  const held = deferred<ItemPage>();
+  const saved: ItemPage = {
+    ...page,
+    revision: "2",
+    total_count: 1,
+    items: [{ ...privateItem, title: "Pending title" }],
+    pending_intents: [
+      {
+        subject_id: privateItem.id,
+        commands: [
+          { command_id: "command", state: "queued", fields: ["title"] },
+        ],
+      },
+    ],
+  };
+  const items = vi
+    .fn<() => Promise<ItemPage>>()
+    .mockImplementationOnce(() => held.promise)
+    .mockResolvedValue(saved);
+  const client = new CollaborationClient(
+    transport({
+      items,
+      listen: async () => () => {},
+      changesSince: async () => next,
+    }),
+  );
+  const cache = new QueryClient(),
+    stop = client.installBridge(cache);
+  await client.wake();
+  const key = collaborationKeys.items(account, {
+    ...itemQuery,
+    account_id: account.id,
+  });
+  const observer = new QueryObserver(cache, {
+    queryKey: key,
+    queryFn: ({ signal }) =>
+      client.forAccount(account).items(itemQuery, signal),
+    staleTime: Infinity,
+    retry: false,
+  });
+  const unsubscribe = observer.subscribe(() => {});
+  next = changePage("2", "1", [
+    {
+      revision: "2",
+      account_id: account.id,
+      scope: `effective:${privateItem.id}`,
+      reset: false,
+    },
+  ]);
+  await client.wake();
+  await vi.waitFor(() => expect(cache.getQueryData(key)).toEqual(saved));
+  held.resolve({ ...page, items: [privateItem] });
+  await held.promise;
+  await Promise.resolve();
+  expect(items).toHaveBeenCalledTimes(2);
+  expect(cache.getQueryData(key)).toEqual(saved);
+  unsubscribe();
+  stop();
+  cache.clear();
 });

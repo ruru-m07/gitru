@@ -7,6 +7,7 @@ pub mod operation;
 pub mod origin;
 pub mod pickaxe;
 pub mod pull_checkout;
+pub mod pull_file;
 pub mod rebase;
 pub mod remotes;
 pub mod stash;

@@ -303,6 +303,8 @@ describe("generated collaboration wire contract", () => {
   });
   it("preserves detail missingness, nullable authoritative body and string revisions through distinct read/hydrate commands", async () => {
     const snapshot = DetailSnapshotSchema.parse({
+      pending_intent: null,
+
       subject_id: "pull",
       body: { state: "known", text: null },
       metadata: null,
@@ -403,6 +405,7 @@ describe("generated collaboration wire contract", () => {
             web_url: null,
           },
         },
+        merge_base_oid: null,
         merged_at: null,
       },
       fields: [
@@ -418,6 +421,7 @@ describe("generated collaboration wire contract", () => {
         "is_draft",
         "head",
         "base",
+        "merge_base",
         "merged_at",
       ].map((field) => ({
         field,
@@ -434,6 +438,8 @@ describe("generated collaboration wire contract", () => {
       })),
     };
     const raw = {
+      pending_intent: null,
+
       subject_id: "pull",
       body: { state: "known", text: null },
       metadata,
@@ -476,6 +482,7 @@ describe("generated collaboration wire contract", () => {
     expect(parsed.metadata?.values.base?.repository?.provider_id).toBe(
       "9007199254740996",
     );
+    expect(parsed.metadata?.values.merge_base_oid).toBeNull();
     expect(parsed.metadata?.values.labels[0]?.provider_id).toBeNull();
     expect(parsed.metadata?.values.assignees).toEqual([]);
     expect(parsed.metadata?.values.state).toBe("future_provider_state");
@@ -628,6 +635,9 @@ describe("generated collaboration wire contract", () => {
       }).repository_id,
     ).toBeNull();
     const page = ItemPageSchema.parse({
+      total_count: 1,
+      pending_intents: [],
+
       items: [
         {
           id: "item",

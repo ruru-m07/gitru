@@ -26,7 +26,7 @@ fn closing_only_the_original_descriptor_keeps_the_raw_os_lock() {
 }
 
 #[tokio::test]
-async fn final_store_owner_releases_lease_despite_an_inherited_descriptor() {
+async fn actual_close_releases_lease_despite_clones_and_an_inherited_descriptor() {
     use std::os::unix::fs::MetadataExt;
 
     let directory = tempfile::tempdir().unwrap();
@@ -36,32 +36,33 @@ async fn final_store_owner_releases_lease_despite_an_inherited_descriptor() {
     let weak_owner = Arc::downgrade(&owner.inner);
     // dup and fork share the same open file description on Unix. Keep it
     // alive deterministically instead of racing an unrelated fork/exec.
-    let inherited_description = owner.inner._writer_lease.file.try_clone().unwrap();
+    let inherited_description = owner
+        .inner
+        .writer_lease
+        .lock()
+        .await
+        .as_ref()
+        .unwrap()
+        .file
+        .try_clone()
+        .unwrap();
     let lease_path = path.with_file_name("cache.sqlite.lock");
     let identity = inherited_description.metadata().unwrap();
 
-    owner.close().await;
-    assert_eq!(
-        Store::open(&path).await.err().unwrap().code,
-        ErrorCode::Busy,
-        "closing readers does not release a live writer owner"
+    owner.close().await.unwrap();
+    assert!(
+        clone.revision().await.is_err(),
+        "old readers are closed on every clone"
+    );
+    assert!(
+        clone.inner.writer.acquire().await.is_err(),
+        "old writers are closed on every clone"
     );
     drop(owner);
-    assert_eq!(
-        Arc::strong_count(&clone.inner),
-        1,
-        "only the intentional Store clone still owns the writer"
-    );
-    assert_eq!(
-        Store::open(&path).await.err().unwrap().code,
-        ErrorCode::Busy
-    );
-    clone.close().await;
+    assert_eq!(Arc::strong_count(&clone.inner), 1);
+    clone.close().await.unwrap(); // repeated close is idempotent
     drop(clone);
-    assert!(
-        weak_owner.upgrade().is_none(),
-        "the final Store owner is gone before reopening"
-    );
+    assert!(weak_owner.upgrade().is_none());
 
     let reopened = Store::open(&path)
         .await
@@ -77,7 +78,7 @@ async fn final_store_owner_releases_lease_despite_an_inherited_descriptor() {
         Store::open(&path).await.err().unwrap().code,
         ErrorCode::Busy
     );
-    reopened.close().await;
+    reopened.close().await.unwrap();
     drop(reopened);
     assert!(Store::open(&path).await.is_ok());
 }

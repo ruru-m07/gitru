@@ -40,6 +40,7 @@ import {
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import PageLayout from "@/components/page-layout";
 import { AccountSettingsButton } from "./account-manager";
+import { BackupRecoveryButton } from "./backup-recovery";
 import {
   CapabilityBoundary,
   ReadOnlyCapability,
@@ -197,6 +198,7 @@ export function CollaborationWorkspace({
               Drafts
             </Button>
           ) : null}
+          <BackupRecoveryButton />
           <AccountSettingsButton />
         </div>
       </header>
@@ -921,12 +923,15 @@ function ItemFeed({
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const Icon = icons[kind];
   const page = canReadSaved(policy) ? query.data : undefined;
+  const pendingSubjects = new Set(
+    page?.pending_intents.map((intent) => intent.subject_id),
+  );
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-2">
         <span className="text-xs text-muted-foreground">
           {page
-            ? `${page.items.length} saved items${search ? " matching your search" : " on this page"}`
+            ? `${page.total_count} saved items${search ? " matching your search" : " matching these filters"}`
             : "Saved activity"}
         </span>
         {page ? (
@@ -1037,6 +1042,11 @@ function ItemFeed({
                       <span>{item.state}</span>
                     </div>
                   </div>
+                  {pendingSubjects.has(item.id) ? (
+                    <Badge variant="outline" size="sm">
+                      Pending changes
+                    </Badge>
+                  ) : null}
                   {item.is_draft ? (
                     <Badge variant="outline" size="sm">
                       Draft

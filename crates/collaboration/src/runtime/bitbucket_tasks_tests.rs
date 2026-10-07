@@ -832,7 +832,7 @@ async fn bitbucket_tasks_compound_actors_rename_and_offline_cold_reads_preserve_
     ];
     let calls = fixture.count();
     let loads = vault.loads.load(Ordering::SeqCst);
-    database.close().await;
+    database.close().await.unwrap();
     drop(engine);
     drop(database);
     let reopened = store(dir.path()).await;
@@ -1033,7 +1033,7 @@ async fn bitbucket_tasks_invalid_content_keeps_cache_and_draft_with_cold_durable
     assert_eq!(database.account(&account.id).await.unwrap(), account);
     let calls = fixture.count();
     let loads = vault.loads.load(Ordering::SeqCst);
-    database.close().await;
+    database.close().await.unwrap();
     drop(engine);
     drop(database);
     let reopened = store(dir.path()).await;
@@ -1151,7 +1151,7 @@ async fn bitbucket_tasks_twenty_page_budget_survives_ten_page_yield_and_two_cold
     );
     let calls = fixture.count();
     let loads = vault.loads.load(Ordering::SeqCst);
-    database.close().await;
+    database.close().await.unwrap();
     drop(engine);
     drop(database);
     let reopened = store(dir.path()).await;
@@ -1198,7 +1198,7 @@ async fn bitbucket_tasks_twenty_page_budget_survives_ten_page_yield_and_two_cold
     let capped_history = capped_cursor["seen_pages"].as_array().unwrap();
     assert_eq!(capped_history.len(), 20);
     assert_eq!(&capped_history[..10], yielded_history.as_slice());
-    reopened.close().await;
+    reopened.close().await.unwrap();
     drop(engine);
     drop(reopened);
     let cold = store(dir.path()).await;
@@ -1288,7 +1288,7 @@ async fn bitbucket_tasks_loop_rejection_is_atomic_and_cold_retry_never_refollows
     assert_eq!(fixture.task_calls(), 4);
     let calls = fixture.count();
     let loads = vault.loads.load(Ordering::SeqCst);
-    database.close().await;
+    database.close().await.unwrap();
     drop(engine);
     drop(database);
     let cold = store(dir.path()).await;

@@ -122,7 +122,7 @@ impl Store {
     ) -> Result<String> {
         validate_identifier(account_id)?;
         validate_identifier(subject_id)?;
-        let mut writer = self.inner.writer.lock().await;
+        let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let account = account_in(&mut tx, account_id, false).await?;
         let identity = sqlx::query(
@@ -201,11 +201,12 @@ impl Store {
                 return Ok(busy_report(&self.inner.path));
             }
         };
-        let mut writer = match self.inner.writer.try_lock() {
+        let mut writer = match self.inner.writer.try_acquire() {
             Ok(guard) => guard,
-            Err(_) => {
+            Err(error) if error.code == ErrorCode::Busy => {
                 return Ok(busy_report(&self.inner.path));
             }
+            Err(error) => return Err(error),
         };
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let usage_before = cache_usage_in(&mut tx, &self.inner.path).await?;
@@ -215,7 +216,24 @@ impl Store {
         if !state.index_complete {
             indexed_facets = index_historical_in(&mut tx, &state, policy.max_index_facets).await?;
         } else if state.indexed_logical_bytes > policy.target_logical_bytes {
-            outcome = evict_in(&mut tx, &state, &policy).await?;
+            let (artifacts, sweep_complete) =
+                super::pull_files::evict_artifacts_in(&mut tx, &policy).await?;
+            outcome = artifacts;
+            // A bounded artifact sweep always precedes summary eviction. If
+            // there are more artifacts, the next maintenance turn resumes it.
+            if sweep_complete
+                && outcome.evicted_facets == 0
+                && outcome.scanned_facets < policy.max_scan_facets
+            {
+                let state = retention_state_in(&mut tx).await?;
+                let mut remaining_policy = policy.clone();
+                remaining_policy.max_scan_facets -= outcome.scanned_facets;
+                let summaries = evict_in(&mut tx, &state, &remaining_policy).await?;
+                outcome.scanned_facets += summaries.scanned_facets;
+                outcome.evicted_facets += summaries.evicted_facets;
+                outcome.evicted_entry_rows += summaries.evicted_entry_rows;
+                outcome.freed_logical_bytes += summaries.freed_logical_bytes;
+            }
         }
         // Capture an authoritative post-mutation snapshot before commit. Once
         // commit succeeds, later checkpoint/reporting failures must not turn a
@@ -256,6 +274,13 @@ impl Store {
     }
 
     pub async fn wal_status(&self) -> Result<WalStatus> {
+        let owned = self.clone();
+        tokio::spawn(async move { owned.wal_status_owned().await })
+            .await
+            .map_err(|_| CollaborationError::storage())?
+    }
+    async fn wal_status_owned(&self) -> Result<WalStatus> {
+        let _writer = self.inner.writer.acquire().await?;
         let database_bytes = file_size(&self.inner.path);
         let wal_bytes = file_size(&sidecar_path(&self.inner.path, "-wal"));
         if !self.inner.noop_wal_checkpoint_supported {
@@ -269,8 +294,9 @@ impl Store {
             });
         }
         let mut connection = self.maintenance_connection().await?;
-        let (busy, log_frames, checkpointed_frames) =
-            wal_checkpoint(&mut connection, "NOOP").await?;
+        let result = wal_checkpoint(&mut connection, "NOOP").await;
+        connection.close().await.map_err(storage_error)?;
+        let (busy, log_frames, checkpointed_frames) = result?;
         Ok(WalStatus {
             supported: true,
             database_bytes,
@@ -290,18 +316,21 @@ impl Store {
     }
 
     async fn checkpoint_wal_passive_if_writer_idle(&self) -> Result<WalCheckpointResult> {
-        let writer = match self.inner.writer.try_lock() {
-            Ok(guard) => guard,
-            Err(_) => return Ok(skipped_checkpoint()),
-        };
-        drop(writer);
-        self.checkpoint_wal_passive_inner().await
+        let owned = self.clone();
+        tokio::spawn(async move { owned.checkpoint_wal_passive_owned().await })
+            .await
+            .map_err(|_| CollaborationError::storage())?
     }
-
-    async fn checkpoint_wal_passive_inner(&self) -> Result<WalCheckpointResult> {
+    async fn checkpoint_wal_passive_owned(&self) -> Result<WalCheckpointResult> {
+        let _writer = match self.inner.writer.try_acquire() {
+            Ok(guard) => guard,
+            Err(error) if error.code == ErrorCode::Busy => return Ok(skipped_checkpoint()),
+            Err(error) => return Err(error),
+        };
         let mut connection = self.maintenance_connection().await?;
-        let (busy, log_frames, checkpointed_frames) =
-            wal_checkpoint(&mut connection, "PASSIVE").await?;
+        let result = wal_checkpoint(&mut connection, "PASSIVE").await;
+        connection.close().await.map_err(storage_error)?;
+        let (busy, log_frames, checkpointed_frames) = result?;
         Ok(WalCheckpointResult {
             skipped_busy: false,
             busy,
@@ -317,6 +346,7 @@ impl Store {
                 .foreign_keys(true)
                 .create_if_missing(false)
                 .busy_timeout(Duration::ZERO)
+                .optimize_on_close(false, None)
                 .statement_cache_capacity(8),
         )
         .await
@@ -469,11 +499,11 @@ async fn index_historical_in(
 }
 
 #[derive(Default)]
-struct EvictionOutcome {
-    scanned_facets: u32,
-    evicted_facets: u32,
-    evicted_entry_rows: u32,
-    freed_logical_bytes: u64,
+pub(super) struct EvictionOutcome {
+    pub(super) scanned_facets: u32,
+    pub(super) evicted_facets: u32,
+    pub(super) evicted_entry_rows: u32,
+    pub(super) freed_logical_bytes: u64,
 }
 
 async fn evict_in(
@@ -485,7 +515,11 @@ async fn evict_in(
         // Keep each arm as an indexed range query so SQLite can merge the two
         // ordered streams. Wrapping the union in a subquery forces a temporary
         // B-tree and turns every resumed maintenance pass into a prefix scan.
-        sqlx::query("SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM cache_retention_entries WHERE (last_observed_revision,account_id,subject_id,facet)>(?,?,?,?) UNION ALL SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM pull_commit_retention WHERE (last_observed_revision,account_id,subject_id,facet)>(?,?,?,?) ORDER BY last_observed_revision,account_id,subject_id,facet LIMIT ?")
+        sqlx::query("SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM cache_retention_entries WHERE (last_observed_revision,account_id,subject_id,facet)>(?,?,?,?) UNION ALL SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM pull_commit_retention WHERE (last_observed_revision,account_id,subject_id,facet)>(?,?,?,?) UNION ALL SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM pull_file_retention WHERE (last_observed_revision,account_id,subject_id,facet)>(?,?,?,?) ORDER BY last_observed_revision,account_id,subject_id,facet LIMIT ?")
+            .bind(revision)
+            .bind(account)
+            .bind(subject)
+            .bind(facet)
             .bind(revision)
             .bind(account)
             .bind(subject)
@@ -499,7 +533,7 @@ async fn evict_in(
             .await
             .map_err(storage_error)?
     } else {
-        sqlx::query("SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM cache_retention_entries UNION ALL SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM pull_commit_retention ORDER BY last_observed_revision,account_id,subject_id,facet LIMIT ?")
+        sqlx::query("SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM cache_retention_entries UNION ALL SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM pull_commit_retention UNION ALL SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM pull_file_retention ORDER BY last_observed_revision,account_id,subject_id,facet LIMIT ?")
             .bind(i64::from(policy.max_scan_facets))
             .fetch_all(&mut **tx)
             .await
@@ -532,7 +566,7 @@ async fn evict_in(
         }
         outcome.scanned_facets += 1;
         let scope = format!("detail:{}:{}", candidate.subject_id, candidate.facet);
-        let eligible: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts a JOIN items i ON i.account_id=a.id AND i.id=? AND i.kind IN ('pull_request','issue') JOIN account_instances ai ON ai.account_id=a.id JOIN resource_identities ri ON ri.account_id=a.id AND ri.instance_id=ai.instance_id AND ri.entity_id=i.id AND ri.kind=i.kind JOIN sync_scopes s ON s.account_id=a.id AND s.scope=? WHERE a.id=? AND json_extract(s.sync_json,'$.state')<>'syncing' AND NOT EXISTS(SELECT 1 FROM cache_pins p WHERE p.account_id=a.id AND p.instance_id=ai.instance_id AND p.entity_id=i.id) AND NOT EXISTS(SELECT 1 FROM detail_demand d WHERE d.account_id=a.id AND d.subject_id=i.id AND d.facet=? AND d.requested=1) AND NOT EXISTS(SELECT 1 FROM command_target_protections p WHERE p.account_id=a.id AND p.reference_id=i.id AND p.required=1 AND (p.reference_kind='entity' OR (p.reference_kind='facet' AND p.facet=?))))")
+        let eligible: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts a JOIN items i ON i.account_id=a.id AND i.id=? AND i.kind IN ('pull_request','issue') JOIN account_instances ai ON ai.account_id=a.id JOIN resource_identities ri ON ri.account_id=a.id AND ri.instance_id=ai.instance_id AND ri.entity_id=i.id AND ri.kind=i.kind JOIN sync_scopes s ON s.account_id=a.id AND s.scope=? WHERE a.id=? AND json_extract(s.sync_json,'$.state')<>'syncing' AND NOT EXISTS(SELECT 1 FROM detail_demand f WHERE f.account_id=a.id AND f.subject_id=i.id AND f.facet='files' AND f.requested=1) AND NOT EXISTS(SELECT 1 FROM cache_pins p WHERE p.account_id=a.id AND p.instance_id=ai.instance_id AND p.entity_id=i.id) AND NOT EXISTS(SELECT 1 FROM detail_demand d WHERE d.account_id=a.id AND d.subject_id=i.id AND d.facet=? AND d.requested=1) AND NOT EXISTS(SELECT 1 FROM command_target_protections p WHERE p.account_id=a.id AND p.reference_id=i.id AND p.required=1 AND (p.reference_kind='entity' OR (p.reference_kind='facet' AND p.facet=?))))")
             .bind(&candidate.subject_id)
             .bind(&scope)
             .bind(&candidate.account_id)
@@ -541,8 +575,50 @@ async fn evict_in(
             .fetch_one(&mut **tx)
             .await
             .map_err(storage_error)?;
+        let eligible = eligible
+            && (candidate.facet != "files"
+                || !super::pull_files::protected_content_in(
+                    tx,
+                    &candidate.account_id,
+                    &candidate.subject_id,
+                )
+                .await?);
         if eligible {
-            let entry_rows: i64 = if candidate.facet == "commits" {
+            if candidate.facet == "files" {
+                let available_rows = policy
+                    .max_entry_rows
+                    .saturating_sub(outcome.evicted_entry_rows);
+                if let Some((rows, bytes)) = super::pull_files::evict_superseded_in(
+                    tx,
+                    &candidate.account_id,
+                    &candidate.subject_id,
+                    available_rows,
+                )
+                .await?
+                {
+                    outcome.evicted_facets += 1;
+                    outcome.evicted_entry_rows += rows;
+                    outcome.freed_logical_bytes += bytes;
+                    remaining_bytes = remaining_bytes.saturating_sub(bytes);
+                    last_cursor = Some((
+                        candidate.revision,
+                        candidate.account_id.clone(),
+                        candidate.subject_id.clone(),
+                        candidate.facet.clone(),
+                    ));
+                    continue;
+                }
+            }
+            let entry_rows: i64 = if candidate.facet == "files" {
+                sqlx::query_scalar(
+                    "SELECT count(*) FROM pull_file_rows WHERE account_id=? AND subject_id=?",
+                )
+                .bind(&candidate.account_id)
+                .bind(&candidate.subject_id)
+                .fetch_one(&mut **tx)
+                .await
+                .map_err(storage_error)?
+            } else if candidate.facet == "commits" {
                 sqlx::query_scalar(
                     "SELECT count(*) FROM pull_commit_rows WHERE account_id=? AND subject_id=?",
                 )
@@ -582,7 +658,14 @@ async fn evict_in(
                     .await
                     .map_err(storage_error)?;
             let revision = record_change(tx, &candidate.account_id, epoch, &scope, false).await?;
-            if candidate.facet == "commits" {
+            if candidate.facet == "files" {
+                super::pull_files::evict_subject_in(
+                    tx,
+                    &candidate.account_id,
+                    &candidate.subject_id,
+                )
+                .await?;
+            } else if candidate.facet == "commits" {
                 sqlx::query("UPDATE pull_commit_facets SET active_generation=NULL,facet_revision=NULL WHERE account_id=? AND subject_id=?")
                     .bind(&candidate.account_id).bind(&candidate.subject_id).execute(&mut **tx).await.map_err(storage_error)?;
                 sqlx::query(
@@ -762,6 +845,61 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn committed_eviction_reports_a_post_commit_usage_refresh_failure() {
+        use crate::{DetailFacet, runtime::detail_tests::fixtures};
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path().join("cache.sqlite"))
+            .await
+            .unwrap();
+        let account = fixtures::seed(&store, "a").await;
+        let indexed = store
+            .run_cache_maintenance(CacheRetentionPolicy {
+                target_logical_bytes: u64::MAX,
+                checkpoint_wal: false,
+                ..CacheRetentionPolicy::default()
+            })
+            .await
+            .unwrap();
+        assert!(indexed.usage_after.index_complete);
+        store
+            .apply_detail(fixtures::commit(&store, &account, DetailFacet::Body).await)
+            .await
+            .unwrap();
+        let before = store.revision().await.unwrap().parse::<i64>().unwrap();
+        // Reader-only failure injection belongs inside native tests now that
+        // public Store::close actually retires the whole store generation.
+        store.inner.readers.close().await;
+        let report = store
+            .run_cache_maintenance(CacheRetentionPolicy {
+                target_logical_bytes: 0,
+                checkpoint_wal: false,
+                ..CacheRetentionPolicy::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(report.evicted_facets, 1);
+        assert!(report.target_met);
+        assert_eq!(report.usage_after.logical_bytes, Some(0));
+        assert!(report.checkpoint.is_none());
+        assert!(report.checkpoint_error.is_none());
+        assert_eq!(report.usage_refresh_error.unwrap().code, ErrorCode::Storage);
+        let mut writer = store.inner.writer.acquire().await.unwrap();
+        let (observations, accounting, revision, coverage): (i64, i64, i64, String) = sqlx::query_as(
+            "SELECT (SELECT count(*) FROM detail_observations),(SELECT count(*) FROM cache_retention_entries),(SELECT revision FROM runtime_meta WHERE singleton=1),json_extract(coverage_json,'$.state') FROM sync_scopes WHERE account_id='a' AND scope='detail:pull:body'"
+        ).fetch_one(&mut *writer).await.unwrap();
+        assert_eq!((observations, accounting), (0, 0));
+        assert!(revision > before);
+        assert_eq!(coverage, "missing");
+        let integrity: String = sqlx::query_scalar("PRAGMA integrity_check")
+            .fetch_one(&mut *writer)
+            .await
+            .unwrap();
+        assert_eq!(integrity, "ok");
+        drop(writer);
+        store.close().await.unwrap();
+    }
+
+    #[tokio::test]
     async fn maintenance_and_checkpoint_skip_an_owned_application_writer() {
         let directory = tempfile::tempdir().unwrap();
         let store = Store::open(directory.path().join("cache.sqlite"))
@@ -770,7 +908,7 @@ mod tests {
         let _reader_a = store.inner.readers.acquire().await.unwrap();
         let _reader_b = store.inner.readers.acquire().await.unwrap();
         let _reader_c = store.inner.readers.acquire().await.unwrap();
-        let writer = store.inner.writer.lock().await;
+        let writer = store.inner.writer.acquire().await.unwrap();
         let report = tokio::time::timeout(
             Duration::from_millis(500),
             store.run_cache_maintenance(CacheRetentionPolicy {

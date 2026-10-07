@@ -504,7 +504,7 @@ async fn rename_transfer_restart_and_path_reuse_preserve_identity_and_report_amb
             .state,
             ResolutionState::Ambiguous
         );
-        store.close().await;
+        store.close().await.unwrap();
     }
     let store = Store::open(&path).await.unwrap();
     assert_eq!(

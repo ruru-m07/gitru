@@ -190,6 +190,14 @@ impl GithubHttp {
         self.check_collection_url_with_page_size(raw, expected_path, 50, &[])
     }
 
+    pub(crate) fn check_pull_file_url(
+        &self,
+        raw: &str,
+        expected_path: &str,
+    ) -> Result<(Url, u64), ProviderError> {
+        self.check_collection_url_with_page_size(raw, expected_path, 100, &[])
+    }
+
     fn check_collection_url_with_page_size(
         &self,
         raw: &str,
@@ -346,6 +354,42 @@ impl GithubHttp {
         .await
     }
 
+    pub(crate) async fn get_pull_file_collection(
+        &self,
+        url: Url,
+        token: &SecretToken,
+        expected_path: &str,
+        current: u64,
+    ) -> Result<HttpPage, ProviderError> {
+        self.get_bounded_collection_with_fixed_query(
+            url,
+            token,
+            expected_path,
+            current,
+            100,
+            &[],
+            30,
+        )
+        .await
+    }
+    pub(crate) async fn get_selected_pull_file(
+        &self,
+        url: Url,
+        token: &SecretToken,
+        expected_path: &str,
+        ordinal: u32,
+    ) -> Result<HttpPage, ProviderError> {
+        self.get_bounded_collection_with_fixed_query(
+            url,
+            token,
+            expected_path,
+            u64::from(ordinal) + 1,
+            1,
+            &[],
+            3000,
+        )
+        .await
+    }
     pub(crate) async fn get_collection_with_fixed_query(
         &self,
         url: Url,
@@ -355,13 +399,35 @@ impl GithubHttp {
         expected_page_size: u64,
         fixed_query: &[(&str, &str)],
     ) -> Result<HttpPage, ProviderError> {
+        self.get_bounded_collection_with_fixed_query(
+            url,
+            token,
+            expected_path,
+            current,
+            expected_page_size,
+            fixed_query,
+            20,
+        )
+        .await
+    }
+    #[allow(clippy::too_many_arguments)]
+    async fn get_bounded_collection_with_fixed_query(
+        &self,
+        url: Url,
+        token: &SecretToken,
+        expected_path: &str,
+        current: u64,
+        expected_page_size: u64,
+        fixed_query: &[(&str, &str)],
+        max_pages: u64,
+    ) -> Result<HttpPage, ProviderError> {
         let (url, page) = self.check_collection_url_with_page_size(
             url.as_str(),
             expected_path,
             expected_page_size,
             fixed_query,
         )?;
-        if current == 0 || current > 20 || page != current {
+        if current == 0 || current > max_pages || page != current {
             return Err(ProviderError::new(ProviderErrorKind::InvalidResponse));
         }
         let mut authorization =

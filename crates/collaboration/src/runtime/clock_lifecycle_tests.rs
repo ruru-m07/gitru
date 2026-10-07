@@ -939,7 +939,7 @@ async fn cold_valid_utc_recovers_full_deadline_private_cache_and_draft_cas() {
         adapter,
         account,
     } = f;
-    runtime.store.close().await;
+    runtime.store.close().await.unwrap();
     drop(runtime);
     let store = Arc::new(Store::open(&path).await.unwrap());
     let mut cold = CollaborationRuntime::new(store, vault.clone(), adapter.clone());
@@ -983,4 +983,175 @@ async fn cold_valid_utc_recovers_full_deadline_private_cache_and_draft_cas() {
         cold.store.draft(&account.id, "pull").await.unwrap(),
         Some(changed)
     );
+}
+
+async fn wait_stopping(runtime: &CollaborationRuntime) {
+    tokio::time::timeout(HANDSHAKE, async {
+        while !runtime.is_stopping() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn shutdown_joins_active_background_dispatch_and_a_native_operation_lease() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("cache.sqlite");
+    let f = setup(&path).await;
+    let gate = Arc::new(AsyncGate::default());
+    let _release = AsyncRelease(gate.clone());
+    *f.adapter.read_gate.lock().unwrap() = Some(gate.clone());
+    admit(&f.runtime, &f.account, false).await;
+    let runtime = Arc::new(f.runtime);
+    let ipc = runtime.acquire_operation().unwrap();
+    runtime.clone().start_background();
+    tokio::time::timeout(HANDSHAKE, gate.entered.notified())
+        .await
+        .unwrap();
+    let closing_runtime = runtime.clone();
+    let closing = tokio::spawn(async move { closing_runtime.shutdown().await });
+    wait_stopping(&runtime).await;
+    assert!(runtime.acquire_operation().is_err());
+    assert_eq!(
+        Store::open(&path).await.err().unwrap().code,
+        ErrorCode::Busy
+    );
+    assert!(!closing.is_finished());
+    gate.release();
+    // The background's completion also takes lifecycle after dispatch. Holding
+    // the IPC lease until after it completes catches shutdown lock inversion.
+    let dispatch = tokio::time::timeout(HANDSHAKE, runtime.dispatch.lock())
+        .await
+        .unwrap();
+    drop(dispatch);
+    assert!(!closing.is_finished());
+    drop(ipc);
+    tokio::time::timeout(HANDSHAKE, closing)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let reads = f.adapter.read_count();
+    assert!(!runtime.run_next().await);
+    assert_eq!(f.adapter.read_count(), reads);
+    assert!(runtime.store.revision().await.is_err());
+    let reopened = Store::open(&path).await.unwrap();
+    reopened.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn cancelled_shutdown_still_drains_and_replacement_preserves_native_configuration() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("cache.sqlite");
+    let f = setup(&path).await;
+    let old_owner = f
+        .runtime
+        .demand_owner_activity("retained-content")
+        .await
+        .unwrap();
+    let ipc = f.runtime.acquire_operation().unwrap();
+    let closing_runtime = f.runtime.clone();
+    let requester = tokio::spawn(async move { closing_runtime.shutdown().await });
+    wait_stopping(&f.runtime).await;
+    requester.abort();
+    let _ = requester.await;
+    assert_eq!(
+        Store::open(&path).await.err().unwrap().code,
+        ErrorCode::Busy
+    );
+    drop(ipc);
+    // A second waiter shares completion; cancelling the first never cancels it.
+    tokio::time::timeout(HANDSHAKE, f.runtime.shutdown())
+        .await
+        .unwrap()
+        .unwrap();
+    let reopened = Arc::new(Store::open(&path).await.unwrap());
+    let replacement = f.runtime.replacement(reopened).unwrap();
+    assert!(replacement.acquire_operation().is_ok());
+    let new_owner = replacement
+        .demand_owner_activity("retained-content")
+        .await
+        .unwrap();
+    assert_ne!(new_owner.generation, old_owner.generation);
+    assert_eq!(
+        replacement
+            .set_demand_owner_activity("retained-content", &old_owner.generation, true)
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::StaleView
+    );
+    assert!(f.runtime.acquire_operation().is_err());
+    assert!(Arc::ptr_eq(&replacement.vault, &f.runtime.vault));
+    assert!(Arc::ptr_eq(&replacement.registry, &f.runtime.registry));
+    assert!(replacement.scheduler.lock().await.queue.is_empty());
+    admit(&replacement, &f.account, false).await;
+    assert!(replacement.run_next().await);
+    assert_eq!(f.adapter.read_count(), 1);
+    replacement.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn shutdown_waits_for_cancelled_requesters_owned_vault_cutover() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("cache.sqlite");
+    let f = setup(&path).await;
+    f.adapter.plan(&f.account.actor_id, None, false);
+    let gate = Arc::new(BlockingGate::default());
+    let _release = BlockingRelease(gate.clone());
+    *f.vault.store_gate.lock().unwrap() = Some(gate.clone());
+    let connecting_runtime = f.runtime.clone();
+    let connecting = tokio::spawn(async move {
+        connecting_runtime
+            .connect_github("replacement_fixture_token".into())
+            .await
+    });
+    tokio::time::timeout(HANDSHAKE, gate.entered.notified())
+        .await
+        .unwrap();
+    connecting.abort();
+    let _ = connecting.await;
+    let closing_runtime = f.runtime.clone();
+    let closing = tokio::spawn(async move { closing_runtime.shutdown().await });
+    wait_stopping(&f.runtime).await;
+    assert_eq!(
+        f.runtime
+            .connect_github("rejected_fixture_token".into())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::NotReady
+    );
+    assert_eq!(f.adapter.probes.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        Store::open(&path).await.err().unwrap().code,
+        ErrorCode::Busy
+    );
+    assert!(!closing.is_finished());
+    gate.release();
+    tokio::time::timeout(HANDSHAKE, closing)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let reopened = Store::open(&path).await.unwrap();
+    let account = reopened.account(&f.account.id).await.unwrap();
+    assert_ne!(account.authorization_epoch, f.account.authorization_epoch);
+    let reference = reopened
+        .credential_reference(&account.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(f.vault.load(&reference).unwrap().is_some());
+    assert_eq!(f.vault.tokens.lock().unwrap().len(), 1);
+    assert!(
+        reopened
+            .due_credential_cleanup(i64::MAX, 32)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    reopened.close().await.unwrap();
 }

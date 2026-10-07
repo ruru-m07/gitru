@@ -182,6 +182,8 @@ beforeEach(() => {
     const account =
       accountId === otherAccount.id ? otherAccount : fixtureAccount;
     return {
+      pending_intent: null,
+
       item: itemId.startsWith("thread-")
         ? { ...thread, id: itemId, account_id: accountId }
         : savedSubject(account, itemId),
@@ -339,6 +341,8 @@ describe("cached notification canonical subjects", () => {
         itemId: string;
       };
       return {
+        pending_intent: null,
+
         item: itemId.startsWith("thread-")
           ? {
               ...thread,
@@ -393,6 +397,8 @@ describe("cached notification canonical subjects", () => {
       () => pending.promise,
     );
     const item = mockTauriCommand("collaboration_item", () => ({
+      pending_intent: null,
+
       item: thread,
       revision,
       authorization_view: view,
@@ -788,6 +794,8 @@ describe("cached notification canonical subjects", () => {
     }));
     const detail = mockTauriCommandResult("collaboration_detail", body);
     const item = mockTauriCommand("collaboration_item", () => ({
+      pending_intent: null,
+
       item: thread,
       revision,
       authorization_view: view,

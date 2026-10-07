@@ -3374,6 +3374,75 @@ checks are pending. Draft-skip bot status does not constitute a substantive
 code review. These are live remote statuses, separate from RURU-114 local
 qualification; none of these PRs is merged.
 
+### RURU-119 implementation checkpoint — 8 October 2026
+
+RURU-119 is in progress on the signed RURU-114 final head
+`de0e245d5b10bbebb9b66ad78d92febe084a986b`, following migrations 0012 (local
+inbox) and 0013 (immutable command admission). Its
+[work contract](./collaboration-work/RURU-119.md) defines the comparison and
+selected-artifact authority. Migration 0014, durable file staging and terminal
+publication, separate bounded artifact storage, and normalized retention are
+implemented. Superseded generations are reclaimed in bounded maintenance turns;
+active file demand protects the Body evidence as well as the selected content.
+
+GitHub, GitLab and Bitbucket Cloud file summaries preserve old/new identity,
+unknown counts and flags, provider caps and merge-base-to-head semantics.
+The shared scheduler resumes native durable leases and separately budgets fresh
+terminal parent validation. Six synthetic runtime cases pass, covering coalescing,
+Body prerequisites, durable paging, terminal quota, parent mismatch and account
+disconnect. Twelve file-storage tests and five frozen-v13 migration/fault cases
+pass. These are focused local results, not final whole-slice qualification.
+
+The optional native Git accelerator reads existing exact commit objects without
+fetching and requires a unique merge base. Its 11 integration and three focused
+unit cases pass; the full Git crate and strict Clippy pass. Selected local IPC
+revalidates the caller, authored clone link, account, file membership and range
+before publishing. Binary detection without saved blob bytes remains explicit
+omission with a known binary hint. The four new IPC commands are generated with
+`make typegen` (129 commands). Generation now rejects malformed TypeScript syntax;
+the generated-schema test suite passes nine cases. Provider selected-artifact
+hydration, final UI validation and unchanged-Body cache preservation are still
+being integrated. No RURU-119 PR or completion claim exists at this checkpoint.
+
+Remote checkpoint at 7 October 20:10 UTC: all 14 reported checks pass for
+[#169](https://github.com/ruru-m07/gitru/pull/169) at
+`4d31a40743d3e203f2fc1027f17b4ae292268478` and
+[#170](https://github.com/ruru-m07/gitru/pull/170) at
+`e75bf77b920c9f1198d4e7d825cf829298209f5b`. These include Rust, packaged E2E
+and retained collaboration harness jobs on macOS/Linux/Windows. RURU-114 is now
+In Review in [#171](https://github.com/ruru-m07/gitru/pull/171), exact head
+`de0e245d5b10bbebb9b66ad78d92febe084a986b`; its macOS/Linux jobs pass while
+Windows remains pending. Deployment checks pass. CodeRabbit's draft-skipped
+success is not independent code review. No merge, personal credential inspection,
+live provider qualification or production-vault validation was performed.
+
+### RURU-119 complete local qualification — 8 October 2026
+
+RURU-119 source `df54c444771d5c6b671080eafc6c4b3daf3c44ab` now passes
+full `make verify`: 712 frontend tests with one platform skip and 1,076 Rust tests
+with five standalone helper ignores, plus all lint/types/build/format/Clippy.
+The real macOS release retained harness passes all five processes. Its exact
+scope, hash and focused adapter/storage/UI evidence are recorded in the
+[RURU-119 work note](./collaboration-work/RURU-119.md). This is local synthetic
+and packaged evidence; live providers, production vaults and new-head remote CI
+are not inferred.
+
+The final feature includes bounded selected diff hydration for GitHub, GitLab and
+Bitbucket Cloud, cache-only list/artifact queries, virtualized file navigation
+and explicit linked-clone reads. Equivalent Body validation preserves current
+range authority; actual range changes retire it atomically. Local publication
+checks caller and clone-link ownership inside the SQLite writer transaction.
+Binary content without saved bytes remains omission, and no raw whole-pull
+fallback or image-byte fetch is claimed.
+
+At 7 October 20:27 UTC, RURU-114 draft #171 also passes all 14 reported remote
+checks, including Windows. RURU-106 continues in its existing draft #145 on this
+new schema stack: current-schema preservation, restored-command quarantine,
+owned runtime drain/restart and native recovery dialogs are being integrated.
+RURU-125 is independently measuring the actual packaged local data path with
+synthetic data. All branches remain unmerged.
+
+
 ### RURU-125 native cached-navigation baseline — 8 October 2026
 
 Draft [#173](https://github.com/ruru-m07/gitru/pull/173) publishes RURU-125's
@@ -3463,3 +3532,93 @@ commands; focused client, desktop and GitHub-check suites pass 156/156, 17/17 an
 11/11. This is local fixture/macOS source evidence. No review PR, remote matrix,
 packaged restart run, live private provider/PAT/keyring, Gitru cloud dependency,
 other-platform execution, required-check policy or merge result is claimed.
+### RURU-106 current-schema recovery workflow — 8 October 2026
+
+Existing draft [#145](https://github.com/ruru-m07/gitru/pull/145) now continues on
+RURU-119 `08a2db3` with signed integrated source `7bd1e37`. Migration 0015
+preserves immutable authored command/evidence bytes while quarantining every
+restored potentially dispatchable command, including queued commands with no
+recorded attempt. Verified incoming evidence and newer original data remain in
+separate native archives. All recognized v1–v14 snapshots migrate privately to
+schema 15; unknown schemas and malformed authored data fail closed.
+
+The Backups UI is available even when normal storage startup fails. Native file
+pickers and caller-bound, ten-minute confirmations govern backup/restore; native
+owned tasks drain requests and actual SQLite connections, finish confirmed
+replacement despite IPC cancellation, then rebuild runtime ownership. Abandoned
+previews resume storage. SDK catch-up generations and trusted visible-tab demand
+are re-established without accepting old in-flight data. Accounts require
+reauthentication and cannot release restored command quarantine.
+
+Local `make verify` passes 727 frontend cases/one platform skip and 1,115 Rust
+test executions/six standalone helper ignores, with all lint/type/build/fmt/
+Clippy gates. Actual macOS release E2E passes four scenarios across two specs,
+including backup/cancel/restore; the five-process retained crash/restart harness
+also passes. [The work note](./collaboration-work/RURU-106.md) records exact tested
+source, artifact paths, binary checksums and the test-only ancestry repair.
+Remote new-head CI, other-platform recovery, OS picker interaction and live
+provider/vault qualification remain separate. RURU-115 can now build its delivery
+framework on the explicit quarantine and runtime-lifetime contract. No merge.
+
+
+### RURU-115 durable delivery framework — 7 October 2026
+
+The native framework is implemented on final RURU-106 `3e4627b`, with signed
+reviewed source `5741de2`. Migration 0016 preserves immutable per-attempt execution
+context and operation evidence through explicitly verified historical restores.
+A committed attempt precedes dispatch; accepted receipts remain distinct from
+confirmation. Unknown creates enter bounded read-only reconciliation, and
+restored quarantine never permits a new dispatch. Credential epochs, exact
+provider instances, dependency proof, target order, shared quota and native owned
+shutdown fence every turn. Canonical materialization runs in the same transaction
+as confirmation, with a central target-transition seam for RURU-116.
+
+Successful preparation can report exhausted quota before attempt admission.
+Command transaction failures do not suppress independent quota/authentication
+observations; a mutation credential failure retains ambiguous intent while
+retiring the captured account authorization. Production providers register no
+write codecs in this framework; operation-specific follow-ups own those codecs.
+
+Full local `make verify` passes 727 frontend cases/one platform skip and 1,143 Rust
+test executions/seven standalone helper ignores, including lint/types/build/fmt
+and strict workspace Clippy. Independent native review found no remaining blocker
+after three quota/auth fixes. Twenty-five delivery parent cases include five
+actual process-exit boundaries, restore after remote success, SQL faults, quota
+across cold restart, cancellation/drain and account isolation. [The contract and
+qualification note](./collaboration-work/RURU-115.md) retains the exact evidence.
+Remote CI and live provider mutation behavior remain separate, unclaimed gates.
+The change is prepared as a draft stacked on RURU-106; no merge is authorized.
+
+
+### RURU-116 durable effective projections — 8 October 2026
+
+Implemented on the RURU-115 delivery framework, with signed source `42c270c`.
+Frozen migration 0017 retains immutable typed command effects and sparse derived
+item/search projections. Local lists, details, filtered counts, inbox and literal
+search read the same SQLite state; pending metadata makes queued, accepted and
+ambiguous intent visible. Account/epoch/visibility fences remain authoritative,
+and intent never changes provider head, permission or hydration evidence.
+
+Confirmation requires a transaction-owned canonical observation covering every
+authored field before its effect can retire. A default no-op finalizer fails
+closed. Rejection replays successors, stale provider feeds cannot undo a newer
+canonical confirmation, and rollback preserves authored bytes. Restore retains
+effects but quarantines delivery and clears derived projections. Partial indexes
+bound active replay by target and authorization epoch. SDK revision hints cancel
+held reads and invalidate all affected consumers across retained clients.
+
+Full local `make verify` at `42c270c` passes 731 frontend tests/one platform skip,
+1,165 Rust test executions/seven standalone helper ignores, lint/types/build,
+formatting and strict workspace Clippy. `make typegen` generated 135 commands and
+402 schema exports. Integration `e5f2188` adds only the parent's failed-harness
+shutdown and Git lock-test corrections; focused validation of that delta is
+recorded in [the RURU-116 work note](./collaboration-work/RURU-116.md). Remote CI,
+packaged application qualification and live provider writes remain distinct.
+Production providers still register no write operation in this framework slice;
+RURU-117 and operation-specific follow-ups supply review/recovery and delivery.
+
+Remote checks also completed for existing PRs: RURU-119 #172 at `08a2db3`, RURU-125
+#173 at `8eccce4`, and RURU-127 #174 at `cfc5b23` each have all 14 reported status
+contexts passing, including Linux/macOS/Windows Rust, packaged desktop E2E and
+retained collaboration harness. These exact-head CI results do not qualify live
+provider credentials. All PRs remain open; none were merged.

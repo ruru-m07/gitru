@@ -132,7 +132,7 @@ async fn receipt_is_atomic_and_exact_retry_survives_reopen() {
     assert_eq!(row_count(&store, "delivery_attempts").await, 0);
     assert_eq!(row_count(&store, "command_evidence").await, 0);
     assert_eq!(store.revision().await.unwrap(), receipt.admitted_revision);
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let store = Store::open(directory.path().join("commands.db"))
         .await
@@ -206,7 +206,7 @@ async fn dependencies_capture_exact_predecessors_and_order() {
     assert_eq!(hash, first.submission_hash);
     assert!(
         sqlx::query("UPDATE command_dependencies SET required=0 WHERE account_id='a'")
-            .execute(&mut *store.inner.writer.lock().await)
+            .execute(&mut *store.inner.writer.acquire().await.unwrap())
             .await
             .is_err()
     );
@@ -328,7 +328,7 @@ async fn aborting_protection_insert_rolls_back_every_admission_fact() {
     dependent.dependencies = vec![FIRST.into()];
     let dependent = seal_command(dependent).unwrap();
     sqlx::query("CREATE TRIGGER admission_failure BEFORE INSERT ON command_target_protections BEGIN SELECT RAISE(ABORT,'fixture failure'); END")
-        .execute(&mut *store.inner.writer.lock().await).await.unwrap();
+        .execute(&mut *store.inner.writer.acquire().await.unwrap()).await.unwrap();
     assert_error(
         &store,
         &dependent,
@@ -339,7 +339,7 @@ async fn aborting_protection_insert_rolls_back_every_admission_fact() {
     assert_eq!(row_count(&store, "command_dependencies").await, 0);
     assert_eq!(row_count(&store, "command_target_protections").await, 2);
     sqlx::query("DROP TRIGGER admission_failure")
-        .execute(&mut *store.inner.writer.lock().await)
+        .execute(&mut *store.inner.writer.acquire().await.unwrap())
         .await
         .unwrap();
     assert_eq!(
@@ -370,7 +370,7 @@ async fn immutable_facts_and_collision_defense_are_enforced_by_storage() {
         .admit_command(&request, &Policy::default())
         .await
         .unwrap();
-    let mut writer = store.inner.writer.lock().await;
+    let mut writer = store.inner.writer.acquire().await.unwrap();
     assert!(
         sqlx::query("UPDATE commands SET payload_bytes=x'00' WHERE account_id='a'")
             .execute(&mut *writer)
@@ -444,7 +444,7 @@ async fn pending_states_protect_cached_targets_and_authored_evidence() {
         let request = submission(FIRST, "a", "private authored text");
         let receipt = store.admit_command(&request, &policy).await.unwrap();
         {
-            let mut writer = store.inner.writer.lock().await;
+            let mut writer = store.inner.writer.acquire().await.unwrap();
             sqlx::query("UPDATE commands SET state=? WHERE account_id='a' AND command_id=?")
                 .bind(state)
                 .bind(FIRST)
@@ -521,7 +521,7 @@ async fn pending_successor_keeps_terminal_predecessor_reference_protection() {
         .await
         .unwrap();
     {
-        let mut writer = store.inner.writer.lock().await;
+        let mut writer = store.inner.writer.acquire().await.unwrap();
         sqlx::query("UPDATE commands SET state='confirmed' WHERE account_id='a' AND command_id=?")
             .bind(FIRST)
             .execute(&mut *writer)
@@ -577,7 +577,7 @@ async fn pending_successor_keeps_terminal_predecessor_reference_protection() {
     // Terminal history remains durable but leaves the partial protection index.
     sqlx::query("UPDATE commands SET state='cancelled' WHERE account_id='a' AND command_id=?")
         .bind(SECOND)
-        .execute(&mut *store.inner.writer.lock().await)
+        .execute(&mut *store.inner.writer.acquire().await.unwrap())
         .await
         .unwrap();
     assert_eq!(
@@ -622,7 +622,7 @@ async fn schema_rejects_cross_account_forward_edges_and_unbounded_evidence() {
         .admit_command(&submission(SECOND, "a", "two"), &Policy::default())
         .await
         .unwrap();
-    let mut writer = store.inner.writer.lock().await;
+    let mut writer = store.inner.writer.acquire().await.unwrap();
     for (account, command, predecessor) in [
         ("b", SECOND, FIRST),
         ("a", FIRST, SECOND),
@@ -700,7 +700,7 @@ async fn hard_crash_before_or_after_commit_has_one_cold_receipt() {
     for point in ["before_commit", "after_commit"] {
         let (directory, store) = setup().await;
         let before = store.revision().await.unwrap().parse::<u64>().unwrap();
-        store.close().await;
+        store.close().await.unwrap();
         drop(store);
         let path = directory.path().join("commands.db");
         let marker = directory.path().join("checkpoint");

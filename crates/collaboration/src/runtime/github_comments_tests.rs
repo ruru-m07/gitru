@@ -711,7 +711,7 @@ async fn github_comments_pr_issue_two_actors_immutable_rename_and_cold_reads_kee
     }
     let calls = fixture.count();
     let loads = vault.loads.load(Ordering::SeqCst);
-    database.close().await;
+    database.close().await.unwrap();
     drop(engine);
     drop(database);
     let reopened = store(dir.path()).await;
@@ -925,7 +925,7 @@ async fn github_comments_invalid_200_and_bad_link_quota_keep_cache_and_cold_dura
         );
         let calls = fixture.count();
         let loads = vault.loads.load(Ordering::SeqCst);
-        database.close().await;
+        database.close().await.unwrap();
         drop(engine);
         drop(database);
         let reopened = store(dir.path()).await;
@@ -1393,7 +1393,7 @@ async fn github_comments_subject_history_held_reply_respects_head_selection_and_
         );
         let calls = fixture.count();
         let loads = vault.loads.load(Ordering::SeqCst);
-        database.close().await;
+        database.close().await.unwrap();
         drop(engine);
         drop(database);
         let reopened = store(dir.path()).await;
@@ -1483,7 +1483,7 @@ async fn github_comments_twenty_page_budget_survives_ten_page_yield_and_two_cold
     );
     let calls = fixture.count();
     let loads = vault.loads.load(Ordering::SeqCst);
-    database.close().await;
+    database.close().await.unwrap();
     drop(engine);
     drop(database);
     let reopened = store(dir.path()).await;
@@ -1526,7 +1526,7 @@ async fn github_comments_twenty_page_budget_survives_ten_page_yield_and_two_cold
     let cursor: Value = serde_json::from_str(capped.next_cursor.as_ref().unwrap()).unwrap();
     assert_eq!(cursor["pages"], 20);
     assert!(cursor["url"].as_str().unwrap().ends_with("page=21"));
-    reopened.close().await;
+    reopened.close().await.unwrap();
     drop(engine);
     drop(reopened);
     let cold = store(dir.path()).await;

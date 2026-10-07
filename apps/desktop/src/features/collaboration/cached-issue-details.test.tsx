@@ -90,6 +90,8 @@ beforeEach(() => {
     authorization_view: authorizationView,
   }));
   mockTauriCommand("collaboration_item", (payload) => ({
+    pending_intent: null,
+
     item: {
       ...issue,
       account_id: (payload as { accountId: string }).accountId,

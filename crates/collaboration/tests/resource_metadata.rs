@@ -2,6 +2,95 @@ use collaboration::*;
 mod detail_support;
 use detail_support::*;
 
+#[tokio::test]
+async fn new_merge_base_field_requires_observation_after_legacy_snapshot() {
+    use sqlx::Connection;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("cache.sqlite");
+    let store = Store::open(&path).await.unwrap();
+    let account = seed(&store, "merge-base").await;
+    let page = observation(
+        &store,
+        &account,
+        ResourceMetadataValues::default(),
+        vec![],
+        None,
+    )
+    .await;
+    store.apply_detail(page).await.unwrap();
+    let mut legacy = saved(&store, &account).await;
+    legacy
+        .fields
+        .retain(|entry| entry.field != MetadataField::MergeBase);
+    let mut json = serde_json::to_value(legacy).unwrap();
+    json["values"]
+        .as_object_mut()
+        .unwrap()
+        .remove("merge_base_oid");
+    let mut connection = sqlx::SqliteConnection::connect_with(
+        &sqlx::sqlite::SqliteConnectOptions::new().filename(&path),
+    )
+    .await
+    .unwrap();
+    sqlx::query("UPDATE detail_resource_metadata SET metadata_json=? WHERE account_id=? AND subject_id='pull'")
+        .bind(json.to_string()).bind(&account.id).execute(&mut connection).await.unwrap();
+    connection.close().await.unwrap();
+
+    let mut unchanged = observation(
+        &store,
+        &account,
+        ResourceMetadataValues::default(),
+        vec![],
+        None,
+    )
+    .await;
+    unchanged.not_modified = true;
+    unchanged.metadata = None;
+    unchanged.body = DetailValue::default();
+    store.apply_detail(unchanged).await.unwrap();
+    let snapshot = saved(&store, &account).await;
+    assert_eq!(snapshot.values.merge_base_oid, None);
+    assert_eq!(
+        field(&snapshot, MetadataField::MergeBase).saved_state,
+        DetailValueState::NotLoaded
+    );
+    assert_eq!(
+        field(&snapshot, MetadataField::MergeBase).validated_at,
+        None
+    );
+
+    let oid = "c".repeat(40);
+    let page = observation(
+        &store,
+        &account,
+        ResourceMetadataValues {
+            merge_base_oid: Some(oid.clone()),
+            ..Default::default()
+        },
+        vec![(MetadataField::MergeBase, DetailValueState::Known)],
+        None,
+    )
+    .await;
+    store.apply_detail(page).await.unwrap();
+    assert_eq!(
+        saved(&store, &account).await.values.merge_base_oid,
+        Some(oid)
+    );
+    let page = observation(
+        &store,
+        &account,
+        ResourceMetadataValues {
+            merge_base_oid: Some("invalid".into()),
+            ..Default::default()
+        },
+        vec![(MetadataField::MergeBase, DetailValueState::Known)],
+        None,
+    )
+    .await;
+    assert!(store.apply_detail(page).await.is_err());
+    store.close().await.unwrap();
+}
+
 async fn observation(
     store: &Store,
     a: &RemoteAccount,
@@ -99,7 +188,7 @@ async fn known_null_body_preserves_rich_metadata_restart_and_partition_access() 
         })
         .await
         .unwrap();
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let store = Store::open(&path).await.unwrap();
     assert_eq!(
@@ -238,7 +327,7 @@ async fn body_only_representation_omits_metadata_before_304_and_restart() {
     page.not_modified = true;
     page.etag = Some("\"body-only\"".into());
     store.apply_detail(page).await.unwrap();
-    store.close().await;
+    store.close().await.unwrap();
     drop(store);
     let store = Store::open(&path).await.unwrap();
     let current = store.detail(query(&a.id, DetailFacet::Body)).await.unwrap();

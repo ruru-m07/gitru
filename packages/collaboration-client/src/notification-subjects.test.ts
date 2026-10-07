@@ -47,6 +47,8 @@ const snapshot = (generation = "1"): NotificationSubjectSnapshot => ({
   },
 });
 const body = (text: string): DetailSnapshot => ({
+  pending_intent: null,
+
   subject_id: "canonical-pr",
   body: { state: "known", text },
   metadata: null,
@@ -135,6 +137,10 @@ function fixture() {
     resolveResource: unexpected,
     detail: vi.fn(async () => body("current saved body")),
     pullCommits: unexpected,
+    pullFiles: unexpected,
+    pullFileArtifact: unexpected,
+    hydratePullFile: unexpected,
+    loadLocalPullFile: unexpected,
     hydrateDetail: unexpected,
     notificationSubject: vi.fn(async () => {
       const current = snapshot(revision);
@@ -161,6 +167,7 @@ function fixture() {
     removeTransportBinding: unexpected,
     localClones: unexpected,
     validateLocalNavigation: unexpected,
+    listenRuntimeReset: async () => () => {},
     listenLocalChanges: async () => () => {},
     demandActivity: unexpected,
     acquireDemand: unexpected,

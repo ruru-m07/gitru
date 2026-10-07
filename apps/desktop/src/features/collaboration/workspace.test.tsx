@@ -62,6 +62,8 @@ function readMocks(page: ItemPage = fixturePage) {
   mockTauriCommandResult("collaboration_repositories", fixtureRepositories);
   const items = mockTauriCommandResult("collaboration_items", page);
   mockTauriCommandResult("collaboration_item", {
+    pending_intent: null,
+
     item: fixtureItem,
     revision: "10",
     authorization_view: "1",
@@ -77,6 +79,31 @@ function readMocks(page: ItemPage = fixturePage) {
 }
 
 describe("collaboration workbench", () => {
+  it("renders pending changes and the committed filtered count without another network request", async () => {
+    readMocks({
+      ...fixturePage,
+      total_count: 123,
+      pending_intents: [
+        {
+          subject_id: fixtureItem.id,
+          commands: [
+            {
+              command_id: "pending-command",
+              state: "queued",
+              fields: ["title"],
+            },
+          ],
+        },
+      ],
+    });
+    mount(<CollaborationWorkspace kind="pull_request" />);
+    expect(
+      await screen.findByText("123 saved items matching these filters"),
+    ).toBeVisible();
+    expect(screen.getByText("Pending changes")).toBeVisible();
+    expect(screen.getByText(fixtureItem.title)).toBeVisible();
+  });
+
   it("distinguishes providers with the same login and actor ID while selecting exact account keys", async () => {
     // jsdom cannot evaluate the browser top-layer selectors used by Floating UI.
     const matches = Element.prototype.matches;
