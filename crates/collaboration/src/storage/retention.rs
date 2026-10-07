@@ -215,7 +215,24 @@ impl Store {
         if !state.index_complete {
             indexed_facets = index_historical_in(&mut tx, &state, policy.max_index_facets).await?;
         } else if state.indexed_logical_bytes > policy.target_logical_bytes {
-            outcome = evict_in(&mut tx, &state, &policy).await?;
+            let (artifacts, sweep_complete) =
+                super::pull_files::evict_artifacts_in(&mut tx, &policy).await?;
+            outcome = artifacts;
+            // A bounded artifact sweep always precedes summary eviction. If
+            // there are more artifacts, the next maintenance turn resumes it.
+            if sweep_complete
+                && outcome.evicted_facets == 0
+                && outcome.scanned_facets < policy.max_scan_facets
+            {
+                let state = retention_state_in(&mut tx).await?;
+                let mut remaining_policy = policy.clone();
+                remaining_policy.max_scan_facets -= outcome.scanned_facets;
+                let summaries = evict_in(&mut tx, &state, &remaining_policy).await?;
+                outcome.scanned_facets += summaries.scanned_facets;
+                outcome.evicted_facets += summaries.evicted_facets;
+                outcome.evicted_entry_rows += summaries.evicted_entry_rows;
+                outcome.freed_logical_bytes += summaries.freed_logical_bytes;
+            }
         }
         // Capture an authoritative post-mutation snapshot before commit. Once
         // commit succeeds, later checkpoint/reporting failures must not turn a
@@ -469,11 +486,11 @@ async fn index_historical_in(
 }
 
 #[derive(Default)]
-struct EvictionOutcome {
-    scanned_facets: u32,
-    evicted_facets: u32,
-    evicted_entry_rows: u32,
-    freed_logical_bytes: u64,
+pub(super) struct EvictionOutcome {
+    pub(super) scanned_facets: u32,
+    pub(super) evicted_facets: u32,
+    pub(super) evicted_entry_rows: u32,
+    pub(super) freed_logical_bytes: u64,
 }
 
 async fn evict_in(
@@ -485,7 +502,11 @@ async fn evict_in(
         // Keep each arm as an indexed range query so SQLite can merge the two
         // ordered streams. Wrapping the union in a subquery forces a temporary
         // B-tree and turns every resumed maintenance pass into a prefix scan.
-        sqlx::query("SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM cache_retention_entries WHERE (last_observed_revision,account_id,subject_id,facet)>(?,?,?,?) UNION ALL SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM pull_commit_retention WHERE (last_observed_revision,account_id,subject_id,facet)>(?,?,?,?) ORDER BY last_observed_revision,account_id,subject_id,facet LIMIT ?")
+        sqlx::query("SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM cache_retention_entries WHERE (last_observed_revision,account_id,subject_id,facet)>(?,?,?,?) UNION ALL SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM pull_commit_retention WHERE (last_observed_revision,account_id,subject_id,facet)>(?,?,?,?) UNION ALL SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM pull_file_retention WHERE (last_observed_revision,account_id,subject_id,facet)>(?,?,?,?) ORDER BY last_observed_revision,account_id,subject_id,facet LIMIT ?")
+            .bind(revision)
+            .bind(account)
+            .bind(subject)
+            .bind(facet)
             .bind(revision)
             .bind(account)
             .bind(subject)
@@ -499,7 +520,7 @@ async fn evict_in(
             .await
             .map_err(storage_error)?
     } else {
-        sqlx::query("SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM cache_retention_entries UNION ALL SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM pull_commit_retention ORDER BY last_observed_revision,account_id,subject_id,facet LIMIT ?")
+        sqlx::query("SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM cache_retention_entries UNION ALL SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM pull_commit_retention UNION ALL SELECT account_id,subject_id,facet,logical_bytes,last_observed_revision FROM pull_file_retention ORDER BY last_observed_revision,account_id,subject_id,facet LIMIT ?")
             .bind(i64::from(policy.max_scan_facets))
             .fetch_all(&mut **tx)
             .await
@@ -532,7 +553,7 @@ async fn evict_in(
         }
         outcome.scanned_facets += 1;
         let scope = format!("detail:{}:{}", candidate.subject_id, candidate.facet);
-        let eligible: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts a JOIN items i ON i.account_id=a.id AND i.id=? AND i.kind IN ('pull_request','issue') JOIN account_instances ai ON ai.account_id=a.id JOIN resource_identities ri ON ri.account_id=a.id AND ri.instance_id=ai.instance_id AND ri.entity_id=i.id AND ri.kind=i.kind JOIN sync_scopes s ON s.account_id=a.id AND s.scope=? WHERE a.id=? AND json_extract(s.sync_json,'$.state')<>'syncing' AND NOT EXISTS(SELECT 1 FROM cache_pins p WHERE p.account_id=a.id AND p.instance_id=ai.instance_id AND p.entity_id=i.id) AND NOT EXISTS(SELECT 1 FROM detail_demand d WHERE d.account_id=a.id AND d.subject_id=i.id AND d.facet=? AND d.requested=1) AND NOT EXISTS(SELECT 1 FROM command_target_protections p WHERE p.account_id=a.id AND p.reference_id=i.id AND p.required=1 AND (p.reference_kind='entity' OR (p.reference_kind='facet' AND p.facet=?))))")
+        let eligible: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts a JOIN items i ON i.account_id=a.id AND i.id=? AND i.kind IN ('pull_request','issue') JOIN account_instances ai ON ai.account_id=a.id JOIN resource_identities ri ON ri.account_id=a.id AND ri.instance_id=ai.instance_id AND ri.entity_id=i.id AND ri.kind=i.kind JOIN sync_scopes s ON s.account_id=a.id AND s.scope=? WHERE a.id=? AND json_extract(s.sync_json,'$.state')<>'syncing' AND NOT EXISTS(SELECT 1 FROM detail_demand f WHERE f.account_id=a.id AND f.subject_id=i.id AND f.facet='files' AND f.requested=1) AND NOT EXISTS(SELECT 1 FROM cache_pins p WHERE p.account_id=a.id AND p.instance_id=ai.instance_id AND p.entity_id=i.id) AND NOT EXISTS(SELECT 1 FROM detail_demand d WHERE d.account_id=a.id AND d.subject_id=i.id AND d.facet=? AND d.requested=1) AND NOT EXISTS(SELECT 1 FROM command_target_protections p WHERE p.account_id=a.id AND p.reference_id=i.id AND p.required=1 AND (p.reference_kind='entity' OR (p.reference_kind='facet' AND p.facet=?))))")
             .bind(&candidate.subject_id)
             .bind(&scope)
             .bind(&candidate.account_id)
@@ -541,8 +562,25 @@ async fn evict_in(
             .fetch_one(&mut **tx)
             .await
             .map_err(storage_error)?;
+        let eligible = eligible
+            && (candidate.facet != "files"
+                || !super::pull_files::protected_content_in(
+                    tx,
+                    &candidate.account_id,
+                    &candidate.subject_id,
+                )
+                .await?);
         if eligible {
-            let entry_rows: i64 = if candidate.facet == "commits" {
+            let entry_rows: i64 = if candidate.facet == "files" {
+                sqlx::query_scalar(
+                    "SELECT count(*) FROM pull_file_rows WHERE account_id=? AND subject_id=?",
+                )
+                .bind(&candidate.account_id)
+                .bind(&candidate.subject_id)
+                .fetch_one(&mut **tx)
+                .await
+                .map_err(storage_error)?
+            } else if candidate.facet == "commits" {
                 sqlx::query_scalar(
                     "SELECT count(*) FROM pull_commit_rows WHERE account_id=? AND subject_id=?",
                 )
@@ -582,7 +620,14 @@ async fn evict_in(
                     .await
                     .map_err(storage_error)?;
             let revision = record_change(tx, &candidate.account_id, epoch, &scope, false).await?;
-            if candidate.facet == "commits" {
+            if candidate.facet == "files" {
+                super::pull_files::evict_subject_in(
+                    tx,
+                    &candidate.account_id,
+                    &candidate.subject_id,
+                )
+                .await?;
+            } else if candidate.facet == "commits" {
                 sqlx::query("UPDATE pull_commit_facets SET active_generation=NULL,facet_revision=NULL WHERE account_id=? AND subject_id=?")
                     .bind(&candidate.account_id).bind(&candidate.subject_id).execute(&mut **tx).await.map_err(storage_error)?;
                 sqlx::query(

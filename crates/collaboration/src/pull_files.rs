@@ -906,6 +906,33 @@ impl PullFileQuery {
     }
 }
 
+/// Local file summaries; unpublished traversal rows never appear here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PullFileSnapshot {
+    pub subject_id: String,
+    pub context: Option<PullFileContext>,
+    pub files: Vec<PullFile>,
+    pub next_cursor: Option<String>,
+    pub completeness: PullFileCompleteness,
+    pub coverage: crate::Coverage,
+    pub sync: crate::SyncStatus,
+    pub freshness: crate::DetailFreshness,
+    pub facet_revision: Option<String>,
+    pub revision: String,
+    pub authorization_view: String,
+}
+
+/// Exact selected membership plus an optional bounded local artifact.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PullFileArtifactSnapshot {
+    pub request: PullFileDiffRequest,
+    pub membership: PullFileMembershipReceipt,
+    pub artifact: Option<PullFileArtifact>,
+    pub revision: String,
+    pub authorization_view: String,
+    pub freshness: crate::DetailFreshness,
+}
+
 /// Renderer-safe selected-file identity. The store resolves this key against
 /// the exact published generation before any provider or local work starts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

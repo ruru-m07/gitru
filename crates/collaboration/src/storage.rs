@@ -24,6 +24,8 @@ mod inbox;
 mod local_links;
 pub(crate) mod notification_subjects;
 mod pull_commits;
+mod pull_files;
+pub use pull_files::{PullFileApplyReceipt, PullFileCommit, PullFileSelection};
 mod resource_metadata;
 pub mod retention;
 #[cfg(all(test, unix))]
@@ -145,6 +147,7 @@ impl Store {
                 )
             })?;
         pull_commits::cleanup_abandoned_in(&mut writer).await?;
+        pull_files::cleanup_abandoned_in(&mut writer).await?;
         secure_database_files(path)?;
         let readers = SqlitePoolOptions::new()
             .max_connections(3)
