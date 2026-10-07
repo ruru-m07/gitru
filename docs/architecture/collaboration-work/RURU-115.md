@@ -5,6 +5,17 @@ Whole-workspace validation and independent native review pass on the final
 RURU-106 base; remote CI is a separate publication gate.
 Real provider mutation codecs remain in their operation-specific issues.
 
+Publication follow-up, 7 October 2026 22:41 UTC: PR #176's Ubuntu Rust job
+reproduced the inherited failed-harness-startup writer-lease race from RURU-106.
+Signed merge `3e5f7f07d1c21913b230e0ec0401e4879800c898` incorporates repaired
+RURU-106 `332e065a6fc7eae421361c0460c4cf17dc1b5939`, preserving stack lineage.
+It also includes the narrow Windows checkout fixture repair described in that
+work note. On the merged source, all 20 feature-harness session tests, 25 delivery
+regressions (one separately invoked subprocess helper ignored by the standalone
+runner), the direct native ref-lock regression and all 26 checkout integration
+tests pass locally. The earlier full-workspace result below remains separate
+from these repair checks; new-head remote CI must complete independently.
+
 ## Baseline and ownership
 
 This managed external-volume worktree starts at signed RURU-106
