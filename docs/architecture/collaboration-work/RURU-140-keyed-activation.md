@@ -37,3 +37,32 @@ vault deletion, key rotation and portable backup remain outside this slice.
 - Rollback and crash-resume qualification are required before this slice can be
   wired into desktop startup.
 
+## Implemented checkpoint — 8 October 2026
+
+The `native-keyed-store` feature now exposes a native-only activation session.
+It accepts only an unsafe proof minted after full native candidate verification,
+then independently requires same-directory regular files, ready strict key
+metadata, closed WAL/SHM/journal state, a free writer lease and exact SHA-256
+fingerprints. The preview contains an opaque one-use confirmation identifier and
+the recovery bundle path. No key bytes, vault reference or renderer type crosses
+this boundary.
+
+Confirmation publishes and syncs the bounded marker before mutation, moves the
+plaintext source into a unique recovery directory, installs candidate database
+and key metadata, verifies their fingerprints, writes the recovery manifest and
+only then removes the marker. Both ordinary Store startup and keyed session
+bootstrap refuse a retained marker. An explicit interrupted-activation reader
+accepts only the exact bounded marker and can roll back after either the source
+move or keyed install; it preserves the candidate and key metadata in the bundle
+and never deletes a vault key.
+
+Focused activation tests cover exact confirmation, input drift, malformed and
+unready metadata, live sidecars, startup fencing and both rollback phases: **6
+passed, 0 failed**. The complete feature-enabled collaboration library run passes
+**904 tests, 5 explicit subprocess helpers ignored, 0 failed**. Strict
+feature-enabled all-target collaboration Clippy and rustfmt checks pass. These
+are local macOS filesystem tests with a synthetic native-verification proof.
+Actual plaintext export through SQLCipher, low-disk and hard process-death fault
+injection, Windows rename durability, production startup/UI selection, rotation
+and reset remain open. Therefore this is an activation coordinator qualification,
+not production encryption activation, and RURU-140 remains In Progress.

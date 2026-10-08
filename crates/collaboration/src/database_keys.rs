@@ -11,6 +11,8 @@ use std::{
 use subtle::ConstantTimeEq;
 use zeroize::Zeroize;
 
+#[cfg(feature = "native-keyed-store")]
+pub mod activation;
 mod files;
 #[cfg(all(target_os = "macos", feature = "macos-file-vault"))]
 pub mod macos_vault;
@@ -209,6 +211,8 @@ impl DatabaseKeySession {
         })?;
         crate::recovery::require_no_pending_restore(&path)
             .map_err(|_| DatabaseKeyError::InterruptedRestore)?;
+        #[cfg(feature = "native-keyed-store")]
+        activation::require_no_pending(&path).map_err(|_| DatabaseKeyError::InterruptedRestore)?;
         files::require_no_pending(&path)?;
         let mut before = files::observe(&path)?;
         let journal = match files::read(&path)? {
@@ -369,6 +373,8 @@ pub trait RetainedDatabaseKeyVerifier: Send + Sync {
 /// exists, including malformed/pending metadata. Never interpret a parse failure
 /// as permission to create or fall back to plaintext.
 pub(crate) fn refuse_unkeyed_path(path: &Path) -> Result<(), crate::CollaborationError> {
+    #[cfg(feature = "native-keyed-store")]
+    activation::require_no_pending(path)?;
     if files::require_no_pending(path).is_err() || !matches!(files::read(path), Ok(None)) {
         return Err(crate::CollaborationError::new(
             crate::ErrorCode::NotReady,
