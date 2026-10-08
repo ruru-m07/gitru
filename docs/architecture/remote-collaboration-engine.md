@@ -3723,3 +3723,22 @@ Clippy. Generated IPC: 149 commands/473 schemas. See
 [the work note](./collaboration-work/RURU-131.md) for evidence and limits.
 The PR stacks on #181; remote CI and live provider/vault/window checks remain
 separate. Numeric mutation-alias live compatibility is unqualified. No merge.
+
+
+### RURU-108 at-rest policy and pinned codec evidence — 8 October 2026
+
+The architecture targets whole-store encryption for GA, with a database-specific
+OS-protected key, key-aware recovery and portable encrypted backups. Current
+prerelease SQLite remains plaintext; credential vaults and private Unix modes do
+not encrypt cached content. The detailed [decision and threat model](./collaboration-work/RURU-108.md)
+covers locked/missing keys, migration/rotation, preserved authored intent and
+artifact exposure without implying protection against a compromised user process.
+
+An isolated synthetic SQLx 0.9.0/libsqlite3-sys 0.37.0 experiment reports SQLCipher 4.10.0
+with SQLite 3.50.4 and CommonCrypto. FTS, schema 20 migration SQL, rollback, two keyed
+read-only connections, wrong/missing-key refusal, active-WAL canary controls and
+keyed VACUUM backup/restore pass. However, that actual SQLite version fails the
+existing WAL safety gate. Production dependencies and the gate remain unchanged.
+Strict isolated Clippy/fmt pass; this is not full app encryption/vault/platform
+qualification. RURU-139/140/141 track the compatible build, native key lifecycle
+and portable encrypted recovery implementation. GA encryption is still unshipped.
