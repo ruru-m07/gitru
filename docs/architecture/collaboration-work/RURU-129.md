@@ -1,7 +1,7 @@
 # RURU-129 — GitHub title/body desired-state edits
 
-Status: bounded implementation contract, 8 October 2026. Base: clean R117
-`e551eec`. This is the first selected-operation slice of RURU-129; state changes,
+Status: first bounded implementation locally qualified for review, 8 October 2026.
+Publication base: RURU-117 #180, including its qualified restart fixture correction. This is the first selected-operation slice of RURU-129; state changes,
 labels, GitLab, and Bitbucket edits remain unavailable and keep the issue partial.
 
 ## Operation boundary
@@ -154,3 +154,31 @@ Strict all-target collaboration Clippy passed in `/tmp/gitru-r129-native-clippy2
 Broader regression is being finalized; desktop IPC/editor work
 is concurrent and has its own evidence. No live provider mutation, credential
 inspection, remote CI, or packaged platform claim follows from these fixtures.
+
+
+## Desktop integration and publication qualification
+
+The native-only snapshot and admission operations are registered behind the same
+trusted desktop caller policy, generated with `make typegen` (144 commands,
+454 schemas), and exposed through account-bound SDK reads with revision hints.
+The cached detail editor sends only changed fields, requires explicit best-effort
+consent, preserves text on stale context, and reuses the exact command UUID after
+a lost local receipt. Its disclosure covers concurrent provider edits in both
+directions. Local receipt copy does not claim provider confirmation.
+
+Full local `make verify` at signed integrated source `17db925` passed **774 frontend
+tests**, one platform skip, **1,254 Rust test executions**, seven helper ignores,
+lint/types/desktop build, formatting and strict workspace Clippy. Final source
+`f01b0392` adds separately qualified native entry bounds, common provider quota/auth
+transport preservation, the inherited graceful restart fixture correction, and
+consent copy. Final delta: **20 text-operation tests**, **14 transport tests**,
+**21 feature-enabled native harness tests**, strict all-target collaboration Clippy
+with test-harness, full formatting, and **4 UI tests** pass. Independent native and
+frontend reviews found no remaining blocker within this bounded scope. Integration
+`5e8098d1` only joins the already-identical RURU-117 fixture correction ancestry.
+
+Logs: `/tmp/gitru-r129-verify.log`, `/tmp/gitru-r129-final-delta.log`,
+`/tmp/gitru-r129-final-clippy.log`. New PR remote CI remains separate. No production
+provider requests, personal credentials, platform vault or packaged-UI validation
+were used. The issue stays In Progress for state/labels and other-provider edits;
+this title/body slice is reviewable. No merge is authorized.
