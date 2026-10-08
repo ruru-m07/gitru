@@ -219,10 +219,10 @@ fn pull_identity(value: &Value, repository: &str, pull: u64) -> Result<(), Provi
         let destination = destination.as_object().ok_or_else(invalid)?;
         if let Some(target) = destination.get("repository").filter(|v| !v.is_null()) {
             let target = target.as_object().ok_or_else(invalid)?;
-            if let Some(uuid) = target.get("uuid") {
-                if canonical_uuid(uuid.as_str().ok_or_else(invalid)?)? != repository {
-                    return Err(invalid());
-                }
+            if let Some(uuid) = target.get("uuid")
+                && canonical_uuid(uuid.as_str().ok_or_else(invalid)?)? != repository
+            {
+                return Err(invalid());
             }
         }
     }
