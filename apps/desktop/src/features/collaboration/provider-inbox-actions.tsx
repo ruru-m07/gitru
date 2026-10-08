@@ -111,8 +111,8 @@ export function ProviderInboxActions({
       ) : null}
       {available ? (
         <p className="text-muted-foreground">
-          Saved locally; Gitru will try to apply it when connected. This can also
-          affect activity that arrives before delivery.
+          Saved locally; Gitru will try to apply it when connected. This can
+          also affect activity that arrives before delivery.
         </p>
       ) : null}
       {snapshot?.actions.map((descriptor) => (
