@@ -253,14 +253,19 @@ mod tests {
             .map_err(|_| "qualification child did not start")?;
         let deadline = Instant::now() + CHILD_TIMEOUT;
         loop {
-            if let Some(status) = child
-                .try_wait()
-                .map_err(|_| "qualification child status was unavailable")?
-            {
-                return status
-                    .success()
-                    .then_some(())
-                    .ok_or("qualification child reported failure");
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    return status
+                        .success()
+                        .then_some(())
+                        .ok_or("qualification child reported failure");
+                }
+                Ok(None) => {}
+                Err(_) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err("qualification child status was unavailable");
+                }
             }
             if Instant::now() >= deadline {
                 let _ = child.kill();
