@@ -477,14 +477,17 @@ fn native_close_failure_retires_factory_and_retains_key_lease_until_process_exit
             "--nocapture",
         ])
         .env("GITRU_KEYED_CLOSE_FAILURE_FIXTURE", temp.path())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
         .spawn()
         .unwrap();
     let deadline = std::time::Instant::now() + Duration::from_secs(30);
     loop {
         if let Some(status) = child.try_wait().unwrap() {
-            assert!(status.success());
+            assert!(
+                status.success(),
+                "native close failure child exited with {status}"
+            );
             break;
         }
         if std::time::Instant::now() >= deadline {
@@ -507,6 +510,7 @@ async fn native_close_failure_child() {
         return;
     };
     let directory = std::path::PathBuf::from(directory);
+    eprintln!("native close fixture: entered");
     let path = directory.join("busy.sqlite");
     let vault = Vault::default();
     let factory = KeyedConnectionFactory::new(reserve(&path, &vault));
@@ -535,7 +539,9 @@ async fn native_close_failure_child() {
         );
         assert!(!statement.is_null());
     }
+    eprintln!("native close fixture: native statement retained");
     assert!(writer.close().await.is_err());
+    eprintln!("native close fixture: worker close error observed");
     {
         let admission = factory.state.admission.lock().unwrap();
         assert!(admission.faulted);
@@ -551,6 +557,7 @@ async fn native_close_failure_child() {
     drop(factory);
     assert!(state.upgrade().is_some());
     assert_busy(&path, &vault);
+    eprintln!("native close fixture: faulted admission and retained lease verified");
     std::fs::write(
         directory.join("evidence.txt"),
         "faulted;one retained owner;zero subsequent admissions;lease busy",

@@ -263,3 +263,14 @@ both parents' evidence. The verified runner passed again on integration source
 `0f44d5ac` (nine parents plus exceptional child, strict Clippy, fmt, profile and
 linkage), recorded in `/tmp/gitru-r140-connections-integration.log`. New PR remote
 CI remains pending until that exact published head is evaluated.
+
+Windows diagnostic checkpoint (2026-10-08): on PR202 head `187602ce`, run
+`37746090755` / job `113208167807`, authenticated source/build gates and seven
+keyed-handle parent controls pass, but the exceptional-close child exits
+unsuccessfully. Both child streams had been discarded, so that log cannot identify
+its assertion or native exit cause. The macOS and Linux jobs on that run succeed.
+This follow-up preserves all lifetime/admission assertions and the 30-second
+watchdog, exposes only this synthetic child's fixed phase markers/diagnostics,
+and reports its actual exit status. It does not claim the Windows failure fixed.
+The macOS exact parent/child control and strict isolated Clippy pass locally
+(`/tmp/gitru-r140-close-diagnostics*.log`); Windows must rerun with diagnostics.
