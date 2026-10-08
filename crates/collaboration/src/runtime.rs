@@ -1650,3 +1650,5 @@ pub(crate) mod credential_crash_tests;
 
 #[cfg(test)]
 mod gitlab_reviews_tests;
+
+mod issue_creation;

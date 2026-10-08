@@ -61,3 +61,6 @@ pub use storage::Store;
 pub use storage::notification_subjects::{NotificationDiscoveryIntent, NotificationDiscoveryLease};
 pub use tasks::*;
 pub use text_edits::*;
+
+mod issue_creation;
+pub use issue_creation::*;

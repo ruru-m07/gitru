@@ -81,6 +81,9 @@ pub(super) async fn verify_authored(db: &mut SqliteConnection, version: i64) -> 
     if version >= 19 {
         verify_recovery_actions(db).await?;
     }
+    if version >= 22 {
+        verify_issue_creation(db).await?;
+    }
     if version >= 20 {
         verify_comments(db).await?;
     }
@@ -611,5 +614,88 @@ async fn verify_comments(db: &mut SqliteConnection) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+async fn verify_issue_creation(db: &mut SqliteConnection) -> Result<()> {
+    use crate::issue_creation::native as n;
+    {
+        let mut rows = sqlx::query(
+            "SELECT account_id,draft_id,repository_id,title,body,generation FROM issue_drafts",
+        )
+        .fetch(&mut *db);
+        while let Some(r) = rows.try_next().await.map_err(|_| invalid_backup())? {
+            identifier(&column::<String>(&r, "account_id")?)?;
+            identifier(&column::<String>(&r, "repository_id")?)?;
+            n::validate_uuid(&column::<String>(&r, "draft_id")?).map_err(|_| invalid_backup())?;
+            n::validate_title(&column::<String>(&r, "title")?, false)
+                .map_err(|_| invalid_backup())?;
+            n::validate_body(&column::<String>(&r, "body")?).map_err(|_| invalid_backup())?;
+            if column::<i64>(&r, "generation")? <= 0 {
+                return Err(invalid_backup());
+            }
+        }
+    }
+    refuse_rows(db,"SELECT 1 FROM issue_submissions s JOIN commands c USING(account_id,command_id) JOIN issue_drafts d USING(account_id,draft_id) WHERE c.operation_kind<>'github.create_issue' OR c.payload_version<>1 OR c.target_kind<>'repository' OR c.target_id<>d.repository_id OR c.repository_id<>d.repository_id OR d.generation<s.draft_generation LIMIT 1").await?;
+    refuse_rows(db,"SELECT 1 FROM commands c LEFT JOIN issue_submissions s USING(account_id,command_id) WHERE c.operation_kind='github.create_issue' AND c.payload_version=1 AND s.command_id IS NULL LIMIT 1").await?;
+    {
+        let mut rows=sqlx::query("SELECT s.account_id,s.draft_id,s.command_id,s.draft_generation,s.content_hash,c.target_id,c.authorization_epoch,c.payload_bytes,d.title,d.body,d.generation FROM issue_submissions s JOIN commands c USING(account_id,command_id) JOIN issue_drafts d USING(account_id,draft_id)").fetch(&mut *db);
+        while let Some(r) = rows.try_next().await.map_err(|_| invalid_backup())? {
+            let p = n::decode_parts(
+                &column::<Vec<u8>>(&r, "payload_bytes")?,
+                &column::<String>(&r, "account_id")?,
+                &column::<String>(&r, "command_id")?,
+                &column::<String>(&r, "target_id")?,
+                &column::<i64>(&r, "authorization_epoch")?.to_string(),
+            )
+            .map_err(|_| invalid_backup())?;
+            if p.request.draft_id != column::<String>(&r, "draft_id")?
+                || p.request.draft_generation != column::<i64>(&r, "draft_generation")?.to_string()
+                || n::content_hash(&p.title, &p.body) != column::<Vec<u8>>(&r, "content_hash")?
+                || column::<i64>(&r, "generation")? == column::<i64>(&r, "draft_generation")?
+                    && (p.title != column::<String>(&r, "title")?
+                        || p.body != column::<String>(&r, "body")?)
+            {
+                return Err(invalid_backup());
+            }
+        }
+    }
+    refuse_rows(db,"SELECT 1 FROM issue_resolutions r JOIN commands c USING(account_id,command_id) LEFT JOIN delivery_resolutions d ON d.account_id=r.account_id AND d.command_id=r.command_id AND d.purpose='confirmed' LEFT JOIN command_evidence e ON e.account_id=d.account_id AND e.command_id=d.command_id AND e.ordinal=d.evidence_ordinal AND e.kind='github.issue_created' AND e.version=1 WHERE c.state<>'confirmed' OR d.command_id IS NULL OR e.command_id IS NULL LIMIT 1").await?;
+    refuse_rows(db,"SELECT 1 FROM commands c LEFT JOIN issue_resolutions r USING(account_id,command_id) WHERE c.operation_kind='github.create_issue' AND c.payload_version=1 AND c.state='confirmed' AND r.command_id IS NULL LIMIT 1").await?;
+    refuse_rows(db,"SELECT 1 FROM command_evidence e JOIN commands c USING(account_id,command_id) LEFT JOIN issue_resolutions r USING(account_id,command_id) LEFT JOIN delivery_resolutions d ON d.account_id=e.account_id AND d.command_id=e.command_id AND d.evidence_ordinal=e.ordinal AND d.purpose='confirmed' WHERE e.kind='github.issue_created' AND e.version=1 AND (c.operation_kind<>'github.create_issue' OR c.payload_version<>1 OR c.state<>'confirmed' OR r.command_id IS NULL OR d.command_id IS NULL) LIMIT 1").await?;
+    {
+        let mut rows=sqlx::query("SELECT c.account_id,c.command_id,c.target_id,c.authorization_epoch,c.submission_hash,c.payload_bytes,e.payload,a.json AS account_json,r.draft_id,r.entity_id,r.provider_id,r.number,r.url FROM command_evidence e JOIN commands c USING(account_id,command_id) JOIN accounts a ON a.id=c.account_id LEFT JOIN issue_resolutions r USING(account_id,command_id) WHERE e.kind='github.issue_created' AND e.version=1").fetch(&mut *db);
+        while let Some(r) = rows.try_next().await.map_err(|_| invalid_backup())? {
+            let p = n::decode_parts(
+                &column::<Vec<u8>>(&r, "payload_bytes")?,
+                &column::<String>(&r, "account_id")?,
+                &column::<String>(&r, "command_id")?,
+                &column::<String>(&r, "target_id")?,
+                &column::<i64>(&r, "authorization_epoch")?.to_string(),
+            )
+            .map_err(|_| invalid_backup())?;
+            let e: n::ReceiptEvidence =
+                n::decode_json(&column::<Vec<u8>>(&r, "payload")?).map_err(|_| invalid_backup())?;
+            let a: RemoteAccount = serde_json::from_str(&column::<String>(&r, "account_json")?)
+                .map_err(|_| invalid_backup())?;
+            let hash: Vec<u8> = column(&r, "submission_hash")?;
+            let hash: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+            if !n::receipt_matches(&e, &p)
+                || e.preparation.actor != a.actor_id
+                || e.preparation.command_hash != hash
+            {
+                return Err(invalid_backup());
+            }
+            if column::<String>(&r, "draft_id")? != p.request.draft_id
+                || column::<String>(&r, "entity_id")? != e.receipt.item.id
+                || column::<String>(&r, "provider_id")? != e.receipt.item.provider_id
+                || Some(column::<String>(&r, "number")?) != e.receipt.item.number
+                || Some(column::<String>(&r, "url")?) != e.receipt.item.web_url
+            {
+                return Err(invalid_backup());
+            }
+        }
+    }
+    refuse_rows(db,"SELECT 1 FROM issue_creation_visibility v LEFT JOIN issue_resolutions r ON r.account_id=v.account_id AND r.command_id=v.command_id JOIN commands c ON c.account_id=v.account_id AND c.command_id=v.command_id JOIN items i ON i.account_id=v.account_id AND i.id=v.entity_id WHERE r.entity_id IS NULL OR r.entity_id<>v.entity_id OR c.state<>'confirmed' OR CAST(c.authorization_epoch AS TEXT)<>v.authorization_epoch OR i.kind<>'issue' LIMIT 1").await?;
     Ok(())
 }

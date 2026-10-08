@@ -1,6 +1,6 @@
 # RURU-134 — Durable GitHub issue creation
 
-Status: bounded pre-code contract, 8 October 2026.
+Status: bounded implementation ready for full workspace qualification, 8 October 2026.
 
 This first slice creates GitHub.com issues with title/body in one explicitly
 selected cached repository. Labels, assignees, milestones, issue types and custom
@@ -117,3 +117,50 @@ provisional membership/protection, immutable linkage and revision invalidation
 before confirmation. A failure rolls back all of them. Required race controls
 include held terminal empty feeds, a resumed old multipage traversal,
 feed-before-receipt convergence, newer cache before receipt and auth purge/reconnect.
+
+## Implemented native checkpoint
+
+Migration0022 separates retained issue drafts and immutable submission/resolution
+ledgers from purgeable receipt-origin visibility. The generated API exposes local
+lookup/save, bounded draft recovery and explicit background submission. Generation
+CAS, unchanged-save stability, original-epoch exact UUID retry, same-draft pending
+blocking and atomic admission prevent a lost receipt or edit from authorizing a
+second creation. Canonical publication uses the reviewed transition above, and
+retains the authored draft after both confirmed and unknown outcomes.
+
+The GitHub policy uses fixed numeric GET/POST routes, rejects archived repositories
+and disabled issues, and does not require repository push permission. A valid
+Issues-write credential is still adjudicated by the provider. A strong201 is
+bound to the saved command, actor, repository and authored fields; null provider
+body matches only an explicitly empty authored body. Unknown outcomes have no
+HTTP reconciliation heuristic and never automatically resend. Persisted proof
+validation repeats mandatory normalized metadata, actor/login, URL and timestamp
+checks instead of trusting that a live parser once ran.
+
+Restore recognizes frozen schemas1–21 and current22. It validates every authored
+submission's canonical bytes/content hash and every confirmed resolution's exact
+operation-evidence ordinal. Conversely, strong issue-created evidence requires
+its immutable mapping and confirmed state. Marker validation joins that mapping;
+restored commands remain quarantined. Corrupt-backup checks preserve both selected
+backup bytes and the untouched target database.
+
+Local validation remains separate from remote CI, packaged GUI exercise and live
+provider write qualification. Numeric GitHub mutation aliases remain a documented
+live-provider compatibility boundary; this task never inspected personal tokens
+or dispatched a live provider mutation. Labels, assignees, milestones and other
+issue metadata creation remain outside this first slice.
+
+Focused native qualification on this checkpoint:22 issue-creation/publication
+controls passed, including12 corrupt-backup variations, duplicate canonical
+receipt rejection and transaction rollback;14 recovery integration tests,9 frozen
+migration/fault controls (schemas1–21 plus failed22 retry), and8 current-schema
+recovery controls passed. Strict collaboration all-target Clippy, workspace Rust formatting
+and diff checks passed. Independent native reviews rechecked admission,
+publication and exact proof/mapping validation after the fixes. Full workspace
+verification and remote CI remain publication-owner gates.
+
+The frontend checkpoint generated153 commands. Its latest full SDK run passed211
+tests; desktop passed599 with one platform skip, with both TypeScript checks and
+scoped formatting checks passing. Auth/reset synchronously redacts provider-derived
+navigation/context while retaining authored text, and fresh submissions require a
+new native context. These are local checks, not packaged/live-provider evidence.

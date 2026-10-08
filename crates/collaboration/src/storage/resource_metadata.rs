@@ -101,7 +101,7 @@ fn branch(value: &DetailBranch) -> bool {
                 && text(&r.web_url, 2048)
         })
 }
-fn validate(observation: &ResourceMetadataObservation) -> Result<()> {
+pub(crate) fn validate(observation: &ResourceMetadataObservation) -> Result<()> {
     let v = &observation.values;
     if !matches!(
         observation.kind,

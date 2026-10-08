@@ -39,6 +39,7 @@ mod pull_commits;
 mod pull_files;
 pub use pull_files::{PullFileApplyReceipt, PullFileCommit, PullFileSelection};
 mod resource_metadata;
+pub(crate) use resource_metadata::validate as validate_resource_metadata;
 pub mod retention;
 #[cfg(all(test, unix))]
 mod writer_lease_tests;
@@ -1030,8 +1031,8 @@ impl Store {
         .await
         .map_err(storage_error)?;
         if page.complete && !page.not_modified && completed_run.as_deref() != Some(&page.run_id) {
-            sqlx::query("UPDATE scope_membership SET missing_count=missing_count+1,active=CASE WHEN missing_count+1>=2 THEN 0 ELSE active END WHERE account_id=? AND scope=? AND last_seen_run<>?")
-                .bind(&page.account_id).bind(&page.scope).bind(&page.run_id).execute(&mut *tx).await.map_err(storage_error)?;
+            sqlx::query("UPDATE scope_membership SET missing_count=missing_count+1,active=CASE WHEN missing_count+1>=2 THEN 0 ELSE active END WHERE account_id=? AND scope=? AND last_seen_run<>? AND NOT EXISTS(SELECT 1 FROM issue_creation_visibility v WHERE v.account_id=scope_membership.account_id AND v.entity_id=scope_membership.entity_id AND v.authorization_epoch=?)")
+                .bind(&page.account_id).bind(&page.scope).bind(&page.run_id).bind(&page.authorization_epoch).execute(&mut *tx).await.map_err(storage_error)?;
         }
         let coverage = Coverage {
             state: if page.complete {
@@ -1959,6 +1960,10 @@ async fn clear_remote_cache(tx: &mut Transaction<'_, Sqlite>, account_id: &str) 
 async fn seen(tx: &mut Transaction<'_, Sqlite>, page: &PageCommit, entity_id: &str) -> Result<()> {
     sqlx::query("INSERT INTO scope_membership(account_id,scope,entity_id,last_seen_run) VALUES(?,?,?,?) ON CONFLICT(account_id,scope,entity_id) DO UPDATE SET last_seen_run=excluded.last_seen_run,active=1,missing_count=0")
         .bind(&page.account_id).bind(&page.scope).bind(entity_id).bind(&page.run_id).execute(&mut **tx).await.map_err(storage_error)?;
+    if page.scope.starts_with("repo:") && page.scope.ends_with(":issue") {
+        sqlx::query("DELETE FROM issue_creation_visibility WHERE account_id=? AND entity_id=? AND authorization_epoch=?").bind(&page.account_id).bind(entity_id).bind(&page.authorization_epoch).execute(&mut **tx).await.map_err(storage_error)?;
+    }
+
     Ok(())
 }
 async fn record_change(
@@ -2034,3 +2039,8 @@ fn push_item_predicates(sql: &mut sqlx::QueryBuilder<Sqlite>, query: &ItemQuery)
     }
     Ok(())
 }
+
+pub(crate) mod issue_creation;
+
+#[cfg(test)]
+mod issue_creation_tests;

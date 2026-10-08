@@ -927,3 +927,5 @@ mod tests {
 
 #[cfg(test)]
 mod files_tests;
+
+pub(crate) mod issue_creation;
