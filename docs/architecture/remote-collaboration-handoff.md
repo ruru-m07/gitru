@@ -62,13 +62,17 @@ R139 can be researched/qualified in parallel with feature work using synthetic d
 
 Live sources: original R53 child listing (49, no next page); R108 child listing (139–141); individual current blockers; latest R102/R122/R129/R134/R125 comments; GitHub open-PR listing through #189. Repository sources: `remote-collaboration-engine.md` sections 1/3/18/23; `remote-collaboration-backlog.md` acceptance criteria (its old status tables are historical); current worknotes `RURU-102-clock-lifecycle.md`, `RURU-108.md`, `RURU-129.md`, `RURU-129-workflow.md`, `RURU-134.md`, `RURU-122-timeline.md`, `RURU-122-gitlab-comments.md`, `RURU-122-bitbucket-comments.md` in their external managed worktrees.
 
-Immediate handoff: publish the qualified integration repair, then address actual PR failures; preserve exact source/check evidence; then pick R102 family scheduling, R129 labels, or R139 build qualification as independent bounded lanes. Issue metadata and PR/review/merge delivery follow their existing contracts/dependencies. Refresh the live status counts and add the final CI/PR ledger at the deadline; do not report the whole R53 parent complete merely because many code slices are reviewable.
+Immediate handoff: address actual PR failures as they arrive; preserve exact source/check evidence; then pick R102 family scheduling, R129 labels, or R139 build qualification as independent bounded lanes. Issue metadata and PR/review/merge delivery follow their existing contracts/dependencies. Refresh the live status counts and add the final CI/PR ledger at the deadline; do not report the whole R53 parent complete merely because many code slices are reviewable.
 
 
 ## Combined integration qualification
 
 The external managed worktree `ruru-53-integration` combines issue creation,
 workflow edits, provider inbox actions, Activity and both new comment providers.
+The repair is published as [PR #190](https://github.com/ruru-m07/gitru/pull/190),
+initial signed head `599c537afa3cf622d91c7fd0ca9c4c73183ff58f`, against
+`ruru/ruru-53-integration-dependencies` at `38e43362`. That base combines published
+feature branches solely for validation; retarget after those dependencies land.
 This is a validation branch, not a merge into dev. Common UI disclosures and test
 matrices are combined, and generated IPC is regenerated with make typegen.
 
@@ -93,11 +97,13 @@ job 113090183418: both Rust test steps passed, but post-cache upload reached the
 45-minute limit. Tests and retries were not weakened. New exact-head CI remains
 required for the workflow change.
 
-## Remote PR snapshot — 2026-10-08 01:55 UTC
+## Remote PR snapshot — 2026-10-08 02:00 UTC
 
-This table records the reported contexts at each exact head. Pending or cancelled
-contexts are not passes; local checks and live-provider qualification are separate.
-All listed PRs are open and unmerged. Refresh before review or merge decisions.
+This table records reported contexts at each exact head before the final handoff
+documentation commit. Pending or cancelled contexts are not passes; local checks
+and live-provider qualification are separate. All listed PRs are open and
+unmerged. Refresh before review or merge decisions. The final Linear RURU-53
+window-closing comment records any later CI changes and the final publication head.
 
 | PR | Title | Exact head | Checks passed / reported | Other check states | Mergeability |
 | --- | --- | --- | --- | --- | --- |
@@ -116,7 +122,7 @@ All listed PRs are open and unmerged. Refresh before review or merge decisions.
 | [#154](https://github.com/ruru-m07/gitru/pull/154) | feat(collaboration): resolve inbox subjects from local cache | `e6fe69eba00a598448cc8f29c1164326610ad20b` | 15/15 | none | MERGEABLE |
 | [#155](https://github.com/ruru-m07/gitru/pull/155) | feat(collaboration): connect GitLab PAT accounts and cache member projects | `725b9f242c13b153d9da42374a0f9c32e31a8348` | 14/15 | PENDING: 1 | MERGEABLE |
 | [#156](https://github.com/ruru-m07/gitru/pull/156) | fix(collaboration): reconcile facets with captured source and head evidence | `63e11970838c3bca1710f16175886f117e95aabb` | 11/11 | none | MERGEABLE |
-| [#157](https://github.com/ruru-m07/gitru/pull/157) | test(collaboration): qualify native sync recovery on current engine | `c6eb7e6d678ee13e7a9873219fd1ee17a33bef77` | 8/14 | IN_PROGRESS: 3, QUEUED: 3 | MERGEABLE |
+| [#157](https://github.com/ruru-m07/gitru/pull/157) | test(collaboration): qualify native sync recovery on current engine | `c6eb7e6d678ee13e7a9873219fd1ee17a33bef77` | 9/14 | IN_PROGRESS: 2, QUEUED: 3 | MERGEABLE |
 | [#158](https://github.com/ruru-m07/gitru/pull/158) | feat(collaboration): bound cached PR and issue navigation prefetch | `51249e4b0aeb78a04c5837466b1b3d6ce893af7a` | 10/11 | PENDING: 1 | MERGEABLE |
 | [#159](https://github.com/ruru-m07/gitru/pull/159) | feat(collaboration): cache GitLab merge requests and issues | `ebb8ae10a2ae90cc3f0fa50176f2f88b64a756dc` | 11/11 | none | MERGEABLE |
 | [#160](https://github.com/ruru-m07/gitru/pull/160) | feat(collaboration): add Bitbucket Cloud token accounts and repository sync | `968cd5240f2d96f970a6637bb4a8445e5a815d39` | 11/11 | none | MERGEABLE |
@@ -141,11 +147,12 @@ All listed PRs are open and unmerged. Refresh before review or merge decisions.
 | [#179](https://github.com/ruru-m07/gitru/pull/179) | feat(collaboration): cache GitLab discussions and approval observations | `403db05d9dd4daacf5cbed200566418cfd8c782e` | 14/14 | none | MERGEABLE |
 | [#180](https://github.com/ruru-m07/gitru/pull/180) | feat(collaboration): review and recover saved commands (RURU-117) | `6dc602fa0daa1e574bebb84c695a84cd0b01baa0` | 14/14 | none | MERGEABLE |
 | [#181](https://github.com/ruru-m07/gitru/pull/181) | feat(collaboration): queue GitHub title and body edits (RURU-129) | `dd324b1a525470a68cc66816354956307749f576` | 14/14 | none | MERGEABLE |
-| [#182](https://github.com/ruru-m07/gitru/pull/182) | feat(collaboration): queue provider inbox read and done actions (RURU-130) | `9db3b4383a433806a3f35d331c7d527404c3541e` | 5/14 | IN_PROGRESS: 6, QUEUED: 3 | MERGEABLE |
+| [#182](https://github.com/ruru-m07/gitru/pull/182) | feat(collaboration): queue provider inbox read and done actions (RURU-130) | `9db3b4383a433806a3f35d331c7d527404c3541e` | 8/14 | IN_PROGRESS: 3, QUEUED: 3 | MERGEABLE |
 | [#183](https://github.com/ruru-m07/gitru/pull/183) | feat(collaboration): submit comments with durable drafts and receipts (RURU-131) | `d3652209679de76f1e3ade30e2d2ea41e08729fd` | 12/14 | IN_PROGRESS: 2 | MERGEABLE |
-| [#184](https://github.com/ruru-m07/gitru/pull/184) | feat(collaboration): cache and browse GitHub activity timelines (RURU-122) | `bb0c73c56017b9013d70400d2bbfdd0396dc58d5` | 10/14 | IN_PROGRESS: 3, QUEUED: 1 | MERGEABLE |
-| [#185](https://github.com/ruru-m07/gitru/pull/185) | feat(collaboration): queue guarded GitHub close and reopen actions (RURU-129) | `048f53dd65232223a3fb48ed69a2e8d4a734eee8` | 11/14 | IN_PROGRESS: 3 | MERGEABLE |
-| [#186](https://github.com/ruru-m07/gitru/pull/186) | docs(collaboration): define encryption policy and test pinned SQLCipher (RURU-108) | `486a936e700fe00b863ac26f6f0b526477574a5d` | 9/14 | IN_PROGRESS: 2, QUEUED: 3 | MERGEABLE |
-| [#187](https://github.com/ruru-m07/gitru/pull/187) | feat(collaboration): create GitHub issues from durable drafts (RURU-134) | `98090a78aeb02894e022a0dc3cd3e5dd33b12ce0` | 5/14 | IN_PROGRESS: 6, QUEUED: 3 | MERGEABLE |
-| [#188](https://github.com/ruru-m07/gitru/pull/188) | feat(collaboration): cache Bitbucket PR comments (RURU-122) | `907325097099d38f932f1aea87e378b5e39cc45a` | 4/14 | IN_PROGRESS: 7, QUEUED: 3 | MERGEABLE |
-| [#189](https://github.com/ruru-m07/gitru/pull/189) | feat(collaboration): cache GitLab conversation notes (RURU-122) | `ae7e572d605e248693ce626efb3add671856d199` | 3/14 | IN_PROGRESS: 8, QUEUED: 3 | MERGEABLE |
+| [#184](https://github.com/ruru-m07/gitru/pull/184) | feat(collaboration): cache and browse GitHub activity timelines (RURU-122) | `bb0c73c56017b9013d70400d2bbfdd0396dc58d5` | 12/14 | IN_PROGRESS: 1, QUEUED: 1 | MERGEABLE |
+| [#185](https://github.com/ruru-m07/gitru/pull/185) | feat(collaboration): queue guarded GitHub close and reopen actions (RURU-129) | `048f53dd65232223a3fb48ed69a2e8d4a734eee8` | 12/14 | IN_PROGRESS: 2 | MERGEABLE |
+| [#186](https://github.com/ruru-m07/gitru/pull/186) | docs(collaboration): define encryption policy and test pinned SQLCipher (RURU-108) | `486a936e700fe00b863ac26f6f0b526477574a5d` | 10/14 | IN_PROGRESS: 2, QUEUED: 2 | MERGEABLE |
+| [#187](https://github.com/ruru-m07/gitru/pull/187) | feat(collaboration): create GitHub issues from durable drafts (RURU-134) | `98090a78aeb02894e022a0dc3cd3e5dd33b12ce0` | 6/14 | IN_PROGRESS: 6, QUEUED: 2 | MERGEABLE |
+| [#188](https://github.com/ruru-m07/gitru/pull/188) | feat(collaboration): cache Bitbucket PR comments (RURU-122) | `907325097099d38f932f1aea87e378b5e39cc45a` | 5/14 | IN_PROGRESS: 7, QUEUED: 2 | MERGEABLE |
+| [#189](https://github.com/ruru-m07/gitru/pull/189) | feat(collaboration): cache GitLab conversation notes (RURU-122) | `ae7e572d605e248693ce626efb3add671856d199` | 4/14 | IN_PROGRESS: 7, QUEUED: 3 | MERGEABLE |
+| [#190](https://github.com/ruru-m07/gitru/pull/190) | fix(collaboration): preserve legacy receipts across inbox integration | `599c537afa3cf622d91c7fd0ca9c4c73183ff58f` | 5/14 | IN_PROGRESS: 6, QUEUED: 3 | MERGEABLE |

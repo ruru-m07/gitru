@@ -4,7 +4,9 @@ Status: architecture accepted as the implementation direction. Read-only and
 bounded durable-write slices are published in unmerged review branches; section 23
 retains their chronological evidence. The [8 October handoff](remote-collaboration-handoff.md)
 records current scope, remaining work and exact-head CI. Proposed later-phase
-contracts are not shipping APIs.
+contracts are not shipping APIs. The combined stack is locally qualified in
+[PR #190](https://github.com/ruru-m07/gitru/pull/190): 838 frontend and 1,418 Rust
+tests pass; remote CI and live provider/platform qualification remain separate.
 
 Research date: **2 October 2026**. Repository inspection: HEAD
 `ddaecfad99195f9ce57e46cd3b1bbc0bb02c666d` (`dev`), implementation branch
