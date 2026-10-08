@@ -45,6 +45,20 @@ def main() -> None:
     try:
         subprocess.run(
             [
+                cargo,
+                "--config",
+                str(config),
+                "update",
+                "-p",
+                "openssl-src",
+                "--precise",
+                "300.6.1+3.6.5",
+            ],
+            cwd=ROOT,
+            check=True,
+        )
+        subprocess.run(
+            [
                 "bun",
                 "x",
                 "tauri",
