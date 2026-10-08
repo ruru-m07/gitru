@@ -140,3 +140,26 @@ Local evidence: `/tmp/gitru-r140-macos-vault-full.log`,
 ordinary remote PR matrix remain separate, pending publication evidence.
 The earlier PR194 matrix is green at its own source; it does not qualify this
 new adapter. **R140 stays In Progress** with the acceptance gaps listed above.
+
+## Remote Windows fixture repair
+
+PR200 at signed `de10f4641c349e80775645f17964f303c75377ad` passed 14 of 15
+reported checks, including the actual disposable macOS keychain job. Windows
+workspace Rust failed in the inherited GitLab inbox-action HTTP fixture: the
+accepted socket remained nonblocking, its first read returned WouldBlock10035,
+and the expected command remained Queued instead of Confirmed. The failing
+library run had 722 passes, one failure and five helper ignores. This was not a
+keychain or encrypted-database failure.
+
+The test-only fixture now explicitly enters blocking mode and reads a complete
+bounded HTTP request before replying. The existing eight-second accept budget
+also bounds request reading; fragmented headers/body, duplicate lengths,
+unsupported transfer encoding, truncated/oversized messages and expired
+deadlines have explicit handling. The successful-write assertion is retained.
+Three framing controls plus all 13 existing inbox-operation controls pass locally
+with `macos-file-vault,test-harness`: **16 passed**, no failures or ignored tests.
+Strict collaboration Clippy for all targets with both features, workspace Rust
+formatting and diff checks also pass on the repaired fixture source.
+Production provider, vault and database source is unchanged. New exact-head
+remote Windows verification is required after publication; the earlier full local
+engine and actual macOS-vault evidence remains attributed to its original source.
