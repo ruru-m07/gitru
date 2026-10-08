@@ -29,6 +29,17 @@ impl Journal {
             generation: self.generation,
         }
     }
+    pub(super) fn successor(&self) -> Result<Self, DatabaseKeyError> {
+        Ok(Self {
+            version: self.version,
+            database_id: self.database_id.clone(),
+            generation: self
+                .generation
+                .checked_add(1)
+                .ok_or(DatabaseKeyError::InvalidMetadata)?,
+            ready: true,
+        })
+    }
 }
 pub(super) fn append(path: &Path, suffix: &str) -> PathBuf {
     let mut name = path.as_os_str().to_os_string();
@@ -193,7 +204,7 @@ pub(super) fn read(path: &Path) -> Result<Option<Journal>, DatabaseKeyError> {
     let journal: Journal =
         serde_json::from_slice(&bytes).map_err(|_| DatabaseKeyError::InvalidMetadata)?;
     if journal.version != 1
-        || journal.generation != 1
+        || journal.generation == 0
         || uuid::Uuid::parse_str(&journal.database_id)
             .ok()
             .is_none_or(|id| id.get_version_num() != 4 || id.to_string() != journal.database_id)

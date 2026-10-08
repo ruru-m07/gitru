@@ -17,6 +17,8 @@ pub const DATABASE_KEY_SERVICE: &str = "com.gitru.collaboration.database-key.v1"
 #[cfg(feature = "native-keyed-store")]
 pub mod activation;
 mod files;
+#[cfg(feature = "native-keyed-store")]
+pub mod lifecycle;
 #[cfg(all(target_os = "macos", feature = "macos-file-vault"))]
 pub mod macos_vault;
 #[cfg(test)]
@@ -93,6 +95,7 @@ pub enum DatabaseKeyError {
     EntropyUnavailable,
     WrongKeyOrCorrupt,
     StaleFilesystem,
+    ConfirmationRequired,
 }
 impl fmt::Display for DatabaseKeyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -132,6 +135,7 @@ impl fmt::Display for DatabaseKeyError {
             Self::StaleFilesystem => {
                 "Database files changed during key startup; retry without replacing them"
             }
+            Self::ConfirmationRequired => "Confirm the inspected database-key operation",
         })
     }
 }
@@ -154,7 +158,18 @@ pub trait DatabaseKeyVault: Send + Sync {
 /// present. Malformed or interrupted evidence still returns `true` so callers
 /// fail closed in `DatabaseKeySession::prepare` instead of opening plaintext.
 pub fn requires_keyed_open(path: &Path) -> bool {
-    files::require_no_pending(path).is_err() || !matches!(files::read(path), Ok(None))
+    files::require_no_pending(path).is_err()
+        || {
+            #[cfg(feature = "native-keyed-store")]
+            {
+                lifecycle::require_no_pending(path).is_err()
+            }
+            #[cfg(not(feature = "native-keyed-store"))]
+            {
+                false
+            }
+        }
+        || !matches!(files::read(path), Ok(None))
 }
 
 /// Trusted native codec seam. Must authenticate an existing database read-only,
@@ -223,6 +238,8 @@ impl DatabaseKeySession {
             .map_err(|_| DatabaseKeyError::InterruptedRestore)?;
         #[cfg(feature = "native-keyed-store")]
         activation::require_no_pending(&path).map_err(|_| DatabaseKeyError::InterruptedRestore)?;
+        #[cfg(feature = "native-keyed-store")]
+        lifecycle::require_no_pending(&path)?;
         files::require_no_pending(&path)?;
         let mut before = files::observe(&path)?;
         let journal = match files::read(&path)? {
@@ -385,6 +402,13 @@ pub trait RetainedDatabaseKeyVerifier: Send + Sync {
 pub(crate) fn refuse_unkeyed_path(path: &Path) -> Result<(), crate::CollaborationError> {
     #[cfg(feature = "native-keyed-store")]
     activation::require_no_pending(path)?;
+    #[cfg(feature = "native-keyed-store")]
+    lifecycle::require_no_pending(path).map_err(|_| {
+        crate::CollaborationError::new(
+            crate::ErrorCode::NotReady,
+            "Database key lifecycle recovery is pending; files were preserved",
+        )
+    })?;
     if files::require_no_pending(path).is_err() || !matches!(files::read(path), Ok(None)) {
         return Err(crate::CollaborationError::new(
             crate::ErrorCode::NotReady,
