@@ -3839,3 +3839,17 @@ Initial local evidence is 23 native harness and 627 desktop tests (one existing
 skip), TypeScript/Biome and generated IPC. Full native, packaged and remote
 platform gates are recorded separately as they complete. Synthetic vault evidence
 does not qualify the production OS keyring; RURU-107 remains In Progress.
+
+### RURU-107 retained macOS qualification — 8 October 2026
+
+PR #192 source `70ad1a40` passes the complete local packaged macOS harness:
+seven main scenarios including synthetic vault unavailability, hard crashes
+before/after commit and both fresh-session restarts. The first macOS/Linux run
+found an obsolete fixture warm-up; recovery now requires a newer committed facet
+and cleared credential error even when provider content is unchanged. Twenty-four
+native harness controls, 41 protocol/executor cases, strict Clippy and both type
+checks pass after that correction; earlier full native/frontend evidence remains
+in [the work note](collaboration-work/RURU-107-platform-qualification.md).
+Remote exact-head platform CI and real production OS-vault/dedicated-account
+qualification are separate and pending. RURU-107 stays In Progress. The observed
+obsolete-response retry loop is being repaired under RURU-102. No PR was merged.

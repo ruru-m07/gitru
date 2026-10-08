@@ -57,7 +57,7 @@ production retry timing is unchanged.
 The compiled `vault-unavailable` renderer scenario is now in every packaged
 collaboration matrix's main phase. It requires the actual typed credential error,
 unchanged provider count during refusal, retained Body/draft hashes and account
-identity, and later changed canonical Body after recovery. Its strict evidence
+identity, and a newer committed facet after recovery, even when Body is unchanged. Its strict evidence
 schema rejects invented production-vault scope, missing refusal, continued HTTP,
 lost drafts and failed recovery. Existing hard-crash/restart scenarios remain.
 
@@ -88,3 +88,26 @@ provider call; it must not require the remote text to change when the credential
 store becomes available. Cache/draft hashes stay equal throughout. A native cold
 reopen control will repeat this same-content sequence as well as the original
 phase-one to phase-two case. Production ordering/retry policies remain unchanged.
+
+The correction at `70ad1a40` passes three fault/cold-reopen native controls,
+41 protocol/executor controls and desktop/E2E type checking. Independent review
+confirms a stale cached view cannot satisfy recovery: the renderer must match
+exactly the freshly committed facet, with error cleared and resumed provider
+calls. All 24 native harness controls and strict Clippy pass. The packaged macOS
+qualification at the same source passes all five phases: main (seven scenarios),
+before-commit hard crash, restart-before, after-commit hard crash and restart-after.
+The actual refusal preserves facet `4442`, account/epoch and Body/draft hashes,
+records one vault failure with provider calls fixed at nine, then recovers to
+facet `4451` with the error cleared and provider calls resumed. This includes the
+real native writer/revision/runtime and compiled renderer, using synthetic data.
+
+Retained evidence: `artifacts/e2e-harness/2026-10-08T04-22-36-523Z-38227`,
+binary SHA-256 `68e05e5c45ee1c6cb7c3c5a3f06be905853efa0e74eb1b0c242f840a2816adac`.
+Logs: `/tmp/gitru-r107-packaged-corrected.log`,
+`/tmp/gitru-r107-corrected-harness-native.log`,
+`/tmp/gitru-r107-corrected-clippy.log`. Before the sequence correction, the full
+native suite passed 1,021 tests/five helper ignores and 627 desktop tests/one
+existing skip; after correction the focused 24 native and 41 protocol/executor
+controls, both type checks and formatting pass. The production build excluded
+all retained-harness markers. Fresh remote platform CI is still pending; its
+results must be recorded against the published head separately.
