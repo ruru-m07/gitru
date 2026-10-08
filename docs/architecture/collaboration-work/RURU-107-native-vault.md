@@ -117,3 +117,12 @@ qualify this Mac's keychain or any remote platform. Publication still requires
 the exact PR head's three new native-vault jobs to pass and be recorded by OS
 and backend. Interactive locked-vault prompts, user-denied access, PAT/CLI
 import, live provider authentication and revocation remain outside this slice.
+
+An independent read-only review cleared the production extraction, test-only
+identity bounds, environment allowlist, exact cleanup and per-platform isolation
+at `6f03583cea638637b9855382c596cfd610891cd5`. A separate root review found that
+the supervisor's rare child-status error path returned without reaping its
+owned process. Signed follow-up
+`8b84e34892863693d751e4099175fc21c6bc1a0b` now kills and waits for that child
+before returning; both focused safe tests and strict all-target Clippy passed
+after the correction. Neither review executed a local native vault.
