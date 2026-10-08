@@ -3723,3 +3723,48 @@ the original credential-boundary watchdog. These are deltas to the recorded full
 workspace baseline. Live authenticated numeric mutation compatibility is still
 unqualified. RURU-129 remains In Progress for the separate workflow-state and
 label slices; new-head CI is distinct from these local results.
+
+
+### RURU-131 durable comment creation — 8 October 2026
+
+A separate saved comment draft/composer now admits immutable per-generation
+GitHub creation commands. Validated 201 receipts retain canonical comment IDs;
+unknown delivery preserves intent without POST replay, UUID bypass or text/time
+heuristics. Schema 0020 and restore validation protect draft/submission linkage;
+private notes stay separate and disconnected draft recovery remains local.
+
+Full local make verify at `1895c542`: 787 frontend tests/one platform skip,
+1,279 Rust executions/seven helper ignores, lint/types/build/fmt/strict workspace
+Clippy. Final parent integration `5eab2109` separately passes nine runtime-sync,
+14 credential-crash and 21 feature-harness cases with strict feature-enabled
+Clippy. Generated IPC: 149 commands/473 schemas. See
+[the work note](./collaboration-work/RURU-131.md) for evidence and limits.
+The PR stacks on #181; remote CI and live provider/vault/window checks remain
+separate. Numeric mutation-alias live compatibility is unqualified. No merge.
+
+
+### RURU-122 GitHub Activity timeline — 8 October 2026
+
+The separate Activity facet now persists bounded GitHub issue/PR timeline rows
+with stable provider identity and indexed chronological ordering (unknown time
+last). Missing-to-known timestamps update the same entity; equal times use a
+stable tie-breaker. Per-facet revision/view-bound cursors preserve independent
+local paging. Unsupported event types remain explicit; skipped/unrepresentable
+rows and capped/multipage history stay partial. Only a complete singleton
+response may remove absent rows in this facet.
+
+An opened-only safe-text panel reads local pages, owns one visible native demand
+and leaves sibling drafts/panels intact. Migration 0021 and frozen 0020 recovery
+checks preserve historical data. Generated IPC: 149 commands/479 schemas. Full
+local make verify at `26755289` passes 799 frontend tests/one platform skip,
+1,317 Rust executions/seven helper ignores, lint/types/build/fmt/strict workspace
+Clippy. Earlier feature-enabled native regression passes 913 cases/five helpers;
+all nine final runtime-sync fixture cases pass separately.
+
+Independent native/frontend review cleared stable identity, ordering, coverage,
+privacy and migration handling. See [the work note](./collaboration-work/RURU-122-timeline.md).
+Review base `ruru/ruru-122-timeline-dependencies` combines the qualified discussion
+and comment prerequisites; subsequent parent integration changes documentation
+only. A finite anonymous numeric timeline GET returned 200; private/provider/PAT,
+vault and packaged-window validation remain unclaimed. Remote CI starts on
+publication. RURU-122 stays In Progress for provider expansion; no merge.

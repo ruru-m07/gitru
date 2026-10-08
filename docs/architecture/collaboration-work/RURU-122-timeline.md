@@ -120,3 +120,18 @@ redirect for `/repositories/1296269/issues/1/timeline?per_page=1`, including a
 committed event. This verifies that public numeric read route only. No personal
 credentials, private provider data, mutation endpoint, packaged platform or live
 account workflow was exercised.
+
+## Integrated publication qualification
+
+Full local `make verify` on signed source `26755289` passes 799 frontend tests
+(one platform skip), 1,317 Rust test executions (seven helper ignores), lint,
+typechecks, desktop build, formatting and strict workspace Clippy. Log:
+`/tmp/gitru-r122-final-verify.log`. The final review-base update consumes only
+PR183's documentation; source is unchanged from this full run.
+
+The review base is `ruru/ruru-122-timeline-dependencies` at `ea907fee`, integrating
+the qualified RURU-128 discussion and RURU-131 comment stacks. The PR remains
+strictly the independent Activity facet above that base. Generated IPC: 149
+commands/479 executable schemas. New remote CI is separate from local evidence;
+no authenticated live provider, OS vault or packaged Activity-window claim.
+RURU-122 remains In Progress for other-provider expansion. No merge performed.

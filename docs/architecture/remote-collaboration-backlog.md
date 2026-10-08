@@ -183,7 +183,7 @@ Then implement [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-
 | [RURU-78: Hydrate and render cached issue details](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details) | In Progress | [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-detail-scope-storage-and-hydration-contracts), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
 | [RURU-121: Add bounded frontend prefetch and cached navigation](https://linear.app/catra/issue/RURU-121/add-bounded-frontend-prefetch-and-cached-navigation) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-98](https://linear.app/catra/issue/RURU-98/add-foreground-demand-leases-to-the-native-sync-scheduler), [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details) |
 | [RURU-79: Resolve inbox notifications to cached PR and issue subjects](https://linear.app/catra/issue/RURU-79/resolve-inbox-notifications-to-cached-pr-and-issue-subjects) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details), [RURU-76](https://linear.app/catra/issue/RURU-76/introduce-a-provider-registry-canonical-resource-identities-and) |
-| [RURU-122: Cache and display conversation comments and activity timelines](https://linear.app/catra/issue/RURU-122/cache-and-display-conversation-comments-and-activity-timelines) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details) |
+| [RURU-122: Cache and display conversation comments and activity timelines](https://linear.app/catra/issue/RURU-122/cache-and-display-conversation-comments-and-activity-timelines) | In Progress | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details) |
 | [RURU-123: Cache PR review summaries and review threads with head context](https://linear.app/catra/issue/RURU-123/cache-pr-review-summaries-and-review-threads-with-head-context) | Backlog | [RURU-122](https://linear.app/catra/issue/RURU-122/cache-and-display-conversation-comments-and-activity-timelines), [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details) |
 | [RURU-118: Show cached checks and commit statuses for the current PR head](https://linear.app/catra/issue/RURU-118/show-cached-checks-and-commit-statuses-for-the-current-pr-head) | In Progress | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details) |
 | [RURU-119: Add cached PR changed-file and diff navigation](https://linear.app/catra/issue/RURU-119/add-cached-pr-changed-file-and-diff-navigation) | Backlog | [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-98](https://linear.app/catra/issue/RURU-98/add-foreground-demand-leases-to-the-native-sync-scheduler) |
@@ -225,7 +225,7 @@ Then implement [RURU-97](https://linear.app/catra/issue/RURU-97/add-independent-
 | [RURU-117: Add conflict resolution and superseding-command recovery UI](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui) | In Review | [RURU-116](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search), [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery) |
 | [RURU-129: Deliver queued issue and PR desired-state edits](https://linear.app/catra/issue/RURU-129/deliver-queued-issue-and-pr-desired-state-edits) | In Progress | [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details), [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui), [RURU-116](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search), [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details) |
 | [RURU-130: Deliver provider inbox read/done actions with explicit activity policy](https://linear.app/catra/issue/RURU-130/deliver-provider-inbox-readdone-actions-with-explicit-activity-policy) | Backlog | [RURU-79](https://linear.app/catra/issue/RURU-79/resolve-inbox-notifications-to-cached-pr-and-issue-subjects), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui), [RURU-116](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search), [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery), [RURU-124](https://linear.app/catra/issue/RURU-124/add-local-inbox-snooze-bookmark-and-disposition-state) |
-| [RURU-131: Submit comments with durable drafts and ambiguous-create handling](https://linear.app/catra/issue/RURU-131/submit-comments-with-durable-drafts-and-ambiguous-create-handling) | Backlog | [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery), [RURU-99](https://linear.app/catra/issue/RURU-99/recover-private-drafts-after-disconnect-or-missing-subjects), [RURU-122](https://linear.app/catra/issue/RURU-122/cache-and-display-conversation-comments-and-activity-timelines), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui) |
+| [RURU-131: Submit comments with durable drafts and ambiguous-create handling](https://linear.app/catra/issue/RURU-131/submit-comments-with-durable-drafts-and-ambiguous-create-handling) | In Review | [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery), [RURU-99](https://linear.app/catra/issue/RURU-99/recover-private-drafts-after-disconnect-or-missing-subjects), [RURU-122](https://linear.app/catra/issue/RURU-122/cache-and-display-conversation-comments-and-activity-timelines), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui) |
 | [RURU-132: Submit PR reviews bound to the inspected head and anchors](https://linear.app/catra/issue/RURU-132/submit-pr-reviews-bound-to-the-inspected-head-and-anchors) | Backlog | [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery), [RURU-123](https://linear.app/catra/issue/RURU-123/cache-pr-review-summaries-and-review-threads-with-head-context), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui), [RURU-119](https://linear.app/catra/issue/RURU-119/add-cached-pr-changed-file-and-diff-navigation), [RURU-99](https://linear.app/catra/issue/RURU-99/recover-private-drafts-after-disconnect-or-missing-subjects) |
 | [RURU-133: Add guarded online merge with asynchronous receipt reconciliation](https://linear.app/catra/issue/RURU-133/add-guarded-online-merge-with-asynchronous-receipt-reconciliation) | Backlog | [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery), [RURU-77](https://linear.app/catra/issue/RURU-77/hydrate-and-render-cached-pull-request-details), [RURU-118](https://linear.app/catra/issue/RURU-118/show-cached-checks-and-commit-statuses-for-the-current-pr-head), [RURU-123](https://linear.app/catra/issue/RURU-123/cache-pr-review-summaries-and-review-threads-with-head-context), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui) |
 | [RURU-134: Create issues through durable drafts and reconciled delivery](https://linear.app/catra/issue/RURU-134/create-issues-through-durable-drafts-and-reconciled-delivery) | Backlog | [RURU-78](https://linear.app/catra/issue/RURU-78/hydrate-and-render-cached-issue-details), [RURU-117](https://linear.app/catra/issue/RURU-117/add-conflict-resolution-and-superseding-command-recovery-ui), [RURU-116](https://linear.app/catra/issue/RURU-116/project-optimistic-intent-into-local-lists-details-counts-and-search), [RURU-99](https://linear.app/catra/issue/RURU-99/recover-private-drafts-after-disconnect-or-missing-subjects), [RURU-115](https://linear.app/catra/issue/RURU-115/implement-outbox-delivery-and-ambiguous-outcome-recovery) |
@@ -2488,3 +2488,48 @@ the original credential-boundary watchdog. These are deltas to the recorded full
 workspace baseline. Live authenticated numeric mutation compatibility is still
 unqualified. RURU-129 remains In Progress for the separate workflow-state and
 label slices; new-head CI is distinct from these local results.
+
+
+### RURU-131 durable comment creation — 8 October 2026
+
+A separate saved comment draft/composer now admits immutable per-generation
+GitHub creation commands. Validated 201 receipts retain canonical comment IDs;
+unknown delivery preserves intent without POST replay, UUID bypass or text/time
+heuristics. Schema 0020 and restore validation protect draft/submission linkage;
+private notes stay separate and disconnected draft recovery remains local.
+
+Full local make verify at `1895c542`: 787 frontend tests/one platform skip,
+1,279 Rust executions/seven helper ignores, lint/types/build/fmt/strict workspace
+Clippy. Final parent integration `5eab2109` separately passes nine runtime-sync,
+14 credential-crash and 21 feature-harness cases with strict feature-enabled
+Clippy. Generated IPC: 149 commands/473 schemas. See
+[the work note](./collaboration-work/RURU-131.md) for evidence and limits.
+The PR stacks on #181; remote CI and live provider/vault/window checks remain
+separate. Numeric mutation-alias live compatibility is unqualified. No merge.
+
+
+### RURU-122 GitHub Activity timeline — 8 October 2026
+
+The separate Activity facet now persists bounded GitHub issue/PR timeline rows
+with stable provider identity and indexed chronological ordering (unknown time
+last). Missing-to-known timestamps update the same entity; equal times use a
+stable tie-breaker. Per-facet revision/view-bound cursors preserve independent
+local paging. Unsupported event types remain explicit; skipped/unrepresentable
+rows and capped/multipage history stay partial. Only a complete singleton
+response may remove absent rows in this facet.
+
+An opened-only safe-text panel reads local pages, owns one visible native demand
+and leaves sibling drafts/panels intact. Migration 0021 and frozen 0020 recovery
+checks preserve historical data. Generated IPC: 149 commands/479 schemas. Full
+local make verify at `26755289` passes 799 frontend tests/one platform skip,
+1,317 Rust executions/seven helper ignores, lint/types/build/fmt/strict workspace
+Clippy. Earlier feature-enabled native regression passes 913 cases/five helpers;
+all nine final runtime-sync fixture cases pass separately.
+
+Independent native/frontend review cleared stable identity, ordering, coverage,
+privacy and migration handling. See [the work note](./collaboration-work/RURU-122-timeline.md).
+Review base `ruru/ruru-122-timeline-dependencies` combines the qualified discussion
+and comment prerequisites; subsequent parent integration changes documentation
+only. A finite anonymous numeric timeline GET returned 200; private/provider/PAT,
+vault and packaged-window validation remain unclaimed. Remote CI starts on
+publication. RURU-122 stays In Progress for provider expansion; no merge.
