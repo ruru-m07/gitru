@@ -62,3 +62,22 @@ Clippy, rustfmt and diff checks. Public IPC generation is not expected to change
 run the generator only if a public signature changes. Record local evidence,
 ancestor CI and new exact-head remote CI separately. Publish as a scoped draft
 stacked on PR #191; do not merge it or mark RURU-102 complete.
+
+## Executed result — 8 October 2026
+
+The pre-repair cold 48-hour control failed because diagnostics exposed the
+24-hour scheduler wake cap. Production now converts the persisted absolute UTC
+deadline directly for diagnostics while leaving scheduler admission and wake
+calculation unchanged. The repaired control reports the full remaining wait,
+keeps explicit retry unavailable, and performs no credential or provider I/O.
+Deterministic backward-wall, forward-wall-with-fresh-429, replacement, shutdown,
+background restart, peer-service, cache and draft-CAS controls also pass.
+
+Focused clock/lifecycle and diagnostics validation passes 20 tests. The complete
+native all-feature run passes **1,025 tests / 5 ignored / 0 failed** across 27
+suites, including documentation tests. Workspace all-target/all-feature Clippy
+with warnings denied and rustfmt pass. No public IPC, schema, migration,
+dependency, SDK, UI, provider route or vault implementation changed, so typegen
+was not run. These are local synthetic-clock/provider results; ancestor PR #191
+CI and this branch's future exact-head CI remain separate, and no live provider,
+vault, operating-system suspend or multi-family isolation claim is made.
