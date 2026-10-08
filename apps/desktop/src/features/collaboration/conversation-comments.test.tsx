@@ -55,6 +55,15 @@ const peer: RemoteAccount = {
   login: "second-user",
   authorization_epoch: "7",
 };
+const bitbucket: RemoteAccount = {
+  ...account,
+  id: "bitbucket-comments-one",
+  provider: "bitbucket_cloud",
+  host: "bitbucket.org",
+  actor_id: "11111111-1111-4111-8111-111111111111",
+  login: "bitbucket-user",
+};
+const bitbucketRepository = "33333333-3333-4333-8333-333333333333";
 const observedAt = "2026-10-05T12:00:00Z";
 const earlierAt = "2026-10-04T12:00:00Z";
 const caches: QueryClient[] = [];
@@ -93,22 +102,35 @@ function saved(
   entries = [comment()],
   kind: "pull_request" | "issue" = "pull_request",
 ) {
-  const subjectId =
-    kind === "pull_request" ? "github:pull:801" : "github:issue:802";
+  const isBitbucket = actor.provider === "bitbucket_cloud";
+  const repositoryProviderId = isBitbucket ? bitbucketRepository : "345";
+  const repositoryId = `${actor.provider}:repository:${repositoryProviderId}`;
+  const subjectId = isBitbucket
+    ? `bitbucket_cloud:${kind === "pull_request" ? "pull" : "issue"}:${repositoryProviderId}:67`
+    : kind === "pull_request"
+      ? "github:pull:801"
+      : "github:issue:802";
   const repository = {
     ...fixtureRepositories.repositories[0],
-    id: "github:repository:345",
+    id: repositoryId,
     account_id: actor.id,
-    provider_id: "345",
-    full_name: "example-org/engine",
+    provider_id: repositoryProviderId,
+    full_name: isBitbucket ? "workspace/engine" : "example-org/engine",
     name: "engine",
+    web_url: isBitbucket
+      ? "https://bitbucket.org/workspace/engine"
+      : "https://github.com/example-org/engine",
   };
   const summary = {
     ...fixtureItem,
     id: subjectId,
     account_id: actor.id,
     repository_id: repository.id,
-    provider_id: kind === "pull_request" ? "801" : "802",
+    provider_id: isBitbucket
+      ? `${repositoryProviderId}:67`
+      : kind === "pull_request"
+        ? "801"
+        : "802",
     title: `${actor.login} ${kind}67`,
     kind,
     number: "67",
@@ -160,7 +182,11 @@ function cursor(resource: Saved, offset: number) {
 
 function boundary(
   resources: Saved[],
-  initialPolicy: "supported" | "unsupported" | "denied" = "supported",
+  initialPolicy:
+    | "supported"
+    | "unsupported"
+    | "not_applicable"
+    | "denied" = "supported",
 ) {
   const accounts = resources.map((resource) => resource.account);
   let view = "1";
@@ -212,13 +238,25 @@ function boundary(
                   ? supported
                   : policy === "denied"
                     ? { state: "unavailable", reason: "permission_denied" }
-                    : { state: "unsupported", reason: "not_implemented" },
+                    : {
+                        state: "unsupported",
+                        reason:
+                          policy === "not_applicable"
+                            ? "not_applicable"
+                            : "not_implemented",
+                      },
               synchronize:
                 policy === "supported"
                   ? supported
                   : policy === "denied"
                     ? { state: "unavailable", reason: "permission_denied" }
-                    : { state: "unsupported", reason: "not_implemented" },
+                    : {
+                        state: "unsupported",
+                        reason:
+                          policy === "not_applicable"
+                            ? "not_applicable"
+                            : "not_implemented",
+                      },
               observation: policy === "supported" ? "complete" : "unknown",
               can_recheck_access: policy === "denied",
             }
@@ -617,6 +655,46 @@ describe("cached conversation comments through the ordinary workspace", () => {
     );
   });
 
+  it("renders a tombstone only from validated deleted state evidence", async () => {
+    const validated = comment("1", {
+      author: null,
+      state: "deleted",
+      body: { state: "known", text: null },
+      field_mask: ["body", "author", "updated_at", "state"],
+      field_validations: ["body", "author", "updated_at", "state"].map(
+        (field) => ({
+          field: field as DetailField,
+          validated_at: observedAt,
+          source: "bitbucket.comments.v1",
+          adapter_version: 1,
+        }),
+      ),
+    });
+    const unvalidated = comment("2", {
+      author: null,
+      state: "deleted",
+      body: { state: "known", text: null },
+    });
+    const resource = saved(bitbucket, [validated, unvalidated]);
+    boundary([resource]);
+    const { user } = await mount();
+    await select(user, resource);
+    await user.click(panel().getByRole("button", { name: "Comments" }));
+    const rows = within(
+      await panel().findByRole("list", {
+        name: "Saved conversation comments",
+      }),
+    ).getAllByRole("listitem");
+    expect(within(rows[0]).getByText("Comment deleted")).toBeVisible();
+    expect(within(rows[0]).queryByText("Author unavailable")).toBeNull();
+    expect(within(rows[0]).queryByText("No comment text is saved.")).toBeNull();
+    expect(within(rows[1]).queryByText("Comment deleted")).toBeNull();
+    expect(within(rows[1]).getByText("Author unavailable")).toBeVisible();
+    expect(
+      within(rows[1]).getByText("No comment text is saved."),
+    ).toBeVisible();
+  });
+
   it.each([
     "complete",
     "partial",
@@ -653,6 +731,48 @@ describe("cached conversation comments through the ordinary workspace", () => {
     expect(await panel().findByText("Feature not supported")).toBeVisible();
     expect(queries(reads)).toHaveLength(0);
     expect(interests(reads)).toHaveLength(0);
+    expect(reads.hydrate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      kind: "pull_request" as const,
+      policy: "supported" as const,
+      expected: "Saved comment 1",
+      reads: 1,
+    },
+    {
+      kind: "issue" as const,
+      policy: "not_applicable" as const,
+      expected: "Not available for this resource",
+      reads: 0,
+    },
+  ])("uses Bitbucket Comments only for $kind resources", async ({
+    kind,
+    policy,
+    expected,
+    reads: expectedReads,
+  }) => {
+    const resource = saved(bitbucket, [comment()], kind);
+    const reads = boundary([resource], policy);
+    const { user } = await mount(kind);
+    await select(user, resource);
+    await user.click(panel().getByRole("button", { name: "Comments" }));
+    expect(await panel().findByText(expected)).toBeVisible();
+    if (kind === "issue")
+      expect(
+        panel().getByText("This feature does not apply to this resource."),
+      ).toBeVisible();
+    else
+      expect(
+        panel().getByText(
+          "Top-level conversation comments are saved here. Inline comments, replies, and pending comments are not included.",
+        ),
+      ).toBeVisible();
+    expect(queries(reads)).toHaveLength(expectedReads);
+    if (kind === "pull_request")
+      await waitFor(() => expect(interests(reads)).toHaveLength(1));
+    else expect(interests(reads)).toHaveLength(0);
     expect(reads.hydrate).not.toHaveBeenCalled();
   });
 

@@ -22,9 +22,11 @@ export function capabilityExplanation(
           ? "Not available for this resource"
           : "Feature not supported",
       description:
-        access.reason === "provider_semantics"
-          ? "This provider uses a different model for this feature."
-          : "This feature is not implemented for the connected provider.",
+        access.reason === "not_applicable"
+          ? "This feature does not apply to this resource."
+          : access.reason === "provider_semantics"
+            ? "This provider uses a different model for this feature."
+            : "This feature is not implemented for the connected provider.",
     };
   }
   switch (access.reason) {

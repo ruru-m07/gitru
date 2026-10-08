@@ -109,6 +109,13 @@ export function ConversationCommentsPanel({
               >
                 {canReadSaved(policy) ? (
                   <>
+                    {account.provider === "bitbucket_cloud" ? (
+                      <p className="text-xs text-muted-foreground">
+                        Top-level conversation comments are saved here. Inline
+                        comments, replies, and pending comments are not
+                        included.
+                      </p>
+                    ) : null}
                     <Button
                       size="sm"
                       variant="ghost"
@@ -422,9 +429,13 @@ function CommentRow({ entry }: { entry: DetailEntry }) {
     (field) => field.field === "author",
   );
   const body = entry.field_validations.find((field) => field.field === "body");
+  const state = entry.field_validations.find(
+    (field) => field.field === "state",
+  );
   const updated = entry.field_validations.find(
     (field) => field.field === "updated_at",
   );
+  const deleted = state !== undefined && entry.state === "deleted";
   const observed = entry.field_mask.includes("body")
     ? entry.observed_body_state
     : "not_loaded";
@@ -432,32 +443,38 @@ function CommentRow({ entry }: { entry: DetailEntry }) {
   return (
     <li className="space-y-2 break-words text-sm">
       <p className="font-medium">
-        {author ? (entry.author ?? "Author unavailable") : "Unknown author"}
+        {deleted
+          ? "Comment deleted"
+          : author
+            ? (entry.author ?? "Author unavailable")
+            : "Unknown author"}
       </p>
       {updated && entry.updated_at ? (
         <p className="text-xs text-muted-foreground">
           Updated <ObservedTime at={entry.updated_at} />
         </p>
       ) : null}
-      {observed === "omitted" || observed === "oversized" ? (
+      {!deleted && (observed === "omitted" || observed === "oversized") ? (
         <Badge variant="outline" size="sm">
           {observed === "oversized"
             ? "Latest comment text exceeds the text limit"
             : "Latest comment text was omitted"}
         </Badge>
       ) : null}
-      <p className="whitespace-pre-wrap">
-        {entry.body.state === "known" && body
-          ? entry.body.text === ""
-            ? "This comment is empty."
-            : (entry.body.text ?? "No comment text is saved.")
-          : entry.body.state === "oversized"
-            ? "This comment exceeds the local text limit; no text is saved."
-            : entry.body.state === "omitted"
-              ? "The provider omitted this comment; no text is saved."
-              : "Comment text has not been saved yet."}
-      </p>
-      {body ? (
+      {!deleted ? (
+        <p className="whitespace-pre-wrap">
+          {entry.body.state === "known" && body
+            ? entry.body.text === ""
+              ? "This comment is empty."
+              : (entry.body.text ?? "No comment text is saved.")
+            : entry.body.state === "oversized"
+              ? "This comment exceeds the local text limit; no text is saved."
+              : entry.body.state === "omitted"
+                ? "The provider omitted this comment; no text is saved."
+                : "Comment text has not been saved yet."}
+        </p>
+      ) : null}
+      {!deleted && body ? (
         <p className="text-xs text-muted-foreground">
           {retained
             ? "Saved text retained from an earlier observation · last observed "
