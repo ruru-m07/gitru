@@ -3889,6 +3889,25 @@ R133 dependency branch. New-head remote CI, numeric mutation compatibility and
 live provider/platform qualification remain separate; no PR was merged.
 
 
+### RURU-131 / RURU-134 creation receipt budgets — 8 October 2026
+
+Comment and issue creation now reject unsafe encoded drafts before new admission
+and again before HTTP/final attempt claim. Raw drafts and immutable v1 receipts
+remain compatible: prior valid large proofs still restore, while oversized queued
+intent keeps its exact receipt without creating an attempt. Unrequested issue
+metadata is explicitly Omitted; pending and unknown submissions no longer imply
+confirmed creation. A definite native admission refusal lets the composer retain,
+shorten and save text; ambiguous IPC failures retain the exact UUID.
+
+Signed source `1a60026c` passes1,085 all-feature collaboration executions/five
+helper ignores, strict Clippy/fmt,880 frontend tests/one skip, lint/workspace types
+and an uncached desktop build. The work note records the actual RED diagnostics,
+unchanged isolated UI startup control and complete four-worker rerun separately.
+See [the bounded follow-up contract and evidence](./collaboration-work/RURU-131-134-proof-budgets.md).
+The repair stacks on PR199; schema23 and IPC are unchanged. R134's broader metadata
+authoring remains open. Remote CI and live provider/platform qualification are
+separate; no PR was merged.
+
 ### RURU-132 durable PR reviews — 8 October 2026
 
 The GitHub.com review slice now saves decisions, summaries and inline comments

@@ -398,3 +398,55 @@ it("keeps an open draft but immediately hides provider authority when disconnect
   finishDisconnect("21");
   await act(async () => disconnecting);
 });
+
+it("a definite admission refusal allows shortening the saved issue without replaying it", async () => {
+  snapshot = localSnapshot({
+    title: "Saved title",
+    body: "Saved body",
+    generation: "1",
+    availability: "available",
+    reason: null,
+  });
+  const submit = mockTauriCommand("collaboration_submit_issue", () => {
+    throw { code: "invalid_input", message: "provider secret must not render" };
+  });
+  const save = mockTauriCommand("collaboration_save_issue_draft", (payload) => {
+    const request = (payload as { request: { title: string; body: string } })
+      .request;
+    snapshot = localSnapshot({
+      title: request.title,
+      body: request.body,
+      generation: "2",
+      availability: "available",
+      reason: null,
+    });
+    return snapshot;
+  });
+  const { user } = setup();
+  await user.click(screen.getByRole("button", { name: "New issue" }));
+  const consent = await screen.findByRole("checkbox", {
+    name: /exact saved issue may be submitted/i,
+  });
+  await user.click(consent);
+  await user.click(
+    screen.getByRole("button", { name: "Queue issue submission" }),
+  );
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "try a shorter title or description",
+  );
+  expect(screen.getByRole("alert")).not.toHaveTextContent("provider secret");
+  expect(
+    screen.queryByRole("button", { name: "Retry exact issue submission" }),
+  ).not.toBeInTheDocument();
+  expect(consent).not.toBeChecked();
+  const body = screen.getByLabelText("Description");
+  expect(body).toHaveValue("Saved body");
+  await user.clear(body);
+  await user.type(body, "Short");
+  await user.click(screen.getByRole("button", { name: "Save issue draft" }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  expect(submit).toHaveBeenCalledTimes(1);
+  expect(
+    screen.getByRole("button", { name: "Queue issue submission" }),
+  ).toBeDisabled();
+});

@@ -177,6 +177,21 @@ pub(crate) fn encode<T: Serialize>(v: &T) -> Result<Vec<u8>> {
     }
     Ok(b)
 }
+// New dispatch admission only: leave saved raw drafts and immutable v1 decoding
+// compatible. The actual frame/body are counted after JSON escaping. The 24KiB
+// reserve covers fixed wrappers, bounded actor/IDs, canonical URL and normalized
+// clocks. No arbitrary provider metadata enters a conversation comment receipt.
+pub(crate) fn validate_dispatch_budget(frame: &Frame, body: &str) -> Result<()> {
+    let bytes = serde_json::to_vec(frame).map_err(|_| invalid())?.len()
+        + serde_json::to_vec(body).map_err(|_| invalid())?.len()
+        + 24 * 1024;
+    if bytes > 65_536 {
+        return Err(CollaborationError::invalid(
+            "Saved draft exceeds the encoded creation receipt budget; shorten its body before sending",
+        ));
+    }
+    Ok(())
+}
 pub(crate) fn decode_json<T: serde::de::DeserializeOwned + Serialize>(bytes: &[u8]) -> Result<T> {
     if bytes.len() > 65536 {
         return Err(invalid());

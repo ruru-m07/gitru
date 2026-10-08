@@ -300,7 +300,22 @@ function useIssueDraftEditor(account: RemoteAccount, key: LocalIssueDraftKey) {
       void queryClient.invalidateQueries({ queryKey: queryOptions.queryKey });
       void collaboration.wake();
     } catch (failure) {
-      setError(collaborationErrorMessage(failure));
+      // Native InvalidInput is returned before admission commits. It is a
+      // definite refusal, unlike a lost IPC receipt that needs the same UUID.
+      const refused =
+        typeof failure === "object" &&
+        failure !== null &&
+        "code" in failure &&
+        failure.code === "invalid_input";
+      if (refused) {
+        setRetryRequest(null);
+        setConsent(false);
+      }
+      setError(
+        refused
+          ? "Check the saved issue and try a shorter title or description before submitting again."
+          : collaborationErrorMessage(failure),
+      );
       void queryClient.invalidateQueries({ queryKey: queryOptions.queryKey });
     } finally {
       setSubmitting(false);

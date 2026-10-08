@@ -152,6 +152,8 @@ impl CommandDeliveryPolicy for GithubCommentPolicy {
     ) -> Result<DeliveryPreparation, ProviderError> {
         let f: n::Frame =
             n::decode_json(&r.native_context).map_err(|_| resource_details::invalid())?;
+        let payload = n::decode(&r.command).map_err(|_| resource_details::invalid())?;
+        n::validate_dispatch_budget(&f, &payload.body).map_err(|_| resource_details::invalid())?;
         let resource = if f.subject.kind == RemoteItemKind::PullRequest {
             "pulls"
         } else {
@@ -212,6 +214,8 @@ impl CommandDeliveryPolicy for GithubCommentPolicy {
             return Err(n::invalid());
         }
         store::validate_frame_in(tx, a, &p.frame).await?;
+        let payload = n::decode(c)?;
+        n::validate_dispatch_budget(&p.frame, &payload.body)?;
         Ok(ClaimDecision::Ready(bytes.to_vec()))
     }
     fn validate_evidence(
