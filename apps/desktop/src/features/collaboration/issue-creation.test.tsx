@@ -241,6 +241,24 @@ it("does not offer a separate draft while a submission outcome is unresolved", a
   ).not.toBeInTheDocument();
 });
 
+it("reports native title boundaries before attempting a save", async () => {
+  const save = mockTauriCommand(
+    "collaboration_save_issue_draft",
+    () => snapshot,
+  );
+  const { user } = setup();
+  await user.click(screen.getByRole("button", { name: "New issue" }));
+  const title = await screen.findByLabelText("Title");
+  await user.type(title, " padded title ");
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "Remove leading or trailing whitespace",
+  );
+  expect(
+    screen.getByRole("button", { name: "Save issue draft" }),
+  ).toBeDisabled();
+  expect(save).not.toHaveBeenCalled();
+});
+
 it("navigates only from a validated cached canonical identity", async () => {
   snapshot = localSnapshot({
     title: "Published issue",

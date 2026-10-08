@@ -603,6 +603,10 @@ function characterCount(value: string) {
 
 function validateTitle(value: string) {
   if (!value.trim()) return "Enter an issue title.";
+  if (value !== value.trim())
+    return "Remove leading or trailing whitespace from the title.";
+  if (Array.from(value).some((character) => /\p{Cc}/u.test(character)))
+    return "Remove control characters from the title.";
   if (characterCount(value) > MAX_TITLE_CHARACTERS)
     return `Keep the title to ${MAX_TITLE_CHARACTERS} characters or fewer.`;
   if (utf8Size(value) > MAX_TITLE_BYTES)
@@ -611,6 +615,8 @@ function validateTitle(value: string) {
 }
 
 function validateBody(value: string) {
+  if (value.includes("\0"))
+    return "Remove null characters from the description.";
   if (utf8Size(value) > MAX_BODY_BYTES)
     return `Keep the description to ${MAX_BODY_BYTES.toLocaleString()} bytes or fewer.`;
   return null;
