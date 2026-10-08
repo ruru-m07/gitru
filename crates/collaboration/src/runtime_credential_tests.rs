@@ -246,6 +246,7 @@ async fn kill_at(root: &Path, boundary: &str, operation: &str) {
 }
 async fn kill_at_for(root: &Path, boundary: &str, operation: &str, kind: ProviderKind) {
     let marker = root.join("boundary-reached");
+    let ready = root.join("runtime-ready");
     // Keep the harness independent of concurrent Cargo builds in other worktrees.
     let binary = root.join(if cfg!(windows) {
         "crash-harness.exe"
@@ -277,6 +278,7 @@ async fn kill_at_for(root: &Path, boundary: &str, operation: &str, kind: Provide
         .args(["--exact", CHILD_TEST, "--ignored", "--nocapture"])
         .env("GITRU_CREDENTIAL_CRASH_ROOT", root)
         .env("GITRU_CREDENTIAL_CRASH_MARKER", &marker)
+        .env("GITRU_CREDENTIAL_CRASH_READY", &ready)
         .env("GITRU_CREDENTIAL_CRASH_BOUNDARY", boundary)
         .env("GITRU_CREDENTIAL_CRASH_OPERATION", operation)
         .env(
@@ -292,22 +294,51 @@ async fn kill_at_for(root: &Path, boundary: &str, operation: &str, kind: Provide
         .stderr(Stdio::inherit())
         .spawn()
         .unwrap();
-    let reached = tokio::time::timeout(Duration::from_secs(10), async {
+    // A fresh first-connection child applies the entire schema before it can
+    // enter any credential boundary. Windows CI can spend more than 10 seconds
+    // on that unrelated initialization; keep it outside the boundary watchdog.
+    let initialized = tokio::time::timeout(Duration::from_secs(60), async {
         loop {
-            if marker.exists() {
+            if ready.exists() {
                 return;
             }
-            assert!(
-                child.try_wait().unwrap().is_none(),
-                "child exited before {boundary}"
-            );
+            if let Some(status) = child.try_wait().unwrap() {
+                panic!(
+                    "{kind:?} {operation} child exited during startup before {boundary}: {status}"
+                );
+            }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     })
     .await;
+    let reached = if initialized.is_ok() {
+        Some(
+            tokio::time::timeout(Duration::from_secs(10), async {
+                loop {
+                    if marker.exists() {
+                        return;
+                    }
+                    if let Some(status) = child.try_wait().unwrap() {
+                        panic!("{kind:?} {operation} child exited before {boundary}: {status}");
+                    }
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await,
+        )
+    } else {
+        None
+    };
     let _ = child.kill();
     let status = child.wait().unwrap();
-    reached.expect("child reached the actual credential boundary");
+    assert!(
+        initialized.is_ok(),
+        "{kind:?} {operation} child initializes before {boundary} within the startup bound"
+    );
+    assert!(
+        reached.is_some_and(|result| result.is_ok()),
+        "{kind:?} {operation} child reaches the actual {boundary} credential boundary within 10 seconds after startup"
+    );
     assert!(!status.success(), "hard termination must not unwind");
 }
 
@@ -327,6 +358,11 @@ fn credential_crash_child() {
                     ProviderKind::Github
                 };
             let (store, _, _, runtime) = runtime_for(&root, kind).await;
+            std::fs::write(
+                std::env::var_os("GITRU_CREDENTIAL_CRASH_READY").unwrap(),
+                "ready",
+            )
+            .unwrap();
             if std::env::var("GITRU_CREDENTIAL_CRASH_OPERATION").as_deref() == Ok("disconnect") {
                 let mut accounts = store.accounts().await.unwrap().accounts.into_iter();
                 let account = accounts
