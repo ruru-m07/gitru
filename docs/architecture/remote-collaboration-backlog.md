@@ -2533,3 +2533,21 @@ and comment prerequisites; subsequent parent integration changes documentation
 only. A finite anonymous numeric timeline GET returned 200; private/provider/PAT,
 vault and packaged-window validation remain unclaimed. Remote CI starts on
 publication. RURU-122 stays In Progress for provider expansion; no merge.
+
+
+### RURU-122 GitLab ordinary conversation notes — 8 October 2026
+
+Signed product source `ea97e2a3` adds bounded numeric project/issue/MR note reads
+into the common Comments facet. Own-row clocks, strict continuation selectors,
+opaque local IDs and immutable native bindings survive cold SQLite reopen.
+System/diff/resolvable/deleted or unrepresentable rows remain outside this ordinary
+note slice, with partial coverage instead of invented absence. Retry-After now
+retains its independent account cooldown even without a depleted primary header.
+
+Full local `make verify` passes 802 frontend tests/one platform skip and 1,327 Rust
+test executions/seven helper ignores, lint, types, desktop build, formatting and
+strict workspace Clippy. The first full run exposed a stale Comments-unsupported
+fixture; it now asserts Supported/NotLoaded/read-only, preserving cold/no-network
+and draft assertions. No schema/public IPC change. [The work note](./collaboration-work/RURU-122-gitlab-comments.md)
+records independent review and adapter/SQLite controls. Authenticated provider and
+vault behavior, remote CI and other-provider Activity remain separate gates.

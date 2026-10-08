@@ -107,3 +107,22 @@ initial full native library result was629 passed/1 failed/4 ignored; it is not
 reported as a passing full run. Final full workspace qualification is separate.
 Strict collaboration all-target Clippy, Rust formatting and diff checks also
 pass for this narrow correction.
+
+
+## Full workspace qualification
+
+Signed product `ea97e2a3f6686a0a058c89e2a6e37a474bde2030` passes complete local
+`make verify`: 802 frontend passes/one platform skip and 1,327 Rust test executions
+with seven helper ignores, lint, TypeScript checks, desktop build, formatting and
+strict workspace Clippy. The earlier full-run failure and narrow capability fixture
+repair are retained above; no assertion was weakened to bypass unsupported data.
+
+A separate anonymous public compatibility probe received200 for project278964 and
+its MR list, then401 for the selected MR Notes endpoint. It therefore does not
+qualify live note payloads or authenticated permissions. No token was inspected,
+no provider mutation was performed and no personal comment content was retained.
+
+The platform test budget also consumes R130's diagnosed45→60-minute CI repair:
+Windows job113090183418 passed both Rust steps, then cache upload hit the old
+job limit. Tests/assertions/retries stay unchanged; current-head remote CI is
+separate from the local results.
