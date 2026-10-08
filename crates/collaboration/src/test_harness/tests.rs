@@ -115,6 +115,9 @@ async fn performance_fixture_is_exact_bounded_searchable_and_restartable() {
     assert!(search.items[0].title.ends_with("needle00"));
     assert_eq!(receipt.status.provider_call_count, "0");
     assert_eq!(receipt.status.vault_load_count, "0");
+    // Dropping the last Store reference schedules asynchronous pool cleanup.
+    // A graceful restart must await closure before acquiring the process lease.
+    session.store.close().await.unwrap();
     drop(session);
 
     let restarted = run.open().await;
