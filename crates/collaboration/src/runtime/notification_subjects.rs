@@ -142,6 +142,7 @@ impl CollaborationRuntime {
     pub(super) async fn sync_notification_subject(
         &self,
         intent: &NotificationDiscoveryIntent,
+        job: &mut Job,
     ) -> Result<bool, CollaborationError> {
         let account = self.active_account(&intent.account_id).await?;
         if account.authorization_epoch != intent.authorization_epoch {
@@ -176,6 +177,7 @@ impl CollaborationRuntime {
                         "Reconnect this provider account",
                     )
                 })?;
+            self.ensure_provider_budget(&current, job).await?;
             let token = self.load_token(&reference).await?.ok_or_else(|| {
                 CollaborationError::new(ErrorCode::AuthRequired, "Reconnect this provider account")
             })?;
@@ -188,7 +190,14 @@ impl CollaborationRuntime {
             drop(_lifecycle);
             self.store
                 .notification_subject_dispatchable(&lease, &self.now_string())
-                .await?;
+                .await
+                .inspect_err(|error| {
+                    // This Store refusal also consumes no provider request.
+                    if error.code == ErrorCode::RateLimited {
+                        job.local_budget_refusal = true;
+                    }
+                })?;
+            self.ensure_provider_budget(&current, job).await?;
             match adapter
                 .discover_notification_subject(&token, lease.request.clone())
                 .await
@@ -206,7 +215,7 @@ impl CollaborationRuntime {
         let mut result = match result {
             Ok(result) => result,
             Err(error) => {
-                self.record_notification_subject_error(&lease, error)
+                self.record_notification_subject_error(&lease, error, job.local_budget_refusal)
                     .await?;
                 return Ok(false);
             }
@@ -222,16 +231,9 @@ impl CollaborationRuntime {
         };
         if let Some(seconds) = cooldown.filter(|s| *s > 0) {
             self.persist_rate_limit(&account, seconds, None).await?;
-            self.scheduler
-                .lock()
-                .await
-                .account_cooldowns
-                .entry(account.id.clone())
-                .and_modify(|old| *old = (*old).max(self.deadline_after(seconds)))
-                .or_insert(self.deadline_after(seconds));
         }
         if let NotificationSubjectDiscovery::Failed { error, .. } = result {
-            self.record_notification_subject_error(&lease, error.into())
+            self.record_notification_subject_error(&lease, error.into(), false)
                 .await?;
             return Ok(false);
         }
@@ -245,7 +247,7 @@ impl CollaborationRuntime {
             Ok(revision) => self.publish(revision),
             Err(error) if error.code == ErrorCode::StaleView => return Err(error),
             Err(error) => {
-                self.record_notification_subject_error(&lease, error)
+                self.record_notification_subject_error(&lease, error, job.local_budget_refusal)
                     .await?
             }
         }
@@ -256,6 +258,7 @@ impl CollaborationRuntime {
         &self,
         lease: &NotificationDiscoveryLease,
         error: CollaborationError,
+        local_budget_refusal: bool,
     ) -> Result<(), CollaborationError> {
         if error.code == ErrorCode::StaleView {
             return Err(error);
@@ -277,7 +280,7 @@ impl CollaborationRuntime {
             )
             .await?;
         self.publish(revision);
-        if error.code == ErrorCode::RateLimited {
+        if error.code == ErrorCode::RateLimited && !local_budget_refusal {
             self.persist_rate_limit(&lease.request.account, delay, Some(error.clone()))
                 .await?;
         }
