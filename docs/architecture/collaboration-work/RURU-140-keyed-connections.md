@@ -253,3 +253,13 @@ also contains `factory-evidence.txt`, `factory-report.json` and `linkage.txt`.
 The executable is macOS ARM64 with CommonCrypto. Linux/Windows/new-PR CI has not
 run yet. Root workspace verification is not substituted for these opt-in gates,
 and these component gates are not a whole application verification claim.
+
+Publication preparation: signed source `85f18a34` was integrated with the PR200
+Windows fixture repair `ad9a46c1` without any native factory changes. The signed
+review base `ruru/ruru-140-keyed-dependencies` at `ebeb00dc` combines that parent
+with R139 `218723d8`; it contains no new factory code. This keeps the new review
+diff limited to the R140 component. Additive progress-note conflicts retained
+both parents' evidence. The verified runner passed again on integration source
+`0f44d5ac` (nine parents plus exceptional child, strict Clippy, fmt, profile and
+linkage), recorded in `/tmp/gitru-r140-connections-integration.log`. New PR remote
+CI remains pending until that exact published head is evaluated.
