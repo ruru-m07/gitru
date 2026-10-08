@@ -25,6 +25,11 @@ only the two bundled SQLCipher native files change. It also extracts the exact
 current collaboration commit/tree in `pins.json` with Git and verifies every
 file against its Git blob. Fetch that commit if the checkout is shallow; CI uses
 `fetch-depth: 0`. Missing objects fail instead of falling back to old migrations.
+Archive names are checked using POSIX and Windows rules on every host before any
+member is written. Absolute, drive-relative, traversal, backslash, alternate-stream,
+device and trailing-dot/space aliases are refused, along with links and special
+files. This keeps a Unix-produced tar name from acquiring different authority
+when extracted on Windows; content hashes remain required independently.
 
 Windows consumes the same generated C/header artifact with
 `prepare.py --amalgamation-dir <directory>`; every consumer verifies the pinned

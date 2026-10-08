@@ -235,3 +235,33 @@ the exact helper Git attribute/hash and `git diff --check` pass. Logs are
 `/tmp/gitru-r139-helper-eol-green.log`. No new full native run is claimed for this
 checkout-only correction; its new exact-head remote Windows/regression/portability
 results remain pending. The earlier successful `61548a0d` run stays separate.
+
+### Portable archive-path validation — 8 October 2026
+
+The new all-platform source suite on head `df640fcb` exposed a distinct Windows
+guard defect in [run 37740320278](https://github.com/ruru-m07/gitru/actions/runs/37740320278),
+job `113189715491`. The LF checkout/hash control passed. The archive rejection
+test failed because host-native `Path('/absolute').is_absolute()` is false on
+Windows: a POSIX tar root was not rejected by the intended pre-extraction guard.
+This run stopped before native compilation or probe execution; it supplies no
+new cipher result.
+
+Archive validation now uses `PurePosixPath` plus `PureWindowsPath` on every host.
+It refuses roots, drive-relative paths, traversal, backslashes, alternate streams,
+device names, invalid Windows characters and trailing-dot/space aliases before
+writing any member. Extraction then joins the validated POSIX components.
+Symlinks, hardlinks and non-regular special members remain rejected. No source
+hash, payload, fixture adaptation, native dependency or WAL gate changes.
+
+Local qualification: all **9 Python controls** pass. The expanded 15-case unsafe
+archive matrix fails before the repair for nine Windows-specific names on macOS
+and passes afterward; a valid archive preserves exact binary file contents.
+Each unsafe archive contains a preceding valid member, proving whole-archive
+validation happens before any output. All four existing pinned archives
+(SQLCipher, libsqlite3-sys, OpenSSL source and openssl-src wrapper) pass their
+unchanged SHA-256 guards and extract successfully with the strict portable rules.
+Python compilation and diff checks pass. Logs:
+`/tmp/gitru-r139-archive-portable-red.log` and
+`/tmp/gitru-r139-archive-portable-green.log`. Fresh exact-head native/Windows and
+cross-platform-reader CI remains pending; prior successful engine evidence is
+retained separately.

@@ -4,7 +4,7 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import shutil
 import subprocess
 import tarfile
@@ -58,11 +58,21 @@ def extract(archive, destination):
         # Pins authenticate content; also refuse traversal, links and special files.
         members = source.getmembers()
         for member in members:
-            path = Path(member.name)
-            if path.is_absolute() or ".." in path.parts or not (member.isdir() or member.isfile()):
+            # Tar names use POSIX separators, regardless of the extraction host.
+            # Windows also treats drive-relative/rooted paths, device names,
+            # alternate streams and trailing-dot/space aliases specially.
+            path = PurePosixPath(member.name)
+            windows = PureWindowsPath(member.name)
+            if (not path.parts or path.is_absolute() or windows.drive or windows.root
+                    or "\\" in member.name or ".." in path.parts
+                    or any(c in member.name for c in '<>:"|?*')
+                    or any(ord(c) < 32 for c in member.name)
+                    or any(part.endswith((" ", ".")) or PureWindowsPath(part).is_reserved()
+                           for part in path.parts)
+                    or not (member.isdir() or member.isfile())):
                 raise RuntimeError(f"Unsafe archive member {member.name}")
         for member in members:
-            path = destination / member.name
+            path = destination.joinpath(*PurePosixPath(member.name).parts)
             if member.isdir():
                 path.mkdir(parents=True, exist_ok=True)
             else:

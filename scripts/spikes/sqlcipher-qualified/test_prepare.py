@@ -99,11 +99,24 @@ class VerificationTests(unittest.TestCase):
                 prepare.verify(path, hashlib.sha256(b"pinned source").hexdigest())
 
     def test_archive_traversal_and_links_are_refused_before_extraction(self):
-        for name, kind in [("../outside", tarfile.REGTYPE), ("/absolute", tarfile.REGTYPE),
-                           ("root/link", tarfile.SYMTYPE), ("root/hard", tarfile.LNKTYPE)]:
+        for name, kind in [
+            ("../outside", tarfile.REGTYPE), ("/absolute", tarfile.REGTYPE),
+            ("C:/outside", tarfile.REGTYPE), ("C:outside", tarfile.REGTYPE),
+            ("//server/share/outside", tarfile.REGTYPE),
+            (r"\rooted", tarfile.REGTYPE), (r"root\..\outside", tarfile.REGTYPE),
+            ("root/file:stream", tarfile.REGTYPE), ("root/.. /outside", tarfile.REGTYPE),
+            ("root/directory./file", tarfile.REGTYPE), ("root/NUL.txt", tarfile.REGTYPE),
+            ("root/com1", tarfile.REGTYPE), ("root/link", tarfile.SYMTYPE),
+            ("root/hard", tarfile.LNKTYPE), ("root/fifo", tarfile.FIFOTYPE),
+        ]:
             with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
                 archive = Path(directory) / "source.tar.gz"
                 with tarfile.open(archive, "w:gz") as output:
+                    # Preflight must reject the complete archive before even a
+                    # preceding valid member is written.
+                    safe = tarfile.TarInfo("root/safe.txt")
+                    safe.size = 4
+                    output.addfile(safe, io.BytesIO(b"safe"))
                     info = tarfile.TarInfo(name)
                     info.type = kind
                     info.linkname = "../../outside"
@@ -112,6 +125,21 @@ class VerificationTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "Unsafe archive"):
                     prepare.extract(archive, target)
                 self.assertFalse(target.exists())
+
+    def test_portable_archive_extracts_exact_regular_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / "source.tar.gz"
+            contents = b"pinned archive bytes\n\x00\xff"
+            with tarfile.open(archive, "w:gz") as output:
+                folder = tarfile.TarInfo("root/subdirectory/")
+                folder.type = tarfile.DIRTYPE
+                output.addfile(folder)
+                info = tarfile.TarInfo("root/subdirectory/file.c")
+                info.size = len(contents)
+                output.addfile(info, io.BytesIO(contents))
+            target = Path(directory) / "unpacked"
+            prepare.extract(archive, target)
+            self.assertEqual((target / "root/subdirectory/file.c").read_bytes(), contents)
 
     def test_native_overrides_do_not_select_an_unverified_engine(self):
         for name in ("LIBSQLITE3_SYS_USE_PKG_CONFIG", "LIBSQLITE3_FLAGS", "SQLCIPHER_LIB_DIR", "OPENSSL_DIR"):
