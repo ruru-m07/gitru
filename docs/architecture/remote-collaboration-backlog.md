@@ -2628,3 +2628,22 @@ Typegen completes 157 commands with exact semantic binding equivalence. Details
 and failure trail are in [the work note](collaboration-work/RURU-122-gitlab-activity.md).
 Remote CI/live provider/new packaged-window validation remain separate. Bitbucket
 Activity expansion remains open; RURU-122 stays In Progress. No PR merged.
+
+### RURU-122 Bitbucket Activity — 8 October 2026
+
+Bitbucket Cloud PR Activity now caches comments with stable provider IDs and
+updates/approvals/change requests as content-addressed observations. It retains
+Partial history, independently dated/tombstoned comment text, exact subject and
+repository fences, strict bounded continuations, cold resume, and a terminal
+20-page cap. Observation keys are not event identities or current review state.
+Safe UI copy explains the partial observed history; unsupported families stay
+explicit. This finishes the planned GitHub/GitLab/Bitbucket read experience slice.
+
+Signed source `348e5c21` plus independent-review fix `507d362b` passes the complete
+1,048-test native suite (zero failures/five helper ignores). Frontend 853/one skip,
+strict workspace Clippy/fmt, lint/types/uncached production build, and typegen157
+semantic-equivalence checks pass. A final Clippy-only guard simplification changes
+no behavior. See [the work note](collaboration-work/RURU-122-bitbucket-activity.md)
+for limits and review evidence. RURU-122 is ready for review. Remote CI, live
+provider/credential checks and new packaged-window checks remain separate; no PR
+is merged.

@@ -91,3 +91,31 @@ Comment-ID and observation-hash namespaces remain distinct. UI copy describes
 partial observed activity without promising newest-first ordering: the public
 endpoint has no ordering guarantee in this contract, and records beyond the
 bounded first twenty pages may never be observed.
+
+## Qualified source and review — 8 October 2026
+
+Feature `348e5c21` and parent-identity review fix `507d362b` pass the complete
+collaboration all-feature suite: **1,048 passed, zero failed, five helper ignores**
+across 27 targets. The final delta only collapses a nested guard as requested by
+Clippy. Strict **workspace** all-target/all-feature Clippy, workspace formatting
+and diff checks then pass. The first full run was intentionally interrupted to
+apply the review findings; it is not counted as a successful qualification.
+
+Independent review required validating optional destination repository UUIDs on
+both parent objects and skipping unknown-only records before requiring parent
+shape. Both are fixed with HTTP regressions; the reviewer cleared the final delta.
+A separate cap control rejects repeated continuations even on page twenty. The
+whole Bitbucket provider module previously passed 91 controls; the final full
+run includes all 15 new activity controls and those existing provider controls.
+
+Frontend: **853 passed, one skipped, 98 files**, plus lint, TypeScript and an
+uncached desktop production build. The focused Activity UI suite passes 6/6.
+Normal `make typegen` produces 157 commands. Complete top-level TypeScript AST
+comparison proves semantic equivalence for commands (161 declarations), events
+(3), index (3) and types (938), with no added/removed declarations. Generator-only
+format noise was restored; no public IPC/schema/migration change is included.
+
+These are local synthetic HTTP, native SQLite/runtime, and frontend results.
+No authenticated Bitbucket API, OS credential, new packaged-window, or remote CI
+qualification is implied. Publish this bounded final Activity provider expansion
+stacked on #197; RURU-122 can enter review with unsupported families still explicit.
