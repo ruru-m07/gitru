@@ -254,7 +254,7 @@ it("requires an explicit branch check and current-branches consent, then retries
     submission: {
       command_id: sent.command_id,
       draft_generation: "1",
-      state: "unknown",
+      state: "outcome_unknown",
       attempt_count: 1,
       quarantined: false,
       attention: null,
@@ -548,4 +548,34 @@ it("retires preview consent on authored edits even if the user later restores th
   expect(
     screen.getByRole("button", { name: "Check branches online" }),
   ).toBeEnabled();
+});
+
+it("keeps an oversized encoded draft editable and explains a refused online preview", async () => {
+  mockTauriCommand("collaboration_preview_pull_creation", () => {
+    throw { code: "invalid_input", message: "not displayed" };
+  });
+  const submit = mockTauriCommand("collaboration_submit_pull", () => {
+    throw new Error("must not submit");
+  });
+  const { user } = setup();
+  await open(user);
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Check branches online" }),
+    ).toBeEnabled(),
+  );
+  await user.click(
+    screen.getByRole("button", { name: "Check branches online" }),
+  );
+  expect(
+    await screen.findByText(
+      /Check the branch names and try a shorter title or description/,
+    ),
+  ).toBeVisible();
+  expect(screen.getByLabelText("Description")).toHaveValue(values.body);
+  expect(screen.getByLabelText("Description")).toBeEnabled();
+  expect(
+    screen.queryByRole("button", { name: "Create pull request" }),
+  ).not.toBeInTheDocument();
+  expect(submit).not.toHaveBeenCalled();
 });

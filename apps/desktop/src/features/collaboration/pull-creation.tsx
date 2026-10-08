@@ -351,7 +351,14 @@ function usePullDraftEditor({
         deadline: started + result.expires_in_seconds * 1000,
       });
     } catch (failure) {
-      setError(collaborationErrorMessage(failure));
+      setError(
+        typeof failure === "object" &&
+          failure !== null &&
+          "code" in failure &&
+          failure.code === "invalid_input"
+          ? "Check the branch names and try a shorter title or description before checking online again."
+          : collaborationErrorMessage(failure),
+      );
     } finally {
       setBusy(false);
     }
@@ -673,7 +680,7 @@ function PullDraftForm({
         <p role="status" className="text-xs">
           {current.submission.quarantined
             ? "This restored submission needs review in Saved changes."
-            : current.submission.state === "unknown"
+            : current.submission.state === "outcome_unknown"
               ? "The creation outcome is uncertain. Inspect Saved changes before taking further action; Gitru will not automatically send it again."
               : "This submission is tracked in Saved changes."}
         </p>
