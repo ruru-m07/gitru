@@ -19,16 +19,27 @@ import { assertHarnessCrashProof } from "./harness-qualification";
 
 export default TauriWorkerService;
 
+function harnessProcessCode(cause: unknown, depth = 0): string | undefined {
+  if (cause instanceof HarnessProcessError) return cause.code;
+  if (depth >= 4) return undefined;
+  if (cause instanceof AggregateError) {
+    for (const nested of cause.errors) {
+      const code = harnessProcessCode(nested, depth + 1);
+      if (code) return code;
+    }
+  }
+  if (cause instanceof Error && cause.cause)
+    return harnessProcessCode(cause.cause, depth + 1);
+  return undefined;
+}
+
 function fatalLauncherError(
   stage: "preparation" | "worker_start" | "worker_end" | "completion",
   cause: unknown,
 ): InstanceType<typeof SevereServiceError> {
   // WDIO logs and swallows ordinary service-hook errors. Its actual severe
   // error keeps failures fatal, with a finite public reason and preserved cause.
-  const code =
-    cause instanceof HarnessProcessError
-      ? cause.code
-      : `launcher_${stage}_failure`;
+  const code = harnessProcessCode(cause) ?? `launcher_${stage}_failure`;
   const failure = new SevereServiceError(
     `Retained harness ${stage} failed: ${code}`,
   );
