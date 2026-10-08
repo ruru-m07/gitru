@@ -101,3 +101,46 @@ linkage. UI/SDK tests cover offline save/admission, changed context with text
 retention, failed local receipt retry, account retirement and original subject.
 Run full local `make verify`; keep its evidence separate from remote CI and live
 provider/platform/vault qualification. Signed scoped commits; no merge.
+
+## Implemented native slice and qualification checkpoint
+
+The native implementation now supplies separate CAS comment drafts and a bounded
+local saved-comment-draft recovery list, transactional admission plus immutable
+per-generation submission linkage, and the registered GitHub creation policy.
+Unchanged saves keep the generation; both different-UUID duplicate submissions
+and edited drafts behind an unresolved creation remain blocked. Authored text is
+recoverable with a disconnected account or missing subject; provider-derived
+submission receipts require current active access to that exact target.
+
+Both preflight and POST use the immutable numeric repository route, matching the
+existing GitHub reader's route family. No redirect or mutable named-route fallback
+is allowed. The numeric mutation alias has not been exercised against a live
+provider, so live compatibility remains unqualified; the documented named
+conversation-comment endpoint supplies the operation/201 semantics, not proof
+of numeric-alias deployment support. All HTTP qualification uses finite local
+synthetic servers and synthetic credentials.
+
+A creation confirms only a strict, canonical, bounded receipt tied to the command
+hash, original actor/epoch, exact native target and authenticated 201 response.
+The final writer transaction also checks the current authorization view. A
+canonical GitHub comment ID cannot back two creation receipts. Submitted history
+comes from immutable command evidence and does not claim or change whole-comment
+coverage. Unknown creation only reconciles to unknown without another HTTP call;
+there is no text/time matching or automatic retry of POST. Rate-limit and
+credential observations flow through the shared delivery worker independently
+of the operation result.
+
+Migration 0020 extends recovery policy with authored draft/submission validation,
+canonical receipt linkage and preservation of original command bytes. All
+restored pending commands remain quarantined even with zero attempts and later
+reauthentication. Frozen migration 0019 bytes/checksum extend the supported
+historical matrix through versions 1–19.
+
+Local qualification before parent integration: 16 finite native comment tests,
+14 recovery tests and 7 historical migration tests pass; strict collaboration
+all-target Clippy passes. The native integrity cases also check direct
+immutable-row enforcement and reject missing linkage or tampered receipt/hash
+without changing either selected backup or current database. Full Rust formatting
+also passes. The prerequisite clock/transport fixes, full workspace verification, remote CI
+and packaged/live-provider qualification are recorded separately by the
+coordinator at publication.

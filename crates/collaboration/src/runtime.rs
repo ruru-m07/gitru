@@ -28,6 +28,7 @@ mod clock;
 #[cfg(test)]
 mod clock_lifecycle_tests;
 mod command_recovery;
+mod comment_send;
 mod delivery;
 mod demand;
 #[cfg(test)]

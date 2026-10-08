@@ -81,6 +81,9 @@ pub(super) async fn verify_authored(db: &mut SqliteConnection, version: i64) -> 
     if version >= 19 {
         verify_recovery_actions(db).await?;
     }
+    if version >= 20 {
+        verify_comments(db).await?;
+    }
     Ok(())
 }
 
@@ -536,5 +539,77 @@ async fn verify_recovery_actions(db: &mut SqliteConnection) -> Result<()> {
             return Err(invalid_backup());
         }
     }
+    Ok(())
+}
+
+async fn verify_comments(db: &mut SqliteConnection) -> Result<()> {
+    use crate::comment_send::native as n;
+    {
+        let mut rows =
+            sqlx::query("SELECT account_id,subject_id,body,generation FROM comment_drafts")
+                .fetch(&mut *db);
+        while let Some(row) = rows.try_next().await.map_err(|_| invalid_backup())? {
+            identifier(&column::<String>(&row, "account_id")?)?;
+            identifier(&column::<String>(&row, "subject_id")?)?;
+            n::validate_body(&column::<String>(&row, "body")?).map_err(|_| invalid_backup())?;
+            if column::<i64>(&row, "generation")? <= 0 {
+                return Err(invalid_backup());
+            }
+        }
+    }
+    refuse_rows(db,"SELECT 1 FROM comment_submissions s JOIN commands c USING(account_id,command_id) JOIN comment_drafts d ON d.account_id=s.account_id AND d.subject_id=s.subject_id WHERE c.operation_kind<>'github.create_comment' OR c.payload_version<>1 OR c.target_id<>s.subject_id OR c.target_kind NOT IN ('issue','pull_request') OR d.generation<s.draft_generation LIMIT 1").await?;
+    refuse_rows(db,"SELECT 1 FROM commands c LEFT JOIN comment_submissions s USING(account_id,command_id) WHERE c.operation_kind='github.create_comment' AND c.payload_version=1 AND s.command_id IS NULL LIMIT 1").await?;
+    let mut rows=sqlx::query("SELECT s.account_id,s.subject_id,s.command_id,s.draft_generation,s.body_hash,c.authorization_epoch,c.payload_bytes,d.body,d.generation FROM comment_submissions s JOIN commands c USING(account_id,command_id) JOIN comment_drafts d ON d.account_id=s.account_id AND d.subject_id=s.subject_id").fetch(&mut *db);
+    while let Some(row) = rows.try_next().await.map_err(|_| invalid_backup())? {
+        let p = n::decode_parts(
+            &column::<Vec<u8>>(&row, "payload_bytes")?,
+            &column::<String>(&row, "account_id")?,
+            &column::<String>(&row, "command_id")?,
+            &column::<String>(&row, "subject_id")?,
+            &column::<i64>(&row, "authorization_epoch")?.to_string(),
+        )
+        .map_err(|_| invalid_backup())?;
+        if p.request.draft_generation != column::<i64>(&row, "draft_generation")?.to_string()
+            || n::body_hash(&p.body) != column::<Vec<u8>>(&row, "body_hash")?
+            || column::<i64>(&row, "generation")? == column::<i64>(&row, "draft_generation")?
+                && p.body != column::<String>(&row, "body")?
+        {
+            return Err(invalid_backup());
+        }
+    }
+    drop(rows);
+    let mut rows=sqlx::query("SELECT c.account_id,c.command_id,c.target_id,c.target_kind,c.repository_id,c.submission_hash,c.authorization_epoch,c.payload_bytes,e.payload,a.json AS account_json FROM command_evidence e JOIN commands c USING(account_id,command_id) JOIN accounts a ON a.id=c.account_id WHERE e.kind='github.comment_created' AND e.version=1").fetch(&mut *db);
+    while let Some(row) = rows.try_next().await.map_err(|_| invalid_backup())? {
+        let payload = n::decode_parts(
+            &column::<Vec<u8>>(&row, "payload_bytes")?,
+            &column::<String>(&row, "account_id")?,
+            &column::<String>(&row, "command_id")?,
+            &column::<String>(&row, "target_id")?,
+            &column::<i64>(&row, "authorization_epoch")?.to_string(),
+        )
+        .map_err(|_| invalid_backup())?;
+        let receipt: n::ReceiptEvidence =
+            n::decode_json(&column::<Vec<u8>>(&row, "payload")?).map_err(|_| invalid_backup())?;
+        let account: RemoteAccount = serde_json::from_str(&column::<String>(&row, "account_json")?)
+            .map_err(|_| invalid_backup())?;
+        let hash: Vec<u8> = column(&row, "submission_hash")?;
+        let hash: String = hash.iter().map(|byte| format!("{byte:02x}")).collect();
+        let target_kind: String = column(&row, "target_kind")?;
+        let frame = &receipt.preparation.frame;
+        if !n::receipt_matches(&receipt, &payload)
+            || receipt.preparation.command_hash != hash
+            || receipt.preparation.actor != account.actor_id
+            || Some(frame.repository.id.as_str())
+                != column::<Option<String>>(&row, "repository_id")?.as_deref()
+            || !matches!(
+                (target_kind.as_str(), &frame.subject.kind),
+                ("pull_request", crate::RemoteItemKind::PullRequest)
+                    | ("issue", crate::RemoteItemKind::Issue)
+            )
+        {
+            return Err(invalid_backup());
+        }
+    }
+
     Ok(())
 }

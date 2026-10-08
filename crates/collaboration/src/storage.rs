@@ -17,6 +17,9 @@ use uuid::Uuid;
 
 pub(crate) mod command_admission;
 pub(crate) mod command_recovery;
+pub(crate) mod comment_send;
+#[cfg(test)]
+mod comment_send_tests;
 mod contextual_capabilities;
 pub(crate) mod delivery;
 pub(crate) mod effective;

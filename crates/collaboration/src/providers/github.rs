@@ -7,6 +7,7 @@ use super::{
 };
 use serde::Deserialize;
 mod checks;
+pub(crate) mod comment_send;
 mod comments;
 mod commits;
 mod files;

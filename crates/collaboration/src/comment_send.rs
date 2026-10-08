@@ -102,3 +102,26 @@ pub struct CreatedCommentPage {
     pub revision: String,
     pub authorization_view: String,
 }
+
+pub(crate) mod native;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommentDraftQuery {
+    pub account_id: String,
+    pub cursor: Option<String>,
+    pub limit: u32,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommentDraftSummary {
+    pub subject_id: String,
+    pub preview: String,
+    pub generation: String,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommentDraftPage {
+    pub account_id: String,
+    pub drafts: Vec<CommentDraftSummary>,
+    pub next_cursor: Option<String>,
+    pub revision: String,
+    pub authorization_view: String,
+}
