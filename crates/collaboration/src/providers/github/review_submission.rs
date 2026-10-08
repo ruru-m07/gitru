@@ -15,7 +15,7 @@ use crate::{
 use reqwest::{Method, StatusCode, Url};
 use serde::Serialize;
 use serde_json::{Map, Value};
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 const MAX_BODY_BYTES: usize = 16 * 1024;
 const MAX_COMMENTS: usize = 25;
@@ -784,6 +784,441 @@ fn optional_side(value: Option<&Value>) -> Result<Option<ReviewDiffSide>, Provid
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(value)) => side(value).map(Some),
         _ => Err(invalid()),
+    }
+}
+
+/// Durable final-review delivery. Preparation performs the last authenticated
+/// head check; dispatch is exactly one POST after the generic worker has
+/// persisted its attempt. Accepted commands reconcile by exact native review ID
+/// only and can never return to dispatch.
+pub(crate) struct GithubReviewSubmissionPolicy {
+    transport: GithubReviewTransport,
+}
+
+impl GithubReviewSubmissionPolicy {
+    fn new() -> Result<Self, CollaborationError> {
+        Ok(Self {
+            transport: GithubReviewTransport::new()?,
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test_base(base: Url) -> Self {
+        Self {
+            transport: GithubReviewTransport::for_test_base(base),
+        }
+    }
+}
+
+impl ProviderRegistry {
+    pub fn register_github_review_submission(&mut self) -> Result<(), CollaborationError> {
+        let policy = Arc::new(GithubReviewSubmissionPolicy::new()?);
+        let instance = ProviderInstance::public(ProviderKind::Github);
+        self.register_delivery(&instance, policy.clone())?;
+        self.register_recovery(&instance, policy)
+    }
+}
+
+fn local_now() -> String {
+    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Nanos, true)
+}
+
+fn preparation(
+    account: &RemoteAccount,
+    command: &crate::delivery::DeliveryCommand,
+    frame: &crate::review_submission::native::NativeFrameV1,
+) -> crate::review_submission::native::PreparationV1 {
+    crate::review_submission::native::PreparationV1 {
+        account_id: account.id.clone(),
+        command_id: command.command_id.clone(),
+        actor_id: account.actor_id.clone(),
+        authorization_epoch: account.authorization_epoch.clone(),
+        authorization_view: frame.authorization_view.clone(),
+        repository_id: frame.repository_id.clone(),
+        repository_provider_id: frame.repository_provider_id.clone(),
+        repository_full_name: frame.repository_full_name.clone(),
+        subject_id: frame.subject_id.clone(),
+        subject_provider_id: frame.subject_provider_id.clone(),
+        number: frame.number.clone(),
+        context: frame.context.clone(),
+        command_hash: crate::review_submission::native::command_hash(command),
+        observed_at: local_now(),
+    }
+}
+
+fn receipt(
+    review: AcceptedReview,
+    observed_at: String,
+) -> crate::review_submission::native::AcceptedReceiptV1 {
+    crate::review_submission::native::AcceptedReceiptV1 {
+        provider_id: review.provider_id,
+        url: review.url,
+        provider_state: review.provider_state,
+        reviewed_commit_oid: review.reviewed_commit_oid,
+        submitted_at: review.submitted_at,
+        observed_at,
+    }
+}
+
+fn proof<T: Serialize>(
+    kind: &str,
+    value: &T,
+) -> Result<crate::delivery::OperationEvidence, CollaborationError> {
+    Ok(crate::delivery::OperationEvidence {
+        kind: kind.into(),
+        version: 1,
+        payload: crate::review_submission::native::encode_evidence(value)?,
+    })
+}
+
+#[async_trait]
+impl crate::delivery::CommandDeliveryPolicy for GithubReviewSubmissionPolicy {
+    fn operation_kind(&self) -> &'static str {
+        crate::review_submission::native::OPERATION
+    }
+
+    fn payload_version(&self) -> u32 {
+        1
+    }
+
+    async fn prepare_context_in(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        command: &crate::delivery::DeliveryCommand,
+        account: &RemoteAccount,
+    ) -> Result<Vec<u8>, CollaborationError> {
+        crate::storage::review_submission::prepare_in(tx, command, account).await
+    }
+
+    async fn prepare(
+        &self,
+        token: &SecretToken,
+        request: &crate::delivery::ReconcileRequest,
+    ) -> Result<crate::delivery::DeliveryPreparation, ProviderError> {
+        let payload =
+            crate::review_submission::native::decode(&request.command).map_err(|_| invalid())?;
+        let frame: crate::review_submission::native::NativeFrameV1 =
+            crate::review_submission::native::decode_evidence(&request.native_context)
+                .map_err(|_| invalid())?;
+        if request.command.reconcile_only() {
+            return Err(invalid());
+        }
+        self.transport
+            .preflight(token, &payload.operation())
+            .await?;
+        Ok(crate::delivery::DeliveryPreparation {
+            bytes: crate::review_submission::native::encode_evidence(&preparation(
+                &request.account,
+                &request.command,
+                &frame,
+            ))
+            .map_err(|_| invalid())?,
+            account_cooldown_seconds: None,
+        })
+    }
+
+    async fn validate_claim(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        command: &crate::delivery::DeliveryCommand,
+        account: &RemoteAccount,
+        bytes: &[u8],
+    ) -> Result<crate::delivery::ClaimDecision, CollaborationError> {
+        let prepared: crate::review_submission::native::PreparationV1 =
+            crate::review_submission::native::decode_evidence(bytes)?;
+        let payload = crate::review_submission::native::decode(command)?;
+        if !crate::review_submission::native::preparation_matches(&prepared, &payload, command)
+            || prepared.actor_id != account.actor_id
+            || prepared.authorization_epoch != account.authorization_epoch
+        {
+            return Err(crate::review_submission::native::invalid());
+        }
+        let frame = crate::review_submission::native::NativeFrameV1 {
+            repository_id: prepared.repository_id.clone(),
+            repository_provider_id: prepared.repository_provider_id.clone(),
+            repository_full_name: prepared.repository_full_name.clone(),
+            subject_id: prepared.subject_id.clone(),
+            subject_provider_id: prepared.subject_provider_id.clone(),
+            number: prepared.number.clone(),
+            authorization_view: prepared.authorization_view.clone(),
+            context: prepared.context.clone(),
+        };
+        crate::storage::review_submission::validate_frame_in(tx, command, account, &frame).await?;
+        Ok(crate::delivery::ClaimDecision::Ready(bytes.to_vec()))
+    }
+
+    fn validate_evidence(
+        &self,
+        command: &crate::delivery::DeliveryCommand,
+        purpose: crate::delivery::EvidencePurpose,
+        evidence: &crate::delivery::OperationEvidence,
+    ) -> bool {
+        use crate::{delivery::EvidencePurpose, review_submission::native as n};
+        if evidence.version != 1 || !evidence.bounded() || command.attempt_count == 0 {
+            return false;
+        }
+        let Ok(payload) = n::decode(command) else {
+            return false;
+        };
+        match purpose {
+            EvidencePurpose::Accepted if evidence.kind == n::ACCEPTED_PROOF => {
+                n::decode_evidence::<n::AcceptedEvidenceV1>(&evidence.payload)
+                    .is_ok_and(|value| n::accepted_matches(&value, &payload, command))
+            }
+            EvidencePurpose::Confirmed if evidence.kind == n::SUBMITTED_PROOF => {
+                let Ok(value) = n::decode_evidence::<n::SubmittedEvidenceV1>(&evidence.payload)
+                else {
+                    return false;
+                };
+                n::submitted_matches(&value, &payload, command)
+                    && command.evidence.iter().any(|recorded| {
+                        recorded.evidence.kind == n::ACCEPTED_PROOF
+                            && recorded.evidence.version == 1
+                            && n::decode_evidence::<n::AcceptedEvidenceV1>(
+                                &recorded.evidence.payload,
+                            )
+                            .is_ok_and(|accepted| {
+                                n::accepted_matches(&accepted, &payload, command)
+                                    && accepted.preparation == value.preparation
+                                    && accepted.receipt == value.receipt
+                            })
+                    })
+            }
+            EvidencePurpose::Rejected if evidence.kind == n::REJECTED_PROOF => {
+                n::decode_evidence::<n::RejectedEvidenceV1>(&evidence.payload)
+                    .is_ok_and(|value| n::rejected_matches(&value, &payload, command))
+            }
+            _ => false,
+        }
+    }
+
+    async fn finalize_in(
+        &self,
+        context: &mut crate::storage::effective::finalization::DeliveryFinalization<'_, '_>,
+        command: &crate::delivery::DeliveryCommand,
+        purpose: crate::delivery::EvidencePurpose,
+        evidence: &crate::delivery::OperationEvidence,
+    ) -> Result<(), CollaborationError> {
+        if matches!(
+            purpose,
+            crate::delivery::EvidencePurpose::Accepted
+                | crate::delivery::EvidencePurpose::Confirmed
+        ) {
+            crate::storage::review_submission::finalize_in(
+                context.transaction(),
+                command,
+                purpose,
+                evidence,
+            )
+            .await
+        } else if purpose == crate::delivery::EvidencePurpose::Rejected {
+            Ok(())
+        } else {
+            Err(crate::review_submission::native::invalid())
+        }
+    }
+
+    async fn dispatch(
+        &self,
+        token: &SecretToken,
+        request: crate::delivery::DispatchRequest,
+    ) -> crate::delivery::DeliveryReport {
+        use crate::{delivery::*, review_submission::native as n};
+        let Ok(prepared) = n::decode_evidence::<n::PreparationV1>(&request.execution_base) else {
+            return DeliveryReport::unknown();
+        };
+        let Ok(payload) = n::decode(&request.command) else {
+            return DeliveryReport::unknown();
+        };
+        if !n::preparation_matches(&prepared, &payload, &request.command)
+            || prepared.actor_id != request.account.actor_id
+            || prepared.authorization_epoch != request.account.authorization_epoch
+        {
+            return DeliveryReport::unknown();
+        }
+        match self.transport.create(token, &payload.operation()).await {
+            Ok(ReviewCreateOutcome::Accepted(created)) => {
+                let accepted = n::AcceptedEvidenceV1 {
+                    preparation: prepared,
+                    receipt: receipt(created.accepted, local_now()),
+                };
+                let outcome = proof(n::ACCEPTED_PROOF, &accepted)
+                    .ok()
+                    .filter(|value| {
+                        self.validate_evidence(&request.command, EvidencePurpose::Accepted, value)
+                    })
+                    .map(DeliveryOutcome::Accepted)
+                    .unwrap_or(DeliveryOutcome::Unknown);
+                DeliveryReport {
+                    outcome,
+                    retry_after_seconds: None,
+                    account_cooldown_seconds: created.cooldown_seconds,
+                    provider_error: None,
+                }
+            }
+            Ok(ReviewCreateOutcome::Rejected {
+                status,
+                error,
+                cooldown_seconds,
+            }) => {
+                let rejected = n::RejectedEvidenceV1 {
+                    preparation: prepared,
+                    status,
+                    observed_at: local_now(),
+                };
+                let outcome = proof(n::REJECTED_PROOF, &rejected)
+                    .ok()
+                    .filter(|value| {
+                        self.validate_evidence(&request.command, EvidencePurpose::Rejected, value)
+                    })
+                    .map(DeliveryOutcome::Rejected)
+                    .unwrap_or(DeliveryOutcome::Unknown);
+                DeliveryReport {
+                    outcome,
+                    retry_after_seconds: error.retry_after_seconds,
+                    account_cooldown_seconds: cooldown_seconds,
+                    provider_error: Some(error),
+                }
+            }
+            Err(error) => DeliveryReport {
+                retry_after_seconds: error.retry_after_seconds,
+                account_cooldown_seconds: error.account_cooldown_seconds,
+                provider_error: Some(error),
+                ..DeliveryReport::unknown()
+            },
+        }
+    }
+
+    async fn reconcile(
+        &self,
+        token: &SecretToken,
+        request: crate::delivery::ReconcileRequest,
+    ) -> Result<crate::delivery::DeliveryReport, ProviderError> {
+        use crate::{delivery::*, review_submission::native as n};
+        let payload = n::decode(&request.command).map_err(|_| invalid())?;
+        let accepted = request
+            .command
+            .evidence
+            .iter()
+            .filter(|recorded| {
+                recorded.evidence.kind == n::ACCEPTED_PROOF && recorded.evidence.version == 1
+            })
+            .find_map(|recorded| {
+                n::decode_evidence::<n::AcceptedEvidenceV1>(&recorded.evidence.payload)
+                    .ok()
+                    .filter(|value| n::accepted_matches(value, &payload, &request.command))
+            })
+            .ok_or_else(invalid)?;
+        if accepted.preparation.actor_id != request.account.actor_id {
+            return Err(invalid());
+        }
+        match self
+            .transport
+            .readback(token, &payload.operation(), &accepted.receipt.provider_id)
+            .await?
+        {
+            ReviewReadback::Deferred { cooldown_seconds } => Ok(DeliveryReport {
+                retry_after_seconds: Some(cooldown_seconds),
+                account_cooldown_seconds: Some(cooldown_seconds),
+                ..DeliveryReport::unknown()
+            }),
+            ReviewReadback::Confirmed {
+                review,
+                comments,
+                cooldown_seconds,
+            } => {
+                let observed = receipt(review, accepted.receipt.observed_at.clone());
+                if observed != accepted.receipt || comments.len() != payload.comments.len() {
+                    return Err(invalid().with_cooldown(cooldown_seconds));
+                }
+                let evidence = n::SubmittedEvidenceV1 {
+                    preparation: accepted.preparation,
+                    receipt: accepted.receipt,
+                    comments: payload
+                        .comments
+                        .iter()
+                        .zip(comments)
+                        .map(|(requested, observed)| n::ConfirmedCommentV1 {
+                            comment_id: requested.comment_id.clone(),
+                            provider_id: observed.provider_id,
+                        })
+                        .collect(),
+                    confirmed_at: local_now(),
+                };
+                let proof = proof(n::SUBMITTED_PROOF, &evidence)
+                    .map_err(|_| invalid().with_cooldown(cooldown_seconds))?;
+                if !self.validate_evidence(&request.command, EvidencePurpose::Confirmed, &proof) {
+                    return Err(invalid().with_cooldown(cooldown_seconds));
+                }
+                Ok(DeliveryReport {
+                    outcome: DeliveryOutcome::Confirmed(proof),
+                    retry_after_seconds: None,
+                    account_cooldown_seconds: cooldown_seconds,
+                    provider_error: None,
+                })
+            }
+        }
+    }
+}
+
+#[async_trait]
+impl crate::command_recovery::policy::CommandRecoveryPolicy for GithubReviewSubmissionPolicy {
+    fn instance_id(&self) -> &str {
+        "github:https://github.com/"
+    }
+
+    fn operation_kind(&self) -> &'static str {
+        crate::review_submission::native::OPERATION
+    }
+
+    fn payload_version(&self) -> u32 {
+        1
+    }
+
+    async fn review_in(
+        &self,
+        _: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        command: &crate::delivery::DeliveryCommand,
+        _: &RemoteAccount,
+    ) -> Result<crate::command_recovery::policy::NativeRecoveryReview, CollaborationError> {
+        use crate::command_recovery::*;
+        let payload = crate::review_submission::native::decode(command)?;
+        Ok(policy::NativeRecoveryReview {
+            fields: vec![CommandFieldReview {
+                field: CommandReviewField::Body,
+                base: CommandFieldValue {
+                    known: true,
+                    value: None,
+                },
+                remote: CommandFieldValue {
+                    known: false,
+                    value: None,
+                },
+                desired: CommandFieldValue {
+                    known: true,
+                    value: Some(payload.body),
+                },
+                comparison: CommandFieldComparison::Unknown,
+                editable: false,
+            }],
+            can_replace: false,
+            reason: Some(
+                "A lost review response cannot be proved from body, actor or time. The saved summary and inline comments remain local; Gitru never posts this command again automatically."
+                    .into(),
+            ),
+            fence: vec![],
+        })
+    }
+
+    async fn replace_in(
+        &self,
+        _: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        _: &crate::delivery::DeliveryCommand,
+        _: &RemoteAccount,
+        _: &crate::CommandRecoveryReplaceRequest,
+        _: &crate::command_recovery::policy::NativeRecoveryReview,
+    ) -> Result<crate::storage::command_admission::CommandReceipt, CollaborationError> {
+        Err(crate::review_submission::native::invalid())
     }
 }
 

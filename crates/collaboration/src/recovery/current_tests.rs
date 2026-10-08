@@ -133,7 +133,7 @@ async fn queued_backup_cannot_redeliver_after_remote_success_restore_and_reauthe
     let receipt = store.command_receipt("a", FIRST).await.unwrap().unwrap();
     let summary = store.backup_to(&backup).await.unwrap();
     assert_eq!(summary.commands, 3);
-    assert_eq!(summary.schema_version, 23);
+    assert_eq!(summary.schema_version, 24);
     assert_eq!(count(&backup, "delivery_attempts").await, 0);
     let original_commands = command_rows(&backup).await;
     // An independent remote side effect and receipt happen after the backup.

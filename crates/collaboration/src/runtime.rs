@@ -57,6 +57,7 @@ mod pull_commits;
 #[cfg(test)]
 mod pull_file_tests;
 mod pull_files;
+mod review_submission;
 mod scheduler;
 mod shutdown;
 mod text_edits;

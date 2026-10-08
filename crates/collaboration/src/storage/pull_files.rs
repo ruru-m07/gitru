@@ -909,44 +909,52 @@ impl Store {
         request: PullFileDiffRequest,
     ) -> Result<PullFileArtifactSnapshot> {
         let mut tx = self.inner.readers.begin().await.map_err(storage_error)?;
-        let selection = selection_in(&mut tx, &request).await?;
-        let (revision, authorization_view) = metadata(&mut tx).await?;
-        let row=sqlx::query("SELECT metadata_json,unified_text FROM pull_file_artifacts WHERE account_id=? AND subject_id=? AND generation=? AND file_key=?")
-            .bind(&request.account_id).bind(&request.subject_id).bind(&selection.membership.generation).bind(&request.file_key).fetch_optional(&mut *tx).await.map_err(storage_error)?;
-        let artifact = if let Some(row) = row {
-            let mut artifact: PullFileArtifact = decode(row.get("metadata_json"))?;
-            artifact.unified_text = row.get("unified_text");
-            if !artifact.is_exact_for(&request, &selection.membership) {
-                return Err(stale());
-            }
-            Some(artifact)
-        } else {
-            None
-        };
-        let stale_at: Option<String> = sqlx::query_scalar(
-            "SELECT stale_at FROM pull_file_facets WHERE account_id=? AND subject_id=?",
-        )
-        .bind(&request.account_id)
-        .bind(&request.subject_id)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(storage_error)?
-        .flatten();
-        let freshness = if artifact.is_some() {
-            freshness(stale_at.as_deref())
-        } else {
-            DetailFreshness::Unknown
-        };
+        let snapshot = artifact_in(&mut tx, request).await?;
         tx.commit().await.map_err(storage_error)?;
-        Ok(PullFileArtifactSnapshot {
-            request,
-            membership: selection.membership,
-            artifact,
-            revision,
-            authorization_view,
-            freshness,
-        })
+        Ok(snapshot)
     }
+}
+
+pub(crate) async fn artifact_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    request: PullFileDiffRequest,
+) -> Result<PullFileArtifactSnapshot> {
+    let selection = selection_in(tx, &request).await?;
+    let (revision, authorization_view) = metadata(tx).await?;
+    let row=sqlx::query("SELECT metadata_json,unified_text FROM pull_file_artifacts WHERE account_id=? AND subject_id=? AND generation=? AND file_key=?")
+        .bind(&request.account_id).bind(&request.subject_id).bind(&selection.membership.generation).bind(&request.file_key).fetch_optional(&mut **tx).await.map_err(storage_error)?;
+    let artifact = if let Some(row) = row {
+        let mut artifact: PullFileArtifact = decode(row.get("metadata_json"))?;
+        artifact.unified_text = row.get("unified_text");
+        if !artifact.is_exact_for(&request, &selection.membership) {
+            return Err(stale());
+        }
+        Some(artifact)
+    } else {
+        None
+    };
+    let stale_at: Option<String> = sqlx::query_scalar(
+        "SELECT stale_at FROM pull_file_facets WHERE account_id=? AND subject_id=?",
+    )
+    .bind(&request.account_id)
+    .bind(&request.subject_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(storage_error)?
+    .flatten();
+    let freshness = if artifact.is_some() {
+        freshness(stale_at.as_deref())
+    } else {
+        DetailFreshness::Unknown
+    };
+    Ok(PullFileArtifactSnapshot {
+        request,
+        membership: selection.membership,
+        artifact,
+        revision,
+        authorization_view,
+        freshness,
+    })
 }
 
 async fn admit_artifact_in(

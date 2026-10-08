@@ -9,7 +9,7 @@ use sqlx::{
     sqlite::SqliteConnectOptions,
 };
 static CURRENT: Migrator = sqlx::migrate!("./migrations");
-const OLD_SQL: [&str; 22] = [
+const OLD_SQL: [&str; 23] = [
     include_str!("fixtures/migrations/v8/0001_local_collaboration.sql"),
     include_str!("fixtures/migrations/v8/0002_credential_cutover.sql"),
     include_str!("fixtures/migrations/v8/0003_provider_identities.sql"),
@@ -32,8 +32,9 @@ const OLD_SQL: [&str; 22] = [
     include_str!("fixtures/migrations/v20/0020_comment_submissions.sql"),
     include_str!("fixtures/migrations/v21/0021_activity_facets.sql"),
     include_str!("fixtures/migrations/v22/0022_issue_creation.sql"),
+    include_str!("fixtures/migrations/v23/0023_pull_creation.sql"),
 ];
-const CHECKSUMS: [&str; 22] = [
+const CHECKSUMS: [&str; 23] = [
     "a0b4863d56b1620dae93b13df7ef2b38074c3ac5a5d5bf639b01899204cb61f6796ba9fb37bfd3b085f79e928e475e3d",
     "2fe47653ace5f705b32a819739da13bd9faf40a56a268da416a9f9d39c770ec74a42377268670c40a5478c898137929b",
     "6f5925a0690563071eeaeeb43bc3eec634c280582b9971e94effe266eedb804fb7773b85a5a4d9ad2492439c575e67e9",
@@ -56,6 +57,7 @@ const CHECKSUMS: [&str; 22] = [
     "971930fd1663b42852f321c8ac5b7ea68e5793a057557284eb4123b14fd32c71b9f69fc7e2ba98ac84064beb65309686",
     "ca8b6e743a95b5f457ef13ce254c3e9c4ac563b27179d1206e5ae86a43712d8469ef69c96e867573d99866379a8a1b1e",
     "48c80b4dd9bd4594e02cb1e4108f84e1325cea2b6df0ab9926b3094903974813c86851f400352d8fc4c97b05c0b032c6",
+    "f321217fe0dc81d29a4a82eba42c4270b698dd0250dc2104332c65e928185f252621f9d992d8ed732675972b57683b3e",
 ];
 fn historical(version: usize) -> Migrator {
     Migrator::with_migrations(
@@ -102,7 +104,7 @@ fn accepted_historical_sql_and_checksums_are_frozen() {
 #[tokio::test]
 async fn every_recognized_historical_schema_restores_without_modifying_the_selected_file() {
     let dir = tempfile::tempdir().unwrap();
-    for version in 1..=22 {
+    for version in 1..=23 {
         let target = dir.path().join(format!("target-{version}.db"));
         let source = dir.path().join(format!("v{version}.db"));
         let store = Store::open(&target).await.unwrap();
@@ -139,6 +141,9 @@ async fn every_recognized_historical_schema_restores_without_modifying_the_selec
         }
         if version >= 22 {
             sqlx::query("INSERT INTO issue_drafts VALUES('a','11111111-1111-4111-8111-111111111111','missing-repository','Preserved issue title','Separate issue body 雪',11)").execute(&mut db).await.unwrap();
+        }
+        if version >= 23 {
+            sqlx::query("INSERT INTO pull_drafts VALUES('a','22222222-2222-4222-8222-222222222222','missing-repository','Preserved pull title','Separate pull body 雪','feature','main','local','link','3',0,13)").execute(&mut db).await.unwrap();
         }
         if version >= 3 {
             sqlx::raw_sql("INSERT INTO provider_instances VALUES('github:https://github.com/','github','https://github.com/'); INSERT INTO account_instances VALUES('a','github:https://github.com/');").execute(&mut db).await.unwrap();
@@ -181,6 +186,18 @@ async fn every_recognized_historical_schema_restores_without_modifying_the_selec
             assert_eq!(issue.body, "Separate issue body 雪");
             assert_eq!(issue.generation, "11");
             assert!(issue.context.is_none());
+        }
+        if version >= 23 {
+            let pull = store
+                .pull_draft(collaboration::PullDraftKey {
+                    account_id: "a".into(),
+                    draft_id: "22222222-2222-4222-8222-222222222222".into(),
+                    repository_id: "missing-repository".into(),
+                })
+                .await
+                .unwrap();
+            assert_eq!(pull.values.body, "Separate pull body 雪");
+            assert_eq!(pull.generation, "13");
         }
         assert_eq!(store.account("a").await.unwrap().authorization_epoch, "20");
         store.close().await.unwrap();

@@ -36,7 +36,8 @@ pub(crate) struct Payload {
     pub actor_id: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct ResolvedComment {
     pub comment_id: String,
     pub body: String,
@@ -93,8 +94,30 @@ pub(crate) struct ReviewContextV1 {
     pub(crate) metadata_facet_revision: String,
 }
 
+/// Bounded local authority revalidated under the writer before a provider
+/// attempt. This is execution context, never provider receipt evidence.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct NativeFrameV1 {
+    pub(crate) repository_id: String,
+    pub(crate) repository_provider_id: String,
+    pub(crate) repository_full_name: String,
+    pub(crate) subject_id: String,
+    pub(crate) subject_provider_id: String,
+    pub(crate) number: String,
+    pub(crate) authorization_view: String,
+    pub(crate) context: ReviewContextV1,
+}
+
+impl NativeFrameV1 {
+    pub(crate) fn review_context(&self) -> ReviewContext {
+        self.context.clone().into()
+    }
+}
+
 pub(crate) const ACCEPTED_PROOF: &str = "github.review_accepted";
 pub(crate) const SUBMITTED_PROOF: &str = "github.review_submitted";
+pub(crate) const REJECTED_PROOF: &str = "github.review_rejected";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -147,6 +170,14 @@ pub(crate) struct SubmittedEvidenceV1 {
     pub(crate) receipt: AcceptedReceiptV1,
     pub(crate) comments: Vec<ConfirmedCommentV1>,
     pub(crate) confirmed_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RejectedEvidenceV1 {
+    pub(crate) preparation: PreparationV1,
+    pub(crate) status: u16,
+    pub(crate) observed_at: String,
 }
 
 impl CommandPayloadCodec for Payload {
@@ -288,9 +319,8 @@ pub(crate) fn accepted_matches(
 ) -> bool {
     preparation_matches(&evidence.preparation, payload, command)
         && receipt_matches(&evidence.receipt, payload)
-        && ordered_times(
+        && ordered_local_times(
             &evidence.preparation.observed_at,
-            &evidence.receipt.submitted_at,
             &evidence.receipt.observed_at,
         )
 }
@@ -303,16 +333,11 @@ pub(crate) fn submitted_matches(
     if !preparation_matches(&evidence.preparation, payload, command)
         || !receipt_matches(&evidence.receipt, payload)
         || !canonical_time(&evidence.confirmed_at)
-        || !ordered_times(
+        || !ordered_local_times(
             &evidence.preparation.observed_at,
-            &evidence.receipt.submitted_at,
             &evidence.receipt.observed_at,
         )
-        || !ordered_times(
-            &evidence.receipt.submitted_at,
-            &evidence.receipt.observed_at,
-            &evidence.confirmed_at,
-        )
+        || !ordered_local_times(&evidence.receipt.observed_at, &evidence.confirmed_at)
         || evidence.comments.len() != payload.comments.len()
     {
         return false;
@@ -327,6 +352,17 @@ pub(crate) fn submitted_matches(
                 && positive(&confirmed.provider_id).is_ok()
                 && provider_ids.insert(confirmed.provider_id.as_str())
         })
+}
+
+pub(crate) fn rejected_matches(
+    evidence: &RejectedEvidenceV1,
+    payload: &Payload,
+    command: &DeliveryCommand,
+) -> bool {
+    preparation_matches(&evidence.preparation, payload, command)
+        && matches!(evidence.status, 401 | 403 | 404 | 409 | 422 | 429)
+        && canonical_time(&evidence.observed_at)
+        && ordered_local_times(&evidence.preparation.observed_at, &evidence.observed_at)
 }
 
 fn receipt_matches(receipt: &AcceptedReceiptV1, payload: &Payload) -> bool {
@@ -384,11 +420,11 @@ fn canonical_time(value: &str) -> bool {
         == Some(value)
 }
 
-fn ordered_times(first: &str, second: &str, third: &str) -> bool {
-    let parsed = [first, second, third]
+fn ordered_local_times(first: &str, second: &str) -> bool {
+    let parsed = [first, second]
         .map(chrono::DateTime::parse_from_rfc3339)
         .map(|value| value.ok().map(|value| value.with_timezone(&chrono::Utc)));
-    matches!(parsed, [Some(first), Some(second), Some(third)] if first <= second && second <= third)
+    matches!(parsed, [Some(first), Some(second)] if first <= second)
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -420,7 +456,7 @@ pub(crate) fn decode_submission(command: &CommandSubmission) -> Result<Payload> 
     )
 }
 
-fn decode_parts(
+pub(crate) fn decode_parts(
     bytes: &[u8],
     account_id: &str,
     command_id: &str,
@@ -522,7 +558,7 @@ fn decode_json<T: serde::de::DeserializeOwned + Serialize>(bytes: &[u8]) -> Resu
     Ok(value)
 }
 
-fn identifier(value: &str) -> Result<()> {
+pub(crate) fn identifier(value: &str) -> Result<()> {
     if value.is_empty() || value.len() > 1024 || value.contains('\0') {
         Err(invalid())
     } else {
@@ -530,7 +566,7 @@ fn identifier(value: &str) -> Result<()> {
     }
 }
 
-fn positive(value: &str) -> Result<u64> {
+pub(crate) fn positive(value: &str) -> Result<u64> {
     let parsed = value.parse::<u64>().map_err(|_| invalid())?;
     if parsed == 0 || parsed > i64::MAX as u64 || parsed.to_string() != value {
         Err(invalid())
@@ -539,10 +575,10 @@ fn positive(value: &str) -> Result<u64> {
     }
 }
 
-fn revision(value: &str, positive_value: bool) -> Result<u64> {
-    let parsed = value.parse::<u64>().map_err(|_| invalid())?;
+pub(crate) fn revision(value: &str, positive_value: bool) -> Result<i64> {
+    let parsed = value.parse::<i64>().map_err(|_| invalid())?;
     if value.len() > 19
-        || parsed > i64::MAX as u64
+        || parsed < 0
         || positive_value && parsed == 0
         || parsed.to_string() != value
     {
@@ -552,7 +588,7 @@ fn revision(value: &str, positive_value: bool) -> Result<u64> {
     }
 }
 
-fn canonical_uuid(value: &str) -> Result<()> {
+pub(crate) fn canonical_uuid(value: &str) -> Result<()> {
     if uuid::Uuid::parse_str(value)
         .ok()
         .is_none_or(|parsed| parsed.hyphenated().to_string() != value)
@@ -563,7 +599,7 @@ fn canonical_uuid(value: &str) -> Result<()> {
     }
 }
 
-fn event_name(event: ReviewSubmissionEvent) -> &'static str {
+pub(crate) fn event_name(event: ReviewSubmissionEvent) -> &'static str {
     match event {
         ReviewSubmissionEvent::Comment => "comment",
         ReviewSubmissionEvent::Approve => "approve",
@@ -571,7 +607,7 @@ fn event_name(event: ReviewSubmissionEvent) -> &'static str {
     }
 }
 
-fn parse_event(value: &str) -> Option<ReviewSubmissionEvent> {
+pub(crate) fn parse_event(value: &str) -> Option<ReviewSubmissionEvent> {
     Some(match value {
         "comment" => ReviewSubmissionEvent::Comment,
         "approve" => ReviewSubmissionEvent::Approve,
@@ -919,6 +955,71 @@ mod tests {
             encode_evidence(&submitted).unwrap()
         );
         assert!(encode_evidence(&submitted).unwrap().len() <= MAX_CODEC_BYTES);
+    }
+
+    #[test]
+    fn provider_timestamp_skew_does_not_invalidate_local_receipt_causality() {
+        let payload = payload();
+        let command = command(payload.clone());
+        let preparation = preparation(&payload, &command);
+
+        for submitted_at in [
+            // GitHub currently emits second-precision timestamps, while the
+            // desktop observations retain nanoseconds.
+            "2026-10-08T01:01:00.000000000Z",
+            // The provider and desktop clocks are independent; a provider
+            // timestamp may also appear ahead of the local response receipt.
+            "2026-10-08T01:05:00.000000000Z",
+        ] {
+            let mut receipt = receipt(&payload);
+            receipt.submitted_at = submitted_at.into();
+            let accepted = AcceptedEvidenceV1 {
+                preparation: preparation.clone(),
+                receipt: receipt.clone(),
+            };
+            assert!(accepted_matches(&accepted, &payload, &command));
+            assert!(submitted_matches(
+                &SubmittedEvidenceV1 {
+                    preparation: preparation.clone(),
+                    receipt,
+                    comments: vec![ConfirmedCommentV1 {
+                        comment_id: payload.comments[0].comment_id.clone(),
+                        provider_id: "901".into(),
+                    }],
+                    confirmed_at: "2026-10-08T01:04:00.000000000Z".into(),
+                },
+                &payload,
+                &command,
+            ));
+        }
+
+        let mut receipt = receipt(&payload);
+        receipt.observed_at = "2026-10-08T01:00:59.999999999Z".into();
+        assert!(!accepted_matches(
+            &AcceptedEvidenceV1 {
+                preparation,
+                receipt,
+            },
+            &payload,
+            &command,
+        ));
+    }
+
+    #[test]
+    fn rejected_proof_accepts_only_known_no_effect_statuses_and_local_time_order() {
+        let payload = payload();
+        let command = command(payload.clone());
+        let mut rejected = RejectedEvidenceV1 {
+            preparation: preparation(&payload, &command),
+            status: 422,
+            observed_at: "2026-10-08T01:02:00.000000000Z".into(),
+        };
+        assert!(rejected_matches(&rejected, &payload, &command));
+        rejected.status = 202;
+        assert!(!rejected_matches(&rejected, &payload, &command));
+        rejected.status = 403;
+        rejected.observed_at = "2026-10-08T01:00:59.999999999Z".into();
+        assert!(!rejected_matches(&rejected, &payload, &command));
     }
 
     #[test]

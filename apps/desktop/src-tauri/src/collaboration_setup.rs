@@ -138,6 +138,7 @@ pub(crate) async fn build_runtime(
             registry.register_github_guarded_merge()?;
             registry.register_github_comments()?;
             registry.register_github_issue_creation()?;
+            registry.register_github_review_submission()?;
             registry.register(Arc::new(
                 collaboration::providers::gitlab::GitlabProvider::new()?,
             ))?;

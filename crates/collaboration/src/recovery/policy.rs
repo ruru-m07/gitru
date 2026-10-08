@@ -90,6 +90,9 @@ pub(super) async fn verify_authored(db: &mut SqliteConnection, version: i64) -> 
     if version >= 23 {
         super::pull_creation::verify(db).await?;
     }
+    if version >= 24 {
+        super::review_submission::verify(db).await?;
+    }
     Ok(())
 }
 

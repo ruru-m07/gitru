@@ -22,6 +22,8 @@ mod comment_send;
 pub use comment_send::*;
 mod issue_creation;
 pub use issue_creation::*;
+mod review_submission;
+pub use review_submission::*;
 mod text_edits;
 pub use text_edits::*;
 mod guarded_merge;
@@ -72,6 +74,7 @@ pub(super) enum Operation {
     CommandRecovery,
     CommentSend,
     IssueCreation,
+    ReviewSubmission,
     TextEdit,
     WorkflowState,
     GuardedMerge,
@@ -640,6 +643,7 @@ mod tests {
         Operation::ExportDraft,
         Operation::CommentSend,
         Operation::IssueCreation,
+        Operation::ReviewSubmission,
         Operation::TextEdit,
         Operation::WorkflowState,
         Operation::GuardedMerge,
