@@ -170,7 +170,8 @@ def prepare_collaboration():
     with tempfile.TemporaryDirectory(dir=TARGET, prefix="collaboration-source-") as temporary:
         stage = Path(temporary)
         archive = stage / "source.tar"
-        subprocess.run(["git", "archive", "--format=tar", f"--output={archive}", commit,
+        subprocess.run(["git", "-c", "core.autocrlf=false", "-c", "core.eol=lf",
+                        "archive", "--format=tar", f"--output={archive}", commit,
                         "crates/collaboration", "Cargo.lock"], cwd=repository, env=environment, check=True)
         extract(archive, stage / "unpacked")
         destination = TARGET / "collaboration-source"

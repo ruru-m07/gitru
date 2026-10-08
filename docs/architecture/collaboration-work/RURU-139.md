@@ -130,3 +130,16 @@ R125 encrypted/current native IPC latency/memory comparison. The full regression
 uses unkeyed Store against the cipher engine; it must not be described as those
 encrypted application checks. R139 remains a partial qualification until its
 remaining acceptance evidence exists. Production encryption is unchanged.
+
+## First remote qualification and CRLF repair
+
+PR #193 initial head `6a9bf824` independently reproduces the pinned native
+C/header hashes on Linux (run `37726337548`, job `113145248437`). Windows stops
+before native compilation because Git archive honors `core.autocrlf=true`,
+changing the pinned Cargo.lock bytes. The blob gate correctly refuses them.
+A local reproduction shows 8,224 CRLF lines under that setting versus an exact
+blob with conversion disabled. Archive extraction now sets `core.autocrlf=false`
+and `core.eol=lf` for that command only, preserving every hash/version guard and
+the user's Git configuration. A real temporary Git repository with CRLF enabled
+reproduces the old behavior and passes the corrected extraction; all six Python
+controls pass. Platform/portability results remain pending the new exact head.

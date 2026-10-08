@@ -3,6 +3,7 @@ import io
 import os
 from pathlib import Path
 import tarfile
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -54,6 +55,39 @@ class VerificationTests(unittest.TestCase):
                 path.write_bytes(b"changed production gate\n")
                 with self.assertRaisesRegex(RuntimeError, "differs from pinned Git object"):
                     prepare.verify_collaboration()
+
+    def test_pinned_git_archive_ignores_checkout_crlf_conversion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory) / "repository"
+            repository.mkdir()
+            def git(*arguments):
+                return subprocess.check_output(["git", *arguments], cwd=repository)
+            git("init", "--quiet")
+            git("config", "core.autocrlf", "false")
+            source = repository / "crates" / "collaboration" / "src"
+            source.mkdir(parents=True)
+            expected = b"pinned source\nline two\n"
+            (source / "lib.rs").write_bytes(expected)
+            (repository / "Cargo.lock").write_bytes(expected)
+            git("add", "Cargo.lock", "crates")
+            git("-c", "user.name=Qualification Fixture", "-c", "user.email=fixture@example.invalid",
+                "commit", "--no-gpg-sign", "--quiet", "-m", "fixture")
+            commit = git("rev-parse", "HEAD").decode().strip()
+            tree = git("rev-parse", "HEAD:crates/collaboration").decode().strip()
+            git("config", "core.autocrlf", "true")
+            # Git archive itself, not Python I/O, applies this checkout setting.
+            raw = git("archive", "--format=tar", commit, "Cargo.lock")
+            with tarfile.open(fileobj=io.BytesIO(raw)) as archive:
+                self.assertIn(b"\r\n", archive.extractfile("Cargo.lock").read())
+            target = repository / "isolated"
+            target.mkdir()
+            root = repository / "scripts" / "spikes" / "sqlcipher-qualified"
+            with patch.object(prepare, "ROOT", root), patch.object(prepare, "TARGET", target), patch.object(prepare, "PINS", {
+                "collaboration_commit": commit, "collaboration_tree": tree,
+            }):
+                prepare.prepare_collaboration()
+                self.assertEqual((target / "collaboration-source" / "Cargo.lock").read_bytes(), expected)
+                self.assertEqual((target / "collaboration-source" / "crates" / "collaboration" / "src" / "lib.rs").read_bytes(), expected)
 
     def test_prepared_rust_build_script_cannot_be_modified(self):
         with tempfile.TemporaryDirectory() as directory:
