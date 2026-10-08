@@ -1,5 +1,6 @@
 import {
   type CommentDraftSnapshot,
+  collaboration,
   collaborationKeys,
   type RemoteAccount,
 } from "@gitru/collaboration-client";
@@ -7,7 +8,7 @@ import { commentDraftQueryOptions } from "@gitru/collaboration-client/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockTauriCommand } from "../../../tests/mocks/tauri";
 import { CommentComposer } from "./comment-composer";
 
@@ -43,6 +44,7 @@ const available = (overrides: Partial<CommentDraftSnapshot> = {}) => ({
   ...overrides,
 });
 const caches: QueryClient[] = [];
+const stops: Array<() => void> = [];
 let snapshot: CommentDraftSnapshot;
 
 beforeEach(() => {
@@ -64,6 +66,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  for (const stop of stops.splice(0)) stop();
+  vi.restoreAllMocks();
   for (const cache of caches.splice(0)) cache.clear();
 });
 
@@ -260,6 +264,69 @@ describe("dedicated conversation comment composer", () => {
       screen.queryByRole("button", { name: "Load latest comment draft" }),
     ).not.toBeInTheDocument();
     expect(screen.getAllByRole("alert")).not.toHaveLength(0);
+  });
+
+  it("keeps an open comment but immediately removes send authority when disconnect refetch fails", async () => {
+    let reads = 0;
+    const read = mockTauriCommand("collaboration_comment_draft", () => {
+      reads += 1;
+      if (reads === 1) return snapshot;
+      throw { code: "storage", message: "fixture reset refetch failed" };
+    });
+    mockTauriCommand("collaboration_changes_since", () => ({
+      revision: "20",
+      authorization_view: "11",
+      changes: [],
+      has_more: false,
+      reset_required: false,
+    }));
+    vi.spyOn(collaboration.transport, "listen").mockResolvedValue(() => {});
+    vi.spyOn(collaboration.transport, "listenRuntimeReset").mockResolvedValue(
+      () => {},
+    );
+    vi.spyOn(collaboration.transport, "listenLocalChanges").mockResolvedValue(
+      () => {},
+    );
+    let finishDisconnect!: (revision: string) => void;
+    mockTauriCommand(
+      "collaboration_disconnect",
+      () =>
+        new Promise<string>((resolve) => {
+          finishDisconnect = resolve;
+        }),
+    );
+    const { cache, user } = setup();
+    stops.push(collaboration.installBridge(cache));
+    await act(async () => collaboration.wake());
+    const editor = await screen.findByRole("textbox", { name: "Comment" });
+    await user.type(editor, " remains local");
+
+    let disconnecting!: Promise<void>;
+    act(() => {
+      disconnecting = collaboration.disconnect(account.id);
+    });
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+    expect(editor).toHaveValue("Saved comment remains local");
+    expect(screen.getByText(/reconnect this account/i)).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Save comment draft" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Queue saved comment" }),
+    ).toBeDisabled();
+    expect(screen.getAllByRole("alert")).not.toHaveLength(0);
+    expect(
+      cache.getQueryData(commentDraftQueryOptions(account, subjectId).queryKey),
+    ).toMatchObject({
+      body: "Saved comment",
+      generation: "4",
+      context: null,
+      availability: "unavailable",
+      reason: "account_unavailable",
+    });
+
+    finishDisconnect("21");
+    await act(async () => disconnecting);
   });
 
   it("labels confirmed local receipts as a bounded Gitru history", async () => {
