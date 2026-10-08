@@ -2611,3 +2611,14 @@ in [the work note](collaboration-work/RURU-107-platform-qualification.md).
 Remote exact-head platform CI and real production OS-vault/dedicated-account
 qualification are separate and pending. RURU-107 stays In Progress. The observed
 obsolete-response retry loop is being repaired under RURU-102. No PR was merged.
+
+### RURU-107 macOS CI fixture repair — 8 October 2026
+
+Exact-head `b8a47105` remote macOS Rust testing found Darwin's inherited
+nonblocking socket mode in an existing inbox HTTP fixture (run `37727471686`,
+job `113148953621`). Signed `427a6d3c` switches only that accepted test socket
+to blocking mode while retaining its two-second deadlines. The affected native
+module passes 13/13 locally; formatting and diff checks pass. The native
+retained-harness stage passed in the failed job, and production/packaged
+scenario code is unchanged. New-head remote CI remains pending; RURU-107
+continues In Progress for real OS-vault and dedicated-account qualification.

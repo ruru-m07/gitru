@@ -111,3 +111,20 @@ existing skip; after correction the focused 24 native and 41 protocol/executor
 controls, both type checks and formatting pass. The production build excluded
 all retained-harness markers. Fresh remote platform CI is still pending; its
 results must be recorded against the published head separately.
+
+## macOS CI fixture repair — 8 October 2026
+
+Remote run `37727471686` at `b8a47105` failed the macOS workspace Rust
+job `113148953621`: an existing inbox-action HTTP fixture accepted a socket
+from a nonblocking listener, and Darwin inherited that mode. The immediate
+read returned `WouldBlock` before request bytes arrived. The retained native
+harness stage passed; this was not a vault scenario or production failure.
+
+Signed source `427a6d3c` makes that accepted fixture socket blocking before
+applying its unchanged two-second read/write deadlines. This matches the
+nearby native HTTP fixtures and keeps the test bounded. The entire affected
+inbox-action module passes 13/13 locally, with formatting and diff checks.
+Log: `/tmp/gitru-r107-darwin-fixture-repair.log`. Production code, generated
+IPC and the previously qualified packaged scenario are unchanged. New-head
+remote CI remains a separate gate; prior packaged evidence is not relabeled
+as a new run.
