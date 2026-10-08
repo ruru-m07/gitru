@@ -58,3 +58,27 @@ make typegen; no handwritten generated edits. UI checks cover collapsed zero-wor
 page transitions, safe text, partial/empty distinction, access loss and retained
 authored editors. Record focused checks and full make verify separately from
 remote CI, live provider/vault checks and native-window qualification.
+
+## Frozen integration and DTO decision
+
+The feature now builds on integration-only parent `dd6f23f3`, combining the read
+stack `5915f690` with durable comment stack `130b9f75` (schema 0020). It introduces
+migration 0021 and freezes schema-0020 SQL for recovery; it does not create an
+alternate migration 0019. No existing PR has been merged.
+
+Use `DetailFacet::Activity`, `ResourceFacet::Activity`, `DetailField::Activity`
+and `NativeDetailPayload::ActivityV1(ActivityEvent)`. The event has bounded
+provider `kind`, `supported`, optional canonical `occurred_at` and optional inert
+`description`. Existing entry author/body hold the actor and bounded text. No new
+IPC function is needed. Provider response objects and arbitrary URLs are not
+stored or exposed as payloads.
+
+Stable numeric identities are scoped by event kind; committed activity uses its
+canonical commit SHA. Unsupported kinds may retain a bounded stable node ID.
+Local keys sort known immutable event-created timestamps, then kind/native ID;
+unknown times follow in a deterministic group. Comment updated-at stays an edit
+clock and does not change identity. Commit author/committer timestamps are not
+misrepresented as the time the commit was added to the PR. Missing identities
+and unrepresentable rows downgrade completeness, including an otherwise empty
+singleton page. Official heterogeneous event reference checked during design:
+https://docs.github.com/en/rest/using-the-rest-api/issue-event-types
