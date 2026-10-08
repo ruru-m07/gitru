@@ -3852,3 +3852,23 @@ handle through startup/cancellation and actual close. Failed close retires that
 factory and retains the key/lease; application Store/default selection is unchanged.
 See `collaboration-work/RURU-140-keyed-connections.md` for component evidence and
 remaining Store/identity/vault/conversion/platform gates. R140 stays In Progress.
+
+### RURU-140 native key vault qualification — 8 October 2026
+
+[PR200](https://github.com/ruru-m07/gitru/pull/200) adds an optional macOS file-keychain
+adapter with an explicit keychain handle and create-only SecItemAdd behavior.
+The synthetic private-keychain subprocess exercises identity isolation, competing
+creates, lock refusal, malformed key preservation and cold resume. It never
+selects a default/personal keychain. Production Store/keyed pools and plaintext
+conversion remain unimplemented; RURU-140 stays In Progress.
+
+The original source de10f464 passed 1,029 local collaboration cases/eight helper
+ignores and the actual local macOS fixture. Its remote macOS fixture passed, and
+14 of 15 reported PR checks passed; Windows Rust failed in an inherited inbox
+HTTP test socket before the expected request reached the worker. A test-only
+repair reads the complete bounded request in blocking mode under the existing
+finite deadline. All 16 affected native controls, including three framing cases,
+pass locally; a fresh remote matrix is required. Production vault/provider/data
+paths are unchanged by that repair. Full evidence and remaining platform/activation
+boundaries are in [the vault worknote](./collaboration-work/RURU-140-platform-vault.md).
+No live provider validation or merge is claimed.
