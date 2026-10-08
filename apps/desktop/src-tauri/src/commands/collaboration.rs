@@ -22,6 +22,8 @@ mod issue_creation;
 pub use issue_creation::*;
 mod text_edits;
 pub use text_edits::*;
+mod workflow_state;
+pub use workflow_state::*;
 mod lifecycle;
 pub(super) use lifecycle::RecoveryTransition;
 use lifecycle::RuntimeSlot;
@@ -67,6 +69,7 @@ pub(super) enum Operation {
     CommentSend,
     IssueCreation,
     TextEdit,
+    WorkflowState,
     Recovery,
     Capabilities,
     ContextualCapabilities,
@@ -632,6 +635,7 @@ mod tests {
         Operation::CommentSend,
         Operation::IssueCreation,
         Operation::TextEdit,
+        Operation::WorkflowState,
         Operation::CommandRecovery,
         Operation::Recovery,
         Operation::Capabilities,

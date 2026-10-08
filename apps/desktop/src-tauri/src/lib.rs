@@ -112,6 +112,8 @@ pub fn run() {
             commands::collaboration::collaboration_command_recovery_export,
             commands::collaboration::collaboration_text_edit_snapshot,
             commands::collaboration::collaboration_submit_text_edit,
+            commands::collaboration::collaboration_workflow_state_snapshot,
+            commands::collaboration::collaboration_submit_workflow_state,
             commands::collaboration::collaboration_comment_draft,
             commands::collaboration::collaboration_comment_drafts,
             commands::collaboration::collaboration_save_comment_draft,

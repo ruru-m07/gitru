@@ -2044,3 +2044,7 @@ pub(crate) mod issue_creation;
 
 #[cfg(test)]
 mod issue_creation_tests;
+pub(crate) mod workflow_state;
+
+#[cfg(test)]
+mod workflow_state_tests;

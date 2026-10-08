@@ -83,6 +83,10 @@ import {
   type TextEditRequest,
   type TextEditSnapshot,
   type TransportBindingRequest,
+  type WorkflowStateContext,
+  type WorkflowStateReceipt,
+  type WorkflowStateRequest,
+  type WorkflowStateSnapshot,
 } from "@gitru/commands";
 import type { QueryClient } from "@tanstack/react-query";
 import {
@@ -117,6 +121,13 @@ export interface CollaborationTransport extends DemandTransport {
     subjectId: string,
   ): Promise<TextEditSnapshot>;
   submitTextEdit(request: TextEditRequest): Promise<TextEditReceipt>;
+  workflowStateSnapshot(
+    accountId: string,
+    subjectId: string,
+  ): Promise<WorkflowStateSnapshot>;
+  submitWorkflowState(
+    request: WorkflowStateRequest,
+  ): Promise<WorkflowStateReceipt>;
   commentDraft(
     accountId: string,
     subjectId: string,
@@ -235,6 +246,13 @@ export const collaborationKeys = {
       ...collaborationKeys.account(account.id),
       account.authorization_epoch,
       "text-edit",
+      subjectId,
+    ] as const,
+  workflowState: (account: RemoteAccount, subjectId: string) =>
+    [
+      ...collaborationKeys.account(account.id),
+      account.authorization_epoch,
+      "workflow-state",
       subjectId,
     ] as const,
   commentDraft: (account: RemoteAccount, subjectId: string) =>
@@ -548,6 +566,14 @@ export class CollaborationClient {
         throw new StaleAuthorizationError();
       return { ...context };
     };
+    const reviewedWorkflowStateContext = (context: WorkflowStateContext) => {
+      if (
+        context.account_id !== account.id ||
+        context.authorization_epoch !== account.authorization_epoch
+      )
+        throw new StaleAuthorizationError();
+      return { ...context };
+    };
     const reviewedCommentSendContext = (context: CommentSendContext) => {
       if (
         context.account_id !== account.id ||
@@ -644,6 +670,39 @@ export class CollaborationClient {
         const context = reviewedTextEditContext(request.context);
         const receipt = await this.fence.read(account.id, () =>
           this.transport.submitTextEdit({ ...request, context }),
+        );
+        if (
+          receipt.account_id !== account.id ||
+          receipt.command_id !== request.command_id
+        )
+          throw new StaleAuthorizationError();
+        return receipt;
+      },
+      workflowStateSnapshot: async (
+        subjectId: string,
+        signal?: AbortSignal,
+      ) => {
+        const snapshot = await this.fence.read(
+          account.id,
+          () => this.transport.workflowStateSnapshot(account.id, subjectId),
+          signal,
+        );
+        if (
+          snapshot.context !== null &&
+          (snapshot.context.account_id !== account.id ||
+            snapshot.context.subject_id !== subjectId ||
+            snapshot.context.authorization_epoch !==
+              account.authorization_epoch ||
+            snapshot.context.authorization_view !== snapshot.authorization_view)
+        )
+          throw new StaleAuthorizationError();
+        this.acceptSnapshot(snapshot);
+        return snapshot;
+      },
+      submitWorkflowState: async (request: WorkflowStateRequest) => {
+        const context = reviewedWorkflowStateContext(request.context);
+        const receipt = await this.fence.read(account.id, () =>
+          this.transport.submitWorkflowState({ ...request, context }),
         );
         if (
           receipt.account_id !== account.id ||
@@ -1390,6 +1449,7 @@ function projectionAffected(key: readonly unknown[], scope: string) {
   if (scope.startsWith("effective:")) {
     const subject = scope.slice("effective:".length);
     if (projection === "text-edit") return key[5] === subject;
+    if (projection === "workflow-state") return key[5] === subject;
     if (projection === "detail") {
       const query = key[5] as DetailQuery;
       return query.subject_id === subject && query.facet === "body";
@@ -1421,6 +1481,16 @@ function projectionAffected(key: readonly unknown[], scope: string) {
     return (
       scope === "repositories" ||
       scope.startsWith("repo:") ||
+      scope === `detail:${subject}:body`
+    );
+  }
+  if (projection === "workflow-state") {
+    const subject = key[5];
+    return (
+      scope === "commands" ||
+      scope === "repositories" ||
+      scope.startsWith("repo:") ||
+      scope === `effective:${subject}` ||
       scope === `detail:${subject}:body`
     );
   }

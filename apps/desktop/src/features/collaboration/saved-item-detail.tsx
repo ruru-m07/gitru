@@ -25,6 +25,7 @@ import { PullRequestCheckoutButton } from "./pull-checkout-dialog";
 import { ResourceCapabilityPanels } from "./resource-capability-panels";
 import { SelectedResourceHeader } from "./resource-metadata";
 import { ResourceTextEditor } from "./text-edit";
+import { ResourceWorkflowState } from "./workflow-state";
 
 export function SavedItemDetail({
   account,
@@ -175,7 +176,14 @@ export function SavedItemDetail({
             metadata={bodyData?.metadata ?? null}
           />
           {kind !== "notification" ? (
-            <ResourceTextEditor account={account} subjectId={itemId} />
+            <>
+              <ResourceWorkflowState
+                account={account}
+                subjectId={itemId}
+                kind={kind}
+              />
+              <ResourceTextEditor account={account} subjectId={itemId} />
+            </>
           ) : null}
           {kind === "notification" || !canReadSaved(bodyPolicy) ? (
             <div className="mt-4 whitespace-pre-wrap break-words text-sm leading-relaxed">

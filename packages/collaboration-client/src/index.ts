@@ -60,8 +60,10 @@ import {
   collaborationSetLocalInboxState,
   collaborationSubmitIssue,
   collaborationSubmitTextEdit,
+  collaborationSubmitWorkflowState,
   collaborationTextEditSnapshot,
   collaborationValidateLocalNavigation,
+  collaborationWorkflowStateSnapshot,
 } from "@gitru/commands";
 import type { QueryClient } from "@tanstack/react-query";
 import { listen } from "@tauri-apps/api/event";
@@ -222,6 +224,10 @@ export type {
   TextEditRequest,
   TextEditSnapshot,
   TransportBindingRequest,
+  WorkflowStateContext,
+  WorkflowStateReceipt,
+  WorkflowStateRequest,
+  WorkflowStateSnapshot,
 } from "@gitru/commands";
 export { StaleAuthorizationError } from "./authorization-fence";
 export * from "./client";
@@ -257,6 +263,13 @@ export type TextEditAvailability =
 export type TextEditReason = NonNullable<
   import("@gitru/commands").TextEditSnapshot["reason"]
 >;
+export type WorkflowState =
+  import("@gitru/commands").WorkflowStateRequest["desired_state"];
+export type WorkflowStateAvailability =
+  import("@gitru/commands").WorkflowStateSnapshot["availability"];
+export type WorkflowStateReason = NonNullable<
+  import("@gitru/commands").WorkflowStateSnapshot["reason"]
+>;
 export type CommentSendAvailability =
   import("@gitru/commands").CommentDraftSnapshot["availability"];
 export type CommentSendReason = NonNullable<
@@ -281,6 +294,10 @@ export const collaboration = new CollaborationClient({
   textEditSnapshot: (accountId, subjectId) =>
     collaborationTextEditSnapshot({ accountId, subjectId }),
   submitTextEdit: (request) => collaborationSubmitTextEdit({ request }),
+  workflowStateSnapshot: (accountId, subjectId) =>
+    collaborationWorkflowStateSnapshot({ accountId, subjectId }),
+  submitWorkflowState: (request) =>
+    collaborationSubmitWorkflowState({ request }),
   commentDraft: (accountId, subjectId) =>
     collaborationCommentDraft({ accountId, subjectId }),
   commentDrafts: (query) => collaborationCommentDrafts({ query }),
