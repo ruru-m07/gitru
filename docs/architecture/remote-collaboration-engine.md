@@ -3710,3 +3710,16 @@ Final `f01b0392` deltas pass 20 text-operation, 14 transport, 21 feature-harness
 4 UI cases with strict feature-enabled Clippy. Generated IPC: 144 commands/454
 schemas. Details and honest remaining gates are in [the work note](./collaboration-work/RURU-129.md).
 Remote CI begins on publication; live provider/vault validation is unclaimed.
+
+
+### RURU-129 title/body follow-up qualification — 8 October 2026
+
+PR #181 now includes fixed numeric repository addressing, full-duration provider
+cooldowns and cold direct-admission seeding. The production delta at `36e6f153`
+passes 567 native library tests/four helper ignores, 21 clock controls and strict
+Clippy; the numeric routes pass 20 operation cases. A separate Windows credential
+fixture correction at `a6dd0572` passes all 14 crash parent tests and preserves
+the original credential-boundary watchdog. These are deltas to the recorded full
+workspace baseline. Live authenticated numeric mutation compatibility is still
+unqualified. RURU-129 remains In Progress for the separate workflow-state and
+label slices; new-head CI is distinct from these local results.

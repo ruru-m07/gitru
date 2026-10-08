@@ -182,3 +182,48 @@ Logs: `/tmp/gitru-r129-verify.log`, `/tmp/gitru-r129-final-delta.log`,
 provider requests, personal credentials, platform vault or packaged-UI validation
 were used. The issue stays In Progress for state/labels and other-provider edits;
 this title/body slice is reviewable. No merge is authorized.
+
+## Numeric repository route follow-up — 8 October 2026
+
+The GitHub text-edit preflight and PATCH now address the repository by its validated
+positive numeric provider ID (`/repositories/{id}/issues|pulls/{number}`), so a
+namespace transfer or reuse cannot redirect a queued write through the saved
+owner/name. The stored full name remains a validated response identity and URL fact;
+there is no fallback from the numeric request route to the mutable namespace route.
+Existing GitHub read adapters already exercise the corresponding numeric nested
+aliases, and the focused synthetic text-edit suite passes **20/20** with the numeric
+GET/PATCH route. No authenticated live GitHub write was performed, so compatibility
+of the numeric mutation alias in a live provider environment remains unqualified.
+
+## Shared clock and Windows fixture qualification — 8 October 2026
+
+The reviewed clock follow-up retains full provider cooldowns, checks discovery
+before vault/HTTP admission, and seeds durable waits into the monotonic budget
+on the first cold direct delivery check. A deterministic regression first failed
+when a UTC jump erased a still-active 47-hour wait; the corrected direct check
+keeps the remaining bound and leaves the peer account eligible.
+
+Production checkpoint `36e6f153` passes 21 clock controls and the complete native
+library suite (567 passed, four subprocess helpers ignored), strict all-target
+collaboration Clippy and formatting. The numeric route delta separately passes
+20 text-edit operation cases. Final test-only checkpoint `a6dd0572` incorporates
+the Windows credential crash startup-ready handshake from RURU-128: 14 parent
+crash cases pass, with one subprocess helper ignored, and strict Clippy/fmt pass.
+The setup phase has its own bounded allowance; the existing credential-boundary
+watchdog and authorization assertions are unchanged. These are qualified deltas
+to the earlier full workspace run, not a claim that it ran on the new head.
+
+The PR remains the title/body slice. State close/reopen is being developed in a
+separate bounded follow-up; labels and other provider writes remain outstanding.
+Remote CI restarts on the new published head and live numeric mutation, vault and
+packaged-window qualification remain separate. No merge was performed.
+
+## Windows disk-backed sync fixture follow-up
+
+Test-only source `fb7418c5` incorporates the qualified RURU-123 cursor-resume
+fixture repair. The capped-bootstrap test subscribes before startup and awaits
+its precise committed cursor/run/coverage milestones with a bounded 30-second
+watchdog; it retains the original request-count, continuation and completeness
+assertions. All nine runtime-sync tests and strict all-target collaboration
+Clippy/fmt pass. This is a focused delta to the recorded full workspace baseline;
+fresh remote Windows CI remains pending.
