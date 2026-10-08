@@ -14,6 +14,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fixtureAccount } from "../../../tests/fixtures/collaboration";
 import { PullFilesPanel } from "./pull-files-panel";
+import { ReviewAuthoringProvider } from "./review-submission";
 
 vi.mock("@pierre/diffs/react", () => ({
   PatchDiff: ({ patch }: { patch: string }) => (
@@ -552,5 +553,149 @@ describe("cached pull request files", () => {
     expect(
       await screen.findByText("Choose a saved file to open its cached diff."),
     ).toBeVisible();
+  });
+});
+
+describe("inline review selection from provider diffs", () => {
+  function mountReviewFiles() {
+    const account = { ...fixtureAccount, host: "github.com" };
+    vi.spyOn(collaboration.transport, "reviewDraft").mockResolvedValue({
+      key: { account_id: account.id, subject_id: subjectId },
+      event: "comment",
+      body: "Review",
+      comments: [],
+      generation: "1",
+      context: null,
+      availability: "unavailable",
+      reason: "stale_context",
+      submission: null,
+      revision: "12",
+      authorization_view: "3",
+    });
+    vi.spyOn(collaboration.transport, "submittedReviews").mockResolvedValue({
+      account_id: account.id,
+      subject_id: subjectId,
+      reviews: [],
+      next_cursor: null,
+      revision: "12",
+      authorization_view: "3",
+    });
+    const matches = Element.prototype.matches;
+    vi.spyOn(Element.prototype, "matches").mockImplementation(function (
+      this: Element,
+      selector: string,
+    ) {
+      return [":modal", ":fullscreen", ":popover-open"].includes(selector)
+        ? false
+        : matches.call(this, selector);
+    });
+    render(
+      <QueryClientProvider client={cache}>
+        <ReviewAuthoringProvider account={account} subjectId={subjectId}>
+          <PullFilesPanel
+            account={account}
+            subjectId={subjectId}
+            instanceId={instanceId}
+            repositoryId={repositoryId}
+            policy={policy}
+          />
+        </ReviewAuthoringProvider>
+      </QueryClientProvider>,
+    );
+  }
+  it("opens a local review with the exact selected provider file and line without provider hydration", async () => {
+    vi.mocked(collaboration.transport.pullFileArtifact).mockImplementation(
+      async (request) => ({
+        ...artifactSnapshot(
+          request,
+          savedArtifact(request, "text", "@@ -1 +1 @@\n-old\n+new\n"),
+        ),
+        freshness: "fresh",
+      }),
+    );
+    mountReviewFiles();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Files" }));
+    await user.click(await screen.findByRole("button", { name: /src\/a.ts/ }));
+    await user.type(await screen.findByLabelText("Line"), "1");
+    await user.click(
+      screen.getByRole("button", { name: "Add inline review comment" }),
+    );
+    expect(await screen.findByLabelText("Comment 1")).toHaveValue("");
+    expect(screen.getByText("src/a.ts, right line 1")).toBeInTheDocument();
+    expect(collaboration.transport.hydrateDetail).not.toHaveBeenCalled();
+    expect(collaboration.transport.hydratePullFile).not.toHaveBeenCalled();
+  });
+  it.each([
+    "stale",
+    "local",
+    "binary",
+  ])("does not offer inline review authority for %s artifacts", async (kind) => {
+    vi.mocked(collaboration.transport.pullFileArtifact).mockImplementation(
+      async (request) => {
+        const artifact = savedArtifact(
+          request,
+          kind === "binary" ? "binary" : "text",
+          "@@ -1 +1 @@\n-old\n+new\n",
+        );
+        if (kind === "local")
+          artifact.validation = {
+            kind: "local_exact_range",
+            local_validated_at: "2026-10-08T00:00:00Z",
+            resolved_merge_base_oid: "a".repeat(40),
+          };
+        return {
+          ...artifactSnapshot(request, artifact),
+          freshness: kind === "stale" ? "stale" : "fresh",
+        };
+      },
+    );
+    mountReviewFiles();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Files" }));
+    await user.click(await screen.findByRole("button", { name: /src\/a.ts/ }));
+    await waitFor(() =>
+      expect(collaboration.transport.pullFileArtifact).toHaveBeenCalled(),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Add inline review comment" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it.each([
+    "renamed",
+    "copied",
+    "unknown",
+    "unequal_paths",
+  ] as const)("keeps the saved diff readable without assuming %s review anchors", async (kind) => {
+    const file = structuredClone(files[0]);
+    file.file.change_kind = kind === "unequal_paths" ? "modified" : kind;
+    if (kind !== "unknown") file.file.identity.old_path = "old/a.ts";
+    vi.mocked(collaboration.transport.pullFiles).mockResolvedValue({
+      ...snapshot,
+      files: [file],
+    });
+    vi.mocked(collaboration.transport.pullFileArtifact).mockImplementation(
+      async (request) => {
+        const artifact = savedArtifact(
+          request,
+          "text",
+          "@@ -1 +1 @@\n-old\n+new\n",
+        );
+        artifact.identity = file.file.identity;
+        const result = artifactSnapshot(request, artifact);
+        result.membership.identity = file.file.identity;
+        return { ...result, freshness: "fresh" };
+      },
+    );
+    mountReviewFiles();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Files" }));
+    await user.click(await screen.findByRole("button", { name: /src\/a.ts/ }));
+    expect(await screen.findByTestId("safe-patch-diff")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Add inline review comment" }),
+    ).not.toBeInTheDocument();
+    expect(collaboration.transport.hydratePullFile).not.toHaveBeenCalled();
   });
 });

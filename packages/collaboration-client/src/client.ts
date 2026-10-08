@@ -87,13 +87,22 @@ import {
   type RepositorySnapshot,
   type ResourceLocator,
   type ResourceResolution,
+  type ReviewDraftKey,
+  type ReviewDraftPage,
+  type ReviewDraftQuery,
+  type ReviewDraftSnapshot,
+  type ReviewSubmissionReceipt,
   type SaveCommentDraftRequest,
   type SaveIssueDraftRequest,
   type SavePullDraftRequest,
+  type SaveReviewDraftRequest,
   type SendCommentRequest,
   type SetLocalInboxStateRequest,
   type SubmitIssueRequest,
   type SubmitPullRequest,
+  type SubmitReviewRequest,
+  type SubmittedReviewPage,
+  type SubmittedReviewQuery,
   type SyncDiagnosticsExportReceipt,
   type SyncDiagnosticsSnapshot,
   type TextEditContext,
@@ -167,6 +176,13 @@ export interface CollaborationTransport extends DemandTransport {
   ): Promise<CommentDraftSnapshot>;
   sendComment(request: SendCommentRequest): Promise<CommentSubmissionReceipt>;
   createdComments(query: CreatedCommentQuery): Promise<CreatedCommentPage>;
+  reviewDraft(key: ReviewDraftKey): Promise<ReviewDraftSnapshot>;
+  reviewDrafts(query: ReviewDraftQuery): Promise<ReviewDraftPage>;
+  saveReviewDraft(
+    request: SaveReviewDraftRequest,
+  ): Promise<ReviewDraftSnapshot>;
+  submitReview(request: SubmitReviewRequest): Promise<ReviewSubmissionReceipt>;
+  submittedReviews(query: SubmittedReviewQuery): Promise<SubmittedReviewPage>;
   pullDraft(key: PullDraftKey): Promise<PullDraftSnapshot>;
   pullDrafts(query: PullDraftQuery): Promise<PullDraftPage>;
   savePullDraft(request: SavePullDraftRequest): Promise<PullDraftSnapshot>;
@@ -324,6 +340,27 @@ export const collaborationKeys = {
       ...collaborationKeys.account(account.id),
       account.authorization_epoch,
       "created-comments",
+      query,
+    ] as const,
+  reviewDraft: (account: RemoteAccount, subjectId: string) =>
+    [
+      ...collaborationKeys.account(account.id),
+      "local",
+      "review-draft",
+      subjectId,
+    ] as const,
+  reviewDrafts: (account: RemoteAccount, query: ReviewDraftQuery) =>
+    [
+      ...collaborationKeys.account(account.id),
+      "local",
+      "review-drafts",
+      query,
+    ] as const,
+  submittedReviews: (account: RemoteAccount, query: SubmittedReviewQuery) =>
+    [
+      ...collaborationKeys.account(account.id),
+      account.authorization_epoch,
+      "submitted-reviews",
       query,
     ] as const,
   pullDraft: (account: RemoteAccount, key: PullDraftKey) =>
@@ -964,6 +1001,82 @@ export class CollaborationClient {
         this.acceptSnapshot(page);
         return page;
       },
+      reviewDraft: async (subjectId: string, signal?: AbortSignal) => {
+        const key = { account_id: account.id, subject_id: subjectId };
+        const snapshot = await this.fence.read(
+          account.id,
+          () => this.transport.reviewDraft(key),
+          signal,
+        );
+        assertReviewSnapshot(snapshot, key, account);
+        this.acceptSnapshot(snapshot);
+        return snapshot;
+      },
+      reviewDrafts: async (
+        query: Omit<ReviewDraftQuery, "account_id">,
+        signal?: AbortSignal,
+      ) => {
+        const captured = { ...query, account_id: account.id };
+        const page = await this.fence.read(
+          account.id,
+          () => this.transport.reviewDrafts(captured),
+          signal,
+        );
+        if (page.account_id !== account.id) throw new StaleAuthorizationError();
+        this.acceptSnapshot(page);
+        return page;
+      },
+      saveReviewDraft: async (
+        request: Omit<SaveReviewDraftRequest, "authorization_epoch">,
+      ) => {
+        if (request.key.account_id !== account.id)
+          throw new StaleAuthorizationError();
+        const captured = structuredClone({
+          ...request,
+          authorization_epoch: account.authorization_epoch,
+        });
+        const snapshot = await this.fence.read(account.id, () =>
+          this.transport.saveReviewDraft(captured),
+        );
+        assertReviewSnapshot(snapshot, captured.key, account);
+        this.acceptSnapshot(snapshot);
+        return snapshot;
+      },
+      submitReview: async (request: SubmitReviewRequest) => {
+        if (
+          request.context.account_id !== account.id ||
+          request.context.authorization_epoch !== account.authorization_epoch
+        )
+          throw new StaleAuthorizationError();
+        const captured = structuredClone(request);
+        const receipt = await this.fence.read(account.id, () =>
+          this.transport.submitReview(captured),
+        );
+        if (
+          receipt.account_id !== account.id ||
+          receipt.command_id !== captured.command_id
+        )
+          throw new StaleAuthorizationError();
+        return receipt;
+      },
+      submittedReviews: async (
+        query: Omit<SubmittedReviewQuery, "account_id">,
+        signal?: AbortSignal,
+      ) => {
+        const captured = { ...query, account_id: account.id };
+        const page = await this.fence.read(
+          account.id,
+          () => this.transport.submittedReviews(captured),
+          signal,
+        );
+        if (
+          page.account_id !== account.id ||
+          page.subject_id !== captured.subject_id
+        )
+          throw new StaleAuthorizationError();
+        this.acceptSnapshot(page);
+        return page;
+      },
       pullDraft: async (
         key: Omit<PullDraftKey, "account_id">,
         signal?: AbortSignal,
@@ -1514,6 +1627,17 @@ export class CollaborationClient {
             predicate: (query: { queryKey: readonly unknown[] }) =>
               projectionAffected(query.queryKey, change.scope),
           };
+          if (
+            currentHeadContextChanged(change.scope) ||
+            (change.scope.startsWith("detail:") &&
+              change.scope.endsWith(":files"))
+          ) {
+            this.redactReviewDraftAuthority(
+              collaborationKeys.account(change.account_id),
+              "stale_context",
+              (key) => projectionAffected(key, change.scope),
+            );
+          }
           // Authored writes have their own generation/authorization fences.
           if (
             change.scope !== "drafts" &&
@@ -1599,6 +1723,7 @@ export class CollaborationClient {
       queryKey: ["collaboration", "local-links"],
     });
     this.fence.invalidate(accountId);
+    this.redactReviewDraftAuthority(collaborationKeys.account(accountId));
     this.redactPullDraftAuthority(collaborationKeys.account(accountId));
     this.redactIssueDraftAuthority(collaborationKeys.account(accountId));
     this.redactCommentDraftAuthority(collaborationKeys.account(accountId));
@@ -1615,6 +1740,7 @@ export class CollaborationClient {
     this.demands.clear();
     this.fence.invalidate();
     this.authorizationView = null;
+    this.redactReviewDraftAuthority(collaborationKeys.all);
     this.redactPullDraftAuthority(collaborationKeys.all);
     this.redactIssueDraftAuthority(collaborationKeys.all);
     this.redactCommentDraftAuthority(collaborationKeys.all);
@@ -1626,6 +1752,33 @@ export class CollaborationClient {
       predicate: (query) => !isAuthoredDraft(query.queryKey),
     });
     this.publish();
+  }
+
+  private redactReviewDraftAuthority(
+    queryKey: readonly unknown[],
+    reason: ReviewDraftSnapshot["reason"] = "account_unavailable",
+    matches: (key: readonly unknown[]) => boolean = () => true,
+  ) {
+    const cache = this.queryClient;
+    if (!cache) return;
+    for (const query of cache.getQueryCache().findAll({ queryKey })) {
+      if (query.queryKey[4] !== "review-draft" || !matches(query.queryKey))
+        continue;
+      cache.setQueryData<ReviewDraftSnapshot>(query.queryKey, (snapshot) =>
+        snapshot
+          ? {
+              ...snapshot,
+              context: null,
+              availability: "unavailable",
+              reason,
+              comments: snapshot.comments.map((comment) => ({
+                ...comment,
+                anchor: null,
+              })),
+            }
+          : snapshot,
+      );
+    }
   }
 
   private redactPullDraftAuthority(queryKey: readonly unknown[]) {
@@ -1710,6 +1863,8 @@ function isAuthoredDraft(key: readonly unknown[]) {
       key[4] === "comment-drafts" ||
       key[4] === "issue-draft" ||
       key[4] === "issue-drafts" ||
+      key[4] === "review-draft" ||
+      key[4] === "review-drafts" ||
       key[4] === "pull-draft" ||
       key[4] === "pull-drafts")
   );
@@ -1732,7 +1887,8 @@ function projectionAffected(key: readonly unknown[], scope: string) {
     return scope !== "drafts";
   if (scope.startsWith("effective:")) {
     const subject = scope.slice("effective:".length);
-    if (projection === "text-edit") return key[5] === subject;
+    if (projection === "text-edit" || projection === "review-draft")
+      return key[5] === subject;
     if (projection === "workflow-state" || projection === "guarded-merge")
       return key[5] === subject;
     if (projection === "detail") {
@@ -1754,6 +1910,28 @@ function projectionAffected(key: readonly unknown[], scope: string) {
   if (projection === "created-comments") {
     const query = key[5] as CreatedCommentQuery;
     return scope === `created_comments:${query.subject_id}`;
+  }
+  if (projection === "review-draft") {
+    const subject = String(key[5]);
+    return (
+      scope === "commands" ||
+      scope === "repositories" ||
+      scope.startsWith("repo:") ||
+      scope === `review_draft:${subject}` ||
+      scope === `detail:${subject}:body` ||
+      scope === `detail:${subject}:files` ||
+      scope === `effective:${subject}`
+    );
+  }
+  if (projection === "review-drafts")
+    return scope === "commands" || scope.startsWith("review_draft:");
+  if (projection === "submitted-reviews") {
+    const query = key[5] as SubmittedReviewQuery;
+    return (
+      scope === "commands" ||
+      scope === `submitted_reviews:${query.subject_id}` ||
+      scope === `review_draft:${query.subject_id}`
+    );
   }
   if (projection === "pull-draft")
     return (
@@ -1912,6 +2090,27 @@ function assertPullKey(actual: PullDraftKey, expected: PullDraftKey) {
     actual.account_id !== expected.account_id ||
     actual.repository_id !== expected.repository_id ||
     actual.draft_id !== expected.draft_id
+  )
+    throw new StaleAuthorizationError();
+}
+
+function assertReviewSnapshot(
+  snapshot: ReviewDraftSnapshot,
+  key: ReviewDraftKey,
+  account: RemoteAccount,
+) {
+  if (
+    snapshot.key.account_id !== key.account_id ||
+    snapshot.key.subject_id !== key.subject_id
+  )
+    throw new StaleAuthorizationError();
+  const context = snapshot.context;
+  if (
+    context &&
+    (context.account_id !== key.account_id ||
+      context.subject_id !== key.subject_id ||
+      context.authorization_epoch !== account.authorization_epoch ||
+      context.authorization_view !== snapshot.authorization_view)
   )
     throw new StaleAuthorizationError();
 }

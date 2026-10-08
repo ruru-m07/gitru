@@ -41,6 +41,9 @@ pub(crate) mod notification_subjects;
 pub(crate) mod provider_inbox_actions;
 mod pull_commits;
 mod pull_files;
+pub(crate) mod review_submission;
+#[cfg(test)]
+mod review_submission_tests;
 pub use pull_files::{PullFileApplyReceipt, PullFileCommit, PullFileSelection};
 mod resource_metadata;
 pub(crate) use resource_metadata::validate as validate_resource_metadata;

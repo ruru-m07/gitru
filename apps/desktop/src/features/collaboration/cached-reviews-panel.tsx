@@ -32,6 +32,7 @@ import {
   dispatchCapabilityIntent,
 } from "./capability-policy";
 import { GitlabReviewNote } from "./gitlab-review-note";
+import { ReviewComposerTrigger } from "./review-submission";
 
 export type PullReviewContext = {
   baseOid: string;
@@ -103,7 +104,10 @@ export function CachedReviewsPanel(props: Props) {
             />
             Reviews
           </CollapsibleTrigger>
-          <ReadOnlyCapability policy={policy} />
+          <div className="flex items-center gap-2">
+            <ReadOnlyCapability policy={policy} />
+            <ReviewComposerTrigger />
+          </div>
         </div>
         <CollapsiblePanel className="motion-reduce:transition-none">
           {open ? (

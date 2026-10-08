@@ -112,6 +112,7 @@ pub enum IntentField {
     Body,
     State,
     Unread,
+    ReviewSubmission,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

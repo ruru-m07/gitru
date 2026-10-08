@@ -154,6 +154,11 @@ function transport(
     saveCommentDraft: unexpected,
     sendComment: unexpected,
     createdComments: unexpected,
+    reviewDraft: vi.fn(),
+    reviewDrafts: vi.fn(),
+    saveReviewDraft: vi.fn(),
+    submitReview: vi.fn(),
+    submittedReviews: vi.fn(),
     pullDraft: unexpected,
     pullDrafts: unexpected,
     savePullDraft: unexpected,
@@ -3255,6 +3260,109 @@ describe("pull draft authority", () => {
       values,
       published: null,
       can_preview: false,
+    });
+    stop();
+    cache.clear();
+  });
+});
+
+describe("review draft authority", () => {
+  it("redacts provider anchors and history immediately and fences held reads while retaining authored bodies", async () => {
+    let reset: (() => void) | undefined;
+    const pending = deferred<import("@gitru/commands").ReviewDraftSnapshot>();
+    const client = new CollaborationClient(
+      transport({
+        listen: async () => () => {},
+        listenRuntimeReset: async (listener) => {
+          reset = listener;
+          return () => {};
+        },
+        changesSince: async () => changePage("1"),
+        reviewDraft: () => pending.promise,
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    const key = { account_id: account.id, subject_id: "pull-review" };
+    const snapshot: import("@gitru/commands").ReviewDraftSnapshot = {
+      key,
+      event: "comment",
+      body: "Keep my summary",
+      comments: [
+        {
+          comment_id: "123e4567-e89b-42d3-a456-426614174000",
+          body: "Keep inline text",
+          anchor: {
+            provider: "github",
+            anchor: {
+              file_facet_revision: "7",
+              context: {
+                base_oid: "a".repeat(40),
+                head_oid: "b".repeat(40),
+                merge_base_oid: null,
+                base_repository_provider_id: "11",
+                source_repository_provider_id: "11",
+                body_metadata_facet_revision: "8",
+              },
+              file_key: "opaque",
+              path: "private/path",
+              line: 17,
+              side: "right",
+              start_line: null,
+              start_side: null,
+            },
+          },
+        },
+      ],
+      generation: "2",
+      context: {
+        ...key,
+        authorization_epoch: account.authorization_epoch,
+        authorization_view: "1",
+        review_token: "c".repeat(64),
+        review_context: {
+          base_oid: "a".repeat(40),
+          head_oid: "b".repeat(40),
+          base_repository_provider_id: "11",
+          source_repository_provider_id: "11",
+          metadata_facet_revision: "8",
+        },
+      },
+      availability: "available",
+      reason: null,
+      submission: null,
+      revision: "1",
+      authorization_view: "1",
+    };
+    const cacheKey = collaborationKeys.reviewDraft(account, key.subject_id);
+    const historyKey = collaborationKeys.submittedReviews(account, {
+      ...key,
+      cursor: null,
+      limit: 25,
+    });
+    cache.setQueryData(cacheKey, snapshot);
+    cache.setQueryData(historyKey, {
+      reviews: [{ url: "https://github.com/private/review" }],
+    });
+    const read = client.forAccount(account).reviewDraft(key.subject_id);
+    const rejected = expect(read).rejects.toBeInstanceOf(
+      StaleAuthorizationError,
+    );
+    reset?.();
+    expect(cache.getQueryData(cacheKey)).toMatchObject({
+      body: snapshot.body,
+      context: null,
+      availability: "unavailable",
+      comments: [{ body: "Keep inline text", anchor: null }],
+    });
+    expect(cache.getQueryData(historyKey)).toBeUndefined();
+    expect(cache.getQueryState(cacheKey)?.isInvalidated).toBe(true);
+    pending.resolve(snapshot);
+    await rejected;
+    expect(cache.getQueryData(cacheKey)).toMatchObject({
+      context: null,
+      comments: [{ anchor: null }],
     });
     stop();
     cache.clear();

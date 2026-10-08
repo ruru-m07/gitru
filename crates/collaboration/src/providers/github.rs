@@ -21,6 +21,7 @@ mod notification_subject_discovery;
 pub mod notification_subjects;
 mod pull_details;
 mod resource_details;
+pub(crate) mod review_submission;
 mod reviews;
 pub(crate) mod text_edits;
 

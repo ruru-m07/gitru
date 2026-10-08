@@ -34,6 +34,7 @@ import { NativeParticipantsPanel } from "./native-participants-panel";
 import { NativeTasksPanel } from "./native-tasks-panel";
 import { PullCommitsPanel } from "./pull-commits-panel";
 import { PullFilesPanel } from "./pull-files-panel";
+import { ReviewAuthoringProvider } from "./review-submission";
 
 const facetLabels: Record<DetailFacet, string> = {
   body: "Full description",
@@ -74,82 +75,73 @@ export function ResourceCapabilityPanels({
     },
   ];
   return (
-    <div className="mt-6 space-y-4">
-      {facets.map((facet) => (
-        <ResourceFacetPanel
-          key={facet.detail}
-          account={account}
-          subjectId={subjectId}
-          detail={facet.detail}
-          capability={facet.capability}
-          snapshot={snapshot}
-        />
-      ))}
-      {kind === "pull_request" ? (
-        <CachedReviewsPanel
+    <ReviewAuthoringProvider
+      key={JSON.stringify([account.id, account.actor_id, subjectId])}
+      account={account}
+      subjectId={subjectId}
+    >
+      <div className="mt-6 space-y-4">
+        {facets.map((facet) => (
+          <ResourceFacetPanel
+            key={facet.detail}
+            account={account}
+            subjectId={subjectId}
+            detail={facet.detail}
+            capability={facet.capability}
+            snapshot={snapshot}
+          />
+        ))}
+        {kind === "pull_request" ? (
+          <CachedReviewsPanel
+            key={JSON.stringify([
+              "reviews",
+              account.id,
+              account.actor_id,
+              account.authorization_epoch,
+              subjectId,
+              bodyContext?.metadataFacetRevision ?? null,
+              bodyContext?.headOid ?? null,
+            ])}
+            account={account}
+            subjectId={subjectId}
+            authorizationView={snapshot?.authorization_view}
+            policy={facetPolicy(snapshot, "reviews")}
+            bodyContext={bodyContext}
+          />
+        ) : null}
+        {kind === "pull_request" ? (
+          <CachedChecksPanel
+            key={JSON.stringify([
+              "checks",
+              account.id,
+              account.actor_id,
+              account.authorization_epoch,
+              subjectId,
+              bodyContext?.facetRevision ?? null,
+              bodyContext?.headOid ?? null,
+            ])}
+            account={account}
+            subjectId={subjectId}
+            policy={facetPolicy(snapshot, "checks")}
+            bodyContext={bodyContext}
+          />
+        ) : null}
+        <ConversationCommentsPanel
           key={JSON.stringify([
-            "reviews",
+            "comments",
             account.id,
             account.actor_id,
             account.authorization_epoch,
             subjectId,
-            bodyContext?.metadataFacetRevision ?? null,
-            bodyContext?.headOid ?? null,
           ])}
           account={account}
           subjectId={subjectId}
           authorizationView={snapshot?.authorization_view}
-          policy={facetPolicy(snapshot, "reviews")}
-          bodyContext={bodyContext}
+          policy={facetPolicy(snapshot, "comments")}
         />
-      ) : null}
-      {kind === "pull_request" ? (
-        <CachedChecksPanel
+        <CachedActivityPanel
           key={JSON.stringify([
-            "checks",
-            account.id,
-            account.actor_id,
-            account.authorization_epoch,
-            subjectId,
-            bodyContext?.facetRevision ?? null,
-            bodyContext?.headOid ?? null,
-          ])}
-          account={account}
-          subjectId={subjectId}
-          policy={facetPolicy(snapshot, "checks")}
-          bodyContext={bodyContext}
-        />
-      ) : null}
-      <ConversationCommentsPanel
-        key={JSON.stringify([
-          "comments",
-          account.id,
-          account.actor_id,
-          account.authorization_epoch,
-          subjectId,
-        ])}
-        account={account}
-        subjectId={subjectId}
-        authorizationView={snapshot?.authorization_view}
-        policy={facetPolicy(snapshot, "comments")}
-      />
-      <CachedActivityPanel
-        key={JSON.stringify([
-          "activity",
-          account.id,
-          account.actor_id,
-          account.authorization_epoch,
-          subjectId,
-        ])}
-        account={account}
-        subjectId={subjectId}
-        authorizationView={snapshot?.authorization_view}
-        policy={facetPolicy(snapshot, "activity")}
-      />
-      {kind === "pull_request" ? (
-        <PullFilesPanel
-          key={JSON.stringify([
-            "files",
+            "activity",
             account.id,
             account.actor_id,
             account.authorization_epoch,
@@ -157,75 +149,90 @@ export function ResourceCapabilityPanels({
           ])}
           account={account}
           subjectId={subjectId}
-          instanceId={instanceId}
-          repositoryId={repositoryId}
-          policy={facetPolicy(snapshot, "pull_files")}
+          authorizationView={snapshot?.authorization_view}
+          policy={facetPolicy(snapshot, "activity")}
         />
-      ) : null}
-      {kind === "pull_request" ? (
-        <PullCommitsPanel
-          key={JSON.stringify([
-            "commits",
-            account.id,
-            account.actor_id,
-            account.authorization_epoch,
-            subjectId,
-          ])}
-          account={account}
-          subjectId={subjectId}
-          instanceId={instanceId}
-          repositoryId={repositoryId}
-          policy={facetPolicy(snapshot, "pull_commits")}
-        />
-      ) : null}
-      {kind === "pull_request" ? (
-        <NativeParticipantsPanel
-          key={JSON.stringify([
-            account.id,
-            account.actor_id,
-            account.authorization_epoch,
-            subjectId,
-          ])}
-          account={account}
-          subjectId={subjectId}
-          policy={facetPolicy(snapshot, "participants")}
-        />
-      ) : null}
-      {kind === "pull_request" ? (
-        <NativeTasksPanel
-          key={JSON.stringify([
-            "tasks",
-            account.id,
-            account.actor_id,
-            account.authorization_epoch,
-            subjectId,
-          ])}
-          account={account}
-          subjectId={subjectId}
-          policy={facetPolicy(snapshot, "tasks")}
-        />
-      ) : null}
-      {kind === "pull_request" &&
-      (account.provider !== "github" || account.host !== "github.com") ? (
-        <section
-          className="space-y-2 border-t pt-4"
-          aria-label="Remote actions"
-        >
-          <p className="text-xs text-muted-foreground">
-            Direct merging is not available for this provider. Open the provider
-            to merge this pull request.
-          </p>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled
-            aria-label="Merge pull request unavailable"
+        {kind === "pull_request" ? (
+          <PullFilesPanel
+            key={JSON.stringify([
+              "files",
+              account.id,
+              account.actor_id,
+              account.authorization_epoch,
+              subjectId,
+            ])}
+            account={account}
+            subjectId={subjectId}
+            instanceId={instanceId}
+            repositoryId={repositoryId}
+            policy={facetPolicy(snapshot, "pull_files")}
+          />
+        ) : null}
+        {kind === "pull_request" ? (
+          <PullCommitsPanel
+            key={JSON.stringify([
+              "commits",
+              account.id,
+              account.actor_id,
+              account.authorization_epoch,
+              subjectId,
+            ])}
+            account={account}
+            subjectId={subjectId}
+            instanceId={instanceId}
+            repositoryId={repositoryId}
+            policy={facetPolicy(snapshot, "pull_commits")}
+          />
+        ) : null}
+        {kind === "pull_request" ? (
+          <NativeParticipantsPanel
+            key={JSON.stringify([
+              account.id,
+              account.actor_id,
+              account.authorization_epoch,
+              subjectId,
+            ])}
+            account={account}
+            subjectId={subjectId}
+            policy={facetPolicy(snapshot, "participants")}
+          />
+        ) : null}
+        {kind === "pull_request" ? (
+          <NativeTasksPanel
+            key={JSON.stringify([
+              "tasks",
+              account.id,
+              account.actor_id,
+              account.authorization_epoch,
+              subjectId,
+            ])}
+            account={account}
+            subjectId={subjectId}
+            policy={facetPolicy(snapshot, "tasks")}
+          />
+        ) : null}
+        {kind === "pull_request" &&
+        (account.provider !== "github" || account.host !== "github.com") ? (
+          <section
+            className="space-y-2 border-t pt-4"
+            aria-label="Remote actions"
           >
-            Merge unavailable
-          </Button>
-        </section>
-      ) : null}
-    </div>
+            <p className="text-xs text-muted-foreground">
+              Direct merging is not available for this provider. Open the
+              provider to merge this pull request.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled
+              aria-label="Merge pull request unavailable"
+            >
+              Merge unavailable
+            </Button>
+          </section>
+        ) : null}
+      </div>
+    </ReviewAuthoringProvider>
   );
 }
 

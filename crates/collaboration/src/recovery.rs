@@ -31,11 +31,12 @@ mod policy;
 mod pull_creation;
 #[cfg(test)]
 mod pull_creation_tests;
+mod review_submission;
 
 type Result<T> = std::result::Result<T, CollaborationError>;
 // Raising this requires a reviewed restore policy, especially for future outbox
 // tables. Merely adding a migration does not authorize replay of imported data.
-const RESTORE_SCHEMA_POLICY: i64 = 23;
+const RESTORE_SCHEMA_POLICY: i64 = 24;
 const MAX_DATABASE_BYTES: u64 = 512 * 1024 * 1024;
 const SIDECARS: [&str; 3] = ["", "-wal", "-shm"];
 
@@ -556,6 +557,12 @@ async fn summary(
     }
     if version >= 23 {
         drafts += sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM pull_drafts")
+            .fetch_one(&mut *connection)
+            .await
+            .map_err(|_| invalid_backup())?;
+    }
+    if version >= 24 {
+        drafts += sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM review_drafts")
             .fetch_one(&mut *connection)
             .await
             .map_err(|_| invalid_backup())?;
