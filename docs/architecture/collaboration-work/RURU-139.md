@@ -1,5 +1,16 @@
 # RURU-139 — qualify a safe SQLCipher native build
 
+## CI cold-build allowance — 8 October 2026
+
+At signed head `f7b0a7ab6ff212eace1dcd619cbb123ba656298c`, ordinary CI
+run `37746049701`, job `113207674587`, hit its 30-minute job limit.
+Formatting and the normal workspace Clippy step passed. The retained-harness
+Clippy step was still compiling dependencies when the runner cancelled it;
+its log contains no lint failure. The outer Rust quality allowance is now
+45 minutes. Both strict Clippy commands and all validation steps remain
+unchanged. This is a job-budget correction; the replacement head still
+requires remote completion before that check can be called green.
+
 ## Contract before implementation — 8 October 2026
 
 Baseline: signed R108 `486a936e700fe00b863ac26f6f0b526477574a5d`.
