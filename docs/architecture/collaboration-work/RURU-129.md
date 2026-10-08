@@ -182,3 +182,15 @@ Logs: `/tmp/gitru-r129-verify.log`, `/tmp/gitru-r129-final-delta.log`,
 provider requests, personal credentials, platform vault or packaged-UI validation
 were used. The issue stays In Progress for state/labels and other-provider edits;
 this title/body slice is reviewable. No merge is authorized.
+
+## Numeric repository route follow-up — 8 October 2026
+
+The GitHub text-edit preflight and PATCH now address the repository by its validated
+positive numeric provider ID (`/repositories/{id}/issues|pulls/{number}`), so a
+namespace transfer or reuse cannot redirect a queued write through the saved
+owner/name. The stored full name remains a validated response identity and URL fact;
+there is no fallback from the numeric request route to the mutable namespace route.
+Existing GitHub read adapters already exercise the corresponding numeric nested
+aliases, and the focused synthetic text-edit suite passes **20/20** with the numeric
+GET/PATCH route. No authenticated live GitHub write was performed, so compatibility
+of the numeric mutation alias in a live provider environment remains unqualified.
