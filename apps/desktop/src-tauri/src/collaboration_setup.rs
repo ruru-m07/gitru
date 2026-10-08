@@ -87,11 +87,17 @@ pub(crate) async fn open_keyed_store(
     })
     .await
     .map_err(|_| keyed_error())?
-    .map_err(|_| keyed_error())?;
+    .map_err(|error| {
+        log::error!("Native keyed collaboration key preparation failed: {error}");
+        keyed_error()
+    })?;
     let factory = Arc::new(gitru_keyed_connections::KeyedConnectionFactory::new(
         session,
     ));
-    Store::open_keyed(factory).await
+    Store::open_keyed(factory).await.map_err(|error| {
+        log::error!("Native keyed collaboration store open failed: {error}");
+        error
+    })
 }
 
 #[cfg(not(feature = "e2e"))]

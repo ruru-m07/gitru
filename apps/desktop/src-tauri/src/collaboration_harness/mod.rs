@@ -556,13 +556,14 @@ pub fn setup(app: &App) -> Result<(), Box<dyn std::error::Error>> {
             .runtime
             .set(runtime_result);
         let ready = result.as_ref().ok().cloned();
+        if let Err(error) = &result {
+            log::error!("Retained collaboration fixture initialization failed: {error}");
+        }
         let _ = handle.state::<HarnessState>().ready.set(result);
         if let Some(harness) = ready {
             if let Ok(revision) = harness.runtime.store().revision().await {
                 harness.relay_hint(&handle, ChangeHint { revision });
             }
-        } else {
-            log::error!("Retained collaboration fixture initialization failed");
         }
     });
     Ok(())
