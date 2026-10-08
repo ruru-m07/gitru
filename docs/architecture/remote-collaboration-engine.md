@@ -3811,3 +3811,19 @@ on the first clock integration, then 16 clock-lifecycle, 21 feature-harness,
 Generated IPC is 144 commands/459 schemas. Exact scope, logs and limitations are
 in [the work note](./collaboration-work/RURU-130.md). Remote CI and live provider
 validation remain separate; no PR has been merged.
+
+### RURU-102 priority-class account fairness — 8 October 2026
+
+Resumed work reproduced two indefinite-starvation cases in the actual scheduler:
+detail and index populations shared an account cursor, so a different class could
+reset another class's rotation. Independent detail/index cursors now retain the
+existing 3:1 interactive/background and 2:1 detail/index weights, per-account scope
+FIFO, bounded memory and cooldown gates. Three controls cover both starvation
+directions and exact cooldown/resume behavior; independent source review passed.
+
+Local qualification passes 1,019 collaboration tests with all features (five
+subprocess helper ignores), strict all-target/all-feature Clippy, formatting and
+diff checks. No public IPC/schema/provider quota changes. See
+[the work note](./collaboration-work/RURU-102-priority-fairness.md). RURU-102
+remains In Progress for API-family attribution and broader lifecycle/platform
+criteria. Remote CI is separate; no implementation PR was merged.
