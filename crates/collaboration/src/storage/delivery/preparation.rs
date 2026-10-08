@@ -30,10 +30,9 @@ impl Store {
             || age_exceeded(&command.admitted_at, &now.command_now)?
             || command.attempt_count >= MAX_ATTEMPTS
             || evidence_full(&command)
-            || policy
-                .prepare_context_in(&mut tx, &command, account)
+            || !policy
+                .preparation_context_matches_in(&mut tx, &command, account, context)
                 .await?
-                != context
         {
             return Err(stale());
         }
@@ -63,7 +62,9 @@ impl PreparationAuthority<'_> {
         if self.context.len() > MAX_EVIDENCE_BYTES
             || !(self.live)()
             || metadata(tx).await?.1 != self.view
-            || policy.prepare_context_in(tx, command, account).await? != self.context
+            || !policy
+                .preparation_context_matches_in(tx, command, account, self.context)
+                .await?
             || !(self.live)()
         {
             return Err(stale());

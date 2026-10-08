@@ -219,7 +219,15 @@ async fn catalog_success_quota_blocks_continuation_before_vault_and_survives_res
         .unwrap();
     assert!(runtime.run_next().await);
     assert_eq!(provider.calls.load(Ordering::SeqCst), 1);
-    assert_eq!(runtime.issue_metadata_options(query()).await.unwrap().sync.state,SyncState::RateLimited);
+    assert_eq!(
+        runtime
+            .issue_metadata_options(query())
+            .await
+            .unwrap()
+            .sync
+            .state,
+        SyncState::RateLimited
+    );
     let loads = vault.loads.load(Ordering::SeqCst);
     let _ = runtime.run_next().await;
     assert_eq!(vault.loads.load(Ordering::SeqCst), loads);
@@ -301,5 +309,75 @@ async fn held_catalog_cannot_resurrect_same_epoch_deselected_repository() {
             .is_empty()
     );
     assert_eq!(provider.calls.load(Ordering::SeqCst), 1);
+    runtime.shutdown().await.unwrap();
+}
+
+struct CatalogClock {
+    start: Instant,
+    wall: DateTime<Utc>,
+    seconds: AtomicU64,
+}
+impl clock::Clock for CatalogClock {
+    fn now(&self) -> Instant {
+        self.start + Duration::from_secs(self.seconds.load(Ordering::SeqCst))
+    }
+    fn utc(&self) -> DateTime<Utc> {
+        // Keep cache observations current while advancing only scheduler time.
+        self.wall
+    }
+    fn jitter(&self) -> u64 {
+        0
+    }
+}
+#[tokio::test]
+async fn terminal_catalog_refresh_replaces_expired_due_after_each_traversal() {
+    let dir = tempfile::tempdir().unwrap();
+    let provider = Arc::new(Provider::default());
+    let (mut runtime, vault, account) = setup(dir.path(), provider.clone()).await;
+    let clock = Arc::new(CatalogClock {
+        start: Instant::now(),
+        wall: Utc::now(),
+        seconds: AtomicU64::new(0),
+    });
+    Arc::get_mut(&mut runtime).unwrap().clock = clock.clone();
+    demand(&runtime, &account).await;
+    assert!(runtime.run_next().await);
+    assert!(runtime.run_next().await);
+    assert_eq!(provider.calls.load(Ordering::SeqCst), 2);
+    assert!(!runtime.run_next().await);
+
+    // An explicit second traversal starts after the old completion deadline.
+    clock.seconds.store(301, Ordering::SeqCst);
+    demand(&runtime, &account).await;
+    runtime
+        .refresh_issue_metadata(RefreshIssueMetadataRequest {
+            account_id: account.id.clone(),
+            authorization_epoch: account.authorization_epoch.clone(),
+            repository_id: "repo".into(),
+            kind: IssueMetadataKind::Labels,
+        })
+        .await
+        .unwrap();
+    assert!(runtime.run_next().await);
+    assert!(runtime.run_next().await);
+    assert_eq!(provider.calls.load(Ordering::SeqCst), 4);
+    let loads = vault.loads.load(Ordering::SeqCst);
+    assert!(
+        !runtime.run_next().await,
+        "a completed fresh traversal must replace the expired deadline"
+    );
+    assert_eq!(provider.calls.load(Ordering::SeqCst), 4);
+    assert_eq!(vault.loads.load(Ordering::SeqCst), loads);
+
+    clock.seconds.store(600, Ordering::SeqCst);
+    demand(&runtime, &account).await;
+    assert!(!runtime.run_next().await);
+    assert_eq!(provider.calls.load(Ordering::SeqCst), 4);
+    clock.seconds.store(601, Ordering::SeqCst);
+    demand(&runtime, &account).await;
+    assert!(runtime.run_next().await);
+    assert!(runtime.run_next().await);
+    assert_eq!(provider.calls.load(Ordering::SeqCst), 6);
+    assert!(!runtime.run_next().await);
     runtime.shutdown().await.unwrap();
 }
