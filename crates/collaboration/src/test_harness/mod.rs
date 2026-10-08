@@ -47,15 +47,31 @@ pub struct HarnessSession {
 }
 
 impl HarnessSession {
+    /// Validate interrupted-fixture evidence before any Store can create or
+    /// modify the database. Keyed callers must run this immediately before
+    /// their externally owned native factory opens its first handle.
+    pub fn validate_before_store_open(
+        root: &Path,
+        run_nonce: &str,
+    ) -> Result<(), CollaborationError> {
+        let root = OwnedRoot::validate(root, run_nonce)?;
+        let database = root.file("collaboration.sqlite")?;
+        if database.exists() && root.read("harness-state.json", 4096)?.is_none() {
+            return Err(invalid());
+        }
+        Ok(())
+    }
+
     pub async fn open(
         root: &Path,
         run_nonce: &str,
         visibility: Arc<dyn Fn(&str) -> bool + Send + Sync>,
     ) -> Result<Self, CollaborationError> {
+        Self::validate_before_store_open(root, run_nonce)?;
         let root = OwnedRoot::validate(root, run_nonce)?;
         let database = root.file("collaboration.sqlite")?;
         let store = Arc::new(Store::open(&database).await?);
-        Self::open_owned(root, database, run_nonce, visibility, store).await
+        Self::open_owned(root, run_nonce, visibility, store).await
     }
 
     /// The packaged native harness may inject an already authenticated Store.
@@ -73,20 +89,15 @@ impl HarnessSession {
             store.close().await?;
             return Err(invalid());
         }
-        Self::open_owned(root, database, run_nonce, visibility, store).await
+        Self::open_owned(root, run_nonce, visibility, store).await
     }
 
     async fn open_owned(
         root: OwnedRoot,
-        database: std::path::PathBuf,
         run_nonce: &str,
         visibility: Arc<dyn Fn(&str) -> bool + Send + Sync>,
         store: Arc<Store>,
     ) -> Result<Self, CollaborationError> {
-        // Losing the scenario marker must never reset an existing cache/vault.
-        if database.exists() && root.read("harness-state.json", 4096)?.is_none() {
-            return Err(invalid());
-        }
         let persistent = PersistentState::open(&root, run_nonce)?;
         let validated_vault = async {
             let accounts = store.accounts().await?.accounts;
