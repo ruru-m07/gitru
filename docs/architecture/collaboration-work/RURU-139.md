@@ -67,5 +67,66 @@ and this document; an open reviewable PR is not a completed GA encryption gate.
 
 ## Evidence ledger
 
-Design recorded before implementation. No candidate build or platform pass is
-claimed yet. Production encryption remains unchanged.
+The implementation pins the current combined collaboration source at
+`f0b8801dec569af24a1b1f67744600f85f4d90ac`, tree
+`13a3bd59cbc1f99f048048d4e7c8107bdc71f6bf`, independently of this older R108 PR
+base. Git archive extraction and every Git blob are checked; the encrypted probe
+uses its **schema 22** migrations. Missing source objects are a hard failure.
+
+macOS 27.0 arm64 / Rust 1.94.1 release probe passes with SQLCipher 4.19.0, SQLite 3.53.4,
+CommonCrypto and the unchanged WAL gate. It passes all 22 migrations, STRICT /
+JSON / FTS5, three simultaneous keyed read-only connections, rollback,
+independent-reader checkpoint/WAL restart, keyed native `sqlite3_backup`, keyed
+VACUUM backup, missing/wrong-key refusal, page-tamper refusal and abrupt process
+exit/reopen. The executable links Security/CoreFoundation and no dynamic SQLite
+or OpenSSL. `cipher_provider_version` returns `unknown` for CommonCrypto; the
+actual OS/compiler/framework data is retained in the build report instead of
+inventing a crypto version.
+
+Five Python controls qualify hash mismatch, archive traversal/link refusal,
+native override refusal, modified FFI build-script/extra-file refusal and pinned
+collaboration-source drift. The release probe and strict isolated Clippy/fmt pass. A fresh automated local
+source generation also reproduces the pinned C/header hashes before rebuilding
+the probe; Linux regeneration remains a separate CI qualification.
+
+The first unchanged engine regression ran 886 passing tests / 5 ignores before
+four participant migration cases stopped at their old exact SQLite identity
+assertion (`3.51.3`, actual `3.53.4`). These were not failed migration assertions.
+Three copied test files contain such engine identity assertions:
+`tests/participant_migrations.rs`, `tests/storage.rs`, and
+`tests/task_migrations.rs`. The qualification now verifies each original file's
+SHA-256 and unique old version literal before replacing only that literal with
+exact `3.53.4`. It retains every migration/data/rollback assertion and all
+production source bytes. This is the explicit exception to the initial
+manifest-only adaptation plan; no tests are skipped and no broad version range
+is substituted. The final locked, adapted engine regression passes **1,016 tests / 5 existing
+ignored helpers across 27 suites**, with both verified native package paths
+checked before execution. This includes frozen schema 1–21 upgrades, schema 22
+recovery/proof validation, rollback/fault cases, and the test harness. The
+separate regression lock records the current OpenSSL payload; it is not an
+unreviewed runtime dependency resolution.
+
+The compatible crates.io OpenSSL wrapper otherwise selects an older crypto
+payload. A second isolated, verified patch retains `openssl-src` 300.6.1's build
+logic and uses current **OpenSSL 3.6.5** source (commit
+`c8bd5a57108599ac650bbae77fcabe3109dab2e8`, tag object
+`f93be98fe7c796e92fc999dd1a21a5212d4e4f8e`). Only the native source tree and the
+two manifest version metadata fields change; Cargo identifies the payload as
+`300.6.1+3.6.5`. Its upstream archive hash, wrapper checksum and license are
+preserved. The [29 September security release](https://openssl-library.org/news/timeline/)
+motivates this current source selection; no vulnerability in Gitru's specific
+CBC/HMAC usage has been demonstrated. Like SQLCipher's tag, GitHub reports this
+tag signature as `unknown_key`; source hashes do not imply trusted GPG identity.
+
+The new CI workflow independently regenerates the pinned amalgamation on Linux,
+builds/runs the native probe and current engine regression on macOS, Windows and
+Linux, and reads each producer's synthetic encrypted fixture on all three
+platforms. It preserves source hashes, binary hash, compiler/OS/crypto/linkage
+evidence and licenses as artifacts. These remote jobs have **not run yet**.
+
+Still unqualified: keyed whole-app Store/vault startup and conversion (R140),
+Tauri packaged encryption, portable user-key wrapping/recovery (R141), and the
+R125 encrypted/current native IPC latency/memory comparison. The full regression
+uses unkeyed Store against the cipher engine; it must not be described as those
+encrypted application checks. R139 remains a partial qualification until its
+remaining acceptance evidence exists. Production encryption is unchanged.
