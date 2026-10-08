@@ -671,3 +671,15 @@ async fn failed_reverification_revokes_prior_verified_mode() {
         assert_eq!(session.mode(), DatabaseKeyMode::VerifyExisting);
     }
 }
+
+#[test]
+fn startup_selection_treats_every_metadata_shape_as_keyed_evidence() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = path(&temp);
+    assert!(!requires_keyed_open(&path));
+    write(&files::append(&path, ".key.json"), b"malformed");
+    assert!(requires_keyed_open(&path));
+    std::fs::remove_file(files::append(&path, ".key.json")).unwrap();
+    write(&files::append(&path, ".key.json.pending"), b"pending");
+    assert!(requires_keyed_open(&path));
+}

@@ -2,8 +2,10 @@
 
 This isolated workspace keys actual SQLCipher handles through the C API before
 SQLx executes extensions or its first PRAGMA. It is an opt-in native component;
-application Store, app startup, default cipher, recovery and vault selection are
-unchanged. It uses synthetic temporary files and an in-memory key vault only.
+default application builds remain ordinary SQLite. The opt-in packaged desktop
+lane compiles this exact source through `crates/keyed-connections`; retained
+performance runs use a task-owned synthetic vault while production startup only
+loads an already-published native key. Recovery remains intentionally refused.
 
 ## Reproduce
 

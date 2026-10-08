@@ -3,6 +3,10 @@ pub mod domain;
 pub use domain::*;
 
 use crate::commands::collaboration::CollaborationState;
+#[cfg(feature = "native-keyed-storage")]
+use collaboration::database_keys::{
+    DatabaseCreation, DatabaseKey, DatabaseKeyError, DatabaseKeyIdentity, DatabaseKeyVault,
+};
 use collaboration::{
     test_harness::*, ChangeHint, CollaborationError, CollaborationRuntime, ErrorCode,
 };
@@ -48,10 +52,21 @@ struct Marker {
     version: u32,
     application_id: String,
     run_nonce: String,
+    #[serde(default)]
+    storage_mode: HarnessStorageMode,
 }
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum HarnessStorageMode {
+    #[default]
+    Plaintext,
+    Keyed,
+}
+#[derive(Clone)]
 struct LaunchRoot {
     root: PathBuf,
     nonce: String,
+    storage_mode: HarnessStorageMode,
     #[cfg(unix)]
     identity: (u64, u64),
 }
@@ -75,9 +90,38 @@ impl LaunchRoot {
             }
             (metadata.dev(), metadata.ino())
         };
+        let marker: Marker = serde_json::from_slice(
+            &File::open(root.join("run.json"))
+                .and_then(|file| {
+                    if file.metadata()?.len() > 4096 {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "marker",
+                        ));
+                    }
+                    let mut bytes = vec![];
+                    file.take(4097).read_to_end(&mut bytes)?;
+                    if bytes.len() > 4096 {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "marker",
+                        ));
+                    }
+                    Ok(bytes)
+                })
+                .map_err(|_| invalid())?,
+        )
+        .map_err(|_| invalid())?;
+        if marker.version != 1
+            || marker.application_id != APPLICATION_ID
+            || marker.run_nonce != nonce
+        {
+            return Err(invalid());
+        }
         let launch = Self {
             root,
             nonce,
+            storage_mode: marker.storage_mode,
             #[cfg(unix)]
             identity,
         };
@@ -113,6 +157,7 @@ impl LaunchRoot {
         if marker.version != 1
             || marker.application_id != APPLICATION_ID
             || marker.run_nonce != self.nonce
+            || marker.storage_mode != self.storage_mode
         {
             return Err(invalid());
         }
@@ -203,6 +248,73 @@ impl LaunchRoot {
             let _ = fs::remove_file(temporary);
         }
         result
+    }
+}
+
+#[cfg(feature = "native-keyed-storage")]
+struct HarnessDatabaseVault(LaunchRoot);
+
+#[cfg(feature = "native-keyed-storage")]
+impl HarnessDatabaseVault {
+    fn name(identity: &DatabaseKeyIdentity) -> String {
+        format!(
+            "database-key-{}-{}.bin",
+            identity.database_id(),
+            identity.generation()
+        )
+    }
+}
+
+#[cfg(feature = "native-keyed-storage")]
+impl DatabaseKeyVault for HarnessDatabaseVault {
+    fn load(
+        &self,
+        identity: &DatabaseKeyIdentity,
+    ) -> Result<Option<DatabaseKey>, DatabaseKeyError> {
+        self.0
+            .check()
+            .map_err(|_| DatabaseKeyError::VaultUnavailable)?;
+        let bytes = match self
+            .0
+            .read_bounded(&Self::name(identity))
+            .map_err(|_| DatabaseKeyError::VaultUnavailable)?
+        {
+            Some(bytes) => bytes,
+            None => return Ok(None),
+        };
+        Ok(Some(DatabaseKey::from_bytes(
+            bytes
+                .try_into()
+                .map_err(|_| DatabaseKeyError::VaultInvalidKey)?,
+        )))
+    }
+
+    fn store_new(
+        &self,
+        identity: &DatabaseKeyIdentity,
+        key: &DatabaseKey,
+    ) -> Result<(), DatabaseKeyError> {
+        self.0
+            .check()
+            .map_err(|_| DatabaseKeyError::VaultUnavailable)?;
+        let path = self
+            .0
+            .file(&Self::name(identity))
+            .map_err(|_| DatabaseKeyError::VaultUnavailable)?;
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options.open(path).map_err(|error| match error.kind() {
+            std::io::ErrorKind::AlreadyExists => DatabaseKeyError::VaultAlreadyExists,
+            _ => DatabaseKeyError::VaultUnavailable,
+        })?;
+        file.write_all(key.expose())
+            .and_then(|()| file.sync_all())
+            .map_err(|_| DatabaseKeyError::VaultWriteUncertain)
     }
 }
 
@@ -352,18 +464,43 @@ pub fn setup(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.handle().clone();
     tauri::async_runtime::spawn(async move {
         let visibility_handle = handle.clone();
-        let result = HarnessSession::open(
-            &launch.root,
-            &launch.nonce,
-            Arc::new(move |owner| {
-                crate::commands::collaboration_demand::owner_window_available(
-                    &visibility_handle,
-                    owner,
-                )
-            }),
-        )
-        .await
-        .and_then(|session| {
+        let visibility: Arc<dyn Fn(&str) -> bool + Send + Sync> = Arc::new(move |owner| {
+            crate::commands::collaboration_demand::owner_window_available(&visibility_handle, owner)
+        });
+        let session = match launch.storage_mode {
+            HarnessStorageMode::Plaintext => {
+                HarnessSession::open(&launch.root, &launch.nonce, visibility).await
+            }
+            HarnessStorageMode::Keyed => {
+                #[cfg(feature = "native-keyed-storage")]
+                {
+                    async {
+                        let database = launch.file("collaboration.sqlite")?;
+                        let vault: Arc<dyn DatabaseKeyVault> =
+                            Arc::new(HarnessDatabaseVault(launch.clone()));
+                        let store = crate::collaboration_setup::open_keyed_store(
+                            database,
+                            vault,
+                            DatabaseCreation::AllowNew,
+                        )
+                        .await?;
+                        HarnessSession::open_with_store(
+                            &launch.root,
+                            &launch.nonce,
+                            visibility,
+                            Arc::new(store),
+                        )
+                        .await
+                    }
+                    .await
+                }
+                #[cfg(not(feature = "native-keyed-storage"))]
+                {
+                    Err(invalid())
+                }
+            }
+        };
+        let result = session.and_then(|session| {
             let runtime_ready_epoch_ms = epoch_millis()?;
             Ok(Arc::new(NativeHarness {
                 launch,

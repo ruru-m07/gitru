@@ -237,20 +237,33 @@ export type OwnedHarnessProcess = Readonly<{
   artifactsIdentity: Identity;
   binaryIdentity: Identity;
   pid: number;
+  storageMode: "plaintext" | "keyed";
 }>;
 const captures = new WeakSet<OwnedHarnessProcess>();
 
+function markerStorageMode(input: HarnessProcessInput) {
+  const marker = record(boundedJson(join(input.root, "run.json")));
+  keys(
+    marker,
+    Object.hasOwn(marker, "storage_mode")
+      ? ["version", "application_id", "run_nonce", "storage_mode"]
+      : ["version", "application_id", "run_nonce"],
+  );
+  const storageMode = marker.storage_mode ?? "plaintext";
+  if (
+    marker.version !== 1 ||
+    marker.application_id !== HARNESS_APPLICATION_ID ||
+    marker.run_nonce !== input.runNonce ||
+    (storageMode !== "plaintext" && storageMode !== "keyed")
+  )
+    fail("root_marker_mismatch");
+  return storageMode;
+}
 function validateRoot(owned: OwnedHarnessProcess) {
   const { input } = owned;
   sameIdentity(input.root, owned.rootIdentity);
   sameIdentity(input.artifactsDirectory, owned.artifactsIdentity);
-  const marker = record(boundedJson(join(input.root, "run.json")));
-  keys(marker, ["version", "application_id", "run_nonce"]);
-  if (
-    marker.version !== 1 ||
-    marker.application_id !== HARNESS_APPLICATION_ID ||
-    marker.run_nonce !== input.runNonce
-  )
+  if (markerStorageMode(input) !== owned.storageMode)
     fail("root_marker_mismatch");
 }
 function validateCapture(owned: OwnedHarnessProcess) {
@@ -317,6 +330,7 @@ export function captureHarnessProcess(
     artifactsIdentity: directory(input.artifactsDirectory),
     binaryIdentity: regular(input.binaryPath),
     pid: input.proc.pid,
+    storageMode: markerStorageMode(input),
   });
   captures.add(owned);
   validateOwnership(owned);

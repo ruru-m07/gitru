@@ -41,12 +41,16 @@ const binary = canonicalHarnessPath(
     ),
 );
 const inherited = harnessEnvironment(process.env);
+const storageMode = process.env.GITRU_COLLABORATION_STORAGE_MODE ?? "plaintext";
+if (storageMode !== "plaintext" && storageMode !== "keyed")
+  throw new Error("Storage mode must be plaintext or keyed");
 writeFileSync(
   join(root, "run.json"),
   JSON.stringify({
     version: 1,
     application_id: "com.ruru.gitru.e2e.collaboration",
     run_nonce: runNonce,
+    storage_mode: storageMode,
   }),
   { flag: "wx", mode: 0o600 },
 );
@@ -229,6 +233,7 @@ try {
     }).stdout.trim(),
     binary_sha256: await binaryHash(),
     build_profile: "release/no-bundle/collaboration-harness",
+    storage_mode: storageMode,
     dataset: {
       version: 1,
       item_count: 10_000,
@@ -292,6 +297,9 @@ try {
       retained_native_view_count: 2,
     },
     limits: [
+      storageMode === "keyed"
+        ? "The database key is synthetic and confined to this task-owned fixture; this does not qualify a personal platform vault."
+        : "This is the unchanged plaintext control for comparison with an explicitly keyed run.",
       "This 10,000-item macOS run does not qualify the 100,000-summary or 500,000-child-record memory target.",
       "WebKit RSS is reported only for proven native-process descendants; per-view RSS is unavailable for a shared runtime.",
       "Process-launch latency is not claimed; native setup/runtime readiness and document useful-content clocks are recorded separately.",

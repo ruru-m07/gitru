@@ -23,7 +23,6 @@ use security_framework_sys::{
 use std::{fmt, ptr, sync::Arc};
 use zeroize::Zeroizing;
 
-const SERVICE: &str = "com.gitru.collaboration.database-key.v1";
 const UNLOCKED: u32 = 1;
 #[link(name = "Security", kind = "framework")]
 unsafe extern "C" {
@@ -68,7 +67,7 @@ impl FileKeychainDatabaseVault {
                 ),
                 (
                     CFString::wrap_under_get_rule(kSecAttrService).into_CFType(),
-                    CFString::new(SERVICE).into_CFType(),
+                    CFString::new(super::DATABASE_KEY_SERVICE).into_CFType(),
                 ),
                 (
                     CFString::wrap_under_get_rule(kSecAttrAccount).into_CFType(),
