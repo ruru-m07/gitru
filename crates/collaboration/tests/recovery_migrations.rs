@@ -863,3 +863,128 @@ INSERT INTO cache_retention_entries VALUES('a','pull','comments',123,2);").execu
     );
     db.close().await.unwrap();
 }
+
+#[tokio::test]
+async fn failed_review_submission_migration_preserves_v23_authorship_and_retries_cleanly() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut db = database(&dir.path().join("v23.db")).await;
+    historical(23).run(&mut db).await.unwrap();
+    let account = RemoteAccount {
+        id: "a".into(),
+        provider: ProviderKind::Github,
+        host: "github.com".into(),
+        actor_id: "7".into(),
+        login: "actor".into(),
+        display_name: None,
+        authorization_epoch: "1".into(),
+        state: AccountState::Active,
+        notifications_supported: false,
+    };
+    sqlx::query("INSERT INTO accounts VALUES('a','github','github.com','7',1,'active',?)")
+        .bind(serde_json::to_string(&account).unwrap())
+        .execute(&mut db)
+        .await
+        .unwrap();
+    sqlx::raw_sql(
+        "INSERT INTO comment_drafts VALUES('a','missing-subject','Preserve authored comment',9);\
+         INSERT INTO issue_drafts VALUES('a','11111111-1111-4111-8111-111111111111','missing-repository','Retained issue','Retained issue body',4);\
+         INSERT INTO pull_drafts VALUES('a','22222222-2222-4222-8222-222222222222','missing-repository','Retained pull','Retained pull body','feature','main','local','link','1',0,3);\
+         INSERT INTO detail_observations VALUES('a','pull','comments','1','2','{}','{}',NULL,'not_loaded',NULL);\
+         INSERT INTO detail_entries VALUES('a','pull','comments','entry','{}','retained-run');\
+         INSERT INTO detail_demand VALUES('a','pull','comments','1',1);\
+         INSERT INTO cache_retention_entries VALUES('a','pull','comments',123,2);",
+    )
+    .execute(&mut db)
+    .await
+    .unwrap();
+    let schema: Vec<String> =
+        sqlx::query_scalar("SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY name")
+            .fetch_all(&mut db)
+            .await
+            .unwrap();
+    let mut migrations = historical(23).iter().cloned().collect::<Vec<_>>();
+    migrations.push(Migration::new(
+        24,
+        "failed review submission".into(),
+        MigrationType::Simple,
+        sqlx::AssertSqlSafe(format!(
+            "{}\nSELECT * FROM missing_review_submission_migration;",
+            include_str!("../migrations/0024_review_submission.sql")
+        ))
+        .into_sql_str(),
+        false,
+    ));
+    assert!(
+        Migrator::with_migrations(migrations)
+            .run(&mut db)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT max(version) FROM _sqlx_migrations")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        23
+    );
+    let after: Vec<String> =
+        sqlx::query_scalar("SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY name")
+            .fetch_all(&mut db)
+            .await
+            .unwrap();
+    assert_eq!(schema, after);
+
+    CURRENT.run(&mut db).await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT body FROM comment_drafts")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        "Preserve authored comment"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT body FROM issue_drafts")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        "Retained issue body"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT body FROM pull_drafts")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        "Retained pull body"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT last_seen_run FROM detail_entries")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        "retained-run"
+    );
+    assert_eq!(
+        sqlx::query_as::<_, (i64, i64)>(
+            "SELECT indexed_logical_bytes,indexed_facet_count FROM cache_retention_state"
+        )
+        .fetch_one(&mut db)
+        .await
+        .unwrap(),
+        (123, 1)
+    );
+    assert!(
+        sqlx::query("PRAGMA foreign_key_check")
+            .fetch_optional(&mut db)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT max(version) FROM _sqlx_migrations")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        24
+    );
+    db.close().await.unwrap();
+}

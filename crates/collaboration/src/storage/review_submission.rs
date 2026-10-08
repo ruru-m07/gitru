@@ -408,7 +408,7 @@ async fn snapshot_in(
     } else if account.state != AccountState::Active {
         Some(ReviewSubmissionReason::AccountUnavailable)
     } else if let Some(status) = &snapshot.submission {
-        Some(if status.draft_generation == snapshot.generation {
+        Some(if status.state == "confirmed" {
             ReviewSubmissionReason::AlreadySubmitted
         } else {
             ReviewSubmissionReason::PendingSubmission
