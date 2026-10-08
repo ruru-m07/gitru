@@ -166,3 +166,28 @@ pub struct PullCreationLocalObservation {
 }
 
 pub(crate) mod native;
+
+/// A native window/lifecycle proof. It is never serialized or reconstructed from a backup.
+#[derive(Clone)]
+pub struct PullCreationOwner {
+    identity: String,
+    validate: std::sync::Arc<dyn Fn() -> Result<(), crate::CollaborationError> + Send + Sync>,
+}
+impl PullCreationOwner {
+    pub fn new(
+        identity: String,
+        validate: std::sync::Arc<dyn Fn() -> Result<(), crate::CollaborationError> + Send + Sync>,
+    ) -> Result<Self, crate::CollaborationError> {
+        if !native::identifier(&identity) {
+            return Err(native::invalid());
+        }
+        validate()?;
+        Ok(Self { identity, validate })
+    }
+    pub(crate) fn validate(&self) -> Result<(), crate::CollaborationError> {
+        (self.validate)()
+    }
+    pub(crate) fn same(&self, other: &Self) -> bool {
+        self.identity == other.identity
+    }
+}

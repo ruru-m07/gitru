@@ -329,6 +329,26 @@ pub(crate) fn content_hash(v: &PullDraftValues) -> Result<Vec<u8>> {
 pub(crate) fn command_hash(c: &crate::delivery::DeliveryCommand) -> String {
     crate::guarded_merge::native::command_hash(c)
 }
+pub(crate) fn preparation_matches(prep: &Preparation, p: &Payload) -> bool {
+    let f = &prep.frame;
+    p.validate().is_ok()
+        && f.local.validate().is_ok()
+        && prep.actor == p.actor_id
+        && prep.epoch == p.request.context.authorization_epoch
+        && prep.source_oid == p.request.context.source_oid
+        && prep.base_oid == p.request.context.base_oid
+        && chrono::DateTime::parse_from_rfc3339(&prep.observed_at).is_ok()
+        && f.authorization_view == p.request.context.authorization_view
+        && f.draft_generation == p.request.context.draft_generation
+        && f.values == p.values
+        && f.local == p.local
+        && f.repository.id == p.request.context.key.repository_id
+        && f.repository.provider_id == p.repository_native
+        && f.repository.account_id == p.request.context.key.account_id
+        && f.repository.selected
+        && repository_path(&f.repository.full_name)
+        && f.repository.web_url == format!("https://github.com/{}", f.repository.full_name)
+}
 pub(crate) fn receipt_matches(e: &ReceiptEvidence, p: &Payload) -> bool {
     use crate::{DetailValueState::Known, MetadataField as F};
     let prep = &e.preparation;
@@ -354,25 +374,12 @@ pub(crate) fn receipt_matches(e: &ReceiptEvidence, p: &Payload) -> bool {
                 })
         })
     };
-    p.validate().is_ok()
-        && f.local.validate().is_ok()
-        && prep.actor == p.actor_id
-        && prep.epoch == p.request.context.authorization_epoch
-        && prep.source_oid == p.request.context.source_oid
-        && prep.base_oid == p.request.context.base_oid
-        && chrono::DateTime::parse_from_rfc3339(&prep.observed_at).is_ok()
-        && f.authorization_view == p.request.context.authorization_view
-        && f.draft_generation == p.request.context.draft_generation
-        && f.values == p.values
-        && f.local == p.local
-        && f.repository.id == p.request.context.key.repository_id
-        && f.repository.provider_id == p.repository_native
-        && f.repository.account_id == p.request.context.key.account_id
-        && f.repository.selected
-        && repository_path(&f.repository.full_name)
-        && f.repository.web_url == format!("https://github.com/{}", f.repository.full_name)
+    preparation_matches(prep, p)
         && crate::storage::validate_resource_metadata(&m.observation()).is_ok()
         && m.fields.len() == F::COMMON.len() + F::PULL.len()
+        && m.fields
+            .contains(&(F::MergeBase, crate::DetailValueState::Omitted))
+        && m.values.merge_base_oid.is_none()
         && [
             F::Title,
             F::State,
@@ -395,7 +402,7 @@ pub(crate) fn receipt_matches(e: &ReceiptEvidence, p: &Payload) -> bool {
         && i.repository_id.as_deref() == Some(f.repository.id.as_str())
         && native_id(&i.provider_id)
         && i.number.as_deref().is_some_and(native_id)
-        && i.id == format!("github:pr:{}", i.provider_id)
+        && i.id == format!("github:pull:{}", i.provider_id)
         && i.title == p.values.title
         && i.body.as_deref().unwrap_or("") == p.values.body
         && !i.body_omitted
@@ -429,4 +436,26 @@ pub(crate) fn receipt_matches(e: &ReceiptEvidence, p: &Payload) -> bool {
         && m.source.source == "github/pull-detail/2026-03-10"
         && m.source.adapter_version == 1
         && m.source.provider_updated_at.as_deref() == Some(i.updated_at.as_str())
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Prepared {
+    pub preparation: Preparation,
+    pub refusal: Option<PullCreationReason>,
+}
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DeclinedEvidence {
+    pub preparation: Preparation,
+    pub reason: PullCreationReason,
+}
+pub(crate) fn declined_matches(e: &DeclinedEvidence, p: &Payload) -> bool {
+    preparation_matches(&e.preparation, p)
+        && matches!(
+            e.reason,
+            PullCreationReason::GrantExpired
+                | PullCreationReason::LocalHeadChanged
+                | PullCreationReason::PermissionUnavailable
+        )
 }

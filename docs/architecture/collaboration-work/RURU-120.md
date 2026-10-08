@@ -181,3 +181,25 @@ separate. No personal credential or production provider mutation is needed.
   contracts, R96 local links, R136 native local checkout authority and R133
   bounded online grants. These are implementation patterns, not evidence that
   PR creation already exists.
+
+## Native contract refinement before qualification
+
+The native caller carries a nonserializable `PullCreationOwner` containing its
+exact lifecycle identity and synchronous validation callback. Process-local grants
+retain that owner, reject another window's grant use, and validate its original
+lifetime before preflight, writer claim, and the final one-shot dispatch. A known
+exact durable UUID receipt may be recovered under a current authorized caller
+without a new local Git or network preview.
+
+A refusal before POST is explicit `github.pull_creation_declined` v1 evidence with
+an exact typed preparation and a bounded reason (expired grant, changed inspected
+branch range, or unavailable permission). Refusal after an attempt was recorded
+keeps that attempt and its exact preparation; it does not claim HTTP happened.
+Unknown attempted creations retain typed `Preparation` bytes and never reconstruct
+a grant during restore. The confirmed receipt codec now explicitly validates all
+fourteen metadata field observations, with GitHub's unavailable merge base marked
+`Omitted` and no merge-base OID. The canonical created identity is `github:pull:<id>`.
+
+These are contract checkpoints, not a claim that end-to-end creation or schema23
+qualification is complete. Recovery and native runtime/provider controls are being
+qualified independently; no live account or provider mutation has been used.
