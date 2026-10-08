@@ -135,6 +135,8 @@ function transport(
     commandRecoveryExport: unexpected,
     textEditSnapshot: unexpected,
     submitTextEdit: unexpected,
+    workflowStateSnapshot: unexpected,
+    submitWorkflowState: unexpected,
     commentDraft: unexpected,
     commentDrafts: unexpected,
     saveCommentDraft: unexpected,

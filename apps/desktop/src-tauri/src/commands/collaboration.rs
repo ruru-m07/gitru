@@ -20,6 +20,8 @@ mod comment_send;
 pub use comment_send::*;
 mod text_edits;
 pub use text_edits::*;
+mod workflow_state;
+pub use workflow_state::*;
 mod lifecycle;
 pub(super) use lifecycle::RecoveryTransition;
 use lifecycle::RuntimeSlot;
@@ -64,6 +66,7 @@ pub(super) enum Operation {
     CommandRecovery,
     CommentSend,
     TextEdit,
+    WorkflowState,
     Recovery,
     Capabilities,
     ContextualCapabilities,
@@ -628,6 +631,7 @@ mod tests {
         Operation::ExportDraft,
         Operation::CommentSend,
         Operation::TextEdit,
+        Operation::WorkflowState,
         Operation::CommandRecovery,
         Operation::Recovery,
         Operation::Capabilities,

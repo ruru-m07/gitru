@@ -16,6 +16,7 @@ import type {
   RemoteAccount,
   ResourceLocator,
   TextEditSnapshot,
+  WorkflowStateSnapshot,
 } from "@gitru/commands";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore } from "react";
@@ -71,6 +72,21 @@ export function textEditQueryOptions(
     queryKey: collaborationKeys.textEdit(account, subjectId),
     queryFn: ({ signal }) =>
       collaboration.forAccount(account).textEditSnapshot(subjectId, signal),
+  });
+}
+
+/** Cache-only workflow state. Provider reads and delivery remain native-owned. */
+export function workflowStateQueryOptions(
+  account: RemoteAccount,
+  subjectId: string,
+) {
+  return queryOptions<WorkflowStateSnapshot>({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.workflowState(account, subjectId),
+    queryFn: ({ signal }) =>
+      collaboration
+        .forAccount(account)
+        .workflowStateSnapshot(subjectId, signal),
   });
 }
 

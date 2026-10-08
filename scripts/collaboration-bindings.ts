@@ -20,6 +20,9 @@ const commandRecovery = await Bun.file(
 const textEdits = await Bun.file(
   new URL("crates/collaboration/src/text_edits.rs", root),
 ).text();
+const workflowState = await Bun.file(
+  new URL("crates/collaboration/src/workflow_state.rs", root),
+).text();
 const commentSend = await Bun.file(
   new URL("crates/collaboration/src/comment_send.rs", root),
 ).text();
@@ -302,6 +305,7 @@ for (const source of [
   effective,
   commandRecovery,
   textEdits,
+  workflowState,
   commentSend,
   domain,
   error,
@@ -410,6 +414,34 @@ generated = generated.replace(
   `$1.superRefine((request, context) => {
   if (!request.accept_best_effort || (request.title === null && request.body === null)) {
     context.addIssue({ code: "custom", path: ["accept_best_effort"], message: "Text edits require explicit best-effort acceptance and at least one changed field" });
+  }
+});`,
+);
+const workflowStateSnapshotSchema =
+  /(export const WorkflowStateSnapshotSchema = z\.object\(\{[\s\S]*?\n\}\));/;
+if (!workflowStateSnapshotSchema.test(generated))
+  throw new Error("Missing generated workflow-state snapshot schema");
+generated = generated.replace(
+  workflowStateSnapshotSchema,
+  `$1.superRefine((snapshot, context) => {
+  const available = snapshot.availability === "available";
+  const availableShape = snapshot.context !== null && snapshot.current_state !== null && snapshot.reason === null && snapshot.pending_intent === null;
+  const unavailableShape = snapshot.context === null && snapshot.current_state === null && snapshot.reason !== null;
+  const pendingMatches = (snapshot.reason === "pending_intent") === (snapshot.pending_intent !== null);
+  if ((available && !availableShape) || (!available && !unavailableShape) || !pendingMatches) {
+    context.addIssue({ code: "custom", path: ["availability"], message: "Workflow-state availability and native evidence must agree" });
+  }
+});`,
+);
+const workflowStateRequestSchema =
+  /(export const WorkflowStateRequestSchema = z\.object\(\{[\s\S]*?\n\}\));/;
+if (!workflowStateRequestSchema.test(generated))
+  throw new Error("Missing generated workflow-state request schema");
+generated = generated.replace(
+  workflowStateRequestSchema,
+  `$1.superRefine((request, context) => {
+  if (!request.accept_best_effort) {
+    context.addIssue({ code: "custom", path: ["accept_best_effort"], message: "Workflow-state changes require explicit best-effort acceptance" });
   }
 });`,
 );
