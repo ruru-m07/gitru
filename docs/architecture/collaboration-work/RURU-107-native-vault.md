@@ -65,3 +65,55 @@ No schema or IPC changes are expected. Preserve PR192 and its existing evidence.
   and the checked-out keyring3.6.3 source define the production backend selection.
 - [GNOME Keyring](https://github.com/GNOME/gnome-keyring/blob/main/README)
   documents the session daemon and D-Bus discovery used by the isolated Linux job.
+
+## Implementation checkpoint
+
+Signed source checkpoint `6f03583cea638637b9855382c596cfd610891cd5`
+extracts the existing production adapter into the private desktop
+`native_vault` module. Its keyring entry construction, serialized store/load/
+delete operations, missing-entry behavior and sanitized unavailable mapping are
+unchanged. Runtime construction still derives the production service as
+`<application identifier>.collaboration`. The `e2e` and retained collaboration
+harness configurations continue to exclude this module and use the existing
+in-memory test vault.
+
+The new opt-in workflow runs one ignored supervisor test on Linux, macOS and
+Windows. The supervisor requires the explicit qualification marker plus the
+GitHub-hosted runner and matching runner-OS evidence. Each run creates a random
+UUID-backed service/reference namespace, clears the child environment, forwards
+only a finite platform allowlist and passes no provider credential variables.
+Seed, cold-reopen and cleanup phases run in separate bounded processes. They
+cover absence, store/load, replacement, service/reference isolation, exact
+delete and idempotent missing delete without printing the synthetic values.
+
+Linux additionally owns a fresh `dbus-run-session`, private `XDG_DATA_HOME`,
+private `XDG_RUNTIME_DIR`, explicit GNOME Keyring daemon PID and exact cleanup.
+It checks service readiness without activating an unrelated daemon and verifies
+that an intentionally missing private D-Bus socket maps to unavailable instead
+of falling back. The workflow keeps `HOME` unchanged. macOS and Windows use the
+pinned production-native backend in the ephemeral hosted-runner session. Each
+child phase has a 45-second bound and the matrix job has a 60-minute outer
+bound. The workflow also carries the exact signed Windows platform-test timeout
+allowance from `eb12ab23536cbd835db2fabce910b99cafeaa719`; it removes no test
+commands.
+
+## Local evidence and remaining qualification
+
+The source checkpoint was validated locally without executing a native
+credential-store operation:
+
+- `cargo test -p gitru --lib`: 36 passed, with both actual native-vault tests
+  visibly ignored;
+- `cargo test -p gitru --features collaboration-harness --lib`: 49 passed,
+  proving the packaged retained harness still compiles and uses its synthetic
+  vault;
+- both ordinary and `collaboration-harness` `gitru` all-target Clippy passed
+  with warnings denied;
+- Rust format/diff checks, workflow YAML parsing and the nested Linux Bash
+  syntax check passed.
+
+These are compile, isolation-gate and synthetic-vault results only. They do not
+qualify this Mac's keychain or any remote platform. Publication still requires
+the exact PR head's three new native-vault jobs to pass and be recorded by OS
+and backend. Interactive locked-vault prompts, user-denied access, PAT/CLI
+import, live provider authentication and revocation remain outside this slice.
