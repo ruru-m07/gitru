@@ -4,7 +4,7 @@ use crate::credentials::CredentialError;
 use async_trait::async_trait;
 use std::sync::{
     Condvar, Mutex as StdMutex,
-    atomic::{AtomicU64, AtomicUsize},
+    atomic::{AtomicI64, AtomicU64, AtomicUsize},
 };
 
 const NOTIFICATION: &str = "thread";
@@ -15,6 +15,7 @@ struct ManualClock {
     base: Instant,
     utc: DateTime<Utc>,
     elapsed: AtomicU64,
+    utc_offset: AtomicI64,
 }
 impl ManualClock {
     fn new() -> Arc<Self> {
@@ -22,6 +23,7 @@ impl ManualClock {
             base: Instant::now(),
             utc: Utc::now(),
             elapsed: AtomicU64::new(0),
+            utc_offset: AtomicI64::new(0),
         })
     }
     fn advance(&self, seconds: u64) {
@@ -33,7 +35,10 @@ impl clock::Clock for ManualClock {
         self.base + Duration::from_secs(self.elapsed.load(Ordering::SeqCst))
     }
     fn utc(&self) -> DateTime<Utc> {
-        self.utc + chrono::Duration::seconds(self.elapsed.load(Ordering::SeqCst) as i64)
+        self.utc
+            + chrono::Duration::seconds(
+                self.elapsed.load(Ordering::SeqCst) as i64 + self.utc_offset.load(Ordering::SeqCst),
+            )
     }
     fn jitter(&self) -> u64 {
         0
@@ -181,7 +186,15 @@ impl CollaborationProvider for Provider {
         }
     }
     async fn probe(&self, _: &SecretToken) -> Result<VerifiedAccount, ProviderError> {
-        panic!("point fixtures cannot probe live credentials")
+        Err(ProviderError::new(ProviderErrorKind::InvalidResponse))
+    }
+    async fn probe_with_backoff(&self, _: &SecretToken) -> Result<VerifiedAccount, ProbeFailure> {
+        let mut error = ProviderError::new(ProviderErrorKind::InvalidResponse);
+        error.account_cooldown_seconds = self.cooldown;
+        Err(ProbeFailure {
+            error,
+            verified_actor_id: Some("actor-a".into()),
+        })
     }
     async fn fetch_page(
         &self,
@@ -1192,4 +1205,141 @@ async fn repository_less_active_inbox_row_is_unsupported_without_false_retiremen
     );
     assert_eq!(provider.calls.load(Ordering::SeqCst), 0);
     assert_eq!(vault.loads.load(Ordering::SeqCst), 0);
+}
+
+// A genuine synthetic adapter observation enters the accepted-epoch Runtime seam;
+// this does not manually populate the scheduler or claim a concurrent live probe.
+async fn clock_quota_receipt(
+    runtime: &CollaborationRuntime,
+    account: &RemoteAccount,
+    provider: &Provider,
+) {
+    let observation = provider
+        .probe_with_backoff(&SecretToken::new("synthetic_clock_receipt".into()).unwrap())
+        .await
+        .unwrap_err();
+    assert_eq!(
+        observation.verified_actor_id.as_deref(),
+        Some(account.actor_id.as_str())
+    );
+    runtime
+        .persist_rate_limit(
+            account,
+            observation.error.account_cooldown_seconds.unwrap(),
+            None,
+        )
+        .await
+        .unwrap();
+}
+
+async fn discovery_clock_gate(before_vault: bool) {
+    use std::future::{Future, poll_fn};
+    use std::task::Poll;
+    {
+        let dir = tempfile::tempdir().unwrap();
+        let mut configured = Provider::new(Outcome::Verified);
+        configured.cooldown = Some(120);
+        let provider = Arc::new(configured);
+        let (runtime, vault, account, clock) =
+            fixture(&dir.path().join("cache.sqlite"), provider.clone()).await;
+        discover(&runtime, &account).await;
+        let lifecycle = if before_vault {
+            Some(runtime.lifecycle.lock().await)
+        } else {
+            None
+        };
+        if !before_vault {
+            vault.hold.store(true, Ordering::SeqCst);
+        }
+        let mut worker = Box::pin(runtime.run_next());
+        tokio::time::timeout(Duration::from_secs(10), async {
+            if before_vault {
+                loop {
+                    poll_fn(|cx| {
+                        assert!(worker.as_mut().poll(cx).is_pending());
+                        Poll::Ready(())
+                    })
+                    .await;
+                    let s = runtime.scheduler.lock().await;
+                    let key = s
+                        .active
+                        .iter()
+                        .find(|(key, _)| key.ends_with(":notification_subject:thread"))
+                        .map(|(key, _)| key)
+                        .unwrap();
+                    if s.queue.iter().chain(&s.deferred).all(|job| &job.key != key) {
+                        assert!(runtime.dispatch.try_lock().is_err());
+                        break;
+                    }
+                    drop(s);
+                    tokio::task::yield_now().await;
+                }
+            } else {
+                tokio::select! {
+                    _ = vault.entered.notified() => {},
+                    _ = &mut worker => panic!("worker escaped held vault"),
+                }
+            }
+        })
+        .await
+        .unwrap();
+        clock_quota_receipt(&runtime, &account, &provider).await;
+        let original = runtime
+            .store
+            .scope_state(&account.id, "provider:rest")
+            .await
+            .unwrap()
+            .unwrap()
+            .sync
+            .next_retry_at;
+        clock.utc_offset.fetch_add(600, Ordering::SeqCst);
+        drop(lifecycle);
+        vault.unblock();
+        assert!(
+            tokio::time::timeout(Duration::from_secs(10), worker)
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            vault.loads.load(Ordering::SeqCst),
+            usize::from(!before_vault),
+            "discovery must not add a vault read after quota acceptance"
+        );
+        assert_eq!(
+            provider.calls.load(Ordering::SeqCst),
+            0,
+            "picked discovery must retain the live lower bound"
+        );
+        assert_eq!(
+            runtime
+                .store
+                .scope_state(&account.id, "provider:rest")
+                .await
+                .unwrap()
+                .unwrap()
+                .sync
+                .next_retry_at,
+            original,
+            "local refusal cannot invent a provider observation at shifted UTC"
+        );
+        assert!(!runtime.run_next().await);
+        assert!(
+            runtime
+                .store
+                .item(&account.id, SUBJECT)
+                .await
+                .unwrap()
+                .item
+                .is_none()
+        );
+    }
+}
+
+#[tokio::test]
+async fn discovery_clock_live_budget_blocks_picked_lifecycle_before_vault() {
+    discovery_clock_gate(true).await;
+}
+#[tokio::test]
+async fn discovery_clock_live_budget_blocks_after_native_vault() {
+    discovery_clock_gate(false).await;
 }
