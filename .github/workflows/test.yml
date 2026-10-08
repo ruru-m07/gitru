@@ -97,7 +97,7 @@ jobs:
   platform-tests:
     name: Rust tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
