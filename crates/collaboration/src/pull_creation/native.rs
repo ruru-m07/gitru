@@ -6,6 +6,28 @@ use sha2::{Digest, Sha256};
 pub(crate) const OPERATION: &str = "github.create_pull_request";
 pub(crate) const PROOF: &str = "github.pull_created";
 pub(crate) const MAX_BYTES: usize = 65536;
+// The frame is retained once and the authored body/title occur again in the
+// created item. The reserve covers Preparation, item identity, and the bounded
+// required metadata (two exact refs/repositories, actor, canonical URLs/clocks).
+// Creation normalization omits unrequested collections rather than copying an
+// arbitrarily large labels/assignees/milestone response into causal evidence.
+const RECEIPT_FIXED_RESERVE: usize = 24 * 1024;
+pub(crate) fn validate_receipt_budget(frame: &Frame) -> Result<()> {
+    let size = serde_json::to_vec(frame).map_err(|_| invalid())?.len()
+        + serde_json::to_vec(&frame.values.body)
+            .map_err(|_| invalid())?
+            .len()
+        + serde_json::to_vec(&frame.values.title)
+            .map_err(|_| invalid())?
+            .len()
+        + RECEIPT_FIXED_RESERVE;
+    if size > MAX_BYTES {
+        return Err(CollaborationError::invalid(
+            "Saved draft exceeds the encoded creation receipt budget; shorten its title or body before previewing",
+        ));
+    }
+    Ok(())
+}
 pub(crate) const GRANT_SECONDS: u64 = 60;
 pub(crate) const MAX_GRANTS: usize = 32;
 type Result<T> = std::result::Result<T, CollaborationError>;

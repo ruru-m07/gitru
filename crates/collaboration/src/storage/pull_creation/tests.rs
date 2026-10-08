@@ -543,7 +543,10 @@ async fn lost_malformed_and_accepted_creation_stay_unknown_without_second_post()
                 DeliveryOutcome::Unknown
             ));
         }
-        assert!(store.pull_draft(key()).await.unwrap().published.is_none());
+        let snapshot = store.pull_draft(key()).await.unwrap();
+        assert!(snapshot.published.is_none());
+        assert_eq!(snapshot.reason, Some(PullCreationReason::PendingSubmission));
+        assert_eq!(snapshot.submission.unwrap().state, "outcome_unknown");
         assert_eq!(server.join().unwrap().len(), 7);
         store.close().await.unwrap();
     }
@@ -1125,4 +1128,168 @@ async fn shutdown_releases_process_local_owner_callbacks_after_draining() {
     runtime.shutdown().await.unwrap();
     assert!(weak.upgrade().is_none());
     assert_eq!(http.join().unwrap().len(), 3);
+}
+#[tokio::test]
+async fn receipt_only_probe_of_new_consent_returns_not_ready_without_arming_or_admitting() {
+    let (_dir, store, a, local) = setup().await;
+    let (p, _, http) = server(reads(HEAD, BASE));
+    let r = request(preview(&store, &a, &p, &local).await.0);
+    let mut registry = crate::providers::ProviderRegistry::default();
+    registry
+        .register(Arc::new(
+            crate::providers::github::GithubProvider::new().unwrap(),
+        ))
+        .unwrap();
+    registry.install_pull_creation(p.clone()).unwrap();
+    let store = Arc::new(store);
+    let runtime = crate::runtime::CollaborationRuntime::with_registry(
+        store.clone(),
+        Arc::new(ExpiringVault(Clock(Arc::new(
+            StdMutex::new(Instant::now()),
+        )))),
+        registry,
+    );
+    assert_eq!(
+        runtime
+            .submit_pull(r.clone(), None, owner())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::NotReady
+    );
+    assert!(!p.live(&a, &r));
+    assert!(store.delivery_command("a", &r.command_id).await.is_err());
+    assert!(
+        !runtime
+            .submit_pull(r.clone(), Some(local), owner())
+            .await
+            .unwrap()
+            .duplicate
+    );
+    assert!(p.live(&a, &r));
+    assert_eq!(http.join().unwrap().len(), 3);
+    runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn escaped_draft_budget_refuses_preview_before_provider_io_and_preserves_authorship() {
+    let (_dir, store, a, local) = setup().await;
+    let old = store.pull_draft(key()).await.unwrap();
+    let mut values = old.values;
+    values.body = "\\".repeat(16 * 1024);
+    let saved = store
+        .save_pull_draft(SavePullDraftRequest {
+            key: key(),
+            authorization_epoch: a.authorization_epoch.clone(),
+            authorization_view: old.authorization_view,
+            expected_generation: old.generation,
+            values,
+        })
+        .await
+        .unwrap();
+    let q = PreviewPullCreationRequest {
+        key: key(),
+        draft_generation: saved.generation,
+        authorization_epoch: a.authorization_epoch.clone(),
+        authorization_view: saved.authorization_view,
+    };
+    let (p, _, http) = server(vec![]);
+    let mut registry = crate::providers::ProviderRegistry::default();
+    registry
+        .register(Arc::new(
+            crate::providers::github::GithubProvider::new().unwrap(),
+        ))
+        .unwrap();
+    registry.install_pull_creation(p).unwrap();
+    let store = Arc::new(store);
+    let runtime = crate::runtime::CollaborationRuntime::with_registry(
+        store.clone(),
+        Arc::new(ExpiringVault(Clock(Arc::new(
+            StdMutex::new(Instant::now()),
+        )))),
+        registry,
+    );
+    let error = runtime
+        .preview_pull_creation(q, local, owner())
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("receipt budget"));
+    assert_eq!(
+        store.pull_draft(key()).await.unwrap().values.body,
+        "\\".repeat(16 * 1024)
+    );
+    assert!(http.join().unwrap().is_empty());
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM commands")
+            .fetch_one(&store.inner.readers)
+            .await
+            .unwrap(),
+        0
+    );
+    runtime.shutdown().await.unwrap();
+}
+#[tokio::test]
+async fn maximum_plain_body_and_unrequested_large_collections_fit_causal_receipt_budget() {
+    let (_dir, store, a, local) = setup().await;
+    let old = store.pull_draft(key()).await.unwrap();
+    let mut values = old.values;
+    values.body = "a".repeat(16 * 1024);
+    let saved = store
+        .save_pull_draft(SavePullDraftRequest {
+            key: key(),
+            authorization_epoch: a.authorization_epoch.clone(),
+            authorization_view: old.authorization_view,
+            expected_generation: old.generation,
+            values,
+        })
+        .await
+        .unwrap();
+    let mut response = created(HEAD, BASE);
+    response["body"] = json!(saved.values.body);
+    response["labels"] = json!(
+        (0..100)
+            .map(|i| format!("{i:03}{}", "L".repeat(1000)))
+            .collect::<Vec<_>>()
+    );
+    let mut replies = reads(HEAD, BASE);
+    replies.extend(reads(HEAD, BASE));
+    replies.push((201, Some(response), String::new()));
+    let (p, _, http) = server(replies);
+    let r = request(preview(&store, &a, &p, &local).await.0);
+    admit(&store, &a, &p, &r).await;
+    assert_eq!(
+        store.pull_draft(key()).await.unwrap().reason,
+        Some(PullCreationReason::PendingSubmission)
+    );
+    let (attempt, report) = dispatch(&store, &a, &p, &r).await;
+    let DeliveryOutcome::Confirmed(evidence) = &report.outcome else {
+        panic!("valid bounded 201 must confirm");
+    };
+    assert!(evidence.payload.len() < n::MAX_BYTES);
+    let proof: n::ReceiptEvidence = n::decode_json(&evidence.payload).unwrap();
+    assert_eq!(
+        proof.receipt.item.body.as_deref(),
+        Some(saved.values.body.as_str())
+    );
+    assert!(proof.receipt.metadata.values.labels.is_empty());
+    for f in [
+        MetadataField::Labels,
+        MetadataField::Assignees,
+        MetadataField::Milestone,
+    ] {
+        assert!(
+            proof
+                .receipt
+                .metadata
+                .fields
+                .contains(&(f, DetailValueState::Omitted))
+        );
+    }
+    complete(&store, &a, &p, &attempt, &report).await;
+    let snapshot = store.pull_draft(key()).await.unwrap();
+    assert_eq!(snapshot.reason, Some(PullCreationReason::AlreadySubmitted));
+    assert!(snapshot.published.is_some());
+    assert_eq!(http.join().unwrap().len(), 7);
+    store.close().await.unwrap();
 }

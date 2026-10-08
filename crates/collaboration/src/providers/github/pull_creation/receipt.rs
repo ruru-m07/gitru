@@ -91,6 +91,26 @@ pub(crate) fn parse(
     };
     let (_, mut metadata) =
         pull_details::normalize(&request, bytes, "github/pull-detail/2026-03-10")?;
+    // These collections were not requested by this operation and are not needed
+    // to prove creation. Keep their authority omitted, including a response
+    // concurrently augmented by repository automation, rather than exceeding the
+    // pre-admitted proof budget or claiming that an unretained collection is empty.
+    metadata.values.labels.clear();
+    metadata.values.assignees.clear();
+    metadata.values.milestone = None;
+    if let Some(author) = &mut metadata.values.author {
+        author.web_url = None;
+    }
+    for field in &mut metadata.fields {
+        if matches!(
+            field.field,
+            crate::MetadataField::Labels
+                | crate::MetadataField::Assignees
+                | crate::MetadataField::Milestone
+        ) {
+            field.state = DetailValueState::Omitted;
+        }
+    }
     // GitHub's creation response observes the two branch tips, not a merge base.
     metadata.fields.push(crate::MetadataObservedField {
         field: crate::MetadataField::MergeBase,
