@@ -135,3 +135,10 @@ strictly the independent Activity facet above that base. Generated IPC: 149
 commands/479 executable schemas. New remote CI is separate from local evidence;
 no authenticated live provider, OS vault or packaged Activity-window claim.
 RURU-122 remains In Progress for other-provider expansion. No merge performed.
+
+
+Retained draft follow-up: signed integration `dac6a878` consumes RURU-131's
+synchronous account/reset redaction and exact-retry authorization gate. The merged
+SDK passes207 tests; all six comment-composer cases and both TypeScript checks
+pass. Native/Activity source is unchanged from the full workspace baseline above.
+New-head remote CI remains distinct.
