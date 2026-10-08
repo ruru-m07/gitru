@@ -2593,3 +2593,19 @@ merge authority. See [RURU-133's contract and evidence](./collaboration-work/RUR
 Focused native19 and new UI/SDK9 controls pass; full qualification and a draft PR
 on integration PR190 remain in progress. Live numeric mutation-route compatibility
 and real-provider/platform checks are not claimed. No PR was merged.
+
+### RURU-102 priority-class account fairness — 8 October 2026
+
+Resumed work reproduced two indefinite-starvation cases in the actual scheduler:
+detail and index populations shared an account cursor, so a different class could
+reset another class's rotation. Independent detail/index cursors now retain the
+existing 3:1 interactive/background and 2:1 detail/index weights, per-account scope
+FIFO, bounded memory and cooldown gates. Three controls cover both starvation
+directions and exact cooldown/resume behavior; independent source review passed.
+
+Local qualification passes 1,019 collaboration tests with all features (five
+subprocess helper ignores), strict all-target/all-feature Clippy, formatting and
+diff checks. No public IPC/schema/provider quota changes. See
+[the work note](./collaboration-work/RURU-102-priority-fairness.md). RURU-102
+remains In Progress for API-family attribution and broader lifecycle/platform
+criteria. Remote CI is separate; no implementation PR was merged.
