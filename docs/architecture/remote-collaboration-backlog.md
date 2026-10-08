@@ -2533,3 +2533,21 @@ and comment prerequisites; subsequent parent integration changes documentation
 only. A finite anonymous numeric timeline GET returned 200; private/provider/PAT,
 vault and packaged-window validation remain unclaimed. Remote CI starts on
 publication. RURU-122 stays In Progress for provider expansion; no merge.
+
+
+### RURU-122 Bitbucket Cloud conversation comments — 8 October 2026
+
+Signed product integration `d114202c` adds bounded native PR comment reads into
+the common Comments facet. Own-row clocks preserve edits and explicit deletion
+tombstones; incomplete, skipped or capped history cannot authorize absence.
+Cold continuation and cached reads use SQLite, with account/epoch/access fences.
+The common panel discloses top-level scope and distinguishes validated deletion
+from a missing body; unsupported Bitbucket issue resources are NotApplicable.
+
+Full local `make verify` passes 804 frontend tests/one platform skip and 1,330 Rust
+test executions/seven helper ignores, plus lint, types, desktop build, formatting
+and strict workspace Clippy. Native/UI boundaries received independent review.
+There is no schema or public IPC change. [The work note](./collaboration-work/RURU-122-bitbucket-comments.md)
+records pagination, clock, authorization and cold-cache controls. Inline comments,
+replies, pending comments and other-provider Activity expansion remain separate.
+Current-head remote CI and live credentials/vaults remain unqualified; no merge.

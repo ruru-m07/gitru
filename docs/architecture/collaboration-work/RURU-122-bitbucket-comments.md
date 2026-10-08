@@ -98,3 +98,18 @@ unavailable primary declarations. The final comment runtime delta passed 3/3;
 strict collaboration Clippy over all targets, Rust formatting and diff whitespace
 checks passed. These are local results; final stack integration, generated IPC
 verification, full workspace verification and remote CI remain root-owned gates.
+
+
+## Integrated workspace qualification
+
+Signed product source `d114202c50d381bddb2bf1701213de4dc8292bc4` passes complete
+local `make verify`: 804 frontend passes/one platform skip and 1,330 Rust test
+executions/seven helper ignores, lint, TypeScript checks, desktop build, formatting
+and strict workspace Clippy. The reviewed native adapter and common UI are
+stacked on Activity PR184. There is no schema/public IPC change. No authenticated
+provider, production vault or packaged GUI qualification is claimed.
+
+The platform-test job budget also consumes the diagnosed R130 CI repair:45 to60
+minutes. Its Windows job113090183418 passed workspace and retained tests before
+cache upload hit the old job boundary. No test/assertion/retry behavior changes;
+new-head remote CI is separate.
