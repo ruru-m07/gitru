@@ -203,3 +203,50 @@ fourteen metadata field observations, with GitHub's unavailable merge base marke
 These are contract checkpoints, not a claim that end-to-end creation or schema23
 qualification is complete. Recovery and native runtime/provider controls are being
 qualified independently; no live account or provider mutation has been used.
+
+## Schema23 recovery qualification and native caller boundary
+
+Native source checkpoint `b69807a1a500b09562fd9660070adf442af62627`
+qualified 26 synthetic creation/publication controls and strict collaboration
+all-target Clippy. The recovery lane adds a frozen byte-identical schema22
+migration/checksum, streaming typed draft/submission/attempt/proof verification,
+and exact bidirectional confirmed-resolution linkage. Both pre-attempt and
+post-claim no-HTTP decline evidence retain their exact conflict ordinal and typed
+preparation. Canonical receipt proof, actor, metadata and actual head observations
+remain immutable; no process-local grant can be reconstructed from them.
+
+The recovery matrix covers queued, attempted-unknown and confirmed histories,
+repeated backup/restore, exact authored/envelope/proof bytes, and current account
+reauthorization. Pending restored commands remain quarantined and reject new
+attempt inserts; already-confirmed history remains terminal rather than gaining a
+spurious pending quarantine. Nineteen strong-proof corruption variants and eight
+pre/post-attempt decline corruption variants reject the backup without modifying
+selected or current files. Schema23 late-DDL failure rolls back the full migration,
+preserves schema22 authored rows and retries cleanly.
+
+The following native Git/IPC slice is scoped to fresh local observations at
+preview and confirmation. It resolves a literal full local branch with bounded
+local-only Git commands and a ten-second deadline including runner queue wait,
+checks HEAD/source/path observations twice, and never pushes, fetches, checks out
+or refreshes the index. The retained native owner rechecks window incarnation,
+context ownership and configured registration/filesystem identity under the
+writer and before dispatch. It rediscovers current `.git` coordinates so replacing
+that pointer cannot reuse old directory evidence. These are temporal drift checks;
+external Git/config changes after observation are not locked atomically with the
+remote POST. A durable exact-UUID receipt can still be recovered before attempting
+new Git or provider observations.
+
+Qualification here uses temporary repositories, synthetic HTTP and SQLite only.
+IPC/UI integration, full workspace checks, remote CI, packaged platform behavior
+and live GitHub endpoint compatibility remain separate gates.
+
+Completed recovery qualification on this checkpoint: `cargo test -p collaboration
+--lib recovery::` — 35 passed, one intentional subprocess-entry ignore;
+`cargo test -p collaboration --test recovery --test recovery_migrations` — 14 and
+10 passed; strict collaboration all-target Clippy passed. Earlier reruns identified
+and corrected only two test expectations: confirmed commands are terminal rather
+than quarantined, and the historical-v1 restore now applies 23 migrations. The
+unchanged frozen-v22 checksum is
+`48c80b4dd9bd4594e02cb1e4108f84e1325cea2b6df0ab9926b3094903974813c86851f400352d8fc4c97b05c0b032c6`.
+This qualifies schema23/recovery for R132 to stack migration24; it does not claim
+completion of the still-in-progress native Git/IPC and frontend integration.
