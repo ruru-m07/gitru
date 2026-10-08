@@ -590,6 +590,27 @@ async fn summary(
     })
 }
 
+/// Validate a closed standalone export against the reviewed restore policy.
+/// Used before and after the standardized portable encryption envelope. It does
+/// not migrate or mutate the selected file.
+pub(crate) async fn inspect_standalone_backup(path: &Path) -> Result<BackupSummary> {
+    require_regular(path)?;
+    if std::fs::metadata(path).map_err(|_| invalid_backup())?.len() > MAX_DATABASE_BYTES {
+        return Err(invalid_backup());
+    }
+    if ["-wal", "-shm", "-journal"]
+        .iter()
+        .any(|suffix| append(path, suffix).exists())
+    {
+        return Err(invalid_backup());
+    }
+    let mut connection = connect(path, true).await?;
+    let version = verify(&mut connection).await?;
+    let result = summary(&mut connection, version, hash_file(path)?).await;
+    connection.close().await.map_err(|_| storage())?;
+    result
+}
+
 async fn verify(connection: &mut SqliteConnection) -> Result<i64> {
     verify_mode(connection, false).await
 }

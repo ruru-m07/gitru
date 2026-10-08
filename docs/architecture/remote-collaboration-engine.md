@@ -1278,6 +1278,14 @@ aggregate latency/job/error categories. No repo identifiers, account names, text
 remotes, provider URLs, tokens, or raw errors. Keep a local opt-in diagnostic view
 with bounded nonsensitive queue/rate/coverage information for support.
 
+Portable collaboration backups use the interoperable age v1 binary format with
+its scrypt passphrase recipient and an explicit user-held restore credential.
+The authenticated payload binds a bounded Gitru manifest to one reviewed SQLite
+snapshot before the existing migration/quarantine recovery transaction can run.
+The device database key is never assumed to travel with the artifact. See the
+[RURU-141 work note](collaboration-work/RURU-141.md) for the staging exposure
+inventory and the remaining native keyed import/rekey qualification gate.
+
 ## 19. Database migrations and schema evolution
 
 Version storage schema, public DTOs, provider facet schemas, normalized projections,

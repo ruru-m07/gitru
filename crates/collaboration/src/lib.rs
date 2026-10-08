@@ -20,6 +20,7 @@ pub mod github_cli;
 pub mod local_links;
 pub mod notification_subjects;
 pub mod participants;
+pub mod portable_backup;
 pub mod provider_inbox_actions;
 pub mod providers;
 pub mod pull_commits;

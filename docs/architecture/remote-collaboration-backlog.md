@@ -2781,3 +2781,16 @@ latency result requires profiling and repeated controlled samples. WebKit RSS
 and the 100k/500k memory targets remain unqualified. Exact binary hashes, query
 percentiles, reports and limitations are in
 [the RURU-139 work note](collaboration-work/RURU-139.md).
+
+### RURU-141 portable encrypted envelope — 8 October 2026
+
+The first RURU-141 slice uses the standard age v1+scrypt format with an explicit
+user restore passphrase, an authenticated bounded Gitru manifest and the existing
+schema/migration/quarantine recovery transaction. Focused synthetic tests cover
+round-trip recovery, historical schema migration, wrong key, tamper, truncation,
+WAL/unknown-schema rejection, create-new publication and artifact scans. The
+[work note](collaboration-work/RURU-141.md) records the private restore-staging
+exposure boundary. Existing keyed Store backup/restore remains fail closed until
+RURU-140 supplies a trusted SQLCipher import/rekey candidate; wrapping a local
+device-key database is deliberately not presented as portable. RURU-141 remains
+in progress and no production UI/IPC is enabled by this slice.

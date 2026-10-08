@@ -222,6 +222,23 @@ impl Store {
         crate::recovery::backup_from(&mut writer, path.as_ref()).await
     }
 
+    /// Create an age-encrypted portable backup without publishing an
+    /// intermediate plaintext export. The explicit user credential is never
+    /// persisted or substituted with the device database key.
+    pub async fn portable_backup_to(
+        &self,
+        path: impl AsRef<Path>,
+        credential: &crate::portable_backup::PortableBackupCredential,
+    ) -> Result<crate::recovery::BackupSummary> {
+        #[cfg(feature = "native-keyed-store")]
+        if self.inner.keyed.is_some() {
+            return Err(keyed::keyed_recovery_required());
+        }
+        let mut writer = self.inner.writer.acquire().await?;
+        crate::portable_backup::encrypt_from_connection(&mut writer, path.as_ref(), credential)
+            .await
+    }
+
     pub async fn revision(&self) -> Result<String> {
         let value: i64 = sqlx::query_scalar("SELECT revision FROM runtime_meta WHERE singleton=1")
             .fetch_one(&self.inner.readers)
