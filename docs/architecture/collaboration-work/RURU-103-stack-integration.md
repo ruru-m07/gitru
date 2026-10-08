@@ -224,3 +224,24 @@ CI must qualify this updated PR head independently. Existing draft PR157 is
 updated in place; R103 remains In Review and no PR is merged. Live providers,
 platform vaults, OS suspend, power loss and newly packaged webviews remain outside
 this focused integration qualification.
+
+## Accepted bounded bootstrap retry repair — 8 October 2026
+
+At existing PR157 head `c6eb7e6d678ee13e7a9873219fd1ee17a33bef77`, Windows
+retained job `113105235685` in run `37713703276` passes all six main scenarios
+but fails before-crash setup: the compiled executor is absent throughout its
+30-second startup wait. The driver is on native main; the retained native log
+records slow migration initialization. No crash checkpoint was issued. Artifacts
+were inspected before editing; no error message identifies the exact failed
+manifest call, so that detail remains unobserved.
+
+Source inspection identifies a reproducible startup race: native HarnessState
+returns NotReady after a bounded 2.5-second wait, and the compiled bootstrap
+awaits its initial manifest once without retry. That rejection permanently skips
+executor installation, even if native readiness arrives during the driver's
+remaining wait. Reproduce a finite NotReady-to-ready sequence, then retry only
+that typed transient result within a 25-second fixture-only startup bound.
+Authentication, permission, stale-view and unexpected errors must fail immediately.
+Preserve real native ownership, scenario/crash assertions, 30-second driver bound
+and production bootstrap behavior. Qualify synthetic helper controls and existing
+executor/probe suites; new-head Windows retained CI remains a separate gate.
