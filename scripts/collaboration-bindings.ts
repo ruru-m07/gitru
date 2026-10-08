@@ -32,6 +32,9 @@ const workflowState = await Bun.file(
 const commentSend = await Bun.file(
   new URL("crates/collaboration/src/comment_send.rs", root),
 ).text();
+const pullCreation = await Bun.file(
+  new URL("crates/collaboration/src/pull_creation.rs", root),
+).text();
 const issueCreation = await Bun.file(
   new URL("crates/collaboration/src/issue_creation.rs", root),
 ).text();
@@ -119,6 +122,8 @@ const snake = (value: string) =>
 // These serialized cache/parser types are native-only and deliberately absent
 // from renderer command signatures. If reachable later, correct them normally.
 const nativeOnlyTypes = new Set([
+  "PullCreationLocalObservation",
+  "PullCreationOwner",
   "CommandRecoveryExport",
   "NotificationSubjectKind",
   "NotificationSubjectRepresentation",
@@ -376,6 +381,7 @@ for (const source of [
   guardedMerge,
   commentSend,
   issueCreation,
+  pullCreation,
   providerInboxActions,
   domain,
   error,

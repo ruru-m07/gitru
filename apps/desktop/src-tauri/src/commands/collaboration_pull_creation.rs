@@ -1,7 +1,7 @@
 //! Native registration/ref observations for explicit online PR creation.
 use super::{
-    collaboration::{CollaborationState, Operation, authorize},
-    collaboration_local_links::{CallerProof, observe},
+    collaboration::{authorize, CollaborationState, Operation},
+    collaboration_local_links::{observe, CallerProof},
 };
 use collaboration::{
     CollaborationError, ErrorCode, LocalLinkState, LocalLinkVersion, PreviewPullCreationRequest,
@@ -251,15 +251,13 @@ mod tests {
     use super::*;
     use std::{path::Path, process::Command};
     fn init(path: &Path) {
-        assert!(
-            Command::new("git")
-                .args(["init", "-b", "main"])
-                .arg(path)
-                .output()
-                .unwrap()
-                .status
-                .success()
-        );
+        assert!(Command::new("git")
+            .args(["init", "-b", "main"])
+            .arg(path)
+            .output()
+            .unwrap()
+            .status
+            .success());
     }
     fn info(path: &Path) -> RepositoryInfo {
         RepositoryInfo {
@@ -311,17 +309,15 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("repo");
         let metadata = root.path().join("original-metadata");
-        assert!(
-            Command::new("git")
-                .arg("init")
-                .arg("--separate-git-dir")
-                .arg(&metadata)
-                .arg(&path)
-                .output()
-                .unwrap()
-                .status
-                .success()
-        );
+        assert!(Command::new("git")
+            .arg("init")
+            .arg("--separate-git-dir")
+            .arg(&metadata)
+            .arg(&path)
+            .output()
+            .unwrap()
+            .status
+            .success());
         let current = info(&path);
         let saved = expected(current.clone());
         let alternate = root.path().join("alternate");
