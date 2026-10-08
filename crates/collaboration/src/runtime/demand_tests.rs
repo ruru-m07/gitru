@@ -741,6 +741,129 @@ async fn fair_arbitration_reserves_background_turns_and_rotates_accounts_and_sco
     assert_eq!(order[4], ("b".into(), "test-1".into()));
 }
 
+fn mixed_priority_scheduler(details: &[&str], indices: &[&str], background: &[&str]) -> Scheduler {
+    let mut scheduler = Scheduler::default();
+    for (ids, detail, reason) in [
+        (details, true, scheduler::Admission::Manual),
+        (indices, false, scheduler::Admission::Manual),
+        (background, false, scheduler::Admission::Reconcile),
+    ] {
+        for id in ids {
+            for scope in 0..2 {
+                let mut job = queued(&fixtures::account(id), scope, reason);
+                if detail {
+                    job.kind = JobKind::Detail {
+                        subject_id: format!("subject-{scope}"),
+                        facet: DetailFacet::Body,
+                    };
+                }
+                if reason == scheduler::Admission::Manual {
+                    scheduler.manual_keys.insert(job.key.clone());
+                }
+                scheduler.queue.push_back(job);
+            }
+        }
+    }
+    scheduler
+}
+
+fn replenished_picks(
+    scheduler: &mut Scheduler,
+    now: Instant,
+    count: usize,
+) -> Vec<(String, String)> {
+    (0..count)
+        .map(|_| {
+            let job = scheduler.pick(now).expect("continuously eligible work");
+            let picked = (job.account.id.clone(), job.scope.clone());
+            scheduler.requeue(job);
+            picked
+        })
+        .collect()
+}
+
+#[test]
+fn priority_classes_cannot_starve_index_accounts_behind_a_later_detail_account() {
+    let mut scheduler = mixed_priority_scheduler(&["z"], &["a", "b"], &["c", "d"]);
+    let order = replenished_picks(&mut scheduler, Instant::now(), 48);
+    let indices: Vec<_> = order
+        .iter()
+        .filter(|(id, _)| matches!(id.as_str(), "a" | "b"))
+        .map(|(id, scope)| (id.as_str(), scope.as_str()))
+        .collect();
+    let round = [
+        ("a", "test-0"),
+        ("b", "test-0"),
+        ("a", "test-1"),
+        ("b", "test-1"),
+    ];
+    assert_eq!(
+        indices,
+        round.repeat(3),
+        "index accounts and scopes rotate within their own class"
+    );
+    assert_eq!(order.iter().filter(|(id, _)| id == "z").count(), 24);
+    for id in ["c", "d"] {
+        assert_eq!(order.iter().filter(|(picked, _)| picked == id).count(), 6);
+    }
+    for (turn, (id, _)) in order.iter().enumerate() {
+        assert_eq!(matches!(id.as_str(), "c" | "d"), turn % 4 == 3);
+    }
+}
+
+#[test]
+fn priority_classes_cannot_starve_detail_accounts_when_index_turns_reset_the_shared_cursor() {
+    let mut scheduler = mixed_priority_scheduler(&["a", "b", "c", "d"], &["z"], &["y"]);
+    let order = replenished_picks(&mut scheduler, Instant::now(), 64);
+    for id in ["a", "b", "c", "d"] {
+        let scopes: Vec<_> = order
+            .iter()
+            .filter(|(picked, _)| picked == id)
+            .map(|(_, scope)| scope.as_str())
+            .collect();
+        assert_eq!(
+            scopes,
+            ["test-0", "test-1"].repeat(4),
+            "detail account {id} receives bounded service"
+        );
+    }
+    assert_eq!(order.iter().filter(|(id, _)| id == "z").count(), 16);
+    assert_eq!(order.iter().filter(|(id, _)| id == "y").count(), 16);
+}
+
+#[test]
+fn priority_class_rotation_skips_cooldowns_and_resumes_without_resetting_peer_fairness() {
+    let clock = ManualClock::new();
+    let mut scheduler = mixed_priority_scheduler(&["z"], &["a", "b"], &["m"]);
+    scheduler.account_cooldowns.insert(
+        "a".into(),
+        clock::AccountCooldown::after(clock.now(), Duration::from_secs(60)),
+    );
+    let before = replenished_picks(&mut scheduler, clock.now(), 12);
+    assert!(before.iter().all(|(id, _)| id != "a"));
+    assert_eq!(scheduler.deferred.len(), 2, "manual receipts remain queued");
+    clock.advance(59);
+    assert!(
+        replenished_picks(&mut scheduler, clock.now(), 4)
+            .iter()
+            .all(|(id, _)| id != "a")
+    );
+    clock.advance(1);
+    let resumed = replenished_picks(&mut scheduler, clock.now(), 16);
+    let indices: Vec<_> = resumed
+        .iter()
+        .filter(|(id, _)| matches!(id.as_str(), "a" | "b"))
+        .map(|(id, _)| id.as_str())
+        .collect();
+    assert_eq!(indices, ["a", "b", "a", "b"]);
+    assert!(scheduler.deferred.is_empty());
+    assert_eq!(
+        scheduler.queue.len(),
+        8,
+        "all scopes remain bounded and recoverable"
+    );
+}
+
 #[tokio::test]
 async fn blocked_accounts_do_not_consume_ready_capacity_and_manual_receipts_resume_at_exact_deadline()
  {

@@ -40,5 +40,25 @@ lifecycle evidence separate. No personal credentials or live mutations are used.
 
 ## Progress
 
-Design recorded before implementation. Regression reproduction and qualification
-are pending.
+The two starvation controls both failed against unchanged production after the
+signed design checkpoint `fba7765`; account `b` received no index turns, while
+only the first two of four detail accounts received service in the inverse case.
+The repair gives detail and index arbitration separate account cursors. A third
+control verifies no early dispatch during a cooldown and fair peer rotation at
+its exact expiry. Independent source review found no blocker.
+
+Local qualification on the repaired source:
+
+- `cargo test -p collaboration --all-features`: **1,019 passed, five subprocess
+  helper ignores**, including 21 demand/scheduler controls and 16 independent
+  clock/lifecycle controls.
+- `cargo clippy -p collaboration --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo fmt --all -- --check` and `git diff --check`: passed.
+- Logs: `/tmp/gitru-r102-fairness-red.log`,
+  `/tmp/gitru-r102-fairness-native.log`, `/tmp/gitru-r102-fairness-clippy.log`.
+
+No public types or command signatures changed, so generated IPC is unchanged.
+Frontend/packaged tests were not rerun for this native arbitration-only delta.
+Remote CI and live provider/OS suspend evidence remain separate. RURU-102 stays
+In Progress for API-family budget attribution and remaining lifecycle policy.

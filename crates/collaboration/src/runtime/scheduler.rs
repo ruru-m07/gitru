@@ -200,8 +200,12 @@ impl Scheduler {
             .filter(|job| selected(job))
             .map(|job| job.account.id.clone())
             .collect();
-        let last = if interactive {
-            &self.interactive_account
+        // Each priority class rotates its own account population. Sharing a
+        // cursor lets a disjoint class reset it and starve eligible accounts.
+        let last = if interactive && detail {
+            &self.interactive_detail_account
+        } else if interactive {
+            &self.interactive_index_account
         } else {
             &self.reconciliation_account
         };
@@ -221,7 +225,11 @@ impl Scheduler {
                 0
             };
             self.interactive_turns = self.interactive_turns.saturating_add(1).min(3);
-            self.interactive_account = Some(account);
+            if detail {
+                self.interactive_detail_account = Some(account);
+            } else {
+                self.interactive_index_account = Some(account);
+            }
         } else {
             self.interactive_turns = 0;
             self.reconciliation_account = Some(account);
