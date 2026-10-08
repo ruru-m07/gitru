@@ -111,3 +111,10 @@ snapshot, while new intent remains disabled. There are no new schema migrations.
 Remote CI begins at publication; authenticated numeric mutation-alias support,
 platform vaults and packaged-window behavior are not established by local fixtures.
 No merge was performed. Labels and other-provider writes remain separate work.
+
+
+Retained draft follow-up: signed integration `5ed4e2bc` consumes RURU-131's
+synchronous account/reset redaction and exact-retry authorization gate. The merged
+SDK passes207 tests, all six comment-composer and five workflow-state UI cases
+pass, and both TypeScript checks pass. Native workflow source is unchanged from
+the full workspace baseline above. New-head remote CI remains distinct.
