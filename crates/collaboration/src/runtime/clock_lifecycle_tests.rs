@@ -1077,3 +1077,89 @@ async fn long_clock_cold_valid_wall_preserves_full_deadline_and_peer_progress() 
         Some(draft)
     );
 }
+
+#[tokio::test]
+async fn long_clock_direct_cold_admission_seeds_full_wait_without_enqueue() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("cache.sqlite");
+    let f = setup(&path).await;
+    let peer = add_actor(&f.runtime.store, &f.vault, "b").await;
+    // Retain genuine admitted work, then exercise the shared admission boundary
+    // directly after reopening. The new scheduler never enqueues these jobs.
+    admit(&f.runtime, &f.account, true).await;
+    admit(&f.runtime, &peer, false).await;
+    let (mut own_job, mut peer_job) = {
+        let scheduler = f.runtime.scheduler.lock().await;
+        let job = |account_id: &str| {
+            scheduler
+                .queue
+                .iter()
+                .find(|job| job.account.id == account_id)
+                .unwrap()
+                .clone()
+        };
+        (job(&f.account.id), job(&peer.id))
+    };
+    boundary_receipt(&f.runtime, &f.adapter, &f.account, 48 * 3600)
+        .await
+        .unwrap();
+    let original = deadline(&f.runtime, &f.account).await;
+    f.clock.move_utc(3600);
+    f.clock.advance_monotonic(3600);
+    let Fixture {
+        runtime,
+        clock,
+        vault,
+        adapter,
+        account,
+    } = f;
+    runtime.store.close().await;
+    drop(runtime);
+    let mut cold = CollaborationRuntime::new(
+        Arc::new(Store::open(&path).await.unwrap()),
+        vault.clone(),
+        adapter.clone(),
+    );
+    cold.clock = clock.clone();
+    assert_eq!(
+        cold.ensure_provider_budget(&account, &mut own_job)
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::RateLimited
+    );
+    cold.ensure_provider_budget(&peer, &mut peer_job)
+        .await
+        .unwrap();
+    clock.advance_monotonic(25 * 3600);
+    clock.move_utc(72 * 3600);
+    assert_eq!(
+        cold.ensure_provider_budget(&account, &mut own_job)
+            .await
+            .expect_err("cold admission must retain all 47 remaining hours")
+            .code,
+        ErrorCode::RateLimited
+    );
+    cold.ensure_provider_budget(&peer, &mut peer_job)
+        .await
+        .unwrap();
+    assert_eq!(deadline(&cold, &account).await, original);
+    {
+        let scheduler = cold.scheduler.lock().await;
+        assert!(scheduler.queue.is_empty());
+        assert_eq!(scheduler.account_cooldowns.len(), 1);
+    }
+    clock.advance_monotonic(22 * 3600 - 1);
+    assert!(
+        cold.ensure_provider_budget(&account, &mut own_job)
+            .await
+            .is_err()
+    );
+    clock.advance_monotonic(1);
+    cold.ensure_provider_budget(&account, &mut own_job)
+        .await
+        .unwrap();
+    assert_eq!(deadline(&cold, &account).await, original);
+    assert_eq!(adapter.read_count(), 0);
+    assert_eq!(vault.loads.load(Ordering::SeqCst), 0);
+}

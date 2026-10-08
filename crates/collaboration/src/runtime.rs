@@ -1105,14 +1105,24 @@ impl CollaborationRuntime {
     ) -> Result<(), CollaborationError> {
         // Serialize the check with accepted durable writes and live installation.
         // The full persisted deadline is reread after every bounded live wake.
-        let scheduler = self.scheduler.lock().await;
+        let mut scheduler = self.scheduler.lock().await;
         let durable = self
             .store
             .scope_state(&account.id, "provider:rest")
             .await?
             .and_then(|scope| scope.sync.next_retry_at)
             .as_deref()
-            .and_then(|time| self.delay_until(time));
+            .and_then(|time| self.provider_delay_until(time));
+        // Direct admission can be the first request after a cold open, without
+        // passing through scheduler enqueue. Preserve this observed remaining
+        // wait monotonically before a later wall-clock jump can erase it.
+        if let Some(delay) = durable {
+            Self::install_provider_cooldown(
+                &mut scheduler,
+                &account.id,
+                clock::AccountCooldown::after(self.now(), delay),
+            );
+        }
         let live = scheduler
             .account_cooldowns
             .get(&account.id)
