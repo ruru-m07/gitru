@@ -353,3 +353,53 @@ without changing behavior. The complete workspace gate remains pending at this
 checkpoint. One
 intermediate compile saw the recovery module declaration before its concurrently
 owned source file existed; it was an integration checkpoint, not a runtime fault.
+
+## Integrated recovery and review base
+
+Native checkpoint `c271bbf2fbe83b1bf0cfc7d31ab69504cd471dbc` is signed and
+passes all 47 focused metadata controls and strict all-target/all-feature
+collaboration Clippy. Schema25 recovery checkpoint
+`03783ce10041c9d1195711121c69cf34faed2d77` is signed separately. Recovery units
+pass 38 with one existing subprocess helper ignored; recovery integrations pass
+14, and migration integrations pass 12, including historical schemas1–24 and
+schema25 failure rollback. A final valid-restore control separately passes after
+adding explicit catalog-purge and authored-name-retention assertions. Twenty-six
+corruption variants cover metadata and proof linkage. Valid immutable v1 bytes
+remain unchanged; restored v2 commands stay quarantined. The duplicate recovery
+Clippy process was stopped after the shared source's strict run passed and is not
+counted as a second result.
+
+The review base `ruru/ruru-134-metadata-dependencies` at signed
+`3a2d7ca14171eff6bcc84d76bf40ed7aa1cda634` combines PR203's review prerequisite
+with PR201's separate creation-budget repair. Only appended architecture/backlog
+sections conflicted; both were retained. Signed merge `db04b366` incorporates
+that review base without changing the source tree (before and after tree
+`c40084a48581cbac05f6dc294d53866487d54279`). This keeps the already published
+creation-budget changes outside this metadata PR's review diff.
+
+The upcoming PR also carries the exact Rust-quality outer allowance of 45 minutes
+from PR193's signed `ac14f582`, whose earlier 30-minute job `113207674587`
+completed normal Clippy but timed out while compiling retained-harness
+dependencies. Commands and warning enforcement remain unchanged. This records
+the originating failure, not a remote result for the metadata branch.
+
+## Final integration repairs and qualification
+
+The first full native run exposed one cross-feature prerequisite failure rather
+than a metadata failure: guarded-merge preparation revalidation called its
+context-producing method again, which rotated the durable run UUID and then
+rejected its own just-created context as stale. Delivery policies now have a
+read-only context-match hook. Guarded merge implements it by capturing and
+encoding the current frame without rotating the run; the exact consent-expiry
+fixture passes and still performs zero provider preflight after expiry.
+
+Final catalog review separately reproduced an expired terminal due timestamp
+being reused after a completed traversal. Terminal repository-metadata jobs now
+install a fresh five-minute due instead of retaining the expired entry. The
+deterministic two-traversal regression failed before repair and passes afterward.
+The complete collaboration library then passes **909 tests / 4 ignored / 0
+failed** in one all-feature run, including both repaired boundaries. The earlier
+full workspace run passed every remaining target and exposed only the now-fixed
+guarded-merge case. Final strict workspace all-target/all-feature Clippy, rustfmt
+and diff checks pass. Remote exact-head CI and live provider/vault/platform
+qualification remain separate from these local results.

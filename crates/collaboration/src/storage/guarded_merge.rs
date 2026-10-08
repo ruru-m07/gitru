@@ -278,3 +278,16 @@ pub(crate) async fn prepare_in(
     .map_err(storage_error)?;
     crate::guarded_merge::native::encode(&f)
 }
+pub(crate) async fn preparation_matches_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    c: &crate::delivery::DeliveryCommand,
+    a: &RemoteAccount,
+    expected: &[u8],
+) -> super::Result<bool> {
+    let f = capture_in(tx, a, &c.target_id).await?;
+    let p = decode_payload(c)?;
+    if !matches_frame(&p, &f) {
+        return Ok(false);
+    }
+    Ok(crate::guarded_merge::native::encode(&f)? == expected)
+}

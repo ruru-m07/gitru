@@ -240,6 +240,15 @@ pub(crate) trait CommandDeliveryPolicy: Send + Sync {
     ) -> Result<Vec<u8>, CollaborationError> {
         Ok(vec![])
     }
+    async fn preparation_context_matches_in(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+        command: &DeliveryCommand,
+        account: &RemoteAccount,
+        expected: &[u8],
+    ) -> Result<bool, CollaborationError> {
+        Ok(self.prepare_context_in(tx, command, account).await? == expected)
+    }
     async fn prepare(
         &self,
         _token: &SecretToken,

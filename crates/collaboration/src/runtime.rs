@@ -1258,10 +1258,17 @@ impl CollaborationRuntime {
         scheduler.manual_keys.remove(&job.key);
         scheduler.foreground_keys.remove(&job.key);
         if epoch_is_current {
-            scheduler
-                .due
-                .entry(job.key)
-                .or_insert_with(|| self.deadline_after(60));
+            if matches!(job.kind, JobKind::RepositoryMetadata { .. }) {
+                // A completed traversal supersedes its prior deadline. Keeping
+                // an already-expired entry would immediately dispatch another
+                // provider traversal while the catalog is freshly observed.
+                scheduler.due.insert(job.key, self.deadline_after(300));
+            } else {
+                scheduler
+                    .due
+                    .entry(job.key)
+                    .or_insert_with(|| self.deadline_after(60));
+            }
         }
         true
     }

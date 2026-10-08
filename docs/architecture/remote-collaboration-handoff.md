@@ -1,6 +1,63 @@
 # RURU-53 remaining-work handoff
 
-Snapshot: **8 October 2026, 01:55 UTC**. Read live Linear children, individual blocker relations and recent progress comments; checked open GitHub PRs and current implementation worknotes. This is the remaining-work record with a separately timestamped exact-head PR ledger below. It does not label pending checks or unpublished local work as completed.
+## Current continuation — 8 October 2026, 08:42 UTC
+
+This section supersedes the historical handoff below. A live Linear refresh
+returns all 49 direct children: **42 In Review, 3 In Progress, 1 Todo and
+3 conditional Backlog**. The three In Progress issues are R102, R107 and R134;
+R75 remains Todo. R108 additionally has R139 and R140 In Progress, and R141 in
+Backlog. No issue or implementation PR was marked merged or shipped.
+
+The next actionable work is:
+
+- **R134:** integrated label, assignee and milestone drafts/catalogs/delivery are
+  locally qualified. The frontend suite passes 932 tests/one existing skip;
+  schema25 recovery and the historical 1–24 migration matrix pass. The final
+  collaboration library run passes 909/4 ignored after repairing a terminal
+  catalog deadline loop and a prerequisite guarded-merge read-only recheck.
+  Publish on the review dependency composite combining PR203 reviews and PR201
+  creation budgets. Preserve each field's independent metadata outcome; a
+  confirmed issue does not imply every requested field was applied.
+- **R102:** account fairness is published in PR191. Draft PR205 at signed
+  `4bb86b98` repairs truncated quota diagnostics and qualifies cold backward/
+  forward clock and replacement behavior with synthetic clocks. The full native
+  run passes 1,025/5 ignored and strict Clippy passes; exact-head CI is running.
+  Current
+  GitHub routes all use REST core, so keep the conservative shared provider
+  floor rather than invent unsupported family classifications.
+- **R107:** PR192 supplies synthetic cache/vault-failure qualification. PR204 at
+  `e576fef2` now passes actual native adapter seed/cold-reopen/cleanup on Linux,
+  macOS and Windows hosted runners; Linux additionally passes an unavailable
+  private D-Bus control. The remaining aggregate CI is pending. Interactive
+  locked/user-denied prompts and R75 live PAT/CLI remain separate evidence.
+- **R139/R140:** the verified SQLCipher build, create-only macOS key vault and
+  owned keyed connection factory are published in PR193/194/200/202. PR200's
+  exact `ad9a46c1` has all 15 checks green. PR193 `ac14f582` carries a diagnosed
+  Clippy cold-build allowance; PR202 `8d8073f5` fixes a fixture's missing native
+  worker-release acknowledgement and inherits that allowance. Their new-head
+  CI is pending. Production Store remains plaintext. Next: current-schema keyed
+  Store ownership/identity, remaining platform key stores, then recoverable
+  conversion and activation. Do not bypass the WAL gate or key-before-SQL rule.
+- **R141:** portable encrypted backup/key wrapping and artifact exposure remain
+  dependent on qualified keyed Store/recovery. The design must not assume the
+  original device vault travels with an export.
+
+R120 PR creation, R132 review submission, R133 guarded merge, R129 labels and
+R122 GitLab/Bitbucket activity now have reviewable implementation PRs. The older
+missing-feature descriptions below are historical, not the next work queue.
+Provider parity, live write compatibility and interactive platform gates are
+not inferred from fixtures or open PRs. R75 still needs a dedicated test account;
+personal credentials remain outside unattended validation. R109/R113/R135 stay
+explicitly deferred. All active checkouts and heavy build targets are on Lexar.
+
+The dependency composite is a review base, not a merge into dev. Local checks,
+remote results at exact source heads, and live provider/platform checks remain
+separate. Continue actual failures before duplicate PRs. See the current issue
+worknotes for command-level evidence and the architecture progress appendices.
+
+## Historical handoff — 8 October 2026, 01:55 UTC
+
+Read live Linear children, individual blocker relations and recent progress comments; checked open GitHub PRs and current implementation worknotes. The following original remaining-work record and exact-head PR ledger are retained as historical evidence. They do not describe the current implementation queue.
 
 ## What the status means
 

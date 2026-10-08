@@ -131,3 +131,9 @@ timing controls (missing awaited list row / five-second test timeout). Those
 controls are being rechecked at bounded worker concurrency; this checkpoint does
 not claim the full frontend suite passed. Native migration/delivery/recovery gates
 remain separate and in progress. No authenticated live provider test ran.
+
+The two unchanged failing files then passed all 44 controls with two workers.
+A complete unchanged frontend rerun with four workers passed **932 tests**, with
+one pre-existing skip across 106 files. No product assertion or test timeout was
+relaxed. The full frontend suite is therefore qualified locally; native schema25
+migration/recovery and delivery qualification are still tracked separately.
