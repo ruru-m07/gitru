@@ -2060,6 +2060,7 @@ dependencies = [
  "chrono",
  "collaboration",
  "git",
+ "gitru-keyed-connections",
  "ipc",
  "keyring",
  "log",
@@ -2082,6 +2083,18 @@ dependencies = [
  "tokio",
  "url",
  "uuid",
+ "zeroize",
+]
+
+[[package]]
+name = "gitru-keyed-connections"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "collaboration",
+ "libsqlite3-sys",
+ "sqlx",
+ "tokio",
 ]
 
 [[package]]
@@ -3069,6 +3082,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1f111c8c41e7c61a49cd34e44c7619462967221a6443b0ec299e0ac30cfb9b1"
 dependencies = [
  "cc",
+ "openssl-sys",
  "pkg-config",
  "vcpkg",
 ]

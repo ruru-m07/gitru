@@ -32,6 +32,9 @@ fn wrapper_rejects_irrelevant_core_and_gate_parameters() {
 struct RootFixture(PathBuf);
 impl RootFixture {
     fn new(nonce: &str) -> Self {
+        Self::with_storage(nonce, None)
+    }
+    fn with_storage(nonce: &str, storage_mode: Option<&str>) -> Self {
         let root =
             std::env::temp_dir().join(format!("gitru-ruru103-app-test-{}", uuid::Uuid::new_v4()));
         let mut builder = fs::DirBuilder::new();
@@ -42,16 +45,39 @@ impl RootFixture {
         }
         builder.create(&root).unwrap();
         let root = fs::canonicalize(root).unwrap();
-        fs::write(
-            root.join("run.json"),
-            serde_json::to_vec(
-                &serde_json::json!({"version":1,"application_id":APPLICATION_ID,"run_nonce":nonce}),
-            )
-            .unwrap(),
-        )
-        .unwrap();
+        let mut marker =
+            serde_json::json!({"version":1,"application_id":APPLICATION_ID,"run_nonce":nonce});
+        if let Some(storage_mode) = storage_mode {
+            marker["storage_mode"] = serde_json::Value::String(storage_mode.into());
+        }
+        fs::write(root.join("run.json"), serde_json::to_vec(&marker).unwrap()).unwrap();
         Self(root)
     }
+}
+
+#[test]
+fn launch_owned_marker_selects_one_immutable_storage_mode() {
+    let nonce = uuid::Uuid::new_v4().to_string();
+    let keyed = RootFixture::with_storage(&nonce, Some("keyed"));
+    let launch = LaunchRoot::open(APPLICATION_ID, keyed.0.clone(), nonce.clone()).unwrap();
+    assert_eq!(launch.storage_mode, HarnessStorageMode::Keyed);
+
+    fs::write(
+        keyed.0.join("run.json"),
+        serde_json::to_vec(&serde_json::json!({
+            "version": 1,
+            "application_id": APPLICATION_ID,
+            "run_nonce": nonce,
+            "storage_mode": "plaintext"
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    assert!(launch.check().is_err());
+
+    let nonce = uuid::Uuid::new_v4().to_string();
+    let invalid = RootFixture::with_storage(&nonce, Some("personal_keychain"));
+    assert!(LaunchRoot::open(APPLICATION_ID, invalid.0.clone(), nonce).is_err());
 }
 impl Drop for RootFixture {
     fn drop(&mut self) {

@@ -18,6 +18,11 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 default = []
 e2e = ["dep:tauri-plugin-wdio", "dep:tauri-plugin-wdio-webdriver"]
 collaboration-harness = ["e2e", "collaboration/test-harness"]
+native-keyed-storage = [
+  "collaboration/native-keyed-store",
+  "dep:gitru-keyed-connections",
+  "dep:zeroize",
+]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -28,6 +33,7 @@ serde = { version = "1", features = ["derive"] }
 ipc = { path = "../../../crates/ipc" }
 git = { path = "../../../crates/git" }
 collaboration = { path = "../../../crates/collaboration" }
+gitru-keyed-connections = { path = "../../../crates/keyed-connections", optional = true }
 keyring = { version = "=3.6.3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust", "vendored"] }
 tokio = { version = "1", features = ["full"] }
 tauri-plugin-opener = "2"
@@ -45,6 +51,7 @@ log = "0.4"
 url = "2"
 tempfile = "3"
 uuid = { version = "1", features = ["v4"] }
+zeroize = { version = "1", optional = true }
 tauri-plugin-wdio = { version = "=1.4.0", optional = true }
 tauri-plugin-wdio-webdriver = { version = "=1.4.0", optional = true }
 

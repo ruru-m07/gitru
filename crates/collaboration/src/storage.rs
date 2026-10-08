@@ -122,6 +122,11 @@ struct DraftCursor {
 
 impl Store {
     #[cfg(feature = "test-harness")]
+    pub fn harness_owns_path(&self, path: &Path) -> bool {
+        self.inner.path == path
+    }
+
+    #[cfg(feature = "test-harness")]
     pub async fn harness_item_count(&self) -> Result<u32> {
         let count: i64 = sqlx::query_scalar("SELECT count(*) FROM items")
             .fetch_one(&self.inner.readers)

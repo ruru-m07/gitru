@@ -20,6 +20,8 @@
     "e2e:harness:test": "bun run e2e/harness-run.ts",
     "e2e:harness:performance:test": "bun run e2e/performance-run.ts",
     "e2e:harness:performance": "bun run e2e:harness:build && bun run e2e:harness:performance:test",
+    "e2e:harness:keyed:build": "python ../../scripts/build-keyed-collaboration-harness.py",
+    "e2e:harness:keyed:performance": "bun run e2e:harness:keyed:build && GITRU_COLLABORATION_STORAGE_MODE=keyed bun run e2e:harness:performance:test",
     "e2e:harness": "bun run e2e:harness:build && bun run e2e:harness:test",
     "tauri": "tauri"
   },

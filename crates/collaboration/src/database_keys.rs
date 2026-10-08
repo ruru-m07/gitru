@@ -11,6 +11,9 @@ use std::{
 use subtle::ConstantTimeEq;
 use zeroize::Zeroize;
 
+/// Stable native vault namespace shared by activation and application startup.
+pub const DATABASE_KEY_SERVICE: &str = "com.gitru.collaboration.database-key.v1";
+
 #[cfg(feature = "native-keyed-store")]
 pub mod activation;
 mod files;
@@ -145,6 +148,13 @@ pub trait DatabaseKeyVault: Send + Sync {
         identity: &DatabaseKeyIdentity,
         key: &DatabaseKey,
     ) -> Result<(), DatabaseKeyError>;
+}
+
+/// Select the native keyed startup path whenever any key metadata evidence is
+/// present. Malformed or interrupted evidence still returns `true` so callers
+/// fail closed in `DatabaseKeySession::prepare` instead of opening plaintext.
+pub fn requires_keyed_open(path: &Path) -> bool {
+    files::require_no_pending(path).is_err() || !matches!(files::read(path), Ok(None))
 }
 
 /// Trusted native codec seam. Must authenticate an existing database read-only,

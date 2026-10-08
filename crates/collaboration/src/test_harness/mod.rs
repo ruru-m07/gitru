@@ -54,12 +54,40 @@ impl HarnessSession {
     ) -> Result<Self, CollaborationError> {
         let root = OwnedRoot::validate(root, run_nonce)?;
         let database = root.file("collaboration.sqlite")?;
+        let store = Arc::new(Store::open(&database).await?);
+        Self::open_owned(root, database, run_nonce, visibility, store).await
+    }
+
+    /// The packaged native harness may inject an already authenticated Store.
+    /// The path remains fixed by the validated launch root; no IPC request can
+    /// select or replace this Store after runtime construction begins.
+    pub async fn open_with_store(
+        root: &Path,
+        run_nonce: &str,
+        visibility: Arc<dyn Fn(&str) -> bool + Send + Sync>,
+        store: Arc<Store>,
+    ) -> Result<Self, CollaborationError> {
+        let root = OwnedRoot::validate(root, run_nonce)?;
+        let database = root.file("collaboration.sqlite")?;
+        if !store.harness_owns_path(&database) {
+            store.close().await?;
+            return Err(invalid());
+        }
+        Self::open_owned(root, database, run_nonce, visibility, store).await
+    }
+
+    async fn open_owned(
+        root: OwnedRoot,
+        database: std::path::PathBuf,
+        run_nonce: &str,
+        visibility: Arc<dyn Fn(&str) -> bool + Send + Sync>,
+        store: Arc<Store>,
+    ) -> Result<Self, CollaborationError> {
         // Losing the scenario marker must never reset an existing cache/vault.
         if database.exists() && root.read("harness-state.json", 4096)?.is_none() {
             return Err(invalid());
         }
         let persistent = PersistentState::open(&root, run_nonce)?;
-        let store = Arc::new(Store::open(&database).await?);
         let validated_vault = async {
             let accounts = store.accounts().await?.accounts;
             if !persistent.prepared && !accounts.is_empty() {

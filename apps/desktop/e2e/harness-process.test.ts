@@ -383,6 +383,34 @@ describe("retained crash process ownership", () => {
     ).rejects.toMatchObject({ code: "root_marker_mismatch" });
     expect(kill).not.toHaveBeenCalled();
   });
+  it("freezes the launch-owned keyed storage selection", async () => {
+    const value = await fixture();
+    writeFileSync(
+      join(value.root, "run.json"),
+      JSON.stringify({
+        version: 1,
+        application_id: HARNESS_APPLICATION_ID,
+        run_nonce: value.input.runNonce,
+        storage_mode: "keyed",
+      }),
+    );
+    checkpoint(value);
+    acknowledgment(value);
+    const owned = captureHarnessProcess(value.input);
+    expect(owned.storageMode).toBe("keyed");
+    writeFileSync(
+      join(value.root, "run.json"),
+      JSON.stringify({
+        version: 1,
+        application_id: HARNESS_APPLICATION_ID,
+        run_nonce: value.input.runNonce,
+        storage_mode: "plaintext",
+      }),
+    );
+    await expect(
+      monitorHarnessCrash(owned, new AbortController().signal),
+    ).rejects.toMatchObject({ code: "root_marker_mismatch" });
+  });
   it("requires the exact launcher's binary and task environment at capture", async () => {
     const value = await fixture();
     const kill = vi.spyOn(value.proc, "kill");

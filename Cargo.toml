@@ -1,6 +1,8 @@
 [workspace]
 resolver = "2"
 
+exclude = ["crates/keyed-connections"]
+
 members = [
   "apps/desktop/src-tauri", "crates/git", "crates/ipc", "crates/logger", "crates/collaboration",
 ]

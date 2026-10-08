@@ -1,6 +1,10 @@
 use crate::commands::collaboration::CollaborationState;
 #[cfg(not(feature = "collaboration-harness"))]
 use collaboration::credentials::{CredentialError, CredentialVault, SecretToken};
+#[cfg(feature = "native-keyed-storage")]
+use collaboration::database_keys::{DatabaseCreation, DatabaseKeySession, DatabaseKeyVault};
+#[cfg(all(feature = "native-keyed-storage", not(feature = "e2e")))]
+use collaboration::database_keys::{DatabaseKey, DatabaseKeyError, DatabaseKeyIdentity};
 use collaboration::{CollaborationError, CollaborationRuntime, Store};
 use std::sync::Arc;
 #[cfg(not(feature = "collaboration-harness"))]
@@ -8,6 +12,87 @@ use std::sync::Mutex;
 #[cfg(not(feature = "collaboration-harness"))]
 use tauri::App;
 use tauri::{Emitter, Manager};
+#[cfg(all(feature = "native-keyed-storage", not(feature = "e2e")))]
+use zeroize::Zeroizing;
+
+#[cfg(feature = "native-keyed-storage")]
+fn keyed_error() -> CollaborationError {
+    CollaborationError::new(
+        collaboration::ErrorCode::NotReady,
+        "Native keyed collaboration storage could not open; files were preserved",
+    )
+}
+
+#[cfg(all(feature = "native-keyed-storage", not(feature = "e2e")))]
+struct NativeDatabaseVault {
+    gate: Mutex<()>,
+}
+
+#[cfg(all(feature = "native-keyed-storage", not(feature = "e2e")))]
+impl NativeDatabaseVault {
+    fn entry(&self, identity: &DatabaseKeyIdentity) -> Result<keyring::Entry, DatabaseKeyError> {
+        keyring::Entry::new(
+            collaboration::database_keys::DATABASE_KEY_SERVICE,
+            &identity.vault_reference(),
+        )
+        .map_err(|_| DatabaseKeyError::VaultUnavailable)
+    }
+}
+
+#[cfg(all(feature = "native-keyed-storage", not(feature = "e2e")))]
+impl DatabaseKeyVault for NativeDatabaseVault {
+    fn load(
+        &self,
+        identity: &DatabaseKeyIdentity,
+    ) -> Result<Option<DatabaseKey>, DatabaseKeyError> {
+        let _gate = self
+            .gate
+            .lock()
+            .map_err(|_| DatabaseKeyError::VaultUnavailable)?;
+        let encoded = match self.entry(identity)?.get_password() {
+            Ok(value) => Zeroizing::new(value),
+            Err(keyring::Error::NoEntry) => return Ok(None),
+            Err(_) => return Err(DatabaseKeyError::VaultUnavailable),
+        };
+        if encoded.len() != 64 || !encoded.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(DatabaseKeyError::VaultInvalidKey);
+        }
+        let mut bytes = [0_u8; 32];
+        for (index, output) in bytes.iter_mut().enumerate() {
+            *output = u8::from_str_radix(&encoded[index * 2..index * 2 + 2], 16)
+                .map_err(|_| DatabaseKeyError::VaultInvalidKey)?;
+        }
+        Ok(Some(DatabaseKey::from_bytes(bytes)))
+    }
+
+    fn store_new(
+        &self,
+        _identity: &DatabaseKeyIdentity,
+        _key: &DatabaseKey,
+    ) -> Result<(), DatabaseKeyError> {
+        // Application startup never creates keys. Activation must publish a
+        // separately verified database/key pair before this adapter can load it.
+        Err(DatabaseKeyError::CreationNotAuthorized)
+    }
+}
+
+#[cfg(feature = "native-keyed-storage")]
+pub(crate) async fn open_keyed_store(
+    path: std::path::PathBuf,
+    vault: Arc<dyn DatabaseKeyVault>,
+    creation: DatabaseCreation,
+) -> Result<Store, CollaborationError> {
+    let session = tokio::task::spawn_blocking(move || {
+        DatabaseKeySession::prepare(&path, vault.as_ref(), creation)
+    })
+    .await
+    .map_err(|_| keyed_error())?
+    .map_err(|_| keyed_error())?;
+    let factory = Arc::new(gitru_keyed_connections::KeyedConnectionFactory::new(
+        session,
+    ));
+    Store::open_keyed(factory).await
+}
 
 #[cfg(not(feature = "e2e"))]
 struct NativeVault {
@@ -114,6 +199,21 @@ pub(crate) async fn build_runtime(
     let path = database_path(handle)?;
     let dir = path.parent().ok_or_else(CollaborationError::storage)?;
     std::fs::create_dir_all(dir).map_err(|_| CollaborationError::storage())?;
+    #[cfg(all(feature = "native-keyed-storage", not(feature = "e2e")))]
+    let keyed = collaboration::database_keys::requires_keyed_open(&path);
+    #[cfg(all(feature = "native-keyed-storage", not(feature = "e2e")))]
+    let store = if keyed {
+        let vault = Arc::new(NativeDatabaseVault {
+            gate: Mutex::new(()),
+        });
+        Arc::new(open_keyed_store(path.clone(), vault, DatabaseCreation::ExistingOnly).await?)
+    } else {
+        Arc::new(Store::open(path).await?)
+    };
+    #[cfg(any(
+        not(feature = "native-keyed-storage"),
+        all(feature = "native-keyed-storage", feature = "e2e")
+    ))]
     let store = Arc::new(Store::open(path).await?);
     if let Some(previous) = previous {
         let result = previous.replacement(store.clone()).map(Arc::new);
