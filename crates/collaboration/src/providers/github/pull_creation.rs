@@ -145,6 +145,7 @@ impl GithubPullCreationPolicy {
         f: &Frame,
         owner: &PullCreationOwner,
     ) -> Result<(PullCreationPreview, Option<u64>), ProviderError> {
+        validate_receipt_budget(f).map_err(|_| bad(None))?;
         let (fresh, cooldown) = self.read(token, f).await?;
         let reason = if !fresh.can_push {
             Some(PullCreationReason::PermissionUnavailable)

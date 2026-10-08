@@ -67,13 +67,11 @@ async fn snapshot_in(
     } else if a.state != AccountState::Active {
         Some(PullCreationReason::AccountUnavailable)
     } else if let Some(s) = &submission {
-        Some(
-            if s.state == "confirmed" || s.draft_generation == generation.to_string() {
-                PullCreationReason::AlreadySubmitted
-            } else {
-                PullCreationReason::PendingSubmission
-            },
-        )
+        Some(if s.state == "confirmed" {
+            PullCreationReason::AlreadySubmitted
+        } else {
+            PullCreationReason::PendingSubmission
+        })
     } else if n::validate_values(&values, true).is_err() {
         Some(PullCreationReason::IncompleteDraft)
     } else {
@@ -159,13 +157,15 @@ pub(crate) async fn capture_in(
         return Err(stale());
     }
     validate_local_in(tx, a, &base.repository, local).await?;
-    Ok(n::Frame {
+    let frame = n::Frame {
         repository: base.repository,
         authorization_view: base.authorization_view,
         draft_generation: generation.to_string(),
         values,
         local: local.clone(),
-    })
+    };
+    n::validate_receipt_budget(&frame)?;
+    Ok(frame)
 }
 pub(crate) async fn validate_frame_in(
     tx: &mut Transaction<'_, Sqlite>,

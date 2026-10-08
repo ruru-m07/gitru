@@ -15,6 +15,10 @@ import type {
   IssueDraftSnapshot,
   ItemQuery,
   PullCommitQuery,
+  PullDraftKey,
+  PullDraftPage,
+  PullDraftQuery,
+  PullDraftSnapshot,
   PullFileDiffRequest,
   PullFileQuery,
   RemoteAccount,
@@ -194,6 +198,45 @@ export function issueDraftsQueryOptions(
     queryFn: ({ signal }) =>
       collaboration.forAccount(account).issueDrafts(query, signal),
   });
+}
+
+/** Cache-only authored PR draft; preview grants are never cached. */
+export function pullDraftQueryOptions(
+  account: RemoteAccount,
+  key: Omit<PullDraftKey, "account_id">,
+) {
+  return queryOptions<PullDraftSnapshot>({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.pullDraft(account, {
+      ...key,
+      account_id: account.id,
+    }),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).pullDraft(key, signal),
+  });
+}
+export function pullDraftsQueryOptions(
+  account: RemoteAccount,
+  query: Omit<PullDraftQuery, "account_id">,
+) {
+  return queryOptions<PullDraftPage>({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.pullDrafts(account, {
+      ...query,
+      account_id: account.id,
+    }),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).pullDrafts(query, signal),
+  });
+}
+
+/** Changes only when local authorization/runtime authority is retired. */
+export function useCollaborationAuthorityVersion() {
+  return useSyncExternalStore(
+    collaboration.subscribe,
+    collaboration.getAuthorityVersion,
+    collaboration.getAuthorityVersion,
+  );
 }
 
 export function useCollaborationVersion() {

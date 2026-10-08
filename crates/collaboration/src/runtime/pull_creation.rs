@@ -132,6 +132,12 @@ impl CollaborationRuntime {
                 Err(error) if error.code == ErrorCode::NotReady => {}
                 Err(error) => return Err(error),
             }
+            if proof.is_none() {
+                return Err(CollaborationError::new(
+                    ErrorCode::NotReady,
+                    "A fresh native local branch observation is required",
+                ));
+            }
             let frame = policy.arm(&account, &r, &owner)?;
             // An expired or missing grant can only recover an already durable exact receipt.
             // A live new grant needs a fresh native local observation matching its original proof.

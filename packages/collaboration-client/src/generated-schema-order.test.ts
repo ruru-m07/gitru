@@ -186,11 +186,28 @@ export const KeySchema = "key";
     const generated = await import("@gitru/commands");
     expect(
       Object.keys(generated).filter((name) => name.endsWith("Schema")),
-    ).toHaveLength(530);
+    ).toHaveLength(577);
     expect(
       generated.TaskV1Schema.shape.content.parse({ state: "known", text: "" }),
     ).toEqual({ state: "known", text: "" });
     expect(generated.NativeDetailPayloadSchema.options).toHaveLength(6);
+    expect(Object.keys(generated.PullDraftSnapshotSchema.shape)).toEqual([
+      "key",
+      "values",
+      "generation",
+      "can_preview",
+      "reason",
+      "submission",
+      "published",
+      "revision",
+      "authorization_view",
+    ]);
+    expect(
+      Object.keys(generated.CollaborationPreviewPullCreationParamsSchema.shape),
+    ).toEqual(["request"]);
+    expect(
+      Object.keys(generated.CollaborationSubmitPullParamsSchema.shape),
+    ).toEqual(["request"]);
   });
 
   it("parses boxed native GitLab review position evidence without flattening its provider tag", async () => {
@@ -237,6 +254,37 @@ export const KeySchema = "key";
           ...value.value,
           position: { ...value.value.position, x: 12.75 },
         },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("parses provider review anchors without flattening their payload", async () => {
+    const generated = await import("@gitru/commands");
+    const value = {
+      provider: "github",
+      anchor: {
+        file_facet_revision: "7",
+        context: {
+          base_oid: "a".repeat(40),
+          head_oid: "b".repeat(40),
+          merge_base_oid: null,
+          base_repository_provider_id: "11",
+          source_repository_provider_id: "12",
+          body_metadata_facet_revision: "8",
+        },
+        file_key: "provider:1",
+        path: "src/review.ts",
+        start_line: null,
+        line: 17,
+        start_side: null,
+        side: "right",
+      },
+    };
+    expect(generated.ReviewDraftAnchorSchema.parse(value)).toEqual(value);
+    expect(
+      generated.ReviewDraftAnchorSchema.safeParse({
+        provider: "github",
+        anchor: { ...value.anchor, path: undefined },
       }).success,
     ).toBe(false);
   });

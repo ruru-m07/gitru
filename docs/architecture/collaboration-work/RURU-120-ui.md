@@ -21,3 +21,21 @@ Drafts survive disconnection/recovery. SDK reset redacts provider identity/previ
 ## Progress
 
 - Contract recorded before frontend implementation. No frontend verification yet.
+
+### Frontend checkpoint — 8 October 2026
+
+The generated five-command SDK and UI are implemented. Local drafts have an account-bound recovery index, current clone/link selection, CAS save, explicit branch preview, current-branches consent, exact-UUID receipt recovery, and confirmed identity/drift presentation. Editor state lives above the dialog portal so closing/reopening preserves unsaved text. Draft and local Git queries make no provider request; native code owns preview and delivery.
+
+Independent review found the first retry button could retain a retired runtime grant when the cached authorization-view string stayed unchanged. Preview and receipt retry now both bind an ephemeral SDK authority generation, synchronously retired on account clearance/runtime reset. Native checks remain authoritative. The SDK never places preview grants in the query cache. Local link replacement, authored edits, expired preview and changed draft/view disable creation.
+
+Focused checks pass: **67 SDK tests** (61 client plus six generated wire tests), **10 new UI controls**, the six existing issue-creation and eleven draft-recovery controls, and SDK/desktop/E2E TypeScript. New UI controls cover local-only opening/save and close preservation, exact UUID retry with unknown delivery, expiry, cross-window CAS preservation, runtime replacement, disappearing links, confirmed branch drift, disconnected paginated recovery, explicit clone/link choice with no path in IPC, and edit/revert invalidating consent. Biome and diff checks pass for this lane.
+
+The initial frontend attempt ran before typegen postprocessing completed and is not qualification; the completed generator output was used for all passing checks. Desktop fixes addressed the coss SelectValue API and checkbox accessible names. Test harness fixes reuse the existing Base UI/jsdom top-layer-selector shim and wait for asynchronous Query notifications. The full frontend suite/lint/types/build is running separately; no remote CI, live provider, credential, or packaged-window claim is made.
+
+### Final frontend integration
+
+The complete frontend suite passes **877 tests, one skip, 102 files** after updating its verified generated-schema inventory from 530 to 551. The first full run had 876 passes and this one outdated inventory assertion; the corrected full rerun is green. Added structural checks ensure preview/submission IPC params accept only the typed request, never the native webview/observation.
+
+Full lint, workspace TypeScript and an uncached desktop production build pass. Final UI follow-up uses native `outcome_unknown` wording and explains a refused oversized encoded draft without rendering raw provider/native error messages; **all 11 UI controls** and desktop/E2E types pass afterward. The new final UI control is additional to the 877-test full run, not a claim that it ran in that earlier full invocation. A final build is being run on the frozen UI source.
+
+The independent reviewer cleared the authority-generation delta. Retirement is conservatively global across accounts; it may ask a user to recheck after another account changes, but preserves authored text and confers no native authority. Local credentials, live provider mutation, packaged native-window behavior and remote CI remain unverified by these frontend gates.

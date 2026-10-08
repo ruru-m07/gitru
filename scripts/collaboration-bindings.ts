@@ -32,6 +32,12 @@ const workflowState = await Bun.file(
 const commentSend = await Bun.file(
   new URL("crates/collaboration/src/comment_send.rs", root),
 ).text();
+const pullCreation = await Bun.file(
+  new URL("crates/collaboration/src/pull_creation.rs", root),
+).text();
+const reviewSubmission = await Bun.file(
+  new URL("crates/collaboration/src/review_submission.rs", root),
+).text();
 const issueCreation = await Bun.file(
   new URL("crates/collaboration/src/issue_creation.rs", root),
 ).text();
@@ -119,6 +125,8 @@ const snake = (value: string) =>
 // These serialized cache/parser types are native-only and deliberately absent
 // from renderer command signatures. If reachable later, correct them normally.
 const nativeOnlyTypes = new Set([
+  "PullCreationLocalObservation",
+  "PullCreationOwner",
   "CommandRecoveryExport",
   "NotificationSubjectKind",
   "NotificationSubjectRepresentation",
@@ -152,14 +160,14 @@ const nativeOnlyTypes = new Set([
 // unsupported shape rather than inventing a renderer-owned wire model.
 const payloadStructs = new Map(
   [
-    ...`${participants}\n${tasks}\n${checks}\n${activity}\n${reviews}\n${reviewNative}`.matchAll(
+    ...`${participants}\n${tasks}\n${checks}\n${activity}\n${reviews}\n${reviewNative}\n${reviewSubmission}`.matchAll(
       /pub struct (\w+)\s*\{([^}]+)\}/g,
     ),
   ].map(([, name, body]) => [name, body] as const),
 );
 const payloadEnums = new Map(
   [
-    ...`${participants}\n${tasks}\n${checks}\n${activity}\n${reviews}\n${reviewNative}`.matchAll(
+    ...`${participants}\n${tasks}\n${checks}\n${activity}\n${reviews}\n${reviewNative}\n${reviewSubmission}`.matchAll(
       /#\[serde\(rename_all = "snake_case"\)\]\s*pub enum (\w+)\s*\{([^}]+)\}/g,
     ),
   ].map(
@@ -178,10 +186,11 @@ for (const [
   ,
   tag,
   content,
+  renameAll,
   name,
   body,
-] of `${reviewNative}\n${participants}`.matchAll(
-  /#\[serde\(tag = "([^"]+)", content = "([^"]+)"\)\]\s*pub enum (\w+)\s*\{([^}]+)\}/g,
+] of `${reviewNative}\n${participants}\n${reviewSubmission}`.matchAll(
+  /#\[serde\(tag = "([^"]+)", content = "([^"]+)"(?:, rename_all = "(snake_case)")?\)\]\s*pub enum (\w+)\s*\{([^}]+)\}/g,
 )) {
   const dependencies: string[] = [];
   const visiting = new Set<string>();
@@ -264,7 +273,7 @@ for (const [
       nativePayloadKinds.add(renamed ?? variant);
   const schemas = variants.map(
     ([, renamed, variant, type]) =>
-      `z.object({ ${JSON.stringify(tag)}: z.literal(${JSON.stringify(renamed ?? variant)}), ${JSON.stringify(content)}: ${schemaFor(type)} })`,
+      `z.object({ ${JSON.stringify(tag)}: z.literal(${JSON.stringify(renamed ?? (renameAll === "snake_case" ? snake(variant) : variant))}), ${JSON.stringify(content)}: ${schemaFor(type)} })`,
   );
   const pattern = new RegExp(
     `export const ${name}Schema = z\\.enum\\(\\[[^\\]]+\\]\\);`,
@@ -376,6 +385,8 @@ for (const source of [
   guardedMerge,
   commentSend,
   issueCreation,
+  pullCreation,
+  reviewSubmission,
   providerInboxActions,
   domain,
   error,

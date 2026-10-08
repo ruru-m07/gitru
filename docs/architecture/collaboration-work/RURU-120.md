@@ -53,7 +53,7 @@ repository identity/access and both branch tips; the local source tip must equal
 the observed remote source tip. The same-repository first slice conservatively
 requires current repository push permission; this is not a claim that the token
 has the endpoint's Pull requests write permission. Provider authorization remains
-final at POST. Refused redirects do not trigger mutable-path fallback.
+final at POST. Fresh GETs use the shared bounded point-read redirect policy: only the configured origin and exact original route can survive validation, with no query, fragment or encoded redirect tricks. Refused redirects do not trigger mutable-path fallback. The single mutation never follows redirects.
 
 Preview binds draft generation/content, local registration/link/config/ref
 observation, remote repository/ref/tip observations and current account authority
@@ -250,3 +250,47 @@ unchanged frozen-v22 checksum is
 `48c80b4dd9bd4594e02cb1e4108f84e1325cea2b6df0ab9926b3094903974813c86851f400352d8fc4c97b05c0b032c6`.
 This qualifies schema23/recovery for R132 to stack migration24; it does not claim
 completion of the still-in-progress native Git/IPC and frontend integration.
+
+The native Git/IPC source is now implemented and locally qualified: six temporary
+Git controls pass (dirty/index preservation, uncached moved ref, detached/unborn/
+missing/invalid ref, Unicode packed refs and linked worktrees, replacement objects,
+no partial-clone blob hydration, unsupported SHA256 identity); one paused-time
+control proves the ten-second bound includes a blocked runner lease. Two desktop
+unit controls prove the retained owner rejects same-path directory replacement
+and a changed `.git` pointer even while old directories remain. Strict Git and
+desktop all-target Clippy passed. The five native command wrappers compile and
+accept only typed draft/request IDs; paths and trusted source observations never
+come from IPC. These controls do not exercise a real OS webview lifecycle or live
+GitHub mutation, and they do not replace the pending complete workspace/platform
+qualification.
+
+
+## Independent native review refinements
+
+A receipt-only IPC retry now returns `NotReady` for new intent before arming any
+process grant. Native IPC then obtains the fresh Git observation and retries the
+same explicit submission; a previously committed exact UUID still returns its
+durable receipt without Git, vault or HTTP. Snapshot `AlreadySubmitted` is reserved
+for confirmed history. Queued and uncertain submissions retain their actual state
+and use `PendingSubmission`, without claiming that a provider PR exists.
+
+Raw authored limits alone do not bound JSON evidence. Before preview/network or
+admission, the native frame now reserves its actual encoded size, a second encoded
+body/title, and 24 KiB for the bounded preparation and required receipt identity,
+refs, actor, URLs and clocks within the existing 64 KiB proof limit. Oversized
+escaped text remains saved locally but needs shortening before preview. The causal
+creation receipt intentionally marks unrequested labels, assignees and milestone
+omitted rather than copying arbitrarily large concurrent automation metadata or
+claiming those collections are empty. Required created identity and observed branch
+range remain intact. A maximum 16 KiB ordinary body is supported; the separate
+encoded limit can reject a heavily escaped body of the same raw length.
+
+The final focused native review run passes 32 controls: 29 creation/publication
+controls and three typed restore matrices. The maximum plain-body/large-collection,
+escaped-body refusal, receipt-only probe and uncertain snapshot assertions pass.
+The first run of the new snapshot assertion expected `unknown`; it was corrected
+to the existing serialized command state `outcome_unknown` without a production
+state change. Initial complete collaboration testing passed 1,046 cases with five
+helper ignores and found one historical restore test still expecting 22 migrations;
+the recovery checkpoint corrected it to 23 and qualified the affected suite. The
+final workspace test/Clippy gates are recorded separately after integration.

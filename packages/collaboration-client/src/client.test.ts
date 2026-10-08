@@ -154,6 +154,11 @@ function transport(
     saveCommentDraft: unexpected,
     sendComment: unexpected,
     createdComments: unexpected,
+    pullDraft: unexpected,
+    pullDrafts: unexpected,
+    savePullDraft: unexpected,
+    previewPullCreation: unexpected,
+    submitPull: unexpected,
     issueDraft: unexpected,
     issueDrafts: unexpected,
     saveIssueDraft: unexpected,
@@ -3147,4 +3152,111 @@ it("invalidates only the matching authored comment draft and created history", a
   expect(cache.getQueryState(otherCreated)?.isInvalidated).toBe(false);
   stop();
   cache.clear();
+});
+
+describe("pull draft authority", () => {
+  it("retires held preview/read results and cached creation authority while preserving authored values", async () => {
+    let reset: (() => void) | undefined;
+    const pendingRead = deferred<import("@gitru/commands").PullDraftSnapshot>();
+    const pendingPreview =
+      deferred<import("@gitru/commands").PullCreationPreview>();
+    const client = new CollaborationClient(
+      transport({
+        listen: async () => () => {},
+        listenRuntimeReset: async (listener) => {
+          reset = listener;
+          return () => {};
+        },
+        changesSince: async () => changePage("1"),
+        pullDraft: () => pendingRead.promise,
+        previewPullCreation: () => pendingPreview.promise,
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    const key = {
+      account_id: account.id,
+      repository_id: "repo",
+      draft_id: "123e4567-e89b-42d3-a456-426614174000",
+    };
+    const values = {
+      title: "Keep title",
+      body: "Keep body",
+      source_branch: "feature",
+      base_branch: "main",
+      local_repository_id: "clone",
+      link_id: "link",
+      link_generation: "2",
+      is_draft: true,
+    };
+    const snapshot: import("@gitru/commands").PullDraftSnapshot = {
+      key,
+      values,
+      generation: "3",
+      can_preview: true,
+      reason: null,
+      submission: null,
+      published: {
+        subject_id: "pull-1",
+        provider_id: "99",
+        number: "1",
+        url: "https://github.com/a/b/pull/1",
+        command_id: "command",
+        inspected_source_oid: "a".repeat(40),
+        inspected_base_oid: "b".repeat(40),
+        observed_source_oid: "a".repeat(40),
+        observed_base_oid: "b".repeat(40),
+        branches_changed: false,
+      },
+      revision: "1",
+      authorization_view: "1",
+    };
+    const cacheKey = collaborationKeys.pullDraft(account, key);
+    cache.setQueryData(cacheKey, snapshot);
+    const before = client.getAuthorityVersion();
+    const read = client.forAccount(account).pullDraft(key);
+    const preview = client.forAccount(account).previewPullCreation({
+      key,
+      draft_generation: "3",
+      authorization_view: "1",
+    });
+    const rejectsRead = expect(read).rejects.toBeInstanceOf(
+      StaleAuthorizationError,
+    );
+    const rejectsPreview = expect(preview).rejects.toBeInstanceOf(
+      StaleAuthorizationError,
+    );
+    reset?.();
+    expect(client.getAuthorityVersion()).toBeGreaterThan(before);
+    expect(cache.getQueryData(cacheKey)).toEqual({
+      ...snapshot,
+      can_preview: false,
+      published: null,
+      reason: "account_unavailable",
+    });
+    expect(cache.getQueryState(cacheKey)?.isInvalidated).toBe(true);
+    pendingRead.resolve(snapshot);
+    pendingPreview.resolve({
+      context: null,
+      reason: "account_unavailable",
+      values,
+      local_source_oid: "",
+      observed_source_oid: null,
+      observed_base_oid: null,
+      can_push: null,
+      observed_at: "",
+      expires_in_seconds: 0,
+      authorization_view: "1",
+    });
+    await rejectsRead;
+    await rejectsPreview;
+    expect(cache.getQueryData(cacheKey)).toMatchObject({
+      values,
+      published: null,
+      can_preview: false,
+    });
+    stop();
+    cache.clear();
+  });
 });
