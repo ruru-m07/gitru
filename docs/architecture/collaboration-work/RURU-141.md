@@ -2,8 +2,8 @@
 
 This slice adds a portable encrypted envelope for an already verified standalone
 collaboration SQLite export. It starts from the exact RURU-140 key-lifecycle head
-`fb38279d` and the RURU-139 packaged/performance head `7b19aad9`; merge commit
-`268197b9` contains both as ancestors.
+`fb38279d` and the current RURU-139 packaged/performance head `6b58c128`;
+signed combined dependency commit `23f4c4c8` contains both as ancestors.
 
 ## Format and credential boundary
 
