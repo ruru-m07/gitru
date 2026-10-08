@@ -1155,6 +1155,8 @@ async fn shutdown_waits_for_cancelled_requesters_owned_vault_cutover() {
             .is_empty()
     );
     reopened.close().await.unwrap();
+}
+
 #[tokio::test]
 async fn long_clock_live_observation_survives_forward_jump_and_shorter_receipt() {
     let dir = tempfile::tempdir().unwrap();
@@ -1213,7 +1215,7 @@ async fn long_clock_cold_valid_wall_preserves_full_deadline_and_peer_progress() 
         adapter,
         account,
     } = f;
-    runtime.store.close().await;
+    runtime.store.close().await.unwrap();
     drop(runtime);
     let mut cold = CollaborationRuntime::new(
         Arc::new(Store::open(&path).await.unwrap()),

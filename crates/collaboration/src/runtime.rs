@@ -328,10 +328,7 @@ impl CollaborationRuntime {
                 observation.oldest_seconds = Some(observation.oldest_seconds.unwrap_or(0).max(age));
             }
             for (account_id, deadline) in &scheduler.account_cooldowns {
-                if let Some(remaining) = deadline.checked_duration_since(now) {
-                    if remaining.is_zero() {
-                        continue;
-                    }
+                if let Some(remaining) = deadline.remaining(now) {
                     queue_by_account
                         .entry(account_id.clone())
                         .or_default()
