@@ -2034,3 +2034,8 @@ fn push_item_predicates(sql: &mut sqlx::QueryBuilder<Sqlite>, query: &ItemQuery)
     }
     Ok(())
 }
+
+pub(crate) mod workflow_state;
+
+#[cfg(test)]
+mod workflow_state_tests;

@@ -59,3 +59,40 @@ unsupported actions, changed context and retained sibling text. Generate IPC
 with make typegen. Record full local verification separately from remote CI and
 live provider/platform validation. This workflow slice does not complete label
 editing or change the prohibition on merging user PRs.
+
+## Implemented checkpoint — 8 October 2026
+
+The separate `github.workflow_state` codec now admits only typed open/closed
+intent with explicit best-effort consent. Its immutable base contains workflow,
+PR head, native identity/source and provider timestamp, excluding description and
+title. Omitted/oversized descriptions and missing title evidence do not prevent a
+valid State action. Provider observations preserve those distinctions, and the
+canonical transaction only replaces independently proven fields. A pending text
+edit does not masquerade as or block a pending State change; generic ordered
+command delivery and effective replay preserve both fields.
+
+Native admission seals generation/view context and receipt atomically; exact UUID
+retries reuse the original bytes after restart. Fresh numeric-route preflight
+requires state and PR head facts plus explicit merged evidence, refuses changed
+heads and merged workflows, and recognizes desired-state convergence without a
+PATCH. A committed attempt precedes the exact state-only PATCH. Uncertain results
+remain reconciliation-only through restart and restore quarantine. Completion
+rechecks the account/actor/epoch/view and captured Body revision/run before atomic
+canonical publication, State effect retirement and feed revision invalidation.
+Recovery exposes only State editing under the shared supersession guards.
+
+Local qualification: 18 focused native workflow cases passed on the final source,
+strict collaboration all-target Clippy and workspace rustfmt checks passed. Cases
+cover issue reopen and PR close, state-only wire body, independent text intent,
+merged/unknown/missing-merge facts, identity and head drift, description omission/
+oversize, held completion and equal-time feed races, filtered counts, transaction
+rollback, auth/quota facts, exact restart retry, unknown no-second-PATCH and restore
+quarantine. Independent review is clear after fixing pending reason precedence,
+State-only pending filtering and description-independent authority. Frontend
+owner qualified SDK206 and desktop589/one platform skip, types and generated151
+commands; its exact-receipt retry follow-up also passed five UI cases.
+
+Full workspace and remote CI are publication-owner gates. The numeric mutation
+alias and live authenticated provider behavior remain unqualified; no personal
+credential or provider write was used. This slice adds no merge action, issue
+state-reason selection, labels, or another provider's mutation codec.
