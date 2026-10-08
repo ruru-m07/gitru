@@ -9,6 +9,7 @@ import type {
   CreatedCommentPage,
   DetailSnapshot,
   InboxPage,
+  IssueDraftSnapshot,
   ItemPage,
   ItemSnapshot,
   PullCheckoutPlan,
@@ -2042,6 +2043,186 @@ describe("CollaborationClient", () => {
 });
 
 describe("authored draft recovery", () => {
+  it("redacts cached issue authority before disconnect while retaining authored text", async () => {
+    let finishDisconnect!: (value: string) => void;
+    const client = new CollaborationClient(
+      transport({
+        disconnect: () =>
+          new Promise((resolve) => {
+            finishDisconnect = resolve;
+          }),
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    const publishedKey = collaborationKeys.issueDraft(account, {
+      account_id: account.id,
+      draft_id: "123e4567-e89b-42d3-a456-426614174000",
+      repository_id: "repo",
+    });
+    const confirmedSubmission = {
+      command_id: "223e4567-e89b-42d3-a456-426614174000",
+      draft_generation: "1",
+      state: "confirmed",
+      attempt_count: 1,
+      quarantined: false,
+      attention: null,
+    };
+    cache.setQueryData<IssueDraftSnapshot>(publishedKey, {
+      account_id: account.id,
+      draft_id: "123e4567-e89b-42d3-a456-426614174000",
+      repository_id: "repo",
+      title: "Retained title",
+      body: "Retained body",
+      generation: "1",
+      context: null,
+      availability: "unavailable",
+      reason: "already_submitted",
+      submission: confirmedSubmission,
+      published: {
+        subject_id: "github:issue:99",
+        provider_id: "99",
+        number: "4",
+        url: "https://github.com/owner/repo/issues/4",
+        command_id: confirmedSubmission.command_id,
+      },
+      revision: "1",
+      authorization_view: "1",
+    });
+    const availableKey = collaborationKeys.issueDraft(account, {
+      account_id: account.id,
+      draft_id: "323e4567-e89b-42d3-a456-426614174000",
+      repository_id: "repo",
+    });
+    cache.setQueryData<IssueDraftSnapshot>(availableKey, {
+      account_id: account.id,
+      draft_id: "323e4567-e89b-42d3-a456-426614174000",
+      repository_id: "repo",
+      title: "Available title",
+      body: "Available body",
+      generation: "2",
+      context: {
+        account_id: account.id,
+        repository_id: "repo",
+        authorization_epoch: account.authorization_epoch,
+        authorization_view: "1",
+        review_token: "a".repeat(64),
+      },
+      availability: "available",
+      reason: null,
+      submission: null,
+      published: null,
+      revision: "1",
+      authorization_view: "1",
+    });
+    const disconnecting = client.disconnect(account.id);
+    expect(cache.getQueryData(publishedKey)).toMatchObject({
+      title: "Retained title",
+      body: "Retained body",
+      generation: "1",
+      context: null,
+      availability: "unavailable",
+      reason: "account_unavailable",
+      submission: confirmedSubmission,
+      published: null,
+    });
+    expect(cache.getQueryData(availableKey)).toMatchObject({
+      title: "Available title",
+      body: "Available body",
+      generation: "2",
+      context: null,
+      availability: "unavailable",
+      reason: "account_unavailable",
+      submission: null,
+      published: null,
+    });
+    expect(cache.getQueryState(publishedKey)?.isInvalidated).toBe(true);
+    expect(cache.getQueryState(availableKey)?.isInvalidated).toBe(true);
+    finishDisconnect("2");
+    await disconnecting;
+    stop();
+    cache.clear();
+  });
+
+  it("redacts issue authority on a runtime reset and fences an older native read", async () => {
+    let reset: (() => void) | undefined;
+    const oldRead = deferred<IssueDraftSnapshot>();
+    const client = new CollaborationClient(
+      transport({
+        listen: async () => () => {},
+        listenRuntimeReset: async (listener) => {
+          reset = listener;
+          return () => {};
+        },
+        changesSince: async () => changePage("1"),
+        issueDraft: () => oldRead.promise,
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    await client.wake();
+    const key = {
+      account_id: account.id,
+      draft_id: "423e4567-e89b-42d3-a456-426614174000",
+      repository_id: "repo",
+    };
+    const queryKey = collaborationKeys.issueDraft(account, key);
+    const cached: IssueDraftSnapshot = {
+      ...key,
+      title: "Keep this title",
+      body: "Keep this body",
+      generation: "3",
+      context: null,
+      availability: "unavailable",
+      reason: "already_submitted",
+      submission: {
+        command_id: "523e4567-e89b-42d3-a456-426614174000",
+        draft_generation: "3",
+        state: "confirmed",
+        attempt_count: 1,
+        quarantined: false,
+        attention: null,
+      },
+      published: {
+        subject_id: "github:issue:100",
+        provider_id: "100",
+        number: "5",
+        url: "https://github.com/owner/repo/issues/5",
+        command_id: "523e4567-e89b-42d3-a456-426614174000",
+      },
+      revision: "1",
+      authorization_view: "1",
+    };
+    cache.setQueryData(queryKey, cached);
+    const pending = client
+      .forAccount(account)
+      .issueDraft({ draft_id: key.draft_id, repository_id: key.repository_id });
+    const rejected = expect(pending).rejects.toBeInstanceOf(
+      StaleAuthorizationError,
+    );
+
+    reset?.();
+    expect(cache.getQueryData(queryKey)).toEqual({
+      ...cached,
+      context: null,
+      availability: "unavailable",
+      reason: "account_unavailable",
+      published: null,
+    });
+    expect(cache.getQueryState(queryKey)?.isInvalidated).toBe(true);
+    oldRead.resolve(cached);
+    await rejected;
+    expect(cache.getQueryData(queryKey)).toMatchObject({
+      title: "Keep this title",
+      body: "Keep this body",
+      generation: "3",
+      published: null,
+      context: null,
+    });
+    stop();
+    cache.clear();
+  });
+
   it("keeps authored caches across disconnect/replacement while clearing provider projections", async () => {
     let revision = "1";
     const client = new CollaborationClient(

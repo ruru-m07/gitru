@@ -3,8 +3,9 @@ import type {
   RemoteAccount,
   RemoteRepository,
 } from "@gitru/collaboration-client";
+import { collaboration } from "@gitru/collaboration-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { mockTauriCommand } from "../../../tests/mocks/tauri";
@@ -41,6 +42,7 @@ const context = {
 };
 let snapshot: IssueDraftSnapshot;
 const caches: QueryClient[] = [];
+const stops: Array<() => void> = [];
 
 function localSnapshot(
   overrides: Partial<IssueDraftSnapshot> = {},
@@ -79,6 +81,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  for (const stop of stops.splice(0)) stop();
   vi.restoreAllMocks();
   for (const cache of caches.splice(0)) cache.clear();
 });
@@ -97,7 +100,7 @@ function setup(onOpenCreated = vi.fn()) {
       />
     </QueryClientProvider>,
   );
-  return { user: userEvent.setup(), onOpenCreated };
+  return { cache, user: userEvent.setup(), onOpenCreated };
 }
 
 it("keeps opening local-only, preserves an unsaved close, then saves and explicitly queues", async () => {
@@ -280,4 +283,95 @@ it("navigates only from a validated cached canonical identity", async () => {
     await screen.findByRole("button", { name: "Open created issue" }),
   );
   expect(onOpenCreated).toHaveBeenCalledWith("github:issue:77");
+});
+
+it("keeps an open draft but immediately hides provider authority when disconnect refetch fails", async () => {
+  const commandId = "22222222-2222-4222-8222-222222222222";
+  snapshot = localSnapshot({
+    title: "Published issue",
+    body: "Authored body stays local",
+    generation: "1",
+    context: null,
+    availability: "unavailable",
+    reason: "already_submitted",
+    submission: {
+      command_id: commandId,
+      draft_generation: "1",
+      state: "confirmed",
+      attempt_count: 1,
+      quarantined: false,
+      attention: null,
+    },
+    published: {
+      subject_id: "github:issue:77",
+      provider_id: "77",
+      number: "12",
+      url: "https://github.com/owner/project/issues/12",
+      command_id: commandId,
+    },
+  });
+  let reads = 0;
+  const read = mockTauriCommand("collaboration_issue_draft", () => {
+    reads += 1;
+    if (reads === 1) return snapshot;
+    throw { code: "storage", message: "fixture reset refetch failed" };
+  });
+  mockTauriCommand("collaboration_changes_since", () => ({
+    revision: "20",
+    authorization_view: "11",
+    changes: [],
+    has_more: false,
+    reset_required: false,
+  }));
+  vi.spyOn(collaboration.transport, "listen").mockResolvedValue(() => {});
+  vi.spyOn(collaboration.transport, "listenRuntimeReset").mockResolvedValue(
+    () => {},
+  );
+  vi.spyOn(collaboration.transport, "listenLocalChanges").mockResolvedValue(
+    () => {},
+  );
+  let finishDisconnect!: (revision: string) => void;
+  mockTauriCommand(
+    "collaboration_disconnect",
+    () =>
+      new Promise<string>((resolve) => {
+        finishDisconnect = resolve;
+      }),
+  );
+  const { cache, user } = setup();
+  stops.push(collaboration.installBridge(cache));
+  await act(async () => collaboration.wake());
+  await user.click(screen.getByRole("button", { name: "New issue" }));
+  expect(
+    await screen.findByRole("button", { name: "Open created issue" }),
+  ).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: "Open on provider" }),
+  ).toBeVisible();
+
+  let disconnecting!: Promise<void>;
+  act(() => {
+    disconnecting = collaboration.disconnect(account.id);
+  });
+  await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+  expect(screen.getByLabelText("Title")).toHaveValue("Published issue");
+  expect(screen.getByLabelText("Description")).toHaveValue(
+    "Authored body stays local",
+  );
+  expect(
+    screen.queryByRole("button", { name: "Open created issue" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Open on provider" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByText(/reconnect this account/i)).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: "Queue issue submission" }),
+  ).toBeDisabled();
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "disabled until this local draft reloads",
+  );
+
+  finishDisconnect("21");
+  await act(async () => disconnecting);
 });
