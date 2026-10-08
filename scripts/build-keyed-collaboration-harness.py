@@ -2,7 +2,6 @@
 """Build the actual retained desktop harness against verified native SQLCipher inputs."""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -15,7 +14,11 @@ CONNECTIONS = ROOT / "scripts/spikes/sqlcipher-connections"
 
 
 def main() -> None:
-    subprocess.run([sys.executable, str(QUALIFIED / "prepare.py")], cwd=ROOT, check=True)
+    amalgamation = QUALIFIED / "target/amalgamation"
+    prepare = [sys.executable, str(QUALIFIED / "prepare.py")]
+    if (amalgamation / "sqlite3.c").is_file() and (amalgamation / "sqlite3.h").is_file():
+        prepare.extend(["--amalgamation-dir", str(amalgamation)])
+    subprocess.run(prepare, cwd=ROOT, check=True)
     subprocess.run([sys.executable, str(CONNECTIONS / "prepare.py")], cwd=ROOT, check=True)
     build = ROOT / "target/keyed-harness"
     build.mkdir(parents=True, exist_ok=True)
@@ -29,15 +32,13 @@ def main() -> None:
     cargo = shutil.which("cargo")
     if cargo is None:
         raise RuntimeError("Cargo is unavailable")
-    if os.name == "nt":
+    if sys.platform == "win32":
         wrapper = build / "cargo-keyed.cmd"
         wrapper.write_text(f'@"{cargo}" --config "{config}" %*\r\n')
     else:
         wrapper = build / "cargo-keyed"
         wrapper.write_text(f'#!/bin/sh\nexec "{cargo}" --config "{config}" "$@"\n')
         wrapper.chmod(0o700)
-    environment = os.environ.copy()
-    environment["CARGO"] = str(wrapper)
     lock = ROOT / "Cargo.lock"
     original_lock = lock.read_bytes()
     try:
@@ -47,6 +48,8 @@ def main() -> None:
                 "x",
                 "tauri",
                 "build",
+                "--runner",
+                str(wrapper),
                 "--no-bundle",
                 "--features",
                 "collaboration-harness,native-keyed-storage",
@@ -54,7 +57,6 @@ def main() -> None:
                 "src-tauri/tauri.harness.conf.json",
             ],
             cwd=ROOT / "apps/desktop",
-            env=environment,
             check=True,
         )
     finally:
