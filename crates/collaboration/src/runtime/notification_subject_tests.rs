@@ -1232,6 +1232,13 @@ async fn clock_quota_receipt(
         .unwrap();
 }
 
+struct ClockVaultRelease(Arc<Vault>);
+impl Drop for ClockVaultRelease {
+    fn drop(&mut self) {
+        self.0.unblock();
+    }
+}
+
 async fn discovery_clock_gate(before_vault: bool) {
     use std::future::{Future, poll_fn};
     use std::task::Poll;
@@ -1242,6 +1249,7 @@ async fn discovery_clock_gate(before_vault: bool) {
         let provider = Arc::new(configured);
         let (runtime, vault, account, clock) =
             fixture(&dir.path().join("cache.sqlite"), provider.clone()).await;
+        let _release = ClockVaultRelease(vault.clone());
         discover(&runtime, &account).await;
         let lifecycle = if before_vault {
             Some(runtime.lifecycle.lock().await)

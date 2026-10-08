@@ -89,7 +89,7 @@ struct Scheduler {
     active: HashMap<String, String>,
     due: HashMap<String, Instant>,
     strict_scope_deadlines: HashMap<String, Instant>,
-    account_cooldowns: HashMap<String, Instant>,
+    account_cooldowns: HashMap<String, clock::AccountCooldown>,
     failures: HashMap<String, u32>,
     background_cursor: usize,
     interactive_turns: u8,
@@ -851,8 +851,8 @@ impl CollaborationRuntime {
                     scheduler
                         .account_cooldowns
                         .entry(job.account.id.clone())
-                        .and_modify(|old| *old = (*old).max(deadline))
-                        .or_insert(deadline);
+                        .and_modify(|old| *old = (*old).max(deadline.into()))
+                        .or_insert(deadline.into());
                 } else {
                     scheduler
                         .strict_scope_deadlines
@@ -871,7 +871,7 @@ impl CollaborationRuntime {
         }
         let result = match job.kind.clone() {
             JobKind::NotificationSubject { intent } => {
-                self.sync_notification_subject(&intent).await
+                self.sync_notification_subject(&intent, &mut job).await
             }
             JobKind::Feed(_) => self.sync_feed_page(&mut job).await,
             JobKind::Detail { subject_id, facet } => {
@@ -1052,8 +1052,8 @@ impl CollaborationRuntime {
                 scheduler
                     .account_cooldowns
                     .entry(job.account.id.clone())
-                    .and_modify(|old| *old = (*old).max(deadline))
-                    .or_insert(deadline);
+                    .and_modify(|old| *old = (*old).max(deadline.into()))
+                    .or_insert(deadline.into());
             }
         }
     }
@@ -1116,8 +1116,7 @@ impl CollaborationRuntime {
         let live = scheduler
             .account_cooldowns
             .get(&account.id)
-            .and_then(|deadline| deadline.checked_duration_since(self.now()))
-            .filter(|delay| !delay.is_zero());
+            .and_then(|deadline| deadline.remaining(self.now()));
         let delay = live.into_iter().chain(durable).max();
         drop(scheduler);
         if let Some(delay) = delay {
@@ -1138,12 +1137,16 @@ impl CollaborationRuntime {
         Ok(())
     }
 
-    fn capture_provider_budget(&self, delay: u64) -> (String, Instant) {
-        let live = self.deadline_after(delay);
+    fn capture_provider_budget(&self, delay: u64) -> (String, clock::AccountCooldown) {
+        let live = clock::AccountCooldown::after(self.now(), Duration::from_secs(delay));
         (self.future_string(delay), live)
     }
 
-    fn install_provider_cooldown(scheduler: &mut Scheduler, account_id: &str, deadline: Instant) {
+    fn install_provider_cooldown(
+        scheduler: &mut Scheduler,
+        account_id: &str,
+        deadline: clock::AccountCooldown,
+    ) {
         scheduler
             .account_cooldowns
             .entry(account_id.to_string())
