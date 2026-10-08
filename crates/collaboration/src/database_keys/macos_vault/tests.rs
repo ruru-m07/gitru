@@ -30,7 +30,10 @@ fn public_errors_and_owned_secret_debug_do_not_disclose_values() {
     assert_eq!(format!("{key:?}"), "DatabaseKey([REDACTED])");
     assert!(!Error::VaultAlreadyExists.to_string().contains("aaaa"));
     assert!(!Error::VaultInvalidKey.to_string().contains("aaaa"));
-    assert_eq!(SERVICE, "com.gitru.collaboration.database-key.v1");
+    assert_eq!(
+        crate::database_keys::DATABASE_KEY_SERVICE,
+        "com.gitru.collaboration.database-key.v1"
+    );
 }
 fn write_private(path: &Path, bytes: &[u8]) {
     let mut f = OpenOptions::new()
