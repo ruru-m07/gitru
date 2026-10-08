@@ -371,6 +371,15 @@ impl CommandDeliveryPolicy for GithubGuardedMergePolicy {
     ) -> Result<Vec<u8>, CollaborationError> {
         store::prepare_in(tx, c, a).await
     }
+    async fn preparation_context_matches_in(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+        c: &DeliveryCommand,
+        a: &RemoteAccount,
+        expected: &[u8],
+    ) -> Result<bool, CollaborationError> {
+        store::preparation_matches_in(tx, c, a, expected).await
+    }
     async fn prepare(
         &self,
         token: &SecretToken,
