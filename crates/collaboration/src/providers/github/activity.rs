@@ -353,8 +353,12 @@ impl GithubProvider {
             } else {
                 cursor.page_hashes.push("0".repeat(64));
             }
-            let reconciliation = if represented && cursor.pages == 0 && response.next_url.is_none()
-            {
+            let reconciliation = if response.next_url.is_some() && cursor.pages + 1 >= MAX_PAGES {
+                DetailReconciliation {
+                    enumeration: DetailEnumeration::Truncated,
+                    head_scope: DetailHeadScope::SubjectHistory,
+                }
+            } else if represented && cursor.pages == 0 && response.next_url.is_none() {
                 DetailReconciliation::full_history()
             } else {
                 DetailReconciliation::default()

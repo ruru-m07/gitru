@@ -1897,6 +1897,15 @@ pub(super) async fn apply_detail_in(
     {
         return Err(invalid_detail());
     }
+    if page.reconciliation.enumeration == DetailEnumeration::Truncated
+        && (page.facet != DetailFacet::Activity
+            || page.reconciliation.head_scope != DetailHeadScope::SubjectHistory
+            || !page.complete
+            || page.next_cursor.is_some()
+            || page.not_modified)
+    {
+        return Err(invalid_detail());
+    }
     if page.facet == DetailFacet::Activity {
         let fields = [
             DetailField::Body,
@@ -1911,7 +1920,9 @@ pub(super) async fn apply_detail_in(
             || page.reconciliation.head_scope != DetailHeadScope::SubjectHistory
             || !matches!(
                 page.reconciliation.enumeration,
-                DetailEnumeration::Uncertain | DetailEnumeration::FullEnumeration
+                DetailEnumeration::Uncertain
+                    | DetailEnumeration::FullEnumeration
+                    | DetailEnumeration::Truncated
             )
             || page.reconciliation.enumeration == DetailEnumeration::FullEnumeration
                 && (page.request_cursor.is_some()
@@ -2263,7 +2274,8 @@ pub(super) async fn apply_detail_in(
             CoverageState::Partial
         },
         validated_at,
-        remote_has_more: page.next_cursor.is_some(),
+        remote_has_more: page.next_cursor.is_some()
+            || page.reconciliation.enumeration == DetailEnumeration::Truncated,
     };
     let revision = record_change(
         tx,

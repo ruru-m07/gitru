@@ -86,7 +86,32 @@ enum Operation {
         iid: u64,
         route: ItemRoute,
         page: u64,
+        activity_only: bool,
     },
+    ResourceEvents {
+        project: u64,
+        iid: u64,
+        route: ItemRoute,
+        page: u64,
+        labels: bool,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ActivitySource {
+    Notes,
+    State,
+    Labels,
+}
+impl ActivitySource {
+    pub(super) const ALL: [Self; 3] = [Self::Notes, Self::State, Self::Labels];
+    pub(super) fn tag(self) -> &'static str {
+        match self {
+            Self::Notes => "note",
+            Self::State => "state",
+            Self::Labels => "label",
+        }
+    }
 }
 
 pub(super) struct GitlabHttp {
@@ -215,8 +240,59 @@ impl GitlabHttp {
                 iid,
                 route,
                 page,
+                activity_only: false,
             })
         {
+            return Err(invalid());
+        }
+        Ok(url)
+    }
+    pub(super) fn activity_collection(
+        &self,
+        project: u64,
+        iid: u64,
+        route: ItemRoute,
+        source: ActivitySource,
+        page: u64,
+    ) -> Result<Url, ProviderError> {
+        if project == 0 || iid == 0 || page == 0 {
+            return Err(invalid());
+        }
+        let segment = match source {
+            ActivitySource::Notes => "notes",
+            ActivitySource::State => "resource_state_events",
+            ActivitySource::Labels => "resource_label_events",
+        };
+        let mut url = self
+            .base
+            .join(&format!(
+                "projects/{project}/{}/{iid}/{segment}",
+                route.segment()
+            ))
+            .map_err(|_| invalid())?;
+        url.query_pairs_mut()
+            .append_pair("per_page", "50")
+            .append_pair("page", &page.to_string());
+        if source == ActivitySource::Notes {
+            url.query_pairs_mut()
+                .append_pair("sort", "desc")
+                .append_pair("order_by", "updated_at")
+                .append_pair("activity_filter", "only_activity");
+        }
+        Ok(url)
+    }
+    pub(super) fn activity_continuation(
+        &self,
+        raw: &str,
+        project: u64,
+        iid: u64,
+        route: ItemRoute,
+        source: ActivitySource,
+        page: u64,
+    ) -> Result<Url, ProviderError> {
+        let url = self.check_resource_raw(raw)?;
+        let expected = self.activity_collection(project, iid, route, source, page)?;
+        if self.operation(&url)? != self.operation(&expected)? {
             return Err(invalid());
         }
         Ok(url)
@@ -471,11 +547,36 @@ impl GitlabHttp {
                 .get(2)
                 .and_then(|v| positive_id(v))
                 .ok_or_else(invalid)?;
+            let activity_only = url.query_pairs().any(|(key, _)| key == "activity_filter");
             return Ok(Operation::Notes {
                 project,
                 iid,
                 route,
-                page: note_page(url, project, iid, route)?,
+                page: note_page(url, project, iid, route, activity_only)?,
+                activity_only,
+            });
+        }
+        if parts.len() == 4
+            && matches!(
+                parts.get(3),
+                Some(&"resource_state_events" | &"resource_label_events")
+            )
+        {
+            let route = match parts.get(1) {
+                Some(&"issues") => ItemRoute::Issues,
+                Some(&"merge_requests") => ItemRoute::MergeRequests,
+                _ => return Err(invalid()),
+            };
+            let iid = parts
+                .get(2)
+                .and_then(|v| positive_id(v))
+                .ok_or_else(invalid)?;
+            return Ok(Operation::ResourceEvents {
+                project,
+                iid,
+                route,
+                page: event_page(url, project, iid, route)?,
+                labels: parts.get(3) == Some(&"resource_label_events"),
             });
         }
         if parts.len() == 4 && parts.get(1) == Some(&"merge_requests") {
@@ -732,11 +833,38 @@ impl GitlabHttp {
                             iid,
                             route,
                             page,
-                        } => self.note_continuation(
+                            activity_only,
+                        } => {
+                            let page = page.checked_add(1).ok_or_else(invalid)?;
+                            if activity_only {
+                                self.activity_continuation(
+                                    next,
+                                    project,
+                                    iid,
+                                    route,
+                                    ActivitySource::Notes,
+                                    page,
+                                )
+                            } else {
+                                self.note_continuation(next, project, iid, route, page)
+                            }
+                        }
+                        Operation::ResourceEvents {
+                            project,
+                            iid,
+                            route,
+                            page,
+                            labels,
+                        } => self.activity_continuation(
                             next,
                             project,
                             iid,
                             route,
+                            if labels {
+                                ActivitySource::Labels
+                            } else {
+                                ActivitySource::State
+                            },
                             page.checked_add(1).ok_or_else(invalid)?,
                         ),
                         Operation::Discussions { project, iid, page } => self
@@ -871,21 +999,59 @@ fn commit_status_page(url: &Url, project: u64, head: &str) -> Result<u64, Provid
     Ok(page)
 }
 
-fn note_page(url: &Url, project: u64, iid: u64, route: ItemRoute) -> Result<u64, ProviderError> {
+fn note_page(
+    url: &Url,
+    project: u64,
+    iid: u64,
+    route: ItemRoute,
+    activity_only: bool,
+) -> Result<u64, ProviderError> {
     let mut pairs = std::collections::HashMap::new();
     for (k, v) in url.query_pairs() {
         if pairs.insert(k.to_string(), v.to_string()).is_some() {
             return Err(invalid());
         }
     }
+    if activity_only && pairs.remove("activity_filter").as_deref() != Some("only_activity") {
+        return Err(invalid());
+    }
     for (k, v) in [
         ("per_page", "50"),
-        ("sort", "asc"),
+        ("sort", if activity_only { "desc" } else { "asc" }),
         ("order_by", "updated_at"),
     ] {
         if pairs.remove(k).as_deref() != Some(v) {
             return Err(invalid());
         }
+    }
+    let page = pairs
+        .remove("page")
+        .as_deref()
+        .and_then(positive_id)
+        .ok_or_else(invalid)?;
+    let selector = if route == ItemRoute::Issues {
+        "issue_iid"
+    } else {
+        "merge_request_iid"
+    };
+    if pairs.remove("id").is_some_and(|v| v != project.to_string())
+        || pairs.remove(selector).is_some_and(|v| v != iid.to_string())
+        || !pairs.is_empty()
+    {
+        return Err(invalid());
+    }
+    Ok(page)
+}
+
+fn event_page(url: &Url, project: u64, iid: u64, route: ItemRoute) -> Result<u64, ProviderError> {
+    let mut pairs = std::collections::HashMap::new();
+    for (key, value) in url.query_pairs() {
+        if pairs.insert(key.to_string(), value.to_string()).is_some() {
+            return Err(invalid());
+        }
+    }
+    if pairs.remove("per_page").as_deref() != Some("50") {
+        return Err(invalid());
     }
     let page = pairs
         .remove("page")

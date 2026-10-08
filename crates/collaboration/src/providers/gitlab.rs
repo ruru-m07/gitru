@@ -1,6 +1,7 @@
 //! GitLab.com manual PAT, member repositories and cached MR/issue reads.
 use super::*;
 use serde::Deserialize;
+mod activity;
 mod checks;
 mod comments;
 mod commits;
@@ -216,6 +217,9 @@ impl CollaborationProvider for GitlabProvider {
         token: &SecretToken,
         request: DetailRequest,
     ) -> Result<DetailPage, ProviderError> {
+        if request.facet == DetailFacet::Activity {
+            return self.request_activity(token, request).await;
+        }
         if request.facet == DetailFacet::Comments {
             return self.request_comments(token, request).await;
         }
@@ -292,6 +296,7 @@ fn implemented(facet: ResourceFacet) -> bool {
             | ResourceFacet::Reviews
             | ResourceFacet::Checks
             | ResourceFacet::Comments
+            | ResourceFacet::Activity
     )
 }
 

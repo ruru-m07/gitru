@@ -109,7 +109,14 @@ async fn activity_twenty_page_bound_retains_uncertain_terminal_without_another_c
     let mut r = request();
     for index in 1..=20 {
         let p = provider.fetch_detail(&token(), r.clone()).await.unwrap();
-        assert_eq!(p.reconciliation.enumeration, DetailEnumeration::Uncertain);
+        assert_eq!(
+            p.reconciliation.enumeration,
+            if index < 20 {
+                DetailEnumeration::Uncertain
+            } else {
+                DetailEnumeration::Truncated
+            }
+        );
         assert_eq!(p.next_cursor.is_some(), index < 20);
         r.cursor = p.next_cursor;
     }

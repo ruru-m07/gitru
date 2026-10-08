@@ -3,6 +3,7 @@ import type {
   ContextFacetCapability,
   DetailEntry,
   DetailSnapshot,
+  RemoteAccount,
 } from "@gitru/commands";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -94,7 +95,7 @@ function snapshot(
   });
 }
 
-function mount() {
+function mount(account: RemoteAccount = fixtureAccount) {
   const cache = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -115,7 +116,7 @@ function mount() {
         <textarea defaultValue="draft remains" />
       </label>
       <CachedActivityPanel
-        account={fixtureAccount}
+        account={account}
         subjectId={subjectId}
         authorizationView={authorizationView}
         policy={policy}
@@ -128,6 +129,36 @@ function mount() {
 afterEach(() => vi.restoreAllMocks());
 
 describe("cached activity disclosure", () => {
+  it("explains partial GitLab history and renders system notes as safe text", async () => {
+    const saved = snapshot([activity("note:1", { kind: "system_note" })]);
+    saved.entries[0].title = null;
+    saved.evidence.coverage.state = "partial";
+    vi.spyOn(collaboration.transport, "detail").mockResolvedValue(saved);
+    mockForegroundDemand();
+    const { cache, stopBridge, user, view } = mount({
+      ...fixtureAccount,
+      provider: "gitlab",
+      host: "gitlab.com",
+    });
+    await user.click(screen.getByRole("button", { name: "Activity" }));
+    expect(await screen.findByText("System note")).toBeVisible();
+    expect(screen.getByText("Partial activity history")).toBeVisible();
+    expect(
+      screen.getByText(
+        "GitLab activity includes system notes, state changes, and label changes. Each sync reads up to 1,000 records; other history may be missing.",
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("<img src=x onerror=alert(1)>")).toBeVisible();
+    expect(document.querySelector("img[src='x']")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Next saved activity" }),
+    ).toBeDisabled();
+    expect(screen.getByLabelText("Unsaved edit")).toHaveValue("draft remains");
+    view.unmount();
+    stopBridge();
+    cache.clear();
+  });
+
   it("does no work while closed, renders inert saved evidence, and syncs explicitly", async () => {
     const detail = vi
       .spyOn(collaboration.transport, "detail")

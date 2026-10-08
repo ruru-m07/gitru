@@ -135,7 +135,16 @@ pub(super) fn source_for(page: &DetailCommit, old: Option<&StoredSource>) -> Res
                 || old.source.adapter_version != page.source.adapter_version
                 || old.source.field_mask != page.source.field_mask
         }) || previous.is_none_or(|old| {
-            old.reconciliation != reconciliation
+            // A terminal cap weakens an uncertain Activity traversal without
+            // changing its identity or granting absence authority.
+            let terminal_cap = page.facet == DetailFacet::Activity
+                && page.complete
+                && page.next_cursor.is_none()
+                && !page.not_modified
+                && old.reconciliation.enumeration == DetailEnumeration::Uncertain
+                && reconciliation.enumeration == DetailEnumeration::Truncated
+                && old.reconciliation.head_scope == reconciliation.head_scope;
+            (old.reconciliation != reconciliation && !terminal_cap)
                 || old.head_oid != head_oid
                 || old.check_context != check_context
                 || old.review_context != review_context

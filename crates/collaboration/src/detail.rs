@@ -344,6 +344,9 @@ pub struct HydrateDetailRequest {
 pub enum DetailEnumeration {
     FullEnumeration,
     Incremental,
+    /// Terminal bounded Activity window with an observed unread continuation.
+    /// No absence authority; a later traversal starts from the beginning.
+    Truncated,
     #[default]
     Uncertain,
 }

@@ -1175,3 +1175,106 @@ async fn matching_or_unobserved_description_head_keeps_declared_current_head_evi
         assert_eq!(read(&store, DetailFacet::Checks).await.entries.len(), 1);
     }
 }
+
+async fn activity_page(store: &Store, actor: &RemoteAccount) -> DetailCommit {
+    let mut page = commit(store, actor, DetailFacet::Activity).await;
+    page.reconciliation = DetailReconciliation::default();
+    page.subject_binding = Some(binding(store).await);
+    page.source.field_mask = vec![
+        DetailField::Body,
+        DetailField::Author,
+        DetailField::UpdatedAt,
+        DetailField::Activity,
+    ];
+    page.source.provider_updated_at = None;
+    page.etag = None;
+    page
+}
+
+#[tokio::test]
+async fn terminal_activity_cap_preserves_unread_evidence_history_and_cold_refresh() {
+    let (directory, store, actor) = fixture().await;
+    let draft = authored(&store).await;
+    let mut first = activity_page(&store, &actor).await;
+    let mut event = observed_entry("event", "retained event", Some(EARLY));
+    event.title = None;
+    event.state = None;
+    event.head_oid = None;
+    event.observed_body_state = event.body.state;
+    event.native = Some(NativeDetailPayload::ActivityV1(ActivityEvent {
+        kind: "closed".into(),
+        supported: true,
+        occurred_at: Some(EARLY.into()),
+        description: None,
+    }));
+    event.field_mask = first.source.field_mask.clone();
+    first.entries = vec![event];
+    first.complete = false;
+    first.next_cursor = Some("next-activity-page".into());
+    store.apply_detail(first).await.unwrap();
+
+    for invalid in 0..6 {
+        let mut page = activity_page(&store, &actor).await;
+        page.reconciliation.enumeration = DetailEnumeration::Truncated;
+        match invalid {
+            0 => {
+                page.complete = false;
+                page.next_cursor = Some("more".into());
+            }
+            1 => page.not_modified = true,
+            2 => page.facet = DetailFacet::Comments,
+            3 => page.reconciliation.head_scope = DetailHeadScope::CurrentHead,
+            4 => page.source.source = "foreign/source".into(),
+            5 => page.source.adapter_version += 1,
+            _ => unreachable!(),
+        }
+        let revision = store.revision().await.unwrap();
+        let before = read(&store, DetailFacet::Activity).await;
+        let error = store.apply_detail(page).await.unwrap_err();
+        assert_eq!(
+            error.code,
+            if invalid >= 4 {
+                ErrorCode::StaleView
+            } else {
+                ErrorCode::InvalidInput
+            }
+        );
+        assert_eq!(store.revision().await.unwrap(), revision);
+        let after = read(&store, DetailFacet::Activity).await;
+        assert_eq!(after.entries, before.entries);
+        assert_eq!(after.evidence.coverage, before.evidence.coverage);
+    }
+    let mut final_page = activity_page(&store, &actor).await;
+    final_page.reconciliation.enumeration = DetailEnumeration::Truncated;
+    store.apply_detail(final_page).await.unwrap();
+    let capped = read(&store, DetailFacet::Activity).await;
+    assert_eq!(capped.evidence.coverage.state, CoverageState::Partial);
+    assert!(capped.evidence.coverage.remote_has_more);
+    assert_eq!(
+        capped.entries.len(),
+        1,
+        "A cap cannot delete absent saved events"
+    );
+    assert_eq!(store.draft("a", "pull").await.unwrap(), Some(draft.clone()));
+    store.close().await.unwrap();
+    drop(store);
+    let store = Store::open(directory.path().join("facet.sqlite"))
+        .await
+        .unwrap();
+    assert_eq!(
+        read(&store, DetailFacet::Activity).await.evidence.coverage,
+        capped.evidence.coverage
+    );
+    let refresh = activity_page(&store, &actor).await;
+    assert!(
+        refresh.request_cursor.is_none(),
+        "A cold refresh starts a new bounded window"
+    );
+    store.apply_detail(refresh).await.unwrap();
+    let refreshed = read(&store, DetailFacet::Activity).await;
+    assert_eq!(refreshed.evidence.coverage.state, CoverageState::Partial);
+    assert!(!refreshed.evidence.coverage.remote_has_more);
+    assert_eq!(refreshed.entries, capped.entries);
+    assert_eq!(store.draft("a", "pull").await.unwrap(), Some(draft.clone()));
+    store.close().await.unwrap();
+}

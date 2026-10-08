@@ -307,6 +307,13 @@ function ActivityPager({
       ) : data ? (
         <>
           <ActivityEvidence snapshot={data} />
+          {props.account.provider === "gitlab" ? (
+            <p className="text-xs text-muted-foreground">
+              GitLab activity includes system notes, state changes, and label
+              changes. Each sync reads up to 1,000 records; other history may be
+              missing.
+            </p>
+          ) : null}
           {data.evidence.availability === "missing" ? (
             <p className="text-xs text-muted-foreground">
               Activity has not been saved on this device yet.
@@ -407,6 +414,16 @@ function activity(entry: DetailEntry): ActivityEvent | null {
   return entry.native?.kind === "activity.v1" ? entry.native.value : null;
 }
 
+const ACTIVITY_LABELS: Record<string, string> = {
+  system_note: "System note",
+  opened: "Opened",
+  closed: "Closed",
+  reopened: "Reopened",
+  merged: "Merged",
+  labeled: "Added label",
+  unlabeled: "Removed label",
+};
+
 function ActivityRow({ entry }: { entry: DetailEntry }) {
   const value = activity(entry);
   if (!value)
@@ -422,7 +439,7 @@ function ActivityRow({ entry }: { entry: DetailEntry }) {
     <li className="space-y-2 break-words text-sm">
       <p className="font-medium">
         {value.supported
-          ? (entry.title ?? value.kind)
+          ? (entry.title ?? ACTIVITY_LABELS[value.kind] ?? value.kind)
           : `Unsupported activity · ${value.kind}`}
       </p>
       {value.supported && entry.title ? (

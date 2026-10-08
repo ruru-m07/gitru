@@ -118,3 +118,8 @@ omitted event families remain explicitly partial. The UI states the per-sync
 limit of 20 pages (up to 1,000 returned source rows), without claiming complete
 history. Add cold cap/restart, metadata truthfulness, invalid terminal evidence,
 no pruning, and ascending-comments/descending-activity transport controls.
+
+The existing GitHub Activity adapter already stops at its 20-page cap. Reuse the
+same terminal evidence there so an observed unread continuation remains visible
+in coverage rather than becoming `remote_has_more=false`; its endpoint order,
+request count, refresh behavior and non-pruning policy are unchanged.
