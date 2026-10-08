@@ -6,6 +6,8 @@
 use crate::{PullFileContext, ReviewContext, ReviewDiffSide};
 use serde::{Deserialize, Serialize};
 
+pub(crate) mod anchors;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReviewSubmissionEvent {

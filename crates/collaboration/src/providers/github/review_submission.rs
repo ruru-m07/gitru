@@ -20,6 +20,7 @@ use std::collections::HashSet;
 const MAX_BODY_BYTES: usize = 16 * 1024;
 const MAX_COMMENTS: usize = 25;
 const MAX_AUTHORED_BYTES: usize = 128 * 1024;
+const MAX_WIRE_BYTES: usize = 65_536;
 const MAX_URL_BYTES: usize = 2_048;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -159,14 +160,14 @@ impl GithubReviewTransport {
             let error = response
                 .provider_error
                 .unwrap_or_else(|| invalid().with_cooldown(response.cooldown_seconds));
-            if response.status.is_server_error() || response.status == StatusCode::REQUEST_TIMEOUT {
-                return Err(error);
+            if known_rejection(response.status) {
+                return Ok(ReviewCreateOutcome::Rejected {
+                    status: response.status.as_u16(),
+                    error,
+                    cooldown_seconds: response.cooldown_seconds,
+                });
             }
-            return Ok(ReviewCreateOutcome::Rejected {
-                status: response.status.as_u16(),
-                error,
-                cooldown_seconds: response.cooldown_seconds,
-            });
+            return Err(error);
         }
         let accepted = parse_review(operation, &response.body)
             .map_err(|error| error.with_cooldown(response.cooldown_seconds))?;
@@ -276,6 +277,9 @@ impl GithubReviewSubmission {
         if bytes > MAX_AUTHORED_BYTES {
             return Err(invalid());
         }
+        if self.serialize_wire_body()?.len() > MAX_WIRE_BYTES {
+            return Err(invalid());
+        }
         Ok(())
     }
 
@@ -312,6 +316,10 @@ impl GithubReviewSubmission {
 
     fn wire_body(&self) -> Result<Vec<u8>, ProviderError> {
         self.validate()?;
+        self.serialize_wire_body()
+    }
+
+    fn serialize_wire_body(&self) -> Result<Vec<u8>, ProviderError> {
         #[derive(Serialize)]
         struct WireComment<'a> {
             path: &'a str,
@@ -398,6 +406,18 @@ fn positive(raw: &str) -> Result<u64, ProviderError> {
 
 fn invalid() -> ProviderError {
     ProviderError::new(ProviderErrorKind::InvalidResponse)
+}
+
+fn known_rejection(status: StatusCode) -> bool {
+    matches!(
+        status,
+        StatusCode::UNAUTHORIZED
+            | StatusCode::FORBIDDEN
+            | StatusCode::NOT_FOUND
+            | StatusCode::CONFLICT
+            | StatusCode::UNPROCESSABLE_ENTITY
+            | StatusCode::TOO_MANY_REQUESTS
+    )
 }
 
 fn rate_limited(wait: u64) -> ProviderError {
@@ -917,6 +937,41 @@ mod tests {
     }
 
     #[test]
+    fn exact_encoded_wire_budget_includes_json_escaping_and_all_comments() {
+        let mut near = operation();
+        near.body = "x".into();
+        let template = near.comments[0].clone();
+        near.comments = (0..3)
+            .map(|index| {
+                let mut comment = template.clone();
+                comment.comment_id = format!("00000000-0000-4000-8000-{:012}", index + 1);
+                comment.body = "x".repeat(16_000);
+                comment.anchor.path = format!("src/{index}.rs");
+                comment.anchor.line += index;
+                comment.anchor.start_line = comment.anchor.start_line.map(|line| line + index);
+                comment
+            })
+            .collect();
+        near.validate().unwrap();
+        assert!(near.wire_body().unwrap().len() <= MAX_WIRE_BYTES);
+
+        for comment in &mut near.comments {
+            comment.body = "\n".repeat(12_000);
+        }
+        assert!(
+            near.comments
+                .iter()
+                .map(|comment| comment.body.len())
+                .sum::<usize>()
+                < MAX_WIRE_BYTES
+        );
+        assert_eq!(
+            near.validate().unwrap_err().kind,
+            ProviderErrorKind::InvalidResponse
+        );
+    }
+
+    #[test]
     fn renderer_anchor_and_authored_bounds_fail_closed() {
         let mut request = operation();
         request.comments[0].anchor.side = ReviewDiffSide::Unknown;
@@ -1064,6 +1119,43 @@ mod tests {
         assert_eq!(error.account_cooldown_seconds, Some(19));
         let requests = server.join().unwrap();
         assert_eq!(requests.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn unexpected_success_and_malformed_success_are_outcome_unknown() {
+        for (status, body, wait) in [
+            ("202 Accepted", review_json(), 17),
+            ("200 OK", json!({}), 19),
+        ] {
+            let (base, server) = server(vec![response(
+                status,
+                &body,
+                &format!("Retry-After: {wait}\r\n"),
+            )]);
+            let transport = GithubReviewTransport::for_test_base(base);
+            let error = transport.create(&token(), &operation()).await.unwrap_err();
+            assert_eq!(error.kind, ProviderErrorKind::InvalidResponse);
+            assert_eq!(error.account_cooldown_seconds, Some(wait));
+            let requests = server.join().unwrap();
+            assert_eq!(requests.len(), 1);
+            assert!(requests[0].starts_with("POST /repositories/7/pulls/12/reviews HTTP/1.1"));
+        }
+    }
+
+    #[tokio::test]
+    async fn redirect_after_post_is_outcome_unknown_without_following_or_replaying() {
+        let (base, server) = server(vec![response(
+            "302 Found",
+            &json!({}),
+            "Location: /repositories/7/pulls/12/reviews/80\r\nRetry-After: 23\r\n",
+        )]);
+        let transport = GithubReviewTransport::for_test_base(base);
+        let error = transport.create(&token(), &operation()).await.unwrap_err();
+        assert_eq!(error.kind, ProviderErrorKind::InvalidResponse);
+        assert_eq!(error.account_cooldown_seconds, Some(23));
+        let requests = server.join().unwrap();
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0].starts_with("POST /repositories/7/pulls/12/reviews HTTP/1.1"));
     }
 
     #[tokio::test]
