@@ -2,7 +2,9 @@
 
 Parent: [RURU-53: Build a provider-independent, local-first remote collaboration engine](https://linear.app/catra/issue/RURU-53/build-a-provider-independent-local-first-remote-collaboration-engine).
 Project: Gitru. Team: ruru. Milestone: Hosted Collaboration.
-Published and verified: 2026-10-03.
+Published and verified: 2026-10-03. The [8 October handoff](remote-collaboration-handoff.md)
+supersedes dated progress snapshots below with current scope, remaining work and
+exact-head CI; the acceptance criteria and dependency plan remain applicable.
 49 direct children: 44 new, 5 existing issues updated. All 49 issue bodies and 106 direct blocker relationships were read back; the graph is acyclic. Six immediate independent tasks are Todo. Other unblocked product-policy work remains Backlog.
 
 Local C01–C49 keys are planning keys, not Linear identifiers. Linear status and dependency links are authoritative and may change; this document records the verified publication snapshot. Retained valid dependencies from the original five children are included below.

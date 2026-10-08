@@ -1,8 +1,10 @@
 # Remote collaboration engine architecture
 
-Status: architecture accepted as the implementation direction. The initial
-read-only foundation is in progress; section 23 records its verified scope and
-remaining gates. Proposed later-phase contracts are not shipping APIs.
+Status: architecture accepted as the implementation direction. Read-only and
+bounded durable-write slices are published in unmerged review branches; section 23
+retains their chronological evidence. The [8 October handoff](remote-collaboration-handoff.md)
+records current scope, remaining work and exact-head CI. Proposed later-phase
+contracts are not shipping APIs.
 
 Research date: **2 October 2026**. Repository inspection: HEAD
 `ddaecfad99195f9ce57e46cd3b1bbc0bb02c666d` (`dev`), implementation branch
