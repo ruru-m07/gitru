@@ -562,18 +562,25 @@ async fn actual_gitlab_common_reads_capabilities_and_independent_body_survive_co
         .unwrap();
     assert_eq!(reviews.saved_read.state, CapabilityState::Supported);
     assert_eq!(reviews.remote_write.state, CapabilityState::Unsupported);
-    for facet in [ResourceFacet::Comments, ResourceFacet::Merge] {
-        assert_eq!(
-            capabilities
-                .facets
-                .iter()
-                .find(|entry| entry.facet == facet)
-                .unwrap()
-                .saved_read
-                .state,
-            CapabilityState::Unsupported
-        );
-    }
+    let comments = capabilities
+        .facets
+        .iter()
+        .find(|facet| facet.facet == ResourceFacet::Comments)
+        .unwrap();
+    assert_eq!(comments.saved_read.state, CapabilityState::Supported);
+    assert_eq!(comments.synchronize.state, CapabilityState::Supported);
+    assert_eq!(comments.observation, CapabilityObservation::NotLoaded);
+    assert_eq!(comments.remote_write.state, CapabilityState::Unsupported);
+    assert_eq!(
+        capabilities
+            .facets
+            .iter()
+            .find(|facet| facet.facet == ResourceFacet::Merge)
+            .unwrap()
+            .saved_read
+            .state,
+        CapabilityState::Unsupported
+    );
     assert_eq!(
         capabilities
             .facets
