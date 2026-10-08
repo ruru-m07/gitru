@@ -152,6 +152,9 @@ impl CollaborationRuntime {
         let _dispatch = self.dispatch.lock().await;
         let _lifecycle = self.lifecycle.lock().await;
         *self.scheduler.lock().await = Scheduler::default();
+        if let Some(policy) = &self.registry.pull_creation {
+            policy.clear_grants();
+        }
         self.store.close().await?;
         self.lifetime.closed.store(true, Ordering::Release);
         Ok(())

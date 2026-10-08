@@ -67,7 +67,9 @@ pub use tasks::*;
 pub use text_edits::*;
 
 mod issue_creation;
+mod pull_creation;
 pub use issue_creation::*;
+pub use pull_creation::*;
 mod workflow_state;
 pub use workflow_state::*;
 

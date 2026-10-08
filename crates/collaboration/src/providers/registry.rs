@@ -172,6 +172,7 @@ impl FeedKind {
 
 #[derive(Clone, Default)]
 pub struct ProviderRegistry {
+    pub(crate) pull_creation: Option<Arc<super::github::pull_creation::GithubPullCreationPolicy>>,
     pub(crate) guarded_merge: Option<Arc<super::github::guarded_merge::GithubGuardedMergePolicy>>,
     adapters: HashMap<String, (ProviderInstance, Arc<dyn CollaborationProvider>)>,
     delivery: HashMap<(String, String, u32), Arc<dyn crate::delivery::CommandDeliveryPolicy>>,

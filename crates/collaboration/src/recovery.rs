@@ -28,11 +28,14 @@ use crate::{
 #[cfg(test)]
 mod current_tests;
 mod policy;
+mod pull_creation;
+#[cfg(test)]
+mod pull_creation_tests;
 
 type Result<T> = std::result::Result<T, CollaborationError>;
 // Raising this requires a reviewed restore policy, especially for future outbox
 // tables. Merely adding a migration does not authorize replay of imported data.
-const RESTORE_SCHEMA_POLICY: i64 = 22;
+const RESTORE_SCHEMA_POLICY: i64 = 23;
 const MAX_DATABASE_BYTES: u64 = 512 * 1024 * 1024;
 const SIDECARS: [&str; 3] = ["", "-wal", "-shm"];
 
@@ -547,6 +550,12 @@ async fn summary(
     }
     if version >= 22 {
         drafts += sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM issue_drafts")
+            .fetch_one(&mut *connection)
+            .await
+            .map_err(|_| invalid_backup())?;
+    }
+    if version >= 23 {
+        drafts += sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM pull_drafts")
             .fetch_one(&mut *connection)
             .await
             .map_err(|_| invalid_backup())?;
