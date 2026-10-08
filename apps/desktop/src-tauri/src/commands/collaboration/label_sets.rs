@@ -1,8 +1,6 @@
 //! Cache-only label review and durable best-effort label intent admission.
-use super::{CollaborationState, Operation, authorize};
-use collaboration::{
-    CollaborationError, LabelSetReceipt, LabelSetRequest, LabelSetSnapshot,
-};
+use super::{authorize, CollaborationState, Operation};
+use collaboration::{CollaborationError, LabelSetReceipt, LabelSetRequest, LabelSetSnapshot};
 use tauri::{State, Webview};
 
 /// Reads only the native cache. Provider reconciliation remains background-owned.

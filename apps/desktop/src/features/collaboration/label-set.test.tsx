@@ -111,7 +111,11 @@ describe("cached GitHub label editor", () => {
       },
     );
     const { user } = setup();
-    expect(screen.getByText(/observed, incomplete catalog/i)).toBeVisible();
+    expect(
+      screen.getByText(
+        "Only labels already seen in this repository are shown.",
+      ),
+    ).toBeVisible();
     await begin(user);
     await user.click(screen.getByRole("checkbox", { name: "bug" }));
     await user.click(screen.getByRole("checkbox", { name: "docs/#?" }));
@@ -183,7 +187,7 @@ describe("cached GitHub label editor", () => {
       screen.getByRole("button", { name: "Save and queue label changes" }),
     );
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Your exact request identity is preserved.",
+      "You can retry this change safely.",
     );
     await user.click(
       screen.getByRole("button", { name: "Retry exact label change" }),

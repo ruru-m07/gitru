@@ -180,7 +180,7 @@ export function ResourceLabelSet({
         <div>
           <h3 className="text-sm font-medium">Labels</h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            Choose from label identities already saved on this device.
+            Choose from labels saved on this device.
           </p>
         </div>
         {snapshot.pending_intent ? (
@@ -190,8 +190,7 @@ export function ResourceLabelSet({
         ) : null}
       </div>
       <p className="text-xs text-muted-foreground">
-        The saved choices are an observed, incomplete catalog. Gitru does not
-        claim this is the complete GitHub label list.
+        Only labels already seen in this repository are shown.
         {snapshot.catalog_truncated
           ? " Some saved choices are hidden by the local display limit."
           : ""}
@@ -251,7 +250,7 @@ export function ResourceLabelSet({
               </div>
             ) : (
               <p className="text-xs text-muted-foreground">
-                No saved label identities are available.
+                No saved labels are available.
               </p>
             )}
           </fieldset>
@@ -304,7 +303,7 @@ export function ResourceLabelSet({
           {error ? (
             <div className="space-y-2">
               <p role="alert" className="text-xs text-destructive-foreground">
-                {error} Your exact request identity is preserved.
+                {error} You can retry this change safely.
               </p>
               {retryAllowed ? (
                 <Button
