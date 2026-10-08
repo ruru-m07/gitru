@@ -40,7 +40,11 @@ impl TestRepo {
             .args(["config", "user.name", "Test User"])
             .output();
 
-        Self { dir }
+        let repository = Self { dir };
+        // Synthetic fixture commits must not invoke the developer's signer.
+        // This is repository-local and never changes global or product settings.
+        repository.git(&["config", "--local", "commit.gpgsign", "false"]);
+        repository
     }
 
     /// Create a SHA-256 repository when the installed Git supports the object
@@ -58,6 +62,7 @@ impl TestRepo {
         for (key, value) in [
             ("user.email", "test@example.com"),
             ("user.name", "Test User"),
+            ("commit.gpgsign", "false"),
         ] {
             let output = Command::new("git")
                 .current_dir(dir.path())
@@ -92,7 +97,9 @@ impl TestRepo {
             "partial git clone failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        Self { dir }
+        let repository = Self { dir };
+        repository.git(&["config", "--local", "commit.gpgsign", "false"]);
+        repository
     }
 
     /// Check the object database without allowing a promisor remote fetch.
