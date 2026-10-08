@@ -541,7 +541,7 @@ async fn omitted_oversized_and_304_observations_preserve_the_saved_values_orderi
         older.source.provider_updated_at = Some("2026-10-03T00:01:00Z".into());
         assert_eq!(
             store.apply_detail(older).await.unwrap_err().code,
-            ErrorCode::StaleView
+            ErrorCode::Provider
         );
         assert_eq!(
             store
