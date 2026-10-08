@@ -123,3 +123,44 @@ The existing GitHub Activity adapter already stops at its 20-page cap. Reuse the
 same terminal evidence there so an observed unread continuation remains visible
 in coverage rather than becoming `remote_has_more=false`; its endpoint order,
 request count, refresh behavior and non-pruning policy are unchanged.
+
+## Implemented and locally qualified — 8 October 2026
+
+Signed feature `0444ee18` implements the composite GitLab.com Activity adapter,
+strict transport operation identity, safe common UI wording and refreshable
+terminal truncation. Signed merge `9ff9240f` brings in qualified RURU-102
+scheduler/backoff corrections from PR #191. Final test-only `da56a3b7` updates two
+legacy controls that still classified the newly implemented Activity as unsupported;
+the no-request negative case now uses the still-unsupported Participants facet.
+
+Actual local evidence:
+
+- Full all-feature collaboration `--no-fail-fast`: 1,031 passed, two outdated
+  capability assertions failed, five subprocess helper ignores, 27 suites. After
+  the test-only correction, the entire GitLab provider module passes **95/95**.
+  All **1,033 distinct native tests** are qualified across that full run and the
+  affected-module rerun; this is not a single green full-suite invocation.
+- The 11 GitLab Activity controls include actual HTTP/runtime/SQLite cold paging,
+  ten-page yield and composite cursor resume, global 20-page cap, no immediate
+  21st request, cold first-page refresh without pruning saved rows/private drafts,
+  same-epoch denial and retired-epoch rejection, and persisted success/malformed/
+  HTTP-error quota before any cold vault access. GitHub Activity regressions pass
+  11/11; a real Store cap/provenance/rollback/restart control passes 1/1.
+- Final frontend: **852 passed, one existing skip, 98 files**; workspace lint and
+  type checks, production desktop build, strict workspace/all-target/all-feature
+  Clippy, Rust formatting and diff checks pass. Focused Activity UI is 5/5.
+- `make typegen` completed with 157 commands. A complete TypeScript AST comparison
+  proves only generator order/timestamp changes: commands 161 statements, events
+  3, index 3, types 938; no added/removed statement. Generator-only churn was
+  restored. No public DTO/signature/schema change and no hand-edited bindings.
+
+Logs: `/tmp/gitru-r122-activity-full-native.log`,
+`/tmp/gitru-r122-activity-final-gitlab-module.log`,
+`/tmp/gitru-r122-activity-full-clippy.log`,
+`/tmp/gitru-r122-activity-final-{frontend,lint,all-types,build}.log`,
+`/tmp/gitru-r122-activity-binding-equivalence.log`.
+Independent adapter/storage/UI source reviews passed. Remote CI, a new packaged
+window run and live GitLab/private-account/OS-vault evidence remain separate and
+unclaimed. Bitbucket Activity remains explicitly unsupported pending its own
+stable-identity/provider-contract slice; RURU-122 remains In Progress for that
+provider expansion. No personal credentials, remote mutations or PR merges.

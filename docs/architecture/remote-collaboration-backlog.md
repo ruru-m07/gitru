@@ -2609,3 +2609,22 @@ suite targets are covered across the full run and scoped repair rerun (five
 helper ignores), not a claimed single green full run. See
 [the work note](./collaboration-work/RURU-102-priority-fairness.md). Remote CI for
 the revised PR191 head is separate. API-family/lifecycle gates remain open.
+
+### RURU-122 GitLab composite Activity — 8 October 2026
+
+GitLab.com issues/MRs now cache system notes, state events and label events in the
+common Activity facet. Three independent sources resume across yield/restart,
+share a 20-page budget and retain Partial history. Terminal truncation records
+known-more without preserving an unusable cursor or pruning prior observations;
+GitHub's existing Activity cap now uses the same truthful evidence. Safe cached
+UI labels and coverage copy preserve provider differences.
+
+Signed feature `0444ee18`, qualified scheduler integration `9ff9240f`, and final
+test expectations `da56a3b7` qualify 1,033 distinct native tests across a full run
+(1,031 pass/two legacy unsupported-Activity assertions/five helper ignores) plus
+all 95 GitLab provider controls after correction. Final frontend 852/one skip,
+lint/types/production build, strict workspace all-feature Clippy/fmt/diff pass.
+Typegen completes 157 commands with exact semantic binding equivalence. Details
+and failure trail are in [the work note](collaboration-work/RURU-122-gitlab-activity.md).
+Remote CI/live provider/new packaged-window validation remain separate. Bitbucket
+Activity expansion remains open; RURU-122 stays In Progress. No PR merged.
