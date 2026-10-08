@@ -105,6 +105,7 @@ async fn committed_intent_is_shared_by_list_detail_filtered_count_and_literal_se
         }),
         state: Some("closed".into()),
         unread: None,
+        labels: None,
     };
     let command = admit(&store, intent.clone()).await;
     let snapshot = store.item("a", "pull").await.unwrap();

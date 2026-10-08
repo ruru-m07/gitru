@@ -2091,6 +2091,9 @@ pub(crate) mod issue_creation;
 
 #[cfg(test)]
 mod issue_creation_tests;
+pub(crate) mod label_sets;
+#[cfg(test)]
+mod label_sets_tests;
 pub(crate) mod workflow_state;
 
 #[cfg(test)]

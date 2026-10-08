@@ -934,4 +934,5 @@ mod tests {
 mod files_tests;
 
 pub(crate) mod issue_creation;
+pub(crate) mod label_sets;
 pub(crate) mod workflow_state;

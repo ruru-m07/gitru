@@ -53,6 +53,7 @@ pub enum CommandReviewField {
     State,
     Unread,
     Head,
+    Labels,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

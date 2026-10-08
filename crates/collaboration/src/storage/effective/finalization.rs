@@ -158,6 +158,15 @@ impl<'a, 'db> DeliveryFinalization<'a, 'db> {
             {
                 values.state = metadata.values.state.clone();
             }
+            if known(MetadataField::Labels)
+                && explicitly_observed(MetadataField::Labels)
+                && (not_modified
+                    || incoming_metadata
+                        .as_ref()
+                        .is_some_and(|incoming| incoming.values.labels == metadata.values.labels))
+            {
+                values.labels = Some(metadata.values.labels.clone());
+            }
         }
         let frame = body_frame_in(self.tx, &self.account.id, &item.id).await?;
         if let Some((body, source_json, _, _)) = &frame {

@@ -20,6 +20,9 @@ pub(crate) struct ItemIntentPatch {
     pub body: Option<BodyIntent>,
     pub state: Option<String>,
     pub unread: Option<bool>,
+    /// Metadata-only effective projection; absent preserves legacy v1 JSON bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub labels: Option<Vec<crate::DetailLabel>>,
 }
 
 impl ItemIntentPatch {
@@ -40,6 +43,27 @@ impl ItemIntentPatch {
             })
             && (self.unread.is_none() || *kind == RemoteItemKind::Notification)
             && (*kind != RemoteItemKind::Notification || self.body.is_none())
+            && self.labels.as_ref().is_none_or(|labels| {
+                if !matches!(kind, RemoteItemKind::Issue | RemoteItemKind::PullRequest) {
+                    return false;
+                }
+                let identities: Option<Vec<_>> = labels
+                    .iter()
+                    .map(|label| {
+                        Some(crate::LabelIdentity {
+                            provider_id: label.provider_id.clone()?,
+                            name: label.name.clone(),
+                            color: label.color.clone(),
+                        })
+                    })
+                    .collect();
+                identities.is_some_and(|identities| {
+                    crate::label_sets::native::labels_valid(
+                        &identities,
+                        crate::label_sets::native::MAX_LABELS,
+                    )
+                })
+            })
             && !self.fields().is_empty();
         if !valid {
             return Err(CollaborationError::invalid(
@@ -61,6 +85,9 @@ impl ItemIntentPatch {
         }
         if self.unread.is_some() {
             result.push(IntentField::Unread);
+        }
+        if self.labels.is_some() {
+            result.push(IntentField::Labels);
         }
         result
     }
@@ -102,6 +129,9 @@ impl ItemIntentPatch {
         if next.unread.is_some() {
             self.unread = next.unread;
         }
+        if next.labels.is_some() {
+            self.labels = next.labels;
+        }
     }
 }
 
@@ -112,6 +142,7 @@ pub enum IntentField {
     Body,
     State,
     Unread,
+    Labels,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
