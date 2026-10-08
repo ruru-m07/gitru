@@ -272,10 +272,10 @@ fresh exact-head matrix are required before calling the PR green.
 
 ## Follow-up contract — 8 October 2026
 
-Live audit confirms existing draft165 at signed d08fa56c is open and all11 reported
-checks pass. LinearR102 remains In Progress. Reuse its clean attached external
+Live audit confirms existing draft #165 at signed d08fa56c is open and all 11 reported
+checks pass. Linear R102 remains In Progress. Reuse its clean attached external
 worktree; no duplicate PR, merge, unrelated edits or claim about newer descendants.
-This bounded follow-up addresses the two explicitly retained discovery/>24h gaps.
+This bounded follow-up addresses the two explicitly retained discovery/over 24h gaps.
 
 Before production edits, add and execute deterministic native RED controls for an
 already picked notification discovery waiting on lifecycle and on the real blocking
@@ -285,8 +285,8 @@ vault and immediately before provider dispatch. A local admission refusal must n
 invent a new provider observation at the shifted wall clock. Existing selector,
 authorization, finite retry, saved-cache/draft and peer-fairness rules remain.
 
-Add a48h captured observation with UTC advanced beyond the durable deadline while
-only25h monotonic time elapses; HTTP/vault must remain blocked through the original
+Add a 48h captured observation with UTC advanced beyond the durable deadline while
+only 25h monotonic time elapses; HTTP/vault must remain blocked through the original
 full live bound. A later shorter observation cannot reduce it. Add valid-wall cold
 restart recovery, peer progress and extreme-duration no-panic controls. Production
 repair starts only after the relevant unchanged-source RED is recorded.
@@ -307,13 +307,54 @@ where practical; notify root about shared-core changes before descendants consum
 Local qualification and existing/new exact-head remote CI remain distinct.
 
 Actual follow-up RED: `cargo test -p collaboration --lib clock_ -- --nocapture`
-on unchanged production runs17 matching controls:14 pass and3 fail. The failures
+on unchanged production runs 17 matching controls: 14 pass and 3 fail. The failures
 are a new vault load in already picked discovery after accepted quota/UTC jump,
-a provider call after the held native vault boundary, and a48h receipt releasing
-an own-account Body read after25h monotonic/72h UTC instead of only serving the
-eligible peer. The added valid-wall48h cold-restart/cache/draft/peer control passes.
+a provider call after the held native vault boundary, and a 48h receipt releasing
+an own-account Body read after 25h monotonic / 72h UTC instead of only serving the
+eligible peer. The added valid-wall 48h cold-restart/cache/draft/peer control passes.
 Two fixture setup errors were corrected before this result: discovery uses its
 scheduler key rather than the distinct durable intent receipt; after an eligible
 Body refresh its content may change while the authored draft remains unchanged.
 Neither was a production defect. The final RED log is
 `/tmp/gitru-r102-followup-red-final.log`; committed fixtures preserve reproduction.
+
+
+Actual repaired-source checkpoint: signed 755fe5d passes all 17 original RED-matching
+controls and 27 final clock-matching controls, including the new no-overflow test.
+Full `cargo test -p collaboration` passes 479 tests with 2 helper ignores. Strict
+all-target collaboration Clippy, Rust formatting and diff checks pass. Normal
+`make typegen` produces 114 commands; complete normalized TypeScript AST inventories
+are unchanged across 536 types statements, 118 commands statements, 3 events and 3
+index statements. Generated ordering/timestamp churn was restored via Git with no
+hand edits. Full workspace make verify is running separately.
+
+The repair gives notification discovery shared live/durable checks before vault
+and after its saved selector/epoch dispatch gate, preserving local-refusal evidence
+for either Store or shared quota admission. It removes redundant later live-budget
+restarts from feeds/details/discovery: the accepted captured-epoch persistence
+already installs the receipt-time bound. Provider deadlines retain the full
+observed duration in the existing one-slot-per-account map, with checked Instant
+addition and a fail-closed out-of-range sentinel. Scope retry wakes remain bounded.
+Cold admission captures full remaining validated durable time. No new public
+contract/schema/dependency/fairness policy or credential access was introduced.
+
+Descendant integration is a separate gate because later R126 / R137 readers of the
+private account map require small mechanical adaptations: diagnostics use
+remaining(now), synthetic deadline inserts use Into, and the redundant later
+pull-commit cooldown install can be removed. Do not infer those descendants are
+qualified merely because this existing PR #165 branch passes.
+
+Final review accepts a second narrow direct-admission control before publication.
+Later delivery workers call the shared budget helper without enqueueing a read
+scope. The current helper checks durable wall time but does not seed a live bound;
+a correct-wall cold admission followed by a wall jump is an unproven source risk.
+Retain genuine already-admitted own/peer Job metadata across cold Store reopen,
+then invoke the shared helper directly without enqueueing or manually populating
+the new scheduler. Reproduce a 48h saved cooldown losing its bound after 25h
+monotonic / 72h UTC, while the peer remains eligible; no delivery-specific claim.
+If RED proves it, under the helper's existing scheduler lock capture and max-install
+the full remaining durable provider wait before checking live permission. Persist
+no new provider observation, keep no extra history/map, and retain checked overflow.
+Finish the current full verification before source edits, then qualify the signed
+narrow delta with its direct-clock regression, full collaboration tests and strict
+Clippy. Descendants consume it explicitly rather than inheriting an untested claim.
