@@ -250,3 +250,16 @@ unchanged frozen-v22 checksum is
 `48c80b4dd9bd4594e02cb1e4108f84e1325cea2b6df0ab9926b3094903974813c86851f400352d8fc4c97b05c0b032c6`.
 This qualifies schema23/recovery for R132 to stack migration24; it does not claim
 completion of the still-in-progress native Git/IPC and frontend integration.
+
+The native Git/IPC source is now implemented and locally qualified: six temporary
+Git controls pass (dirty/index preservation, uncached moved ref, detached/unborn/
+missing/invalid ref, Unicode packed refs and linked worktrees, replacement objects,
+no partial-clone blob hydration, unsupported SHA256 identity); one paused-time
+control proves the ten-second bound includes a blocked runner lease. Two desktop
+unit controls prove the retained owner rejects same-path directory replacement
+and a changed `.git` pointer even while old directories remain. Strict Git and
+desktop all-target Clippy passed. The five native command wrappers compile and
+accept only typed draft/request IDs; paths and trusted source observations never
+come from IPC. These controls do not exercise a real OS webview lifecycle or live
+GitHub mutation, and they do not replace the pending complete workspace/platform
+qualification.

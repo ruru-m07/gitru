@@ -8,6 +8,7 @@ pub mod operation;
 pub mod origin;
 pub mod pickaxe;
 pub mod pull_checkout;
+pub mod pull_creation;
 pub mod pull_file;
 pub mod query;
 pub mod rebase;
