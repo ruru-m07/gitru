@@ -57,6 +57,7 @@ const fieldLabels = {
   state: "State",
   unread: "Unread",
   head: "Inspected commit",
+  labels: "Labels",
 };
 
 function valueText(value: CommandFieldValue) {

@@ -49,6 +49,22 @@ describe("authorized resource metadata presentation", () => {
     expect(screen.getByText("b".repeat(40))).toBeVisible();
   });
 
+  it("projects a queued effective label set without changing provider freshness evidence", () => {
+    render(
+      <SelectedResourceHeader
+        item={fixtureItem}
+        metadata={fixtureMetadata()}
+        labelsOverride={[
+          { provider_id: "10", name: "queued-label", color: null },
+        ]}
+        labelsPending
+      />,
+    );
+    expect(screen.getByText("queued-label")).toBeVisible();
+    expect(screen.queryByText("detail-label")).not.toBeInTheDocument();
+    expect(screen.getByText("Queued")).toBeVisible();
+  });
+
   it("honors known null/empty fields instead of reviving a summary author or draft", () => {
     const metadata = fixtureMetadata();
     metadata.values = {

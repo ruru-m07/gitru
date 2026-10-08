@@ -4,6 +4,7 @@ import {
   type RemoteItemKind,
 } from "@gitru/collaboration-client";
 import {
+  labelSetQueryOptions,
   useCollaborationDetail,
   useCollaborationItem,
   useContextualCapabilities,
@@ -11,6 +12,7 @@ import {
 } from "@gitru/collaboration-client/react";
 import { Badge } from "@gitru/ui/components/badge";
 import { Button } from "@gitru/ui/components/button";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { CapabilityBoundary, ReadOnlyCapability } from "./capability-boundary";
 import {
@@ -20,6 +22,7 @@ import {
   feedFacet,
   resourceCapabilityTarget,
 } from "./capability-policy";
+import { ResourceLabelSet } from "./label-set";
 import { SavedDraftEditor } from "./private-draft";
 import { PullRequestCheckoutButton } from "./pull-checkout-dialog";
 import { ResourceCapabilityPanels } from "./resource-capability-panels";
@@ -67,6 +70,18 @@ export function SavedItemDetail({
       canReadSaved(policy) &&
       canReadSaved(bodyPolicy),
   );
+  const labelEditorEnabled =
+    providerEnabled &&
+    kind !== "notification" &&
+    account.provider === "github" &&
+    account.host === "github.com" &&
+    canReadSaved(policy) &&
+    canReadSaved(bodyPolicy) &&
+    !!item;
+  const labelQuery = useQuery({
+    ...labelSetQueryOptions(account, itemId),
+    enabled: labelEditorEnabled,
+  });
   const bodyData =
     providerEnabled &&
     canReadSaved(bodyPolicy) &&
@@ -163,6 +178,12 @@ export function SavedItemDetail({
           <SelectedResourceHeader
             item={item}
             metadata={bodyData?.metadata ?? null}
+            labelsOverride={
+              labelQuery.data?.pending_intent
+                ? labelQuery.data.effective_labels
+                : null
+            }
+            labelsPending={labelQuery.data?.pending_intent != null}
           />
           {query.data?.pending_intent ? (
             <Badge variant="outline" size="sm">
@@ -182,6 +203,15 @@ export function SavedItemDetail({
                 subjectId={itemId}
                 kind={kind}
               />
+              {labelEditorEnabled ? (
+                <ResourceLabelSet
+                  account={account}
+                  subjectId={itemId}
+                  snapshot={labelQuery.data}
+                  pending={labelQuery.isPending}
+                  queryError={labelQuery.isError ? labelQuery.error : null}
+                />
+              ) : null}
               <ResourceTextEditor account={account} subjectId={itemId} />
             </>
           ) : null}

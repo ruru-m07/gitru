@@ -1,4 +1,5 @@
 import type {
+  LabelIdentity,
   MetadataFieldEvidence,
   RemoteItem,
   ResourceMetadataSnapshot,
@@ -96,9 +97,13 @@ function MetadataRow({
 export function SelectedResourceHeader({
   item,
   metadata,
+  labelsOverride = null,
+  labelsPending = false,
 }: {
   item: RemoteItem;
   metadata: ResourceMetadataSnapshot | null;
+  labelsOverride?: readonly LabelIdentity[] | null;
+  labelsPending?: boolean;
 }) {
   const values = metadata?.values;
   const title = project(metadata, "title", "title", item.title);
@@ -113,6 +118,7 @@ export function SelectedResourceHeader({
   );
   const webUrl = project(metadata, "web_url", "web_url", item.web_url);
   const draft = project(metadata, "is_draft", "is_draft", item.is_draft);
+  const labels = labelsOverride ?? values?.labels ?? [];
   return (
     <header className="space-y-3" aria-label="Selected resource metadata">
       <div className="flex flex-wrap gap-2">
@@ -147,8 +153,8 @@ export function SelectedResourceHeader({
         <>
           <dl className="grid gap-3 sm:grid-cols-2">
             <MetadataRow label="Labels" field="labels" metadata={metadata}>
-              {values?.labels.length
-                ? values.labels.map((label, index) => (
+              {labels.length
+                ? labels.map((label, index) => (
                     <Badge
                       key={`${label.provider_id ?? "name-only"}:${label.name}:${index}`}
                       variant="outline"
@@ -159,6 +165,11 @@ export function SelectedResourceHeader({
                     </Badge>
                   ))
                 : "No labels"}
+              {labelsPending ? (
+                <Badge variant="secondary" size="sm" className="ml-1">
+                  Queued
+                </Badge>
+              ) : null}
             </MetadataRow>
             <MetadataRow
               label="Assignees"
