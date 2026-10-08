@@ -133,6 +133,8 @@ pub(crate) async fn build_runtime(
             let provider = collaboration::providers::github::GithubProvider::new()?;
             let mut registry = collaboration::providers::ProviderRegistry::default();
             registry.register(Arc::new(provider))?;
+            registry.register_github_text_edits()?;
+            registry.register_github_comments()?;
             registry.register(Arc::new(
                 collaboration::providers::gitlab::GitlabProvider::new()?,
             ))?;

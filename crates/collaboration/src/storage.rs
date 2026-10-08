@@ -16,10 +16,17 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 pub(crate) mod command_admission;
+pub(crate) mod command_recovery;
+pub(crate) mod comment_send;
+#[cfg(test)]
+mod comment_send_tests;
 mod contextual_capabilities;
 pub(crate) mod delivery;
 pub(crate) mod effective;
 mod shutdown;
+pub(crate) mod text_edits;
+#[cfg(test)]
+mod text_edits_tests;
 use shutdown::NativeWriter;
 pub(crate) mod details;
 pub(crate) mod diagnostics;
@@ -836,10 +843,32 @@ impl Store {
             .await
     }
 
+    /// Apply trusted native observations directly (also used by store fixtures).
+    /// Network feed responses must use `apply_fetched_page` with the revision
+    /// captured before sending HTTP.
     pub async fn apply_page_with_notification_subjects(
         &self,
         page: PageCommit,
         observations: Vec<crate::NotificationSubjectObservation>,
+    ) -> Result<String> {
+        self.apply_page_in_revision(page, observations, None).await
+    }
+
+    pub(crate) async fn apply_fetched_page(
+        &self,
+        page: PageCommit,
+        observations: Vec<crate::NotificationSubjectObservation>,
+        expected_data_revision: i64,
+    ) -> Result<String> {
+        self.apply_page_in_revision(page, observations, Some(expected_data_revision))
+            .await
+    }
+
+    async fn apply_page_in_revision(
+        &self,
+        page: PageCommit,
+        observations: Vec<crate::NotificationSubjectObservation>,
+        expected_data_revision: Option<i64>,
     ) -> Result<String> {
         validate_scope(&page.scope)?;
         if page.repositories.len() + page.items.len() + page.endpoint_aliases.len() > 100 {
@@ -870,7 +899,9 @@ impl Store {
         let stored = scope_in(&mut tx, &page.account_id, &page.scope)
             .await?
             .ok_or_else(stale)?;
-        if stored.run_id != page.run_id {
+        if stored.run_id != page.run_id
+            || expected_data_revision.is_some_and(|revision| revision != stored.data_revision)
+        {
             return Err(stale());
         }
         if page.not_modified && stored.coverage.state != CoverageState::Complete {
@@ -1883,11 +1914,12 @@ async fn scope_in(
     account_id: &str,
     scope: &str,
 ) -> Result<Option<StoredScope>> {
-    let row = sqlx::query("SELECT run_id,next_cursor,etag,last_modified,coverage_json,sync_json FROM sync_scopes WHERE account_id=? AND scope=?")
+    let row = sqlx::query("SELECT run_id,data_revision,next_cursor,etag,last_modified,coverage_json,sync_json FROM sync_scopes WHERE account_id=? AND scope=?")
         .bind(account_id).bind(scope).fetch_optional(&mut **tx).await.map_err(storage_error)?;
     row.map(|r| {
         Ok(StoredScope {
             run_id: r.get("run_id"),
+            data_revision: r.get("data_revision"),
             next_cursor: r.get("next_cursor"),
             etag: r.get("etag"),
             last_modified: r.get("last_modified"),

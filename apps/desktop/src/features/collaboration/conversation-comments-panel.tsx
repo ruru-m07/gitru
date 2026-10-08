@@ -31,6 +31,7 @@ import {
   canSynchronize,
   dispatchCapabilityIntent,
 } from "./capability-policy";
+import { CommentComposer } from "./comment-composer";
 
 type Props = {
   account: RemoteAccount;
@@ -49,6 +50,7 @@ export function ConversationCommentsPanel({
   policy,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [openedOnce, setOpenedOnce] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   async function synchronize(recheck = false) {
@@ -71,7 +73,13 @@ export function ConversationCommentsPanel({
   }
   return (
     <section className="space-y-2 border-t pt-4" aria-label="Comments">
-      <Collapsible open={open} onOpenChange={setOpen}>
+      <Collapsible
+        open={open}
+        onOpenChange={(nextOpen) => {
+          setOpen(nextOpen);
+          if (nextOpen) setOpenedOnce(true);
+        }}
+      >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CollapsibleTrigger
             type="button"
@@ -85,7 +93,10 @@ export function ConversationCommentsPanel({
           </CollapsibleTrigger>
           <ReadOnlyCapability policy={policy} />
         </div>
-        <CollapsiblePanel className="motion-reduce:transition-none">
+        <CollapsiblePanel
+          keepMounted={openedOnce}
+          className="motion-reduce:transition-none"
+        >
           {open ? (
             <div className="space-y-3 pt-3">
               <SynchronizationAvailability policy={policy} />
@@ -122,6 +133,11 @@ export function ConversationCommentsPanel({
                   {error}
                 </p>
               ) : null}
+            </div>
+          ) : null}
+          {openedOnce ? (
+            <div className="space-y-3 pt-3">
+              <CommentComposer account={account} subjectId={subjectId} />
             </div>
           ) : null}
         </CollapsiblePanel>

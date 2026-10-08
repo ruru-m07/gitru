@@ -3,7 +3,10 @@ import type {
   CapabilitySnapshot,
   CapabilityTarget,
   ChangePage,
+  CommandRecoveryDetail,
+  CommentDraftSnapshot,
   ContextualCapabilitySnapshot,
+  CreatedCommentPage,
   DetailSnapshot,
   InboxPage,
   ItemPage,
@@ -16,6 +19,7 @@ import type {
   RepositorySnapshot,
   ResourceLocator,
   ResourceResolution,
+  SendCommentRequest,
   SetLocalInboxStateRequest,
 } from "@gitru/commands";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
@@ -124,6 +128,18 @@ function transport(
     throw new Error("Unexpected transport operation");
   };
   return {
+    commandRecoveryList: unexpected,
+    commandRecoveryDetail: unexpected,
+    commandRecoveryAction: unexpected,
+    commandRecoveryReplace: unexpected,
+    commandRecoveryExport: unexpected,
+    textEditSnapshot: unexpected,
+    submitTextEdit: unexpected,
+    commentDraft: unexpected,
+    commentDrafts: unexpected,
+    saveCommentDraft: unexpected,
+    sendComment: unexpected,
+    createdComments: unexpected,
     accounts: unexpected,
     diagnostics: unexpected,
     exportDiagnostics: unexpected,
@@ -2373,6 +2389,7 @@ it("invalidates effective item, list/count/search and inbox consumers across ind
     limit: 50,
   });
   const draftKey = collaborationKeys.draft(account, "pull");
+  const textEditKey = collaborationKeys.textEdit(account, "pull");
   const otherActorKey = collaborationKeys.item(
     { ...account, id: "other-account" },
     "pull",
@@ -2386,6 +2403,7 @@ it("invalidates effective item, list/count/search and inbox consumers across ind
       commentsKey,
       otherBody,
       draftKey,
+      textEditKey,
       otherActorKey,
     ])
       cache.setQueryData(key, "saved");
@@ -2399,7 +2417,7 @@ it("invalidates effective item, list/count/search and inbox consumers across ind
   ]);
   await Promise.all(clients.map((client) => client.wake()));
   for (const cache of caches) {
-    for (const key of [itemKey, listKey, inboxKey, bodyKey])
+    for (const key of [itemKey, listKey, inboxKey, bodyKey, textEditKey])
       expect(cache.getQueryState(key)?.isInvalidated).toBe(true);
     for (const key of [commentsKey, otherBody, draftKey, otherActorKey])
       expect(cache.getQueryState(key)?.isInvalidated).toBe(false);
@@ -2467,6 +2485,255 @@ it("an effective-intent change cancels a held list response before it can overwr
   expect(items).toHaveBeenCalledTimes(2);
   expect(cache.getQueryData(key)).toEqual(saved);
   unsubscribe();
+  stop();
+  cache.clear();
+});
+
+function recoveryDetail(): CommandRecoveryDetail {
+  return {
+    command: {
+      account_id: account.id,
+      command_id: "command",
+      target_id: "issue",
+      target_kind: "issue",
+      operation_kind: "fixture.edit",
+      payload_version: 1,
+      state: "conflict",
+      admitted_at: "2026-10-08T00:00:00Z",
+      attempt_count: 0,
+      paused: false,
+      quarantined: false,
+      attention: null,
+      replacement_id: null,
+      blocked_reason: null,
+    },
+    context: {
+      account_id: account.id,
+      command_id: "command",
+      expected_generation: "1",
+      expected_epoch: account.authorization_epoch,
+      authorization_view: "1",
+      review_token: "native-proof",
+    },
+    fields: [],
+    can_retry: false,
+    can_cancel: true,
+    can_pause: false,
+    can_replace: false,
+    reason: null,
+    revision: "1",
+  };
+}
+
+it("fences held recovery details after disconnect and refuses a foreign action context before IPC", async () => {
+  const held = deferred<CommandRecoveryDetail>();
+  const action = vi.fn(async () => {
+    throw new Error("must not dispatch");
+  });
+  const client = new CollaborationClient(
+    transport({
+      accounts: async () => snapshot,
+      commandRecoveryDetail: () => held.promise,
+      commandRecoveryAction: action,
+      disconnect: async () => "2",
+    }),
+  );
+  await client.accounts();
+  const bound = client.forAccount(account);
+  const pending = bound.commandRecoveryDetail("command");
+  const rejected = expect(pending).rejects.toBeInstanceOf(
+    StaleAuthorizationError,
+  );
+  await client.disconnect(account.id);
+  held.resolve(recoveryDetail());
+  await rejected;
+  for (const context of [
+    { ...recoveryDetail().context, account_id: "other" },
+    { ...recoveryDetail().context, expected_epoch: "99" },
+  ])
+    expect(() =>
+      bound.commandRecoveryAction({
+        context,
+        action: "cancel",
+        action_id: "action",
+      }),
+    ).toThrow(StaleAuthorizationError);
+  expect(action).not.toHaveBeenCalled();
+});
+
+it("invalidates command review after local actions and provider changes without touching private drafts", async () => {
+  let next = changePage("1");
+  const client = new CollaborationClient(
+    transport({ listen: async () => () => {}, changesSince: async () => next }),
+  );
+  const cache = new QueryClient();
+  const stop = client.installBridge(cache);
+  await client.wake();
+  const list = collaborationKeys.commandRecovery(account, {
+    account_id: account.id,
+    target_id: null,
+    include_terminal: false,
+    cursor: null,
+    limit: 50,
+  });
+  const detailKey = collaborationKeys.commandRecoveryDetail(account, "command");
+  const draft = collaborationKeys.draft(account, "issue");
+  for (const [revision, scope] of [
+    ["2", "commands"],
+    ["3", "detail:issue:body"],
+  ]) {
+    for (const key of [list, detailKey, draft])
+      cache.setQueryData(key, "saved");
+    next = changePage(revision, "1", [
+      { revision, account_id: account.id, scope, reset: false },
+    ]);
+    await client.wake();
+    expect(cache.getQueryState(list)?.isInvalidated).toBe(true);
+    expect(cache.getQueryState(detailKey)?.isInvalidated).toBe(true);
+    expect(cache.getQueryState(draft)?.isInvalidated).toBe(false);
+  }
+  stop();
+  cache.clear();
+});
+
+function commentDraft(): CommentDraftSnapshot {
+  return {
+    account_id: account.id,
+    subject_id: "issue",
+    body: "Saved comment",
+    generation: "3",
+    context: {
+      account_id: account.id,
+      subject_id: "issue",
+      authorization_epoch: account.authorization_epoch,
+      authorization_view: "1",
+      review_token: "a".repeat(64),
+    },
+    availability: "available",
+    reason: null,
+    submission: null,
+    revision: "1",
+    authorization_view: "1",
+  };
+}
+
+it("fences comment draft context, exact sends and created receipt subjects", async () => {
+  const send = vi.fn(async (request: SendCommentRequest) => ({
+    account_id: request.context.account_id,
+    command_id: request.command_id,
+    admitted_revision: "2",
+    duplicate: false,
+  }));
+  const created = vi.fn(
+    async (): Promise<CreatedCommentPage> => ({
+      account_id: account.id,
+      subject_id: "other-issue",
+      comments: [],
+      next_cursor: null,
+      revision: "1",
+      authorization_view: "1",
+    }),
+  );
+  const client = new CollaborationClient(
+    transport({
+      commentDraft: async () => commentDraft(),
+      sendComment: send,
+      createdComments: created,
+    }),
+  );
+  const bound = client.forAccount(account);
+  expect(await bound.commentDraft("issue")).toEqual(commentDraft());
+  const request: SendCommentRequest = {
+    context: commentDraft().context!,
+    draft_generation: "3",
+    command_id: "00000000-0000-4000-8000-000000000001",
+    accept_background_delivery: true,
+  };
+  await expect(bound.sendComment(request)).resolves.toMatchObject({
+    command_id: request.command_id,
+  });
+  await expect(
+    bound.sendComment({
+      ...request,
+      context: { ...request.context, authorization_epoch: "99" },
+    }),
+  ).rejects.toBeInstanceOf(StaleAuthorizationError);
+  expect(send).toHaveBeenCalledTimes(1);
+  await expect(
+    bound.createdComments({ subject_id: "issue", cursor: null, limit: 25 }),
+  ).rejects.toBeInstanceOf(StaleAuthorizationError);
+});
+
+it("rejects a late comment draft snapshot after account retirement", async () => {
+  const held = deferred<CommentDraftSnapshot>();
+  const client = new CollaborationClient(
+    transport({
+      commentDraft: () => held.promise,
+      disconnect: async () => "2",
+    }),
+  );
+  const pending = client.forAccount(account).commentDraft("issue");
+  const rejected = expect(pending).rejects.toBeInstanceOf(
+    StaleAuthorizationError,
+  );
+  await client.disconnect(account.id);
+  held.resolve(commentDraft());
+  await rejected;
+});
+
+it("invalidates only the matching authored comment draft and created history", async () => {
+  let next = changePage("1");
+  const client = new CollaborationClient(
+    transport({ listen: async () => () => {}, changesSince: async () => next }),
+  );
+  const cache = new QueryClient();
+  const stop = client.installBridge(cache);
+  await client.wake();
+  const draft = collaborationKeys.commentDraft(account, "issue");
+  const otherDraft = collaborationKeys.commentDraft(account, "other");
+  const draftList = collaborationKeys.commentDrafts(account, {
+    account_id: account.id,
+    cursor: null,
+    limit: 50,
+  });
+  const created = collaborationKeys.createdComments(account, {
+    account_id: account.id,
+    subject_id: "issue",
+    cursor: null,
+    limit: 25,
+  });
+  const otherCreated = collaborationKeys.createdComments(account, {
+    account_id: account.id,
+    subject_id: "other",
+    cursor: null,
+    limit: 25,
+  });
+  for (const key of [draft, otherDraft, draftList, created, otherCreated])
+    cache.setQueryData(key, "saved");
+  next = changePage("2", "1", [
+    {
+      revision: "2",
+      account_id: account.id,
+      scope: "comment_draft:issue",
+      reset: false,
+    },
+  ]);
+  await client.wake();
+  expect(cache.getQueryState(draft)?.isInvalidated).toBe(true);
+  expect(cache.getQueryState(otherDraft)?.isInvalidated).toBe(false);
+  expect(cache.getQueryState(draftList)?.isInvalidated).toBe(true);
+  expect(cache.getQueryState(created)?.isInvalidated).toBe(false);
+  next = changePage("3", "1", [
+    {
+      revision: "3",
+      account_id: account.id,
+      scope: "created_comments:issue",
+      reset: false,
+    },
+  ]);
+  await client.wake();
+  expect(cache.getQueryState(created)?.isInvalidated).toBe(true);
+  expect(cache.getQueryState(otherCreated)?.isInvalidated).toBe(false);
   stop();
   cache.clear();
 });

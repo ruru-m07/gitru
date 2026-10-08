@@ -389,3 +389,84 @@ it("keeps user text after a failed save and failed catch-up read", async () => {
   await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(2));
   expect(text).toHaveValue(`${saved.body} keep this`);
 });
+
+it("recovers a dedicated comment draft for a missing subject without using the Private note", async () => {
+  onlineManager.setOnline(false);
+  readMocks();
+  const commentBody = "Dedicated provider comment 📨";
+  const commentDrafts = mockTauriCommandResult("collaboration_comment_drafts", {
+    account_id: account.id,
+    drafts: [
+      {
+        subject_id: saved.subject_id,
+        preview: commentBody,
+        generation: "3",
+      },
+    ],
+    next_cursor: null,
+    revision: "10",
+    authorization_view: "2",
+  });
+  const commentDraft = mockTauriCommandResult("collaboration_comment_draft", {
+    account_id: account.id,
+    subject_id: saved.subject_id,
+    body: commentBody,
+    generation: "3",
+    context: null,
+    availability: "unavailable",
+    reason: "missing_target",
+    submission: null,
+    revision: "10",
+    authorization_view: "2",
+  });
+  const saveComment = mockTauriCommand(
+    "collaboration_save_comment_draft",
+    (payload) => {
+      const request = (
+        payload as {
+          request: {
+            account_id: string;
+            subject_id: string;
+            body: string;
+          };
+        }
+      ).request;
+      return {
+        account_id: request.account_id,
+        subject_id: request.subject_id,
+        body: request.body,
+        generation: "4",
+        context: null,
+        availability: "unavailable",
+        reason: "missing_target",
+        submission: null,
+        revision: "11",
+        authorization_view: "2",
+      };
+    },
+  );
+  const user = userEvent.setup();
+  mount(<DraftRecovery accounts={[account]} />);
+  await user.click(screen.getByRole("button", { name: "Comment drafts" }));
+  await user.click(
+    await screen.findByRole("button", {
+      name: `Open comment draft for ${saved.subject_id}`,
+    }),
+  );
+  const comment = await screen.findByRole("textbox", { name: "Comment" });
+  expect(comment).toHaveValue(commentBody);
+  expect(screen.queryByDisplayValue(saved.body)).not.toBeInTheDocument();
+  expect(
+    await screen.findByText(/provider target is unavailable/i),
+  ).toBeVisible();
+  await user.type(comment, " edited offline");
+  await user.click(screen.getByRole("button", { name: "Save comment draft" }));
+  await waitFor(() => expect(saveComment).toHaveBeenCalledTimes(1));
+  expect(commentDrafts).toHaveBeenCalledWith({
+    query: { account_id: account.id, cursor: null, limit: 50 },
+  });
+  expect(commentDraft).toHaveBeenCalledWith({
+    accountId: account.id,
+    subjectId: saved.subject_id,
+  });
+});

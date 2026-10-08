@@ -71,6 +71,28 @@ function fixture() {
     throw new Error("Unexpected provider operation");
   });
   const transport = {
+    commandRecoveryList: async () => {
+      throw new Error("Unexpected recovery operation");
+    },
+    commandRecoveryDetail: async () => {
+      throw new Error("Unexpected recovery operation");
+    },
+    commandRecoveryAction: async () => {
+      throw new Error("Unexpected recovery operation");
+    },
+    commandRecoveryReplace: async () => {
+      throw new Error("Unexpected recovery operation");
+    },
+    commandRecoveryExport: async () => {
+      throw new Error("Unexpected recovery operation");
+    },
+    textEditSnapshot: unexpected,
+    submitTextEdit: unexpected,
+    commentDraft: unexpected,
+    commentDrafts: unexpected,
+    saveCommentDraft: unexpected,
+    sendComment: unexpected,
+    createdComments: unexpected,
     accounts: async () => ({
       accounts: [account],
       revision,

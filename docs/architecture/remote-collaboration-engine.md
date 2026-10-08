@@ -3668,3 +3668,45 @@ including types, build, lint, formatting and strict workspace Clippy. Generated
 IPC has 137 commands/431 schemas. Parent documentation and this progress record
 are the only subsequent changes. Remote CI is pending; no live account,
 credential, provider mutation or packaged platform claim is made.
+
+
+### RURU-117 saved-command recovery — 8 October 2026
+
+Signed source `a64b9fe` implements local command review, original/edited export,
+cancel-before-send, owned-lane pause/resume, and atomic replacement of safe
+intent. Schema 0019 retains immutable action receipts and supersession evidence.
+Account/view/generation and policy comparison tokens are checked in the writer;
+exact action retries return saved receipts. Replacement preserves dependency
+proof and target order, while unknown delivery and restored quarantine never
+permit blind replay. The UI preserves edited text across updates and requires
+explicit review of changed provider evidence. No production write codec is
+introduced by this foundation.
+
+The review base `ruru/ruru-117-dependencies` at `3d102a3` combines RURU-123 #178
+with RURU-116 #177's held-feed repair. It excludes RURU-127/RURU-128. Full local
+`make verify` passes 766 frontend tests/one platform skip, 1,230 Rust test
+executions/seven helper ignores, lint/types/build/fmt and strict Clippy. Generated
+IPC contains 142 commands/446 schemas. The independent native review and pause
+eligibility repair are recorded in [the work note](./collaboration-work/RURU-117.md).
+Remote CI is pending publication; live provider and vault qualification remain
+separate. No PR has been merged.
+
+
+### RURU-129 first GitHub desired-state edit slice — 8 October 2026
+
+The reviewable title/body operation uses cache-only admission, immutable intent,
+explicit best-effort consent, preflight identity/base checks, and durable attempt
+records before native PATCH. Canonical confirmation retires effective projections
+atomically; an unknown response only permits read-only reconciliation. A newer
+head after an attempt does not prevent observing the exact authored values, but
+never establishes command causality or authorizes a repeated mutation. Native
+recovery edits only originally authored fields. GitHub.com issues/PRs are supported;
+state/labels and other-provider writes remain future chunks, so RURU-129 stays In
+Progress despite this reviewable slice.
+
+Full local `make verify` at `17db925` passes 774 frontend tests/one platform skip,
+1,254 Rust executions/seven helper ignores, lint/types/build/fmt and strict Clippy.
+Final `f01b0392` deltas pass 20 text-operation, 14 transport, 21 feature-harness and
+4 UI cases with strict feature-enabled Clippy. Generated IPC: 144 commands/454
+schemas. Details and honest remaining gates are in [the work note](./collaboration-work/RURU-129.md).
+Remote CI begins on publication; live provider/vault validation is unclaimed.

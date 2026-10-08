@@ -301,12 +301,49 @@ function boundary(
     const draft = (payload as { draft: LocalDraft }).draft;
     return { ...draft, generation: "5" };
   });
+  const commentDraft = mockTauriCommand(
+    "collaboration_comment_draft",
+    (payload) => {
+      const { accountId, subjectId } = payload as {
+        accountId: string;
+        subjectId: string;
+      };
+      const resource = lookup(accountId);
+      expect(subjectId).toBe(resource.summary.id);
+      return {
+        account_id: accountId,
+        subject_id: subjectId,
+        body: "",
+        generation: "0",
+        context: null,
+        availability: "unavailable",
+        reason: "empty_draft",
+        submission: null,
+        revision,
+        authorization_view: view,
+      };
+    },
+  );
+  mockTauriCommand("collaboration_created_comments", (payload) => {
+    const { query } = payload as {
+      query: { account_id: string; subject_id: string };
+    };
+    return {
+      account_id: query.account_id,
+      subject_id: query.subject_id,
+      comments: [],
+      next_cursor: null,
+      revision,
+      authorization_view: view,
+    };
+  });
   const hydrate = mockTauriCommandResult("collaboration_hydrate_detail", {
     job_id: "explicit-comments-refresh",
   });
   return {
     demand,
     detail,
+    commentDraft,
     save,
     hydrate,
     change: (resource: Saved, scope = "comments") => {
@@ -431,12 +468,22 @@ describe("cached conversation comments through the ordinary workspace", () => {
     );
     expect(queries(reads)).toHaveLength(0);
     expect(interests(reads)).toHaveLength(0);
+    expect(reads.commentDraft).not.toHaveBeenCalled();
     expect(reads.hydrate).not.toHaveBeenCalled();
     await user.type(
       article.getByLabelText("Private draft"),
       " unsaved conversation note",
     );
     await user.click(panel().getByRole("button", { name: "Comments" }));
+    const commentEditor = await panel().findByRole("textbox", {
+      name: "Comment",
+    });
+    expect(commentEditor).toHaveValue("");
+    await user.type(commentEditor, "Unsaved provider comment");
+    expect(reads.commentDraft).toHaveBeenCalledTimes(1);
+    expect(article.getByLabelText("Private draft")).toHaveValue(
+      "Private first-user unsaved conversation note",
+    );
     const list = await panel().findByRole("list", {
       name: "Saved conversation comments",
     });
@@ -491,6 +538,10 @@ describe("cached conversation comments through the ordinary workspace", () => {
     expect(
       article.getByRole("button", { name: "Merge pull request unavailable" }),
     ).toBeDisabled();
+    await user.click(panel().getByRole("button", { name: "Comments" }));
+    expect(
+      await panel().findByRole("textbox", { name: "Comment" }),
+    ).toHaveValue("Unsaved provider comment");
   });
 
   it("renders safe raw text and distinct known-empty, nullable author, omitted/oversized retained clocks", async () => {

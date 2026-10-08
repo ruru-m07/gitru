@@ -57,6 +57,7 @@ import {
   inboxPresentation,
   repositoryCapabilityTarget,
 } from "./capability-policy";
+import { CommandRecoveryButton } from "./command-recovery";
 import { DraftRecovery } from "./draft-recovery";
 import { OpenLocalCloneButton } from "./local-clone-picker";
 import { LocalInboxFeed } from "./local-inbox-feed";
@@ -199,6 +200,7 @@ export function CollaborationWorkspace({
             </Button>
           ) : null}
           <BackupRecoveryButton />
+          <CommandRecoveryButton accounts={accounts.data?.accounts ?? []} />
           <AccountSettingsButton />
         </div>
       </header>

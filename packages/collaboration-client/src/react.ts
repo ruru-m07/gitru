@@ -1,5 +1,10 @@
 import type {
   CapabilityTarget,
+  CommandRecoveryQuery,
+  CommentDraftPage,
+  CommentDraftQuery,
+  CommentDraftSnapshot,
+  CreatedCommentQuery,
   DemandTarget,
   DetailQuery,
   DraftQuery,
@@ -10,6 +15,7 @@ import type {
   PullFileQuery,
   RemoteAccount,
   ResourceLocator,
+  TextEditSnapshot,
 } from "@gitru/commands";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore } from "react";
@@ -25,6 +31,93 @@ const localQueryPolicy = {
   retry: false as const,
   meta: { collaboration: true },
 };
+
+export function commandRecoveryQueryOptions(
+  account: RemoteAccount,
+  query: Omit<CommandRecoveryQuery, "account_id">,
+) {
+  return queryOptions({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.commandRecovery(account, {
+      ...query,
+      account_id: account.id,
+    }),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).commandRecoveryList(query, signal),
+  });
+}
+
+export function commandRecoveryDetailQueryOptions(
+  account: RemoteAccount,
+  commandId: string,
+) {
+  return queryOptions({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.commandRecoveryDetail(account, commandId),
+    queryFn: ({ signal }) =>
+      collaboration
+        .forAccount(account)
+        .commandRecoveryDetail(commandId, signal),
+  });
+}
+
+/** Cache-only edit base. Provider reads and delivery remain native-owned. */
+export function textEditQueryOptions(
+  account: RemoteAccount,
+  subjectId: string,
+) {
+  return queryOptions<TextEditSnapshot>({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.textEdit(account, subjectId),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).textEditSnapshot(subjectId, signal),
+  });
+}
+
+/** Dedicated local authored comment draft; opening it never starts provider I/O. */
+export function commentDraftQueryOptions(
+  account: RemoteAccount,
+  subjectId: string,
+) {
+  return queryOptions<CommentDraftSnapshot>({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.commentDraft(account, subjectId),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).commentDraft(subjectId, signal),
+  });
+}
+
+/** Local recovery index for dedicated comment drafts, including missing subjects. */
+export function commentDraftsQueryOptions(
+  account: RemoteAccount,
+  query: Omit<CommentDraftQuery, "account_id">,
+) {
+  return queryOptions<CommentDraftPage>({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.commentDrafts(account, {
+      ...query,
+      account_id: account.id,
+    }),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).commentDrafts(query, signal),
+  });
+}
+
+/** Validated local creation receipts, separate from provider comment coverage. */
+export function createdCommentsQueryOptions(
+  account: RemoteAccount,
+  query: Omit<CreatedCommentQuery, "account_id">,
+) {
+  return queryOptions({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.createdComments(account, {
+      ...query,
+      account_id: account.id,
+    }),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).createdComments(query, signal),
+  });
+}
 
 export function useCollaborationVersion() {
   return useSyncExternalStore(
