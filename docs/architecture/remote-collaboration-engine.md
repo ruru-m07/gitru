@@ -3835,8 +3835,8 @@ frontend 860/one skip, generated IPC 160 commands/530 schemas, native integratio
 deltas and final wire/type/lint checks pass. Final source `080e769c` also passes
 two actual-runtime ordering controls, 11 metadata cases, 13 inbox-action cases
 and strict workspace Clippy. Exact full-run versus delta evidence is recorded in
-the work note. The bounded slice is ready for draft review on the explicit
-integration prerequisite branch.
+the work note. [Draft PR #195](https://github.com/ruru-m07/gitru/pull/195) is open
+on the explicit integration prerequisite branch; new-head remote CI is pending.
 Live numeric mutation-route compatibility and real-provider/platform checks are
 not claimed. No PR was merged.
 

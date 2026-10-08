@@ -161,3 +161,10 @@ mutation routing, real repository rules/stack/queue behavior, production vault
 prompts or packaged GUI behavior on every platform. Those remain live/provider
 or platform gates; no personal credential was inspected and no real merge was
 attempted. The synchronous route has no async/downstack or merge-queue fallback.
+
+## Publication
+
+[Draft PR #195](https://github.com/ruru-m07/gitru/pull/195) is open against
+`ruru/ruru-107-qualification-dependencies` and is attached to the task. Linear
+RURU-133 is In Review. The exact source was locally qualified as described above;
+new-head remote CI has started and is not counted as passing yet. No PR was merged.
