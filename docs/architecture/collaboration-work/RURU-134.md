@@ -90,3 +90,30 @@ cases cover save-before-send, exact receipt retry, changed context, canonical
 navigation and retained drafts. Generate IPC with make typegen. Run full local
 make verify and separate its evidence from remote CI and live provider/vault/GUI
 qualification. Use signed scoped commits; open a reviewable draft PR, never merge.
+
+## Frozen native publication transition
+
+Use the existing deterministic canonical identity `github:issue:{native_id}` and
+`identities::item_in` to converge with a feed-discovered entity. Insert active
+scope membership only with an explicit receipt-origin cache marker; never set
+last_seen_run to an ongoing enumeration run. A marker keyed by account, epoch,
+canonical issue and creation command protects this provisional membership from
+absence retirement until an accepted real feed page observes that exact issue.
+Then the ordinary seen path removes the marker and normal enumeration absence
+handling resumes. Existing list/count/search predicates remain authoritative.
+
+Creation increments affected data_revision and clears validators to reject held
+responses. The explicit receipt marker also handles an old traversal resuming
+after creation, which data_revision alone cannot distinguish. Preserve its cursor
+and run. A missing scope starts Missing/Partial, never Complete. Existing selected
+repository/access-denial/epoch gates apply; auth/cache purge removes provider cache
+markers and cannot resurrect visibility from retained authored receipt history.
+
+A validated201 may be historical by finalization: retain a newer existing summary
+and Body, or already-published equal-timestamp conflicting data, while preserving
+creation receipt bytes and the immutable draft mapping separately. In one writer
+transaction establish identity, bounded summary/Body/FTS/effective projection,
+provisional membership/protection, immutable linkage and revision invalidation
+before confirmation. A failure rolls back all of them. Required race controls
+include held terminal empty feeds, a resumed old multipage traversal,
+feed-before-receipt convergence, newer cache before receipt and auth purge/reconnect.
