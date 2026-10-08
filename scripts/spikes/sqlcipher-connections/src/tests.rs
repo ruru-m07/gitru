@@ -197,6 +197,10 @@ async fn wrong_key_and_plaintext_refused_without_replacement_or_ready() {
         .unwrap();
     writer.close().await.unwrap();
     drop(factory);
+    // The driver acknowledges C-handle close before its worker's captured
+    // initialization options finish dropping. Those options also retain the
+    // session. Wait for actual OS-lease release before taking a fresh session.
+    released(&path, &vault).await;
     let before = std::fs::read(&path).unwrap();
     vault.0.lock().unwrap().insert(reference, [7; 32]);
     let wrong = KeyedConnectionFactory::new(reserve(&path, &vault));

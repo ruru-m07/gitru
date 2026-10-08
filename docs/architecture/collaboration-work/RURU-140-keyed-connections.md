@@ -274,3 +274,16 @@ watchdog, exposes only this synthetic child's fixed phase markers/diagnostics,
 and reports its actual exit status. It does not claim the Windows failure fixed.
 The macOS exact parent/child control and strict isolated Clippy pass locally
 (`/tmp/gitru-r140-close-diagnostics*.log`); Windows must rerun with diagnostics.
+
+Diagnostic rerun `37748989660` on `18a7263d` passes the Windows factory job,
+including the formerly opaque exceptional-close child. Linux instead identifies
+an immediate fresh-session `Busy` assertion in the wrong-key fixture. Its writer
+had acknowledged handle closure, but worker-owned initialization options can
+briefly retain the session until the worker exits. The fixture now uses the same
+bounded OS-lease-release control already used by the cold-reopen case before
+requesting a fresh session. No admission/close behavior or test assertion is
+weakened. The full verified macOS factory runner passes again: nine parents plus
+the exceptional child, strict Clippy, source/profile/linkage gates
+(`/tmp/gitru-r140-keyed-release-qualified.log`). New remote results remain required;
+the earlier Windows child failure's precise cause was not captured, so its passing
+diagnostic rerun is recorded separately from this diagnosed Linux fixture repair.
