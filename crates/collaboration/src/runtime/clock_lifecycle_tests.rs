@@ -1215,7 +1215,7 @@ async fn long_clock_cold_valid_wall_preserves_full_deadline_and_peer_progress() 
         adapter,
         account,
     } = f;
-    runtime.store.close().await;
+    runtime.store.close().await.unwrap();
     drop(runtime);
     let mut cold = CollaborationRuntime::new(
         Arc::new(Store::open(&path).await.unwrap()),
