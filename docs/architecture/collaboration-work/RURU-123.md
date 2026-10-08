@@ -177,3 +177,29 @@ strict collaboration Clippy with `test-harness` enabled passes. Logs:
 qualification evidence. Earlier complete local verification remains attributed
 to unchanged product source `5a30303`; this follow-up changes only the fixture
 and this record. New remote CI must be checked separately.
+
+## Windows bootstrap checkpoint witness — 8 October 2026
+
+Actual remote [Windows Rust job 113078807114](https://github.com/ruru-m07/gitru/actions/runs/37705513024/job/113078807114)
+at signed `b45ec8e4` failed only the capped-bootstrap runtime integration control:
+its shared 3-second polling watchdog expired while waiting for the exact ten-page
+committed checkpoint (eight other runtime_sync cases passed). The test qualifies
+saved-cursor/run behavior, not disk throughput; the failed diagnostic did not
+include the last observed checkpoint.
+
+Signed test-only `ddfe9f9` subscribes to native revision hints before starting the
+background worker, checks the persisted predicate before waiting, and rereads it
+after every received or coalesced hint. A dedicated 30-second watchdog applies
+only to this twelve-page scenario and reports the last cursor, coverage, sync
+state, run and provider call count if progress fails. The original assertions
+still require exactly ten calls at the page11 partial/idle checkpoint, exactly
+twelve calls after explicit refresh, the same saved run, absent page validators
+and all twelve local repositories. Other tests retain their existing watchdogs.
+
+All nine runtime_sync integration cases, strict all-target collaboration Clippy,
+formatting and diff checks pass locally. Logs are
+`/tmp/gitru-r123-checkpoint-tests.log` and `/tmp/gitru-r123-checkpoint-clippy.log`.
+No production source, clock policy, scheduler behavior, schema or IPC changes.
+The earlier full-workspace evidence above is separately attributed; fresh exact
+head remote CI, especially Windows, is required. Existing draft178 is updated in
+place, with no unchanged failed rerun and no merge.
