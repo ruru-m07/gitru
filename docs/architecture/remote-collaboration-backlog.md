@@ -2198,3 +2198,18 @@ checks. The earlier workspace run belongs to 755fe5d; newer descendant integrati
 and exact-head remote CI are separate gates. Existing draft165 is updated in place.
 No live credentials, OS suspend or incorrect-wall-clock restart is qualified.
 Broader provider API-family scheduling keeps R102 In Progress; no merge is made.
+
+### RURU-103 current-parent conflict repair — 8 October 2026
+
+Signed integration `3fa7c84aba8f93436d41386e580c46ba7f0e6a62` restores the
+existing [PR157](https://github.com/ruru-m07/gitru/pull/157) stack against current
+R102 `c0a9f2f352982f185f93d7c751c052c14d9c7761`. Both append-only architecture
+histories are preserved; native runtime code merges unchanged beyond the already
+qualified parent fixes. Fresh local feature checks pass 327 collaboration library
+tests / one helper ignore, 30 desktop native library tests, strict all-target
+Clippy for both packages, Rustfmt and diff checks. The collaboration run includes
+14 independent-clock and 19 native harness controls. No IPC/schema/frontend
+change or personal credential access occurred. Fresh exact-head remote CI remains
+separate from the earlier full workspace and packaged/retained evidence. See the
+[integration record](./collaboration-work/RURU-103-stack-integration.md). R103
+remains In Review, draft and unmerged.

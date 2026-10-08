@@ -201,3 +201,26 @@ This repair neither changes public DTOs nor requalifies live providers, native
 vaults, OS suspend or packaged webviews. The old 14/14 remote matrix remains
 attached to its old exact head. Publish to existing PR157 only after local gates,
 record the new source head, and let fresh remote checks qualify the updated head.
+
+## Current-parent repair qualified — 8 October 2026
+
+Signed source `3fa7c84aba8f93436d41386e580c46ba7f0e6a62` integrates exact R102
+head `c0a9f2f352982f185f93d7c751c052c14d9c7761`. Only the two append-only
+architecture evidence files required conflict resolution, preserving both full
+histories; runtime source merged without a new production change.
+
+Fresh local checks pass: `cargo test -p collaboration --features test-harness
+--lib` has 327 passed and one process helper ignored, including 14 independent
+clock controls and 19 native harness controls. `cargo test -p gitru --features
+collaboration-harness --lib` has 30 passed. Strict feature-enabled all-target
+Clippy passes for both packages; Rustfmt and diff checks pass. These synthetic
+native checks launched no app UI and read no personal credentials. No public DTO,
+IPC signature, generated binding, database schema or frontend source changed, so
+this integration does not require regeneration.
+
+The historical full workspace, packaged desktop, retained five-stage pipeline and
+14/14 remote matrix remain evidence for their recorded earlier head. Fresh remote
+CI must qualify this updated PR head independently. Existing draft PR157 is
+updated in place; R103 remains In Review and no PR is merged. Live providers,
+platform vaults, OS suspend, power loss and newly packaged webviews remain outside
+this focused integration qualification.
