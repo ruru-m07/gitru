@@ -37,7 +37,7 @@ impl ProviderError {
             account_cooldown_seconds: None,
         }
     }
-    fn with_cooldown(mut self, seconds: Option<u64>) -> Self {
+    pub(crate) fn with_cooldown(mut self, seconds: Option<u64>) -> Self {
         self.account_cooldown_seconds = seconds;
         self
     }
@@ -172,7 +172,7 @@ impl GithubHttp {
         validators: &HttpValidators,
         allowed_paths: &[String],
     ) -> Result<HttpPage, ProviderError> {
-        self.get_policy(url, token, validators, allowed_paths, false)
+        self.get_policy(url, token, validators, allowed_paths, false, false)
             .await
     }
 
@@ -182,7 +182,20 @@ impl GithubHttp {
         token: &SecretToken,
     ) -> Result<HttpPage, ProviderError> {
         let paths = [url.path().to_string()];
-        self.get_policy(url, token, &HttpValidators::default(), &paths, true)
+        self.get_policy(url, token, &HttpValidators::default(), &paths, true, false)
+            .await
+    }
+
+    /// Native mutation preflights and exact receipt readbacks cannot accept a
+    /// redirect as operation authority, even when it stays on the credential
+    /// origin and resolves to the same path.
+    pub(crate) async fn get_native_point_no_redirect(
+        &self,
+        url: Url,
+        token: &SecretToken,
+    ) -> Result<HttpPage, ProviderError> {
+        let paths = [url.path().to_string()];
+        self.get_policy(url, token, &HttpValidators::default(), &paths, true, true)
             .await
     }
 
@@ -570,6 +583,7 @@ impl GithubHttp {
         validators: &HttpValidators,
         allowed_paths: &[String],
         strict_point: bool,
+        reject_redirects: bool,
     ) -> Result<HttpPage, ProviderError> {
         for redirect in 0..=MAX_REDIRECTS {
             if strict_point && url.query().is_some() {
@@ -613,6 +627,17 @@ impl GithubHttp {
                 .chain(header_number(response.headers(), "retry-after").map(|wait| wait.max(1)))
                 .max();
             if status.is_redirection() && status != StatusCode::NOT_MODIFIED {
+                if reject_redirects {
+                    return Err(if let Some(wait) = cooldown {
+                        ProviderError {
+                            kind: ProviderErrorKind::RateLimited,
+                            retry_after_seconds: Some(wait),
+                            account_cooldown_seconds: Some(wait),
+                        }
+                    } else {
+                        ProviderError::new(ProviderErrorKind::InvalidResponse)
+                    });
+                }
                 if redirect == MAX_REDIRECTS {
                     return Err(ProviderError::new(ProviderErrorKind::InvalidResponse)
                         .with_cooldown(cooldown));
@@ -945,7 +970,7 @@ mod tests {
     }
     #[tokio::test]
     async fn successful_point_read_preserves_retry_after_without_primary_exhaustion() {
-        let (http,task)=server("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nRetry-After: 120\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}".into());
+        let (http, task) = server("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nRetry-After: 120\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}".into());
         let page = http
             .get_point(
                 http.endpoint("notifications/threads/101").unwrap(),
@@ -955,5 +980,58 @@ mod tests {
             .unwrap();
         assert_eq!(page.cooldown_seconds, Some(120));
         task.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn native_point_refuses_same_origin_redirect_without_reusing_credentials() {
+        let (http, request) = server(
+            "HTTP/1.1 302 Found\r\nLocation: /repositories/7/pulls/9\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                .into(),
+        );
+        let token = SecretToken::new("never_echo_this_token".into()).unwrap();
+        let error = http
+            .get_native_point_no_redirect(http.endpoint("repositories/7/pulls/9").unwrap(), &token)
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, ProviderErrorKind::InvalidResponse);
+        assert_eq!(error.account_cooldown_seconds, None);
+        assert!(!error.to_string().contains("never_echo_this_token"));
+        let request = request.join().unwrap();
+        assert!(request.starts_with("GET /repositories/7/pulls/9 HTTP/1.1"));
+    }
+
+    #[tokio::test]
+    async fn native_point_redirect_refusal_preserves_provider_cooldown() {
+        let (http, request) = server(
+            "HTTP/1.1 307 Temporary Redirect\r\nLocation: /repositories/7/pulls/9\r\nRetry-After: 91\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                .into(),
+        );
+        let error = http
+            .get_native_point_no_redirect(
+                http.endpoint("repositories/7/pulls/9").unwrap(),
+                &SecretToken::new("synthetic_token".into()).unwrap(),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, ProviderErrorKind::RateLimited);
+        assert_eq!(error.retry_after_seconds, Some(91));
+        assert_eq!(error.account_cooldown_seconds, Some(91));
+        request.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn native_point_rejects_query_and_foreign_origin_before_network_io() {
+        let http = GithubHttp::new().unwrap();
+        let token = SecretToken::new("synthetic_token".into()).unwrap();
+        for raw in [
+            "https://api.github.com/repositories/7/pulls/9?redirect=true",
+            "https://example.invalid/repositories/7/pulls/9",
+        ] {
+            let error = http
+                .get_native_point_no_redirect(Url::parse(raw).unwrap(), &token)
+                .await
+                .unwrap_err();
+            assert_eq!(error.kind, ProviderErrorKind::InvalidResponse);
+        }
     }
 }
