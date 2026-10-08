@@ -1,6 +1,7 @@
 //! Local collaboration data is independent of Tauri and local Git contexts.
 #[cfg(test)]
 extern crate self as collaboration;
+pub mod activity;
 pub mod checks;
 pub mod command_recovery;
 pub mod commands;
@@ -35,6 +36,7 @@ pub mod tasks;
 pub mod test_harness;
 pub mod text_edits;
 
+pub use activity::*;
 pub use checks::*;
 pub use command_recovery::*;
 pub use commands::*;

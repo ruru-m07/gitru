@@ -75,10 +75,48 @@ stored or exposed as payloads.
 
 Stable numeric identities are scoped by event kind; committed activity uses its
 canonical commit SHA. Unsupported kinds may retain a bounded stable node ID.
-Local keys sort known immutable event-created timestamps, then kind/native ID;
-unknown times follow in a deterministic group. Comment updated-at stays an edit
+A dedicated SQLite expression index and Activity-only local cursor sort known
+event-created timestamps, then immutable native entry ID; unknown times follow
+in a deterministic group. The primary key excludes time, so a later timestamp
+observation updates one event rather than duplicating uncertain history. Comment updated-at stays an edit
 clock and does not change identity. Commit author/committer timestamps are not
 misrepresented as the time the commit was added to the PR. Missing identities
 and unrepresentable rows downgrade completeness, including an otherwise empty
 singleton page. Official heterogeneous event reference checked during design:
 https://docs.github.com/en/rest/using-the-rest-api/issue-event-types
+
+## Implemented checkpoint — 8 October 2026
+
+The native Activity facet now provides independent GitHub issue/PR timeline
+collection and local pagination. IDs remain stable when missing timestamps become
+known; an Activity-only SQLite expression index and tuple cursor order known
+event timestamps chronologically, with deterministic ID ties and unknown times
+last. Revision/view fences reject cursors captured before an ordering update.
+Committed events retain their SHA identity without pretending commit author time
+is the time added to a pull request. Unknown event kinds with stable IDs remain
+inert records; missing identities downgrade coverage. Only a fully represented,
+single-page terminal result authorizes complete replacement. Multipage or capped
+histories remain uncertain and cannot delete previously cached rows.
+
+Migration 21 preserves and guards existing detail observations, entries, demand,
+metadata and retention accounting. The frozen schema-20 restore matrix includes
+separate comment-draft authorship, and a forced migration failure proves rollback
+before a successful retry. The exact historical v14 fixture removes later
+comment objects before rebuilding its original schema; verification stays strict.
+
+Local evidence on this source: 913 native tests passed, five intentionally ignored,
+across 27 result suites with the test-harness feature; strict all-target,
+feature-enabled collaboration Clippy and workspace rustfmt checks passed. This
+includes 11 focused Activity tests, recovery 14/14, migration 8/8 and credential
+startup boundary tests. After consuming the inherited revision-wait fixture
+repair, its runtime-sync integration suite passed 9/9 again. Independent native
+reviews found no remaining blocker after the stable-ID correction. Frontend
+qualification is recorded separately by its owner: SDK 206, desktop 592 with one
+platform skip, typechecks, generated 149 commands/479 schemas and scoped Biome.
+Full workspace verification and remote CI remain publication-owner gates.
+
+A bounded, unauthenticated public compatibility probe returned HTTP 200 without
+redirect for `/repositories/1296269/issues/1/timeline?per_page=1`, including a
+committed event. This verifies that public numeric read route only. No personal
+credentials, private provider data, mutation endpoint, packaged platform or live
+account workflow was exercised.

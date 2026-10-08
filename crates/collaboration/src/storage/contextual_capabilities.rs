@@ -306,6 +306,7 @@ fn applicable(target: &CapabilityTarget, facet: ResourceFacet) -> bool {
                 ResourceFacet::PullRequests
                     | ResourceFacet::PullDetails
                     | ResourceFacet::Comments
+                    | ResourceFacet::Activity
                     | ResourceFacet::Reviews
                     | ResourceFacet::Checks
                     | ResourceFacet::Participants
@@ -316,7 +317,10 @@ fn applicable(target: &CapabilityTarget, facet: ResourceFacet) -> bool {
             ),
             Some(ResourceKind::Issue) => matches!(
                 facet,
-                ResourceFacet::Issues | ResourceFacet::IssueDetails | ResourceFacet::Comments
+                ResourceFacet::Issues
+                    | ResourceFacet::IssueDetails
+                    | ResourceFacet::Comments
+                    | ResourceFacet::Activity
             ),
             Some(ResourceKind::Notification) => facet == ResourceFacet::Inbox,
             _ => false,
@@ -589,6 +593,7 @@ async fn facet_evidence(
     let detail = match facet {
         ResourceFacet::PullDetails | ResourceFacet::IssueDetails => Some(DetailFacet::Body),
         ResourceFacet::Comments => Some(DetailFacet::Comments),
+        ResourceFacet::Activity => Some(DetailFacet::Activity),
         ResourceFacet::Reviews => Some(DetailFacet::ReviewSummaries),
         ResourceFacet::Checks => Some(DetailFacet::Checks),
         ResourceFacet::Participants => Some(DetailFacet::Participants),

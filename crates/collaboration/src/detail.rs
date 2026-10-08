@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 pub enum DetailFacet {
     Body,
     Comments,
+    Activity,
     Reviews,
     ReviewSummaries,
     ReviewThreads,
@@ -23,9 +24,10 @@ pub enum DetailFacet {
 }
 
 impl DetailFacet {
-    pub(crate) const ALL: [Self; 10] = [
+    pub(crate) const ALL: [Self; 11] = [
         Self::Body,
         Self::Comments,
+        Self::Activity,
         Self::Reviews,
         Self::ReviewSummaries,
         Self::ReviewThreads,
@@ -45,6 +47,9 @@ impl DetailFacet {
             (Self::Comments, RemoteItemKind::PullRequest | RemoteItemKind::Issue) => {
                 Some(ResourceFacet::Comments)
             }
+            (Self::Activity, RemoteItemKind::PullRequest | RemoteItemKind::Issue) => {
+                Some(ResourceFacet::Activity)
+            }
             (
                 Self::Reviews | Self::ReviewSummaries | Self::ReviewThreads,
                 RemoteItemKind::PullRequest,
@@ -61,6 +66,7 @@ impl DetailFacet {
         match self {
             Self::Body => "body",
             Self::Comments => "comments",
+            Self::Activity => "activity",
             Self::Reviews => "reviews",
             Self::ReviewSummaries => "review_summaries",
             Self::ReviewThreads => "review_threads",
@@ -84,6 +90,7 @@ impl DetailFacet {
             match facet {
                 "body" => Self::Body,
                 "comments" => Self::Comments,
+                "activity" => Self::Activity,
                 "reviews" => Self::Reviews,
                 "review_summaries" => Self::ReviewSummaries,
                 "review_threads" => Self::ReviewThreads,
@@ -152,6 +159,7 @@ pub enum DetailField {
     Check,
     Review,
     ReviewThread,
+    Activity,
 }
 
 impl DetailField {
@@ -205,6 +213,10 @@ impl DetailField {
     }
     pub(crate) fn valid_for(self, facet: DetailFacet) -> bool {
         match facet {
+            DetailFacet::Activity => matches!(
+                self,
+                Self::Activity | Self::Body | Self::Author | Self::UpdatedAt
+            ),
             DetailFacet::Participants => self.is_participant(),
             DetailFacet::Tasks => self.is_task(),
             DetailFacet::Checks => self.is_check() || self == Self::HeadOid,
@@ -215,7 +227,7 @@ impl DetailField {
                 !self.is_participant()
                     && !self.is_task()
                     && !self.is_check()
-                    && !matches!(self, Self::Review | Self::ReviewThread)
+                    && !matches!(self, Self::Review | Self::ReviewThread | Self::Activity)
             }
         }
     }

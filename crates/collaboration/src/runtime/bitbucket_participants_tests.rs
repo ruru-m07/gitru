@@ -381,7 +381,8 @@ fn native(entry: &DetailEntry) -> &ParticipantV1 {
         NativeDetailPayload::TaskV1(_)
         | NativeDetailPayload::CheckV1(_)
         | NativeDetailPayload::ReviewV1(_)
-        | NativeDetailPayload::ReviewThreadV1(_) => {
+        | NativeDetailPayload::ReviewThreadV1(_)
+        | NativeDetailPayload::ActivityV1(_) => {
             panic!("Expected the typed participant payload")
         }
     }

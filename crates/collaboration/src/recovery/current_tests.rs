@@ -133,7 +133,7 @@ async fn queued_backup_cannot_redeliver_after_remote_success_restore_and_reauthe
     let receipt = store.command_receipt("a", FIRST).await.unwrap().unwrap();
     let summary = store.backup_to(&backup).await.unwrap();
     assert_eq!(summary.commands, 3);
-    assert_eq!(summary.schema_version, 20);
+    assert_eq!(summary.schema_version, 21);
     assert_eq!(count(&backup, "delivery_attempts").await, 0);
     let original_commands = command_rows(&backup).await;
     // An independent remote side effect and receipt happen after the backup.
@@ -477,7 +477,7 @@ async fn frozen_v14_command_history_migrates_and_preserves_terminal_receipts() {
     // The separate migration fixture pins all 0001..0014 SQL/checksums.
     let mut db = connect(&backup, false).await.unwrap();
     materialize_v14_detail_schema(&mut db).await;
-    sqlx::raw_sql("DROP TABLE command_supersessions; DROP TABLE command_recovery_actions; DROP TABLE command_user_controls; DROP INDEX command_recovery_pending; DROP INDEX command_recovery_target_history; DROP INDEX command_recovery_target_pending; DROP VIEW effective_items; DROP TABLE effective_items_fts; DROP TABLE effective_item_overrides; DROP TABLE effective_item_revisions; DROP TABLE command_effects; DROP INDEX command_effect_targets; DROP INDEX command_delivery_pending; DROP INDEX command_delivery_target_order; DROP INDEX command_delivery_active_accounts; DROP TRIGGER command_delivery_admitted; DROP TABLE delivery_resolutions; DROP TABLE delivery_attempt_context; DROP TABLE command_delivery; DROP TRIGGER quarantined_attempt_refused; DROP TABLE command_recovery_quarantine; DROP TABLE recovery_meta; DELETE FROM _sqlx_migrations WHERE version>=15;").execute(&mut db).await.unwrap();
+    sqlx::raw_sql("DROP INDEX comment_created_receipt_id; DROP TABLE comment_submissions; DROP TABLE comment_drafts; DROP TABLE command_supersessions; DROP TABLE command_recovery_actions; DROP TABLE command_user_controls; DROP INDEX command_recovery_pending; DROP INDEX command_recovery_target_history; DROP INDEX command_recovery_target_pending; DROP VIEW effective_items; DROP TABLE effective_items_fts; DROP TABLE effective_item_overrides; DROP TABLE effective_item_revisions; DROP TABLE command_effects; DROP INDEX command_effect_targets; DROP INDEX command_delivery_pending; DROP INDEX command_delivery_target_order; DROP INDEX command_delivery_active_accounts; DROP TRIGGER command_delivery_admitted; DROP TABLE delivery_resolutions; DROP TABLE delivery_attempt_context; DROP TABLE command_delivery; DROP TRIGGER quarantined_attempt_refused; DROP TABLE command_recovery_quarantine; DROP TABLE recovery_meta; DELETE FROM _sqlx_migrations WHERE version>=15;").execute(&mut db).await.unwrap();
     assert_eq!(verify(&mut db).await.unwrap(), 14);
     db.close().await.unwrap();
     let original = command_rows(&backup).await;

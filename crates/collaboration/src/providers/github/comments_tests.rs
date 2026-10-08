@@ -5,7 +5,7 @@ use std::io::{Read, Write};
 
 const PATH: &str = "repositories/123/issues/67/comments";
 
-fn request(kind: RemoteItemKind) -> DetailRequest {
+pub(super) fn request(kind: RemoteItemKind) -> DetailRequest {
     let prefix = if kind == RemoteItemKind::PullRequest {
         "pull"
     } else {
@@ -60,7 +60,7 @@ fn request(kind: RemoteItemKind) -> DetailRequest {
     }
 }
 
-fn token() -> SecretToken {
+pub(super) fn token() -> SecretToken {
     SecretToken::new("synthetic_comment_token".into()).unwrap()
 }
 
@@ -70,7 +70,7 @@ fn row(id: u64) -> Value {
         "created_at":"ignored-invalid-action-date","body_html":false,"author_association":false,"minimized":false})
 }
 
-fn response(status: u16, headers: &str, body: &Value) -> String {
+pub(super) fn response(status: u16, headers: &str, body: &Value) -> String {
     let body = body.to_string();
     format!(
         "HTTP/1.1 {status} Fixture\r\nContent-Length: {}\r\nConnection: close\r\n{headers}\r\n{body}",
@@ -78,7 +78,7 @@ fn response(status: u16, headers: &str, body: &Value) -> String {
     )
 }
 
-fn server(
+pub(super) fn server(
     responses: impl FnOnce(&str) -> Vec<String>,
 ) -> (GithubProvider, std::thread::JoinHandle<Vec<String>>) {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();

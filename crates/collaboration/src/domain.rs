@@ -419,6 +419,7 @@ pub enum ResourceFacet {
     PullDetails,
     IssueDetails,
     Comments,
+    Activity,
     Reviews,
     Checks,
     Participants,

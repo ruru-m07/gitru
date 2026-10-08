@@ -122,6 +122,8 @@ struct DetailCursor {
     facet_revision: Option<String>,
     effective_revision: String,
     last_id: String,
+    #[serde(default)]
+    activity_order: Option<String>,
 }
 
 pub(crate) async fn subject_in(
@@ -356,6 +358,33 @@ fn participant_text(value: &Option<String>, limit: usize, nonempty: bool) -> boo
 }
 
 fn validate_native(facet: DetailFacet, entry: &DetailEntry) -> Result<()> {
+    if facet == DetailFacet::Activity {
+        let Some(crate::NativeDetailPayload::ActivityV1(event)) = &entry.native else {
+            return Err(invalid_detail());
+        };
+        if !event.valid()
+            || entry.title.is_some()
+            || entry.state.is_some()
+            || entry.head_oid.is_some()
+            || entry
+                .body
+                .text
+                .as_ref()
+                .is_some_and(|s| s.len() > 4096 || s.contains('\0'))
+            || entry
+                .author
+                .as_ref()
+                .is_some_and(|s| s.len() > 256 || s.chars().any(char::is_control))
+            || entry
+                .updated_at
+                .as_ref()
+                .is_some_and(|s| !timestamp_valid(s))
+            || entry.observed_body_state != entry.body.state
+        {
+            return Err(invalid_detail());
+        }
+        return Ok(());
+    }
     if facet == DetailFacet::Checks {
         return validate_check(entry);
     }
@@ -674,6 +703,9 @@ fn validate_task_input(entry: &DetailEntry) -> Result<()> {
 
 fn blank_native(native: &Option<crate::NativeDetailPayload>) -> Option<crate::NativeDetailPayload> {
     native.as_ref().map(|native| match native {
+        crate::NativeDetailPayload::ActivityV1(value) => {
+            crate::NativeDetailPayload::ActivityV1(value.clone())
+        }
         crate::NativeDetailPayload::ParticipantV1(value) => {
             crate::NativeDetailPayload::ParticipantV1(crate::ParticipantV1 {
                 user: crate::ParticipantUser {
@@ -944,6 +976,10 @@ fn merge_entry(
     }
     saved.initialize_legacy(facet);
     let same_native_identity = match (&saved.entry.native, &incoming.native) {
+        (
+            Some(crate::NativeDetailPayload::ActivityV1(old)),
+            Some(crate::NativeDetailPayload::ActivityV1(new)),
+        ) => old.kind == new.kind,
         (None, None) => true,
         (
             Some(crate::NativeDetailPayload::ParticipantV1(old)),
@@ -1107,6 +1143,16 @@ fn merge_entry(
                 merge_task_field(&mut saved.entry, &incoming, *field)?;
             }
             field if field.is_task() => merge_task_field(&mut saved.entry, &incoming, *field)?,
+            DetailField::Activity => {
+                let (
+                    Some(crate::NativeDetailPayload::ActivityV1(saved)),
+                    Some(crate::NativeDetailPayload::ActivityV1(observed)),
+                ) = (&mut saved.entry.native, &incoming.native)
+                else {
+                    return Err(invalid_detail());
+                };
+                *saved = observed.clone();
+            }
             DetailField::Check => merge_check_field(&mut saved.entry, &incoming)?,
             DetailField::Review | DetailField::ReviewThread => {
                 merge_review_field(&mut saved.entry, &incoming, *field)?
@@ -1404,6 +1450,7 @@ impl Store {
             "0".into()
         };
         let mut after = String::new();
+        let mut activity_after = String::new();
         if let Some(cursor) = query.cursor {
             let cursor: DetailCursor =
                 serde_json::from_str(&cursor).map_err(|_| invalid_detail())?;
@@ -1417,14 +1464,30 @@ impl Store {
                 return Err(stale());
             }
             validate_identifier(&cursor.last_id)?;
+            if query.facet == DetailFacet::Activity {
+                let order = cursor.activity_order.ok_or_else(invalid_detail)?;
+                if order != "~" && (!timestamp_valid(&order) || order.len() > 64) {
+                    return Err(invalid_detail());
+                }
+                activity_after = order;
+            } else if cursor.activity_order.is_some() {
+                return Err(invalid_detail());
+            }
             after = cursor.last_id;
         }
         if let Some(json)=sqlx::query_scalar::<_,String>("SELECT body_json FROM detail_observations WHERE account_id=? AND subject_id=? AND facet=?")
             .bind(&query.account_id).bind(&query.subject_id).bind(tag(&query.facet)?).fetch_optional(&mut *tx).await.map_err(storage_error)? { result.body=decode(&json)?; }
-        let rows=sqlx::query("SELECT id,json FROM detail_entries WHERE account_id=? AND subject_id=? AND facet=? AND id>? ORDER BY id LIMIT ?")
-            .bind(&query.account_id).bind(&query.subject_id).bind(tag(&query.facet)?).bind(after).bind(i64::from(query.limit)+1).fetch_all(&mut *tx).await.map_err(storage_error)?;
+        let rows = if query.facet == DetailFacet::Activity {
+            sqlx::query("SELECT id,json,coalesce(json_extract(json,'$.native.value.occurred_at'),'~') AS activity_order FROM detail_entries WHERE account_id=? AND subject_id=? AND facet='activity' AND (coalesce(json_extract(json,'$.native.value.occurred_at'),'~'),id)>(?,?) ORDER BY coalesce(json_extract(json,'$.native.value.occurred_at'),'~'),id LIMIT ?")
+                .bind(&query.account_id).bind(&query.subject_id).bind(activity_after).bind(after).bind(i64::from(query.limit)+1).fetch_all(&mut *tx).await.map_err(storage_error)?
+        } else {
+            sqlx::query("SELECT id,json,NULL AS activity_order FROM detail_entries WHERE account_id=? AND subject_id=? AND facet=? AND id>? ORDER BY id LIMIT ?")
+                .bind(&query.account_id).bind(&query.subject_id).bind(tag(&query.facet)?).bind(after).bind(i64::from(query.limit)+1).fetch_all(&mut *tx).await.map_err(storage_error)?
+        };
         let has_more = rows.len() > query.limit as usize;
+        let mut last_activity_order = None;
         for row in rows.into_iter().take(query.limit as usize) {
+            last_activity_order = row.get::<Option<String>, _>("activity_order");
             result.entries.push(decode(row.get("json"))?);
         }
         if query.facet == DetailFacet::Body {
@@ -1460,6 +1523,7 @@ impl Store {
                 facet_revision: result.evidence.facet_revision.clone(),
                 effective_revision,
                 last_id: result.entries.last().ok_or_else(invalid_detail)?.id.clone(),
+                activity_order: last_activity_order,
             })?);
         }
         tx.commit().await.map_err(storage_error)?;
@@ -1832,6 +1896,51 @@ pub(super) async fn apply_detail_in(
         || page.complete && page.next_cursor.is_some()
     {
         return Err(invalid_detail());
+    }
+    if page.facet == DetailFacet::Activity {
+        let fields = [
+            DetailField::Body,
+            DetailField::Author,
+            DetailField::UpdatedAt,
+            DetailField::Activity,
+        ];
+        if page.entries.len() > 50
+            || page.source.field_mask.len() != fields.len()
+            || !fields.iter().all(|f| page.source.field_mask.contains(f))
+            || page.source.provider_updated_at.is_some()
+            || page.reconciliation.head_scope != DetailHeadScope::SubjectHistory
+            || !matches!(
+                page.reconciliation.enumeration,
+                DetailEnumeration::Uncertain | DetailEnumeration::FullEnumeration
+            )
+            || page.reconciliation.enumeration == DetailEnumeration::FullEnumeration
+                && (page.request_cursor.is_some()
+                    || page.next_cursor.is_some()
+                    || !page.complete
+                    || !page.whole_scope)
+            || page.complete != page.next_cursor.is_none()
+            || page.subject_binding.is_none()
+            || page.metadata.is_some()
+            || page.etag.is_some()
+            || page.not_modified
+            || [&page.request_cursor, &page.next_cursor]
+                .into_iter()
+                .any(|c| c.as_ref().is_some_and(|s| s.len() > 4096))
+        {
+            return Err(invalid_detail());
+        }
+        for (i, entry) in page.entries.iter().enumerate() {
+            validate_native(page.facet, entry)?;
+            if entry.field_mask.len() != fields.len()
+                || !fields.iter().all(|f| entry.field_mask.contains(f))
+                || !entry.field_validations.is_empty()
+                || page.entries[..i]
+                    .iter()
+                    .any(|prior| prior.id == entry.id || prior.provider_id == entry.provider_id)
+            {
+                return Err(invalid_detail());
+            }
+        }
     }
     if page.facet == DetailFacet::Participants
         && (page.source.field_mask.len() != 6

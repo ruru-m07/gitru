@@ -6,6 +6,9 @@ use super::{
     *,
 };
 use serde::Deserialize;
+mod activity;
+#[cfg(test)]
+mod activity_tests;
 mod checks;
 pub(crate) mod comment_send;
 mod comments;
@@ -78,6 +81,7 @@ impl CollaborationProvider for GithubProvider {
             ) || matches!(
                 facet.facet,
                 ResourceFacet::Comments
+                    | ResourceFacet::Activity
                     | ResourceFacet::PullCommits
                     | ResourceFacet::PullFiles
                     | ResourceFacet::Reviews
@@ -97,6 +101,9 @@ impl CollaborationProvider for GithubProvider {
         token: &SecretToken,
         request: DetailRequest,
     ) -> Result<DetailPage, ProviderError> {
+        if request.facet == DetailFacet::Activity {
+            return self.request_activity(token, request).await;
+        }
         if request.facet == DetailFacet::Comments {
             return self.request_comments(token, request).await;
         }
