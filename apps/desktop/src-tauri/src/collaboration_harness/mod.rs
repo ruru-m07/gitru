@@ -76,9 +76,10 @@ impl LaunchRoot {
             return Err(invalid());
         }
         let metadata = fs::symlink_metadata(&root).map_err(|_| invalid())?;
+        let canonical = fs::canonicalize(&root).map_err(|_| invalid())?;
         if !metadata.is_dir()
             || metadata.file_type().is_symlink()
-            || fs::canonicalize(&root).map_err(|_| invalid())? != root
+            || !canonical_input(&canonical, &root)
         {
             return Err(invalid());
         }
@@ -119,7 +120,7 @@ impl LaunchRoot {
             return Err(invalid());
         }
         let launch = Self {
-            root,
+            root: canonical,
             nonce,
             storage_mode: marker.storage_mode,
             #[cfg(unix)]
@@ -249,6 +250,30 @@ impl LaunchRoot {
         }
         result
     }
+}
+
+#[cfg(not(windows))]
+fn canonical_input(canonical: &std::path::Path, input: &std::path::Path) -> bool {
+    canonical == input
+}
+
+#[cfg(windows)]
+fn canonical_input(canonical: &std::path::Path, input: &std::path::Path) -> bool {
+    // Windows canonicalization returns a verbatim path (`\\?\D:\...`), while
+    // Node's realpathSync supplies the equivalent drive path (`D:\...`). Keep
+    // rejecting aliases and traversal while accepting that representation-only
+    // difference at the native harness boundary.
+    let canonical = canonical.to_string_lossy();
+    let input = input.to_string_lossy();
+    let comparable = if let Some(path) = canonical.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{path}")
+    } else {
+        canonical
+            .strip_prefix(r"\\?\")
+            .unwrap_or(&canonical)
+            .to_owned()
+    };
+    comparable.eq_ignore_ascii_case(&input)
 }
 
 #[cfg(feature = "native-keyed-storage")]
