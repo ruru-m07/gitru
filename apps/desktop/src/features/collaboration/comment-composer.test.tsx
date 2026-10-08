@@ -132,7 +132,7 @@ describe("dedicated conversation comment composer", () => {
         duplicate: false,
       };
     });
-    const { user } = setup();
+    const { cache, user } = setup();
     const editor = await screen.findByRole("textbox", { name: "Comment" });
     expect(editor).toHaveValue("");
     expect(privateNote).not.toHaveBeenCalled();
@@ -150,8 +150,26 @@ describe("dedicated conversation comment composer", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Your comment text and request identity are preserved",
     );
+    const key = commentDraftQueryOptions(account, subjectId).queryKey;
+    await act(async () => {
+      await cache.cancelQueries({ queryKey: key });
+      cache.setQueryData(key, {
+        ...snapshot,
+        context: null,
+        availability: "unavailable",
+        reason: "account_unavailable",
+      });
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Retry exact comment" }),
+      ).not.toBeInTheDocument(),
+    );
+    await act(async () => {
+      cache.setQueryData(key, snapshot);
+    });
     await user.click(
-      screen.getByRole("button", { name: "Retry exact comment" }),
+      await screen.findByRole("button", { name: "Retry exact comment" }),
     );
     await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
     expect(send.mock.calls[1]?.[0]).toEqual(send.mock.calls[0]?.[0]);
