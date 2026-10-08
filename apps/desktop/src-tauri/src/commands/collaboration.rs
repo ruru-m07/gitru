@@ -624,6 +624,7 @@ mod tests {
         Operation::Drafts,
         Operation::ExportDraft,
         Operation::ProviderInboxAction,
+        Operation::CommandRecovery,
         Operation::Recovery,
         Operation::Capabilities,
         Operation::ContextualCapabilities,

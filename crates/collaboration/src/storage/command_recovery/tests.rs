@@ -588,6 +588,81 @@ async fn attempted_intent_can_pause_but_never_cancel_or_lose_budget_on_resume() 
 }
 
 #[tokio::test]
+async fn conflict_and_attention_halts_never_advertise_or_record_a_noop_pause() {
+    let (_dir, store) = setup().await;
+    let conflict = admit(&store, "a", "conflict", vec![]).await;
+    attempted(&store, &conflict).await;
+    {
+        let mut writer = store.inner.writer.acquire().await.unwrap();
+        let mut tx = writer.begin().await.unwrap();
+        let current = super::super::delivery::load_in(&mut tx, "a", conflict.command_id())
+            .await
+            .unwrap();
+        super::super::delivery::transition_in(
+            &mut tx,
+            &current,
+            DeliveryState::Conflict,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+    }
+    let conflict_review = detail(&store, &conflict).await;
+    assert!(!conflict_review.can_pause);
+    let conflict_pause = CommandRecoveryActionRequest {
+        context: conflict_review.context,
+        action_id: uuid(),
+        action: CommandRecoveryAction::Pause,
+    };
+    assert_eq!(
+        store
+            .command_recovery_action(conflict_pause, Some(&Policy::default()))
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::Unsupported
+    );
+
+    let attention = admit(&store, "a", "attention", vec![]).await;
+    attempted(&store, &attention).await;
+    {
+        let mut writer = store.inner.writer.acquire().await.unwrap();
+        let mut tx = writer.begin().await.unwrap();
+        let current = super::super::delivery::load_in(&mut tx, "a", attention.command_id())
+            .await
+            .unwrap();
+        super::super::delivery::transition_in(
+            &mut tx,
+            &current,
+            current.state,
+            current.next_action_at.as_deref(),
+            Some("reconciliation_limit"),
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+    }
+    let attention_review = detail(&store, &attention).await;
+    assert!(!attention_review.can_pause);
+    let attention_pause = CommandRecoveryActionRequest {
+        context: attention_review.context,
+        action_id: uuid(),
+        action: CommandRecoveryAction::Pause,
+    };
+    assert_eq!(
+        store
+            .command_recovery_action(attention_pause, Some(&Policy::default()))
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::Unsupported
+    );
+    assert_eq!(count(&store, "command_recovery_actions").await, 0);
+}
+
+#[tokio::test]
 async fn unknown_codec_exports_only_authored_bytes_and_refuses_resume_or_replacement() {
     let (_dir, store) = setup().await;
     let command = admit(&store, "a", "mine", vec![]).await;
@@ -1136,6 +1211,7 @@ async fn exhausted_mutation_budget_does_not_prevent_resuming_read_only_reconcili
         action_id: uuid(),
         action: CommandRecoveryAction::Pause,
     };
+    assert!(detail(&store, &command).await.can_pause);
     store
         .command_recovery_action(pause, Some(&Policy::default()))
         .await
