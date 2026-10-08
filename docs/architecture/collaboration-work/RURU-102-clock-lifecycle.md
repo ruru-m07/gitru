@@ -326,7 +326,10 @@ all-target collaboration Clippy, Rust formatting and diff checks pass. Normal
 `make typegen` produces 114 commands; complete normalized TypeScript AST inventories
 are unchanged across 536 types statements, 118 commands statements, 3 events and 3
 index statements. Generated ordering/timestamp churn was restored via Git with no
-hand edits. Full workspace make verify is running separately.
+hand edits. Full workspace make verify subsequently exits 0 on this source:
+499 frontend tests across 55 files and 831 Rust tests pass (3 helper ignores),
+with formatting, all-target Clippy, lint, type and build gates. This full workspace
+run predates the direct-admission delta below; it is not attributed to that delta.
 
 The repair gives notification discovery shared live/durable checks before vault
 and after its saved selector/epoch dispatch gate, preserving local-refusal evidence
@@ -358,3 +361,27 @@ no new provider observation, keep no extra history/map, and retain checked overf
 Finish the current full verification before source edits, then qualify the signed
 narrow delta with its direct-clock regression, full collaboration tests and strict
 Clippy. Descendants consume it explicitly rather than inheriting an untested claim.
+
+
+Final direct-admission evidence: the new cold helper control fails unchanged
+755fe5d at the expected post-reopen 25h monotonic / 72h UTC boundary: admission
+returns Ok with 22h of the recovered 47h wait remaining. No cold scheduler enqueue,
+manual budget insertion, vault load or provider read occurs. Signed 996c3c4 repairs
+that path by max-installing full remaining durable provider time under the existing
+scheduler lock before reading live permission. The immutable durable deadline stays
+unchanged, the peer remains eligible, one account slot is retained, and admission
+becomes eligible only when the remaining monotonic bound expires.
+
+Final delta validation: `cargo test -p collaboration clock` passes 34 matching tests
+(28 library + 6 integration); full `cargo test -p collaboration` passes 480 with 2
+helper ignores. Strict all-target collaboration Clippy, formatting and diff checks
+pass. RED, GREEN, full native and Clippy logs are respectively
+`/tmp/gitru-r102-direct-cold-{red,green,native,clippy}.log`. This is a common native
+admission regression, not a claim about a later delivery implementation absent
+from this branch. Root/descendants consume the narrow signed source explicitly.
+
+Existing draft #165 is updated in place with these signed changes and evidence.
+The old d08fa56c remote matrix is green; new exact-head CI is a separate pending
+gate after publication. Linear R102 remains In Progress for provider API-family
+scheduling and the broader remaining lifecycle criteria. No live provider/vault,
+OS suspend or invalid-wall-clock restart qualification and no merge are claimed.
