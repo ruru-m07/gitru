@@ -149,6 +149,62 @@ async fn eventually(mut condition: impl AsyncFnMut() -> bool) {
     .expect("runtime made expected progress");
 }
 
+// This fixture qualifies committed checkpoints across twelve disk-backed pages,
+// not a three-second throughput target. Subscribe before dispatch and reread the
+// durable predicate on each hint; coalesced/lagged hints still read current state.
+async fn repository_checkpoint(
+    store: &Store,
+    account: &RemoteAccount,
+    provider: &FakeProvider,
+    changes: &mut tokio::sync::broadcast::Receiver<ChangeHint>,
+    cursor_suffix: Option<&str>,
+) -> StoredScope {
+    let mut last = String::from("no scope observed");
+    let result = tokio::time::timeout(Duration::from_secs(30), async {
+        loop {
+            if let Some(scope) = store
+                .scope_state(&account.id, "repositories")
+                .await
+                .unwrap()
+            {
+                last = format!(
+                    "cursor={:?}, coverage={:?}, state={:?}, run={}",
+                    scope.next_cursor, scope.coverage.state, scope.sync.state, scope.run_id
+                );
+                let expected = match cursor_suffix {
+                    Some(suffix) => {
+                        scope.coverage.state == CoverageState::Partial
+                            && scope
+                                .next_cursor
+                                .as_ref()
+                                .is_some_and(|cursor| cursor.ends_with(suffix))
+                    }
+                    None => {
+                        scope.coverage.state == CoverageState::Complete
+                            && scope.next_cursor.is_none()
+                    }
+                };
+                if expected && scope.sync.state == SyncState::Idle {
+                    return scope;
+                }
+            }
+            match changes.recv().await {
+                Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    panic!("runtime checkpoint channel closed: {last}");
+                }
+            }
+        }
+    })
+    .await;
+    result.unwrap_or_else(|_| {
+        panic!(
+            "repository checkpoint {cursor_suffix:?} timed out: {last}, provider calls={}",
+            provider.calls.load(Ordering::SeqCst)
+        )
+    })
+}
+
 #[tokio::test]
 async fn reauthentication_preserves_identity_and_isolates_different_actors() {
     let directory = tempfile::tempdir().unwrap();
@@ -220,26 +276,10 @@ async fn capped_bootstrap_resumes_committed_cursor_and_run_instead_of_restarting
         provider.clone(),
     ));
     let account = runtime.connect_github("token".into()).await.unwrap();
+    let mut changes = runtime.subscribe();
     runtime.clone().start_background();
-    eventually(async || {
-        store
-            .scope_state(&account.id, "repositories")
-            .await
-            .unwrap()
-            .is_some_and(|scope| {
-                scope.coverage.state == CoverageState::Partial
-                    && scope.sync.state == SyncState::Idle
-                    // Each committed page now yields an idle checkpoint. Wait
-                    // for the actual activation cap, rather than the first page.
-                    && scope.next_cursor.as_ref().is_some_and(|cursor| cursor.ends_with("page=11"))
-            })
-    })
-    .await;
-    let partial = store
-        .scope_state(&account.id, "repositories")
-        .await
-        .unwrap()
-        .unwrap();
+    let partial =
+        repository_checkpoint(&store, &account, &provider, &mut changes, Some("page=11")).await;
     assert_eq!(provider.calls.load(Ordering::SeqCst), 10);
     assert!(partial.next_cursor.as_ref().unwrap().ends_with("page=11"));
     assert!(
@@ -254,22 +294,7 @@ async fn capped_bootstrap_resumes_committed_cursor_and_run_instead_of_restarting
         })
         .await
         .unwrap();
-    eventually(async || {
-        store
-            .scope_state(&account.id, "repositories")
-            .await
-            .unwrap()
-            .is_some_and(|scope| {
-                scope.coverage.state == CoverageState::Complete
-                    && scope.sync.state == SyncState::Idle
-            })
-    })
-    .await;
-    let complete = store
-        .scope_state(&account.id, "repositories")
-        .await
-        .unwrap()
-        .unwrap();
+    let complete = repository_checkpoint(&store, &account, &provider, &mut changes, None).await;
     assert_eq!(partial.run_id, complete.run_id);
     assert!(
         complete.etag.is_none(),
