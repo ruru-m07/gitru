@@ -478,13 +478,6 @@ impl CollaborationRuntime {
                 job.key.clone(),
                 self.deadline_after(if receipt.published { 60 } else { 0 }),
             );
-            if cooldown > 0 {
-                scheduler
-                    .account_cooldowns
-                    .entry(account.id.clone())
-                    .and_modify(|old| *old = (*old).max(self.deadline_after(cooldown)))
-                    .or_insert_with(|| self.deadline_after(cooldown));
-            }
         }
         self.mark_pull_commit_rate_limited(&account, &job.scope, cooldown)
             .await?;

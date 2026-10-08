@@ -3,12 +3,20 @@ import {
   collaborationAcquireDemand,
   collaborationCapabilities,
   collaborationChangesSince,
+  collaborationCommandRecoveryAction,
+  collaborationCommandRecoveryDetail,
+  collaborationCommandRecoveryExport,
+  collaborationCommandRecoveryList,
+  collaborationCommandRecoveryReplace,
+  collaborationCommentDraft,
+  collaborationCommentDrafts,
   collaborationConfirmLocalLink,
   collaborationConnectBitbucketCloud,
   collaborationConnectGithub,
   collaborationConnectGithubCli,
   collaborationConnectGitlab,
   collaborationContextualCapabilities,
+  collaborationCreatedComments,
   collaborationDemandActivity,
   collaborationDetail,
   collaborationDiagnostics,
@@ -41,10 +49,14 @@ import {
   collaborationRenewDemand,
   collaborationRepositories,
   collaborationResolveResource,
+  collaborationSaveCommentDraft,
   collaborationSaveDraft,
   collaborationSaveTransportBinding,
   collaborationSelectRepository,
+  collaborationSendComment,
   collaborationSetLocalInboxState,
+  collaborationSubmitTextEdit,
+  collaborationTextEditSnapshot,
   collaborationValidateLocalNavigation,
 } from "@gitru/commands";
 import type { QueryClient } from "@tanstack/react-query";
@@ -62,11 +74,32 @@ export type {
   CheckStateV1,
   CheckV1,
   CollaborationPullCheckoutReceipt as PullCheckoutReceipt,
+  CommandFieldResolution,
+  CommandFieldReview,
+  CommandFieldValue,
+  CommandRecoveryActionRequest,
+  CommandRecoveryContext,
+  CommandRecoveryDetail,
+  CommandRecoveryQuery,
+  CommandRecoveryReceipt,
+  CommandRecoveryReplaceRequest,
+  CommandRecoverySnapshot,
+  CommandRecoverySummary,
+  CommentDraftPage,
+  CommentDraftQuery,
+  CommentDraftSnapshot,
+  CommentDraftSummary,
+  CommentSendContext,
+  CommentSubmissionReceipt,
+  CommentSubmissionStatus,
   ContextCapabilityAccess,
   ContextCapabilityRequest,
   ContextFacetCapability,
   ContextualCapabilitySnapshot,
   CoverageDiagnostics,
+  CreatedCommentPage,
+  CreatedCommentQuery,
+  CreatedCommentReceipt,
   DemandLeaseReceipt,
   DemandOwnerActivity,
   DemandRenewalReceipt,
@@ -158,6 +191,8 @@ export type {
   ReviewThreadNativeV1,
   ReviewThreadV1,
   ReviewV1,
+  SaveCommentDraftRequest,
+  SendCommentRequest,
   SetLocalInboxStateRequest,
   StorageDiagnostics,
   SyncDiagnosticsExportReceipt,
@@ -166,6 +201,10 @@ export type {
   SyncRecoveryState,
   TaskActor,
   TaskV1,
+  TextEditContext,
+  TextEditReceipt,
+  TextEditRequest,
+  TextEditSnapshot,
   TransportBindingRequest,
 } from "@gitru/commands";
 export { StaleAuthorizationError } from "./authorization-fence";
@@ -197,8 +236,36 @@ export type InboxSemantics =
 export type ResourceFacet =
   import("@gitru/commands").ContextFacetCapability["facet"];
 export type ResourceKind = import("@gitru/commands").ResourceLocator["kind"];
+export type TextEditAvailability =
+  import("@gitru/commands").TextEditSnapshot["availability"];
+export type TextEditReason = NonNullable<
+  import("@gitru/commands").TextEditSnapshot["reason"]
+>;
+export type CommentSendAvailability =
+  import("@gitru/commands").CommentDraftSnapshot["availability"];
+export type CommentSendReason = NonNullable<
+  import("@gitru/commands").CommentDraftSnapshot["reason"]
+>;
 
 export const collaboration = new CollaborationClient({
+  commandRecoveryList: (query) => collaborationCommandRecoveryList({ query }),
+  commandRecoveryDetail: (accountId, commandId) =>
+    collaborationCommandRecoveryDetail({ accountId, commandId }),
+  commandRecoveryAction: (request) =>
+    collaborationCommandRecoveryAction({ request }),
+  commandRecoveryReplace: (request) =>
+    collaborationCommandRecoveryReplace({ request }),
+  commandRecoveryExport: (context) =>
+    collaborationCommandRecoveryExport({ context }),
+  textEditSnapshot: (accountId, subjectId) =>
+    collaborationTextEditSnapshot({ accountId, subjectId }),
+  submitTextEdit: (request) => collaborationSubmitTextEdit({ request }),
+  commentDraft: (accountId, subjectId) =>
+    collaborationCommentDraft({ accountId, subjectId }),
+  commentDrafts: (query) => collaborationCommentDrafts({ query }),
+  saveCommentDraft: (request) => collaborationSaveCommentDraft({ request }),
+  sendComment: (request) => collaborationSendComment({ request }),
+  createdComments: (query) => collaborationCreatedComments({ query }),
   demandActivity: () => collaborationDemandActivity({}),
   acquireDemand: (request) => collaborationAcquireDemand({ request }),
   renewDemand: (request) => collaborationRenewDemand({ request }),

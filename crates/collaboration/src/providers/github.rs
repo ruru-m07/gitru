@@ -7,6 +7,7 @@ use super::{
 };
 use serde::Deserialize;
 mod checks;
+pub(crate) mod comment_send;
 mod comments;
 mod commits;
 mod files;
@@ -16,6 +17,7 @@ pub mod notification_subjects;
 mod pull_details;
 mod resource_details;
 mod reviews;
+pub(crate) mod text_edits;
 
 pub struct GithubProvider {
     http: GithubHttp,

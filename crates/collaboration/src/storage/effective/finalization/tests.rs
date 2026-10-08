@@ -601,24 +601,34 @@ async fn canonical_notification_updates_unread_counts_without_authored_guessing(
     notification.state = "pending".into();
     notification.body = None;
     let run = store.begin_sync("a", "1", "notifications").await.unwrap();
-    store
-        .apply_page(PageCommit {
-            account_id: "a".into(),
-            authorization_epoch: "1".into(),
-            scope: "notifications".into(),
-            run_id: run,
-            repositories: vec![],
-            items: vec![notification.clone()],
-            endpoint_aliases: vec![],
-            next_cursor: None,
-            etag: None,
-            last_modified: None,
-            not_modified: false,
-            complete: true,
-            observed_at: notification.updated_at.clone(),
-        })
+    let seed = PageCommit {
+        account_id: "a".into(),
+        authorization_epoch: "1".into(),
+        scope: "notifications".into(),
+        run_id: run.clone(),
+        repositories: vec![],
+        items: vec![notification.clone()],
+        endpoint_aliases: vec![],
+        next_cursor: Some("accepted-next-page".into()),
+        etag: Some("old-feed-validator".into()),
+        last_modified: Some("Sat, 03 Oct 2026 00:00:00 GMT".into()),
+        not_modified: false,
+        complete: false,
+        observed_at: notification.updated_at.clone(),
+    };
+    store.apply_page(seed.clone()).await.unwrap();
+    let checkpoint = store
+        .scope_state("a", "notifications")
         .await
+        .unwrap()
         .unwrap();
+    // This network request starts before delivery, at the exact same provider
+    // activity timestamp. Its later arrival must not undo confirmed unread=false.
+    let held = PageCommit {
+        next_cursor: None,
+        complete: true,
+        ..seed
+    };
     let command = admit(
         &store,
         &account,
@@ -653,6 +663,36 @@ async fn canonical_notification_updates_unread_counts_without_authored_guessing(
     complete(&store, &request, &policy, EvidencePurpose::Confirmed)
         .await
         .unwrap();
+    let revision = store.revision().await.unwrap();
+    for response in [
+        held.clone(),
+        PageCommit {
+            items: vec![],
+            not_modified: true,
+            ..held.clone()
+        },
+    ] {
+        assert_eq!(
+            store
+                .apply_fetched_page(response, vec![], checkpoint.data_revision)
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::StaleView
+        );
+        assert_eq!(store.revision().await.unwrap(), revision);
+    }
+    let after = store
+        .scope_state("a", "notifications")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(after.run_id, checkpoint.run_id);
+    assert_eq!(after.next_cursor, checkpoint.next_cursor);
+    assert_eq!(after.coverage, checkpoint.coverage);
+    assert!(after.etag.is_none());
+    assert!(after.last_modified.is_none());
+    assert!(after.data_revision > checkpoint.data_revision);
     let snapshot = store.item("a", "notification").await.unwrap();
     let item = snapshot.item.unwrap();
     assert_eq!(item.unread, Some(false));
@@ -682,6 +722,34 @@ async fn canonical_notification_updates_unread_counts_without_authored_guessing(
             .unwrap();
         assert_eq!(page.total_count, count);
     }
+    // A fresh continuation at the newly observed native revision is admissible;
+    // the accepted traversal and membership were preserved, not restarted.
+    let fresh = PageCommit {
+        items: vec![item],
+        ..held
+    };
+    store
+        .apply_fetched_page(fresh, vec![], after.data_revision)
+        .await
+        .unwrap();
+    let complete = store
+        .scope_state("a", "notifications")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(complete.run_id, checkpoint.run_id);
+    assert_eq!(complete.coverage.state, CoverageState::Complete);
+    assert!(complete.next_cursor.is_none());
+    assert_eq!(
+        store
+            .item("a", "notification")
+            .await
+            .unwrap()
+            .item
+            .unwrap()
+            .unread,
+        Some(false)
+    );
     store.close().await.unwrap();
 }
 
@@ -694,22 +762,32 @@ async fn feed(store: &Store, account: &RemoteAccount, item: RemoteItem) {
         )
         .await
         .unwrap();
+    let revision = store
+        .scope_state(&account.id, "repo:repo:pull_request")
+        .await
+        .unwrap()
+        .unwrap()
+        .data_revision;
     store
-        .apply_page(PageCommit {
-            account_id: account.id.clone(),
-            authorization_epoch: account.authorization_epoch.clone(),
-            scope: "repo:repo:pull_request".into(),
-            run_id,
-            repositories: vec![],
-            items: vec![item],
-            endpoint_aliases: vec![],
-            next_cursor: None,
-            etag: None,
-            last_modified: None,
-            not_modified: false,
-            complete: true,
-            observed_at: "2026-10-05T00:00:00Z".into(),
-        })
+        .apply_fetched_page(
+            PageCommit {
+                account_id: account.id.clone(),
+                authorization_epoch: account.authorization_epoch.clone(),
+                scope: "repo:repo:pull_request".into(),
+                run_id,
+                repositories: vec![],
+                items: vec![item],
+                endpoint_aliases: vec![],
+                next_cursor: None,
+                etag: None,
+                last_modified: None,
+                not_modified: false,
+                complete: true,
+                observed_at: "2026-10-05T00:00:00Z".into(),
+            },
+            vec![],
+            revision,
+        )
         .await
         .unwrap();
 }

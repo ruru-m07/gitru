@@ -78,6 +78,12 @@ pub(super) async fn verify_authored(db: &mut SqliteConnection, version: i64) -> 
             patch.validate(&kind).map_err(|_| invalid_backup())?;
         }
     }
+    if version >= 19 {
+        verify_recovery_actions(db).await?;
+    }
+    if version >= 20 {
+        verify_comments(db).await?;
+    }
     Ok(())
 }
 
@@ -426,5 +432,184 @@ async fn verify_delivery(db: &mut SqliteConnection) -> Result<()> {
     // Execution bases and resolution evidence remain opaque for unsupported
     // codecs. SQL CHECK/FK constraints enforce bounded framing and provenance;
     // restore retains them byte-for-byte and only resets scheduling authority.
+    Ok(())
+}
+
+async fn verify_recovery_actions(db: &mut SqliteConnection) -> Result<()> {
+    use crate::command_recovery::*;
+    // Recompute immutable edge affinity independently of creation-time triggers.
+    // Current accounts can be deauthorized and replacements can themselves have
+    // finished or been superseded since this historical receipt was authored.
+    refuse_rows(db, "SELECT 1 FROM command_supersessions s JOIN commands o ON o.account_id=s.account_id AND o.command_id=s.original_id JOIN commands n ON n.account_id=s.account_id AND n.command_id=s.replacement_id LEFT JOIN command_supersessions p ON p.account_id=s.account_id AND p.replacement_id=s.original_id JOIN command_recovery_actions a ON a.account_id=s.account_id AND a.action_id=s.action_id WHERE o.state<>'superseded' OR o.authorization_epoch<>n.authorization_epoch OR o.target_kind<>n.target_kind OR o.target_id<>n.target_id OR o.repository_id IS NOT n.repository_id OR o.operation_kind<>n.operation_kind OR o.payload_version<>n.payload_version OR o.enqueue_order>=n.enqueue_order OR s.execution_order<>coalesce(p.execution_order,o.enqueue_order) OR s.depth<>coalesce(p.depth,0)+1 OR a.command_id<>s.original_id OR json_extract(a.request_json,'$.new_command_id') IS NOT s.replacement_id OR json_extract(a.receipt_json,'$.replacement_id') IS NOT s.replacement_id OR EXISTS(SELECT 1 FROM command_dependencies d JOIN commands p ON p.account_id=d.account_id AND p.command_id=d.predecessor_id LEFT JOIN command_supersessions ps ON ps.account_id=p.account_id AND ps.replacement_id=p.command_id WHERE d.account_id=s.account_id AND d.command_id=s.replacement_id AND coalesce(ps.execution_order,p.enqueue_order)>=s.execution_order) LIMIT 1").await?;
+    refuse_rows(db, "SELECT 1 FROM command_recovery_actions GROUP BY account_id,command_id HAVING min(ordinal)<>0 OR max(ordinal)+1<>count(*) OR sum(octet_length(request_json))>1048576 LIMIT 1").await?;
+    refuse_rows(db, "SELECT 1 FROM command_recovery_actions a WHERE json_extract(a.receipt_json,'$.replacement_id') IS NOT NULL AND NOT EXISTS(SELECT 1 FROM command_supersessions s WHERE s.account_id=a.account_id AND s.action_id=a.action_id) LIMIT 1").await?;
+    refuse_rows(db, "SELECT 1 FROM command_user_controls u WHERE u.paused IS NOT (SELECT json_extract(a.receipt_json,'$.paused') FROM command_recovery_actions a WHERE a.account_id=u.account_id AND a.command_id=u.command_id ORDER BY ordinal DESC LIMIT 1) LIMIT 1").await?;
+    let mut rows = sqlx::query("SELECT account_id,command_id,action_id,request_json,receipt_json FROM command_recovery_actions").fetch(&mut *db);
+    while let Some(row) = rows.try_next().await.map_err(|_| invalid_backup())? {
+        let account: String = column(&row, "account_id")?;
+        let command: String = column(&row, "command_id")?;
+        let action: String = column(&row, "action_id")?;
+        let request: String = column(&row, "request_json")?;
+        let receipt_json: String = column(&row, "receipt_json")?;
+        let receipt: CommandRecoveryReceipt =
+            serde_json::from_str(&receipt_json).map_err(|_| invalid_backup())?;
+        if serde_json::to_string(&receipt).map_err(|_| invalid_backup())? != receipt_json
+            || crate::delivery::DeliveryState::parse(&receipt.state).is_err()
+            || receipt.account_id != account
+            || receipt.command_id != command
+            || receipt.action_id != action
+            || receipt.revision.parse::<u64>().ok().is_none_or(|n| n == 0)
+        {
+            return Err(invalid_backup());
+        }
+        let context = if let Some(replacement) = &receipt.replacement_id {
+            let value: CommandRecoveryReplaceRequest =
+                serde_json::from_str(&request).map_err(|_| invalid_backup())?;
+            if serde_json::to_string(&value).map_err(|_| invalid_backup())? != request
+                || value.action_id != action
+                || value.new_command_id != *replacement
+                || receipt.state != "superseded"
+                || receipt.paused
+                || value.fields.len() > 5
+                || value.fields.iter().enumerate().any(|(i, f)| {
+                    value.fields[..i].iter().any(|other| other.field == f.field)
+                        || f.field == CommandReviewField::Head
+                        || f.choice != CommandResolutionChoice::Edited && f.value.is_some()
+                        || f.value
+                            .as_ref()
+                            .is_some_and(|v| v.len() > 65536 || v.contains('\0'))
+                })
+            {
+                return Err(invalid_backup());
+            }
+            Uuid::parse_str(replacement).map_err(|_| invalid_backup())?;
+            value.context
+        } else {
+            let value: CommandRecoveryActionRequest =
+                serde_json::from_str(&request).map_err(|_| invalid_backup())?;
+            if serde_json::to_string(&value).map_err(|_| invalid_backup())? != request
+                || value.action_id != action
+                || match value.action {
+                    CommandRecoveryAction::Cancel => {
+                        receipt.state != "cancelled"
+                            || receipt.paused
+                            || receipt.remote_may_have_happened
+                    }
+                    CommandRecoveryAction::Pause => {
+                        !receipt.paused || !receipt.remote_may_have_happened
+                    }
+                    CommandRecoveryAction::Resume => receipt.paused,
+                }
+            {
+                return Err(invalid_backup());
+            }
+            value.context
+        };
+        if context.account_id != account
+            || context.command_id != command
+            || context
+                .expected_epoch
+                .parse::<u64>()
+                .ok()
+                .is_none_or(|n| n == 0)
+            || context
+                .expected_generation
+                .parse::<u64>()
+                .ok()
+                .is_none_or(|n| n == 0)
+            || context
+                .authorization_view
+                .parse::<u64>()
+                .ok()
+                .is_none_or(|n| n == 0)
+            || context.review_token.len() != 64
+            || !context
+                .review_token
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return Err(invalid_backup());
+        }
+        if Uuid::parse_str(&action)
+            .map_err(|_| invalid_backup())?
+            .hyphenated()
+            .to_string()
+            != action
+        {
+            return Err(invalid_backup());
+        }
+    }
+    Ok(())
+}
+
+async fn verify_comments(db: &mut SqliteConnection) -> Result<()> {
+    use crate::comment_send::native as n;
+    {
+        let mut rows =
+            sqlx::query("SELECT account_id,subject_id,body,generation FROM comment_drafts")
+                .fetch(&mut *db);
+        while let Some(row) = rows.try_next().await.map_err(|_| invalid_backup())? {
+            identifier(&column::<String>(&row, "account_id")?)?;
+            identifier(&column::<String>(&row, "subject_id")?)?;
+            n::validate_body(&column::<String>(&row, "body")?).map_err(|_| invalid_backup())?;
+            if column::<i64>(&row, "generation")? <= 0 {
+                return Err(invalid_backup());
+            }
+        }
+    }
+    refuse_rows(db,"SELECT 1 FROM comment_submissions s JOIN commands c USING(account_id,command_id) JOIN comment_drafts d ON d.account_id=s.account_id AND d.subject_id=s.subject_id WHERE c.operation_kind<>'github.create_comment' OR c.payload_version<>1 OR c.target_id<>s.subject_id OR c.target_kind NOT IN ('issue','pull_request') OR d.generation<s.draft_generation LIMIT 1").await?;
+    refuse_rows(db,"SELECT 1 FROM commands c LEFT JOIN comment_submissions s USING(account_id,command_id) WHERE c.operation_kind='github.create_comment' AND c.payload_version=1 AND s.command_id IS NULL LIMIT 1").await?;
+    let mut rows=sqlx::query("SELECT s.account_id,s.subject_id,s.command_id,s.draft_generation,s.body_hash,c.authorization_epoch,c.payload_bytes,d.body,d.generation FROM comment_submissions s JOIN commands c USING(account_id,command_id) JOIN comment_drafts d ON d.account_id=s.account_id AND d.subject_id=s.subject_id").fetch(&mut *db);
+    while let Some(row) = rows.try_next().await.map_err(|_| invalid_backup())? {
+        let p = n::decode_parts(
+            &column::<Vec<u8>>(&row, "payload_bytes")?,
+            &column::<String>(&row, "account_id")?,
+            &column::<String>(&row, "command_id")?,
+            &column::<String>(&row, "subject_id")?,
+            &column::<i64>(&row, "authorization_epoch")?.to_string(),
+        )
+        .map_err(|_| invalid_backup())?;
+        if p.request.draft_generation != column::<i64>(&row, "draft_generation")?.to_string()
+            || n::body_hash(&p.body) != column::<Vec<u8>>(&row, "body_hash")?
+            || column::<i64>(&row, "generation")? == column::<i64>(&row, "draft_generation")?
+                && p.body != column::<String>(&row, "body")?
+        {
+            return Err(invalid_backup());
+        }
+    }
+    drop(rows);
+    let mut rows=sqlx::query("SELECT c.account_id,c.command_id,c.target_id,c.target_kind,c.repository_id,c.submission_hash,c.authorization_epoch,c.payload_bytes,e.payload,a.json AS account_json FROM command_evidence e JOIN commands c USING(account_id,command_id) JOIN accounts a ON a.id=c.account_id WHERE e.kind='github.comment_created' AND e.version=1").fetch(&mut *db);
+    while let Some(row) = rows.try_next().await.map_err(|_| invalid_backup())? {
+        let payload = n::decode_parts(
+            &column::<Vec<u8>>(&row, "payload_bytes")?,
+            &column::<String>(&row, "account_id")?,
+            &column::<String>(&row, "command_id")?,
+            &column::<String>(&row, "target_id")?,
+            &column::<i64>(&row, "authorization_epoch")?.to_string(),
+        )
+        .map_err(|_| invalid_backup())?;
+        let receipt: n::ReceiptEvidence =
+            n::decode_json(&column::<Vec<u8>>(&row, "payload")?).map_err(|_| invalid_backup())?;
+        let account: RemoteAccount = serde_json::from_str(&column::<String>(&row, "account_json")?)
+            .map_err(|_| invalid_backup())?;
+        let hash: Vec<u8> = column(&row, "submission_hash")?;
+        let hash: String = hash.iter().map(|byte| format!("{byte:02x}")).collect();
+        let target_kind: String = column(&row, "target_kind")?;
+        let frame = &receipt.preparation.frame;
+        if !n::receipt_matches(&receipt, &payload)
+            || receipt.preparation.command_hash != hash
+            || receipt.preparation.actor != account.actor_id
+            || Some(frame.repository.id.as_str())
+                != column::<Option<String>>(&row, "repository_id")?.as_deref()
+            || !matches!(
+                (target_kind.as_str(), &frame.subject.kind),
+                ("pull_request", crate::RemoteItemKind::PullRequest)
+                    | ("issue", crate::RemoteItemKind::Issue)
+            )
+        {
+            return Err(invalid_backup());
+        }
+    }
+
     Ok(())
 }

@@ -27,7 +27,7 @@ impl Store {
         after: Option<&str>,
         limit: usize,
     ) -> Result<Vec<(String, String)>> {
-        sqlx::query_as("SELECT account_id,command_id FROM commands INDEXED BY command_delivery_pending WHERE account_id=? AND command_id>? AND state IN ('queued','sending','retry_wait','accepted','outcome_unknown') ORDER BY command_id LIMIT ?")
+        sqlx::query_as("SELECT account_id,command_id FROM commands INDEXED BY command_delivery_pending WHERE account_id=? AND command_id>? AND state IN ('queued','sending','retry_wait','accepted','outcome_unknown') AND NOT EXISTS(SELECT 1 FROM command_user_controls u WHERE u.account_id=commands.account_id AND u.command_id=commands.command_id AND u.paused=1) ORDER BY command_id LIMIT ?")
             .bind(account).bind(after.unwrap_or("")).bind((limit as i64).clamp(1,CANDIDATE_PAGE))
             .fetch_all(&self.inner.readers).await.map_err(storage_error)
     }
@@ -76,11 +76,13 @@ impl Store {
         &self,
         expected: &DeliveryCommand,
         account: &RemoteAccount,
+        policy: &dyn CommandDeliveryPolicy,
         now: &DeliveryTime,
     ) -> Result<(Option<ReconcileRequest>, Option<String>)> {
         let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let command = exact_in(&mut tx, expected).await?;
+        policy_matches(&command, policy)?;
         let instance = authorize_in(&mut tx, &command, account, now).await?;
         if command.authorization_epoch != account.authorization_epoch
             || command.reconcile_only()
@@ -108,7 +110,16 @@ impl Store {
         let revision = transition_in(&mut tx, &command, command.state, None, attention).await?;
         let request = if attention.is_none() {
             sqlx::query("UPDATE command_delivery SET reconciliation_count=reconciliation_count+1,generation=generation+1 WHERE account_id=? AND command_id=?").bind(&command.account_id).bind(&command.command_id).execute(&mut *tx).await.map_err(storage_error)?;
+            let native_context = policy
+                .prepare_context_in(&mut tx, &command, account)
+                .await?;
+            if native_context.len() > MAX_EVIDENCE_BYTES {
+                return Err(CollaborationError::invalid(
+                    "Oversized native delivery context",
+                ));
+            }
             Some(ReconcileRequest {
+                native_context,
                 command: load_in(&mut tx, &command.account_id, &command.command_id).await?,
                 account: account.clone(),
                 instance_id: instance,
@@ -185,35 +196,27 @@ impl Store {
             ClaimDecision::Ready(_) => {
                 return Err(CollaborationError::invalid("Oversized execution base"));
             }
-            ClaimDecision::Conflict(proof) => {
-                validate_proof(policy, &command, EvidencePurpose::Conflict, &proof)?;
-                record_proof_in(
-                    &mut tx,
-                    &command,
-                    None,
-                    EvidencePurpose::Conflict,
-                    &proof,
-                    &now.now,
-                )
-                .await?;
+            resolution @ (ClaimDecision::Conflict(_) | ClaimDecision::Confirmed(_)) => {
+                let (purpose, state, proof) = match resolution {
+                    ClaimDecision::Conflict(proof) => {
+                        (EvidencePurpose::Conflict, DeliveryState::Conflict, proof)
+                    }
+                    ClaimDecision::Confirmed(proof) => {
+                        (EvidencePurpose::Confirmed, DeliveryState::Confirmed, proof)
+                    }
+                    ClaimDecision::Ready(_) => unreachable!(),
+                };
+                validate_proof(policy, &command, purpose, &proof)?;
+                record_proof_in(&mut tx, &command, None, purpose, &proof, &now.now).await?;
                 let mut finalization = super::effective::finalization::DeliveryFinalization::new(
-                    &mut tx,
-                    &command,
-                    account,
-                    EvidencePurpose::Conflict,
+                    &mut tx, &command, account, purpose,
                 )
                 .await?;
                 policy
-                    .finalize_in(
-                        &mut finalization,
-                        &command,
-                        EvidencePurpose::Conflict,
-                        &proof,
-                    )
+                    .finalize_in(&mut finalization, &command, purpose, &proof)
                     .await?;
                 finalization.finish().await?;
-                let revision =
-                    transition_in(&mut tx, &command, DeliveryState::Conflict, None, None).await?;
+                let revision = transition_in(&mut tx, &command, state, None, None).await?;
                 tx.commit().await.map_err(storage_error)?;
                 return Ok(DeliveryClaim {
                     request: None,
@@ -256,11 +259,13 @@ impl Store {
         &self,
         expected: &DeliveryCommand,
         account: &RemoteAccount,
+        policy: &dyn CommandDeliveryPolicy,
         now: &DeliveryTime,
     ) -> Result<(Option<ReconcileRequest>, String)> {
         let mut writer = self.inner.writer.acquire().await?;
         let mut tx = writer.begin().await.map_err(storage_error)?;
         let command = exact_in(&mut tx, expected).await?;
+        policy_matches(&command, policy)?;
         let instance = authorize_in(&mut tx, &command, account, now).await?;
         if !command.reconcile_only()
             || !matches!(
@@ -283,7 +288,16 @@ impl Store {
         let revision = transition_in(&mut tx, &command, command.state, None, attention).await?;
         let request = if attention.is_none() {
             sqlx::query("UPDATE command_delivery SET reconciliation_count=reconciliation_count+1,generation=generation+1 WHERE account_id=? AND command_id=?").bind(&command.account_id).bind(&command.command_id).execute(&mut *tx).await.map_err(storage_error)?;
+            let native_context = policy
+                .prepare_context_in(&mut tx, &command, account)
+                .await?;
+            if native_context.len() > MAX_EVIDENCE_BYTES {
+                return Err(CollaborationError::invalid(
+                    "Oversized native delivery context",
+                ));
+            }
             Some(ReconcileRequest {
+                native_context,
                 command: load_in(&mut tx, &command.account_id, &command.command_id).await?,
                 account: account.clone(),
                 instance_id: instance,
@@ -429,7 +443,10 @@ async fn authorize_in(
     account: &RemoteAccount,
     now: &DeliveryTime,
 ) -> Result<String> {
-    if command.account_id != account.id || command.attention.is_some() {
+    if command.account_id != account.id
+        || command.attention.is_some()
+        || super::command_recovery::paused_in(tx, &command.account_id, &command.command_id).await?
+    {
         return Err(stale());
     }
     let instance = binding_in(tx, command, account).await?;
@@ -481,7 +498,7 @@ async fn exact_in(
     }
     Ok(current)
 }
-async fn load_in(
+pub(super) async fn load_in(
     tx: &mut Transaction<'_, Sqlite>,
     account: &str,
     id: &str,
@@ -544,7 +561,7 @@ async fn load_in(
         evidence,
     })
 }
-async fn transition_in(
+pub(super) async fn transition_in(
     tx: &mut Transaction<'_, Sqlite>,
     command: &DeliveryCommand,
     state: DeliveryState,
@@ -632,8 +649,11 @@ fn checkpoint(_name: &str) {
 }
 
 async fn blocked_in(tx: &mut Transaction<'_, Sqlite>, command: &DeliveryCommand) -> Result<bool> {
-    let blocked:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM command_dependencies d JOIN commands p ON p.account_id=d.account_id AND p.command_id=d.predecessor_id WHERE d.account_id=? AND d.command_id=? AND (p.state<>'confirmed' OR NOT EXISTS(SELECT 1 FROM delivery_resolutions r WHERE r.account_id=p.account_id AND r.command_id=p.command_id AND r.purpose='confirmed'))) OR EXISTS(SELECT 1 FROM commands p WHERE p.account_id=? AND p.target_kind=? AND p.target_id=? AND p.enqueue_order<? AND p.state IN ('queued','sending','retry_wait','accepted','outcome_unknown','conflict'))")
-            .bind(&command.account_id).bind(&command.command_id).bind(&command.account_id).bind(&command.target_kind).bind(&command.target_id).bind(command.enqueue_order).fetch_one(&mut **tx).await.map_err(storage_error)?;
+    let order = super::command_recovery::execution_order_in(tx, command).await?;
+    // Original submitted dependencies are never rewritten or satisfied by a
+    // supersession. A blocked successor needs its own reviewed new submission.
+    let blocked:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM command_dependencies d JOIN commands p ON p.account_id=d.account_id AND p.command_id=d.predecessor_id WHERE d.account_id=? AND d.command_id=? AND (p.state<>'confirmed' OR NOT EXISTS(SELECT 1 FROM delivery_resolutions r WHERE r.account_id=p.account_id AND r.command_id=p.command_id AND r.purpose='confirmed'))) OR EXISTS(SELECT 1 FROM commands p LEFT JOIN command_supersessions s ON s.account_id=p.account_id AND s.replacement_id=p.command_id WHERE p.account_id=? AND p.target_kind=? AND p.target_id=? AND coalesce(s.execution_order,p.enqueue_order)<? AND p.state IN ('queued','sending','retry_wait','accepted','outcome_unknown','conflict'))")
+        .bind(&command.account_id).bind(&command.command_id).bind(&command.account_id).bind(&command.target_kind).bind(&command.target_id).bind(order).fetch_one(&mut **tx).await.map_err(storage_error)?;
     Ok(blocked)
 }
 

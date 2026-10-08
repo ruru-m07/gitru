@@ -673,7 +673,8 @@ async fn positive_successful_probe_captures_live_quota_before_native_cutover_awa
         assert_eq!(scheduler.account_cooldowns.len(), 1);
         assert!(scheduler.account_cooldowns.contains_key(&account.id));
         assert_eq!(
-            scheduler.account_cooldowns[&account.id], receipt_live_deadline,
+            scheduler.account_cooldowns[&account.id],
+            receipt_live_deadline.into(),
             "the 37s native write wait must consume the original 120s bound, not start it again at cutover"
         );
     }
@@ -1154,4 +1155,96 @@ async fn shutdown_waits_for_cancelled_requesters_owned_vault_cutover() {
             .is_empty()
     );
     reopened.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn long_clock_live_observation_survives_forward_jump_and_shorter_receipt() {
+    let dir = tempfile::tempdir().unwrap();
+    let f = setup(&dir.path().join("cache.sqlite")).await;
+    boundary_receipt(&f.runtime, &f.adapter, &f.account, 48 * 3600)
+        .await
+        .unwrap();
+    let original = deadline(&f.runtime, &f.account).await;
+    let peer = add_actor(&f.runtime.store, &f.vault, "b").await;
+    f.clock.advance_monotonic(25 * 3600);
+    f.clock.move_utc(72 * 3600);
+    admit(&f.runtime, &f.account, true).await;
+    admit(&f.runtime, &peer, false).await;
+    assert!(f.runtime.run_next().await);
+    assert_eq!(
+        *f.adapter.reads.lock().unwrap(),
+        vec![(peer.id.clone(), "feed")]
+    );
+    assert!(
+        !f.runtime.run_next().await,
+        "a bounded24h wake cannot release the original48h live observation"
+    );
+    assert_eq!(f.vault.loads.load(Ordering::SeqCst), 1);
+    assert_eq!(deadline(&f.runtime, &f.account).await, original);
+    f.clock.move_utc(-72 * 3600);
+    boundary_receipt(&f.runtime, &f.adapter, &f.account, 30)
+        .await
+        .unwrap();
+    assert_eq!(deadline(&f.runtime, &f.account).await, original);
+    f.clock.move_utc(72 * 3600);
+    f.clock.advance_monotonic(23 * 3600 - 1);
+    assert!(!f.runtime.run_next().await);
+    f.clock.advance_monotonic(1);
+    assert!(f.runtime.run_next().await);
+    assert_eq!(f.adapter.read_count(), 2);
+    assert_eq!(f.vault.loads.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn long_clock_cold_valid_wall_preserves_full_deadline_and_peer_progress() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("cache.sqlite");
+    let f = setup(&path).await;
+    let (saved, draft) = saved_private(&f.runtime, &f.account).await;
+    let peer = add_actor(&f.runtime.store, &f.vault, "b").await;
+    boundary_receipt(&f.runtime, &f.adapter, &f.account, 48 * 3600)
+        .await
+        .unwrap();
+    let original = deadline(&f.runtime, &f.account).await;
+    f.clock.move_utc(3600);
+    f.clock.advance_monotonic(3600);
+    let Fixture {
+        runtime,
+        clock,
+        vault,
+        adapter,
+        account,
+    } = f;
+    runtime.store.close().await.unwrap();
+    drop(runtime);
+    let mut cold = CollaborationRuntime::new(
+        Arc::new(Store::open(&path).await.unwrap()),
+        vault.clone(),
+        adapter.clone(),
+    );
+    cold.clock = clock.clone();
+    admit(&cold, &account, true).await;
+    admit(&cold, &peer, false).await;
+    assert!(cold.run_next().await);
+    assert_eq!(*adapter.reads.lock().unwrap(), vec![(peer.id, "feed")]);
+    assert!(!cold.run_next().await);
+    clock.move_utc(24 * 3600);
+    clock.advance_monotonic(24 * 3600);
+    let _ = cold.run_next().await; // A bounded wake may only recheck durable quota.
+    assert_eq!(adapter.read_count(), 1);
+    assert_eq!(vault.loads.load(Ordering::SeqCst), 1);
+    assert_eq!(deadline(&cold, &account).await, original);
+    assert_private(&cold, &account, &saved, &draft).await;
+    clock.move_utc(23 * 3600 - 1);
+    clock.advance_monotonic(23 * 3600 - 1);
+    assert!(!cold.run_next().await);
+    clock.move_utc(1);
+    clock.advance_monotonic(1);
+    assert!(cold.run_next().await);
+    assert_eq!(adapter.read_count(), 2);
+    assert_eq!(vault.loads.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        cold.store.draft(&account.id, "pull").await.unwrap(),
+        Some(draft)
+    );
 }

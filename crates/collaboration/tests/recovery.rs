@@ -221,7 +221,7 @@ async fn active_wal_backup_preserves_authored_data_and_physically_redacts_refere
     let before = store.accounts().await.unwrap();
     let summary = store.backup_to(&backup).await.unwrap();
     assert_eq!(summary.revision, before.revision);
-    assert_eq!(summary.schema_version, 18);
+    assert_eq!(summary.schema_version, 20);
     assert_eq!((summary.accounts, summary.drafts), (2, 2));
     assert_eq!(
         summary.sha256,
@@ -851,7 +851,7 @@ async fn recognized_historical_v1_restore_migrates_staging_and_preserves_actor_d
     assert_authored(&restored, "c", "Carol draft after disconnect", "63").await;
     assert_authored(&restored, "d", "Dave draft awaiting reconnection", "79").await;
     assert_eq!(restored.accounts().await.unwrap().accounts.len(), 4);
-    assert_eq!(count(&target, "_sqlx_migrations").await, 18);
+    assert_eq!(count(&target, "_sqlx_migrations").await, 20);
     assert_eq!(count(&target, "account_credentials").await, 0);
     assert_eq!(count(&target, "credential_cleanup").await, 0);
     close(restored, &target).await;

@@ -134,3 +134,25 @@ The final parent-fix integration passes all 20 feature-harness session tests and
 the direct Git ref-lock regression. Logs: `/tmp/gitru-r116-final-harness.log` and
 `/tmp/gitru-r116-final-git.log`. This qualifies the inherited test-only delta in
 addition to the full workspace run above.
+
+
+### Canonical confirmation versus an older feed response
+
+A follow-up write review identified that provider `updated_at` can remain equal
+when a notification is marked read. A feed request captured before confirmation
+could otherwise overwrite canonical unread=false after the optimistic effect
+retired. The native feed runtime now captures the existing scope data revision
+before HTTP and must match it, alongside the run and actor epoch, inside the page
+publication transaction. Canonical materialization advances that revision and
+clears old conditional validators; accepted continuation, coverage, traversal and
+membership remain intact. Trusted direct native fixture publication remains
+separate from the mandatory fenced network-response path.
+
+The regression holds both a full page and a 304 across confirmation at the same
+provider timestamp. Neither can alter data, revisions or traversal state; a fresh
+continuation at the new fence succeeds. Later equal/newer provider observations
+remain admissible. Successful HTTP cooldown evidence is retained even if its page
+is subsequently rejected as stale. Ten focused canonical materializer tests,
+strict all-target collaboration Clippy and the complete collaboration crate test
+suite pass locally. New exact-head remote CI is required after this repair; the
+earlier full-workspace results do not qualify its later source automatically.

@@ -1159,9 +1159,10 @@ async fn diagnostics_observe_saved_recovery_and_monotonic_queue_age_without_io()
         deferred.enqueued_at = clock.now();
         scheduler.queue.push_back(ready);
         scheduler.deferred.push_back(deferred);
-        scheduler
-            .account_cooldowns
-            .insert(account.id.clone(), clock.now() + Duration::from_secs(30));
+        scheduler.account_cooldowns.insert(
+            account.id.clone(),
+            (clock.now() + Duration::from_secs(30)).into(),
+        );
     }
     clock.advance(12);
 

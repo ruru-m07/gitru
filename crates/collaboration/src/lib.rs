@@ -2,7 +2,9 @@
 #[cfg(test)]
 extern crate self as collaboration;
 pub mod checks;
+pub mod command_recovery;
 pub mod commands;
+pub mod comment_send;
 pub mod contextual_capabilities;
 pub mod credentials;
 pub(crate) mod delivery;
@@ -31,9 +33,12 @@ pub mod storage;
 pub mod tasks;
 #[cfg(feature = "test-harness")]
 pub mod test_harness;
+pub mod text_edits;
 
 pub use checks::*;
+pub use command_recovery::*;
 pub use commands::*;
+pub use comment_send::*;
 pub use contextual_capabilities::*;
 pub use demand::*;
 pub use detail::*;
@@ -53,3 +58,4 @@ pub use runtime::CollaborationRuntime;
 pub use storage::Store;
 pub use storage::notification_subjects::{NotificationDiscoveryIntent, NotificationDiscoveryLease};
 pub use tasks::*;
+pub use text_edits::*;

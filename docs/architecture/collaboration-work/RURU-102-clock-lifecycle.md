@@ -269,3 +269,51 @@ types all pass after the test-only change. Earlier native825/3ignored, typegen11
 and build qualification belong to unchanged production; not rerun/recounted here.
 Actual failed remote165 remains failure evidence; signed scoped follow-up and a
 fresh exact-head matrix are required before calling the PR green.
+
+## Follow-up contract — 8 October 2026
+
+Live audit confirms existing draft165 at signed d08fa56c is open and all11 reported
+checks pass. LinearR102 remains In Progress. Reuse its clean attached external
+worktree; no duplicate PR, merge, unrelated edits or claim about newer descendants.
+This bounded follow-up addresses the two explicitly retained discovery/>24h gaps.
+
+Before production edits, add and execute deterministic native RED controls for an
+already picked notification discovery waiting on lifecycle and on the real blocking
+vault boundary when a captured-epoch quota observation is accepted and UTC then
+jumps forward. Discovery must check the shared accepted live/durable budget before
+vault and immediately before provider dispatch. A local admission refusal must not
+invent a new provider observation at the shifted wall clock. Existing selector,
+authorization, finite retry, saved-cache/draft and peer-fairness rules remain.
+
+Add a48h captured observation with UTC advanced beyond the durable deadline while
+only25h monotonic time elapses; HTTP/vault must remain blocked through the original
+full live bound. A later shorter observation cannot reduce it. Add valid-wall cold
+restart recovery, peer progress and extreme-duration no-panic controls. Production
+repair starts only after the relevant unchanged-source RED is recorded.
+
+If demonstrated, retain one account-map slot with a private monotonic deadline
+representation: a representable Instant or a fail-closed beyond-Instant-range
+sentinel. Use checked_add for full provider duration; bounded wake/retry scheduling
+remains separate from permission. An overflow sentinel cannot be reached within
+that process's representable monotonic timeline. Full persisted UTC remains the
+restart authority; no schema/IPC/provider API or fairness-policy change. Official
+Rust Instant docs explicitly document platform-dependent range and checked_add,
+and leave suspend accounting platform dependent. These synthetic controls do not
+prove OS suspend, valid clock after an incorrect-clock restart, or live credentials.
+
+Files are limited to native runtime clock/budget/discovery paths, their deterministic
+fixtures and architecture evidence. Sign fixture/RED and production fixes separately
+where practical; notify root about shared-core changes before descendants consume.
+Local qualification and existing/new exact-head remote CI remain distinct.
+
+Actual follow-up RED: `cargo test -p collaboration --lib clock_ -- --nocapture`
+on unchanged production runs17 matching controls:14 pass and3 fail. The failures
+are a new vault load in already picked discovery after accepted quota/UTC jump,
+a provider call after the held native vault boundary, and a48h receipt releasing
+an own-account Body read after25h monotonic/72h UTC instead of only serving the
+eligible peer. The added valid-wall48h cold-restart/cache/draft/peer control passes.
+Two fixture setup errors were corrected before this result: discovery uses its
+scheduler key rather than the distinct durable intent receipt; after an eligible
+Body refresh its content may change while the authored draft remains unchanged.
+Neither was a production defect. The final RED log is
+`/tmp/gitru-r102-followup-red-final.log`; committed fixtures preserve reproduction.

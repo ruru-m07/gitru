@@ -144,6 +144,8 @@ pub(crate) struct DispatchRequest {
 
 #[derive(Clone, Debug)]
 pub(crate) struct ReconcileRequest {
+    /// Bounded native snapshot captured in the claim transaction; never renderer input.
+    pub native_context: Vec<u8>,
     pub command: DeliveryCommand,
     /// Current actor authorization; never replacement dispatch authority.
     pub account: RemoteAccount,
@@ -213,6 +215,8 @@ pub(crate) struct DeliveryPreparation {
 pub(crate) enum ClaimDecision {
     Ready(Vec<u8>),
     Conflict(OperationEvidence),
+    /// A fresh authenticated canonical observation already proves convergence.
+    Confirmed(OperationEvidence),
 }
 
 /// Compiled native policies are explicitly registered per exact installation.
@@ -223,6 +227,14 @@ pub(crate) enum ClaimDecision {
 pub(crate) trait CommandDeliveryPolicy: Send + Sync {
     fn operation_kind(&self) -> &'static str;
     fn payload_version(&self) -> u32;
+    async fn prepare_context_in(
+        &self,
+        _tx: &mut Transaction<'_, Sqlite>,
+        _command: &DeliveryCommand,
+        _account: &RemoteAccount,
+    ) -> Result<Vec<u8>, CollaborationError> {
+        Ok(vec![])
+    }
     async fn prepare(
         &self,
         _token: &SecretToken,
