@@ -2038,6 +2038,64 @@ describe("CollaborationClient", () => {
 });
 
 describe("authored draft recovery", () => {
+  it("redacts cached comment authority before disconnect while retaining authored state", async () => {
+    let finishDisconnect!: (value: string) => void;
+    const client = new CollaborationClient(
+      transport({
+        disconnect: () =>
+          new Promise((resolve) => {
+            finishDisconnect = resolve;
+          }),
+      }),
+    );
+    const cache = new QueryClient();
+    const stop = client.installBridge(cache);
+    const availableKey = collaborationKeys.commentDraft(account, "issue");
+    const saved = commentDraft();
+    cache.setQueryData<CommentDraftSnapshot>(availableKey, saved);
+    const submittedKey = collaborationKeys.commentDraft(account, "submitted");
+    const submission = {
+      command_id: "00000000-0000-4000-8000-000000000001",
+      draft_generation: "4",
+      state: "confirmed",
+      attempt_count: 1,
+      quarantined: false,
+      attention: null,
+    };
+    cache.setQueryData<CommentDraftSnapshot>(submittedKey, {
+      ...saved,
+      subject_id: "submitted",
+      body: "Submitted body",
+      generation: "4",
+      context: null,
+      availability: "unavailable",
+      reason: "already_submitted",
+      submission,
+    });
+
+    const disconnecting = client.disconnect(account.id);
+    expect(cache.getQueryData(availableKey)).toEqual({
+      ...saved,
+      context: null,
+      availability: "unavailable",
+      reason: "account_unavailable",
+    });
+    expect(cache.getQueryData(submittedKey)).toMatchObject({
+      body: "Submitted body",
+      generation: "4",
+      context: null,
+      availability: "unavailable",
+      reason: "account_unavailable",
+      submission,
+    });
+    expect(cache.getQueryState(availableKey)?.isInvalidated).toBe(true);
+    expect(cache.getQueryState(submittedKey)?.isInvalidated).toBe(true);
+    finishDisconnect("2");
+    await disconnecting;
+    stop();
+    cache.clear();
+  });
+
   it("keeps authored caches across disconnect/replacement while clearing provider projections", async () => {
     let revision = "1";
     const client = new CollaborationClient(
@@ -2207,6 +2265,7 @@ it("fences late native reads and resets provider projections across recovery wit
   let reset: (() => void) | undefined;
   const remove = vi.fn();
   const oldRead = deferred<CapabilitySnapshot>();
+  const oldCommentRead = deferred<CommentDraftSnapshot>();
   const client = new CollaborationClient(
     transport({
       listen: async () => () => {},
@@ -2216,6 +2275,7 @@ it("fences late native reads and resets provider projections across recovery wit
       },
       changesSince: async () => changePage("1"),
       capabilities: () => oldRead.promise,
+      commentDraft: () => oldCommentRead.promise,
     }),
   );
   const cache = new QueryClient();
@@ -2223,13 +2283,20 @@ it("fences late native reads and resets provider projections across recovery wit
   await client.wake();
   const key = collaborationKeys.capabilities(account);
   const draftKey = collaborationKeys.draft(account, "retained");
+  const commentKey = collaborationKeys.commentDraft(account, "issue");
+  const cachedComment = commentDraft();
   cache.setQueryData(key, capability);
   cache.setQueryData(draftKey, {
     body: "Keep the author's text",
     generation: "2",
   });
+  cache.setQueryData(commentKey, cachedComment);
   const pending = client.forAccount(account).capabilities();
+  const pendingComment = client.forAccount(account).commentDraft("issue");
   const rejected = expect(pending).rejects.toBeInstanceOf(
+    StaleAuthorizationError,
+  );
+  const rejectedComment = expect(pendingComment).rejects.toBeInstanceOf(
     StaleAuthorizationError,
   );
   reset?.();
@@ -2239,8 +2306,24 @@ it("fences late native reads and resets provider projections across recovery wit
     generation: "2",
   });
   expect(cache.getQueryState(draftKey)?.isInvalidated).toBe(true);
+  expect(cache.getQueryData(commentKey)).toEqual({
+    ...cachedComment,
+    context: null,
+    availability: "unavailable",
+    reason: "account_unavailable",
+  });
+  expect(cache.getQueryState(commentKey)?.isInvalidated).toBe(true);
   oldRead.resolve(capability);
+  oldCommentRead.resolve(cachedComment);
   await rejected;
+  await rejectedComment;
+  expect(cache.getQueryData(commentKey)).toMatchObject({
+    body: "Saved comment",
+    generation: "3",
+    context: null,
+    availability: "unavailable",
+    reason: "account_unavailable",
+  });
   stop();
   expect(remove).toHaveBeenCalledTimes(1);
   cache.setQueryData(key, capability);
