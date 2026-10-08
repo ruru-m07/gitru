@@ -85,12 +85,68 @@ struct PullFileContextV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ReviewContextV1 {
-    base_oid: String,
-    head_oid: String,
-    base_repository_provider_id: String,
-    source_repository_provider_id: String,
-    metadata_facet_revision: String,
+pub(crate) struct ReviewContextV1 {
+    pub(crate) base_oid: String,
+    pub(crate) head_oid: String,
+    pub(crate) base_repository_provider_id: String,
+    pub(crate) source_repository_provider_id: String,
+    pub(crate) metadata_facet_revision: String,
+}
+
+pub(crate) const ACCEPTED_PROOF: &str = "github.review_accepted";
+pub(crate) const SUBMITTED_PROOF: &str = "github.review_submitted";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PreparationV1 {
+    pub(crate) account_id: String,
+    pub(crate) command_id: String,
+    pub(crate) actor_id: String,
+    pub(crate) authorization_epoch: String,
+    pub(crate) authorization_view: String,
+    pub(crate) repository_id: String,
+    pub(crate) repository_provider_id: String,
+    pub(crate) repository_full_name: String,
+    pub(crate) subject_id: String,
+    pub(crate) subject_provider_id: String,
+    pub(crate) number: String,
+    pub(crate) context: ReviewContextV1,
+    pub(crate) command_hash: String,
+    pub(crate) observed_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AcceptedReceiptV1 {
+    pub(crate) provider_id: String,
+    pub(crate) url: String,
+    pub(crate) provider_state: String,
+    pub(crate) reviewed_commit_oid: String,
+    pub(crate) submitted_at: String,
+    pub(crate) observed_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AcceptedEvidenceV1 {
+    pub(crate) preparation: PreparationV1,
+    pub(crate) receipt: AcceptedReceiptV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ConfirmedCommentV1 {
+    pub(crate) comment_id: String,
+    pub(crate) provider_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SubmittedEvidenceV1 {
+    pub(crate) preparation: PreparationV1,
+    pub(crate) receipt: AcceptedReceiptV1,
+    pub(crate) comments: Vec<ConfirmedCommentV1>,
+    pub(crate) confirmed_at: String,
 }
 
 impl CommandPayloadCodec for Payload {
@@ -180,6 +236,168 @@ pub(crate) fn validate_submit(request: &SubmitReviewRequest) -> Result<()> {
 
 pub(crate) fn content_hash(payload: &Payload) -> Result<[u8; 32]> {
     Ok(Sha256::digest(canonical_content(payload)?).into())
+}
+
+pub(crate) fn command_hash(command: &DeliveryCommand) -> String {
+    hex(&command.hash)
+}
+
+pub(crate) fn encode_evidence<T: Serialize>(value: &T) -> Result<Vec<u8>> {
+    encode_json(value)
+}
+
+pub(crate) fn decode_evidence<T: serde::de::DeserializeOwned + Serialize>(
+    bytes: &[u8],
+) -> Result<T> {
+    decode_json(bytes)
+}
+
+pub(crate) fn preparation_matches(
+    preparation: &PreparationV1,
+    payload: &Payload,
+    command: &DeliveryCommand,
+) -> bool {
+    canonical_time(&preparation.observed_at)
+        && preparation.account_id == command.account_id
+        && preparation.account_id == payload.request.context.account_id
+        && preparation.command_id == command.command_id
+        && preparation.command_id == payload.request.command_id
+        && command.operation_kind == OPERATION
+        && command.payload_version == 1
+        && command.target_kind == "pull_request"
+        && preparation.actor_id == payload.actor_id
+        && preparation.authorization_epoch == command.authorization_epoch
+        && preparation.authorization_epoch == payload.request.context.authorization_epoch
+        && preparation.authorization_view == payload.request.context.authorization_view
+        && preparation.repository_id == command.repository_id.as_deref().unwrap_or_default()
+        && preparation.repository_provider_id == payload.repository_native
+        && preparation.repository_full_name == payload.repository_full_name
+        && preparation.subject_id == command.target_id
+        && preparation.subject_id == payload.request.context.subject_id
+        && preparation.subject_provider_id == payload.subject_native
+        && preparation.number == payload.number
+        && ReviewContext::from(preparation.context.clone())
+            == payload.request.context.review_context
+        && preparation.command_hash == command_hash(command)
+}
+
+pub(crate) fn accepted_matches(
+    evidence: &AcceptedEvidenceV1,
+    payload: &Payload,
+    command: &DeliveryCommand,
+) -> bool {
+    preparation_matches(&evidence.preparation, payload, command)
+        && receipt_matches(&evidence.receipt, payload)
+        && ordered_times(
+            &evidence.preparation.observed_at,
+            &evidence.receipt.submitted_at,
+            &evidence.receipt.observed_at,
+        )
+}
+
+pub(crate) fn submitted_matches(
+    evidence: &SubmittedEvidenceV1,
+    payload: &Payload,
+    command: &DeliveryCommand,
+) -> bool {
+    if !preparation_matches(&evidence.preparation, payload, command)
+        || !receipt_matches(&evidence.receipt, payload)
+        || !canonical_time(&evidence.confirmed_at)
+        || !ordered_times(
+            &evidence.preparation.observed_at,
+            &evidence.receipt.submitted_at,
+            &evidence.receipt.observed_at,
+        )
+        || !ordered_times(
+            &evidence.receipt.submitted_at,
+            &evidence.receipt.observed_at,
+            &evidence.confirmed_at,
+        )
+        || evidence.comments.len() != payload.comments.len()
+    {
+        return false;
+    }
+    let mut provider_ids = std::collections::HashSet::with_capacity(evidence.comments.len());
+    evidence
+        .comments
+        .iter()
+        .zip(&payload.comments)
+        .all(|(confirmed, requested)| {
+            confirmed.comment_id == requested.comment_id
+                && positive(&confirmed.provider_id).is_ok()
+                && provider_ids.insert(confirmed.provider_id.as_str())
+        })
+}
+
+fn receipt_matches(receipt: &AcceptedReceiptV1, payload: &Payload) -> bool {
+    positive(&receipt.provider_id).is_ok()
+        && receipt.provider_state == expected_state(payload.event)
+        && receipt.reviewed_commit_oid == payload.request.context.review_context.head_oid
+        && canonical_time(&receipt.submitted_at)
+        && canonical_time(&receipt.observed_at)
+        && exact_review_url(
+            &receipt.url,
+            &payload.repository_full_name,
+            &payload.number,
+            &receipt.provider_id,
+        )
+}
+
+fn expected_state(event: ReviewSubmissionEvent) -> &'static str {
+    match event {
+        ReviewSubmissionEvent::Comment => "COMMENTED",
+        ReviewSubmissionEvent::Approve => "APPROVED",
+        ReviewSubmissionEvent::RequestChanges => "CHANGES_REQUESTED",
+    }
+}
+
+fn exact_review_url(raw: &str, repository: &str, number: &str, review: &str) -> bool {
+    let Ok(url) = reqwest::Url::parse(raw) else {
+        return false;
+    };
+    let expected_fragment = format!("pullrequestreview-{review}");
+    raw.len() <= 2_048
+        && !raw
+            .chars()
+            .any(|character| character.is_control() || character.is_whitespace())
+        && url.as_str() == raw
+        && url.scheme() == "https"
+        && url.host_str() == Some("github.com")
+        && url.port().is_none()
+        && url.port_or_known_default() == Some(443)
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.query().is_none()
+        && url.path() == format!("/{repository}/pull/{number}")
+        && url.fragment() == Some(expected_fragment.as_str())
+}
+
+fn canonical_time(value: &str) -> bool {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|parsed| {
+            parsed
+                .with_timezone(&chrono::Utc)
+                .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true)
+        })
+        .as_deref()
+        == Some(value)
+}
+
+fn ordered_times(first: &str, second: &str, third: &str) -> bool {
+    let parsed = [first, second, third]
+        .map(chrono::DateTime::parse_from_rfc3339)
+        .map(|value| value.ok().map(|value| value.with_timezone(&chrono::Utc)));
+    matches!(parsed, [Some(first), Some(second), Some(third)] if first <= second && second <= third)
+}
+
+fn hex(bytes: &[u8]) -> String {
+    let mut encoded = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        use std::fmt::Write as _;
+        let _ = write!(&mut encoded, "{byte:02x}");
+    }
+    encoded
 }
 
 pub(crate) fn decode(command: &DeliveryCommand) -> Result<Payload> {
@@ -482,6 +700,7 @@ impl From<ReviewContextV1> for ReviewContext {
 mod tests {
     use super::*;
     use crate::commands::{CommandDraft, CommandTarget, CommandTargetKind, seal_command};
+    use crate::delivery::DeliveryState;
 
     const BASE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const HEAD: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -562,6 +781,64 @@ mod tests {
         .unwrap()
     }
 
+    fn command(payload: Payload) -> DeliveryCommand {
+        let sealed = seal(payload);
+        DeliveryCommand {
+            account_id: sealed.account_id().into(),
+            command_id: sealed.command_id().into(),
+            authorization_epoch: sealed.authorization_epoch().into(),
+            operation_kind: sealed.operation().kind().into(),
+            payload_version: sealed.operation().payload_version(),
+            target_kind: sealed.target().kind().storage_name().into(),
+            target_id: sealed.target().id().into(),
+            repository_id: sealed.target().repository_id().map(str::to_owned),
+            canonical_envelope: sealed.canonical_envelope().to_vec(),
+            payload: sealed.payload_bytes().to_vec(),
+            guards: vec![],
+            hash: *sealed.submission_hash(),
+            enqueue_order: 1,
+            admitted_at: "2026-10-08T01:00:00.000000000Z".into(),
+            state: DeliveryState::Queued,
+            generation: 1,
+            next_action_at: None,
+            reconciliation_count: 0,
+            attention: None,
+            attempt_count: 0,
+            quarantine_generation: 0,
+            evidence: vec![],
+        }
+    }
+
+    fn preparation(payload: &Payload, command: &DeliveryCommand) -> PreparationV1 {
+        PreparationV1 {
+            account_id: payload.request.context.account_id.clone(),
+            command_id: payload.request.command_id.clone(),
+            actor_id: payload.actor_id.clone(),
+            authorization_epoch: payload.request.context.authorization_epoch.clone(),
+            authorization_view: payload.request.context.authorization_view.clone(),
+            repository_id: command.repository_id.clone().unwrap(),
+            repository_provider_id: payload.repository_native.clone(),
+            repository_full_name: payload.repository_full_name.clone(),
+            subject_id: payload.request.context.subject_id.clone(),
+            subject_provider_id: payload.subject_native.clone(),
+            number: payload.number.clone(),
+            context: ReviewContextV1::from(&payload.request.context.review_context),
+            command_hash: command_hash(command),
+            observed_at: "2026-10-08T01:01:00.000000000Z".into(),
+        }
+    }
+
+    fn receipt(payload: &Payload) -> AcceptedReceiptV1 {
+        AcceptedReceiptV1 {
+            provider_id: "80".into(),
+            url: "https://github.com/acme/repo/pull/12#pullrequestreview-80".into(),
+            provider_state: expected_state(payload.event).into(),
+            reviewed_commit_oid: payload.request.context.review_context.head_oid.clone(),
+            submitted_at: "2026-10-08T01:02:00.000000000Z".into(),
+            observed_at: "2026-10-08T01:03:00.000000000Z".into(),
+        }
+    }
+
     #[test]
     fn version_one_payload_round_trips_exact_content_and_authority() {
         let expected = payload();
@@ -610,5 +887,104 @@ mod tests {
             .collect();
         decoded.content_hash = content_hash(&decoded).unwrap();
         assert!(decoded.validate().is_err());
+    }
+
+    #[test]
+    fn accepted_and_submitted_proofs_bind_the_exact_command_and_ordered_comments() {
+        let payload = payload();
+        let command = command(payload.clone());
+        let accepted = AcceptedEvidenceV1 {
+            preparation: preparation(&payload, &command),
+            receipt: receipt(&payload),
+        };
+        assert!(accepted_matches(&accepted, &payload, &command));
+        let accepted_bytes = encode_evidence(&accepted).unwrap();
+        assert_eq!(
+            decode_evidence::<AcceptedEvidenceV1>(&accepted_bytes).unwrap(),
+            accepted
+        );
+
+        let submitted = SubmittedEvidenceV1 {
+            preparation: accepted.preparation.clone(),
+            receipt: accepted.receipt.clone(),
+            comments: vec![ConfirmedCommentV1 {
+                comment_id: payload.comments[0].comment_id.clone(),
+                provider_id: "901".into(),
+            }],
+            confirmed_at: "2026-10-08T01:04:00.000000000Z".into(),
+        };
+        assert!(submitted_matches(&submitted, &payload, &command));
+        assert_ne!(
+            encode_evidence(&accepted).unwrap(),
+            encode_evidence(&submitted).unwrap()
+        );
+        assert!(encode_evidence(&submitted).unwrap().len() <= MAX_CODEC_BYTES);
+    }
+
+    #[test]
+    fn proof_matching_rejects_foreign_commands_receipts_context_and_comment_identity() {
+        let payload = payload();
+        let command = command(payload.clone());
+        let mut accepted = AcceptedEvidenceV1 {
+            preparation: preparation(&payload, &command),
+            receipt: receipt(&payload),
+        };
+
+        accepted.preparation.command_id = "00000000-0000-4000-8000-000000000099".into();
+        assert!(!accepted_matches(&accepted, &payload, &command));
+        accepted.preparation = preparation(&payload, &command);
+        accepted.receipt.provider_id = "81".into();
+        accepted.receipt.url = "https://github.com/acme/repo/pull/12#pullrequestreview-80".into();
+        assert!(!accepted_matches(&accepted, &payload, &command));
+        accepted.receipt = receipt(&payload);
+        accepted.preparation.context.head_oid = BASE.into();
+        assert!(!accepted_matches(&accepted, &payload, &command));
+        accepted.preparation = preparation(&payload, &command);
+        accepted.receipt.observed_at = "2026-10-08T01:00:00.000000000Z".into();
+        assert!(!accepted_matches(&accepted, &payload, &command));
+
+        let mut submitted = SubmittedEvidenceV1 {
+            preparation: preparation(&payload, &command),
+            receipt: receipt(&payload),
+            comments: vec![ConfirmedCommentV1 {
+                comment_id: "00000000-0000-4000-8000-000000000099".into(),
+                provider_id: "901".into(),
+            }],
+            confirmed_at: "2026-10-08T01:04:00.000000000Z".into(),
+        };
+        assert!(!submitted_matches(&submitted, &payload, &command));
+        submitted.comments[0].comment_id = payload.comments[0].comment_id.clone();
+        submitted.receipt.url =
+            "https://github.com:443/acme/repo/pull/12#pullrequestreview-80".into();
+        assert!(!submitted_matches(&submitted, &payload, &command));
+    }
+
+    #[test]
+    fn evidence_codec_rejects_noncanonical_and_oversized_values() {
+        let payload = payload();
+        let command = command(payload.clone());
+        let accepted = AcceptedEvidenceV1 {
+            preparation: preparation(&payload, &command),
+            receipt: receipt(&payload),
+        };
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&encode_evidence(&accepted).unwrap()).unwrap();
+        value["future"] = serde_json::json!(true);
+        assert!(
+            decode_evidence::<AcceptedEvidenceV1>(&serde_json::to_vec(&value).unwrap()).is_err()
+        );
+
+        let oversized = SubmittedEvidenceV1 {
+            preparation: accepted.preparation,
+            receipt: accepted.receipt,
+            comments: (0..4_000)
+                .map(|index| ConfirmedCommentV1 {
+                    comment_id: format!("00000000-0000-4000-8000-{index:012}"),
+                    provider_id: (index + 1).to_string(),
+                })
+                .collect(),
+            confirmed_at: "2026-10-08T01:04:00.000000000Z".into(),
+        };
+        assert!(encode_evidence(&oversized).is_err());
     }
 }

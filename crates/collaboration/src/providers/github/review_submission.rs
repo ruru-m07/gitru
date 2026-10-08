@@ -648,7 +648,7 @@ fn parse_review_comments(
     let review_id_number = positive(review_id)?;
     let mut matched = HashSet::new();
     let mut provider_ids = HashSet::new();
-    let mut accepted = Vec::with_capacity(rows.len());
+    let mut accepted = vec![None; rows.len()];
     for row in rows {
         let row = row.as_object().ok_or_else(invalid)?;
         let provider_id = row
@@ -711,7 +711,7 @@ fn parse_review_comments(
             .map(|(index, _)| index)
             .ok_or_else(invalid)?;
         matched.insert(requested);
-        accepted.push(AcceptedReviewComment {
+        accepted[requested] = Some(AcceptedReviewComment {
             provider_id: provider_id.to_string(),
             path: path.into(),
             body: body.into(),
@@ -724,7 +724,10 @@ fn parse_review_comments(
     if matched.len() != operation.comments.len() {
         return Err(invalid());
     }
-    Ok(accepted)
+    accepted
+        .into_iter()
+        .collect::<Option<Vec<_>>>()
+        .ok_or_else(invalid)
 }
 
 impl GithubReviewSubmission {
@@ -1031,6 +1034,36 @@ mod tests {
         assert!(
             parse_review_comments(&operation, "80", &serde_json::to_vec(&extra).unwrap()).is_err()
         );
+    }
+
+    #[test]
+    fn inline_receipts_are_returned_in_authored_comment_order() {
+        let mut operation = operation();
+        let mut second = operation.comments[0].clone();
+        second.comment_id = "00000000-0000-4000-8000-000000000002".into();
+        second.body = "Second authored comment.".into();
+        second.anchor.path = "src/second.rs".into();
+        second.anchor.line = 22;
+        second.anchor.start_line = Some(20);
+        operation.comments.push(second);
+
+        let mut first_response = comment_json();
+        let mut second_response = comment_json();
+        second_response["id"] = json!(902);
+        second_response["body"] = json!("Second authored comment.");
+        second_response["path"] = json!("src/second.rs");
+        second_response["line"] = json!(22);
+        second_response["start_line"] = json!(20);
+        let parsed = parse_review_comments(
+            &operation,
+            "80",
+            &serde_json::to_vec(&json!([second_response, first_response.take()])).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(parsed[0].provider_id, "901");
+        assert_eq!(parsed[0].path, "src/lib.rs");
+        assert_eq!(parsed[1].provider_id, "902");
+        assert_eq!(parsed[1].path, "src/second.rs");
     }
 
     #[tokio::test]
