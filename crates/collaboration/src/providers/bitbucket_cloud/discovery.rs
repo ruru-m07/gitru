@@ -254,6 +254,7 @@ impl BitbucketCloudProvider {
                 | Route::PullRequests(_)
                 | Route::PullRequest(..)
                 | Route::Tasks(..)
+                | Route::Comments(..)
                 | Route::Commits(..)
                 | Route::PullFiles { .. }
                 | Route::Statuses(..)

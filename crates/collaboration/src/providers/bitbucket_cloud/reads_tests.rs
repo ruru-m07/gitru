@@ -586,11 +586,7 @@ async fn actual_singleton_response_and_captured_subject_must_match_exact_identit
             "{fault}"
         );
     }
-    for facet in [
-        DetailFacet::Comments,
-        DetailFacet::Reviews,
-        DetailFacet::Checks,
-    ] {
+    for facet in [DetailFacet::Reviews, DetailFacet::Checks] {
         let mut req = detail(REPO);
         req.facet = facet;
         assert_eq!(

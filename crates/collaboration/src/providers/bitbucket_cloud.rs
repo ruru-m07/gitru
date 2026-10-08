@@ -3,6 +3,7 @@ use super::*;
 use serde::Deserialize;
 
 mod checks;
+mod comments;
 mod commits;
 mod discovery;
 mod feeds;
@@ -52,6 +53,7 @@ impl CollaborationProvider for BitbucketCloudProvider {
                             | ResourceFacet::PullDetails
                             | ResourceFacet::Participants
                             | ResourceFacet::Tasks
+                            | ResourceFacet::Comments
                             | ResourceFacet::PullCommits
                             | ResourceFacet::PullFiles
                             | ResourceFacet::Checks
@@ -66,6 +68,7 @@ impl CollaborationProvider for BitbucketCloudProvider {
                         | ResourceFacet::PullDetails
                         | ResourceFacet::Participants
                         | ResourceFacet::Tasks
+                        | ResourceFacet::Comments
                         | ResourceFacet::PullCommits
                         | ResourceFacet::PullFiles
                         | ResourceFacet::Checks => None,
@@ -191,6 +194,7 @@ impl CollaborationProvider for BitbucketCloudProvider {
         match request.facet {
             DetailFacet::Participants => self.participants(token, request).await,
             DetailFacet::Tasks => self.tasks(token, request).await,
+            DetailFacet::Comments => self.comments(token, request).await,
             _ => self.resource_details(token, request).await,
         }
     }
@@ -297,3 +301,6 @@ mod tasks_tests;
 
 #[cfg(test)]
 mod files_tests;
+
+#[cfg(test)]
+mod comments_tests;

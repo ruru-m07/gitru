@@ -1369,3 +1369,127 @@ async fn undeclared_adapter_default_issues_zero_http_vault_or_durable_hydration_
         "Unsupported hydration cannot persist demand or status"
     );
 }
+
+#[tokio::test]
+async fn bitbucket_comments_are_pr_only_and_unknown_primary_support_is_not_semantic_absence() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(dir.path().join("bitbucket.sqlite"))
+        .await
+        .unwrap();
+    let mut actor = account("a");
+    actor.provider = ProviderKind::BitbucketCloud;
+    actor.host = "bitbucket.org".into();
+    actor.actor_id = "11111111-1111-4111-8111-111111111111".into();
+    actor.notifications_supported = false;
+    store.upsert_account(actor).await.unwrap();
+    page(
+        &store,
+        "repositories",
+        vec![RemoteRepository {
+            id: "repo".into(),
+            account_id: "a".into(),
+            provider_id: "44444444-4444-4444-8444-444444444444".into(),
+            full_name: "owner/repo".into(),
+            name: "repo".into(),
+            web_url: "https://bitbucket.org/owner/repo".into(),
+            description: None,
+            default_branch: None,
+            selected: false,
+        }],
+        vec![],
+    )
+    .await;
+    store.select_repository("a", "repo", true).await.unwrap();
+    let provider =
+        collaboration::providers::bitbucket_cloud::BitbucketCloudProvider::new().unwrap();
+    for (kind, resource_kind, id, number) in [
+        (
+            RemoteItemKind::PullRequest,
+            ResourceKind::PullRequest,
+            "pull",
+            "67",
+        ),
+        (RemoteItemKind::Issue, ResourceKind::Issue, "issue", "68"),
+    ] {
+        let scope = if resource_kind == ResourceKind::PullRequest {
+            "repo:repo:pull_request"
+        } else {
+            "repo:repo:issue"
+        };
+        page(
+            &store,
+            scope,
+            vec![],
+            vec![RemoteItem {
+                id: id.into(),
+                account_id: "a".into(),
+                repository_id: Some("repo".into()),
+                provider_id: format!("44444444-4444-4444-8444-444444444444:{number}"),
+                kind,
+                number: Some(number.into()),
+                title: "synthetic cached resource".into(),
+                body: None,
+                body_omitted: true,
+                author: None,
+                web_url: None,
+                state: "open".into(),
+                updated_at: "2026-10-08T00:00:00Z".into(),
+                head_oid: None,
+                is_draft: None,
+                reason: None,
+                unread: None,
+            }],
+        )
+        .await;
+        let target = CapabilityTarget {
+            kind: CapabilityTargetKind::Resource,
+            instance_id: Some(ProviderInstance::public(ProviderKind::BitbucketCloud).id),
+            repository_id: None,
+            resource_id: Some(id.into()),
+            resource_kind: Some(resource_kind),
+        };
+        let snapshot = store
+            .contextual_capabilities(request("a", target.clone()), |account, _| {
+                provider.profile(account)
+            })
+            .await
+            .unwrap();
+        let comments = facet(&snapshot, ResourceFacet::Comments);
+        if resource_kind == ResourceKind::PullRequest {
+            assert_eq!(comments.saved_read.state, CapabilityState::Supported);
+            assert_eq!(comments.synchronize.state, CapabilityState::Supported);
+        } else {
+            assert_eq!(comments.saved_read.state, CapabilityState::Unsupported);
+            assert_eq!(
+                comments.saved_read.reason,
+                Some(ContextCapabilityReason::NotApplicable)
+            );
+            assert_eq!(comments.synchronize, comments.saved_read);
+            for state in [Some(CapabilityState::Unavailable), None] {
+                let snapshot = store
+                    .contextual_capabilities(request("a", target.clone()), |account, _| {
+                        let mut profile = provider.profile(account);
+                        if let Some(state) = state {
+                            profile
+                                .facets
+                                .iter_mut()
+                                .find(|f| f.facet == ResourceFacet::Issues)
+                                .unwrap()
+                                .state = state;
+                        } else {
+                            profile.facets.retain(|f| f.facet != ResourceFacet::Issues);
+                        }
+                        profile
+                    })
+                    .await
+                    .unwrap();
+                assert_ne!(
+                    facet(&snapshot, ResourceFacet::Comments).saved_read.reason,
+                    Some(ContextCapabilityReason::NotApplicable)
+                );
+            }
+        }
+        assert_eq!(comments.remote_write.state, CapabilityState::Unsupported);
+    }
+    store.close().await.unwrap();
+}
