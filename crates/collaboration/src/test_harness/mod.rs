@@ -55,7 +55,7 @@ impl HarnessSession {
         let root = OwnedRoot::validate(root, run_nonce)?;
         let database = root.file("collaboration.sqlite")?;
         let store = Arc::new(Store::open(&database).await?);
-        Self::open_owned(root, database, run_nonce, visibility, store).await
+        Self::open_owned(root, run_nonce, visibility, store).await
     }
 
     /// The packaged native harness may inject an already authenticated Store.
@@ -73,18 +73,22 @@ impl HarnessSession {
             store.close().await?;
             return Err(invalid());
         }
-        Self::open_owned(root, database, run_nonce, visibility, store).await
+        Self::open_owned(root, run_nonce, visibility, store).await
     }
 
     async fn open_owned(
         root: OwnedRoot,
-        database: std::path::PathBuf,
         run_nonce: &str,
         visibility: Arc<dyn Fn(&str) -> bool + Send + Sync>,
         store: Arc<Store>,
     ) -> Result<Self, CollaborationError> {
-        // Losing the scenario marker must never reset an existing cache/vault.
-        if database.exists() && root.read("harness-state.json", 4096)?.is_none() {
+        // Store opening creates a fresh database before this point. Refuse a
+        // missing retained marker only when authored rows prove this is not a
+        // fresh fixture, and do so before PersistentState can recreate it.
+        if root.read("harness-state.json", 4096)?.is_none()
+            && !store.accounts().await?.accounts.is_empty()
+        {
+            store.close().await?;
             return Err(invalid());
         }
         let persistent = PersistentState::open(&root, run_nonce)?;
