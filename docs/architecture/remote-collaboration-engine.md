@@ -3827,3 +3827,15 @@ diff checks. No public IPC/schema/provider quota changes. See
 [the work note](./collaboration-work/RURU-102-priority-fairness.md). RURU-102
 remains In Progress for API-family attribution and broader lifecycle/platform
 criteria. Remote CI is separate; no implementation PR was merged.
+
+### 8 October — RURU-107 isolated vault failure qualification
+
+The [platform work note](collaboration-work/RURU-107-platform-qualification.md)
+defines and records a feature-only persisted vault-unavailable phase, real-runtime
+failure/recovery controls and a compiled packaged renderer scenario. Saved data,
+drafts and account identity survive credential refusal and cold reopen, provider
+dispatch stays blocked, and recovery respects the production retry barrier.
+Initial local evidence is 23 native harness and 627 desktop tests (one existing
+skip), TypeScript/Biome and generated IPC. Full native, packaged and remote
+platform gates are recorded separately as they complete. Synthetic vault evidence
+does not qualify the production OS keyring; RURU-107 remains In Progress.

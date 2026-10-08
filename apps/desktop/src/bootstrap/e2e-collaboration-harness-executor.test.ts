@@ -95,6 +95,7 @@ function statusFixture(): HarnessStatus {
       vault_load_count: "0",
       vault_store_count: "0",
       vault_delete_count: "0",
+      vault_unavailable_count: "0",
       durable_detail_requests: 0,
       demand_lease_count: 0,
       clock_elapsed_seconds: 0,

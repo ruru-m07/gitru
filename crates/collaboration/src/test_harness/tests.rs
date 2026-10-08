@@ -1372,3 +1372,166 @@ async fn independent_lost_marker_refuses_reopen_without_resetting_authored_cache
     assert_eq!(store.revision().await.unwrap(), revision);
     store.close().await.unwrap();
 }
+
+#[tokio::test]
+async fn unavailable_fixture_vault_preserves_cache_and_draft_across_cold_reopen() {
+    let run = Run::new();
+    let session = prepared(&run).await;
+    interest(&session, "test-main", HarnessActorSlot::Primary).await;
+    assert!(session.runtime.harness_run_next().await);
+    let first = detail(&session, HarnessActorSlot::Primary).await;
+    let draft = session
+        .store
+        .draft(PRIMARY_ACCOUNT, SUBJECT_ID)
+        .await
+        .unwrap();
+    let account = session.store.account(PRIMARY_ACCOUNT).await.unwrap();
+    let before = session.control.status(&run.nonce).await.unwrap();
+    action(&session, HarnessCoreAction::PhaseVaultUnavailable).await;
+    action(&session, HarnessCoreAction::AdvanceRefresh).await;
+    assert!(session.runtime.harness_run_next().await);
+    let blocked = session.control.status(&run.nonce).await.unwrap();
+    assert_eq!(blocked.vault_unavailable_count, "1");
+    assert_eq!(blocked.provider_call_count, before.provider_call_count);
+    assert_eq!(blocked.vault_load_count, before.vault_load_count);
+    assert_eq!(
+        detail(&session, HarnessActorSlot::Primary).await.body,
+        first.body
+    );
+    assert_eq!(
+        session.store.account(PRIMARY_ACCOUNT).await.unwrap(),
+        account
+    );
+    assert_eq!(
+        session
+            .store
+            .draft(PRIMARY_ACCOUNT, SUBJECT_ID)
+            .await
+            .unwrap(),
+        draft
+    );
+    assert_eq!(
+        Store::open(&run.root.join("collaboration.sqlite"))
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Busy
+    );
+    session.store.close().await.unwrap();
+    drop(session);
+
+    let session = run.open().await;
+    session.runtime.recover_credentials().await.unwrap();
+    let reopened = session.control.status(&run.nonce).await.unwrap();
+    assert_eq!(reopened.phase, HarnessPhase::VaultUnavailable);
+    assert_ne!(reopened.session_id, before.session_id);
+    assert_eq!(reopened.provider_call_count, "0");
+    assert_eq!(reopened.vault_load_count, "0");
+    assert_eq!(reopened.vault_unavailable_count, "0");
+    assert_eq!(
+        detail(&session, HarnessActorSlot::Primary).await.body,
+        first.body
+    );
+    assert_eq!(
+        session
+            .store
+            .draft(PRIMARY_ACCOUNT, SUBJECT_ID)
+            .await
+            .unwrap(),
+        draft
+    );
+    let search = session
+        .store
+        .query_items(ItemQuery {
+            account_id: PRIMARY_ACCOUNT.into(),
+            kind: RemoteItemKind::PullRequest,
+            repository_id: None,
+            state: None,
+            search: Some("retained".into()),
+            cursor: None,
+            limit: 10,
+        })
+        .await
+        .unwrap();
+    assert_eq!(search.items.len(), 1);
+    assert_eq!(search.items[0].id, SUBJECT_ID);
+    // Reads and credential cleanup without pending work never consult the vault.
+    assert_eq!(
+        session
+            .control
+            .status(&run.nonce)
+            .await
+            .unwrap()
+            .vault_unavailable_count,
+        "0"
+    );
+    for _ in 0..3 {
+        action(&session, HarnessCoreAction::AdvanceCooldown).await;
+    }
+    interest(&session, "test-reopened", HarnessActorSlot::Primary).await;
+    assert!(session.runtime.harness_run_next().await);
+    let blocked = session.control.status(&run.nonce).await.unwrap();
+    assert_eq!(blocked.vault_unavailable_count, "1");
+    assert_eq!(blocked.provider_call_count, "0");
+    action(&session, HarnessCoreAction::PhaseTwo).await;
+    for _ in 0..3 {
+        action(&session, HarnessCoreAction::AdvanceCooldown).await;
+    }
+    interest(&session, "test-recovered", HarnessActorSlot::Primary).await;
+    assert!(session.runtime.harness_run_next().await);
+    let recovered = session.control.status(&run.nonce).await.unwrap();
+    assert_eq!(recovered.committed_phase, Some(HarnessPhase::Two));
+    assert_eq!(recovered.provider_call_count, "1");
+    assert_eq!(recovered.vault_load_count, "1");
+    assert_eq!(recovered.vault_unavailable_count, "1");
+    assert_eq!(
+        session.store.account(PRIMARY_ACCOUNT).await.unwrap(),
+        account
+    );
+    assert_eq!(
+        session
+            .store
+            .draft(PRIMARY_ACCOUNT, SUBJECT_ID)
+            .await
+            .unwrap(),
+        draft
+    );
+}
+
+#[tokio::test]
+async fn unavailable_fixture_vault_refuses_all_operations_without_altering_credentials() {
+    let run = Run::new();
+    let session = prepared(&run).await;
+    action(&session, HarnessCoreAction::PhaseVaultUnavailable).await;
+    let vault = &session.control.0.vault;
+    for slot in [HarnessActorSlot::Primary, HarnessActorSlot::Alternate] {
+        let reference = vault.reference(slot);
+        assert!(matches!(
+            vault.load(reference),
+            Err(CredentialError::Unavailable)
+        ));
+        assert!(matches!(
+            vault.store(reference, &vault::token(slot)),
+            Err(CredentialError::Unavailable)
+        ));
+        assert!(matches!(
+            vault.delete(reference),
+            Err(CredentialError::Unavailable)
+        ));
+    }
+    assert!(matches!(
+        vault.load("unissued-reference"),
+        Err(CredentialError::InvalidToken)
+    ));
+    let blocked = session.control.status(&run.nonce).await.unwrap();
+    assert_eq!(blocked.vault_unavailable_count, "6");
+    assert_eq!(blocked.vault_load_count, "0");
+    assert_eq!(blocked.vault_store_count, "2");
+    assert_eq!(blocked.vault_delete_count, "0");
+    action(&session, HarnessCoreAction::PhaseOne).await;
+    for slot in [HarnessActorSlot::Primary, HarnessActorSlot::Alternate] {
+        let token = vault.load(vault.reference(slot)).unwrap().unwrap();
+        assert_eq!(vault::token_slot(&token).unwrap(), slot);
+    }
+}

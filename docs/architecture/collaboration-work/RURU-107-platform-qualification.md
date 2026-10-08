@@ -42,3 +42,34 @@ verification still requires dedicated test accounts and remains an explicit
 release gate; this slice cannot close RURU-107 on synthetic evidence alone.
 
 Implementation and actual evidence will be appended below.
+
+## Implemented slice
+
+The feature-only vault now shares the persisted native fixture phase and counts
+synthetic unavailable refusals separately from successful loads/stores/deletes.
+Every existing root/reference/token check remains in force. Two native controls
+exercise all three refused operations, untouched synthetic credentials, provider
+suppression, saved Body/draft/account identity, the real writer lease, cached FTS,
+cold reopen with a retained fault, and recovery after the production 180-second
+credential-error barrier. The controller advances its existing finite clock;
+production retry timing is unchanged.
+
+The compiled `vault-unavailable` renderer scenario is now in every packaged
+collaboration matrix's main phase. It requires the actual typed credential error,
+unchanged provider count during refusal, retained Body/draft hashes and account
+identity, and later changed canonical Body after recovery. Its strict evidence
+schema rejects invented production-vault scope, missing refusal, continued HTTP,
+lost drafts and failed recovery. Existing hard-crash/restart scenarios remain.
+
+Local evidence so far: 23 native harness tests, 627 desktop tests (one pre-existing
+skip), desktop/E2E TypeScript and desktop Biome pass. `make typegen` regenerated
+the feature-only enum/counter contracts. Full collaboration tests, strict Clippy,
+and the packaged macOS build/run are in progress; remote exact-head CI has not
+run for this slice yet. A first cold-reopen test correctly found that a single
+61-second clock advance did not clear the 180-second retry barrier; the fixture
+now advances three existing 61-second steps and the native control passes.
+
+This is isolated synthetic qualification. Real production vault prompts, lock,
+replacement and failure behavior on each supported OS still require separately
+recorded dedicated-account tests. No production keyring or personal credential
+was inspected, no provider mutation was attempted, and no PR was merged.

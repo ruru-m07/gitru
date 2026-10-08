@@ -421,10 +421,53 @@ export const HarnessScenarioSchema = z.enum([
   "crash-after-commit",
   "restart",
   "authority",
+  "vault-unavailable",
   "performance",
   "performance-restart",
 ]);
 export type HarnessScenario = z.infer<typeof HarnessScenarioSchema>;
+
+export const HarnessVaultEvidenceSchema = z
+  .object({
+    scope: z.literal("synthetic-native-vault"),
+    account_id: z.string().min(1).max(256),
+    authorization_epoch: decimal,
+    credential_error: z.literal("credential_store_unavailable"),
+    provider_calls: z
+      .object({ before: decimal, blocked: decimal, recovered: decimal })
+      .strict(),
+    vault_failures: z
+      .object({ before: decimal, blocked: decimal, recovered: decimal })
+      .strict(),
+    body_hashes: z
+      .object({ before: hash, blocked: hash, recovered: hash })
+      .strict(),
+    draft_hashes: z
+      .object({ before: hash, blocked: hash, recovered: hash })
+      .strict(),
+    authorization_preserved: z.literal(true),
+  })
+  .strict()
+  .refine((value) => {
+    try {
+      return (
+        value.provider_calls.before === value.provider_calls.blocked &&
+        BigInt(value.provider_calls.recovered) >
+          BigInt(value.provider_calls.blocked) &&
+        BigInt(value.vault_failures.blocked) >
+          BigInt(value.vault_failures.before) &&
+        value.vault_failures.recovered === value.vault_failures.blocked &&
+        value.body_hashes.before === value.body_hashes.blocked &&
+        value.body_hashes.recovered !== value.body_hashes.blocked &&
+        value.draft_hashes.before === value.draft_hashes.blocked &&
+        value.draft_hashes.recovered === value.draft_hashes.blocked
+      );
+    } catch {
+      return false;
+    }
+  });
+
+export type HarnessVaultEvidence = z.infer<typeof HarnessVaultEvidenceSchema>;
 
 export const HarnessAuthorityEvidenceSchema = z
   .object({
@@ -636,6 +679,7 @@ export const HarnessScenarioResultSchema = z
     status: scenarioStatus.nullable(),
     observations: z.array(HarnessProbeSnapshotSchema).max(32),
     authority: HarnessAuthorityEvidenceSchema.nullable().optional(),
+    vault: HarnessVaultEvidenceSchema.nullable().optional(),
     pull_commits: HarnessPullCommitEvidenceSchema.nullable(),
     local_inbox: HarnessLocalInboxEvidenceSchema.nullable(),
     performance: HarnessPerformanceEvidenceSchema.nullable().optional(),

@@ -35,6 +35,7 @@ import {
   HarnessScenarioError,
   type HarnessScenarioResult,
   HarnessScenarioSchema,
+  type HarnessVaultEvidence,
   readHarnessDiagnostic,
 } from "../../e2e/protocol/collaboration-harness";
 import { requestAccountSettings } from "../features/collaboration/account-dialog-events";
@@ -183,6 +184,7 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
       disconnect: null,
     };
     let authority: HarnessAuthorityEvidence | null = null;
+    let vaultEvidence: HarnessVaultEvidence | null = null;
     let pullCommits: HarnessPullCommitEvidence | null = null;
     let localInbox: HarnessLocalInboxEvidence | null = null;
     let performanceEvidence: HarnessPerformanceEvidence | null = null;
@@ -1284,6 +1286,121 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
           require(rejected);
         }
         require((await status()).core.revision === before.core.revision);
+      } else if (scenario === "vault-unavailable") {
+        stage = "warm saved Body before native vault failure";
+        await mount("main", "primary");
+        await refresh("phase_one");
+        const beforeView = await rendered("main", "one");
+        await requireSnapshot("main", { kind: "detach" });
+        await wait(async () =>
+          (await status()).core.demand_lease_count === 0 ? true : null,
+        );
+        const accountsBefore = await collaboration.accounts();
+        const account = accountsBefore.accounts.find(
+          (entry) => entry.id === PULL_COMMITS.accountId,
+        );
+        require(account?.state === "active");
+        if (!account) throw new HarnessScenarioError({ kind: "assertion" });
+        const client = collaboration.forAccount(account);
+        const before = await status();
+        stage =
+          "refuse native credential load while saved content remains available";
+        await core("phase_vault_unavailable");
+        await mount("main", "primary");
+        await core("advance_refresh");
+        const blockedBody = await wait(async () => {
+          const snapshot = await client.detail({
+            subject_id: PULL_COMMITS.subjectId,
+            facet: "body",
+            cursor: null,
+            limit: 1,
+          });
+          return snapshot.evidence.sync.error?.code ===
+            "credential_store_unavailable"
+            ? snapshot
+            : null;
+        });
+        require(blockedBody.body.text === BODY.one);
+        const blockedView = await rendered("main", "one");
+        const blocked = await status();
+        require(
+          blocked.core.provider_call_count === before.core.provider_call_count,
+        );
+        require(
+          BigInt(blocked.core.vault_unavailable_count) >
+            BigInt(before.core.vault_unavailable_count),
+        );
+        const accountDuring = (await collaboration.accounts()).accounts.find(
+          (entry) => entry.id === account.id,
+        );
+        require(JSON.stringify(accountDuring) === JSON.stringify(account));
+        require(blockedView.saved_draft_hash === beforeView.saved_draft_hash);
+        require(blockedView.draft_generation === beforeView.draft_generation);
+        await requireSnapshot("main", { kind: "detach" });
+        await wait(async () =>
+          (await status()).core.demand_lease_count === 0 ? true : null,
+        );
+        stage =
+          "restore vault and honor existing credential-error retry barrier";
+        await core("phase_two");
+        // The production credential-error barrier is 180 seconds. Advance the
+        // finite fixture clock beyond it without weakening production retries.
+        for (let index = 0; index < 3; index++) await core("advance_cooldown");
+        await activate("main");
+        await mount("main", "primary");
+        await committed("two");
+        const recoveredView = await rendered("main", "two");
+        const recovered = await status();
+        require(
+          JSON.stringify(
+            (await collaboration.accounts()).accounts.find(
+              (entry) => entry.id === account.id,
+            ),
+          ) === JSON.stringify(account),
+        );
+        require(recoveredView.draft_generation === beforeView.draft_generation);
+        const beforeBody = beforeView.body_hash;
+        const blockedHash = blockedView.body_hash;
+        const recoveredHash = recoveredView.body_hash;
+        const beforeDraft = beforeView.saved_draft_hash;
+        const blockedDraft = blockedView.saved_draft_hash;
+        const recoveredDraft = recoveredView.saved_draft_hash;
+        if (
+          !beforeBody ||
+          !blockedHash ||
+          !recoveredHash ||
+          !beforeDraft ||
+          !blockedDraft ||
+          !recoveredDraft
+        )
+          throw new HarnessScenarioError({ kind: "assertion" });
+        vaultEvidence = {
+          scope: "synthetic-native-vault",
+          account_id: account.id,
+          authorization_epoch: account.authorization_epoch,
+          credential_error: "credential_store_unavailable",
+          provider_calls: {
+            before: before.core.provider_call_count,
+            blocked: blocked.core.provider_call_count,
+            recovered: recovered.core.provider_call_count,
+          },
+          vault_failures: {
+            before: before.core.vault_unavailable_count,
+            blocked: blocked.core.vault_unavailable_count,
+            recovered: recovered.core.vault_unavailable_count,
+          },
+          body_hashes: {
+            before: beforeBody,
+            blocked: blockedHash,
+            recovered: recoveredHash,
+          },
+          draft_hashes: {
+            before: beforeDraft,
+            blocked: blockedDraft,
+            recovered: recoveredDraft,
+          },
+          authorization_preserved: true,
+        };
       } else if (scenario === "disconnect") {
         const label = await child();
         await mount("main", "primary");
@@ -1679,6 +1796,11 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
           await request("main", { kind: "detach" }).catch(() => undefined);
           await control("cancel_local_reads");
           await core("cancel_gates");
+          if (
+            scenario === "vault-unavailable" &&
+            current.core.phase === "vault_unavailable"
+          )
+            await core("phase_one");
           await control("resume_hints");
           if (current.child_label) await control("close_concurrent_child");
         } catch (error) {
@@ -1701,6 +1823,7 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
       status: await status().catch(() => null),
       observations,
       authority,
+      vault: vaultEvidence,
       pull_commits: pullCommits,
       local_inbox: localInbox,
       performance: performanceEvidence,

@@ -2590,3 +2590,10 @@ diff checks. No public IPC/schema/provider quota changes. See
 [the work note](./collaboration-work/RURU-102-priority-fairness.md). RURU-102
 remains In Progress for API-family attribution and broader lifecycle/platform
 criteria. Remote CI is separate; no implementation PR was merged.
+
+8 October follow-up: RURU-107 is In Progress in the isolated platform-qualification
+worktree on PR #191 plus PR #157's bounded startup repair. Its finite synthetic
+vault refusal/recovery slice passes 23 native harness and 627 desktop tests, with
+full native/packaged/remote gates still pending. See the
+[RURU-107 work note](collaboration-work/RURU-107-platform-qualification.md) for
+exact scope and the separate production OS-vault release gate.

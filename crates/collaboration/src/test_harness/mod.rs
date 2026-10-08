@@ -59,6 +59,8 @@ impl HarnessSession {
             return Err(invalid());
         }
         let persistent = PersistentState::open(&root, run_nonce)?;
+        let clock = HarnessClock::new(persistent.utc_base, persistent.elapsed);
+        let shared = SharedState::new(persistent.clone());
         let store = Arc::new(Store::open(&database).await?);
         let validated_vault = async {
             let accounts = store.accounts().await?.accounts;
@@ -84,7 +86,7 @@ impl HarnessSession {
             {
                 return Err(invalid());
             }
-            vault::FixtureVault::new(root.clone(), run_nonce)
+            vault::FixtureVault::new(root.clone(), run_nonce, shared.clone())
         }
         .await;
         let vault = match validated_vault {
@@ -96,8 +98,6 @@ impl HarnessSession {
                 return Err(error);
             }
         };
-        let clock = HarnessClock::new(persistent.utc_base, persistent.elapsed);
-        let shared = SharedState::new(persistent);
         let provider = Arc::new(provider::FixtureProvider {
             shared: shared.clone(),
             clock: clock.clone(),
@@ -224,13 +224,15 @@ impl HarnessControl {
             | HarnessCoreAction::PhaseOffline
             | HarnessCoreAction::PhaseDenied
             | HarnessCoreAction::PhaseRateLimited
-            | HarnessCoreAction::PhaseNotModified => {
+            | HarnessCoreAction::PhaseNotModified
+            | HarnessCoreAction::PhaseVaultUnavailable => {
                 let phase = match request.action {
                     HarnessCoreAction::PhaseOne => HarnessPhase::One,
                     HarnessCoreAction::PhaseTwo => HarnessPhase::Two,
                     HarnessCoreAction::PhaseOffline => HarnessPhase::Offline,
                     HarnessCoreAction::PhaseDenied => HarnessPhase::Denied,
                     HarnessCoreAction::PhaseRateLimited => HarnessPhase::RateLimited,
+                    HarnessCoreAction::PhaseVaultUnavailable => HarnessPhase::VaultUnavailable,
                     _ => HarnessPhase::NotModified,
                 };
                 let mut next = self.0.shared.lock().persistent.clone();
@@ -647,6 +649,7 @@ impl HarnessControl {
             vault_load_count: self.0.vault.loads.load(Ordering::SeqCst).to_string(),
             vault_store_count: self.0.vault.stores.load(Ordering::SeqCst).to_string(),
             vault_delete_count: self.0.vault.deletes.load(Ordering::SeqCst).to_string(),
+            vault_unavailable_count: self.0.vault.unavailable.load(Ordering::SeqCst).to_string(),
             durable_detail_requests: self.0.store.pending_details().await?.len() as u32,
             demand_lease_count: self.0.runtime.harness_lease_count().await,
             clock_elapsed_seconds: state.elapsed,
