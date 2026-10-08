@@ -68,3 +68,5 @@ mod issue_creation;
 pub use issue_creation::*;
 mod workflow_state;
 pub use workflow_state::*;
+
+mod stored_item_v1;

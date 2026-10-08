@@ -188,6 +188,7 @@ pub(crate) fn command_hash(c: &crate::delivery::DeliveryCommand) -> String {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CreatedReceipt {
+    #[serde(with = "crate::stored_item_v1")]
     pub item: RemoteItem,
     pub metadata: ReceiptMetadata,
     pub created_at: String,
@@ -257,6 +258,7 @@ pub(crate) fn receipt_matches(e: &ReceiptEvidence, p: &Payload) -> bool {
         && f.repository.provider_id == p.repository_native
         && e.preparation.epoch == p.request.context.authorization_epoch
         && i.kind == crate::RemoteItemKind::Issue
+        && i.native_inbox.is_none()
         && i.title == p.title
         && i.body.as_deref().unwrap_or("") == p.body
         && !i.body_omitted

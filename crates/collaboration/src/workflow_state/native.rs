@@ -16,6 +16,7 @@ pub(crate) struct WorkflowBase {
 #[serde(deny_unknown_fields)]
 pub(crate) struct NativeFrame {
     pub repository: RemoteRepository,
+    #[serde(with = "crate::stored_item_v1")]
     pub subject: RemoteItem,
     pub base: WorkflowBase,
     pub authorization_view: String,

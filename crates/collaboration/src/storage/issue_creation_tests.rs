@@ -539,6 +539,7 @@ async fn issue_creation_restore_requires_atomic_mapping_and_exact_canonical_proo
         "wrong-resolution-kind",
         "wrong-resolution-ordinal",
         "orphan-evidence",
+        "native-inbox-field",
         "actor",
         "login",
         "clock-order",
@@ -580,6 +581,22 @@ async fn issue_creation_restore_requires_atomic_mapping_and_exact_canonical_proo
             sqlx::raw_sql("INSERT INTO command_evidence SELECT account_id,command_id,ordinal+1,attempt_number,'fixture.unrelated',1,X'00',recorded_at FROM command_evidence WHERE kind='github.issue_created'; UPDATE delivery_resolutions SET evidence_ordinal=evidence_ordinal+1;").execute(&mut db).await.unwrap();
         } else if case == "wrong-resolution-kind" {
             sqlx::query("UPDATE command_evidence SET kind='fixture.unrelated' WHERE kind='github.issue_created'").execute(&mut db).await.unwrap();
+        } else if case == "native-inbox-field" {
+            let bytes: Vec<u8> = sqlx::query_scalar(
+                "SELECT payload FROM command_evidence WHERE kind='github.issue_created'",
+            )
+            .fetch_one(&mut db)
+            .await
+            .unwrap();
+            let old = String::from_utf8(bytes).unwrap();
+            assert!(!old.contains("native_inbox"));
+            let bad = old.replace("\"unread\":null", "\"unread\":null,\"native_inbox\":null");
+            assert_ne!(bad, old);
+            sqlx::query("UPDATE command_evidence SET payload=? WHERE kind='github.issue_created'")
+                .bind(bad.into_bytes())
+                .execute(&mut db)
+                .await
+                .unwrap();
         } else {
             let bytes: Vec<u8> = sqlx::query_scalar(
                 "SELECT payload FROM command_evidence WHERE kind='github.issue_created'",

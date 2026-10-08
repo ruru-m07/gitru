@@ -152,6 +152,7 @@ pub(crate) fn decode_parts(
 #[serde(deny_unknown_fields)]
 pub(crate) struct Frame {
     pub repository: RemoteRepository,
+    #[serde(with = "crate::stored_item_v1")]
     pub subject: RemoteItem,
     pub authorization_view: String,
 }

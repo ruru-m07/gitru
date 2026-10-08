@@ -810,7 +810,13 @@ async fn comment_send_restore_refuses_missing_link_or_mismatched_proof_without_m
         .await
         .unwrap();
     drop(good);
-    for case in ["missing-link", "body-hash", "proof-hash", "proof-actor"] {
+    for case in [
+        "missing-link",
+        "body-hash",
+        "proof-hash",
+        "proof-actor",
+        "native-inbox-field",
+    ] {
         let bad = dir.path().join(format!("{case}.db"));
         std::fs::copy(&backup, &bad).unwrap();
         let mut db = SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&bad))
@@ -842,6 +848,25 @@ async fn comment_send_restore_refuses_missing_link_or_mismatched_proof_without_m
                     .execute(&mut db)
                     .await
                     .unwrap();
+            }
+            "native-inbox-field" => {
+                let bytes: Vec<u8> = sqlx::query_scalar(
+                    "SELECT payload FROM command_evidence WHERE kind='github.comment_created'",
+                )
+                .fetch_one(&mut db)
+                .await
+                .unwrap();
+                let old = String::from_utf8(bytes).unwrap();
+                assert!(!old.contains("native_inbox"));
+                let bad = old.replace("\"unread\":null", "\"unread\":null,\"native_inbox\":null");
+                assert_ne!(bad, old);
+                sqlx::query(
+                    "UPDATE command_evidence SET payload=? WHERE kind='github.comment_created'",
+                )
+                .bind(bad.into_bytes())
+                .execute(&mut db)
+                .await
+                .unwrap();
             }
             _ => {
                 let bytes: Vec<u8> = sqlx::query_scalar(
