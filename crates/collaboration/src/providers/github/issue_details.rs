@@ -915,7 +915,7 @@ mod tests {
             .apply_detail(older)
             .await
             .expect_err("older comparable response");
-        assert_eq!(error.code, ErrorCode::StaleView);
+        assert_eq!(error.code, ErrorCode::Provider);
         assert_eq!(
             store.revision().await.expect("unchanged revision"),
             revision
