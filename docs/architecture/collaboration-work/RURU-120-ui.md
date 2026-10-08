@@ -21,3 +21,13 @@ Drafts survive disconnection/recovery. SDK reset redacts provider identity/previ
 ## Progress
 
 - Contract recorded before frontend implementation. No frontend verification yet.
+
+### Frontend checkpoint — 8 October 2026
+
+The generated five-command SDK and UI are implemented. Local drafts have an account-bound recovery index, current clone/link selection, CAS save, explicit branch preview, current-branches consent, exact-UUID receipt recovery, and confirmed identity/drift presentation. Editor state lives above the dialog portal so closing/reopening preserves unsaved text. Draft and local Git queries make no provider request; native code owns preview and delivery.
+
+Independent review found the first retry button could retain a retired runtime grant when the cached authorization-view string stayed unchanged. Preview and receipt retry now both bind an ephemeral SDK authority generation, synchronously retired on account clearance/runtime reset. Native checks remain authoritative. The SDK never places preview grants in the query cache. Local link replacement, authored edits, expired preview and changed draft/view disable creation.
+
+Focused checks pass: **67 SDK tests** (61 client plus six generated wire tests), **10 new UI controls**, the six existing issue-creation and eleven draft-recovery controls, and SDK/desktop/E2E TypeScript. New UI controls cover local-only opening/save and close preservation, exact UUID retry with unknown delivery, expiry, cross-window CAS preservation, runtime replacement, disappearing links, confirmed branch drift, disconnected paginated recovery, explicit clone/link choice with no path in IPC, and edit/revert invalidating consent. Biome and diff checks pass for this lane.
+
+The initial frontend attempt ran before typegen postprocessing completed and is not qualification; the completed generator output was used for all passing checks. Desktop fixes addressed the coss SelectValue API and checkbox accessible names. Test harness fixes reuse the existing Base UI/jsdom top-layer-selector shim and wait for asynchronous Query notifications. The full frontend suite/lint/types/build is running separately; no remote CI, live provider, credential, or packaged-window claim is made.

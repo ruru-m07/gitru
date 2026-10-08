@@ -7,6 +7,7 @@ import {
   commentDraftsQueryOptions,
   draftsQueryOptions,
   issueDraftsQueryOptions,
+  pullDraftsQueryOptions,
   useCollaborationVersion,
 } from "@gitru/collaboration-client/react";
 import { Button } from "@gitru/ui/components/button";
@@ -22,22 +23,29 @@ import { useEffect, useMemo, useState } from "react";
 import { CommentComposer } from "./comment-composer";
 import { RecoveredIssueDraft } from "./issue-creation";
 import { SavedDraftEditor } from "./private-draft";
+import { RecoveredPullDraft } from "./pull-creation";
 import { CollaborationStatePanel } from "./state-panel";
 
 export function DraftRecovery({
   accounts,
   onOpenIssue,
+  onOpenPull,
 }: {
   accounts: RemoteAccount[];
+  onOpenPull?: (
+    account: RemoteAccount,
+    repositoryId: string,
+    subjectId: string,
+  ) => void;
   onOpenIssue?: (
     account: RemoteAccount,
     repositoryId: string,
     subjectId: string,
   ) => void;
 }) {
-  const [draftKind, setDraftKind] = useState<"private" | "comment" | "issue">(
-    "private",
-  );
+  const [draftKind, setDraftKind] = useState<
+    "private" | "comment" | "issue" | "pull"
+  >("private");
   const [accountId, setAccountId] = useState<string | null>(
     accounts[0]?.id ?? null,
   );
@@ -62,13 +70,15 @@ export function DraftRecovery({
             ? "Saved private drafts"
             : draftKind === "comment"
               ? "Saved comment drafts"
-              : "Saved issue drafts"}
+              : draftKind === "issue"
+                ? "Saved issue drafts"
+                : "Saved pull request drafts"}
         </h2>
         <p className="text-xs text-muted-foreground">
           Recover your text even when an account is disconnected or an item is
           unavailable. Private notes and provider comment drafts stay separate.
-          Issue drafts keep their own temporary local identities until the
-          provider confirms creation.
+          Issue and pull request drafts keep their own local identities until
+          the provider confirms creation.
         </p>
         <div className="flex flex-wrap gap-2" aria-label="Draft kind">
           <Button
@@ -97,6 +107,15 @@ export function DraftRecovery({
             onClick={() => setDraftKind("issue")}
           >
             Issue drafts
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={draftKind === "pull" ? "secondary" : "outline"}
+            aria-pressed={draftKind === "pull"}
+            onClick={() => setDraftKind("pull")}
+          >
+            Pull request drafts
           </Button>
         </div>
         {account ? (
@@ -137,6 +156,12 @@ export function DraftRecovery({
         <AccountDrafts key={account.id} account={account} />
       ) : account && draftKind === "comment" ? (
         <AccountCommentDrafts key={account.id} account={account} />
+      ) : account && draftKind === "pull" ? (
+        <AccountPullDrafts
+          key={account.id}
+          account={account}
+          onOpenPull={onOpenPull}
+        />
       ) : account ? (
         <AccountIssueDrafts
           key={account.id}
@@ -297,6 +322,160 @@ function AccountIssueDrafts({
             }}
           >
             Next issue drafts
+          </Button>
+        </footer>
+      ) : null}
+    </div>
+  );
+}
+
+function AccountPullDrafts({
+  account,
+  onOpenPull,
+}: {
+  account: RemoteAccount;
+  onOpenPull?: (
+    account: RemoteAccount,
+    repositoryId: string,
+    subjectId: string,
+  ) => void;
+}) {
+  const [cursors, setCursors] = useState<Array<string | null>>([null]);
+  const [selected, setSelected] = useState<{
+    draftId: string;
+    repositoryId: string;
+  } | null>(null);
+  useEffect(
+    () =>
+      collaboration.subscribeChanges((change) => {
+        if (
+          change.account_id === account.id &&
+          change.scope.startsWith("pull_draft:")
+        ) {
+          setCursors((values) => (values.length > 1 ? [null] : values));
+        }
+      }),
+    [account.id],
+  );
+  const query = useQuery(
+    pullDraftsQueryOptions(account, {
+      cursor: cursors.at(-1) ?? null,
+      limit: 50,
+    }),
+  );
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        className={`grid min-h-0 flex-1 ${selected ? "md:grid-cols-2" : "grid-cols-1"}`}
+      >
+        <div
+          className={`min-w-0 overflow-y-auto ${selected ? "hidden md:block" : ""}`}
+        >
+          {query.isPending ? (
+            <p
+              className="px-5 py-4 text-sm text-muted-foreground"
+              role="status"
+            >
+              Loading saved pull request drafts…
+            </p>
+          ) : query.isError ? (
+            <div className="space-y-2 p-5">
+              <p role="alert" className="text-sm text-destructive-foreground">
+                {collaborationErrorMessage(query.error)}
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void query.refetch()}
+              >
+                Retry pull request drafts
+              </Button>
+            </div>
+          ) : !query.data?.drafts.length ? (
+            <p className="px-5 py-4 text-sm text-muted-foreground">
+              No saved pull request drafts for this account.
+            </p>
+          ) : (
+            query.data.drafts.map((draft) => (
+              <Button
+                key={draft.draft_id}
+                variant="ghost"
+                className="h-auto w-full min-w-0 flex-col items-start gap-1 rounded-none border-b px-5 py-3 text-left whitespace-normal"
+                aria-label={`Open pull request draft ${draft.title || draft.draft_id}`}
+                aria-pressed={selected?.draftId === draft.draft_id}
+                onClick={() =>
+                  setSelected({
+                    draftId: draft.draft_id,
+                    repositoryId: draft.repository_id,
+                  })
+                }
+              >
+                <span className="line-clamp-2 w-full break-words text-sm font-medium">
+                  {draft.title || "Untitled pull request"}
+                </span>
+                <span className="line-clamp-2 w-full break-words text-xs text-muted-foreground">
+                  {draft.preview || "Empty description"}
+                </span>
+                {draft.submission ? (
+                  <span className="text-xs text-muted-foreground">
+                    Submission tracked in Saved changes
+                  </span>
+                ) : null}
+              </Button>
+            ))
+          )}
+        </div>
+        {selected ? (
+          <article
+            className="min-w-0 overflow-y-auto border-l p-5"
+            aria-label="Recovered pull request draft"
+          >
+            <Button size="sm" variant="ghost" onClick={() => setSelected(null)}>
+              Back to pull request drafts
+            </Button>
+            <h3 className="mt-4 text-sm font-medium">
+              Recovered pull request draft
+            </h3>
+            <p className="mt-2 break-all text-xs text-muted-foreground">
+              Repository: {selected.repositoryId}
+            </p>
+            <div className="mt-4">
+              <RecoveredPullDraft
+                key={`${selected.draftId}:${selected.repositoryId}`}
+                account={account}
+                draftId={selected.draftId}
+                repositoryId={selected.repositoryId}
+                onOpenCreated={
+                  onOpenPull
+                    ? (subjectId) =>
+                        onOpenPull(account, selected.repositoryId, subjectId)
+                    : undefined
+                }
+              />
+            </div>
+          </article>
+        ) : null}
+      </div>
+      {query.data?.next_cursor || cursors.length > 1 ? (
+        <footer className="flex shrink-0 gap-2 border-t px-5 py-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={cursors.length <= 1}
+            onClick={() => setCursors((values) => values.slice(0, -1))}
+          >
+            Previous pull request drafts
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={!query.data?.next_cursor}
+            onClick={() => {
+              if (query.data?.next_cursor)
+                setCursors((values) => [...values, query.data.next_cursor]);
+            }}
+          >
+            Next pull request drafts
           </Button>
         </footer>
       ) : null}

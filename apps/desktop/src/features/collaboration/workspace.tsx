@@ -64,6 +64,7 @@ import { OpenLocalCloneButton } from "./local-clone-picker";
 import { LocalInboxFeed } from "./local-inbox-feed";
 import type { LocalLinkRouteTarget } from "./local-link-navigation";
 import { NotificationSubjectView } from "./notification-subject-view";
+import { NewPullDialog } from "./pull-creation";
 import { SavedItemDetail } from "./saved-item-detail";
 import { CollaborationStatePanel } from "./state-panel";
 import { SyncIndicator } from "./sync-indicator";
@@ -126,10 +127,11 @@ export function CollaborationWorkspace({
   const accounts = useCollaborationAccounts();
   const [accountId, setAccountId] = useState<string | null>(null);
   const [recoverDrafts, setRecoverDrafts] = useState(false);
-  const [recoveredIssue, setRecoveredIssue] = useState<{
+  const [recoveredCreated, setRecoveredCreated] = useState<{
     accountId: string;
     repositoryId: string;
     subjectId: string;
+    kind: "issue" | "pull_request";
   } | null>(null);
   const connected = useMemo(
     () =>
@@ -171,7 +173,7 @@ export function CollaborationWorkspace({
               value={account.id}
               onValueChange={(nextAccountId) => {
                 setAccountId(nextAccountId);
-                setRecoveredIssue(null);
+                setRecoveredCreated(null);
               }}
             >
               <SelectTrigger
@@ -230,15 +232,34 @@ export function CollaborationWorkspace({
       ) : !target && recoverDrafts ? (
         <DraftRecovery
           accounts={accounts.data?.accounts ?? []}
-          onOpenIssue={(account, repositoryId, subjectId) => {
-            setAccountId(account.id);
-            setRecoveredIssue({
-              accountId: account.id,
-              repositoryId,
-              subjectId,
-            });
-            setRecoverDrafts(false);
-          }}
+          onOpenPull={
+            kind === "pull_request"
+              ? (account, repositoryId, subjectId) => {
+                  setAccountId(account.id);
+                  setRecoveredCreated({
+                    accountId: account.id,
+                    repositoryId,
+                    subjectId,
+                    kind: "pull_request",
+                  });
+                  setRecoverDrafts(false);
+                }
+              : undefined
+          }
+          onOpenIssue={
+            kind === "issue"
+              ? (account, repositoryId, subjectId) => {
+                  setAccountId(account.id);
+                  setRecoveredCreated({
+                    accountId: account.id,
+                    repositoryId,
+                    subjectId,
+                    kind: "issue",
+                  });
+                  setRecoverDrafts(false);
+                }
+              : undefined
+          }
         />
       ) : target && !account ? (
         <CollaborationStatePanel title="Linked account unavailable">
@@ -257,9 +278,10 @@ export function CollaborationWorkspace({
           kind={kind}
           target={target}
           maintainProviderDemand={maintainProviderDemand}
-          openIssue={
-            kind === "issue" && recoveredIssue?.accountId === account.id
-              ? recoveredIssue
+          openCreated={
+            kind === recoveredCreated?.kind &&
+            recoveredCreated.accountId === account.id
+              ? recoveredCreated
               : null
           }
         />
@@ -282,13 +304,13 @@ function AccountContextWorkspace({
   kind,
   target,
   maintainProviderDemand,
-  openIssue,
+  openCreated,
 }: {
   account: RemoteAccount;
   kind: RemoteItemKind;
   target?: LocalLinkRouteTarget;
   maintainProviderDemand: boolean;
-  openIssue: { repositoryId: string; subjectId: string } | null;
+  openCreated: { repositoryId: string; subjectId: string } | null;
 }) {
   const context = useContextualCapabilities(account, accountCapabilityTarget);
   const [metadata, setMetadata] = useState<{
@@ -344,7 +366,7 @@ function AccountContextWorkspace({
         context.isError ? collaborationErrorMessage(context.error) : undefined
       }
       maintainProviderDemand={maintainProviderDemand}
-      openIssue={openIssue}
+      openCreated={openCreated}
     />
   );
 }
@@ -358,7 +380,7 @@ function AccountWorkspace({
   semantics,
   contextError,
   maintainProviderDemand,
-  openIssue,
+  openCreated,
 }: {
   account: RemoteAccount;
   kind: RemoteItemKind;
@@ -368,7 +390,7 @@ function AccountWorkspace({
   semantics: InboxSemantics | null;
   contextError: string | undefined;
   maintainProviderDemand: boolean;
-  openIssue: { repositoryId: string; subjectId: string } | null;
+  openCreated: { repositoryId: string; subjectId: string } | null;
 }) {
   const repositoryPolicy = facetPolicy(snapshot, "repositories");
   const repositories = useCollaborationRepositories(
@@ -379,7 +401,7 @@ function AccountWorkspace({
   const [observedSemantics, setObservedSemantics] = useState(semantics);
   const [manageRepositories, setManageRepositories] = useState(false);
   const [repositoryId, setRepositoryId] = useState<string | null>(
-    target?.repository_id ?? openIssue?.repositoryId ?? null,
+    target?.repository_id ?? openCreated?.repositoryId ?? null,
   );
   const [search, setSearch] = useState("");
   const searchValue = useDeferredValue(search.trim());
@@ -394,8 +416,8 @@ function AccountWorkspace({
   }
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
-  const [createdIssueId, setCreatedIssueId] = useState<string | null>(
-    openIssue?.subjectId ?? null,
+  const [createdSubjectId, setCreatedSubjectId] = useState<string | null>(
+    openCreated?.subjectId ?? null,
   );
   const selected =
     repositories.data?.repositories.filter(
@@ -409,8 +431,8 @@ function AccountWorkspace({
       : undefined;
   const selectedRepositoryId = target
     ? target.repository_id
-    : openIssue
-      ? openIssue.repositoryId
+    : openCreated
+      ? openCreated.repositoryId
       : selected.some((repository) => repository.id === repositoryId)
         ? repositoryId
         : null;
@@ -533,7 +555,7 @@ function AccountWorkspace({
             value={search}
             onChange={(event) => {
               setSearch(event.currentTarget.value);
-              setCreatedIssueId(null);
+              setCreatedSubjectId(null);
             }}
             className="pl-6"
           />
@@ -548,7 +570,7 @@ function AccountWorkspace({
           value={state ?? "all"}
           onValueChange={(value) => {
             setState(value === "all" ? null : value);
-            setCreatedIssueId(null);
+            setCreatedSubjectId(null);
           }}
         >
           <SelectTrigger
@@ -611,7 +633,7 @@ function AccountWorkspace({
             value={selectedRepositoryId ?? "all"}
             onValueChange={(value) => {
               setRepositoryId(value === "all" ? null : value);
-              setCreatedIssueId(null);
+              setCreatedSubjectId(null);
             }}
           >
             <SelectTrigger
@@ -636,7 +658,7 @@ function AccountWorkspace({
             key={`${account.id}:${account.authorization_epoch}:${creationRepository.id}`}
             account={account}
             repository={creationRepository}
-            onOpenCreated={setCreatedIssueId}
+            onOpenCreated={setCreatedSubjectId}
           />
         ) : kind === "issue" ? (
           <Button
@@ -646,6 +668,24 @@ function AccountWorkspace({
             title="Choose one selected repository to create an issue"
           >
             New issue
+          </Button>
+        ) : null}
+        {kind === "pull_request" && creationRepository ? (
+          <NewPullDialog
+            key={`${account.id}:${account.authorization_epoch}:${creationRepository.id}`}
+            account={account}
+            repository={creationRepository}
+            target={target}
+            onOpenCreated={setCreatedSubjectId}
+          />
+        ) : kind === "pull_request" ? (
+          <Button
+            type="button"
+            size="sm"
+            disabled
+            title="Choose one selected repository to create a pull request"
+          >
+            New pull request
           </Button>
         ) : null}
         {!target ? (
@@ -745,7 +785,7 @@ function AccountWorkspace({
         />
       ) : (
         <ItemFeed
-          key={`${kind}:${repositoryId}:${state}:${searchValue}:${createdIssueId ?? ""}`}
+          key={`${kind}:${repositoryId}:${state}:${searchValue}:${createdSubjectId ?? ""}`}
           account={account}
           kind={kind}
           instanceId={instanceId}
@@ -767,7 +807,7 @@ function AccountWorkspace({
           refresh={refresh}
           refreshing={refreshing}
           maintainProviderDemand={maintainProviderDemand}
-          initialSelectedItem={createdIssueId}
+          initialSelectedItem={createdSubjectId}
         />
       )}
     </>
