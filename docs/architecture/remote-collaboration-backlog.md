@@ -2166,3 +2166,35 @@ matrix. The original R103 ancestor's 14/14 checks do not qualify this head. Keep
 R103 In Review and unmerged; no live-provider, personal credential, keyring,
 other-platform or CodeQL result is inferred. Integrate R99 recovery/export before
 starting destructive R104 retention.
+
+### RURU-102 discovery and full provider cooldown follow-up — 8 October 2026
+
+Existing draft [PR165](https://github.com/ruru-m07/gitru/pull/165) at d08fa56c
+passed all 11 reported remote checks before this follow-up. Its remaining discovery
+and over 24h gaps were reproduced against unchanged production: 17 matching controls
+ran, 14 passed and 3 failed. Already picked discovery could read credentials or
+reach its adapter after newly accepted quota and a forward UTC jump; a 48h receipt
+allowed an own-account read after only 25h monotonic time. A new valid-wall 48h
+cold-restart/cache/draft/peer control already passed. See the signed pre-code and
+actual RED record in [R102's work note](./collaboration-work/RURU-102-clock-lifecycle.md).
+
+Signed native repair 755fe5d adds shared discovery checks before vault/pre-HTTP,
+retains local refusal provenance without inventing provider quota, and stores
+full provider waits in one private account deadline slot. Checked Instant
+arithmetic uses a fail-closed overflow sentinel; bounded scheduler wakes remain
+separate. Existing selector/epoch gates, finite retry and account/detail/index
+fairness stay intact. Full make verify passes 499 frontend / 55 files and 831 Rust
+/ 3 helper ignores, including lint/types/build and all-target Clippy. Normal make
+typegen 114 preserves the complete public AST; generator-only churn was restored.
+
+A separate unchanged-source RED proves direct admission after cold restart could
+lose the saved wait without scheduler enqueue. Signed 996c3c4 seeds the full
+remaining durable duration under the existing admission lock. Its deterministic
+48h control preserves the durable deadline through +25h monotonic / +72h UTC,
+keeps peers eligible, and releases only at the remaining monotonic boundary.
+Final delta qualification passes 34 clock-matching tests, full collaboration
+480 / 2 helper ignores, strict all-target collaboration Clippy and formatting/diff
+checks. The earlier workspace run belongs to 755fe5d; newer descendant integration
+and exact-head remote CI are separate gates. Existing draft165 is updated in place.
+No live credentials, OS suspend or incorrect-wall-clock restart is qualified.
+Broader provider API-family scheduling keeps R102 In Progress; no merge is made.

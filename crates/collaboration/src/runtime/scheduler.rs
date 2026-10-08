@@ -91,7 +91,7 @@ impl Scheduler {
             || self
                 .account_cooldowns
                 .get(&job.account.id)
-                .is_some_and(|deadline| *deadline > now)
+                .is_some_and(|deadline| deadline.remaining(now).is_some())
     }
     fn ready_space(&self, interactive: bool) -> bool {
         self.queue.len() < MAX_QUEUED_SCOPES
@@ -245,14 +245,14 @@ impl CollaborationRuntime {
             .await?
             .and_then(|state| state.sync.next_retry_at)
             .as_deref()
-            .and_then(|time| self.delay_until(time));
+            .and_then(|time| self.provider_delay_until(time));
         let due = self
             .work_due(&account, &kind, &scope, reason, state.as_ref())
             .await?;
         let mut scheduler = self.scheduler.lock().await;
         scheduler.demands.expire(self.now());
         if let Some(delay) = provider {
-            let deadline = self.now() + delay;
+            let deadline = clock::AccountCooldown::after(self.now(), delay);
             scheduler
                 .account_cooldowns
                 .entry(account.id.clone())
@@ -273,8 +273,8 @@ impl CollaborationRuntime {
                 scheduler
                     .account_cooldowns
                     .entry(account.id.clone())
-                    .and_modify(|old| *old = (*old).max(deadline))
-                    .or_insert(deadline);
+                    .and_modify(|old| *old = (*old).max(deadline.into()))
+                    .or_insert(deadline.into());
             }
         }
         if reason == Admission::Manual
@@ -329,7 +329,7 @@ impl CollaborationRuntime {
             || scheduler
                 .account_cooldowns
                 .get(&account.id)
-                .is_some_and(|deadline| *deadline > self.now());
+                .is_some_and(|deadline| deadline.remaining(self.now()).is_some());
         if blocked && reason != Admission::Manual {
             return Ok(String::new());
         }

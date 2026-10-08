@@ -351,13 +351,6 @@ impl CollaborationRuntime {
                         0
                     }),
                 );
-                if cooldown > 0 {
-                    scheduler
-                        .account_cooldowns
-                        .entry(account.id.clone())
-                        .and_modify(|old| *old = (*old).max(self.deadline_after(cooldown)))
-                        .or_insert_with(|| self.deadline_after(cooldown));
-                }
             }
             if cooldown > 0 {
                 let revision = self
