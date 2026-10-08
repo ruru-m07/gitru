@@ -1,6 +1,6 @@
 # RURU-134 — Durable GitHub issue creation
 
-Status: bounded implementation ready for full workspace qualification, 8 October 2026.
+Status: full local workspace qualification passed; draft publication, 8 October 2026.
 
 This first slice creates GitHub.com issues with title/body in one explicitly
 selected cached repository. Labels, assignees, milestones, issue types and custom
@@ -22,7 +22,7 @@ generations and different command UUIDs; a lost local receipt retries the identi
 UUID/payload. A repository-target command is supported by the existing outbox and
 serializes its mutation lane without pretending an existing item effect exists.
 
-Migration0022 adds draft/submission and immutable canonical identity linkage with
+Migration 0022 adds draft/submission and immutable canonical identity linkage with
 unique receipt constraints. Include frozen0021 migration bytes and strict restore
 validation/quarantine. Admission, immutable linkage and revision hints commit
 atomically. Opening/saving the composer is entirely local. Background submission
@@ -44,7 +44,7 @@ account/actor/epoch/view, selected repository/native identity and current access
 preflight uses bounded native HTTP and final writer-owned claim checks. Persist
 an attempt before POST. Independently retain shared quota and authorization facts.
 
-Confirm only a strict bounded201 receipt bound to the command hash, original
+Confirm only a strict bounded 201 receipt bound to the command hash, original
 actor, repository, native issue ID/number, valid canonical URLs/timestamps, issue
 kind (reject pull-request payloads), and the authored title/body evidence. Original
 intent stays distinct from canonical observed content. A canonical provider ID
@@ -109,7 +109,7 @@ and run. A missing scope starts Missing/Partial, never Complete. Existing select
 repository/access-denial/epoch gates apply; auth/cache purge removes provider cache
 markers and cannot resurrect visibility from retained authored receipt history.
 
-A validated201 may be historical by finalization: retain a newer existing summary
+A validated 201 may be historical by finalization: retain a newer existing summary
 and Body, or already-published equal-timestamp conflicting data, while preserving
 creation receipt bytes and the immutable draft mapping separately. In one writer
 transaction establish identity, bounded summary/Body/FTS/effective projection,
@@ -120,7 +120,7 @@ feed-before-receipt convergence, newer cache before receipt and auth purge/recon
 
 ## Implemented native checkpoint
 
-Migration0022 separates retained issue drafts and immutable submission/resolution
+Migration 0022 separates retained issue drafts and immutable submission/resolution
 ledgers from purgeable receipt-origin visibility. The generated API exposes local
 lookup/save, bounded draft recovery and explicit background submission. Generation
 CAS, unchanged-save stability, original-epoch exact UUID retry, same-draft pending
@@ -130,14 +130,14 @@ retains the authored draft after both confirmed and unknown outcomes.
 
 The GitHub policy uses fixed numeric GET/POST routes, rejects archived repositories
 and disabled issues, and does not require repository push permission. A valid
-Issues-write credential is still adjudicated by the provider. A strong201 is
+Issues-write credential is still adjudicated by the provider. A strong 201 is
 bound to the saved command, actor, repository and authored fields; null provider
 body matches only an explicitly empty authored body. Unknown outcomes have no
 HTTP reconciliation heuristic and never automatically resend. Persisted proof
 validation repeats mandatory normalized metadata, actor/login, URL and timestamp
 checks instead of trusting that a live parser once ran.
 
-Restore recognizes frozen schemas1–21 and current22. It validates every authored
+Restore recognizes frozen schemas 1–21 and current22. It validates every authored
 submission's canonical bytes/content hash and every confirmed resolution's exact
 operation-evidence ordinal. Conversely, strong issue-created evidence requires
 its immutable mapping and confirmed state. Marker validation joins that mapping;
@@ -150,17 +150,45 @@ live-provider compatibility boundary; this task never inspected personal tokens
 or dispatched a live provider mutation. Labels, assignees, milestones and other
 issue metadata creation remain outside this first slice.
 
-Focused native qualification on this checkpoint:22 issue-creation/publication
-controls passed, including12 corrupt-backup variations, duplicate canonical
-receipt rejection and transaction rollback;14 recovery integration tests,9 frozen
-migration/fault controls (schemas1–21 plus failed22 retry), and8 current-schema
+Focused native qualification on this checkpoint: 22 issue-creation/publication
+controls passed, including 12 corrupt-backup variations, duplicate canonical
+receipt rejection and transaction rollback; 14 recovery integration tests, 9 frozen
+migration/fault controls (schemas 1–21 plus failed 22 retry), and 8 current-schema
 recovery controls passed. Strict collaboration all-target Clippy, workspace Rust formatting
 and diff checks passed. Independent native reviews rechecked admission,
 publication and exact proof/mapping validation after the fixes. Full workspace
 verification and remote CI remain publication-owner gates.
 
-The frontend checkpoint generated153 commands. Its latest full SDK run passed211
-tests; desktop passed599 with one platform skip, with both TypeScript checks and
+The frontend checkpoint generated 153 commands. Its latest full SDK run passed 211
+tests; desktop passed 599 with one platform skip, with both TypeScript checks and
 scoped formatting checks passing. Auth/reset synchronously redacts provider-derived
 navigation/context while retaining authored text, and fresh submissions require a
 new native context. These are local checks, not packaged/live-provider evidence.
+
+
+## Full integrated local qualification
+
+Signed product integration `e7db1639f2904ce694d3db4af428d9e220e8052b` includes
+Activity and the retained comment/issue draft authorization fixes. `make verify`
+passes 813 frontend tests with one platform skip and 1,340 Rust test executions
+with seven standalone helper ignores, plus lint, TypeScript checks, desktop
+production build, formatting and strict workspace Clippy. Generated IPC contains
+153 commands and 496 schema exports. The retained exact-UUID retry stays local
+and unavailable during an account reset or failed authoritative refetch.
+
+The native creation/publication, restore-integrity and UI boundaries received
+independent reviews. Account clear/reset removes provider context and canonical
+links immediately while preserving authored title/body and submission status;
+held native reads cannot repopulate the cleared authority. Creation receipts
+converge with independently discovered identities and cannot retire genuine feed
+membership or overwrite newer Body evidence.
+
+This is a GitHub.com title/body creation slice on Activity PR #184. Metadata creation
+and authenticated numeric POST compatibility remain open. Remote CI starts with
+publication; local tests do not qualify real provider writes, production vaults
+or packaged execution. No PR is merged.
+
+
+The separate feature-enabled native harness passes all 21 cases on the same
+product source, with strict all-target collaboration Clippy under `test-harness`.
+These synthetic native results do not add a packaged GUI or live-vault claim.

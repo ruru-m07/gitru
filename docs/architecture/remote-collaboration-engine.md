@@ -1,8 +1,9 @@
 # Remote collaboration engine architecture
 
-Status: architecture accepted as the implementation direction. The initial
-read-only foundation is in progress; section 23 records its verified scope and
-remaining gates. Proposed later-phase contracts are not shipping APIs.
+Status: architecture accepted as the implementation direction. The collaboration
+foundation and bounded read/write slices are in an unmerged review stack; section 23
+and the dated work notes record verified scope and remaining gates. Proposed
+later-phase contracts are not shipping APIs.
 
 Research date: **2 October 2026**. Repository inspection: HEAD
 `ddaecfad99195f9ce57e46cd3b1bbc0bb02c666d` (`dev`), implementation branch
@@ -3768,3 +3769,27 @@ and comment prerequisites; subsequent parent integration changes documentation
 only. A finite anonymous numeric timeline GET returned 200; private/provider/PAT,
 vault and packaged-window validation remain unclaimed. Remote CI starts on
 publication. RURU-122 stays In Progress for provider expansion; no merge.
+
+
+### RURU-134 durable GitHub issue creation — 8 October 2026
+
+Signed source `e7db1639` adds separate durable issue drafts with generation CAS,
+immutable submission/receipt linkage and migration 0022. A strict validated 201
+receipt publishes the canonical issue, Body, search projection and receipt-origin
+feed visibility in one transaction. It converges with an independently discovered
+identity, preserves newer provider observations and fences held feed responses.
+A lost or ambiguous create outcome never triggers an automatic second POST.
+Restore checks the exact proof/mapping relationship and quarantines delivery.
+
+The shared workspace exposes local save, explicit background submission, canonical
+navigation and retained draft recovery. Auth/reset immediately removes provider
+context and navigation while retaining authored text. Full local `make verify`
+passes 813 frontend tests/one platform skip and 1,340 Rust executions/seven helper
+ignores, plus lint, types, build, formatting and strict Clippy. Generated IPC has
+153 commands/496 schemas. [The work note](./collaboration-work/RURU-134.md) records
+the contract, race controls, integrity review and remaining gates.
+
+RURU-134 stays In Progress: this slice handles GitHub.com title/body only; labels,
+assignees, milestones and other creation metadata remain separate. Live numeric
+POST compatibility, credentials/vaults and current-head remote CI are separate
+qualification boundaries. No merge is authorized.
