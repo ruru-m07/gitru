@@ -72,9 +72,12 @@ impl CollaborationRuntime {
             .ok()?
             .signed_duration_since(self.clock.utc())
             .num_milliseconds();
-        (delay > 0).then(|| Duration::from_millis((delay as u64).min(86400000)))
+        (delay > 0).then(|| Duration::from_millis((delay as u64).min(86_400_000)))
     }
     pub(super) fn provider_delay_until(&self, time: &str) -> Option<Duration> {
+        self.wall_delay_until(time)
+    }
+    pub(super) fn wall_delay_until(&self, time: &str) -> Option<Duration> {
         let delay = DateTime::parse_from_rfc3339(time)
             .ok()?
             .signed_duration_since(self.clock.utc());

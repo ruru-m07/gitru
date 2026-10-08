@@ -389,7 +389,9 @@ impl CollaborationRuntime {
                 let retry_after_seconds = recovery
                     .next_retry_at
                     .as_deref()
-                    .and_then(|time| self.delay_until(time))
+                    // Diagnostics reports the durable wall-clock remainder. The
+                    // 24-hour cap belongs only to scheduler wake/recheck cadence.
+                    .and_then(|time| self.wall_delay_until(time))
                     .map(|delay| delay.as_secs().saturating_add(1));
                 let explicit_retry_eligible = saved_account.account.state == AccountState::Active
                     && retry_after_seconds.is_none()

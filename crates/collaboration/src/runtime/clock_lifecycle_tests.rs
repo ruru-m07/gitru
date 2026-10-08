@@ -1290,6 +1290,173 @@ async fn cold_diagnostics_report_the_full_saved_provider_wait_without_io() {
 }
 
 #[tokio::test]
+async fn cold_backward_wall_keeps_authored_state_blocks_own_io_and_serves_a_peer() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("cache.sqlite");
+    let f = setup(&path).await;
+    let (saved, draft) = saved_private(&f.runtime, &f.account).await;
+    let peer = add_actor(&f.runtime.store, &f.vault, "b").await;
+    boundary_receipt(&f.runtime, &f.adapter, &f.account, 120)
+        .await
+        .unwrap();
+    let original = deadline(&f.runtime, &f.account).await;
+    f.clock.move_utc(-3600);
+    f.clock.advance_monotonic(120);
+    let Fixture {
+        runtime,
+        clock,
+        vault,
+        adapter,
+        account,
+    } = f;
+    runtime.store.close().await.unwrap();
+    drop(runtime);
+    let mut cold = CollaborationRuntime::new(
+        Arc::new(Store::open(&path).await.unwrap()),
+        vault.clone(),
+        adapter.clone(),
+    );
+    cold.clock = clock;
+    admit(&cold, &account, false).await;
+    admit(&cold, &peer, false).await;
+
+    assert!(cold.run_next().await);
+    assert_eq!(
+        *adapter.reads.lock().unwrap(),
+        vec![(peer.id.clone(), "feed")]
+    );
+    for _ in 0..4 {
+        assert!(!cold.run_next().await);
+    }
+    assert_eq!(deadline(&cold, &account).await, original);
+    assert_eq!(vault.loads.load(Ordering::SeqCst), 1);
+    assert_private(&cold, &account, &saved, &draft).await;
+    let changed = cold
+        .save_draft(LocalDraft {
+            body: "private after backward-wall recovery".into(),
+            ..draft.clone()
+        })
+        .await
+        .unwrap();
+    assert_ne!(changed.generation, draft.generation);
+    assert_eq!(
+        cold.save_draft(draft).await.unwrap_err().code,
+        ErrorCode::StaleView
+    );
+}
+
+#[tokio::test]
+async fn cold_forward_wall_accepts_one_fresh_limit_then_stops_io_and_serves_a_peer() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("cache.sqlite");
+    let f = setup(&path).await;
+    let peer = add_actor(&f.runtime.store, &f.vault, "b").await;
+    boundary_receipt(&f.runtime, &f.adapter, &f.account, 120)
+        .await
+        .unwrap();
+    let original = deadline(&f.runtime, &f.account).await;
+    let mut fresh_limit = ProviderError::new(ProviderErrorKind::RateLimited);
+    fresh_limit.retry_after_seconds = Some(120);
+    fresh_limit.account_cooldown_seconds = Some(120);
+    f.adapter
+        .read_errors
+        .lock()
+        .unwrap()
+        .insert(f.account.id.clone(), fresh_limit);
+    f.clock.move_utc(3600);
+    f.clock.advance_monotonic(120);
+    let Fixture {
+        runtime,
+        clock,
+        vault,
+        adapter,
+        account,
+    } = f;
+    runtime.store.close().await.unwrap();
+    drop(runtime);
+    let mut cold = CollaborationRuntime::new(
+        Arc::new(Store::open(&path).await.unwrap()),
+        vault.clone(),
+        adapter.clone(),
+    );
+    cold.clock = clock;
+    admit(&cold, &account, false).await;
+    admit(&cold, &peer, false).await;
+
+    for _ in 0..4 {
+        if adapter.read_count() == 2 {
+            break;
+        }
+        assert!(cold.run_next().await);
+    }
+    let reads = adapter.reads.lock().unwrap().clone();
+    assert_eq!(
+        reads.iter().filter(|(id, _)| id == &account.id).count(),
+        1,
+        "an unknowable forward jump permits at most one fresh account attempt"
+    );
+    assert_eq!(reads.iter().filter(|(id, _)| id == &peer.id).count(), 1);
+    let refreshed = deadline(&cold, &account).await;
+    assert_ne!(refreshed, original);
+    for _ in 0..4 {
+        assert!(!cold.run_next().await);
+    }
+    assert_eq!(adapter.read_count(), 2);
+    assert_eq!(vault.loads.load(Ordering::SeqCst), 2);
+
+    admit(&cold, &peer, true).await;
+    assert!(cold.run_next().await);
+    assert_eq!(
+        adapter.reads.lock().unwrap().last(),
+        Some(&(peer.id, "body"))
+    );
+    assert_eq!(adapter.read_count(), 3);
+    assert_eq!(vault.loads.load(Ordering::SeqCst), 3);
+}
+
+#[tokio::test]
+async fn replacement_background_wake_seeds_a_valid_saved_floor_before_native_io() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("cache.sqlite");
+    let f = setup(&path).await;
+    let (saved, draft) = saved_private(&f.runtime, &f.account).await;
+    boundary_receipt(&f.runtime, &f.adapter, &f.account, 120)
+        .await
+        .unwrap();
+    f.clock.move_utc(30);
+    f.clock.advance_monotonic(30);
+    f.runtime.shutdown().await.unwrap();
+    let replacement = Arc::new(
+        f.runtime
+            .replacement(Arc::new(Store::open(&path).await.unwrap()))
+            .unwrap(),
+    );
+    replacement.clone().start_background();
+    admit(&replacement, &f.account, false).await;
+
+    tokio::time::timeout(HANDSHAKE, async {
+        loop {
+            if replacement
+                .scheduler
+                .lock()
+                .await
+                .account_cooldowns
+                .contains_key(&f.account.id)
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("background wake seeds the durable account floor");
+    assert_eq!(f.adapter.read_count(), 0);
+    assert_eq!(f.vault.loads.load(Ordering::SeqCst), 0);
+    assert_private(&replacement, &f.account, &saved, &draft).await;
+    replacement.shutdown().await.unwrap();
+}
+
+#[tokio::test]
 async fn long_clock_direct_cold_admission_seeds_full_wait_without_enqueue() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("cache.sqlite");
