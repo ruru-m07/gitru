@@ -62,3 +62,22 @@ No public types or command signatures changed, so generated IPC is unchanged.
 Frontend/packaged tests were not rerun for this native arbitration-only delta.
 Remote CI and live provider/OS suspend evidence remain separate. RURU-102 stays
 In Progress for API-family budget attribution and remaining lifecycle policy.
+
+## Follow-up: obsolete provider responses must back off
+
+The RURU-107 packaged run exposed a second scheduler issue: after storing newer
+Body data, a comparable older provider timestamp is correctly rejected but
+reported as `StaleView`. That code is reserved for retired local authority and
+bypasses retry scheduling; the still-live due demand can immediately fetch the
+same obsolete response again. The retained synthetic run made 1,383 calls before
+its 90-second scenario deadline.
+
+Keep every local account/view/run fence and saved-value ordering rule intact.
+Classify only an older comparable provider observation, after those local fences
+pass, as a provider read failure. The existing bounded exponential retry delay
+then applies without a new public error type or policy. A real-runtime fixture
+control must reproduce the busy loop before the change, preserve newer canonical
+data/account/draft, refuse early retry even after renewing demand, and recover
+after the normal delay with fresh provider data. Direct storage ordering controls
+must continue proving rejection and atomic rollback; retired authority controls
+must still return `StaleView` and avoid publishing error into a replacement view.
