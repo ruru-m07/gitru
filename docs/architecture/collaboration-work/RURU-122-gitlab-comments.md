@@ -88,3 +88,10 @@ edits/regressions/partial-vs-empty history, cold continuation and late epoch ref
 Strict collaboration all-target Clippy, workspace Rust formatting and diff checks
 passed. Full workspace verification, remote CI and real GitLab/vault/platform compatibility
 remain separate publication gates. No live provider or personal credential was used.
+
+Final compatibility review preserves opaque local projection IDs, as required by
+the shared identity store and existing GitHub Comments contract. A new actual
+HTTP-to-SQLite control proves that opaque issue/repository IDs work while altered
+native subject/project bindings cannot publish. After integrating Activity
+`bb0c73c5`, all10 Comments controls pass. No provider-specific local-ID string codec
+was introduced; immutable provider identity and writer-time binding are authority.

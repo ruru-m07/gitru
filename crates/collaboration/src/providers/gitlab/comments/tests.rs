@@ -299,9 +299,14 @@ async fn gitlab_comments_status_and_cooldown_survive_empty_or_malformed_response
 }
 
 async fn saved_store(dir: &std::path::Path) -> (crate::Store, DetailRequest) {
+    saved_request(dir, request(RemoteItemKind::Issue)).await
+}
+async fn saved_request(
+    dir: &std::path::Path,
+    mut r: DetailRequest,
+) -> (crate::Store, DetailRequest) {
     use crate::*;
     let store = Store::open(dir.join("notes.db")).await.unwrap();
-    let mut r = request(RemoteItemKind::Issue);
     r.subject.updated_at = "2026-10-07T00:00:00Z".into();
     r.account = store.upsert_account(r.account).await.unwrap();
     for (scope, repositories, items) in [
@@ -518,4 +523,48 @@ async fn gitlab_comments_successful_retry_after_is_account_evidence_without_prim
     assert_eq!(p.cooldown_seconds, Some(120));
     assert_eq!(p.reconciliation, DetailReconciliation::full_history());
     task.join().unwrap();
+}
+
+#[tokio::test]
+async fn gitlab_comments_opaque_projection_ids_preserve_exact_native_writer_binding() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut request = request(RemoteItemKind::Issue);
+    request.repository.id = "legacy-opaque-repository".into();
+    request.subject.id = "legacy-opaque-issue".into();
+    request.subject.repository_id = Some(request.repository.id.clone());
+    let (store, request) = saved_request(dir.path(), request).await;
+    let (provider, task) = server(|_| vec![notes(200, "", json!([row(1, RemoteItemKind::Issue)]))]);
+    let page = provider
+        .fetch_detail(&token(), request.clone())
+        .await
+        .unwrap();
+    let commit = commit_page(&store, &request, page).await;
+    for change in 0..2 {
+        let mut wrong = commit.clone();
+        let binding = wrong.subject_binding.as_mut().unwrap();
+        if change == 0 {
+            binding.provider_id = "998".into();
+        } else {
+            binding.repository_provider_id = "124".into();
+        }
+        assert!(store.apply_detail(wrong).await.is_err());
+        assert!(
+            store
+                .detail(query(&request))
+                .await
+                .unwrap()
+                .entries
+                .is_empty()
+        );
+    }
+    store.apply_detail(commit).await.unwrap();
+    assert_eq!(
+        store.detail(query(&request)).await.unwrap().entries[0]
+            .body
+            .text
+            .as_deref(),
+        Some("body Δ <script>")
+    );
+    assert!(task.join().unwrap()[0].starts_with(&format!("GET /api/v4/{PATH}?{QUERY} ")));
+    store.close().await.unwrap();
 }
