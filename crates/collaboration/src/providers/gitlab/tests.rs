@@ -173,6 +173,7 @@ fn implemented_read_profile_never_infers_future_permissions() {
                     | ResourceFacet::PullFiles
                     | ResourceFacet::Reviews
                     | ResourceFacet::Checks
+                    | ResourceFacet::Comments
             ) {
                 CapabilityState::Supported
             } else {
@@ -213,7 +214,7 @@ async fn unsupported_feed_detail_and_foreign_installation_make_zero_requests() {
         account:request().account,
         repository:RemoteRepository {id:"gitlab:repository:1".into(),account_id:"gitlab-account".into(),provider_id:"1".into(),full_name:"a/b".into(),name:"b".into(),web_url:"https://gitlab.com/a/b".into(),description:None,default_branch:None,selected:true},
         subject:serde_json::from_value(serde_json::json!({"id":"gitlab:issue:2","account_id":"gitlab-account","provider_id":"2","kind":"issue","title":"future detail","body_omitted":false,"state":"open","updated_at":"2026-10-03T00:00:00Z"})).unwrap(),
-        facet:crate::DetailFacet::Comments,cursor:None,etag:None,source:None,
+        facet:crate::DetailFacet::Activity,cursor:None,etag:None,source:None,
     };
     assert_eq!(
         provider

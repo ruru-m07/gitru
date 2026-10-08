@@ -831,7 +831,7 @@ async fn malformed_local_resource_authority_and_unsupported_facets_never_send_re
             3 => input.subject.number = Some("067".into()),
             4 => input.subject.repository_id = None,
             5 => input.cursor = Some("page=2".into()),
-            6 => input.facet = DetailFacet::Comments,
+            6 => input.facet = DetailFacet::Activity,
             7 => input.account.host = "gitlab.enterprise.invalid".into(),
             _ => input.account.state = AccountState::Disconnected,
         }

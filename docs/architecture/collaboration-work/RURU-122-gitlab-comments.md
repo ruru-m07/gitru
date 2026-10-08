@@ -1,6 +1,6 @@
 # RURU-122 — GitLab.com cached conversation comments
 
-Status: bounded pre-code contract, 8 October 2026.
+Status: native adapter qualified and ready for full workspace validation, 8 October 2026.
 
 Expand the existing common Comments facet to GitLab.com issue and merge request reads. The base is
 qualified GitHub Activity PR #184 at 5a311296. Reuse the existing local paginated
@@ -45,3 +45,46 @@ unrelated generated ordering churn. Use signed scoped commits and full local mak
 verify, with remote CI and live provider/vault/platform boundaries stated separately.
 No merge. Root owns publication and progress docs; provider owner owns native
 implementation/tests plus this work note. Review before qualification.
+
+## Implemented adapter semantics
+
+The public GitLab.com provider now advertises Comments and serves both native
+issue and merge-request note collections through the existing facet. Requests use
+`projects/{numeric_project}/{issues|merge_requests}/{iid}/notes` with fixed50-row
+pages ordered by updated_at ascending. Cursor bytes bind account, actor, epoch,
+project, subject native/local identity, kind and IID. Transport permits only the
+exact next page and collection; selectors, ordering, hosts and routes cannot
+change. A20-page traversal retains an inert next21 cursor, truthfully recording
+that more remote data exists without allowing another request through that cursor.
+
+Only ordinary, non-system unanchored notes map to the common Comments view.
+System activity, diff/discussion types, resolvable/position-bearing notes,
+deleted representations and malformed/unrepresentable rows keep coverage partial.
+Conflicting explicit parent identities and duplicate represented note IDs reject
+the page. Missing/oversized body observations preserve their explicit state and
+cannot authorize absence removal. A fully represented singleton, including a
+valid empty array, is the only full-history authority; multipage history remains
+uncertain. This slice makes no deletion inference from a skipped system or unknown
+row, and does not claim thread/anchor fidelity.
+
+Stable IDs do not depend on dates. Each saved note uses its own normalized update
+clock; valid created_at is checked for ordering but is not fabricated as a separate
+common DTO field. Parent timestamps/ETags are never used to validate comments.
+Only bounded body and author login are stored; provider email/raw JSON/links are
+not persisted. The common SQLite pipeline retains newer text against an older
+row, preserves prior text with explicit omitted evidence, and fences late results
+by account authorization and native subject context.
+
+A finite HTTP regression exposed inherited GitLab Retry-After handling: a response
+without primary quota exhaustion previously discarded its account cooldown. The
+transport now preserves the larger of explicit Retry-After and primary cooldown,
+including successful responses and malformed/error observations. Existing GitLab
+provider controls remain part of the qualification run.
+
+Native evidence:76 GitLab provider tests passed, including9 new controls with
+finite HTTP, hostile next links,20-page cursor bound, unrepresentable row matrix,
+identity/duplicate/body bounds, status/quota preservation, HTTP-to-SQLite own-clock
+edits/regressions/partial-vs-empty history, cold continuation and late epoch refusal.
+Strict collaboration all-target Clippy, workspace Rust formatting and diff checks
+passed. Full workspace verification, remote CI and real GitLab/vault/platform compatibility
+remain separate publication gates. No live provider or personal credential was used.
