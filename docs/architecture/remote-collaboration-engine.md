@@ -3842,3 +3842,13 @@ portability evidence from still-pending keyed whole-app startup/migration (R140)
 Tauri packaged encryption, R125 native IPC latency/memory comparison and portable
 user-key recovery (R141). R139 remains In Progress; production encryption is
 unchanged and no PR merged.
+
+### R140 keyed native connection checkpoint (8 October 2026)
+
+The opt-in `scripts/spikes/sqlcipher-connections` workspace advances the reviewed
+key lifecycle with actual key-before-SQL writer/read-only pool/maintenance/recovery
+handles. Four exact-hashed SQLx0.9 driver files retain one bounded owner per native
+handle through startup/cancellation and actual close. Failed close retires that
+factory and retains the key/lease; application Store/default selection is unchanged.
+See `collaboration-work/RURU-140-keyed-connections.md` for component evidence and
+remaining Store/identity/vault/conversion/platform gates. R140 stays In Progress.

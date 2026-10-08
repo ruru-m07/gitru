@@ -2605,3 +2605,13 @@ portability evidence from still-pending keyed whole-app startup/migration (R140)
 Tauri packaged encryption, R125 native IPC latency/memory comparison and portable
 user-key recovery (R141). R139 remains In Progress; production encryption is
 unchanged and no PR merged.
+
+### R140 bounded connection-factory continuation (8 October 2026)
+
+Actual C-API keyed connections and owned worker lifetime are implemented in the
+isolated SQLCipher workspace, with bounded factory retirement on native close
+failure and exact input/output driver provenance. This is an additional reviewable
+R140 component; it does not finish current-schema Store integration, plaintext
+activation, production vault selection or portable encrypted recovery. Those
+remaining gates stay actionable under R140/R141; platform CI results are tracked
+separately from local component checks in the keyed-connections worknote.

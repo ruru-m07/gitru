@@ -197,3 +197,59 @@ restore credential. Production encryption is not switched by this proposal.
 - R139 verified libsqlite3-sys0.37 build source/bindings: one link owner, bundled
   SQLCipher feature branch, CommonCrypto/OpenSSL selection and sqlite3_key ABI.
 - Current R140 lifecycle/platform worknotes and live R140/R141 acceptance records.
+
+## Implemented qualification component — 8 October 2026
+
+The standalone `scripts/spikes/sqlcipher-connections` workspace now implements
+`KeyedConnectionFactory::open(HandleRole)` and a three-reader pool using actual
+SQLCipher4.19.0/SQLite3.53.4. Production manifests, Store and app setup remain
+unchanged. The factory consumes an existing DatabaseKeySession; each native
+handle reserves ownership before open and retains the session/key/OS lease until
+actual close, including cancellation and failed startup. Eight total reservations
+bound direct and pooled handles. A failed native close permanently faults that
+factory and retains the failed owner until process exit, preventing repeated
+failed reader replacements. CreateNew authority is consumed once per factory;
+a later writer cannot recreate a removed database in that session.
+
+The exact driver adaptation changes **four files**: options/mod.rs,
+connection/establish.rs, connection/handle.rs and the public trait export in
+lib.rs. Each original/adapted file is hash-pinned; the complete original crate is
+authenticated and all unchanged copied files are checked. R139's portable archive
+path/type guard is reused before extraction. The readable patch has an explicit
+LF checkout rule. Neither callback options nor owner Debug formats key material.
+
+The local macOS ARM64 gates exercise actual encrypted handles for all five roles,
+three pooled readers and replacement, encrypted FTS/WAL/cold reopen, readonly
+writes, wrong/no-key and plaintext refusal without byte replacement, no premature
+Ready, initialization before the first traced SQL, cancelled worker initialization,
+cancelled pool close with a live reader, the global bound, consumed creation and
+Unix symlink refusal. The isolated close-failure child deliberately leaves one
+native statement outstanding: actual sqlite3_close fails, future admission is
+refused and the key/lease remain owned after all external references drop. Only
+process exit releases this exceptional retained resource. This is fault
+containment, not a claim of successful close or cryptographic memory erasure.
+
+Source controls reject altered input/output, misplaced substitution, extra/changed
+verified files and host-independent unsafe archive names; the patch LF attribute
+is checked. The runner verifies exact native/driver/crypto manifest selection,
+source/version/provider/settings, a single SQLite linkage owner, executable
+linkage and input/lock/executable hashes. Native tests and strict all-target Clippy
+run against that verified workspace. The new three-platform CI workflow records
+its own results; local success does not stand in for pending remote qualification.
+
+Still open under R140: current-schema keyed Store wiring/identity and owned drain,
+actual selected app vault behavior on every platform, recoverable plaintext
+staging/activation, rotation/reset/reinstall semantics, failure/low-disk/rename
+matrix and packaged app/performance qualification. Recovery/Verifier here are
+read-only handles; portable encrypted artifact creation/wrapping remains R141.
+No schema24 keyed engine, personal-vault or live-user-data test is claimed.
+
+Exact local qualification on this source: five Python source-boundary controls
+pass; the verified native runner passes nine parent tests and executes its one
+ignored-by-default exceptional-close child through the parent watchdog. Strict
+all-target Clippy, isolated Rust formatting, workflow YAML parsing and diff checks
+pass. Evidence: `/tmp/gitru-r140-connections-qualified.log`; the ignored target
+also contains `factory-evidence.txt`, `factory-report.json` and `linkage.txt`.
+The executable is macOS ARM64 with CommonCrypto. Linux/Windows/new-PR CI has not
+run yet. Root workspace verification is not substituted for these opt-in gates,
+and these component gates are not a whole application verification claim.
