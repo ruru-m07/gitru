@@ -245,3 +245,30 @@ Authentication, permission, stale-view and unexpected errors must fail immediate
 Preserve real native ownership, scenario/crash assertions, 30-second driver bound
 and production bootstrap behavior. Qualify synthetic helper controls and existing
 executor/probe suites; new-head Windows retained CI remains a separate gate.
+
+## Bootstrap retry locally qualified — 8 October 2026
+
+Signed source `212045bdf8913b793dcf272808923c557678a029` adds a harness-only
+manifest readiness helper. A finite one-shot control first failed with the native
+`not_ready` result; the same transient-startup sequence passes with the bounded
+retry. Only that error code is retried. The 25-second total timer also bounds a
+held IPC; late success cannot install the executor, and late rejection cannot
+restart retries. All timers are cleared on readiness or failure. The native
+readiness boundary, caller identity checks, 30-second driver startup timeout,
+scenario deadlines and crash checkpoint assertions are unchanged.
+
+Local checks pass: 13 new startup controls plus existing probe, executor and
+observation controls total 52/52. The full desktop suite has 503 passed and one
+existing skip; desktop and E2E TypeScript checks pass. Production and retained
+harness builds pass. A bundle inspection confirms the new helper is present in
+the retained harness and absent, together with its executor, from production.
+Scoped Biome and diff checks pass. This frontend fixture change does not alter
+native commands, schema or generated bindings and requires no type generation.
+
+The original Windows artifact proves the setup failure and slow native startup,
+but contains no captured manifest rejection. The source race is therefore
+reproduced locally, not asserted as a directly observed Windows error. Fresh
+exact-head Windows retained CI must independently validate the repair. No live
+provider, personal credential, platform vault, native desktop session, OS suspend
+or power-loss qualification was performed for this delta. R103 remains In Review;
+existing draft PR157 is updated in place and no pull request is merged.
