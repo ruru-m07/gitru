@@ -125,3 +125,13 @@ of R120 or completion of all R134 metadata-authoring scope. The schema remains23
 public command/type shapes are unchanged. Remote CI starts at publication and
 must be assessed at its own exact head. No packaged UI run, authenticated numeric
 mutation compatibility or live provider write is claimed. No PR was merged.
+# Windows CI completion allowance — 8 October 2026
+
+PR201 at `dfb660abc3423d3c0166974114832b7230ef5a4c` passed the other
+13 remote checks. Its Windows Rust job reached the 60-minute job deadline after
+the workspace suite and retained collaboration suite completed with no test
+failures. The last native-caller feature was still compiling when GitHub canceled
+the job (run `37740713836`, job `113190546963`). This is incomplete qualification,
+not a passing Windows result. Only that platform's outer Rust job allowance is
+increased to 90 minutes; all commands, tests and their individual safeguards stay
+unchanged. The new remote run must finish before claiming the complete matrix.

@@ -97,7 +97,8 @@ jobs:
   platform-tests:
     name: Rust tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    # Windows also compiles the retained native-caller feature after both suites.
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 90 || 60 }}
     strategy:
       fail-fast: false
       matrix:
