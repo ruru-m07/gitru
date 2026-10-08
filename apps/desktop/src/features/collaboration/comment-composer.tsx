@@ -131,6 +131,11 @@ function CommentDraftForm({
     retryRequest !== null &&
     currentSnapshot.submission?.command_id === retryRequest.command_id;
   const activeRetry = retryObserved ? null : retryRequest;
+  const retryAllowed =
+    activeRetry !== null &&
+    !baseChanged &&
+    !authorityUnavailable &&
+    currentSnapshot.reason !== "account_unavailable";
   const canSend =
     !saving &&
     !sending &&
@@ -334,7 +339,7 @@ function CommentDraftForm({
             {error} Your comment text
             {activeRetry ? " and request identity are" : " is"} preserved.
           </p>
-          {activeRetry && !baseChanged ? (
+          {retryAllowed ? (
             <Button
               type="button"
               size="sm"

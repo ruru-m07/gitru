@@ -171,3 +171,19 @@ blocker in this bounded slice. Logs: `/tmp/gitru-r131-final-verify.log`,
 The review base is PR181 (`ruru/ruru-129-title-body-edits`). New-head remote CI
 starts at publication. Authenticated live numeric mutation support, OS vaults
 and packaged-window qualification are unclaimed. No merge was performed.
+
+
+### Retained draft authorization follow-up — 8 October 2026
+
+Signed `413c909` synchronously removes provider context from retained comment
+drafts on account clear or runtime reset while preserving authored body, generation
+and immutable submission status. Held pre-reset reads cannot restore that context.
+Signed `2b37e07` also disables the retained exact-UUID receipt retry while the
+snapshot is AccountUnavailable or its refetch fails; the same request can reappear
+after an authoritative local reload. An open composer preserves unsaved text.
+
+The SDK passes203 tests; desktop passes585 with one platform skip, both TypeScript
+checks pass and scoped Biome/diff checks pass. The later retry gate passes all six
+composer cases and desktop types. These are frontend deltas to the full workspace
+baseline above; new-head remote CI remains separate. No live credentials or
+provider writes were used.
