@@ -3827,9 +3827,18 @@ replacement is introduced. Other-provider merges remain unavailable.
 The selected PR UI keeps local receipt, accepted, uncertain and confirmed states
 separate. Existing cached checks/reviews show their own coverage and do not grant
 merge authority. See [RURU-133's contract and evidence](./collaboration-work/RURU-133.md).
-Focused native19 and new UI/SDK9 controls pass; full qualification and a draft PR
-on integration PR190 remain in progress. Live numeric mutation-route compatibility
-and real-provider/platform checks are not claimed. No PR was merged.
+Feature checkpoint `65dbc75f` passed full local verification (847 frontend
+passes/one skip; 1,439 Rust executions/seven helper ignores and all build/type/lint
+and strict Clippy gates). Later integration carries the published scheduling and
+startup prerequisite branch plus bounded provider-ordering retry fixes. Complete
+frontend 860/one skip, generated IPC 160 commands/530 schemas, native integration
+deltas and final wire/type/lint checks pass. Final source `080e769c` also passes
+two actual-runtime ordering controls, 11 metadata cases, 13 inbox-action cases
+and strict workspace Clippy. Exact full-run versus delta evidence is recorded in
+the work note. The bounded slice is ready for draft review on the explicit
+integration prerequisite branch.
+Live numeric mutation-route compatibility and real-provider/platform checks are
+not claimed. No PR was merged.
 
 ### RURU-102 priority-class account fairness — 8 October 2026
 

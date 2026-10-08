@@ -82,7 +82,8 @@ canonical held-feed fencing; unsupported providers; UI context/consent/late repl
 isolation and preserved sibling drafts. Run focused native/SDK/UI checks, strict
 Clippy and applicable full workspace gates. Record local results separately from
 new-head remote CI and live provider/platform boundaries. Open and attach a
-reviewable draft PR explicitly dependent on PR190. Never merge it automatically.
+reviewable draft PR on the qualified integration prerequisite branch, with PR190
+and its later scheduling/startup prerequisites explicit. Never merge it automatically.
 
 ## Implemented source and focused evidence
 
@@ -105,16 +106,55 @@ rechecks budget after a held vault load, and every later codec failure retains
 captured cooldown facts. Accepted or uncertain commands may reconcile under fresh
 validated account authority after reconnect, without reconstructing send consent.
 
-Focused local evidence on the current source: 19 synthetic native tests pass,
-covering exact SHA/method wire bytes, persisted attempts, direct receipt/readback,
-head/permission/method drift, expiry across vault/preflight/claim, quota while a
-vault is held, strict proof binding, 202/lost/malformed outcomes, cold restart,
-reauthenticated read-only reconciliation, wrong repository/PR/head/result refusal,
-immutable restore quarantine and bounded renderer inputs. Nine new UI/SDK cases
-pass; the affected four-file frontend delta passes 49 tests. Generated IPC has
-160 commands/530 schemas; desktop/E2E and client TypeScript pass. An initial full
-frontend run found only obsolete dummy-button/schema-inventory fixtures; the
-updated focused controls pass. Strict Clippy and full verification are pending.
+The signed feature checkpoint `65dbc75f` passed full `make verify`: 847 frontend
+passes/one skip and 1,439 Rust test executions/seven helper ignores, including
+subprocess controls. Lint, all TypeScript checks, production desktop build,
+rustfmt and strict workspace all-target Clippy passed. Its 19 synthetic merge
+controls cover exact SHA/method wire bytes, persisted attempts, direct
+receipt/readback, head/permission/method drift, expiry across vault/preflight/claim,
+quota while a vault is held, strict proof binding, 202/lost/malformed outcomes,
+cold restart, reauthenticated read-only reconciliation, wrong
+repository/PR/head/result refusal, immutable restore quarantine, bounded renderer
+inputs and held feed/304 publication fences. Nine new UI/SDK cases cover the
+consent and receipt boundaries. Independent native and frontend reviews found no
+remaining R133 blocker after the held-vault quota and captured-cooldown fixes.
+
+The publication branch then integrated the signed, published prerequisite
+`ruru/ruru-107-qualification-dependencies` at `0a4c149c` (integration PR190,
+PR191 scheduling and PR157 bounded startup readiness), without the separate
+platform-vault qualification slice. The only merge conflicts were append-only
+architecture progress records; both histories were retained. Shared R102 provider
+ordering corrections were carried as scoped signed commits: an older comparable
+Body or metadata observation enters the existing read backoff, while local
+account/context/lease failures keep their original fences. An actual runtime
+control reproduced each immediate retry loop before its correction. Final source is
+`080e769c`; inherited direct assertion/timing fixtures are also corrected. The
+last test-only change explicitly makes accepted loopback sockets blocking on
+Darwin while preserving the original two-second I/O timeouts.
+
+Post-integration validation is distinct from the original full run. The complete
+frontend suite passes 860 tests/one skip; regenerated IPC passes with 160
+commands/530 schemas. The final 32 wire/schema/UI/startup controls, all-package
+TypeScript and lint pass. The first integrated native delta passes 81 controls
+(19 merge, 21 demand, 16 clock, one obsolete-Body harness and 24 detail/storage),
+with strict workspace all-target Clippy. The later facet-reconciliation delta
+passes 19 controls. The final metadata/socket delta passes both real-runtime
+obsolete Body/metadata controls, all 11 metadata cases and all 13 inbox-action
+cases. Final strict workspace all-target Clippy, rustfmt and diff checks pass.
+Logs are `/tmp/gitru-r133-full-verify.log`, `gitru-r133-integrated-frontend.log`,
+`gitru-r133-final-wire.log`, `gitru-r133-integrated-native.log`,
+`gitru-r133-facet-reconciliation.log`, `gitru-r133-metadata-runtime.log`,
+`gitru-r133-metadata-tests.log`, `gitru-r133-inbox-fixture.log` and
+`gitru-r133-final-clippy-socket.log` (all under `/tmp`).
+
+The R102 owner separately qualified the shared correction: full no-fail-fast
+reported 1,020 passes, five helper ignores and one inherited Darwin fixture
+failure across 27 suites; the scoped socket repair then passed all 13 affected
+inbox cases plus both ordering controls and strict all-target/all-feature Clippy.
+That is full-run plus focused-repair evidence, not a claim of a single green full
+invocation after the repair. The original R133 full run and its final integration
+deltas are likewise stated separately. All are synthetic local checks, not live
+provider or packaged-platform verification.
 
 Primary API and synthetic transport evidence do not verify authenticated numeric
 mutation routing, real repository rules/stack/queue behavior, production vault
