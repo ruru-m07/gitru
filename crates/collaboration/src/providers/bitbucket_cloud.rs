@@ -2,6 +2,7 @@
 use super::*;
 use serde::Deserialize;
 
+mod activity;
 mod checks;
 mod comments;
 mod commits;
@@ -54,6 +55,7 @@ impl CollaborationProvider for BitbucketCloudProvider {
                             | ResourceFacet::Participants
                             | ResourceFacet::Tasks
                             | ResourceFacet::Comments
+                            | ResourceFacet::Activity
                             | ResourceFacet::PullCommits
                             | ResourceFacet::PullFiles
                             | ResourceFacet::Checks
@@ -69,6 +71,7 @@ impl CollaborationProvider for BitbucketCloudProvider {
                         | ResourceFacet::Participants
                         | ResourceFacet::Tasks
                         | ResourceFacet::Comments
+                        | ResourceFacet::Activity
                         | ResourceFacet::PullCommits
                         | ResourceFacet::PullFiles
                         | ResourceFacet::Checks => None,
@@ -195,6 +198,7 @@ impl CollaborationProvider for BitbucketCloudProvider {
             DetailFacet::Participants => self.participants(token, request).await,
             DetailFacet::Tasks => self.tasks(token, request).await,
             DetailFacet::Comments => self.comments(token, request).await,
+            DetailFacet::Activity => self.activity(token, request).await,
             _ => self.resource_details(token, request).await,
         }
     }

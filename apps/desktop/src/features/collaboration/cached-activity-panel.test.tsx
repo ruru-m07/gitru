@@ -159,6 +159,36 @@ describe("cached activity disclosure", () => {
     cache.clear();
   });
 
+  it("explains partial Bitbucket history and renders system notes as safe text", async () => {
+    const saved = snapshot([activity("note:1", { kind: "approved" })]);
+    saved.entries[0].title = null;
+    saved.evidence.coverage.state = "partial";
+    vi.spyOn(collaboration.transport, "detail").mockResolvedValue(saved);
+    mockForegroundDemand();
+    const { cache, stopBridge, user, view } = mount({
+      ...fixtureAccount,
+      provider: "bitbucket_cloud",
+      host: "bitbucket.org",
+    });
+    await user.click(screen.getByRole("button", { name: "Activity" }));
+    expect(await screen.findByText("Approved")).toBeVisible();
+    expect(screen.getByText("Partial activity history")).toBeVisible();
+    expect(
+      screen.getByText(
+        "Bitbucket activity shows partial observed history. Each sync reads up to 1,000 records; older or unsupported activity may be missing.",
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("<img src=x onerror=alert(1)>")).toBeVisible();
+    expect(document.querySelector("img[src='x']")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Next saved activity" }),
+    ).toBeDisabled();
+    expect(screen.getByLabelText("Unsaved edit")).toHaveValue("draft remains");
+    view.unmount();
+    stopBridge();
+    cache.clear();
+  });
+
   it("does no work while closed, renders inert saved evidence, and syncs explicitly", async () => {
     const detail = vi
       .spyOn(collaboration.transport, "detail")

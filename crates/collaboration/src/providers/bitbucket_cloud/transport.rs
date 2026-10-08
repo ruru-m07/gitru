@@ -16,6 +16,7 @@ pub(super) enum Route {
     PullRequest(String, u64),
     Tasks(String, u64),
     Comments(String, u64),
+    Activity(String, u64),
     Commits(String, u64),
     PullFiles {
         repository: String,
@@ -90,6 +91,7 @@ impl BitbucketHttp {
             | Route::PullRequest(repository, _)
             | Route::Tasks(repository, _)
             | Route::Comments(repository, _)
+            | Route::Activity(repository, _)
             | Route::Commits(repository, _)
             | Route::Statuses(repository, _)
             | Route::Commit(repository, _) => {
@@ -104,6 +106,9 @@ impl BitbucketHttp {
                     }
                     Route::Comments(_, id) if *id > 0 && *id <= i64::MAX as u64 => {
                         format!("{path}/{id}/comments?pagelen=50")
+                    }
+                    Route::Activity(_, id) if *id > 0 && *id <= i64::MAX as u64 => {
+                        format!("{path}/{id}/activity?pagelen=50")
                     }
                     Route::Commits(_, id) if *id > 0 && *id <= i64::MAX as u64 => {
                         format!("{path}/{id}/commits?pagelen=50")

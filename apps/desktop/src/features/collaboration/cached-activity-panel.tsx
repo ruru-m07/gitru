@@ -314,6 +314,12 @@ function ActivityPager({
               missing.
             </p>
           ) : null}
+          {props.account.provider === "bitbucket_cloud" ? (
+            <p className="text-xs text-muted-foreground">
+              Bitbucket activity shows partial observed history. Each sync reads
+              up to 1,000 records; older or unsupported activity may be missing.
+            </p>
+          ) : null}
           {data.evidence.availability === "missing" ? (
             <p className="text-xs text-muted-foreground">
               Activity has not been saved on this device yet.
@@ -416,6 +422,10 @@ function activity(entry: DetailEntry): ActivityEvent | null {
 
 const ACTIVITY_LABELS: Record<string, string> = {
   system_note: "System note",
+  updated: "Updated",
+  approved: "Approved",
+  changes_requested: "Requested changes",
+  commented: "Commented",
   opened: "Opened",
   closed: "Closed",
   reopened: "Reopened",
