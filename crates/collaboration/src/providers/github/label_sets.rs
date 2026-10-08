@@ -65,6 +65,14 @@ impl GithubLabelSetPolicy {
         ))
     }
 
+    fn repository_labels_route(frame: &NativeFrame) -> Result<String, ProviderError> {
+        validate_frame_route(frame)?;
+        Ok(format!(
+            "repositories/{}/labels",
+            frame.repository.provider_id
+        ))
+    }
+
     fn normalize(
         account: &RemoteAccount,
         frame: &NativeFrame,
@@ -143,15 +151,19 @@ impl GithubLabelSetPolicy {
         label: &crate::LabelIdentity,
     ) -> Result<(AddValidation, Option<u64>), ProviderError> {
         let url = append_label_name(
-            self.http.endpoint(&Self::labels_route(frame)?)?,
+            self.http.endpoint(&Self::repository_labels_route(frame)?)?,
             &label.name,
         )?;
         match self.http.get_point(url, token).await {
             Ok(response) => {
                 if response.not_modified || response.next_url.is_some() {
-                    return Err(resource_details::invalid());
+                    return Err(with_cooldown(
+                        resource_details::invalid(),
+                        response.cooldown_seconds,
+                    ));
                 }
-                let observed = label_object(&response.body)?;
+                let observed = label_object(&response.body)
+                    .map_err(|error| with_cooldown(error, response.cooldown_seconds))?;
                 Ok((
                     AddValidation {
                         label: label.clone(),
@@ -198,6 +210,12 @@ impl GithubLabelSetPolicy {
                 error.account_cooldown_seconds = response.cooldown_seconds;
                 error
             })?;
+        if origin == Origin::Preflight
+            && response.cooldown_seconds.is_some()
+            && !desired_matches(&payload, &observation)
+        {
+            return Err(rate_limited(response.cooldown_seconds.unwrap_or(60)));
+        }
         let fresh = chrono::DateTime::parse_from_rfc3339(&observation.provider_updated_at).ok();
         let base = chrono::DateTime::parse_from_rfc3339(&frame.base.updated_at).ok();
         if fresh.zip(base).is_none_or(|(fresh, base)| fresh < base) {
@@ -216,6 +234,9 @@ impl GithubLabelSetPolicy {
                 }
                 let (validation, observed_cooldown) =
                     self.validate_add(token, &frame, label).await?;
+                if let Some(wait) = observed_cooldown.filter(|wait| *wait > 0) {
+                    return Err(rate_limited(wait));
+                }
                 cooldown = cooldown.into_iter().chain(observed_cooldown).max();
                 add_validations.push(validation);
             }
@@ -231,9 +252,10 @@ impl GithubLabelSetPolicy {
             origin,
         };
         if !valid_add_validations(&payload, &evidence) {
-            return Err(resource_details::invalid());
+            return Err(with_cooldown(resource_details::invalid(), cooldown));
         }
-        encode_bounded(&evidence).map_err(|_| resource_details::invalid())?;
+        encode_bounded(&evidence)
+            .map_err(|_| with_cooldown(resource_details::invalid(), cooldown))?;
         Ok((evidence, cooldown))
     }
 
@@ -305,6 +327,23 @@ fn append_label_name(mut url: reqwest::Url, name: &str) -> Result<reqwest::Url, 
     Ok(url)
 }
 
+fn rate_limited(wait: u64) -> ProviderError {
+    ProviderError {
+        kind: ProviderErrorKind::RateLimited,
+        retry_after_seconds: Some(wait),
+        account_cooldown_seconds: Some(wait),
+    }
+}
+
+fn with_cooldown(mut error: ProviderError, cooldown: Option<u64>) -> ProviderError {
+    error.account_cooldown_seconds = error
+        .account_cooldown_seconds
+        .into_iter()
+        .chain(cooldown)
+        .max();
+    error
+}
+
 fn hash(command: &DeliveryCommand) -> String {
     use std::fmt::Write;
     command
@@ -351,7 +390,8 @@ impl CommandDeliveryPolicy for GithubLabelSetPolicy {
     ) -> Result<DeliveryPreparation, ProviderError> {
         let (evidence, cooldown) = self.read(token, request, Origin::Preflight).await?;
         Ok(DeliveryPreparation {
-            bytes: encode_bounded(&evidence).map_err(|_| resource_details::invalid())?,
+            bytes: encode_bounded(&evidence)
+                .map_err(|_| with_cooldown(resource_details::invalid(), cooldown))?,
             account_cooldown_seconds: cooldown,
         })
     }
@@ -501,7 +541,10 @@ impl CommandDeliveryPolicy for GithubLabelSetPolicy {
                 }
             };
             cooldown = cooldown.into_iter().chain(response.cooldown_seconds).max();
-            if response.status != reqwest::StatusCode::OK || response.provider_error.is_some() {
+            if response.status != reqwest::StatusCode::OK
+                || response.provider_error.is_some()
+                || response.cooldown_seconds.is_some()
+            {
                 return DeliveryReport {
                     account_cooldown_seconds: cooldown,
                     provider_error: response.provider_error,
@@ -531,7 +574,10 @@ impl CommandDeliveryPolicy for GithubLabelSetPolicy {
                 }
             };
             cooldown = cooldown.into_iter().chain(response.cooldown_seconds).max();
-            if response.status != reqwest::StatusCode::OK || response.provider_error.is_some() {
+            if response.status != reqwest::StatusCode::OK
+                || response.provider_error.is_some()
+                || response.cooldown_seconds.is_some()
+            {
                 return DeliveryReport {
                     account_cooldown_seconds: cooldown,
                     provider_error: response.provider_error,
@@ -599,7 +645,8 @@ impl CommandDeliveryPolicy for GithubLabelSetPolicy {
         request: ReconcileRequest,
     ) -> Result<DeliveryReport, ProviderError> {
         let (evidence, cooldown) = self.read(token, &request, Origin::Reconciliation).await?;
-        let proof = Self::proof(&evidence).map_err(|_| resource_details::invalid())?;
+        let proof = Self::proof(&evidence)
+            .map_err(|_| with_cooldown(resource_details::invalid(), cooldown))?;
         Ok(DeliveryReport {
             outcome: if self.validate_evidence(&request.command, EvidencePurpose::Confirmed, &proof)
             {
@@ -765,24 +812,24 @@ mod tests {
 
     #[test]
     fn literal_label_names_stay_below_the_numeric_labels_route() {
-        let base =
-            reqwest::Url::parse("https://api.github.com/repositories/1/issues/2/labels").unwrap();
-        for name in [".", ".."] {
-            assert!(append_label_name(base.clone(), name).is_err(), "{name}");
-        }
-        for (name, encoded) in [
-            ("a/b", "a%2Fb"),
-            ("a%b", "a%25b"),
-            ("a#b", "a%23b"),
-            ("a?b", "a%3Fb"),
-            ("雪", "%E9%9B%AA"),
+        for base in [
+            "https://api.github.com/repositories/1/labels",
+            "https://api.github.com/repositories/1/issues/2/labels",
         ] {
-            let url = append_label_name(base.clone(), name).unwrap();
-            assert_eq!(
-                url.as_str(),
-                format!("https://api.github.com/repositories/1/issues/2/labels/{encoded}"),
-                "{name}"
-            );
+            let base = reqwest::Url::parse(base).unwrap();
+            for name in [".", ".."] {
+                assert!(append_label_name(base.clone(), name).is_err(), "{name}");
+            }
+            for (name, encoded) in [
+                ("a/b", "a%2Fb"),
+                ("a%b", "a%25b"),
+                ("a#b", "a%23b"),
+                ("a?b", "a%3Fb"),
+                ("雪", "%E9%9B%AA"),
+            ] {
+                let url = append_label_name(base.clone(), name).unwrap();
+                assert_eq!(url.as_str(), format!("{base}/{encoded}"), "{name}");
+            }
         }
     }
 }

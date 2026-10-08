@@ -1,5 +1,6 @@
 use super::*;
 use crate::delivery::*;
+use crate::providers::ProviderErrorKind;
 use crate::providers::github::label_sets::GithubLabelSetPolicy;
 use crate::runtime::detail_tests::fixtures;
 use crate::storage::delivery::DeliveryCompletion;
@@ -252,6 +253,39 @@ async fn cached_catalog_admission_and_cold_exact_retry_preserve_typed_effect() {
 }
 
 #[tokio::test]
+async fn pending_label_snapshot_redacts_authority_after_body_access_denial() {
+    let (_dir, store, account) = setup().await;
+    let request = request(&store).await;
+    store.submit_label_set(request).await.unwrap();
+    store
+        .set_sync_status(
+            "a",
+            &account.authorization_epoch,
+            "detail:pull:body",
+            SyncStatus {
+                state: SyncState::Error,
+                last_success_at: None,
+                next_retry_at: None,
+                error: Some(CollaborationError::new(
+                    ErrorCode::PermissionDenied,
+                    "synthetic Body access denial",
+                )),
+            },
+        )
+        .await
+        .unwrap();
+    let snapshot = store.label_set_snapshot("a", "pull").await.unwrap();
+    assert_eq!(snapshot.availability, LabelSetAvailability::Unavailable);
+    assert_eq!(snapshot.reason, Some(LabelSetReason::PendingIntent));
+    assert!(snapshot.pending_intent.is_some());
+    assert!(snapshot.context.is_none());
+    assert!(snapshot.canonical_labels.is_empty());
+    assert!(snapshot.effective_labels.is_empty());
+    assert!(snapshot.available_labels.is_empty());
+    store.close().await.unwrap();
+}
+
+#[tokio::test]
 async fn additions_require_an_exact_unambiguous_cached_catalog_identity() {
     let (_dir, store, _) = setup().await;
     let mut renamed = request(&store).await;
@@ -279,6 +313,7 @@ fn legacy_v1_effect_bytes_remain_exact_when_labels_are_absent() {
 
 enum Reply {
     Json(u16, serde_json::Value),
+    JsonCooldown(u16, serde_json::Value, u64),
     Close,
 }
 
@@ -331,14 +366,26 @@ fn server(replies: Vec<Reply>) -> (GithubLabelSetPolicy, std::thread::JoinHandle
                 assert!(request.len() < 100_000);
             }
             requests.push(String::from_utf8(request).unwrap());
-            if let Reply::Json(status, value) = reply {
-                let body = value.to_string();
-                write!(
-                    stream,
-                    "HTTP/1.1 {status} Fixture\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}",
-                    body.len()
-                )
-                .unwrap();
+            match reply {
+                Reply::Json(status, value) => {
+                    let body = value.to_string();
+                    write!(
+                        stream,
+                        "HTTP/1.1 {status} Fixture\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .unwrap();
+                }
+                Reply::JsonCooldown(status, value, seconds) => {
+                    let body = value.to_string();
+                    write!(
+                        stream,
+                        "HTTP/1.1 {status} Fixture\r\nContent-Length: {}\r\nContent-Type: application/json\r\nRetry-After: {seconds}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .unwrap();
+                }
+                Reply::Close => {}
             }
         }
         requests
@@ -461,6 +508,7 @@ async fn exact_readback_confirms_delta_preserves_provider_fields_and_retires_eff
     assert_eq!(item.body.as_deref(), Some("Remote body"));
     let requests = server.join().unwrap();
     assert_eq!(requests.len(), 5);
+    assert!(requests[1].starts_with("GET /repositories/1/labels/feature "));
     assert!(requests[2].ends_with("{\"labels\":[\"feature\"]}"));
     assert!(requests[3].starts_with("DELETE /repositories/1/issues/67/labels/bug "));
     store.close().await.unwrap();
@@ -485,15 +533,123 @@ async fn partial_success_and_lost_response_remain_unknown_and_never_continue_wri
         let expected = replies.len();
         let (policy, server) = server(replies);
         let dispatch = ready_dispatch(&store, &account, &policy, &request.command_id).await;
-        let report = policy.dispatch(&token(), dispatch).await;
+        let report = policy.dispatch(&token(), dispatch.clone()).await;
         assert!(matches!(report.outcome, DeliveryOutcome::Unknown));
         assert!(report.provider_error.is_some());
+        complete(&store, &account, &policy, &dispatch, &report).await;
+        let command = store
+            .delivery_command("a", &request.command_id)
+            .await
+            .unwrap();
+        assert_eq!(command.state, DeliveryState::Unknown);
+        assert!(command.reconcile_only());
         let requests = server.join().unwrap();
         assert_eq!(requests.len(), expected);
         assert!(requests[0].starts_with("GET /repositories/1/pulls/67 "));
-        assert!(requests[1].starts_with("GET /repositories/1/issues/67/labels/feature "));
+        assert!(requests[1].starts_with("GET /repositories/1/labels/feature "));
         assert!(requests[2].starts_with("POST /repositories/1/issues/67/labels "));
         if fail_after_add_response {
+            assert!(requests[3].starts_with("DELETE /repositories/1/issues/67/labels/bug "));
+        }
+        store.close().await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn cooldown_barriers_stop_preflight_and_post_write_request_chains() {
+    for root_barrier in [true, false] {
+        let (_dir, store, account) = setup().await;
+        let request = request(&store).await;
+        store.submit_label_set(request.clone()).await.unwrap();
+        let replies = if root_barrier {
+            vec![Reply::JsonCooldown(
+                200,
+                pull_response(vec![native_label(1, "bug", "aa0000")]),
+                120,
+            )]
+        } else {
+            vec![
+                Reply::Json(200, pull_response(vec![native_label(1, "bug", "aa0000")])),
+                Reply::JsonCooldown(200, native_label(2, "feature", "00aa00"), 120),
+            ]
+        };
+        let expected = replies.len();
+        let (policy, server) = server(replies);
+        let command = store
+            .delivery_command("a", &request.command_id)
+            .await
+            .unwrap();
+        let (preflight, _) = store
+            .claim_preparation(&command, &account, &policy, &time())
+            .await
+            .unwrap();
+        let error = match policy.prepare(&token(), &preflight.unwrap()).await {
+            Err(error) => error,
+            Ok(_) => panic!("cooldown barrier must stop preparation"),
+        };
+        assert_eq!(error.kind, ProviderErrorKind::RateLimited);
+        assert_eq!(error.account_cooldown_seconds, Some(120));
+        let requests = server.join().unwrap();
+        assert_eq!(requests.len(), expected);
+        assert!(requests[0].starts_with("GET /repositories/1/pulls/67 "));
+        if !root_barrier {
+            assert!(requests[1].starts_with("GET /repositories/1/labels/feature "));
+        }
+        store.close().await.unwrap();
+    }
+
+    {
+        let (_dir, store, account) = setup().await;
+        let request = request(&store).await;
+        store.submit_label_set(request.clone()).await.unwrap();
+        let (policy, server) = server(vec![
+            Reply::Json(200, pull_response(vec![native_label(1, "bug", "aa0000")])),
+            Reply::JsonCooldown(200, json!({"malformed": true}), 120),
+        ]);
+        let command = store
+            .delivery_command("a", &request.command_id)
+            .await
+            .unwrap();
+        let (preflight, _) = store
+            .claim_preparation(&command, &account, &policy, &time())
+            .await
+            .unwrap();
+        let error = match policy.prepare(&token(), &preflight.unwrap()).await {
+            Err(error) => error,
+            Ok(_) => panic!("malformed point evidence must stop preparation"),
+        };
+        assert_eq!(error.kind, ProviderErrorKind::InvalidResponse);
+        assert_eq!(error.account_cooldown_seconds, Some(120));
+        let requests = server.join().unwrap();
+        assert_eq!(requests.len(), 2);
+        assert!(requests[1].starts_with("GET /repositories/1/labels/feature "));
+        store.close().await.unwrap();
+    }
+
+    for stop_after_delete in [false, true] {
+        let (_dir, store, account) = setup().await;
+        let request = request(&store).await;
+        store.submit_label_set(request.clone()).await.unwrap();
+        let mut replies = vec![
+            Reply::Json(200, pull_response(vec![native_label(1, "bug", "aa0000")])),
+            Reply::Json(200, native_label(2, "feature", "00aa00")),
+        ];
+        if stop_after_delete {
+            replies.push(Reply::Json(200, json!([])));
+            replies.push(Reply::JsonCooldown(200, json!([]), 75));
+        } else {
+            replies.push(Reply::JsonCooldown(200, json!([]), 75));
+        }
+        let expected = replies.len();
+        let (policy, server) = server(replies);
+        let dispatch = ready_dispatch(&store, &account, &policy, &request.command_id).await;
+        let report = policy.dispatch(&token(), dispatch).await;
+        assert!(matches!(report.outcome, DeliveryOutcome::Unknown));
+        assert_eq!(report.account_cooldown_seconds, Some(75));
+        let requests = server.join().unwrap();
+        assert_eq!(requests.len(), expected);
+        assert!(requests[2].starts_with("POST /repositories/1/issues/67/labels "));
+        if stop_after_delete {
             assert!(requests[3].starts_with("DELETE /repositories/1/issues/67/labels/bug "));
         }
         store.close().await.unwrap();
@@ -545,4 +701,55 @@ async fn renamed_or_reassigned_name_conflicts_before_any_write() {
         assert_eq!(server.join().unwrap().len(), 1);
         store.close().await.unwrap();
     }
+}
+
+#[tokio::test]
+async fn label_intent_backup_restore_preserves_bytes_and_never_reauthorizes_dispatch() {
+    use crate::recovery::{RecoverySession, RestoreChoice};
+
+    let (dir, store, account) = setup().await;
+    let request = request(&store).await;
+    store.submit_label_set(request.clone()).await.unwrap();
+    let payload = store
+        .delivery_command("a", &request.command_id)
+        .await
+        .unwrap()
+        .payload;
+    let backup = dir.path().join("backup.db");
+    store.backup_to(&backup).await.unwrap();
+    store.close().await.unwrap();
+
+    let restored_path = dir.path().join("labels.db");
+    let session = RecoverySession::prepare(&restored_path, &backup)
+        .await
+        .unwrap();
+    let confirmation = session.preview().confirmation_id.clone();
+    session
+        .confirm(&confirmation, RestoreChoice::ReplaceCurrentData)
+        .unwrap();
+    let store = Store::open(&restored_path).await.unwrap();
+    let mut active = store.account("a").await.unwrap();
+    active.state = AccountState::Active;
+    active.authorization_epoch =
+        (active.authorization_epoch.parse::<u64>().unwrap() + 1).to_string();
+    let active = store.upsert_account(active).await.unwrap();
+    assert_ne!(active.authorization_epoch, account.authorization_epoch);
+    let command = store
+        .delivery_command("a", &request.command_id)
+        .await
+        .unwrap();
+    assert_eq!(command.payload, payload);
+    assert!(command.reconcile_only());
+    assert_eq!(command.attempt_count, 0);
+    let policy = GithubLabelSetPolicy::new().unwrap();
+    assert_eq!(
+        store
+            .claim_preparation(&command, &active, &policy, &time())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::StaleView
+    );
+    assert!(store.submit_label_set(request).await.is_err());
+    store.close().await.unwrap();
 }

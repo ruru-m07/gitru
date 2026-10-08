@@ -155,6 +155,11 @@ impl Store {
                 Err(error) => return Err(error),
             }
         };
+        if snapshot.pending_intent.is_some() {
+            snapshot.context = None;
+            snapshot.availability = LabelSetAvailability::Unavailable;
+            snapshot.reason = Some(LabelSetReason::PendingIntent);
+        }
         tx.commit().await.map_err(storage_error)?;
         Ok(snapshot)
     }
