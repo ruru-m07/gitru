@@ -20,6 +20,9 @@ const commandRecovery = await Bun.file(
 const textEdits = await Bun.file(
   new URL("crates/collaboration/src/text_edits.rs", root),
 ).text();
+const commentSend = await Bun.file(
+  new URL("crates/collaboration/src/comment_send.rs", root),
+).text();
 const detail = await Bun.file(
   new URL("crates/collaboration/src/detail.rs", root),
 ).text();
@@ -299,6 +302,7 @@ for (const source of [
   effective,
   commandRecovery,
   textEdits,
+  commentSend,
   domain,
   error,
   detail,
@@ -406,6 +410,33 @@ generated = generated.replace(
   `$1.superRefine((request, context) => {
   if (!request.accept_best_effort || (request.title === null && request.body === null)) {
     context.addIssue({ code: "custom", path: ["accept_best_effort"], message: "Text edits require explicit best-effort acceptance and at least one changed field" });
+  }
+});`,
+);
+const commentDraftSnapshotSchema =
+  /(export const CommentDraftSnapshotSchema = z\.object\(\{[\s\S]*?\n\}\));/;
+if (!commentDraftSnapshotSchema.test(generated))
+  throw new Error("Missing generated comment-draft snapshot schema");
+generated = generated.replace(
+  commentDraftSnapshotSchema,
+  `$1.superRefine((snapshot, context) => {
+  const available = snapshot.availability === "available";
+  const availableShape = snapshot.context !== null && snapshot.reason === null && snapshot.submission === null;
+  const unavailableShape = snapshot.context === null && snapshot.reason !== null;
+  if ((available && !availableShape) || (!available && !unavailableShape)) {
+    context.addIssue({ code: "custom", path: ["availability"], message: "Comment send availability and native evidence must agree" });
+  }
+});`,
+);
+const sendCommentRequestSchema =
+  /(export const SendCommentRequestSchema = z\.object\(\{[\s\S]*?\n\}\));/;
+if (!sendCommentRequestSchema.test(generated))
+  throw new Error("Missing generated send-comment request schema");
+generated = generated.replace(
+  sendCommentRequestSchema,
+  `$1.superRefine((request, context) => {
+  if (!request.accept_background_delivery) {
+    context.addIssue({ code: "custom", path: ["accept_background_delivery"], message: "Comment send requires explicit background delivery acceptance" });
   }
 });`,
 );

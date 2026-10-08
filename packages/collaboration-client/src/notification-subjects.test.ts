@@ -125,6 +125,11 @@ function fixture() {
     },
     textEditSnapshot: unexpected,
     submitTextEdit: unexpected,
+    commentDraft: unexpected,
+    commentDrafts: unexpected,
+    saveCommentDraft: unexpected,
+    sendComment: unexpected,
+    createdComments: unexpected,
     accounts: async () => ({
       accounts: [account],
       revision,

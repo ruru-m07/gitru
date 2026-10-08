@@ -4,6 +4,7 @@ import {
   type RemoteAccount,
 } from "@gitru/collaboration-client";
 import {
+  commentDraftsQueryOptions,
   draftsQueryOptions,
   useCollaborationVersion,
 } from "@gitru/collaboration-client/react";
@@ -17,10 +18,12 @@ import {
 } from "@gitru/ui/components/select";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import { CommentComposer } from "./comment-composer";
 import { SavedDraftEditor } from "./private-draft";
 import { CollaborationStatePanel } from "./state-panel";
 
 export function DraftRecovery({ accounts }: { accounts: RemoteAccount[] }) {
+  const [draftKind, setDraftKind] = useState<"private" | "comment">("private");
   const [accountId, setAccountId] = useState<string | null>(
     accounts[0]?.id ?? null,
   );
@@ -37,14 +40,38 @@ export function DraftRecovery({ accounts }: { accounts: RemoteAccount[] }) {
   return (
     <section
       className="flex min-h-0 flex-1 flex-col"
-      aria-label="Private draft recovery"
+      aria-label="Draft recovery"
     >
       <div className="space-y-2 border-b px-5 py-3">
-        <h2 className="text-sm font-medium">Saved private drafts</h2>
+        <h2 className="text-sm font-medium">
+          {draftKind === "private"
+            ? "Saved private drafts"
+            : "Saved comment drafts"}
+        </h2>
         <p className="text-xs text-muted-foreground">
           Recover your text even when an account is disconnected or an item is
-          unavailable. Drafts stay on this device.
+          unavailable. Private notes and provider comment drafts stay separate.
         </p>
+        <div className="flex flex-wrap gap-2" aria-label="Draft kind">
+          <Button
+            type="button"
+            size="sm"
+            variant={draftKind === "private" ? "secondary" : "outline"}
+            aria-pressed={draftKind === "private"}
+            onClick={() => setDraftKind("private")}
+          >
+            Private notes
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={draftKind === "comment" ? "secondary" : "outline"}
+            aria-pressed={draftKind === "comment"}
+            onClick={() => setDraftKind("comment")}
+          >
+            Comment drafts
+          </Button>
+        </div>
         {account ? (
           <Select
             key={accounts.map((candidate) => candidate.id).join(":")}
@@ -79,14 +106,140 @@ export function DraftRecovery({ accounts }: { accounts: RemoteAccount[] }) {
           </p>
         ) : null}
       </div>
-      {account ? (
+      {account && draftKind === "private" ? (
         <AccountDrafts key={account.id} account={account} />
+      ) : account ? (
+        <AccountCommentDrafts key={account.id} account={account} />
       ) : (
         <CollaborationStatePanel title="No saved accounts">
           Saved drafts from your connected accounts will appear here.
         </CollaborationStatePanel>
       )}
     </section>
+  );
+}
+
+function AccountCommentDrafts({ account }: { account: RemoteAccount }) {
+  const [cursors, setCursors] = useState<Array<string | null>>([null]);
+  const [subjectId, setSubjectId] = useState<string | null>(null);
+  useEffect(
+    () =>
+      collaboration.subscribeChanges((change) => {
+        if (
+          change.account_id === account.id &&
+          change.scope.startsWith("comment_draft:")
+        ) {
+          setCursors((values) => (values.length > 1 ? [null] : values));
+        }
+      }),
+    [account.id],
+  );
+  const query = useQuery(
+    commentDraftsQueryOptions(account, {
+      cursor: cursors.at(-1) ?? null,
+      limit: 50,
+    }),
+  );
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        className={`grid min-h-0 flex-1 ${subjectId ? "md:grid-cols-2" : "grid-cols-1"}`}
+      >
+        <div
+          className={`min-w-0 overflow-y-auto ${subjectId ? "hidden md:block" : ""}`}
+        >
+          {query.isPending ? (
+            <p
+              className="px-5 py-4 text-sm text-muted-foreground"
+              role="status"
+            >
+              Loading saved comment drafts…
+            </p>
+          ) : query.isError ? (
+            <div className="space-y-2 p-5">
+              <p role="alert" className="text-sm text-destructive-foreground">
+                {collaborationErrorMessage(query.error)}
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void query.refetch()}
+              >
+                Retry comment drafts
+              </Button>
+            </div>
+          ) : !query.data?.drafts.length ? (
+            <p className="px-5 py-4 text-sm text-muted-foreground">
+              No saved comment drafts for this account.
+            </p>
+          ) : (
+            query.data.drafts.map((draft) => (
+              <Button
+                key={draft.subject_id}
+                variant="ghost"
+                className="h-auto w-full min-w-0 flex-col items-start gap-1 rounded-none border-b px-5 py-3 text-left whitespace-normal"
+                aria-label={`Open comment draft for ${draft.subject_id}`}
+                aria-pressed={subjectId === draft.subject_id}
+                onClick={() => setSubjectId(draft.subject_id)}
+              >
+                <span className="w-full break-all text-xs font-medium">
+                  {draft.subject_id}
+                </span>
+                <span className="line-clamp-2 w-full break-words text-sm text-muted-foreground">
+                  {draft.preview || "Empty comment draft"}
+                </span>
+              </Button>
+            ))
+          )}
+        </div>
+        {subjectId ? (
+          <article
+            className="min-w-0 overflow-y-auto border-l p-5"
+            aria-label="Recovered comment draft"
+          >
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setSubjectId(null)}
+            >
+              Back to comment drafts
+            </Button>
+            <h3 className="mt-4 break-all text-sm font-medium">{subjectId}</h3>
+            <p className="mt-2 text-xs text-muted-foreground">
+              @{account.login} · {account.host}
+            </p>
+            <CommentComposer
+              key={`${account.id}:${subjectId}`}
+              account={account}
+              subjectId={subjectId}
+            />
+          </article>
+        ) : null}
+      </div>
+      {query.data?.next_cursor || cursors.length > 1 ? (
+        <footer className="flex shrink-0 gap-2 border-t px-5 py-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={cursors.length <= 1}
+            onClick={() => setCursors((values) => values.slice(0, -1))}
+          >
+            Previous comment drafts
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={!query.data?.next_cursor}
+            onClick={() => {
+              if (query.data?.next_cursor)
+                setCursors((values) => [...values, query.data.next_cursor]);
+            }}
+          >
+            Next comment drafts
+          </Button>
+        </footer>
+      ) : null}
+    </div>
   );
 }
 

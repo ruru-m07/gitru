@@ -4,7 +4,9 @@ import type {
   CapabilityTarget,
   ChangePage,
   CommandRecoveryDetail,
+  CommentDraftSnapshot,
   ContextualCapabilitySnapshot,
+  CreatedCommentPage,
   DetailSnapshot,
   InboxPage,
   ItemPage,
@@ -17,6 +19,7 @@ import type {
   RepositorySnapshot,
   ResourceLocator,
   ResourceResolution,
+  SendCommentRequest,
   SetLocalInboxStateRequest,
 } from "@gitru/commands";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
@@ -132,6 +135,11 @@ function transport(
     commandRecoveryExport: unexpected,
     textEditSnapshot: unexpected,
     submitTextEdit: unexpected,
+    commentDraft: unexpected,
+    commentDrafts: unexpected,
+    saveCommentDraft: unexpected,
+    sendComment: unexpected,
+    createdComments: unexpected,
     accounts: unexpected,
     diagnostics: unexpected,
     exportDiagnostics: unexpected,
@@ -2584,6 +2592,148 @@ it("invalidates command review after local actions and provider changes without 
     expect(cache.getQueryState(detailKey)?.isInvalidated).toBe(true);
     expect(cache.getQueryState(draft)?.isInvalidated).toBe(false);
   }
+  stop();
+  cache.clear();
+});
+
+function commentDraft(): CommentDraftSnapshot {
+  return {
+    account_id: account.id,
+    subject_id: "issue",
+    body: "Saved comment",
+    generation: "3",
+    context: {
+      account_id: account.id,
+      subject_id: "issue",
+      authorization_epoch: account.authorization_epoch,
+      authorization_view: "1",
+      review_token: "a".repeat(64),
+    },
+    availability: "available",
+    reason: null,
+    submission: null,
+    revision: "1",
+    authorization_view: "1",
+  };
+}
+
+it("fences comment draft context, exact sends and created receipt subjects", async () => {
+  const send = vi.fn(async (request: SendCommentRequest) => ({
+    account_id: request.context.account_id,
+    command_id: request.command_id,
+    admitted_revision: "2",
+    duplicate: false,
+  }));
+  const created = vi.fn(
+    async (): Promise<CreatedCommentPage> => ({
+      account_id: account.id,
+      subject_id: "other-issue",
+      comments: [],
+      next_cursor: null,
+      revision: "1",
+      authorization_view: "1",
+    }),
+  );
+  const client = new CollaborationClient(
+    transport({
+      commentDraft: async () => commentDraft(),
+      sendComment: send,
+      createdComments: created,
+    }),
+  );
+  const bound = client.forAccount(account);
+  expect(await bound.commentDraft("issue")).toEqual(commentDraft());
+  const request: SendCommentRequest = {
+    context: commentDraft().context!,
+    draft_generation: "3",
+    command_id: "00000000-0000-4000-8000-000000000001",
+    accept_background_delivery: true,
+  };
+  await expect(bound.sendComment(request)).resolves.toMatchObject({
+    command_id: request.command_id,
+  });
+  await expect(
+    bound.sendComment({
+      ...request,
+      context: { ...request.context, authorization_epoch: "99" },
+    }),
+  ).rejects.toBeInstanceOf(StaleAuthorizationError);
+  expect(send).toHaveBeenCalledTimes(1);
+  await expect(
+    bound.createdComments({ subject_id: "issue", cursor: null, limit: 25 }),
+  ).rejects.toBeInstanceOf(StaleAuthorizationError);
+});
+
+it("rejects a late comment draft snapshot after account retirement", async () => {
+  const held = deferred<CommentDraftSnapshot>();
+  const client = new CollaborationClient(
+    transport({
+      commentDraft: () => held.promise,
+      disconnect: async () => "2",
+    }),
+  );
+  const pending = client.forAccount(account).commentDraft("issue");
+  const rejected = expect(pending).rejects.toBeInstanceOf(
+    StaleAuthorizationError,
+  );
+  await client.disconnect(account.id);
+  held.resolve(commentDraft());
+  await rejected;
+});
+
+it("invalidates only the matching authored comment draft and created history", async () => {
+  let next = changePage("1");
+  const client = new CollaborationClient(
+    transport({ listen: async () => () => {}, changesSince: async () => next }),
+  );
+  const cache = new QueryClient();
+  const stop = client.installBridge(cache);
+  await client.wake();
+  const draft = collaborationKeys.commentDraft(account, "issue");
+  const otherDraft = collaborationKeys.commentDraft(account, "other");
+  const draftList = collaborationKeys.commentDrafts(account, {
+    account_id: account.id,
+    cursor: null,
+    limit: 50,
+  });
+  const created = collaborationKeys.createdComments(account, {
+    account_id: account.id,
+    subject_id: "issue",
+    cursor: null,
+    limit: 25,
+  });
+  const otherCreated = collaborationKeys.createdComments(account, {
+    account_id: account.id,
+    subject_id: "other",
+    cursor: null,
+    limit: 25,
+  });
+  for (const key of [draft, otherDraft, draftList, created, otherCreated])
+    cache.setQueryData(key, "saved");
+  next = changePage("2", "1", [
+    {
+      revision: "2",
+      account_id: account.id,
+      scope: "comment_draft:issue",
+      reset: false,
+    },
+  ]);
+  await client.wake();
+  expect(cache.getQueryState(draft)?.isInvalidated).toBe(true);
+  expect(cache.getQueryState(otherDraft)?.isInvalidated).toBe(false);
+  expect(cache.getQueryState(draftList)?.isInvalidated).toBe(true);
+  expect(cache.getQueryState(created)?.isInvalidated).toBe(false);
+  next = changePage("3", "1", [
+    {
+      revision: "3",
+      account_id: account.id,
+      scope: "created_comments:issue",
+      reset: false,
+    },
+  ]);
+  await client.wake();
+  expect(cache.getQueryState(created)?.isInvalidated).toBe(true);
+  expect(cache.getQueryState(otherCreated)?.isInvalidated).toBe(false);
   stop();
   cache.clear();
 });

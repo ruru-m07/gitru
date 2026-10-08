@@ -1,6 +1,10 @@
 import type {
   CapabilityTarget,
   CommandRecoveryQuery,
+  CommentDraftPage,
+  CommentDraftQuery,
+  CommentDraftSnapshot,
+  CreatedCommentQuery,
   DemandTarget,
   DetailQuery,
   DraftQuery,
@@ -67,6 +71,51 @@ export function textEditQueryOptions(
     queryKey: collaborationKeys.textEdit(account, subjectId),
     queryFn: ({ signal }) =>
       collaboration.forAccount(account).textEditSnapshot(subjectId, signal),
+  });
+}
+
+/** Dedicated local authored comment draft; opening it never starts provider I/O. */
+export function commentDraftQueryOptions(
+  account: RemoteAccount,
+  subjectId: string,
+) {
+  return queryOptions<CommentDraftSnapshot>({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.commentDraft(account, subjectId),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).commentDraft(subjectId, signal),
+  });
+}
+
+/** Local recovery index for dedicated comment drafts, including missing subjects. */
+export function commentDraftsQueryOptions(
+  account: RemoteAccount,
+  query: Omit<CommentDraftQuery, "account_id">,
+) {
+  return queryOptions<CommentDraftPage>({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.commentDrafts(account, {
+      ...query,
+      account_id: account.id,
+    }),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).commentDrafts(query, signal),
+  });
+}
+
+/** Validated local creation receipts, separate from provider comment coverage. */
+export function createdCommentsQueryOptions(
+  account: RemoteAccount,
+  query: Omit<CreatedCommentQuery, "account_id">,
+) {
+  return queryOptions({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.createdComments(account, {
+      ...query,
+      account_id: account.id,
+    }),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).createdComments(query, signal),
   });
 }
 

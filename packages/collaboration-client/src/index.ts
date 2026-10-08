@@ -8,12 +8,15 @@ import {
   collaborationCommandRecoveryExport,
   collaborationCommandRecoveryList,
   collaborationCommandRecoveryReplace,
+  collaborationCommentDraft,
+  collaborationCommentDrafts,
   collaborationConfirmLocalLink,
   collaborationConnectBitbucketCloud,
   collaborationConnectGithub,
   collaborationConnectGithubCli,
   collaborationConnectGitlab,
   collaborationContextualCapabilities,
+  collaborationCreatedComments,
   collaborationDemandActivity,
   collaborationDetail,
   collaborationDiagnostics,
@@ -46,9 +49,11 @@ import {
   collaborationRenewDemand,
   collaborationRepositories,
   collaborationResolveResource,
+  collaborationSaveCommentDraft,
   collaborationSaveDraft,
   collaborationSaveTransportBinding,
   collaborationSelectRepository,
+  collaborationSendComment,
   collaborationSetLocalInboxState,
   collaborationSubmitTextEdit,
   collaborationTextEditSnapshot,
@@ -80,11 +85,21 @@ export type {
   CommandRecoveryReplaceRequest,
   CommandRecoverySnapshot,
   CommandRecoverySummary,
+  CommentDraftPage,
+  CommentDraftQuery,
+  CommentDraftSnapshot,
+  CommentDraftSummary,
+  CommentSendContext,
+  CommentSubmissionReceipt,
+  CommentSubmissionStatus,
   ContextCapabilityAccess,
   ContextCapabilityRequest,
   ContextFacetCapability,
   ContextualCapabilitySnapshot,
   CoverageDiagnostics,
+  CreatedCommentPage,
+  CreatedCommentQuery,
+  CreatedCommentReceipt,
   DemandLeaseReceipt,
   DemandOwnerActivity,
   DemandRenewalReceipt,
@@ -171,6 +186,8 @@ export type {
   ReviewDiffSide,
   ReviewThreadV1,
   ReviewV1,
+  SaveCommentDraftRequest,
+  SendCommentRequest,
   SetLocalInboxStateRequest,
   StorageDiagnostics,
   SyncDiagnosticsExportReceipt,
@@ -219,6 +236,11 @@ export type TextEditAvailability =
 export type TextEditReason = NonNullable<
   import("@gitru/commands").TextEditSnapshot["reason"]
 >;
+export type CommentSendAvailability =
+  import("@gitru/commands").CommentDraftSnapshot["availability"];
+export type CommentSendReason = NonNullable<
+  import("@gitru/commands").CommentDraftSnapshot["reason"]
+>;
 
 export const collaboration = new CollaborationClient({
   commandRecoveryList: (query) => collaborationCommandRecoveryList({ query }),
@@ -233,6 +255,12 @@ export const collaboration = new CollaborationClient({
   textEditSnapshot: (accountId, subjectId) =>
     collaborationTextEditSnapshot({ accountId, subjectId }),
   submitTextEdit: (request) => collaborationSubmitTextEdit({ request }),
+  commentDraft: (accountId, subjectId) =>
+    collaborationCommentDraft({ accountId, subjectId }),
+  commentDrafts: (query) => collaborationCommentDrafts({ query }),
+  saveCommentDraft: (request) => collaborationSaveCommentDraft({ request }),
+  sendComment: (request) => collaborationSendComment({ request }),
+  createdComments: (query) => collaborationCreatedComments({ query }),
   demandActivity: () => collaborationDemandActivity({}),
   acquireDemand: (request) => collaborationAcquireDemand({ request }),
   renewDemand: (request) => collaborationRenewDemand({ request }),
