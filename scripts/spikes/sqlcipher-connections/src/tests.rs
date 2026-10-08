@@ -638,6 +638,10 @@ async fn native_close_failure_child() {
         "faulted;one retained owner;zero subsequent admissions;lease busy",
     )
     .unwrap();
+    // The retained native statement deliberately makes normal teardown
+    // impossible. End the isolated fixture after its evidence is durable so
+    // the test harness cannot run the connection's panicking Drop path.
+    std::process::exit(0);
 }
 
 #[cfg(unix)]

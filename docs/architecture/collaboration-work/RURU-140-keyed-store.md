@@ -176,3 +176,20 @@ matrix evidence starts only after publication.
 This slice does not activate encryption, convert plaintext databases, implement
 rotation/loss/reset, qualify Windows or Linux production vaults, or provide
 portable backups.
+
+## Exact-head Windows repair — 8 October 2026
+
+PR207's first Windows native-factory job exposed a fixture teardown error rather
+than a keyed-store failure. The exceptional-close child wrote its complete
+retained-owner evidence, returned to Rust's test harness, and then the harness
+dropped the deliberately uncloseable SQLx connection. That expected native
+`SQLITE_BUSY` Drop panic made the child exit 101, so the parent rejected otherwise
+complete evidence.
+
+The isolated child now exits successfully only after its evidence file is
+durable. This follows the fixture's existing process-exit ownership contract and
+prevents the test harness from running the deliberately invalid Drop path. The
+complete native qualification runner passes locally with **10 passed / one
+isolated helper ignored / 0 failed**, including the parent watchdog and retained
+lease assertion. A replacement exact-head Windows result remains remote CI
+evidence and is not inferred from this local macOS run.
