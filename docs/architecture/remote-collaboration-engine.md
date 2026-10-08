@@ -3705,3 +3705,21 @@ the original credential-boundary watchdog. These are deltas to the recorded full
 workspace baseline. Live authenticated numeric mutation compatibility is still
 unqualified. RURU-129 remains In Progress for the separate workflow-state and
 label slices; new-head CI is distinct from these local results.
+
+
+### RURU-131 durable comment creation — 8 October 2026
+
+A separate saved comment draft/composer now admits immutable per-generation
+GitHub creation commands. Validated 201 receipts retain canonical comment IDs;
+unknown delivery preserves intent without POST replay, UUID bypass or text/time
+heuristics. Schema 0020 and restore validation protect draft/submission linkage;
+private notes stay separate and disconnected draft recovery remains local.
+
+Full local make verify at `1895c542`: 787 frontend tests/one platform skip,
+1,279 Rust executions/seven helper ignores, lint/types/build/fmt/strict workspace
+Clippy. Final parent integration `5eab2109` separately passes nine runtime-sync,
+14 credential-crash and 21 feature-harness cases with strict feature-enabled
+Clippy. Generated IPC: 149 commands/473 schemas. See
+[the work note](./collaboration-work/RURU-131.md) for evidence and limits.
+The PR stacks on #181; remote CI and live provider/vault/window checks remain
+separate. Numeric mutation-alias live compatibility is unqualified. No merge.

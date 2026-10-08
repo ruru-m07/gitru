@@ -144,3 +144,30 @@ without changing either selected backup or current database. Full Rust formattin
 also passes. The prerequisite clock/transport fixes, full workspace verification, remote CI
 and packaged/live-provider qualification are recorded separately by the
 coordinator at publication.
+
+## Integrated publication evidence — 8 October 2026
+
+Full local `make verify` at signed source `1895c542` passes **787 frontend tests**
+(one platform skip), **1,279 Rust test executions** (seven subprocess-helper
+ignores), lint, typechecks, desktop build, full formatting and strict workspace
+Clippy. This run includes the corrected historical fixture: its simulated v14
+rewind removes schema20-only draft/submission objects before testing restoration;
+production schema-integrity checks remain unchanged.
+
+Final parent integration `5eab2109` consumes PR181's qualified Windows crash
+startup handshake and disk-backed cursor-resume fixture corrections. On that
+source, nine runtime-sync cases, 14 credential crash parent cases (one helper
+ignored), 21 feature-harness cases and strict feature-enabled all-target
+collaboration Clippy/fmt pass. These are separate qualified deltas to the full
+workspace baseline, not an assertion that the full command reran on this head.
+
+Generated IPC contains 149 commands/473 executable schemas. SDK/UI coverage
+includes account/context fences, local retry identity, saved draft recovery and
+retained composer text. Native and frontend independent review found no remaining
+blocker in this bounded slice. Logs: `/tmp/gitru-r131-final-verify.log`,
+`/tmp/gitru-r131-final-sync.log`, `/tmp/gitru-r131-final-credential-qualified.log`,
+`/tmp/gitru-r131-final-harness.log`, `/tmp/gitru-r131-final-clippy.log`.
+
+The review base is PR181 (`ruru/ruru-129-title-body-edits`). New-head remote CI
+starts at publication. Authenticated live numeric mutation support, OS vaults
+and packaged-window qualification are unclaimed. No merge was performed.
