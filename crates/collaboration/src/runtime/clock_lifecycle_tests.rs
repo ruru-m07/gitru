@@ -1250,6 +1250,46 @@ async fn long_clock_cold_valid_wall_preserves_full_deadline_and_peer_progress() 
 }
 
 #[tokio::test]
+async fn cold_diagnostics_report_the_full_saved_provider_wait_without_io() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("cache.sqlite");
+    let f = setup(&path).await;
+    boundary_receipt(&f.runtime, &f.adapter, &f.account, 48 * 3600)
+        .await
+        .unwrap();
+    f.clock.move_utc(3600);
+    f.clock.advance_monotonic(3600);
+    let Fixture {
+        runtime,
+        clock,
+        vault,
+        adapter,
+        account,
+    } = f;
+    runtime.store.close().await.unwrap();
+    drop(runtime);
+    let mut cold = CollaborationRuntime::new(
+        Arc::new(Store::open(&path).await.unwrap()),
+        vault.clone(),
+        adapter.clone(),
+    );
+    cold.clock = clock;
+
+    let snapshot = cold.diagnostics().await.unwrap();
+    let observed = snapshot
+        .accounts
+        .iter()
+        .find(|candidate| candidate.account_id == account.id)
+        .unwrap();
+    let recovery = observed.recovery.as_ref().unwrap();
+    assert_eq!(recovery.category, SyncRecoveryCategory::RateLimit);
+    assert_eq!(recovery.retry_after_seconds, Some(47 * 3600 + 1));
+    assert!(!recovery.explicit_retry_eligible);
+    assert_eq!(vault.loads.load(Ordering::SeqCst), 0);
+    assert_eq!(adapter.read_count(), 0);
+}
+
+#[tokio::test]
 async fn long_clock_direct_cold_admission_seeds_full_wait_without_enqueue() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("cache.sqlite");
