@@ -217,13 +217,6 @@ impl CollaborationRuntime {
                         .and_modify(|old| *old = (*old).max(self.deadline_after(poll_interval)))
                         .or_insert_with(|| self.deadline_after(poll_interval));
                 }
-                if cooldown > 0 {
-                    scheduler
-                        .account_cooldowns
-                        .entry(account.id.clone())
-                        .and_modify(|old| *old = (*old).max(self.deadline_after(cooldown)))
-                        .or_insert_with(|| self.deadline_after(cooldown));
-                }
             }
             {
                 let strict_seconds = poll_interval.max(cooldown);

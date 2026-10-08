@@ -673,7 +673,8 @@ async fn positive_successful_probe_captures_live_quota_before_native_cutover_awa
         assert_eq!(scheduler.account_cooldowns.len(), 1);
         assert!(scheduler.account_cooldowns.contains_key(&account.id));
         assert_eq!(
-            scheduler.account_cooldowns[&account.id], receipt_live_deadline,
+            scheduler.account_cooldowns[&account.id],
+            receipt_live_deadline.into(),
             "the 37s native write wait must consume the original 120s bound, not start it again at cutover"
         );
     }
