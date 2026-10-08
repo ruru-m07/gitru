@@ -166,3 +166,41 @@ integration and migration, Tauri packaging, R125 encrypted/current native IPC
 latency and memory measurements, and R141 portable user-key recovery remain
 unqualified. R139 therefore remains In Progress. The production safety gate,
 application dependencies and plaintext behavior are unchanged; no merge.
+
+### Later Windows fixture failure — 8 October 2026
+
+The docs-only head `5016fea9` reran qualification in run `37732404683`.
+Windows job `113164424399` passed the actual encrypted probe, then failed the
+copied unkeyed regression's
+`unknown_write_reconciles_after_cold_restart_with_get_only` control. Its fixture
+inherited a nonblocking accepted stream and assumed a single read contained an
+entire HTTP request. Windows returned `WouldBlock` (10035); the operation then
+correctly remained Unknown rather than falsely confirming. This is separate from
+the earlier fully successful run and is not an observed SQLCipher failure.
+
+The qualification runner now applies one explicit test-only repair to the pinned
+`f0b8801` source copy. The accepted stream becomes blocking, complete headers/body
+are read under one eight-second accept/request deadline and an 8 KiB bound, and
+the response write also stays bounded. No provider implementation or operation
+assertion changes. In particular, cold reconciliation still must use only GET
+and must confirm from the exact provider observation without repeating a write.
+The newer application stack already fixed the same socket-inheritance assumption
+in `ffc575b6`; this adaptation preserves the deliberately frozen source baseline.
+
+`pins.json` records SHA-256 for the original fixture, standalone replacement helper
+and entire patched result. Python controls reject source/helper drift or an
+unexpected result before writing. The native helper tests fragmented headers and
+bodies, truncated requests, oversized declared bodies, stalled peers and expired
+deadlines. The three exact-version fixture substitutions remain separately
+enumerated; production source, all migrations and the hard WAL gate are unchanged.
+
+Local repair qualification: **7 Python source-verification controls**, **3
+standalone HTTP controls**, and **16 copied-engine inbox tests including those
+three controls** all pass. The real previously failing cold-reconciliation case
+passes with its original assertions. Strict all-target copied-engine Clippy,
+Python compilation, helper Rust formatting, source hash verification and diff
+checks pass. Logs: `/tmp/gitru-r139-http-source-tests.log`,
+`/tmp/gitru-r139-http-native-tests.log` and `/tmp/gitru-r139-http-clippy.log`.
+These are local macOS results; the repaired Windows full matrix and cross-file
+reader jobs require a new remote run. No full Windows success is inferred from
+this focused local repair.

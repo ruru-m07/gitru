@@ -10,6 +10,7 @@ import shutil
 import subprocess
 
 import prepare
+import regression_fixture
 from run import environment_check
 
 
@@ -60,6 +61,7 @@ def main():
         if contents.count('"3.51.3"') != 1:
             raise RuntimeError(f"Expected one reviewed engine-identity literal in {name}")
         path.write_bytes(contents.replace('"3.51.3"', '"3.53.4"').encode("utf-8"))
+    regression_fixture.apply(destination)
     lock = prepare.ROOT / "regression.lock"
     if args.freeze_lock:
         shutil.copyfile(source_root / "Cargo.lock", destination / "Cargo.lock")

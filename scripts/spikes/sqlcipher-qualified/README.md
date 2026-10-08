@@ -46,6 +46,15 @@ manifest enables the cipher and verified patch. Three hash-verified test files
 have one intentional adaptation each: an exact `3.51.3` engine-identity assertion
 becomes exact `3.53.4`. All data/migration/rollback assertions and the production
 WAL gate are unchanged; no test is skipped or changed to a broad version range.
+One additional hash-guarded test-only adaptation repairs the frozen inbox HTTP
+fixture: accepted sockets explicitly enter blocking mode and consume one complete
+request under one eight-second total accept/request budget and 8 KiB
+bound. It preserves every operation assertion, including read-only reconciliation
+after an unknown write. The original file, injected helper and complete patched
+file each have pinned SHA-256 values. Fragmented requests, truncated bodies and
+expired/stalled deadlines have finite controls. This mirrors the accepted-stream
+repair already made on the newer application stack in `ffc575b6`; the pinned
+production source, native codec and application WAL gate remain byte-identical.
 Its separate committed
 `regression.lock` keeps the native compatibility run reproducible. It runs the
 complete `test-harness` suite. The application's Store remains **unkeyed** in

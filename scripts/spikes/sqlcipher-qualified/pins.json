@@ -28,5 +28,11 @@
   "amalgamation": {
     "sqlite3.c": "8640c653acadf665cce6331646f60b5b74a4690746f2c4a2d8f688a0570a0c0c",
     "sqlite3.h": "8a9d1bff44d75174ca6dea3ea9bac50a6104d86facb566647b8bb839375b7b3a"
+  },
+  "http_fixture_adaptation": {
+    "path": "src/storage/provider_inbox_actions/tests.rs",
+    "source_sha256": "f9eb898e345ba814de3c328579592499b93a261432d050a68b5326344b47456a",
+    "helper_sha256": "a9504954339b4f45cc80ce8eb5620fa5bb300a25a9958e3c86a9a2b8b6062134",
+    "patched_sha256": "f80d931f4ec5ba4e93097fe79e3d7dce6e2acc99f5f2851a87a452d9664d9de3"
   }
 }

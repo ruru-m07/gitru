@@ -9,10 +9,41 @@ import unittest
 from unittest.mock import patch
 
 import prepare
+import regression_fixture
 import run
 
 
 class VerificationTests(unittest.TestCase):
+    def test_http_fixture_adaptation_requires_exact_source_helper_and_result(self):
+        pins = prepare.PINS["http_fixture_adaptation"]
+        original = subprocess.check_output([
+            "git", "show", prepare.PINS["collaboration_commit"] + ":crates/collaboration/" + pins["path"],
+        ], cwd=prepare.ROOT.parents[2])
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            path = target / pins["path"]
+            path.parent.mkdir(parents=True)
+            path.write_bytes(original)
+            regression_fixture.apply(target)
+            self.assertEqual(prepare.digest(path), pins["patched_sha256"])
+            self.assertIn(b"qualification_http_request(&mut s, deadline)", path.read_bytes())
+            path.write_bytes(original + b"\n")
+            with self.assertRaisesRegex(RuntimeError, "SHA-256 mismatch"):
+                regression_fixture.apply(target)
+            self.assertEqual(path.read_bytes(), original + b"\n")
+            path.write_bytes(original)
+            with patch.object(regression_fixture, "NEW", regression_fixture.NEW + "\n"):
+                with self.assertRaisesRegex(RuntimeError, "differs from reviewed result"):
+                    regression_fixture.apply(target)
+            self.assertEqual(path.read_bytes(), original)
+            helper = target / "helper"
+            helper.mkdir()
+            (helper / "inbox_http_fixture.rs").write_bytes(b"unreviewed fixture code")
+            with patch.object(prepare, "ROOT", helper):
+                with self.assertRaisesRegex(RuntimeError, "SHA-256 mismatch"):
+                    regression_fixture.apply(target)
+            self.assertEqual(path.read_bytes(), original)
+
     def test_wrong_artifact_hash_is_refused(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "sqlite3.c"
