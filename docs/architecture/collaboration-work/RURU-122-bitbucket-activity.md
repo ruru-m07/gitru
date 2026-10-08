@@ -81,3 +81,13 @@ Run focused/full native tests, strict Clippy/fmt, frontend lint/types/tests/buil
 and normal typegen semantic verification as appropriate. Record source review,
 local checks, exact-head remote CI and live/native-window evidence separately.
 Publish a signed scoped draft stacked on PR #197; do not merge any PR.
+
+## Independent identity review
+
+Observation hashes include the fixed provider/instance and key-version domain,
+account partition, repository UUID and numeric PR ID, never just a local
+projection ID. Event timestamps normalize to UTC nanoseconds before hashing.
+Comment-ID and observation-hash namespaces remain distinct. UI copy describes
+partial observed activity without promising newest-first ordering: the public
+endpoint has no ordering guarantee in this contract, and records beyond the
+bounded first twenty pages may never be observed.
