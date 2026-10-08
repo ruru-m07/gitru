@@ -154,5 +154,5 @@ jobs:
         if: always()
         with:
           name: packaged-keyed-harness-${{ runner.os }}
-          path: artifacts/e2e-harness-performance/**
+          path: artifacts/collaboration-performance/**
           if-no-files-found: warn

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import shutil
 import subprocess
 import sys
@@ -25,9 +26,9 @@ def main() -> None:
     config = build / "cargo-config.toml"
     config.write_text(
         "[patch.crates-io]\n"
-        f'sqlx-sqlite = {{ path = "{CONNECTIONS / "target/verified/sqlx-sqlite"}" }}\n'
-        f'libsqlite3-sys = {{ path = "{QUALIFIED / "target/verified/libsqlite3-sys"}" }}\n'
-        f'openssl-src = {{ path = "{QUALIFIED / "target/verified/openssl-src"}" }}\n'
+        f'sqlx-sqlite = {{ path = {json.dumps(str(CONNECTIONS / "target/verified/sqlx-sqlite"))} }}\n'
+        f'libsqlite3-sys = {{ path = {json.dumps(str(QUALIFIED / "target/verified/libsqlite3-sys"))} }}\n'
+        f'openssl-src = {{ path = {json.dumps(str(QUALIFIED / "target/verified/openssl-src"))} }}\n'
     )
     cargo = shutil.which("cargo")
     if cargo is None:
