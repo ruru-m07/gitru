@@ -204,3 +204,34 @@ checks pass. Logs: `/tmp/gitru-r139-http-source-tests.log`,
 These are local macOS results; the repaired Windows full matrix and cross-file
 reader jobs require a new remote run. No full Windows success is inferred from
 this focused local repair.
+
+### Windows helper checkout provenance repair — 8 October 2026
+
+Exact head `71c7722206c0a8e94535d88da619d68e9942078a` ran qualification in
+[run 37737457140](https://github.com/ruru-m07/gitru/actions/runs/37737457140).
+Windows job `113180340692` reports `NATIVE_PROBE_PASS`, including SQLCipher
+4.19.0 / SQLite 3.53.4 / OpenSSL 3.6.5, the unchanged WAL gate, keyed readers,
+schema22, backup/reopen and page-tamper controls. The later regression preparation
+failed before any copied tests because the checkout converted the new helper to
+CRLF. Its observed SHA-256 `bd9493613ddce50a723f8df99b01103aa808a4d469ca09ef78111070ea34e62a`
+is exactly the CRLF transform of the pinned LF helper hash
+`a9504954339b4f45cc80ce8eb5620fa5bb300a25a9958e3c86a9a2b8b6062134`.
+This is a rejected source-provenance input, not an encrypted probe failure.
+
+One path-specific Git attribute now pins that helper's checkout to LF. The
+runner's strict helper/source/result hashes, all fixture bytes, source pins,
+crypto dependencies and native code are unchanged. An actual temporary Git
+repository with `core.autocrlf=true` reproduces the failing byte mismatch before
+the attribute and passes after it. It verifies that unrelated text still becomes
+CRLF, the helper hash and full adapted result stay exact, and a modified helper
+still fails before changing the copied fixture. The native platform jobs now
+run the source-boundary suite before heavy compilation; `.gitattributes` changes
+also trigger qualification.
+
+Local evidence: all **8 Python source-boundary controls** pass, including the
+new red-to-green checkout reproduction. Python compilation, workflow YAML parse,
+the exact helper Git attribute/hash and `git diff --check` pass. Logs are
+`/tmp/gitru-r139-helper-eol-red.log` and
+`/tmp/gitru-r139-helper-eol-green.log`. No new full native run is claimed for this
+checkout-only correction; its new exact-head remote Windows/regression/portability
+results remain pending. The earlier successful `61548a0d` run stays separate.

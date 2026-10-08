@@ -55,6 +55,11 @@ file each have pinned SHA-256 values. Fragmented requests, truncated bodies and
 expired/stalled deadlines have finite controls. This mirrors the accepted-stream
 repair already made on the newer application stack in `ffc575b6`; the pinned
 production source, native codec and application WAL gate remain byte-identical.
+The helper has an explicit `text eol=lf` Git attribute because its checkout bytes
+are part of that provenance check. A real `core.autocrlf=true` checkout control
+proves its unchanged hash and complete adaptation, while unrelated text still
+converts to CRLF and injected helper changes remain rejected. Native CI runs
+these source-boundary controls before compilation on every platform.
 Its separate committed
 `regression.lock` keeps the native compatibility run reproducible. It runs the
 complete `test-harness` suite. The application's Store remains **unkeyed** in

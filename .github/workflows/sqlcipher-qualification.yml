@@ -3,6 +3,7 @@ name: SQLCipher qualification
 on:
   pull_request:
     paths:
+      - .gitattributes
       - scripts/spikes/sqlcipher-qualified/**
       - crates/collaboration/migrations/**
       - .github/workflows/sqlcipher-qualification.yml
@@ -59,6 +60,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Verify source boundaries on the native checkout
+        working-directory: scripts/spikes/sqlcipher-qualified
+        run: python -m unittest -v test_prepare.py
       - uses: ./.github/actions/setup-rust
         with:
           components: clippy, rustfmt

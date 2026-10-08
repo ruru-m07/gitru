@@ -14,6 +14,53 @@ import run
 
 
 class VerificationTests(unittest.TestCase):
+    def test_pinned_http_helper_stays_exact_through_autocrlf_checkout(self):
+        pins = prepare.PINS["http_fixture_adaptation"]
+        expected = (prepare.ROOT / "inbox_http_fixture.rs").read_bytes()
+        original = subprocess.check_output([
+            "git", "show", prepare.PINS["collaboration_commit"] + ":crates/collaboration/" + pins["path"],
+        ], cwd=prepare.ROOT.parents[2])
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory) / "repository"
+            repository.mkdir()
+            def git(*arguments):
+                return subprocess.check_output(["git", *arguments], cwd=repository)
+            git("init", "--quiet")
+            git("config", "core.autocrlf", "false")
+            attributes = prepare.ROOT.parents[2] / ".gitattributes"
+            (repository / ".gitattributes").write_bytes(attributes.read_bytes())
+            relative = Path("scripts/spikes/sqlcipher-qualified/inbox_http_fixture.rs")
+            helper = repository / relative
+            helper.parent.mkdir(parents=True)
+            helper.write_bytes(expected)
+            ordinary = repository / "ordinary.txt"
+            ordinary.write_bytes(b"ordinary checkout\nline two\n")
+            git("add", ".gitattributes", relative.as_posix(), "ordinary.txt")
+            git("-c", "user.name=Qualification Fixture", "-c", "user.email=fixture@example.invalid",
+                "commit", "--no-gpg-sign", "--quiet", "-m", "fixture")
+            git("config", "core.autocrlf", "true")
+            helper.unlink()
+            ordinary.unlink()
+            git("checkout", "HEAD", "--", relative.as_posix(), "ordinary.txt")
+            self.assertIn(b"\r\n", ordinary.read_bytes())
+            self.assertEqual(helper.read_bytes(), expected)
+            prepare.verify(helper, pins["helper_sha256"])
+            target = repository / "regression"
+            path = target / pins["path"]
+            path.parent.mkdir(parents=True)
+            path.write_bytes(original)
+            with patch.object(prepare, "ROOT", helper.parent):
+                regression_fixture.apply(target)
+            self.assertEqual(prepare.digest(path), pins["patched_sha256"])
+            # The attribute preserves bytes; verification still rejects an
+            # unreviewed byte instead of normalizing it into the pinned source.
+            helper.write_bytes(expected + b" ")
+            path.write_bytes(original)
+            with patch.object(prepare, "ROOT", helper.parent):
+                with self.assertRaisesRegex(RuntimeError, "SHA-256 mismatch"):
+                    regression_fixture.apply(target)
+            self.assertEqual(path.read_bytes(), original)
+
     def test_http_fixture_adaptation_requires_exact_source_helper_and_result(self):
         pins = prepare.PINS["http_fixture_adaptation"]
         original = subprocess.check_output([
