@@ -36,6 +36,8 @@ pub(crate) mod diagnostics;
 pub(crate) mod facet_reconciliation;
 mod identities;
 mod inbox;
+#[cfg(feature = "native-keyed-store")]
+pub mod keyed;
 mod local_links;
 pub(crate) mod notification_subjects;
 pub(crate) mod provider_inbox_actions;
@@ -82,6 +84,8 @@ struct Inner {
     // lease. Keeping the file avoids unlink/recreate races between instances.
     writer_lease: Mutex<Option<WriterLease>>,
     shutdown: Mutex<()>,
+    #[cfg(feature = "native-keyed-store")]
+    keyed: Option<Arc<dyn keyed::KeyedStoreFactory>>,
 }
 
 pub(crate) struct WriterLease {
@@ -133,6 +137,7 @@ impl Store {
             .map_err(|_| CollaborationError::storage())?
     }
     async fn open_owned(path: &Path) -> Result<Self> {
+        crate::database_keys::refuse_unkeyed_path(path)?;
         prepare_private_path(path)?;
         let writer_lease = acquire_writer_lease(path)?;
         crate::recovery::require_no_pending_restore(path)?;
@@ -160,40 +165,7 @@ impl Store {
         pending.connection = Some(writer);
         let initialized = async {
             let writer = pending.connection.as_mut().expect("new SQLite writer");
-            secure_database_files(path)?;
-            let version: String = sqlx::query_scalar("SELECT sqlite_version()")
-                .fetch_one(&mut *writer)
-                .await
-                .map_err(storage_error)?;
-            if !fixed_sqlite_version(&version) {
-                return Err(CollaborationError::new(
-                    ErrorCode::Storage,
-                    "Collaboration requires SQLite with the WAL-reset fix",
-                ));
-            }
-            let fts: i64 = sqlx::query_scalar("SELECT sqlite_compileoption_used('ENABLE_FTS5')")
-                .fetch_one(&mut *writer)
-                .await
-                .map_err(storage_error)?;
-            if fts != 1 {
-                return Err(CollaborationError::new(
-                    ErrorCode::Storage,
-                    "Collaboration requires SQLite FTS5",
-                ));
-            }
-            MIGRATIONS
-            .run_direct(None, &mut *writer, false)
-            .await
-            .map_err(|_| {
-                CollaborationError::new(
-                    ErrorCode::Storage,
-                    "Collaboration database migration failed; the existing database was preserved",
-                )
-            })?;
-            pull_commits::cleanup_abandoned_in(&mut *writer).await?;
-            pull_files::cleanup_abandoned_in(&mut *writer).await?;
-            issue_metadata_catalog::cleanup_abandoned_in(&mut *writer).await?;
-            secure_database_files(path)?;
+            let version = initialize_writer(writer, path).await?;
             let readers = SqlitePoolOptions::new()
                 .max_connections(3)
                 .min_connections(1)
@@ -225,6 +197,8 @@ impl Store {
                 noop_wal_checkpoint_supported: sqlite_version_at_least(&version, (3, 51, 0)),
                 writer_lease: Mutex::new(pending.lease.take()),
                 shutdown: Mutex::new(()),
+                #[cfg(feature = "native-keyed-store")]
+                keyed: None,
             }),
         })
     }
@@ -235,6 +209,10 @@ impl Store {
         &self,
         path: impl AsRef<Path>,
     ) -> Result<crate::recovery::BackupSummary> {
+        #[cfg(feature = "native-keyed-store")]
+        if self.inner.keyed.is_some() {
+            return Err(keyed::keyed_recovery_required());
+        }
         let mut writer = self.inner.writer.acquire().await?;
         crate::recovery::backup_from(&mut writer, path.as_ref()).await
     }
@@ -2118,3 +2096,41 @@ pub(crate) mod workflow_state;
 
 #[cfg(test)]
 mod workflow_state_tests;
+
+async fn initialize_writer(writer: &mut SqliteConnection, path: &Path) -> Result<String> {
+    secure_database_files(path)?;
+    let version: String = sqlx::query_scalar("SELECT sqlite_version()")
+        .fetch_one(&mut *writer)
+        .await
+        .map_err(storage_error)?;
+    if !fixed_sqlite_version(&version) {
+        return Err(CollaborationError::new(
+            ErrorCode::Storage,
+            "Collaboration requires SQLite with the WAL-reset fix",
+        ));
+    }
+    let fts: i64 = sqlx::query_scalar("SELECT sqlite_compileoption_used('ENABLE_FTS5')")
+        .fetch_one(&mut *writer)
+        .await
+        .map_err(storage_error)?;
+    if fts != 1 {
+        return Err(CollaborationError::new(
+            ErrorCode::Storage,
+            "Collaboration requires SQLite FTS5",
+        ));
+    }
+    MIGRATIONS
+        .run_direct(None, &mut *writer, false)
+        .await
+        .map_err(|_| {
+            CollaborationError::new(
+                ErrorCode::Storage,
+                "Collaboration database migration failed; the existing database was preserved",
+            )
+        })?;
+    pull_commits::cleanup_abandoned_in(&mut *writer).await?;
+    pull_files::cleanup_abandoned_in(&mut *writer).await?;
+    issue_metadata_catalog::cleanup_abandoned_in(&mut *writer).await?;
+    secure_database_files(path)?;
+    Ok(version)
+}

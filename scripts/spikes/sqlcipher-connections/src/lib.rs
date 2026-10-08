@@ -3,7 +3,7 @@
 //! The SQLx adaptation retains the initializer's capture on the actual C handle,
 //! including failed startup and cancelled futures. This factory does not publish
 //! Ready, migrate application schemas, choose a platform vault, or convert data.
-use collaboration::database_keys::{DatabaseKeyMode, DatabaseKeySession};
+use collaboration::database_keys::{DatabaseKeyIdentity, DatabaseKeyMode, DatabaseKeySession};
 use sqlx::{
     ConnectOptions, Connection, SqliteConnection, SqlitePool,
     sqlite::{
@@ -16,6 +16,7 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
+use tokio::sync::Notify;
 
 #[cfg(test)]
 mod tests;
@@ -68,13 +69,20 @@ struct Admission {
     open: usize,
     faulted: bool,
     creation_consumed: bool,
+    retiring: bool,
+    store_claimed: bool,
+    session: Option<Arc<DatabaseKeySession>>,
 }
 struct FactoryState {
-    session: DatabaseKeySession,
+    path: std::path::PathBuf,
+    identity: DatabaseKeyIdentity,
+    mode: DatabaseKeyMode,
     admission: Mutex<Admission>,
+    released: Notify,
 }
 struct HandleOwner {
     state: Arc<FactoryState>,
+    session: Option<Arc<DatabaseKeySession>>,
 }
 impl fmt::Debug for HandleOwner {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -83,17 +91,25 @@ impl fmt::Debug for HandleOwner {
 }
 impl HandleOwner {
     fn reserve(state: Arc<FactoryState>) -> Result<Self, sqlx::Error> {
-        {
+        let session = {
             let mut admission = state
                 .admission
                 .lock()
                 .map_err(|_| sqlx::Error::Protocol("Native admission unavailable".into()))?;
-            if admission.faulted || admission.open >= MAX_NATIVE_HANDLES {
+            if admission.faulted || admission.retiring || admission.open >= MAX_NATIVE_HANDLES {
                 return Err(sqlx::Error::Protocol("Native admission refused".into()));
             }
+            let session = admission
+                .session
+                .clone()
+                .ok_or_else(|| sqlx::Error::Protocol("Native admission closed".into()))?;
             admission.open += 1;
-        }
-        Ok(Self { state })
+            session
+        };
+        Ok(Self {
+            state,
+            session: Some(session),
+        })
     }
 }
 // SAFETY: initialization keys only the exclusive live handle. The reservation
@@ -113,7 +129,12 @@ unsafe impl SqliteNativeHandleOwner for HandleOwner {
         {
             return Err(sqlx::Error::Protocol("Native admission retired".into()));
         }
-        let key = self.state.session.key().expose();
+        let key = self
+            .session
+            .as_ref()
+            .expect("reserved native owner")
+            .key()
+            .expose();
         // SAFETY: the driver supplies exclusive access before any SQL.
         let result = unsafe {
             libsqlite3_sys::sqlite3_key(handle.as_ptr(), key.as_ptr().cast(), key.len() as i32)
@@ -134,10 +155,13 @@ unsafe impl SqliteNativeHandleOwner for HandleOwner {
 }
 impl Drop for HandleOwner {
     fn drop(&mut self) {
-        // Driver drops this only after successful close or before native open.
+        // Acknowledge only AFTER releasing this owner's session reference. The
+        // SQLx close message can precede worker option destruction.
+        drop(self.session.take());
         if let Ok(mut admission) = self.state.admission.lock() {
             admission.open -= 1;
         }
+        self.state.released.notify_waiters();
     }
 }
 impl fmt::Debug for KeyedConnectionFactory {
@@ -150,8 +174,14 @@ impl KeyedConnectionFactory {
     pub fn new(session: DatabaseKeySession) -> Self {
         Self {
             state: Arc::new(FactoryState {
-                session,
-                admission: Mutex::new(Admission::default()),
+                path: session.path().to_owned(),
+                identity: session.identity(),
+                mode: session.mode(),
+                admission: Mutex::new(Admission {
+                    session: Some(Arc::new(session)),
+                    ..Admission::default()
+                }),
+                released: Notify::new(),
             }),
         }
     }
@@ -167,7 +197,7 @@ impl KeyedConnectionFactory {
                 .lock()
                 .map_err(|_| KeyedError::Admission)?;
             let allowed = role == HandleRole::Writer
-                && self.state.session.mode() == DatabaseKeyMode::CreateNew
+                && self.state.mode == DatabaseKeyMode::CreateNew
                 && !admission.creation_consumed;
             if allowed {
                 admission.creation_consumed = true;
@@ -175,9 +205,8 @@ impl KeyedConnectionFactory {
             allowed
         };
         let state = self.state.clone();
-        let session = &state.session;
         let options = SqliteConnectOptions::new()
-            .filename(session.path())
+            .filename(&state.path)
             .read_only(role.read_only())
             .create_if_missing(create)
             .foreign_keys(true)
@@ -207,10 +236,53 @@ impl KeyedConnectionFactory {
             .admission
             .lock()
             .map_err(|_| KeyedError::Admission)?;
-        if admission.faulted || admission.open >= MAX_NATIVE_HANDLES {
+        if admission.faulted || admission.retiring || admission.open >= MAX_NATIVE_HANDLES {
             return Err(KeyedError::Admission);
         }
         Ok(())
+    }
+
+    /// Permanently stop all admission, then release the key/lease only after
+    /// every native owner acknowledges destruction. Closed option clones do not
+    /// retain the session. Failure keeps it retained and never reopens admission.
+    pub async fn retire(&self) -> Result<(), KeyedError> {
+        {
+            let mut admission = self
+                .state
+                .admission
+                .lock()
+                .map_err(|_| KeyedError::Closed)?;
+            admission.retiring = true;
+        }
+        tokio::time::timeout(Duration::from_secs(30), async {
+            loop {
+                let notified = self.state.released.notified();
+                tokio::pin!(notified);
+                notified.as_mut().enable();
+                let released = {
+                    let mut admission = self
+                        .state
+                        .admission
+                        .lock()
+                        .map_err(|_| KeyedError::Closed)?;
+                    if admission.faulted {
+                        return Err(KeyedError::Closed);
+                    }
+                    if admission.open == 0 {
+                        Some(admission.session.take())
+                    } else {
+                        None
+                    }
+                };
+                if let Some(session) = released {
+                    drop(session);
+                    return Ok(());
+                }
+                notified.await;
+            }
+        })
+        .await
+        .map_err(|_| KeyedError::Closed)?
     }
 
     pub async fn open(&self, role: HandleRole) -> Result<KeyedConnection, KeyedError> {
@@ -364,4 +436,130 @@ async fn authenticate(connection: &mut SqliteConnection) -> Result<(), KeyedErro
         }
     }
     Ok(())
+}
+
+fn store_error(_: KeyedError) -> collaboration::CollaborationError {
+    collaboration::CollaborationError::new(
+        collaboration::ErrorCode::Storage,
+        "Native keyed Store could not complete; files were preserved",
+    )
+}
+// SAFETY: every returned handle uses the reviewed C owner hook; factory retirement
+// rejects all new owners and waits for actual session-reference release.
+#[async_trait::async_trait]
+unsafe impl collaboration::storage::keyed::KeyedStoreFactory for KeyedConnectionFactory {
+    fn path(&self) -> &std::path::Path {
+        &self.state.path
+    }
+    fn identity(&self) -> DatabaseKeyIdentity {
+        self.state.identity.clone()
+    }
+    fn creates_new(&self) -> bool {
+        self.state.mode == DatabaseKeyMode::CreateNew
+    }
+    fn claim_store(&self) -> Result<(), collaboration::CollaborationError> {
+        let mut state = self
+            .state
+            .admission
+            .lock()
+            .map_err(|_| store_error(KeyedError::Admission))?;
+        if state.store_claimed || state.retiring || state.faulted || state.open != 0 {
+            return Err(store_error(KeyedError::Admission));
+        }
+        state.store_claimed = true;
+        Ok(())
+    }
+    fn stop_admission(&self) -> Result<(), collaboration::CollaborationError> {
+        self.state
+            .admission
+            .lock()
+            .map_err(|_| store_error(KeyedError::Closed))?
+            .retiring = true;
+        Ok(())
+    }
+    async fn writer(&self) -> Result<SqliteConnection, collaboration::CollaborationError> {
+        Ok(self
+            .open(HandleRole::Writer)
+            .await
+            .map_err(store_error)?
+            .connection
+            .take()
+            .expect("owned writer"))
+    }
+    async fn readers(&self) -> Result<SqlitePool, collaboration::CollaborationError> {
+        Ok(self.reader_pool().await.map_err(store_error)?.pool)
+    }
+    async fn maintenance(&self) -> Result<SqliteConnection, collaboration::CollaborationError> {
+        Ok(self
+            .open(HandleRole::Maintenance)
+            .await
+            .map_err(store_error)?
+            .connection
+            .take()
+            .expect("owned maintenance"))
+    }
+    async fn verify_ready(&self) -> Result<(), collaboration::CollaborationError> {
+        let session = self
+            .state
+            .admission
+            .lock()
+            .map_err(|_| store_error(KeyedError::Admission))?
+            .session
+            .clone()
+            .ok_or_else(|| store_error(KeyedError::Closed))?;
+        session
+            .verify_retained(self)
+            .await
+            .map_err(|_| store_error(KeyedError::WrongKeyOrCorrupt))
+    }
+    async fn retire(&self) -> Result<(), collaboration::CollaborationError> {
+        KeyedConnectionFactory::retire(self)
+            .await
+            .map_err(store_error)
+    }
+}
+#[async_trait::async_trait]
+impl collaboration::database_keys::RetainedDatabaseKeyVerifier for KeyedConnectionFactory {
+    async fn verify(
+        &self,
+        session: Arc<DatabaseKeySession>,
+    ) -> Result<(), collaboration::database_keys::DatabaseKeyError> {
+        use collaboration::database_keys::DatabaseKeyError;
+        let mut connection = self
+            .open(HandleRole::Verifier)
+            .await
+            .map_err(|_| DatabaseKeyError::WrongKeyOrCorrupt)?;
+        let result = async {
+            collaboration::storage::keyed::verify_identity(
+                connection.connection(),
+                &session.identity(),
+            )
+            .await
+            .map_err(|_| DatabaseKeyError::WrongKeyOrCorrupt)?;
+            let integrity: String = sqlx::query_scalar("PRAGMA quick_check")
+                .fetch_one(connection.connection())
+                .await
+                .map_err(|_| DatabaseKeyError::WrongKeyOrCorrupt)?;
+            if integrity != "ok" {
+                return Err(DatabaseKeyError::WrongKeyOrCorrupt);
+            }
+            if sqlx::query("PRAGMA foreign_key_check")
+                .fetch_optional(connection.connection())
+                .await
+                .map_err(|_| DatabaseKeyError::WrongKeyOrCorrupt)?
+                .is_some()
+            {
+                return Err(DatabaseKeyError::WrongKeyOrCorrupt);
+            }
+            Ok(())
+        }
+        .await;
+        connection
+            .close()
+            .await
+            .map_err(|_| DatabaseKeyError::Storage)?;
+        // The native owner's session Arc persists until the actual C close. The
+        // passed session also keeps the lease through the outer Ready checks.
+        result
+    }
 }

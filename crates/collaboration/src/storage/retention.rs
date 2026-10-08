@@ -340,6 +340,10 @@ impl Store {
     }
 
     async fn maintenance_connection(&self) -> Result<SqliteConnection> {
+        #[cfg(feature = "native-keyed-store")]
+        if let Some(factory) = &self.inner.keyed {
+            return factory.maintenance().await;
+        }
         SqliteConnection::connect_with(
             &SqliteConnectOptions::new()
                 .filename(&self.inner.path)

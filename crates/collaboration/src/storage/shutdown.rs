@@ -48,6 +48,10 @@ impl Store {
     /// writer thread has acknowledged shutdown. Every clone shares this fence.
     pub async fn close(&self) -> Result<()> {
         self.inner.writer.closing.store(true, Ordering::Release);
+        #[cfg(feature = "native-keyed-store")]
+        if let Some(factory) = &self.inner.keyed {
+            factory.stop_admission()?;
+        }
         let owned = self.clone();
         tokio::spawn(async move { owned.close_owned().await })
             .await
@@ -61,6 +65,10 @@ impl Store {
             // optimize_on_close is disabled, so close unconditionally awaits
             // SQLx's worker-termination acknowledgement, including checkpoint.
             connection.close().await.map_err(storage_error)?;
+        }
+        #[cfg(feature = "native-keyed-store")]
+        if let Some(factory) = &self.inner.keyed {
+            factory.retire().await?;
         }
         self.inner.writer_lease.lock().await.take();
         Ok(())
@@ -91,7 +99,13 @@ impl PendingWriter {
 }
 impl Drop for PendingWriter {
     fn drop(&mut self) {
-        close_after_drop(None, self.connection.take(), self.lease.take());
+        close_after_drop(
+            None,
+            self.connection.take(),
+            self.lease.take(),
+            #[cfg(feature = "native-keyed-store")]
+            None,
+        );
     }
 }
 impl Drop for Inner {
@@ -100,6 +114,8 @@ impl Drop for Inner {
             Some(self.readers.clone()),
             self.writer.connection.get_mut().take(),
             self.writer_lease.get_mut().take(),
+            #[cfg(feature = "native-keyed-store")]
+            self.keyed.take(),
         );
     }
 }
@@ -107,8 +123,16 @@ fn close_after_drop(
     readers: Option<SqlitePool>,
     connection: Option<SqliteConnection>,
     lease: Option<WriterLease>,
+    #[cfg(feature = "native-keyed-store")] keyed: Option<Arc<dyn super::keyed::KeyedStoreFactory>>,
 ) {
-    if connection.is_none() && lease.is_none() {
+    #[cfg(feature = "native-keyed-store")]
+    if let Some(factory) = &keyed {
+        let _ = factory.stop_admission();
+    }
+    let no_keyed = true;
+    #[cfg(feature = "native-keyed-store")]
+    let no_keyed = no_keyed && keyed.is_none();
+    if connection.is_none() && lease.is_none() && no_keyed {
         return;
     }
     // A dedicated thread also works while the originating runtime shuts down.
@@ -128,6 +152,11 @@ fn close_after_drop(
                     let closed = match connection {
                         Some(connection) => connection.close().await.is_ok(),
                         None => true,
+                    };
+                    #[cfg(feature = "native-keyed-store")]
+                    let closed = match keyed {
+                        Some(factory) if closed => factory.retire().await.is_ok(),
+                        _ => closed,
                     };
                     if closed {
                         drop(lease.0.take());

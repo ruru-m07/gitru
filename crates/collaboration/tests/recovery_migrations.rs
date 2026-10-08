@@ -875,7 +875,7 @@ INSERT INTO cache_retention_entries VALUES('a','pull','comments',123,2);").execu
             .fetch_one(&mut db)
             .await
             .unwrap(),
-        25
+        26
     );
     db.close().await.unwrap();
 }
@@ -1000,7 +1000,7 @@ async fn failed_review_submission_migration_preserves_v23_authorship_and_retries
             .fetch_one(&mut db)
             .await
             .unwrap(),
-        25
+        26
     );
     db.close().await.unwrap();
 }
@@ -1107,7 +1107,7 @@ INSERT INTO issue_submissions VALUES('a','22222222-2222-4222-8222-222222222222',
             .fetch_one(&mut db)
             .await
             .unwrap(),
-        25
+        26
     );
     assert!(
         sqlx::query("PRAGMA foreign_key_check")

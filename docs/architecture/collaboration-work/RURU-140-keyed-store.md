@@ -127,3 +127,52 @@ previous successful source qualification and any new local Store tests.
 The dependency composite uses R134 `db04b366198ef17f44bce7a0243626784fe9948f`
 and PR202 `8d8073f5da878684e63cdbc91d0c4d93cd6d86fc`. Only appended architecture
 progress sections conflicted; both were retained. No generated file was edited.
+
+## Implemented bounded slice — 8 October 2026
+
+The native-only `native-keyed-store` feature now connects the qualified factory
+to the real Store without changing `Store::open`, desktop startup or default
+features. The factory supplies the writer, bounded read pool and maintenance
+handles; every handle retains the same key session and exclusive lease through
+actual native destruction. Store close first stops admission, drains SQLx, then
+waits for causal owner release. Drop follows the same fail-closed path.
+
+Migration26 adds one immutable `database_storage_identity` row containing only
+the database UUID, key generation and fixed cipher profile. Plaintext Stores
+leave it empty. Only a fresh keyed reservation inserts it; existing keyed data
+must authenticate and match it before migrations or Ready publication. The
+retained verifier owns the session through its worker and serializes Ready
+publication. Interrupted creation without identity remains preserved and
+refused rather than relabeled.
+
+Ordinary Store/recovery entry points reject any key sidecar, including malformed
+or pending metadata. Keyed backup and current plaintext recovery return an
+explicit key-aware-recovery error before export or staging. This deliberately
+leaves portable encrypted export/restore to RURU-141.
+
+The actual SQLCipher 4.19.0 / SQLite 3.53.4 Store control creates schema26,
+writes an authored account canary through Store, checkpoints through a keyed
+maintenance connection, refuses plaintext backup/recovery and `Store::open`,
+cold reopens with the exact identity/key, and reads the authored value. Raw DB,
+WAL and journal scans contain no canary or plaintext SQLite header. The complete
+factory suite passes 10 tests with one isolated exceptional-close child ignored;
+the child separately proves a failed native close retains one owner, refuses
+new admission and keeps the OS lease busy. Existing database-key units pass 13
+with three explicit platform/subprocess helpers ignored; shutdown passes four;
+plaintext recovery and historical migration integrations pass 14 and 12.
+
+The first full run exposed four stale schema25 assertions plus the guarded-merge
+prerequisite defect already repaired in final R134. After integrating signed
+R134 head `ac87504e`, updating only current-schema expectations to26 and adding a
+plaintext-recovery rejection control, the complete all-feature collaboration run
+passes **1,204 tests / 8 explicit helpers ignored / 0 failed across 27 suites**.
+The new restore-focused delta passes27, and the identity-claim rejection passes
+without changing either input. Strict workspace all-target/all-feature Clippy,
+rustfmt and diff checks pass. The factory's separate exact native suite remains
+10 passed/one isolated helper ignored. No IPC signature changed, so typegen is
+not required. These are local macOS synthetic-key results; exact-head remote
+matrix evidence starts only after publication.
+
+This slice does not activate encryption, convert plaintext databases, implement
+rotation/loss/reset, qualify Windows or Linux production vaults, or provide
+portable backups.

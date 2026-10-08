@@ -504,6 +504,7 @@ dependencies = [
 name = "gitru-keyed-connections"
 version = "0.0.0"
 dependencies = [
+ "async-trait",
  "collaboration",
  "libsqlite3-sys",
  "log",

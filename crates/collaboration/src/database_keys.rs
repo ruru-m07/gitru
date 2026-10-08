@@ -6,6 +6,7 @@
 use std::{
     fmt,
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 use subtle::ConstantTimeEq;
 use zeroize::Zeroize;
@@ -170,18 +171,23 @@ pub enum DatabaseKeyMode {
     Verified,
 }
 
+struct VerificationPhase {
+    journal: files::Journal,
+    mode: DatabaseKeyMode,
+}
 pub struct DatabaseKeySession {
     path: PathBuf,
-    journal: files::Journal,
+    identity: DatabaseKeyIdentity,
+    phase: Mutex<VerificationPhase>,
+    verification: tokio::sync::Mutex<()>,
     key: DatabaseKey,
-    mode: DatabaseKeyMode,
     _lease: crate::storage::WriterLease,
 }
 impl fmt::Debug for DatabaseKeySession {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DatabaseKeySession")
-            .field("identity", &self.journal.identity())
-            .field("mode", &self.mode)
+            .field("identity", &self.identity())
+            .field("mode", &self.mode())
             .finish_non_exhaustive()
     }
 }
@@ -258,17 +264,20 @@ impl DatabaseKeySession {
         };
         Ok(Self {
             path,
-            journal,
+            identity: journal.identity(),
+            phase: Mutex::new(VerificationPhase { journal, mode }),
+            verification: tokio::sync::Mutex::new(()),
             key,
-            mode,
             _lease: lease,
         })
     }
     pub fn identity(&self) -> DatabaseKeyIdentity {
-        self.journal.identity()
+        self.identity.clone()
     }
     pub fn mode(&self) -> DatabaseKeyMode {
-        self.mode
+        self.phase
+            .lock()
+            .map_or(DatabaseKeyMode::VerifyExisting, |phase| phase.mode)
     }
     /// Only a native keyed connection factory may consume these bytes. The
     /// factory must retain this session/lease until its last SQLite handle closes.
@@ -282,37 +291,89 @@ impl DatabaseKeySession {
         &mut self,
         verifier: &dyn DatabaseKeyVerifier,
     ) -> Result<(), DatabaseKeyError> {
-        // A prior success is not authority for this new attempt. This reset also
-        // survives failure or cancellation while the native verifier is held.
-        self.mode = if self.journal.ready {
-            DatabaseKeyMode::VerifyExisting
-        } else {
-            DatabaseKeyMode::VerifyInterruptedCreation
+        let _serial = self.verification.lock().await;
+        let (journal, before) = self.begin_verification()?;
+        verifier
+            .verify(&self.path, &self.identity(), &self.key)
+            .await?;
+        self.finish_verification(journal, before)
+    }
+
+    /// Native keyed factories retain this same session on every worker. A
+    /// cancelled verifier cannot release its key or OS lease while C is alive.
+    pub async fn verify_retained(
+        self: &Arc<Self>,
+        verifier: &dyn RetainedDatabaseKeyVerifier,
+    ) -> Result<(), DatabaseKeyError> {
+        let _serial = self.verification.lock().await;
+        let (journal, before) = self.begin_verification()?;
+        verifier.verify(self.clone()).await?;
+        self.finish_verification(journal, before)
+    }
+
+    fn begin_verification(&self) -> Result<(files::Journal, files::Files), DatabaseKeyError> {
+        let journal = {
+            let mut phase = self.phase.lock().map_err(|_| DatabaseKeyError::Storage)?;
+            phase.mode = if phase.journal.ready {
+                DatabaseKeyMode::VerifyExisting
+            } else {
+                DatabaseKeyMode::VerifyInterruptedCreation
+            };
+            phase.journal.clone()
         };
         files::require_no_pending(&self.path)?;
-        if files::read(&self.path)?.as_ref() != Some(&self.journal) {
+        if files::read(&self.path)?.as_ref() != Some(&journal) {
             return Err(DatabaseKeyError::StaleFilesystem);
         }
         let before = files::observe(&self.path)?;
         if before.database.is_none() {
             return Err(DatabaseKeyError::MissingDatabase);
         }
-        verifier
-            .verify(&self.path, &self.identity(), &self.key)
-            .await?;
+        Ok((journal, before))
+    }
+    fn finish_verification(
+        &self,
+        journal: files::Journal,
+        before: files::Files,
+    ) -> Result<(), DatabaseKeyError> {
         files::require_no_pending(&self.path)?;
         if files::observe(&self.path)? != before
-            || files::read(&self.path)?.as_ref() != Some(&self.journal)
+            || files::read(&self.path)?.as_ref() != Some(&journal)
         {
             return Err(DatabaseKeyError::StaleFilesystem);
         }
-        if !self.journal.ready {
-            let mut ready = self.journal.clone();
+        let mut phase = self.phase.lock().map_err(|_| DatabaseKeyError::Storage)?;
+        if phase.journal != journal {
+            return Err(DatabaseKeyError::StaleFilesystem);
+        }
+        if !journal.ready {
+            let mut ready = journal;
             ready.ready = true;
             files::publish(&self.path, &ready, true)?;
-            self.journal = ready;
+            phase.journal = ready;
         }
-        self.mode = DatabaseKeyMode::Verified;
+        phase.mode = DatabaseKeyMode::Verified;
         Ok(())
     }
+}
+
+/// Trusted native verifier. It must authenticate encrypted identity/schema on
+/// the same retained session and close its native handle before returning.
+/// Callbacks may not turn a successful key call alone into verification.
+#[async_trait::async_trait]
+pub trait RetainedDatabaseKeyVerifier: Send + Sync {
+    async fn verify(&self, session: Arc<DatabaseKeySession>) -> Result<(), DatabaseKeyError>;
+}
+
+/// Refuse the legacy plaintext open/export path whenever keyed ownership metadata
+/// exists, including malformed/pending metadata. Never interpret a parse failure
+/// as permission to create or fall back to plaintext.
+pub(crate) fn refuse_unkeyed_path(path: &Path) -> Result<(), crate::CollaborationError> {
+    if files::require_no_pending(path).is_err() || !matches!(files::read(path), Ok(None)) {
+        return Err(crate::CollaborationError::new(
+            crate::ErrorCode::NotReady,
+            "Keyed storage requires its native database key; files were preserved",
+        ));
+    }
+    Ok(())
 }

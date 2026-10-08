@@ -260,7 +260,7 @@ async fn metadata_history_preserves_exact_proofs_selections_and_quarantine_acros
             )
             .await
             .unwrap();
-        assert_eq!(store.backup_to(&backup).await.unwrap().schema_version, 25);
+        assert_eq!(store.backup_to(&backup).await.unwrap().schema_version, 26);
         store.close().await.unwrap();
         let original = std::fs::read(&backup).unwrap();
         let before = history(&backup).await;

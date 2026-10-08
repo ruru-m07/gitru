@@ -39,7 +39,7 @@ mod review_submission;
 type Result<T> = std::result::Result<T, CollaborationError>;
 // Raising this requires a reviewed restore policy, especially for future outbox
 // tables. Merely adding a migration does not authorize replay of imported data.
-const RESTORE_SCHEMA_POLICY: i64 = 25;
+const RESTORE_SCHEMA_POLICY: i64 = 26;
 const MAX_DATABASE_BYTES: u64 = 512 * 1024 * 1024;
 const SIDECARS: [&str; 3] = ["", "-wal", "-shm"];
 
@@ -154,6 +154,8 @@ impl RecoverySession {
     /// Paths stay native; callers must not expose arbitrary-path IPC commands.
     pub async fn prepare(target: impl AsRef<Path>, backup: impl AsRef<Path>) -> Result<Self> {
         let target = target.as_ref();
+        crate::database_keys::refuse_unkeyed_path(target)?;
+        crate::database_keys::refuse_unkeyed_path(backup.as_ref())?;
         require_regular(target)?;
         prepare_private_path(target)?;
         let lease = acquire_writer_lease(target)?;
@@ -589,6 +591,13 @@ async fn summary(
 }
 
 async fn verify(connection: &mut SqliteConnection) -> Result<i64> {
+    verify_mode(connection, false).await
+}
+#[cfg(feature = "native-keyed-store")]
+pub(crate) async fn verify_keyed(connection: &mut SqliteConnection) -> Result<i64> {
+    verify_mode(connection, true).await
+}
+async fn verify_mode(connection: &mut SqliteConnection, keyed: bool) -> Result<i64> {
     let integrity: Vec<String> = sqlx::query_scalar("PRAGMA integrity_check(1)")
         .fetch_all(&mut *connection)
         .await
@@ -708,6 +717,16 @@ async fn verify(connection: &mut SqliteConnection) -> Result<i64> {
         }
     }
     drop(drafts);
+    if version >= 26
+        && !keyed
+        && sqlx::query("SELECT 1 FROM database_storage_identity LIMIT 1")
+            .fetch_optional(&mut *connection)
+            .await
+            .map_err(|_| invalid_backup())?
+            .is_some()
+    {
+        return Err(invalid_backup());
+    }
     policy::verify_authored(connection, version).await?;
     Ok(version)
 }

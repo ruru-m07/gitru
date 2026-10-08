@@ -694,7 +694,7 @@ async fn synthetic_worker_accepts_then_confirms_exact_review_and_inline_receipts
     let backup = dir.path().join("confirmed-backup.db");
     runtime.shutdown().await.unwrap();
     let current = Store::open(&path).await.unwrap();
-    assert_eq!(current.backup_to(&backup).await.unwrap().schema_version, 25);
+    assert_eq!(current.backup_to(&backup).await.unwrap().schema_version, 26);
     current.close().await.unwrap();
 
     for (name, corruption) in [
@@ -920,7 +920,7 @@ async fn accepted_quota_survives_cold_restart_and_restore_quarantines_without_lo
     assert_eq!(cold.state, DeliveryState::Accepted);
     assert_eq!(cold.attempt_count, 1);
     let summary = runtime.store().backup_to(&backup).await.unwrap();
-    assert_eq!(summary.schema_version, 25);
+    assert_eq!(summary.schema_version, 26);
     runtime.shutdown().await.unwrap();
 
     let session = RecoverySession::prepare(&path, &backup).await.unwrap();

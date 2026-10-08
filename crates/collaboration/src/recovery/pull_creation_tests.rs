@@ -353,7 +353,7 @@ async fn queued_unknown_and_confirmed_pull_history_restores_without_online_send_
             db.close().await.unwrap();
         }
         let summary = store.backup_to(&backup).await.unwrap();
-        assert_eq!(summary.schema_version, 25);
+        assert_eq!(summary.schema_version, 26);
         assert_eq!(summary.drafts, 1);
         assert_eq!(summary.commands, 1);
         store.close().await.unwrap();

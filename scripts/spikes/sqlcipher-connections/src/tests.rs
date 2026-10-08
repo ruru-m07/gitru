@@ -80,6 +80,70 @@ fn canary_absent(path: &Path) {
 const CANARY: &str = "GITRU_OWNED_KEYED_CONNECTION_SYNTHETIC_CANARY_8419";
 
 #[tokio::test]
+async fn current_schema_store_is_keyed_cold_reopenable_and_plaintext_paths_fail_closed() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("collaboration.sqlite");
+    let backup = temp.path().join("backup.sqlite");
+    let vault = Vault::default();
+
+    let factory = Arc::new(KeyedConnectionFactory::new(reserve(&path, &vault)));
+    let identity = factory.state.identity.clone();
+    let store = collaboration::Store::open_keyed(factory.clone())
+        .await
+        .unwrap();
+    assert!(collaboration::Store::open_keyed(factory).await.is_err());
+    assert!(store.accounts().await.unwrap().accounts.is_empty());
+    store
+        .upsert_account(collaboration::RemoteAccount {
+            id: "encrypted-fixture".into(),
+            provider: collaboration::ProviderKind::Github,
+            host: "github.com".into(),
+            actor_id: "8419".into(),
+            login: "encrypted-fixture".into(),
+            display_name: Some(CANARY.into()),
+            authorization_epoch: "1".into(),
+            state: collaboration::AccountState::Active,
+            notifications_supported: true,
+        })
+        .await
+        .unwrap();
+    store.checkpoint_wal_passive().await.unwrap();
+    let recovery_input = temp.path().join("recovery-input.sqlite");
+    std::fs::write(&recovery_input, b"must not be inspected").unwrap();
+    assert!(
+        collaboration::recovery::RecoverySession::prepare(&path, &recovery_input)
+            .await
+            .is_err()
+    );
+    assert!(store.backup_to(&backup).await.is_err());
+    assert!(!backup.exists());
+    store.close().await.unwrap();
+    released(&path, &vault).await;
+
+    let encrypted = std::fs::read(&path).unwrap();
+    assert!(!encrypted.starts_with(b"SQLite format 3\0"));
+    assert!(
+        !encrypted
+            .windows(CANARY.len())
+            .any(|part| part == CANARY.as_bytes())
+    );
+    canary_absent(&path);
+    assert!(collaboration::Store::open(&path).await.is_err());
+
+    let session =
+        DatabaseKeySession::prepare(&path, &vault, DatabaseCreation::ExistingOnly).unwrap();
+    assert_eq!(session.identity(), identity);
+    let reopened = collaboration::Store::open_keyed(Arc::new(KeyedConnectionFactory::new(session)))
+        .await
+        .unwrap();
+    let accounts = reopened.accounts().await.unwrap().accounts;
+    assert_eq!(accounts.len(), 1);
+    assert_eq!(accounts[0].display_name.as_deref(), Some(CANARY));
+    reopened.close().await.unwrap();
+    released(&path, &vault).await;
+}
+
+#[tokio::test]
 async fn actual_cipher_all_roles_three_readers_replacement_and_cold_reopen() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("data.sqlite");
@@ -189,7 +253,7 @@ async fn wrong_key_and_plaintext_refused_without_replacement_or_ready() {
     let path = temp.path().join("data.sqlite");
     let vault = Vault::default();
     let factory = KeyedConnectionFactory::new(reserve(&path, &vault));
-    let reference = factory.state.session.identity().vault_reference();
+    let reference = factory.state.identity.vault_reference();
     let mut writer = factory.open(HandleRole::Writer).await.unwrap();
     sqlx::query("CREATE TABLE sample(v)")
         .execute(writer.connection())
@@ -335,14 +399,21 @@ async fn hook_runs_before_first_sql_and_options_never_contain_key_text() {
     let path = temp.path().join("trace.sqlite");
     let vault = Vault::default();
     let factory = KeyedConnectionFactory::new(reserve(&path, &vault));
-    let key_hex = factory
+    let key = factory
         .state
+        .admission
+        .lock()
+        .unwrap()
         .session
+        .clone()
+        .unwrap();
+    let key_hex = key
         .key()
         .expose()
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect::<String>();
+    drop(key);
     let options = factory.options(HandleRole::Writer).unwrap();
     assert!(!format!("{options:?} {factory:?}").contains(&key_hex));
     let trace = Arc::new(Mutex::new(Vec::<String>::new()));

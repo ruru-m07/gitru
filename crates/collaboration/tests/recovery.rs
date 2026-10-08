@@ -222,7 +222,7 @@ async fn active_wal_backup_preserves_authored_data_and_physically_redacts_refere
     let before = store.accounts().await.unwrap();
     let summary = store.backup_to(&backup).await.unwrap();
     assert_eq!(summary.revision, before.revision);
-    assert_eq!(summary.schema_version, 25);
+    assert_eq!(summary.schema_version, 26);
     assert_eq!((summary.accounts, summary.drafts), (2, 2));
     assert_eq!(
         summary.sha256,
@@ -260,6 +260,33 @@ async fn active_wal_backup_preserves_authored_data_and_physically_redacts_refere
     assert_authored(&exported, "a", A_BODY, "1").await;
     assert_authored(&exported, "b", B_BODY, "1").await;
     close(exported, &backup).await;
+}
+
+#[tokio::test]
+async fn plaintext_recovery_refuses_a_backup_claiming_keyed_storage_identity() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("target.sqlite");
+    let backup = dir.path().join("claimed-keyed.sqlite");
+    let store = Store::open(&target).await.unwrap();
+    store.backup_to(&backup).await.unwrap();
+    store.close().await.unwrap();
+    drop(store);
+
+    let mut db = connection(&backup, false).await;
+    sqlx::query("INSERT INTO database_storage_identity VALUES(1,1,?,1,?)")
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind("sqlcipher-v4-p4096-k256000-hmacsha512")
+        .execute(&mut db)
+        .await
+        .unwrap();
+    db.close().await.unwrap();
+    let target_before = digest(&target);
+    let backup_before = digest(&backup);
+
+    assert!(RecoverySession::prepare(&target, &backup).await.is_err());
+    assert_eq!(digest(&target), target_before);
+    assert_eq!(digest(&backup), backup_before);
+    assert!(!append(&target, ".recovery.json").exists());
 }
 
 #[tokio::test]
@@ -852,7 +879,7 @@ async fn recognized_historical_v1_restore_migrates_staging_and_preserves_actor_d
     assert_authored(&restored, "c", "Carol draft after disconnect", "63").await;
     assert_authored(&restored, "d", "Dave draft awaiting reconnection", "79").await;
     assert_eq!(restored.accounts().await.unwrap().accounts.len(), 4);
-    assert_eq!(count(&target, "_sqlx_migrations").await, 25);
+    assert_eq!(count(&target, "_sqlx_migrations").await, 26);
     assert_eq!(count(&target, "account_credentials").await, 0);
     assert_eq!(count(&target, "credential_cleanup").await, 0);
     close(restored, &target).await;
