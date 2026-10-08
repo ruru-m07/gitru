@@ -92,3 +92,36 @@ remote CI, packaged UI and live provider checks are not claimed.
 Independent native review verified the reserve algebra, unchanged v1 decoding,
 three admission/claim gates and explicit Omitted metadata. No schema, public DTO,
 command signature or generated binding change is required.
+
+## Final local qualification
+
+Signed source `1a60026c` passes the complete collaboration crate with all features:
+**1,085 Rust test executions / five subprocess-helper ignores** across27 result
+summaries. This includes the actual runtime/SQLite, ten encoded-budget controls,
+confirmed-only state regressions, full recovery/restore/migration matrix, credential
+crash fixtures and performance fixture. Final strict all-target/all-feature
+collaboration Clippy, workspace Rust formatting and diff checks pass. Logs:
+`/tmp/gitru-creation-budget-all-native.log`,
+`/tmp/gitru-creation-budget-final-clippy.log`,
+`/tmp/gitru-creation-budget-fmt.log`.
+
+The first full frontend invocation completed879 passes/one skip but one existing
+cached-issue-details test exceeded its default one-second initial list wait under
+concurrent native load. The unchanged affected suite then passed7/7 in isolation.
+A complete bounded-concurrency rerun (`bun run test --maxWorkers=4`) passed
+**880 tests / one skip across102 files**, with no assertion or production change
+for that startup timeout. All workspace lint/types and the uncached desktop build
+also pass; fourteen affected composer tests include the two new definite-refusal
+controls and the unchanged unknown-IPC identity controls. Logs:
+`/tmp/gitru-creation-budget-frontend.log`,
+`/tmp/gitru-creation-budget-issue-view-delta.log`,
+`/tmp/gitru-creation-budget-frontend-bounded.log`,
+`/tmp/gitru-creation-budget-lint.log`,
+`/tmp/gitru-creation-budget-workspace-types.log`,
+`/tmp/gitru-creation-budget-build.log`.
+
+This is a correctness follow-up stacked on PR199, not a duplicate implementation
+of R120 or completion of all R134 metadata-authoring scope. The schema remains23;
+public command/type shapes are unchanged. Remote CI starts at publication and
+must be assessed at its own exact head. No packaged UI run, authenticated numeric
+mutation compatibility or live provider write is claimed. No PR was merged.
