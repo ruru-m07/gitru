@@ -23,6 +23,11 @@ import type {
   PullFileQuery,
   RemoteAccount,
   ResourceLocator,
+  ReviewDraftPage,
+  ReviewDraftQuery,
+  ReviewDraftSnapshot,
+  SubmittedReviewPage,
+  SubmittedReviewQuery,
   TextEditSnapshot,
   WorkflowStateSnapshot,
 } from "@gitru/commands";
@@ -730,5 +735,46 @@ export function useNotificationSubject(
   return useQuery({
     ...notificationSubjectQueryOptions(account, notificationId),
     enabled,
+  });
+}
+
+/** These queries read local snapshots only; submission is an explicit action. */
+export function reviewDraftQueryOptions(
+  account: RemoteAccount,
+  subjectId: string,
+) {
+  return queryOptions<ReviewDraftSnapshot>({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.reviewDraft(account, subjectId),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).reviewDraft(subjectId, signal),
+  });
+}
+export function reviewDraftsQueryOptions(
+  account: RemoteAccount,
+  query: Omit<ReviewDraftQuery, "account_id">,
+) {
+  return queryOptions<ReviewDraftPage>({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.reviewDrafts(account, {
+      ...query,
+      account_id: account.id,
+    }),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).reviewDrafts(query, signal),
+  });
+}
+export function submittedReviewsQueryOptions(
+  account: RemoteAccount,
+  query: Omit<SubmittedReviewQuery, "account_id">,
+) {
+  return queryOptions<SubmittedReviewPage>({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.submittedReviews(account, {
+      ...query,
+      account_id: account.id,
+    }),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).submittedReviews(query, signal),
   });
 }

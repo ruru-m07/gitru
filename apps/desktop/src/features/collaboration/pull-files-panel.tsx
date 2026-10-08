@@ -10,6 +10,7 @@ import {
   type PullFileDiffRequest,
   type PullFileSnapshot,
   type RemoteAccount,
+  type ReviewDraftAnchorSelection,
 } from "@gitru/collaboration-client";
 import {
   pullFileArtifactQueryOptions,
@@ -35,7 +36,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@gitru/ui/components/dialog";
+import { Input } from "@gitru/ui/components/input";
 import { cn } from "@gitru/ui/lib/utils";
+import { type SelectedLineRange } from "@pierre/diffs";
 import { PatchDiff } from "@pierre/diffs/react";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -63,6 +66,7 @@ import {
   dispatchCapabilityIntent,
 } from "./capability-policy";
 import { localLinkStateLabel } from "./local-repository-links";
+import { useInlineReviewAuthoring } from "./review-submission";
 
 const PAGE_LIMIT = 100;
 const CURSOR_LIMIT = 100;
@@ -668,7 +672,22 @@ function SelectedPullFile({
           This saved file selection changed. Choose the file again.
         </p>
       ) : selectedSnapshot ? (
-        <ArtifactBody artifact={selectedSnapshot.artifact} />
+        <ArtifactBody
+          artifact={selectedSnapshot.artifact}
+          reviewSource={
+            account.state === "active" &&
+            account.provider === "github" &&
+            account.host === "github.com" &&
+            selectedSnapshot.freshness !== "stale" &&
+            selectedSnapshot.artifact?.validation?.kind === "provider"
+              ? {
+                  file_facet_revision: facetRevision,
+                  context,
+                  file_key: file.file_key,
+                }
+              : undefined
+          }
+        />
       ) : null}
       <div className="flex flex-wrap gap-2">
         <Button
@@ -708,7 +727,17 @@ function SelectedPullFile({
   );
 }
 
-function ArtifactBody({ artifact }: { artifact: PullFileArtifact | null }) {
+type ReviewSource = Pick<
+  ReviewDraftAnchorSelection,
+  "file_facet_revision" | "context" | "file_key"
+>;
+function ArtifactBody({
+  artifact,
+  reviewSource,
+}: {
+  artifact: PullFileArtifact | null;
+  reviewSource?: ReviewSource;
+}) {
   if (!artifact) {
     return (
       <p className="text-xs text-muted-foreground">
@@ -725,12 +754,18 @@ function ArtifactBody({ artifact }: { artifact: PullFileArtifact | null }) {
   return (
     <div className="flex min-w-0 flex-col gap-2">
       <p className="text-xs text-muted-foreground">{provenance}</p>
-      <ArtifactContent artifact={artifact} />
+      <ArtifactContent artifact={artifact} reviewSource={reviewSource} />
     </div>
   );
 }
 
-function ArtifactContent({ artifact }: { artifact: PullFileArtifact }) {
+function ArtifactContent({
+  artifact,
+  reviewSource,
+}: {
+  artifact: PullFileArtifact;
+  reviewSource?: ReviewSource;
+}) {
   switch (artifact.content_state) {
     case "text":
       return artifact.unified_text === "" ? (
@@ -741,7 +776,7 @@ function ArtifactContent({ artifact }: { artifact: PullFileArtifact }) {
         <DiffRenderBoundary
           key={`${artifact.generation}:${artifact.file_key}:${artifact.last_access_revision}`}
         >
-          <CachedPatch artifact={artifact} />
+          <CachedPatch artifact={artifact} reviewSource={reviewSource} />
         </DiffRenderBoundary>
       ) : (
         <p className="text-xs text-muted-foreground">
@@ -795,7 +830,44 @@ function ArtifactContent({ artifact }: { artifact: PullFileArtifact }) {
   }
 }
 
-function CachedPatch({ artifact }: { artifact: PullFileArtifact }) {
+function CachedPatch({
+  artifact,
+  reviewSource,
+}: {
+  artifact: PullFileArtifact;
+  reviewSource?: ReviewSource;
+}) {
+  const authoring = useInlineReviewAuthoring();
+  const [selected, setSelected] = useState<SelectedLineRange | null>(null);
+  const id = useId();
+  const canReview = authoring !== null && reviewSource !== undefined;
+  const sameSide =
+    selected?.side !== undefined &&
+    (selected.endSide ?? selected.side) === selected.side;
+  const canAdd =
+    canReview &&
+    selected !== null &&
+    sameSide &&
+    Number.isSafeInteger(selected.start) &&
+    Number.isSafeInteger(selected.end) &&
+    selected.start > 0 &&
+    selected.end > 0;
+  function addComment() {
+    if (!canAdd || !selected || !authoring || !reviewSource) return;
+    const side = selected.side === "deletions" ? "left" : "right";
+    const start = Math.min(selected.start, selected.end);
+    const end = Math.max(selected.start, selected.end);
+    authoring.add({
+      anchor: {
+        ...reviewSource,
+        line: end,
+        side,
+        start_line: start === end ? null : start,
+        start_side: start === end ? null : side,
+      },
+      location: `${side === "left" ? artifact.identity.old_path : artifact.identity.new_path}, ${side} ${start === end ? `line ${end}` : `lines ${start}–${end}`}`,
+    });
+  }
   const { theme } = useTheme();
   const { diffStyle, overflow } = useDiffViewerSettings();
   const patch = renderablePatch(artifact);
@@ -806,6 +878,76 @@ function CachedPatch({ artifact }: { artifact: PullFileArtifact }) {
         theme?.startsWith("dark-") ? "bg-black" : "bg-secondary",
       )}
     >
+      {canReview ? (
+        <div className="space-y-2 border-b p-3 text-xs">
+          <p>
+            Select lines in this provider diff to add a review comment. You can
+            also enter a line below; Gitru verifies it against the saved diff
+            when you save.
+          </p>
+          <div className="flex flex-wrap items-end gap-2">
+            <label htmlFor={`${id}-line`}>
+              Line
+              <Input
+                id={`${id}-line`}
+                className="w-24"
+                type="number"
+                min={1}
+                value={selected?.end ?? ""}
+                onChange={(event) => {
+                  const line = Number(event.target.value);
+                  setSelected({
+                    start: line,
+                    end: line,
+                    side: selected?.side ?? "additions",
+                  });
+                }}
+              />
+            </label>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              aria-pressed={selected?.side === "deletions"}
+              onClick={() =>
+                setSelected((value) => ({
+                  start: value?.start ?? 1,
+                  end: value?.end ?? 1,
+                  side: "deletions",
+                }))
+              }
+            >
+              Old side
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              aria-pressed={selected?.side === "additions"}
+              onClick={() =>
+                setSelected((value) => ({
+                  start: value?.start ?? 1,
+                  end: value?.end ?? 1,
+                  side: "additions",
+                }))
+              }
+            >
+              New side
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={!canAdd}
+              onClick={addComment}
+            >
+              Add inline review comment
+            </Button>
+          </div>
+          {selected && !sameSide ? (
+            <p role="status">Choose a range on one side of the diff.</p>
+          ) : null}
+        </div>
+      ) : null}
       <PatchDiff
         patch={patch}
         className="w-full"
@@ -822,6 +964,16 @@ function CachedPatch({ artifact }: { artifact: PullFileArtifact }) {
           overflow,
           collapsedContextThreshold: 0,
           lineHoverHighlight: "both",
+          enableLineSelection: canReview,
+          onLineSelected: canReview ? setSelected : undefined,
+          onLineNumberClick: canReview
+            ? (line) =>
+                setSelected({
+                  start: line.lineNumber,
+                  end: line.lineNumber,
+                  side: line.annotationSide,
+                })
+            : undefined,
         }}
       />
     </div>

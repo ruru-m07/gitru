@@ -8,6 +8,7 @@ import {
   draftsQueryOptions,
   issueDraftsQueryOptions,
   pullDraftsQueryOptions,
+  reviewDraftsQueryOptions,
   useCollaborationVersion,
 } from "@gitru/collaboration-client/react";
 import { Button } from "@gitru/ui/components/button";
@@ -24,6 +25,7 @@ import { CommentComposer } from "./comment-composer";
 import { RecoveredIssueDraft } from "./issue-creation";
 import { SavedDraftEditor } from "./private-draft";
 import { RecoveredPullDraft } from "./pull-creation";
+import { RecoveredReviewDraft } from "./review-submission";
 import { CollaborationStatePanel } from "./state-panel";
 
 export function DraftRecovery({
@@ -44,7 +46,7 @@ export function DraftRecovery({
   ) => void;
 }) {
   const [draftKind, setDraftKind] = useState<
-    "private" | "comment" | "issue" | "pull"
+    "private" | "comment" | "issue" | "pull" | "review"
   >("private");
   const [accountId, setAccountId] = useState<string | null>(
     accounts[0]?.id ?? null,
@@ -72,7 +74,9 @@ export function DraftRecovery({
               ? "Saved comment drafts"
               : draftKind === "issue"
                 ? "Saved issue drafts"
-                : "Saved pull request drafts"}
+                : draftKind === "pull"
+                  ? "Saved pull request drafts"
+                  : "Saved review drafts"}
         </h2>
         <p className="text-xs text-muted-foreground">
           Recover your text even when an account is disconnected or an item is
@@ -117,6 +121,15 @@ export function DraftRecovery({
           >
             Pull request drafts
           </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={draftKind === "review" ? "secondary" : "outline"}
+            aria-pressed={draftKind === "review"}
+            onClick={() => setDraftKind("review")}
+          >
+            Review drafts
+          </Button>
         </div>
         {account ? (
           <Select
@@ -156,6 +169,8 @@ export function DraftRecovery({
         <AccountDrafts key={account.id} account={account} />
       ) : account && draftKind === "comment" ? (
         <AccountCommentDrafts key={account.id} account={account} />
+      ) : account && draftKind === "review" ? (
+        <AccountReviewDrafts key={account.id} account={account} />
       ) : account && draftKind === "pull" ? (
         <AccountPullDrafts
           key={account.id}
@@ -728,6 +743,129 @@ function AccountDrafts({ account }: { account: RemoteAccount }) {
             }}
           >
             Next drafts
+          </Button>
+        </footer>
+      ) : null}
+    </div>
+  );
+}
+
+function AccountReviewDrafts({ account }: { account: RemoteAccount }) {
+  const [cursors, setCursors] = useState<Array<string | null>>([null]);
+  const [selected, setSelected] = useState<string | null>(null);
+  useEffect(
+    () =>
+      collaboration.subscribeChanges((change) => {
+        if (
+          change.account_id === account.id &&
+          change.scope.startsWith("review_draft:")
+        )
+          setCursors((values) => (values.length > 1 ? [null] : values));
+      }),
+    [account.id],
+  );
+  const query = useQuery(
+    reviewDraftsQueryOptions(account, {
+      cursor: cursors.at(-1) ?? null,
+      limit: 50,
+    }),
+  );
+  const next = query.data?.next_cursor;
+  const canNext =
+    !query.isError &&
+    !query.isFetching &&
+    next != null &&
+    !cursors.includes(next) &&
+    cursors.length < 100;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        className={`grid min-h-0 flex-1 ${selected ? "md:grid-cols-2" : "grid-cols-1"}`}
+      >
+        <div
+          className={`min-w-0 overflow-y-auto ${selected ? "hidden md:block" : ""}`}
+        >
+          {query.isPending ? (
+            <p role="status" className="p-5 text-sm">
+              Loading saved review drafts…
+            </p>
+          ) : query.isError ? (
+            <p role="alert" className="p-5 text-sm">
+              {collaborationErrorMessage(query.error)}
+            </p>
+          ) : !query.data?.drafts.length ? (
+            <p className="p-5 text-sm text-muted-foreground">
+              No saved review drafts for this account.
+            </p>
+          ) : (
+            query.data.drafts.map((draft) => (
+              <Button
+                key={draft.subject_id}
+                variant="ghost"
+                className="h-auto w-full min-w-0 flex-col items-start gap-1 rounded-none border-b px-5 py-3 text-left whitespace-normal"
+                aria-label={`Open review draft ${draft.preview || draft.subject_id}`}
+                aria-pressed={selected === draft.subject_id}
+                onClick={() => setSelected(draft.subject_id)}
+              >
+                <span className="line-clamp-2 w-full break-words text-sm">
+                  {draft.preview || "Review without a summary"}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {draft.event.replace(/_/g, " ")} ·{" "}
+                  {draft.inline_comment_count} inline comments
+                </span>
+                {draft.submission ? (
+                  <span className="text-xs">
+                    Submission tracked in Saved changes
+                  </span>
+                ) : null}
+              </Button>
+            ))
+          )}
+        </div>
+        {selected ? (
+          <article
+            className="min-w-0 overflow-y-auto border-l p-5"
+            aria-label="Recovered review draft"
+          >
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setSelected(null)}
+            >
+              Back to review drafts
+            </Button>
+            <h3 className="my-4 text-sm font-medium">Recovered review draft</h3>
+            <RecoveredReviewDraft
+              key={selected}
+              account={account}
+              subjectId={selected}
+            />
+          </article>
+        ) : null}
+      </div>
+      {next || cursors.length > 1 ? (
+        <footer className="flex shrink-0 gap-2 border-t px-5 py-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={cursors.length <= 1 || query.isFetching}
+            onClick={() => setCursors((values) => values.slice(0, -1))}
+          >
+            Previous review drafts
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={!canNext}
+            onClick={() => {
+              if (canNext && next) setCursors((values) => [...values, next]);
+            }}
+          >
+            Next review drafts
           </Button>
         </footer>
       ) : null}
