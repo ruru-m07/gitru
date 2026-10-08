@@ -175,6 +175,7 @@ fn implemented_read_profile_never_infers_future_permissions() {
                     | ResourceFacet::Reviews
                     | ResourceFacet::Checks
                     | ResourceFacet::Comments
+                    | ResourceFacet::Activity
             ) {
                 CapabilityState::Supported
             } else {
