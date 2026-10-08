@@ -46,3 +46,29 @@ All feature edits belong only to `/Volumes/Lexar/.codex/wt/ruru-128-gitlab-detai
 - Full `make verify` passes at signed product source `241c71bb6fa1488aa65e30382229d35936202ed5`: 762 frontend tests / one platform skip; 1,234 Rust reported passes / seven standalone helper ignores; lint, types, desktop build, formatting and strict workspace Clippy. The log is `/tmp/gitru-r128-make-verify.log`.
 - The clean scoped branch inherits R123 source `5a30303` and its documentation-only publication head `9ea42bc`; it excludes R127. The old qualified broader history is preserved on `ruru/ruru-128-pre-restack`, not used as final scoped evidence. Subsequent changes are progress documentation only.
 - Draft PR #179 is attached. Remote CI is pending and separate from these local synthetic checks. Live GitLab accounts, provider mutation, personal credentials and packaged GUI/platform execution remain unclaimed; no merge is authorized.
+
+## Windows crash-fixture qualification repair — 8 October 2026
+
+Actual remote failure at signed `5915f690`: [Windows Rust job 113079078555](https://github.com/ruru-m07/gitru/actions/runs/37705513658/job/113079078555)
+completed with 531 library tests passed and two first-connection crash controls
+failed. Both expired the shared 10-second child boundary timeout; the old witness
+did not distinguish process/schema startup from credential work. Seeded replacement
+and disconnect crash controls passed. This is not reported as an authorization,
+rollback or provider assertion failure, and the phase of the old timeout cannot
+be established from its original diagnostic alone.
+
+Signed test-only repair `92a7e152` adds an explicit child-ready marker after native
+Store/runtime initialization. Startup is bounded to 60 seconds; the existing
+10-second actual credential-boundary watchdog then applies unchanged. Early child
+exit reports provider, operation, phase, boundary and exit status. All original
+hard-kill boundaries, account/grant/epoch/privacy/draft assertions and isolated fake
+vaults remain. No production source, IPC, schema or personal credentials change.
+
+Local delta evidence: all 14 credential-crash parent tests pass (one subprocess
+helper ignored), strict all-target collaboration Clippy, formatting and diff checks
+pass. Logs are `/tmp/gitru-r128-credential-startup-tests.log` and
+`/tmp/gitru-r128-credential-startup-clippy.log`. Existing whole-workspace results
+above belong to the earlier production checkpoint; they were not rerun for this
+fixture-only delta. Existing draft179 is updated in place; fresh exact-head remote
+CI, particularly Windows, remains a separate required gate. No unchanged failed
+run was retried and no merge was performed.
