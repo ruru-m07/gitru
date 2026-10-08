@@ -57,7 +57,11 @@ if (import.meta.env.MODE === "e2e-collaboration-harness") {
   const { installCollaborationHarnessProbe } = await import(
     "./bootstrap/e2e-collaboration-harness"
   );
-  const readManifest = () => collaborationHarnessViewManifest({});
+  const { waitForHarnessManifest } = await import(
+    "./bootstrap/e2e-collaboration-harness-startup"
+  );
+  const readManifest = () =>
+    waitForHarnessManifest(() => collaborationHarnessViewManifest({}));
   const probe = await installCollaborationHarnessProbe(readManifest);
   const manifest = await readManifest();
   if (manifest.role === "main") {
