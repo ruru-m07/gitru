@@ -1284,7 +1284,7 @@ async fn long_clock_direct_cold_admission_seeds_full_wait_without_enqueue() {
         adapter,
         account,
     } = f;
-    runtime.store.close().await;
+    runtime.store.close().await.unwrap();
     drop(runtime);
     let mut cold = CollaborationRuntime::new(
         Arc::new(Store::open(&path).await.unwrap()),
