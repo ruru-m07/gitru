@@ -305,3 +305,15 @@ Files are limited to native runtime clock/budget/discovery paths, their determin
 fixtures and architecture evidence. Sign fixture/RED and production fixes separately
 where practical; notify root about shared-core changes before descendants consume.
 Local qualification and existing/new exact-head remote CI remain distinct.
+
+Actual follow-up RED: `cargo test -p collaboration --lib clock_ -- --nocapture`
+on unchanged production runs17 matching controls:14 pass and3 fail. The failures
+are a new vault load in already picked discovery after accepted quota/UTC jump,
+a provider call after the held native vault boundary, and a48h receipt releasing
+an own-account Body read after25h monotonic/72h UTC instead of only serving the
+eligible peer. The added valid-wall48h cold-restart/cache/draft/peer control passes.
+Two fixture setup errors were corrected before this result: discovery uses its
+scheduler key rather than the distinct durable intent receipt; after an eligible
+Body refresh its content may change while the authored draft remains unchanged.
+Neither was a production defect. The final RED log is
+`/tmp/gitru-r102-followup-red-final.log`; committed fixtures preserve reproduction.
