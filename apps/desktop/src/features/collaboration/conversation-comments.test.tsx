@@ -55,6 +55,14 @@ const peer: RemoteAccount = {
   login: "second-user",
   authorization_epoch: "7",
 };
+const gitlab: RemoteAccount = {
+  ...account,
+  id: "gitlab-comments-one",
+  provider: "gitlab",
+  host: "gitlab.com",
+  actor_id: "303",
+  login: "gitlab-user",
+};
 const observedAt = "2026-10-05T12:00:00Z";
 const earlierAt = "2026-10-04T12:00:00Z";
 const caches: QueryClient[] = [];
@@ -93,15 +101,22 @@ function saved(
   entries = [comment()],
   kind: "pull_request" | "issue" = "pull_request",
 ) {
-  const subjectId =
-    kind === "pull_request" ? "github:pull:801" : "github:issue:802";
+  const isGitlab = actor.provider === "gitlab";
+  const subjectId = isGitlab
+    ? `gitlab:${kind === "pull_request" ? "pull" : "issue"}:${kind === "pull_request" ? "801" : "802"}`
+    : kind === "pull_request"
+      ? "github:pull:801"
+      : "github:issue:802";
   const repository = {
     ...fixtureRepositories.repositories[0],
-    id: "github:repository:345",
+    id: `${actor.provider}:repository:345`,
     account_id: actor.id,
     provider_id: "345",
-    full_name: "example-org/engine",
+    full_name: isGitlab ? "example-group/engine" : "example-org/engine",
     name: "engine",
+    web_url: isGitlab
+      ? "https://gitlab.com/example-group/engine"
+      : "https://github.com/example-org/engine",
   };
   const summary = {
     ...fixtureItem,
@@ -641,11 +656,8 @@ describe("cached conversation comments through the ordinary workspace", () => {
     expect(reads.hydrate).not.toHaveBeenCalled();
   });
 
-  it.each([
-    account,
-    { ...account, provider: "gitlab" as const, host: "gitlab.com" },
-  ])("mounts no query/demand/hydration for unsupported policy on $provider", async (actor) => {
-    const resource = saved(actor);
+  it("mounts no query, demand, or hydration for unsupported policy", async () => {
+    const resource = saved(account);
     const reads = boundary([resource], "unsupported");
     const { user } = await mount();
     await select(user, resource);
@@ -653,6 +665,37 @@ describe("cached conversation comments through the ordinary workspace", () => {
     expect(await panel().findByText("Feature not supported")).toBeVisible();
     expect(queries(reads)).toHaveLength(0);
     expect(interests(reads)).toHaveLength(0);
+    expect(reads.hydrate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "pull_request",
+    "issue",
+  ] as const)("uses the common saved Comments panel for GitLab %s", async (kind) => {
+    const entry = comment("1", {
+      id: "gitlab-note:00000000000000000001",
+      field_validations: comment().field_validations.map((field) => ({
+        ...field,
+        source: "gitlab/conversation-notes/v4",
+      })),
+    });
+    const resource = saved(gitlab, [entry], kind);
+    resource.comments.evidence.source = {
+      ...resource.comments.evidence.source!,
+      source: "gitlab/conversation-notes/v4",
+    };
+    const reads = boundary([resource]);
+    const { user } = await mount(kind);
+    await select(user, resource);
+    await user.click(panel().getByRole("button", { name: "Comments" }));
+    expect(await panel().findByText("Saved comment 1")).toBeVisible();
+    expect(
+      panel().getByText(
+        "Top-level conversation comments are saved here. System activity, inline discussions, and resolvable notes are not included.",
+      ),
+    ).toBeVisible();
+    expect(queries(reads)).toHaveLength(1);
+    await waitFor(() => expect(interests(reads)).toHaveLength(1));
     expect(reads.hydrate).not.toHaveBeenCalled();
   });
 

@@ -109,6 +109,13 @@ export function ConversationCommentsPanel({
               >
                 {canReadSaved(policy) ? (
                   <>
+                    {account.provider === "gitlab" ? (
+                      <p className="text-xs text-muted-foreground">
+                        Top-level conversation comments are saved here. System
+                        activity, inline discussions, and resolvable notes are
+                        not included.
+                      </p>
+                    ) : null}
                     <Button
                       size="sm"
                       variant="ghost"
