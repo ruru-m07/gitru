@@ -3907,3 +3907,40 @@ See [the bounded follow-up contract and evidence](./collaboration-work/RURU-131-
 The repair stacks on PR199; schema23 and IPC are unchanged. R134's broader metadata
 authoring remains open. Remote CI and live provider/platform qualification are
 separate; no PR was merged.
+
+### RURU-132 durable PR reviews — 8 October 2026
+
+The GitHub.com review slice now saves decisions, summaries and inline comments
+locally, with generated SDK/IPC and recovery across missing subjects/accounts.
+Native storage resolves selected lines from current provider diff artifacts;
+renderer paths are never authority. Stale, local-only, binary, renamed/copied
+and unknown-kind files cannot supply submit-capable anchors. A fresh read checks
+the inspected head immediately before one durable POST attempt, with explicit
+background-delivery and force-push-race consent. A successful read does not prove
+token write permission; the provider's response remains authoritative.
+
+Accepted review-ID evidence and exact-ID/comment confirmation are separate. Lost
+or malformed responses remain unknown without automatic reposting, and historical
+review receipts never imply approval of a newer head. Account/query retirement
+removes provider anchors, consent and navigation while preserving authored text.
+Schema24 adds append-only resolution/confirmation links; restore verifies both
+directions of proof linkage, ordered evidence, the single attempt and unchanged
+authored comment UUID/body/order, then quarantines restored commands.
+
+The signed implementation checkpoint `ee5b3631` passed the focused review and
+inbox-fixture controls. Broad native validation found three stale current-schema
+expectations; test-only repair `12d14bc4` changes those from 23 to 24 while preserving
+historical fixtures. All three repaired tests pass, followed by the complete
+834-pass collaboration library and eleven migration controls. The initial full
+run's remaining targets pass; combined collaboration coverage is 1,114 tests with
+five helper ignores. The remaining Rust workspace passes 434 with two ignores,
+including desktop registration. These are full-run-plus-repair results, not one
+uninterrupted verification invocation.
+
+The final frontend suite passes 908 with one existing skip across 104 files; lint,
+workspace/E2E types and the desktop production build pass. `make typegen` produces
+170 commands. Strict workspace Clippy, formatting and diff checks pass. No
+remote-CI, packaged review-flow or live authenticated-provider result is inferred
+from these local checks. See
+[the native contract](./collaboration-work/RURU-132.md) and
+[the frontend record](./collaboration-work/RURU-132-ui.md). No PR was merged.

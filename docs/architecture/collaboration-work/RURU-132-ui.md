@@ -107,3 +107,9 @@ and targeted Biome checks pass. This is a focused delta after the complete
 904-pass frontend checkpoint, not a repeated full-suite or live-provider claim.
 The first slice explicitly leaves rename/copy anchor submission unavailable until
 the provider semantics and native identity contract are qualified.
+
+The complete frontend suite was then repeated after the anchor correction:
+**908 tests pass, one existing skip, across 104 files** with four workers. This
+qualifies the final frontend source together with the previously passing lint,
+workspace/E2E types and production build; it adds no packaged or live-provider
+claim.

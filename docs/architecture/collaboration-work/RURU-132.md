@@ -322,3 +322,33 @@ CI and live authenticated provider behavior are not claimed by this checkpoint.
 - Generated IPC through `make typegen`, focused Rust/SDK/UI tests, strict Clippy,
   format/types/lint/build and full `make verify`. Packaged desktop, remote CI and
   live authenticated provider evidence are recorded separately and never inferred.
+
+
+## Final local qualification and publication — 8 October 2026
+
+Signed native source `ee5b3631` completed the full all-feature collaboration
+no-fail-fast run with 1,111 passes, three failures and five helper ignores. All
+three failures were old current-schema expectations (23 instead of 24) in existing
+comment restore, issue restore and v22 migration fixtures. Test-only signed
+`12d14bc4` updates those expectations; historical frozen 23 assertions remain
+unchanged. Each complete failed test passes after repair, followed by the entire
+affected library (834 passes/four helper ignores) and recovery-migration target
+(eleven passes). The other targets already passed on unchanged implementation.
+Combined collaboration coverage is 1,114 passes with five helper ignores; this is
+full-run-plus-repair evidence rather than one uninterrupted verify invocation.
+
+The remaining Rust workspace passes 434 tests with two helper ignores, including
+compilation and tests for desktop command registration. Strict workspace
+all-target Clippy (`-D warnings`), Rust formatting and diff checks pass. The
+frontend record reports 908 passes/one existing skip, full lint, workspace/E2E
+types and the production desktop build. Generated IPC contains 170 commands.
+
+Evidence logs: `/tmp/gitru-r132-full-collaboration.log`,
+`/tmp/gitru-r132-final-lib.log`,
+`/tmp/gitru-r132-final-recovery-migrations.log`,
+`/tmp/gitru-r132-final-workspace-excluding-collaboration.log`,
+`/tmp/gitru-r132-final-workspace-clippy.log`, and
+`/tmp/gitru-r132-final-frontend.log`. The source used only synthetic provider
+fixtures; no personal credentials, live review mutation or packaged review-flow
+qualification is claimed. Publication is stacked on PR199's signed schema 23
+prerequisite. Remote CI must be evaluated against the published head separately.
