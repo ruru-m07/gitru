@@ -46,7 +46,10 @@ pub(super) enum FeedPosition {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Operation {
     User,
-    Todos { done: bool, page: u64 },
+    Todos {
+        done: bool,
+        page: u64,
+    },
     Projects,
     Feed {
         project: u64,
