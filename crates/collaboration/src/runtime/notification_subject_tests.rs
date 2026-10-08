@@ -243,6 +243,7 @@ impl CollaborationProvider for Provider {
             }),
             Outcome::Verified => {
                 let subject = RemoteItem {
+                    native_inbox: None,
                     id: SUBJECT.into(),
                     account_id: request.account.id,
                     repository_id: Some(request.repository.id),
@@ -274,6 +275,7 @@ impl CollaborationProvider for Provider {
 }
 async fn inbox(store: &Store, account: &RemoteAccount, number: Option<&str>) {
     let item = RemoteItem {
+        native_inbox: None,
         id: NOTIFICATION.into(),
         account_id: account.id.clone(),
         repository_id: Some("repo".into()),
@@ -297,6 +299,7 @@ async fn inbox(store: &Store, account: &RemoteAccount, number: Option<&str>) {
             vec![NotificationSubjectObservation {
                 notification_id: NOTIFICATION.into(),
                 mapping: NotificationSubjectMapping::Selector(NotificationSubjectSelector {
+                    subject_provider_id: None,
                     kind: NotificationSubjectKind::PullRequest,
                     repository_provider_id: "42".into(),
                     number: number.into(),
@@ -1029,6 +1032,7 @@ async fn durable_point_intent_limits_are_per_actor_and_global_without_query_or_p
             .map(|id| NotificationSubjectObservation {
                 notification_id: id.clone(),
                 mapping: NotificationSubjectMapping::Selector(NotificationSubjectSelector {
+                    subject_provider_id: None,
                     kind: NotificationSubjectKind::PullRequest,
                     repository_provider_id: "42".into(),
                     number: "67".into(),

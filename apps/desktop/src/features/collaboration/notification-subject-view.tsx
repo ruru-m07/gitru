@@ -20,9 +20,11 @@ import { CapabilityBoundary } from "./capability-boundary";
 import {
   canReadSaved,
   facetPolicy,
+  providerInboxState,
   resourceCapabilityTarget,
 } from "./capability-policy";
 import { SavedDraftEditor } from "./private-draft";
+import { ProviderInboxActions } from "./provider-inbox-actions";
 import { ProviderLink } from "./provider-link";
 import { SavedItemDetail } from "./saved-item-detail";
 
@@ -123,25 +125,35 @@ export function NotificationSubjectView({
     !notification.isError
       ? notification.data?.item
       : null;
+  const isTodo =
+    original?.native_inbox?.source === "todo" || account.provider === "gitlab";
+  const fallbackUrl =
+    isTodo && snapshot?.state === "unsupported"
+      ? (original?.web_url ?? snapshot.fallback_web_url)
+      : snapshot?.fallback_web_url;
   return (
     <section
       className="min-w-0 overflow-y-auto border-l p-5"
-      aria-label="Notification subject"
+      aria-label={isTodo ? "To-do subject" : "Notification subject"}
     >
       <Button variant="ghost" size="sm" onClick={close} className="mb-4">
         <ArrowLeft aria-hidden="true" /> Back to list
       </Button>
       {original?.kind === "notification" ? (
-        <div className="mb-4 space-y-2" aria-label="Original notification">
+        <div
+          className="mb-4 space-y-2"
+          aria-label={isTodo ? "Original to-do" : "Original notification"}
+        >
           <p className="break-words text-sm">{original.title}</p>
+          <ProviderInboxActions
+            key={`${account.id}:${account.authorization_epoch}:${notificationId}`}
+            account={account}
+            notificationId={notificationId}
+          />
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             {original.reason ? <span>Reason: {original.reason}</span> : null}
             <Badge variant="outline" size="sm">
-              {original.unread === null
-                ? `Provider ${original.state}`
-                : original.unread
-                  ? "Provider unread"
-                  : "Provider read"}
+              {providerInboxState(original)}
             </Badge>
             {localState ? (
               <Badge variant="outline" size="sm">
@@ -182,7 +194,19 @@ export function NotificationSubjectView({
         </p>
       ) : snapshot ? (
         <div className="space-y-3 text-sm">
-          <p>{explanations[snapshot.state]}</p>
+          <p>
+            {isTodo
+              ? snapshot.state === "resolved"
+                ? "This to-do opens its saved subject. Opening it does not complete the to-do on GitLab."
+                : explanations[snapshot.state].replace(/notification/g, "to-do")
+              : explanations[snapshot.state]}
+          </p>
+          {isTodo ? (
+            <p className="text-muted-foreground">
+              Complete to-dos in GitLab. Local dismissal and snoozing only
+              change your Gitru inbox.
+            </p>
+          ) : null}
           {snapshot.reason === "not_found" ? (
             <p>
               The subject was not found or is inaccessible. This does not
@@ -195,8 +219,8 @@ export function NotificationSubjectView({
               when ready.
             </p>
           ) : null}
-          {snapshot.state !== "unavailable" && snapshot.fallback_web_url ? (
-            <ProviderLink url={snapshot.fallback_web_url} />
+          {snapshot.state !== "unavailable" && fallbackUrl ? (
+            <ProviderLink url={fallbackUrl} />
           ) : null}
           {!resolved ? (
             <DiscoveryAction
@@ -219,7 +243,7 @@ export function NotificationSubjectView({
         </div>
       ) : (
         <p role="status" className="text-sm text-muted-foreground">
-          Reading the saved notification subject…
+          Reading the saved {isTodo ? "to-do" : "notification"} subject…
         </p>
       )}
       {subject ? (

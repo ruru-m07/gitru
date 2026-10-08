@@ -56,6 +56,9 @@ import {
   type NotificationSubjectSnapshot,
   type OpenLocalPullCommitReceipt,
   type OpenLocalPullCommitRequest,
+  type ProviderInboxActionReceipt,
+  type ProviderInboxActionsQuery,
+  type ProviderInboxActionsSnapshot,
   type PullCheckoutPlan,
   type PullCheckoutPlanRequest,
   type CollaborationPullCheckoutReceipt as PullCheckoutReceipt,
@@ -65,6 +68,7 @@ import {
   type PullFileDiffRequest,
   type PullFileQuery,
   type PullFileSnapshot,
+  type QueueProviderInboxActionRequest,
   type RefreshReceipt,
   type RefreshRequest,
   type RemoteAccount,
@@ -102,6 +106,12 @@ import {
 import { compareRevisions, RevisionBridge } from "./revision-bridge";
 
 export interface CollaborationTransport extends DemandTransport {
+  providerInboxActions(
+    query: ProviderInboxActionsQuery,
+  ): Promise<ProviderInboxActionsSnapshot>;
+  queueProviderInboxAction(
+    request: QueueProviderInboxActionRequest,
+  ): Promise<ProviderInboxActionReceipt>;
   commandRecoveryList(
     query: CommandRecoveryQuery,
   ): Promise<CommandRecoverySnapshot>;
@@ -227,6 +237,13 @@ export interface CollaborationTransport extends DemandTransport {
 }
 
 export const collaborationKeys = {
+  providerInboxActions: (account: RemoteAccount, subjectId: string) =>
+    [
+      ...collaborationKeys.account(account.id),
+      account.authorization_epoch,
+      "provider-inbox-actions",
+      subjectId,
+    ] as const,
   commandRecovery: (account: RemoteAccount, query: CommandRecoveryQuery) =>
     [
       ...collaborationKeys.account(account.id),
@@ -591,6 +608,43 @@ export class CollaborationClient {
       return { ...context };
     };
     return {
+      providerInboxActions: async (subjectId: string, signal?: AbortSignal) => {
+        const snapshot = await this.fence.read(
+          account.id,
+          () =>
+            this.transport.providerInboxActions({
+              account_id: account.id,
+              subject_id: subjectId,
+            }),
+          signal,
+        );
+        if (
+          snapshot.account_id !== account.id ||
+          snapshot.subject_id !== subjectId ||
+          snapshot.authorization_epoch !== account.authorization_epoch
+        )
+          throw new StaleAuthorizationError();
+        this.acceptSnapshot(snapshot);
+        return snapshot;
+      },
+      queueProviderInboxAction: (request: QueueProviderInboxActionRequest) => {
+        if (
+          request.account_id !== account.id ||
+          request.authorization_epoch !== account.authorization_epoch
+        )
+          throw new StaleAuthorizationError();
+        const captured = { ...request };
+        return this.fence.read(account.id, async () => {
+          const receipt =
+            await this.transport.queueProviderInboxAction(captured);
+          if (
+            receipt.account_id !== account.id ||
+            receipt.command_id !== captured.command_id
+          )
+            throw new StaleAuthorizationError();
+          return receipt;
+        });
+      },
       commandRecoveryList: (
         query: Omit<CommandRecoveryQuery, "account_id">,
         signal?: AbortSignal,
@@ -1441,6 +1495,14 @@ function isAuthoredDraft(key: readonly unknown[]) {
 
 function projectionAffected(key: readonly unknown[], scope: string) {
   const projection = key[4];
+  if (projection === "provider-inbox-actions")
+    return (
+      scope === "notifications" ||
+      scope === "commands" ||
+      scope === "repositories" ||
+      scope === "provider:rest" ||
+      scope === `effective:${String(key[5])}`
+    );
   if (
     projection === "command-recovery" ||
     projection === "command-recovery-detail"

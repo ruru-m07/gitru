@@ -79,6 +79,7 @@ pub fn normalize(api_base: &Url, repository: &RemoteRepository, subject: &Value)
         return fallback(Reason::InvalidSubjectUrl);
     }
     Mapping::Selector(NotificationSubjectSelector {
+        subject_provider_id: None,
         kind,
         repository_provider_id: repository.provider_id.clone(),
         number: number.into(),

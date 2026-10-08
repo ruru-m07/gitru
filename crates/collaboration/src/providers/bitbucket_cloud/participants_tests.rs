@@ -18,6 +18,7 @@ fn request_for(repository: &str) -> DetailRequest {
             selected: true,
         },
         subject: RemoteItem {
+            native_inbox: None,
             id: format!("bitbucket_cloud:pull:{repository}:67"),
             account_id: "fixture-account".into(),
             repository_id: Some(format!("bitbucket_cloud:repository:{repository}")),

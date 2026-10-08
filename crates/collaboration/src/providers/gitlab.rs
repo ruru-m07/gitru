@@ -7,6 +7,7 @@ mod feeds;
 mod files;
 mod resource_details;
 mod reviews;
+mod todos;
 mod transport;
 use transport::{GitlabHttp, invalid, max_wait, positive_id, project_after, with_quota};
 
@@ -104,7 +105,7 @@ impl CollaborationProvider for GitlabProvider {
     }
     fn profile(&self, _: &RemoteAccount) -> ProviderProfile {
         ProviderProfile {
-            inbox_semantics: InboxSemantics::None,
+            inbox_semantics: InboxSemantics::Todos,
             facets: super::FACETS
                 .into_iter()
                 .map(|facet| FacetCapability {
@@ -116,8 +117,6 @@ impl CollaborationProvider for GitlabProvider {
                     },
                     reason: if implemented(facet) {
                         None
-                    } else if facet == ResourceFacet::Inbox {
-                        Some(CapabilityReason::ProviderSemantics)
                     } else {
                         Some(CapabilityReason::NotImplemented)
                     },
@@ -196,6 +195,9 @@ impl CollaborationProvider for GitlabProvider {
         }
         if request.account.state != AccountState::Active {
             return Err(ProviderError::new(ProviderErrorKind::Authentication));
+        }
+        if request.kind == FeedKind::Notifications {
+            return self.todos(token, request).await;
         }
         if request.kind != FeedKind::Repositories {
             return self.resource_feed(token, request).await;
@@ -276,6 +278,7 @@ fn implemented(facet: ResourceFacet) -> bool {
     matches!(
         facet,
         ResourceFacet::Repositories
+            | ResourceFacet::Inbox
             | ResourceFacet::PullRequests
             | ResourceFacet::Issues
             | ResourceFacet::PullDetails

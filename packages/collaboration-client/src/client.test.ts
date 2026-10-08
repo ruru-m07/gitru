@@ -12,9 +12,11 @@ import type {
   IssueDraftSnapshot,
   ItemPage,
   ItemSnapshot,
+  ProviderInboxActionsSnapshot,
   PullCheckoutPlan,
   CollaborationPullCheckoutReceipt as PullCheckoutReceipt,
   PullCommitSnapshot,
+  QueueProviderInboxActionRequest,
   RemoteAccount,
   RemoteItem,
   RepositorySnapshot,
@@ -133,6 +135,12 @@ function transport(
     commandRecoveryDetail: unexpected,
     commandRecoveryAction: unexpected,
     commandRecoveryReplace: unexpected,
+    providerInboxActions: async () => {
+      throw new Error("Unexpected provider inbox query");
+    },
+    queueProviderInboxAction: async () => {
+      throw new Error("Unexpected provider inbox action");
+    },
     commandRecoveryExport: unexpected,
     textEditSnapshot: unexpected,
     submitTextEdit: unexpected,
@@ -257,6 +265,7 @@ const privateItem: RemoteItem = {
   is_draft: null,
   reason: null,
   unread: null,
+  native_inbox: null,
 };
 const itemQuery = {
   kind: "issue" as const,
@@ -2794,6 +2803,135 @@ function recoveryDetail(): CommandRecoveryDetail {
     revision: "1",
   };
 }
+
+const inboxActionsSnapshot: ProviderInboxActionsSnapshot = {
+  account_id: account.id,
+  subject_id: "github:notification:12",
+  authorization_epoch: account.authorization_epoch,
+  authorization_view: "1",
+  activity_version: "native-activity-proof",
+  actions: [
+    {
+      action: "mark_read",
+      availability: "available",
+      reason: null,
+      activity_policy: "best_effort_current_item",
+    },
+  ],
+  revision: "1",
+};
+const inboxActionRequest: QueueProviderInboxActionRequest = {
+  account_id: account.id,
+  authorization_epoch: account.authorization_epoch,
+  authorization_view: "1",
+  subject_id: inboxActionsSnapshot.subject_id,
+  expected_activity_version: inboxActionsSnapshot.activity_version,
+  command_id: "d9c9988a-b87a-46b2-82e0-1bd783543c79",
+  action: "mark_read",
+  activity_policy: "best_effort_current_item",
+};
+
+it("fences held inbox authority after disconnect and refuses foreign action authority before IPC", async () => {
+  const held = deferred<ProviderInboxActionsSnapshot>();
+  const action = vi.fn(async () => {
+    throw new Error("must not dispatch");
+  });
+  const client = new CollaborationClient(
+    transport({
+      accounts: async () => snapshot,
+      providerInboxActions: () => held.promise,
+      queueProviderInboxAction: action,
+      disconnect: async () => "2",
+    }),
+  );
+  await client.accounts();
+  const bound = client.forAccount(account);
+  // Foreign input is rejected even while this account remains authorized.
+  for (const request of [
+    { ...inboxActionRequest, account_id: "other" },
+    { ...inboxActionRequest, authorization_epoch: "99" },
+  ])
+    expect(() => bound.queueProviderInboxAction(request)).toThrow(
+      StaleAuthorizationError,
+    );
+  const pending = bound.providerInboxActions(inboxActionsSnapshot.subject_id);
+  const rejected = expect(pending).rejects.toBeInstanceOf(
+    StaleAuthorizationError,
+  );
+  await client.disconnect(account.id);
+  held.resolve(inboxActionsSnapshot);
+  await rejected;
+  expect(action).not.toHaveBeenCalled();
+});
+
+it("captures inbox admission bytes and rejects a held receipt after account retirement", async () => {
+  const held = deferred<{
+    account_id: string;
+    command_id: string;
+    revision: string;
+    duplicate: boolean;
+  }>();
+  const action = vi.fn(() => held.promise);
+  const client = new CollaborationClient(
+    transport({
+      accounts: async () => snapshot,
+      queueProviderInboxAction: action,
+      disconnect: async () => "2",
+    }),
+  );
+  await client.accounts();
+  const input = { ...inboxActionRequest };
+  const pending = client.forAccount(account).queueProviderInboxAction(input);
+  const rejected = expect(pending).rejects.toBeInstanceOf(
+    StaleAuthorizationError,
+  );
+  input.command_id = "changed-by-caller";
+  expect(action).toHaveBeenCalledWith(inboxActionRequest);
+  await client.disconnect(account.id);
+  held.resolve({
+    account_id: account.id,
+    command_id: inboxActionRequest.command_id,
+    revision: "2",
+    duplicate: false,
+  });
+  await rejected;
+});
+
+it("invalidates provider inbox authority for notification and command changes without crossing account or draft boundaries", async () => {
+  let next = changePage("1");
+  const client = new CollaborationClient(
+    transport({ listen: async () => () => {}, changesSince: async () => next }),
+  );
+  const cache = new QueryClient();
+  const stop = client.installBridge(cache);
+  await client.wake();
+  const key = collaborationKeys.providerInboxActions(
+    account,
+    inboxActionsSnapshot.subject_id,
+  );
+  const other = collaborationKeys.providerInboxActions(
+    { ...account, id: "other" },
+    inboxActionsSnapshot.subject_id,
+  );
+  const draft = collaborationKeys.draft(account, "issue");
+  for (const [revision, scope] of [
+    ["2", "notifications"],
+    ["3", "commands"],
+    ["4", "provider:rest"],
+  ]) {
+    for (const target of [key, other, draft])
+      cache.setQueryData(target, "saved");
+    next = changePage(revision, "1", [
+      { revision, account_id: account.id, scope, reset: false },
+    ]);
+    await client.wake();
+    expect(cache.getQueryState(key)?.isInvalidated).toBe(true);
+    expect(cache.getQueryState(other)?.isInvalidated).toBe(false);
+    expect(cache.getQueryState(draft)?.isInvalidated).toBe(false);
+  }
+  stop();
+  cache.clear();
+});
 
 it("fences held recovery details after disconnect and refuses a foreign action context before IPC", async () => {
   const held = deferred<CommandRecoveryDetail>();

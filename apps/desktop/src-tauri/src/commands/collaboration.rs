@@ -13,6 +13,8 @@ use tauri::{State, Webview};
 use tauri_plugin_dialog::DialogExt;
 
 mod command_recovery;
+mod provider_inbox_actions;
+pub use provider_inbox_actions::*;
 mod diagnostics_export;
 mod draft_export;
 pub use command_recovery::*;
@@ -70,6 +72,7 @@ pub(super) enum Operation {
     IssueCreation,
     TextEdit,
     WorkflowState,
+    ProviderInboxAction,
     Recovery,
     Capabilities,
     ContextualCapabilities,
@@ -636,6 +639,7 @@ mod tests {
         Operation::IssueCreation,
         Operation::TextEdit,
         Operation::WorkflowState,
+        Operation::ProviderInboxAction,
         Operation::CommandRecovery,
         Operation::Recovery,
         Operation::Capabilities,

@@ -135,6 +135,7 @@ async fn cache_observation(store: &Store) {
                 is_draft: Some(false),
                 reason: None,
                 unread: None,
+                native_inbox: None,
             }],
             endpoint_aliases: vec![],
             next_cursor: None,

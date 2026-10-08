@@ -80,6 +80,7 @@ fn item(
         (None, None)
     };
     Ok(RemoteItem {
+        native_inbox: None,
         id: format!(
             "gitlab:{}:{native}",
             if item_route == ItemRoute::MergeRequests {
@@ -119,6 +120,9 @@ impl GitlabProvider {
             _ => return Err(ProviderError::new(ProviderErrorKind::Unsupported)),
         };
         let repository = request.repository.as_ref().ok_or_else(invalid)?;
+        if !repository.selected {
+            return Err(invalid());
+        }
         let project = repository_identity(&request.account, repository)?;
         let issue = item_route == ItemRoute::Issues;
         let saved: Option<Cursor> = request

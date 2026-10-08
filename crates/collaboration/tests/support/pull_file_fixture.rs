@@ -34,6 +34,7 @@ pub(super) async fn seed(store: &Store, id: &str) -> RemoteAccount {
         selected: true,
     };
     let pull = RemoteItem {
+        native_inbox: None,
         id: "pull".into(),
         account_id: id.into(),
         repository_id: Some("repo".into()),

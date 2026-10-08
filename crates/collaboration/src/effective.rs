@@ -74,9 +74,19 @@ impl ItemIntentPatch {
         }
         if let Some(value) = &self.state {
             item.state = value.clone();
+            if let Some(crate::NativeInboxState::Todo { completion, .. }) = &mut item.native_inbox {
+                if value == "done" {
+                    *completion = crate::TodoCompletion::Done;
+                } else if value == "pending" {
+                    *completion = crate::TodoCompletion::Pending;
+                }
+            }
         }
         if let Some(value) = self.unread {
             item.unread = Some(value);
+            if let Some(crate::NativeInboxState::Notification { unread }) = &mut item.native_inbox {
+                *unread = value;
+            }
         }
     }
     pub(crate) fn overlay(&mut self, next: Self) {

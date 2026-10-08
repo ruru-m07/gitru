@@ -41,6 +41,7 @@ pub(super) fn request(head: String) -> PullCommitRequest {
             selected: true,
         },
         subject: RemoteItem {
+            native_inbox: None,
             id: "gitlab:pull:999".into(),
             account_id: "gitlab-account".into(),
             repository_id: Some(format!("gitlab:repository:{PROJECT}")),

@@ -19,6 +19,7 @@ pub mod github_cli;
 pub mod local_links;
 pub mod notification_subjects;
 pub mod participants;
+pub mod provider_inbox_actions;
 pub mod providers;
 pub mod pull_commits;
 #[cfg(test)]
@@ -51,6 +52,7 @@ pub use error::{CollaborationError, ErrorCode};
 pub use local_links::*;
 pub use notification_subjects::*;
 pub use participants::*;
+pub use provider_inbox_actions::*;
 pub use pull_commits::*;
 pub use pull_files::*;
 pub use resource_metadata::*;

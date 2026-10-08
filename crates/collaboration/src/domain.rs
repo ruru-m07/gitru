@@ -87,6 +87,27 @@ pub enum RemoteItemKind {
     Notification,
 }
 
+/// Native inbox semantics, independent of Gitru-local disposition and snoozing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "source", rename_all = "snake_case")]
+pub enum NativeInboxState {
+    Notification {
+        unread: bool,
+    },
+    Todo {
+        completion: TodoCompletion,
+        action: String,
+        target_type: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TodoCompletion {
+    Pending,
+    Done,
+}
+
 /// A list/detail projection. Provider observation and coverage remain separate.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RemoteItem {
@@ -109,6 +130,9 @@ pub struct RemoteItem {
     pub is_draft: Option<bool>,
     pub reason: Option<String>,
     pub unread: Option<bool>,
+    /// Absent on older cached rows and non-inbox resources.
+    #[serde(default)]
+    pub native_inbox: Option<NativeInboxState>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

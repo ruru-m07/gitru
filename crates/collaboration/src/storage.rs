@@ -35,6 +35,7 @@ mod identities;
 mod inbox;
 mod local_links;
 pub(crate) mod notification_subjects;
+pub(crate) mod provider_inbox_actions;
 mod pull_commits;
 mod pull_files;
 pub use pull_files::{PullFileApplyReceipt, PullFileCommit, PullFileSelection};
@@ -920,8 +921,25 @@ impl Store {
             }
             validate_identifier(&repository.id)?;
             identities::repository_in(&mut tx, &account, repository).await?;
+            let mut repository = repository.clone();
+            // GitLab todos embed a minimal parent summary, without these fields.
+            // Its omission cannot erase metadata observed by repository discovery.
+            if account.provider == ProviderKind::Gitlab && page.scope == "notifications" {
+                let previous: Option<String> =
+                    sqlx::query_scalar("SELECT json FROM repositories WHERE account_id=? AND id=?")
+                        .bind(&account.id)
+                        .bind(&repository.id)
+                        .fetch_optional(&mut *tx)
+                        .await
+                        .map_err(storage_error)?;
+                if let Some(previous) = previous {
+                    let previous: RemoteRepository = decode(&previous)?;
+                    repository.description = previous.description;
+                    repository.default_branch = previous.default_branch;
+                }
+            }
             sqlx::query("INSERT INTO repositories(account_id,id,provider_id,full_name,selected,json) VALUES(?,?,?,?,?,?) ON CONFLICT(account_id,id) DO UPDATE SET provider_id=excluded.provider_id,full_name=excluded.full_name,json=excluded.json")
-                .bind(&page.account_id).bind(&repository.id).bind(&repository.provider_id).bind(&repository.full_name).bind(repository.selected).bind(encode(repository)?)
+                .bind(&page.account_id).bind(&repository.id).bind(&repository.provider_id).bind(&repository.full_name).bind(repository.selected).bind(encode(&repository)?)
                 .execute(&mut *tx).await.map_err(storage_error)?;
             if page.scope == "repositories" {
                 seen(&mut tx, &page, &repository.id).await?;
@@ -934,6 +952,35 @@ impl Store {
                 ));
             }
             validate_identifier(&incoming.id)?;
+            if let Some(native) = &incoming.native_inbox {
+                let valid = incoming.kind == RemoteItemKind::Notification
+                    && match native {
+                        NativeInboxState::Notification { unread } => {
+                            account.provider == ProviderKind::Github
+                                && incoming.unread == Some(*unread)
+                        }
+                        NativeInboxState::Todo {
+                            completion,
+                            action,
+                            target_type,
+                        } => {
+                            account.provider == ProviderKind::Gitlab
+                                && incoming.unread.is_none()
+                                && action.len() <= 128
+                                && target_type.len() <= 128
+                                && incoming.state
+                                    == match completion {
+                                        TodoCompletion::Pending => "pending",
+                                        TodoCompletion::Done => "done",
+                                    }
+                        }
+                    };
+                if !valid {
+                    return Err(CollaborationError::invalid(
+                        "Native inbox semantics disagree with the item",
+                    ));
+                }
+            }
             if incoming
                 .body
                 .as_ref()

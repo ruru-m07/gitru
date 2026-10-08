@@ -35,6 +35,7 @@ pub(super) fn request(kind: RemoteItemKind) -> DetailRequest {
             selected: true,
         },
         subject: RemoteItem {
+            native_inbox: None,
             id: format!("github:{prefix}:999"),
             account_id: "a".into(),
             repository_id: Some("github:repository:123".into()),

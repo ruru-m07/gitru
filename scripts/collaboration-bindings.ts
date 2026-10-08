@@ -14,6 +14,9 @@ const error = await Bun.file(
 const effective = await Bun.file(
   new URL("crates/collaboration/src/effective.rs", root),
 ).text();
+const providerInboxActions = await Bun.file(
+  new URL("crates/collaboration/src/provider_inbox_actions.rs", root),
+).text();
 const commandRecovery = await Bun.file(
   new URL("crates/collaboration/src/command_recovery.rs", root),
 ).text();
@@ -318,6 +321,50 @@ generated = generated.replace(
   `export const PullFileArtifactValidationSchema = z.discriminatedUnion("kind", [${validationSchemas.join(", ")}]);`,
 );
 
+// Persisted inbox payloads have native completion/read semantics. The pinned
+// generator flattens internally tagged variants, so rebuild only this closed
+// Rust-declared shape and fail if the model grows without a matching codec.
+const inboxDeclaration = domain.match(
+  /#\[serde\(tag = "source", rename_all = "snake_case"\)\]\s*pub enum NativeInboxState \{([\s\S]*?)\n\}/,
+);
+if (!inboxDeclaration) throw new Error("Missing Rust native inbox union");
+const inboxVariants = [
+  ...inboxDeclaration[1].matchAll(/(\w+)\s*\{([^}]+)\},/g),
+];
+if (
+  inboxVariants.length !== 2 ||
+  inboxDeclaration[1].replace(/(\w+)\s*\{([^}]+)\},/g, "").trim()
+)
+  throw new Error("Unsupported native inbox variants");
+if (!generated.includes("export const TodoCompletionSchema =")) {
+  const completion = domain.match(/pub enum TodoCompletion \{([^}]+)\}/);
+  if (!completion || completion[1].replace(/\w+,/g, "").trim())
+    throw new Error("Unsupported todo completion enum");
+  const states = [...completion[1].matchAll(/(\w+),/g)].map(([, state]) =>
+    snake(state),
+  );
+  generated += `\nexport const TodoCompletionSchema = z.enum(${JSON.stringify(states)});\nexport type TodoCompletion = z.infer<typeof TodoCompletionSchema>;\n`;
+}
+const inboxSchemas = inboxVariants.map(([, variant, fields]) => {
+  const declarations = [
+    ...fields.matchAll(/(\w+): (String|bool|TodoCompletion),/g),
+  ];
+  if (
+    !declarations.length ||
+    fields.replace(/(\w+): (String|bool|TodoCompletion),/g, "").trim()
+  )
+    throw new Error(`Unsupported native inbox fields ${variant}`);
+  return `z.object({ source: z.literal(${JSON.stringify(snake(variant))}), ${declarations.map(([, field, type]) => `${field}: ${type === "TodoCompletion" ? "TodoCompletionSchema" : type === "bool" ? "z.boolean()" : "z.string()"}`).join(", ")} })`;
+});
+const inboxPattern =
+  /export const NativeInboxStateSchema = z\.enum\(\[[^\]]+\]\);/;
+if (!inboxPattern.test(generated))
+  throw new Error("Missing flattened native inbox schema");
+generated = generated.replace(
+  inboxPattern,
+  `export const NativeInboxStateSchema = z.discriminatedUnion("source", [${inboxSchemas.join(", ")}]);\nexport type NativeInboxState = z.infer<typeof NativeInboxStateSchema>;`,
+);
+
 for (const source of [
   effective,
   commandRecovery,
@@ -325,6 +372,7 @@ for (const source of [
   workflowState,
   commentSend,
   issueCreation,
+  providerInboxActions,
   domain,
   error,
   detail,

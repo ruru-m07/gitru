@@ -45,6 +45,7 @@ fn repository(actor: &str, id: &str, native: &str, path: &str) -> RemoteReposito
 }
 fn selector(number: &str) -> NotificationSubjectMapping {
     NotificationSubjectMapping::Selector(NotificationSubjectSelector {
+        subject_provider_id: None,
         kind: NotificationSubjectKind::PullRequest,
         repository_provider_id: "42".into(),
         number: number.into(),
@@ -54,6 +55,7 @@ fn selector(number: &str) -> NotificationSubjectMapping {
 }
 fn notification(actor: &str, id: &str, at: &str) -> RemoteItem {
     RemoteItem {
+        native_inbox: None,
         id: id.into(),
         account_id: actor.into(),
         repository_id: Some(REPO.into()),
@@ -75,6 +77,7 @@ fn notification(actor: &str, id: &str, at: &str) -> RemoteItem {
 }
 fn subject(actor: &str, id: &str, native: &str, number: &str) -> RemoteItem {
     RemoteItem {
+        native_inbox: None,
         id: id.into(),
         account_id: actor.into(),
         repository_id: Some(REPO.into()),
@@ -1330,6 +1333,7 @@ async fn issue_and_pull_same_number_have_independent_typed_canonical_provenance(
     .await;
     store.select_repository("a", REPO, false).await.unwrap();
     let mapping = NotificationSubjectMapping::Selector(NotificationSubjectSelector {
+        subject_provider_id: None,
         kind: NotificationSubjectKind::Issue,
         repository_provider_id: "42".into(),
         number: "67".into(),
@@ -1920,4 +1924,302 @@ async fn point_representation_alias_commits_uniquely_or_rolls_back_conflict_atom
             assert_eq!(native.resource.unwrap().id, SUBJECT);
         }
     }
+}
+
+fn gitlab_selector(native: &str, kind: NotificationSubjectKind) -> NotificationSubjectMapping {
+    NotificationSubjectMapping::Selector(NotificationSubjectSelector {
+        kind,
+        repository_provider_id: "42".into(),
+        number: "67".into(),
+        repository_path: "fixture/project".into(),
+        representation: if kind == NotificationSubjectKind::PullRequest {
+            NotificationSubjectRepresentation::GitlabMergeRequest
+        } else {
+            NotificationSubjectRepresentation::GitlabIssue
+        },
+        subject_provider_id: Some(native.into()),
+    })
+}
+fn gitlab_todo(actor: &str, at: &str, done: bool) -> RemoteItem {
+    let mut item = notification(actor, NOTIFICATION, at);
+    item.provider_id = "1001".into();
+    item.unread = None;
+    item.state = if done { "done" } else { "pending" }.into();
+    item.native_inbox = Some(NativeInboxState::Todo {
+        completion: if done {
+            TodoCompletion::Done
+        } else {
+            TodoCompletion::Pending
+        },
+        action: "mentioned".into(),
+        target_type: "MergeRequest".into(),
+    });
+    item
+}
+async fn gitlab_fixture(kind: RemoteItemKind) -> (tempfile::TempDir, Store) {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(dir.path().join("gitlab-todos.sqlite"))
+        .await
+        .unwrap();
+    for actor in ["a", "b"] {
+        let mut a = account(actor, "gitlab.com");
+        a.provider = ProviderKind::Gitlab;
+        a.notifications_supported = false;
+        store.upsert_account(a).await.unwrap();
+        let mut repo = repository(actor, REPO, "42", "fixture/project");
+        repo.web_url = "https://gitlab.com/fixture/project".into();
+        repo.description = Some("Known full project description".into());
+        repo.default_branch = Some("main".into());
+        page(&store, actor, "repositories", vec![repo], vec![], vec![]).await;
+        store.select_repository(actor, REPO, true).await.unwrap();
+        let mut item = subject(actor, SUBJECT, "8001", "67");
+        item.kind = kind.clone();
+        page(
+            &store,
+            actor,
+            &format!(
+                "repo:{REPO}:{}",
+                if kind == RemoteItemKind::PullRequest {
+                    "pull_request"
+                } else {
+                    "issue"
+                }
+            ),
+            vec![],
+            vec![item],
+            vec![],
+        )
+        .await;
+        store.select_repository(actor, REPO, false).await.unwrap();
+    }
+    (dir, store)
+}
+#[tokio::test]
+async fn gitlab_todo_requires_exact_native_target_for_mr_and_issue_and_never_grants_another_account()
+ {
+    for kind in [
+        NotificationSubjectKind::PullRequest,
+        NotificationSubjectKind::Issue,
+    ] {
+        let (_dir, store) = gitlab_fixture(kind.item_kind()).await;
+        page(
+            &store,
+            "a",
+            "notifications",
+            vec![],
+            vec![gitlab_todo("a", T2, false)],
+            vec![NotificationSubjectObservation {
+                notification_id: NOTIFICATION.into(),
+                mapping: gitlab_selector("8001", kind),
+            }],
+        )
+        .await;
+        let resolved = store
+            .notification_subject(query("a", "1", NOTIFICATION), |_, _, _| {
+                CapabilityState::Unsupported
+            })
+            .await
+            .unwrap();
+        assert_eq!(resolved.state, NotificationSubjectState::Resolved);
+        assert_eq!(resolved.subject.unwrap().provider_id, "8001");
+        assert!(!resolved.discovery.admission);
+        assert!(store.item("a", SUBJECT).await.unwrap().item.is_some());
+        assert!(store.item("b", SUBJECT).await.unwrap().item.is_none());
+        // A copied/moved/replaced target with the same scoped number cannot
+        // borrow a cached canonical subject's identity or authorization.
+        page(
+            &store,
+            "a",
+            "notifications",
+            vec![],
+            vec![gitlab_todo("a", T3, true)],
+            vec![NotificationSubjectObservation {
+                notification_id: NOTIFICATION.into(),
+                mapping: gitlab_selector("8002", kind),
+            }],
+        )
+        .await;
+        let changed = store
+            .notification_subject(query("a", "1", NOTIFICATION), |_, _, _| {
+                CapabilityState::Unsupported
+            })
+            .await
+            .unwrap();
+        assert_eq!(changed.state, NotificationSubjectState::NotCached);
+        assert!(changed.subject.is_none());
+        assert_ne!(changed.authorization_view, resolved.authorization_view);
+        assert!(store.item("a", SUBJECT).await.unwrap().item.is_none());
+        let cached = store.item("a", NOTIFICATION).await.unwrap().item.unwrap();
+        assert_eq!(cached.unread, None);
+        assert_eq!(cached.state, "done");
+    }
+}
+
+#[tokio::test]
+async fn gitlab_todo_partial_traversal_cannot_hide_membership_or_infer_done_and_parent_summary_preserves_metadata()
+ {
+    let (_dir, store) = gitlab_fixture(RemoteItemKind::PullRequest).await;
+    let mut thin = repository("a", REPO, "42", "fixture/project");
+    thin.web_url = "https://gitlab.com/fixture/project".into();
+    page(
+        &store,
+        "a",
+        "notifications",
+        vec![thin],
+        vec![gitlab_todo("a", T2, false)],
+        vec![NotificationSubjectObservation {
+            notification_id: NOTIFICATION.into(),
+            mapping: gitlab_selector("8001", NotificationSubjectKind::PullRequest),
+        }],
+    )
+    .await;
+    let repo = store.repository("a", REPO).await.unwrap();
+    assert_eq!(repo.default_branch.as_deref(), Some("main"));
+    assert_eq!(
+        repo.description.as_deref(),
+        Some("Known full project description")
+    );
+    assert!(!repo.selected);
+    for _ in 0..2 {
+        let run = store.begin_sync("a", "1", "notifications").await.unwrap();
+        store
+            .apply_page(PageCommit {
+                account_id: "a".into(),
+                authorization_epoch: "1".into(),
+                scope: "notifications".into(),
+                run_id: run,
+                repositories: vec![],
+                items: vec![],
+                endpoint_aliases: vec![],
+                next_cursor: Some("opaque-done-phase".into()),
+                etag: None,
+                last_modified: None,
+                not_modified: false,
+                complete: false,
+                observed_at: T3.into(),
+            })
+            .await
+            .unwrap();
+    }
+    assert!(store.item("a", SUBJECT).await.unwrap().item.is_some());
+    assert_eq!(
+        store
+            .item("a", NOTIFICATION)
+            .await
+            .unwrap()
+            .item
+            .unwrap()
+            .state,
+        "pending"
+    );
+    page(&store, "a", "notifications", vec![], vec![], vec![]).await;
+    assert!(store.item("a", NOTIFICATION).await.unwrap().item.is_some());
+    page(&store, "a", "notifications", vec![], vec![], vec![]).await;
+    assert!(store.item("a", NOTIFICATION).await.unwrap().item.is_none());
+    assert!(store.item("a", SUBJECT).await.unwrap().item.is_none());
+}
+
+#[tokio::test]
+async fn gitlab_selector_missing_native_evidence_or_foreign_representation_is_rejected_atomically()
+{
+    let (_dir, store) = gitlab_fixture(RemoteItemKind::PullRequest).await;
+    for bad in [
+        None,
+        Some("not-a-native-id".into()),
+        Some("008001".into()),
+        Some("github-representation".into()),
+    ] {
+        let NotificationSubjectMapping::Selector(mut selector) =
+            gitlab_selector("8001", NotificationSubjectKind::PullRequest)
+        else {
+            unreachable!()
+        };
+        if bad.as_deref() == Some("github-representation") {
+            selector.subject_provider_id = None;
+            selector.representation = NotificationSubjectRepresentation::GithubPullRequest;
+        } else {
+            selector.subject_provider_id = bad;
+        }
+        let run = store.begin_sync("a", "1", "notifications").await.unwrap();
+        let before = store.revision().await.unwrap();
+        let error = store
+            .apply_page_with_notification_subjects(
+                PageCommit {
+                    account_id: "a".into(),
+                    authorization_epoch: "1".into(),
+                    scope: "notifications".into(),
+                    run_id: run,
+                    repositories: vec![],
+                    items: vec![gitlab_todo("a", T2, false)],
+                    endpoint_aliases: vec![],
+                    next_cursor: None,
+                    etag: None,
+                    last_modified: None,
+                    not_modified: false,
+                    complete: true,
+                    observed_at: T3.into(),
+                },
+                vec![NotificationSubjectObservation {
+                    notification_id: NOTIFICATION.into(),
+                    mapping: NotificationSubjectMapping::Selector(selector),
+                }],
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+        assert_eq!(store.revision().await.unwrap(), before);
+        assert!(store.item("a", NOTIFICATION).await.unwrap().item.is_none());
+    }
+}
+
+#[tokio::test]
+async fn gitlab_exact_target_evidence_does_not_bypass_an_ambiguous_cached_locator() {
+    let (_dir, store) = gitlab_fixture(RemoteItemKind::PullRequest).await;
+    store.select_repository("a", REPO, true).await.unwrap();
+    page(
+        &store,
+        "a",
+        "repo:repo:pull_request",
+        vec![],
+        vec![
+            subject("a", SUBJECT, "8001", "67"),
+            subject("a", "competing-subject", "8002", "67"),
+        ],
+        vec![],
+    )
+    .await;
+    store.select_repository("a", REPO, false).await.unwrap();
+    page(
+        &store,
+        "a",
+        "notifications",
+        vec![],
+        vec![gitlab_todo("a", T2, false)],
+        vec![NotificationSubjectObservation {
+            notification_id: NOTIFICATION.into(),
+            mapping: gitlab_selector("8001", NotificationSubjectKind::PullRequest),
+        }],
+    )
+    .await;
+    let snapshot = store
+        .notification_subject(query("a", "1", NOTIFICATION), |_, _, _| {
+            CapabilityState::Unsupported
+        })
+        .await
+        .unwrap();
+    assert_eq!(snapshot.state, NotificationSubjectState::Ambiguous);
+    assert_eq!(
+        snapshot.reason,
+        Some(NotificationSubjectReason::AmbiguousIdentity)
+    );
+    assert!(snapshot.subject.is_none() && !snapshot.discovery.admission);
+    assert!(store.item("a", SUBJECT).await.unwrap().item.is_none());
+    assert!(
+        store
+            .item("a", "competing-subject")
+            .await
+            .unwrap()
+            .item
+            .is_none()
+    );
 }

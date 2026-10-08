@@ -41,9 +41,11 @@ import {
   collaborationNotificationSubject,
   collaborationOpenLocalPullCommit,
   collaborationPlanPullCheckout,
+  collaborationProviderInboxActions,
   collaborationPullCommits,
   collaborationPullFileArtifact,
   collaborationPullFiles,
+  collaborationQueueProviderInboxAction,
   collaborationRefresh,
   collaborationReleaseDemand,
   collaborationRemoveLocalLink,
@@ -161,12 +163,16 @@ export type {
   LocalTransportBinding,
   MetadataFieldEvidence,
   NativeDetailPayload,
+  NativeInboxState,
   NotificationSubjectQuery,
   NotificationSubjectSnapshot,
   OpenLocalPullCommitReceipt,
   OpenLocalPullCommitRequest,
   ParticipantUser,
   ParticipantV1,
+  ProviderInboxActionDescriptor,
+  ProviderInboxActionReceipt,
+  ProviderInboxActionsSnapshot,
   PullCheckoutPlan,
   PullCheckoutPlanRequest,
   PullCommit,
@@ -189,6 +195,7 @@ export type {
   PullFileQuery,
   PullFileSnapshot,
   PullFileSource,
+  QueueProviderInboxActionRequest,
   ReleaseDemandRequest,
   RemoteAccount,
   RemoteItem,
@@ -223,6 +230,7 @@ export type {
   TextEditReceipt,
   TextEditRequest,
   TextEditSnapshot,
+  TodoCompletion,
   TransportBindingRequest,
   WorkflowStateContext,
   WorkflowStateReceipt,
@@ -253,6 +261,11 @@ export type CapabilityObservation =
 export type ContextCapabilityReason = NonNullable<
   import("@gitru/commands").ContextCapabilityAccess["reason"]
 >;
+export type ProviderInboxAction =
+  import("@gitru/commands").QueueProviderInboxActionRequest["action"];
+export type ProviderInboxActionReason = NonNullable<
+  import("@gitru/commands").ProviderInboxActionDescriptor["reason"]
+>;
 export type InboxSemantics =
   import("@gitru/commands").CapabilitySnapshot["inbox_semantics"];
 export type ResourceFacet =
@@ -282,6 +295,9 @@ export type IssueDraftReason = NonNullable<
 >;
 
 export const collaboration = new CollaborationClient({
+  providerInboxActions: (query) => collaborationProviderInboxActions({ query }),
+  queueProviderInboxAction: (request) =>
+    collaborationQueueProviderInboxAction({ request }),
   commandRecoveryList: (query) => collaborationCommandRecoveryList({ query }),
   commandRecoveryDetail: (accountId, commandId) =>
     collaborationCommandRecoveryDetail({ accountId, commandId }),

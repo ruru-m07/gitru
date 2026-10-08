@@ -66,6 +66,7 @@ mod tests {
                 selected: true,
             },
             subject: RemoteItem {
+                native_inbox: None,
                 id: "github:issue:9007199254740997".into(),
                 account_id: "fixture-account".into(),
                 repository_id: Some("github:repo:9007199254741021".into()),

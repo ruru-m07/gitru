@@ -46,6 +46,7 @@ const thread = {
   body: null,
   reason: "review_requested",
   unread: true,
+  native_inbox: null,
 };
 let revision = "10";
 let view = "1";
@@ -90,6 +91,7 @@ function savedSubject(account: RemoteAccount = fixtureAccount, id = subjectId) {
     body: null,
     reason: null,
     unread: null,
+    native_inbox: null,
   };
 }
 function snapshot(
@@ -130,6 +132,19 @@ function snapshot(
 }
 
 beforeEach(() => {
+  mockTauriCommand("collaboration_provider_inbox_actions", (args) => {
+    const { query } = args as {
+      query: { account_id: string; subject_id: string };
+    };
+    return {
+      ...query,
+      authorization_epoch: fixtureAccount.authorization_epoch,
+      authorization_view: view,
+      activity_version: "fixture-activity",
+      actions: [],
+      revision,
+    };
+  });
   revision = "10";
   view = "1";
   selector = "9007199254740995";
@@ -349,6 +364,12 @@ describe("cached notification canonical subjects", () => {
               id: itemId,
               account_id: accountId,
               unread: null,
+              native_inbox: {
+                source: "todo",
+                completion: "pending",
+                action: "mentioned",
+                target_type: "MergeRequest",
+              },
               state: "pending",
             }
           : savedSubject(fixtureAccount, itemId),
@@ -358,6 +379,63 @@ describe("cached notification canonical subjects", () => {
     });
     await open();
     expect(await screen.findByText("Provider pending")).toBeVisible();
+    expect(screen.getByLabelText("Original to-do")).toBeVisible();
+    expect(
+      screen.getByText(/Opening it does not complete the to-do on GitLab/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Local dismissal and snoozing only change your Gitru inbox/,
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText("Provider unread")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /complete to-do|mark as read/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps a projectless to-do visible with its safe provider fallback and no discovery", async () => {
+    mockForegroundDemand();
+    supported = false;
+    admission = false;
+    subjectState = "unsupported";
+    subjectReason = "missing_selector";
+    mockTauriCommand("collaboration_notification_subject", () => ({
+      ...snapshot(),
+      fallback_web_url: null,
+    }));
+    mockTauriCommand("collaboration_item", () => ({
+      item: {
+        ...thread,
+        repository_id: null,
+        unread: null,
+        state: "pending",
+        native_inbox: {
+          source: "todo",
+          completion: "pending",
+          action: "member_access_requested",
+          target_type: "Namespace",
+        },
+        web_url: "https://gitlab.com/groups/example/-/group_members",
+      },
+      revision,
+      authorization_view: view,
+    }));
+    const discover = mockTauriCommandResult(
+      "collaboration_discover_notification_subject",
+      { job_id: "unexpected" },
+    );
+    const opener = mockTauriCommandResult("open_external_url", null);
+    const { user } = await open();
+    expect(await screen.findByLabelText("Original to-do")).toBeVisible();
+    expect(
+      screen.getByText(/This to-do does not have a supported/),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Open on provider" }));
+    expect(opener).toHaveBeenCalledWith({
+      url: "https://gitlab.com/groups/example/-/group_members",
+    });
+    expect(discover).not.toHaveBeenCalled();
   });
 
   it.each([

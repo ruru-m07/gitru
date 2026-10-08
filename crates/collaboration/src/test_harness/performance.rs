@@ -107,5 +107,6 @@ pub fn performance_item(
         is_draft: Some(global_index.is_multiple_of(17)),
         reason: None,
         unread: None,
+        native_inbox: None,
     }
 }

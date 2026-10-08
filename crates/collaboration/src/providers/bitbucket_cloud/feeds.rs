@@ -129,6 +129,7 @@ fn item(
         .transpose()?
         .flatten();
     Ok(RemoteItem {
+        native_inbox: None,
         id: format!("bitbucket_cloud:pull:{uuid}:{id}"),
         account_id: account.id.clone(),
         repository_id: Some(repository.id.clone()),

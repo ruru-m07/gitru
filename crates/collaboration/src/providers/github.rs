@@ -418,6 +418,9 @@ impl CollaborationProvider for GithubProvider {
                         is_draft: None,
                         reason: Some(bounded(notification.reason, 255)?),
                         unread: Some(notification.unread),
+                        native_inbox: Some(NativeInboxState::Notification {
+                            unread: notification.unread,
+                        }),
                     };
                     page.notification_subjects
                         .push(crate::NotificationSubjectObservation {
@@ -560,6 +563,7 @@ impl GithubPull {
     ) -> Result<RemoteItem, ProviderError> {
         let (body, body_omitted) = summary_body(self.body);
         Ok(RemoteItem {
+            native_inbox: None,
             id: format!("github:pull:{}", self.id),
             account_id: account.to_string(),
             repository_id: Some(repo.id.clone()),
@@ -610,6 +614,7 @@ impl GithubIssue {
     ) -> Result<RemoteItem, ProviderError> {
         let (body, body_omitted) = summary_body(self.body);
         Ok(RemoteItem {
+            native_inbox: None,
             id: format!("github:issue:{}", self.id),
             account_id: account.to_string(),
             repository_id: Some(repo.id.clone()),
