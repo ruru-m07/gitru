@@ -573,7 +573,7 @@ async fn comment_send_restore_preserves_authored_link_and_quarantines_zero_attem
         .payload;
     let backup = dir.path().join("backup.db");
     let summary = store.backup_to(&backup).await.unwrap();
-    assert_eq!(summary.schema_version, 24);
+    assert_eq!(summary.schema_version, 25);
     assert_eq!(summary.drafts, 1);
     store.close().await.unwrap();
     let session = RecoverySession::prepare(dir.path().join("comments.db"), &backup)

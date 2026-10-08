@@ -82,7 +82,7 @@ pub(super) async fn verify_authored(db: &mut SqliteConnection, version: i64) -> 
         verify_recovery_actions(db).await?;
     }
     if version >= 22 {
-        verify_issue_creation(db).await?;
+        verify_issue_creation(db, version).await?;
     }
     if version >= 20 {
         verify_comments(db).await?;
@@ -623,7 +623,7 @@ async fn verify_comments(db: &mut SqliteConnection) -> Result<()> {
     Ok(())
 }
 
-async fn verify_issue_creation(db: &mut SqliteConnection) -> Result<()> {
+async fn verify_issue_creation(db: &mut SqliteConnection, version: i64) -> Result<()> {
     use crate::issue_creation::native as n;
     {
         let mut rows = sqlx::query(
@@ -642,10 +642,13 @@ async fn verify_issue_creation(db: &mut SqliteConnection) -> Result<()> {
             }
         }
     }
-    refuse_rows(db,"SELECT 1 FROM issue_submissions s JOIN commands c USING(account_id,command_id) JOIN issue_drafts d USING(account_id,draft_id) WHERE c.operation_kind<>'github.create_issue' OR c.payload_version<>1 OR c.target_kind<>'repository' OR c.target_id<>d.repository_id OR c.repository_id<>d.repository_id OR d.generation<s.draft_generation LIMIT 1").await?;
+    if version < 25 {
+        refuse_rows(db,"SELECT 1 FROM issue_submissions s JOIN commands c USING(account_id,command_id) WHERE c.payload_version<>1 LIMIT 1").await?;
+    }
+    refuse_rows(db,"SELECT 1 FROM issue_submissions s JOIN commands c USING(account_id,command_id) JOIN issue_drafts d USING(account_id,draft_id) WHERE c.operation_kind<>'github.create_issue' OR c.payload_version NOT IN(1,2) OR c.target_kind<>'repository' OR c.target_id<>d.repository_id OR c.repository_id IS NOT d.repository_id OR d.generation<s.draft_generation LIMIT 1").await?;
     refuse_rows(db,"SELECT 1 FROM commands c LEFT JOIN issue_submissions s USING(account_id,command_id) WHERE c.operation_kind='github.create_issue' AND c.payload_version=1 AND s.command_id IS NULL LIMIT 1").await?;
     {
-        let mut rows=sqlx::query("SELECT s.account_id,s.draft_id,s.command_id,s.draft_generation,s.content_hash,c.target_id,c.authorization_epoch,c.payload_bytes,d.title,d.body,d.generation FROM issue_submissions s JOIN commands c USING(account_id,command_id) JOIN issue_drafts d USING(account_id,draft_id)").fetch(&mut *db);
+        let mut rows=sqlx::query("SELECT s.account_id,s.draft_id,s.command_id,s.draft_generation,s.content_hash,c.target_id,c.authorization_epoch,c.payload_bytes,d.title,d.body,d.generation FROM issue_submissions s JOIN commands c USING(account_id,command_id) JOIN issue_drafts d USING(account_id,draft_id) WHERE c.payload_version=1").fetch(&mut *db);
         while let Some(r) = rows.try_next().await.map_err(|_| invalid_backup())? {
             let p = n::decode_parts(
                 &column::<Vec<u8>>(&r, "payload_bytes")?,
@@ -666,7 +669,7 @@ async fn verify_issue_creation(db: &mut SqliteConnection) -> Result<()> {
             }
         }
     }
-    refuse_rows(db,"SELECT 1 FROM issue_resolutions r JOIN commands c USING(account_id,command_id) LEFT JOIN delivery_resolutions d ON d.account_id=r.account_id AND d.command_id=r.command_id AND d.purpose='confirmed' LEFT JOIN command_evidence e ON e.account_id=d.account_id AND e.command_id=d.command_id AND e.ordinal=d.evidence_ordinal AND e.kind='github.issue_created' AND e.version=1 WHERE c.state<>'confirmed' OR d.command_id IS NULL OR e.command_id IS NULL LIMIT 1").await?;
+    refuse_rows(db,"SELECT 1 FROM issue_resolutions r JOIN commands c USING(account_id,command_id) LEFT JOIN delivery_resolutions d ON d.account_id=r.account_id AND d.command_id=r.command_id AND d.purpose='confirmed' LEFT JOIN command_evidence e ON e.account_id=d.account_id AND e.command_id=d.command_id AND e.ordinal=d.evidence_ordinal AND e.kind='github.issue_created' AND e.version=1 WHERE c.payload_version=1 AND (c.state<>'confirmed' OR d.command_id IS NULL OR e.command_id IS NULL) LIMIT 1").await?;
     refuse_rows(db,"SELECT 1 FROM commands c LEFT JOIN issue_resolutions r USING(account_id,command_id) WHERE c.operation_kind='github.create_issue' AND c.payload_version=1 AND c.state='confirmed' AND r.command_id IS NULL LIMIT 1").await?;
     refuse_rows(db,"SELECT 1 FROM command_evidence e JOIN commands c USING(account_id,command_id) LEFT JOIN issue_resolutions r USING(account_id,command_id) LEFT JOIN delivery_resolutions d ON d.account_id=e.account_id AND d.command_id=e.command_id AND d.evidence_ordinal=e.ordinal AND d.purpose='confirmed' WHERE e.kind='github.issue_created' AND e.version=1 AND (c.operation_kind<>'github.create_issue' OR c.payload_version<>1 OR c.state<>'confirmed' OR r.command_id IS NULL OR d.command_id IS NULL) LIMIT 1").await?;
     {
@@ -703,5 +706,8 @@ async fn verify_issue_creation(db: &mut SqliteConnection) -> Result<()> {
         }
     }
     refuse_rows(db,"SELECT 1 FROM issue_creation_visibility v LEFT JOIN issue_resolutions r ON r.account_id=v.account_id AND r.command_id=v.command_id JOIN commands c ON c.account_id=v.account_id AND c.command_id=v.command_id JOIN items i ON i.account_id=v.account_id AND i.id=v.entity_id WHERE r.entity_id IS NULL OR r.entity_id<>v.entity_id OR c.state<>'confirmed' OR CAST(c.authorization_epoch AS TEXT)<>v.authorization_epoch OR i.kind<>'issue' LIMIT 1").await?;
+    if version >= 25 {
+        super::issue_metadata::verify(db).await?;
+    }
     Ok(())
 }

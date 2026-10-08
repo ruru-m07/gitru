@@ -27,6 +27,9 @@ use crate::{
 
 #[cfg(test)]
 mod current_tests;
+mod issue_metadata;
+#[cfg(test)]
+mod issue_metadata_tests;
 mod policy;
 mod pull_creation;
 #[cfg(test)]
@@ -36,7 +39,7 @@ mod review_submission;
 type Result<T> = std::result::Result<T, CollaborationError>;
 // Raising this requires a reviewed restore policy, especially for future outbox
 // tables. Merely adding a migration does not authorize replay of imported data.
-const RESTORE_SCHEMA_POLICY: i64 = 24;
+const RESTORE_SCHEMA_POLICY: i64 = 25;
 const MAX_DATABASE_BYTES: u64 = 512 * 1024 * 1024;
 const SIDECARS: [&str; 3] = ["", "-wal", "-shm"];
 
