@@ -1,0 +1,28 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Gitru Auth Qualification",
+  "identifier": "com.ruru.gitru.auth-qualification",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Gitru Auth Qualification",
+        "url": "/app/git?embedded=1",
+        "width": 1280,
+        "height": 800,
+        "hiddenTitle": true,
+        "titleBarStyle": "Overlay",
+        "zoomHotkeysEnabled": true
+      }
+    ]
+  },
+  "bundle": {
+    "active": false,
+    "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "updater": {
+      "active": false
+    }
+  }
+}
