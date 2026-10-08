@@ -89,6 +89,7 @@ async fn seed(store: &Store) -> RemoteAccount {
         is_draft: Some(false),
         reason: None,
         unread: None,
+        native_inbox: None,
     };
     for (scope, repositories, items) in [
         ("repositories".to_string(), vec![repository], vec![]),

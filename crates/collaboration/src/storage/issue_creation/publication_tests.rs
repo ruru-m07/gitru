@@ -87,6 +87,7 @@ fn item() -> RemoteItem {
         is_draft: None,
         reason: None,
         unread: None,
+        native_inbox: None,
     }
 }
 fn publication<'a>(f: &'a Fixture, item: &'a RemoteItem) -> Publication<'a> {

@@ -123,6 +123,7 @@ impl GithubIssueCreationPolicy {
             is_draft: None,
             reason: None,
             unread: None,
+            native_inbox: None,
         };
         let request = DetailRequest {
             account: account.clone(),

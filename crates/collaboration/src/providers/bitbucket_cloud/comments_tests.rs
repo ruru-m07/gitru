@@ -33,6 +33,7 @@ fn request_for(repository: &str) -> DetailRequest {
             is_draft: None,
             reason: None,
             unread: None,
+            native_inbox: None,
         },
         facet: DetailFacet::Comments,
         cursor: None,

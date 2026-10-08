@@ -1438,6 +1438,7 @@ async fn bitbucket_comments_are_pr_only_and_unknown_primary_support_is_not_seman
                 is_draft: None,
                 reason: None,
                 unread: None,
+                native_inbox: None,
             }],
         )
         .await;
