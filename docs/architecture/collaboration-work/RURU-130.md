@@ -77,3 +77,15 @@ Evidence: `/tmp/gitru-r130-clock-integration-tests.log`,
 `/tmp/gitru-r130-final-sync-clippy.log`. The subsequent documentation commit
 changes no measured code. No live provider mutation, personal credential or
 platform vault was used; remote CI starts separately after draft publication.
+
+
+### Remote Windows job budget — 8 October 2026
+
+PR182's exact `c1fc215e` Windows Rust job113090183418 reached successful
+workspace tests (24m56s) and retained core/native caller tests (17m56s), then
+was cancelled during the post Rust-cache upload at the 45-minute job boundary.
+GitHub records 00:40:40–01:25:50 UTC; no test or compiler failure was found.
+The platform-tests job timeout is now60 minutes so its existing checks and cache
+save have room to finish. Test commands/assertions, fail-fast policy and retries
+are unchanged. YAML parses locally; a fresh exact-head remote run is required.
+This is not a claim that the cancelled job or the new remote matrix passed.
