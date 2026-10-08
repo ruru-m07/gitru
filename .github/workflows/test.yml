@@ -191,7 +191,8 @@ jobs:
   desktop-collaboration:
     name: Collaboration harness (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 75
+    # Windows cold builds can spend more than an hour compiling before the harness runs.
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 105 || 75 }}
     strategy:
       fail-fast: false
       matrix:
