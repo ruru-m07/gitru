@@ -196,9 +196,18 @@ ID and commit anchors match every requested comment with no extras or duplicates
 A continuation, omitted anchor, mismatch or cooldown preserves accepted evidence
 and defers read-only reconciliation; it never repeats the POST.
 
-Proof `github.review_submitted`, version 1, has its own frozen canonical receipt
-codec and does not serialize the evolving generic `RemoteItem`. Strong evidence
-links one provider review ID to exactly one account/command/draft generation.
+The append-only delivery ledger records a strict create response and its later
+terminal readback as two distinct frozen proof kinds. `github.review_accepted`,
+version 1, records the first strong 200 response with an exact native review ID;
+`github.review_submitted`, version 1, records exact-ID review and terminal inline
+comment readback. Neither codec serializes the evolving generic `RemoteItem`.
+An immutable resolution row is inserted only by the accepted proof. A separate
+immutable confirmation row links the later proof ordinal to the same account,
+command, draft generation, provider review ID and inspected context.
+Confirmation is never inferred from the accepted mapping. Separate proof kinds
+avoid making a legitimate accepted-to-confirmed transition collide with the
+provider-ID uniqueness fence on append-only evidence. Strong evidence links one
+provider review ID to exactly one account/command/draft generation.
 The submitted-review history exposes confirmed or accepted evidence under current
 authorization without claiming whole review-list coverage. Provider cache may
 later observe the same review independently; old or historical ReviewV1 rows stay
@@ -218,9 +227,11 @@ and add schema 24 afterward. Proposed schema-24 ownership:
 - `review_submissions`: account/subject/generation primary key, unique
   account/command, immutable content hash and exact command-envelope linkage;
 - `review_resolutions`: immutable account/command/provider-review mapping with
-  accepted/confirmed proof linkage and requested/observed commit identity;
-- an expression index enforcing unique account plus provider review ID for
-  `github.review_submitted` version 1 evidence.
+  accepted-proof linkage and requested/observed commit identity;
+- `review_confirmations`: immutable terminal-readback proof linkage to exactly
+  the same resolution and provider review ID;
+- separate expression indexes enforcing unique account plus provider review ID
+  for accepted and submitted version 1 evidence.
 
 Authored tables have no cascading provider-cache foreign key. Authority rows do.
 Update/delete/identity triggers protect admitted generations and immutable
