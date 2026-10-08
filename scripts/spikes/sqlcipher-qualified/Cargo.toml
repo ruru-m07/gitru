@@ -1,0 +1,24 @@
+[package]
+name = "gitru-sqlcipher-qualified"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+sqlx = { version = "=0.9.0", default-features = false, features = ["runtime-tokio", "sqlite-bundled", "migrate"] }
+tokio = { version = "=1.50.0", features = ["macros", "rt-multi-thread", "process", "time"] }
+tempfile = "=3.27.0"
+
+[target.'cfg(target_vendor = "apple")'.dependencies]
+libsqlite3-sys = { version = "=0.37.0", features = ["bundled-sqlcipher"] }
+
+[target.'cfg(not(target_vendor = "apple"))'.dependencies]
+libsqlite3-sys = { version = "=0.37.0", features = ["bundled-sqlcipher-vendored-openssl"] }
+
+# prepare.py verifies upstream and crate archives before producing this local patch.
+# This isolated workspace is the only consumer. Production keeps ordinary SQLite.
+[patch.crates-io]
+libsqlite3-sys = { path = "target/verified/libsqlite3-sys" }
+openssl-src = { path = "target/verified/openssl-src" }
