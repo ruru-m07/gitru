@@ -433,6 +433,10 @@ export const HarnessVaultEvidenceSchema = z
     account_id: z.string().min(1).max(256),
     authorization_epoch: decimal,
     credential_error: z.literal("credential_store_unavailable"),
+    credential_error_cleared: z.literal(true),
+    facet_revisions: z
+      .object({ before: decimal, blocked: decimal, recovered: decimal })
+      .strict(),
     provider_calls: z
       .object({ before: decimal, blocked: decimal, recovered: decimal })
       .strict(),
@@ -458,7 +462,11 @@ export const HarnessVaultEvidenceSchema = z
           BigInt(value.vault_failures.before) &&
         value.vault_failures.recovered === value.vault_failures.blocked &&
         value.body_hashes.before === value.body_hashes.blocked &&
-        value.body_hashes.recovered !== value.body_hashes.blocked &&
+        value.body_hashes.recovered === value.body_hashes.blocked &&
+        BigInt(value.facet_revisions.blocked) >=
+          BigInt(value.facet_revisions.before) &&
+        BigInt(value.facet_revisions.recovered) >
+          BigInt(value.facet_revisions.blocked) &&
         value.draft_hashes.before === value.draft_hashes.blocked &&
         value.draft_hashes.recovered === value.draft_hashes.blocked
       );

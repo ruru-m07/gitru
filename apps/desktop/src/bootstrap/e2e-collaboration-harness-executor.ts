@@ -1289,8 +1289,8 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
       } else if (scenario === "vault-unavailable") {
         stage = "warm saved Body before native vault failure";
         await mount("main", "primary");
-        await refresh("phase_one");
-        const beforeView = await rendered("main", "one");
+        await refresh("phase_two");
+        const beforeView = await rendered("main", "two");
         await requireSnapshot("main", { kind: "detach" });
         await wait(async () =>
           (await status()).core.demand_lease_count === 0 ? true : null,
@@ -1320,8 +1320,8 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
             ? snapshot
             : null;
         });
-        require(blockedBody.body.text === BODY.one);
-        const blockedView = await rendered("main", "one");
+        require(blockedBody.body.text === BODY.two);
+        const blockedView = await rendered("main", "two");
         const blocked = await status();
         require(
           blocked.core.provider_call_count === before.core.provider_call_count,
@@ -1348,8 +1348,25 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
         for (let index = 0; index < 3; index++) await core("advance_cooldown");
         await activate("main");
         await mount("main", "primary");
-        await committed("two");
-        const recoveredView = await rendered("main", "two");
+        const recoveredBody = await wait(async () => {
+          const snapshot = await client.detail({
+            subject_id: PULL_COMMITS.subjectId,
+            facet: "body",
+            cursor: null,
+            limit: 1,
+          });
+          return snapshot.evidence.facet_revision !== null &&
+            snapshot.evidence.facet_revision !==
+              blockedBody.evidence.facet_revision &&
+            snapshot.evidence.sync.error === null
+            ? snapshot
+            : null;
+        });
+        const recoveredView = await rendered(
+          "main",
+          "two",
+          recoveredBody.evidence.facet_revision,
+        );
         const recovered = await status();
         require(
           JSON.stringify(
@@ -1371,7 +1388,10 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
           !recoveredHash ||
           !beforeDraft ||
           !blockedDraft ||
-          !recoveredDraft
+          !recoveredDraft ||
+          !beforeView.facet_revision ||
+          !blockedView.facet_revision ||
+          !recoveredView.facet_revision
         )
           throw new HarnessScenarioError({ kind: "assertion" });
         vaultEvidence = {
@@ -1389,6 +1409,12 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
             blocked: blocked.core.vault_unavailable_count,
             recovered: recovered.core.vault_unavailable_count,
           },
+          facet_revisions: {
+            before: beforeView.facet_revision,
+            blocked: blockedView.facet_revision,
+            recovered: recoveredView.facet_revision,
+          },
+          credential_error_cleared: true,
           body_hashes: {
             before: beforeBody,
             blocked: blockedHash,
@@ -1800,7 +1826,7 @@ export async function installCollaborationHarnessExecutor(probe: Probe) {
             scenario === "vault-unavailable" &&
             current.core.phase === "vault_unavailable"
           )
-            await core("phase_one");
+            await core("phase_two");
           await control("resume_hints");
           if (current.child_label) await control("close_concurrent_child");
         } catch (error) {

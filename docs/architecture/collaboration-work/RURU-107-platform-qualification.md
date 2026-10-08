@@ -73,3 +73,18 @@ This is isolated synthetic qualification. Real production vault prompts, lock,
 replacement and failure behavior on each supported OS still require separately
 recorded dedicated-account tests. No production keyring or personal credential
 was inspected, no provider mutation was attempted, and no PR was merged.
+
+## Packaged sequence correction
+
+The first packaged macOS run passed six main-phase scenarios and failed the new
+vault scenario during warm-up, before any vault refusal. Earlier scenarios had
+already committed phase two; requesting phase one supplied an older provider
+timestamp which the production store correctly refused. The obsolete response
+remained due and exposed a repeated fixture refresh, not a vault failure.
+
+The revised scenario warms phase two and recovers to phase two. Recovery must
+prove a newer committed facet revision, cleared credential error and a new
+provider call; it must not require the remote text to change when the credential
+store becomes available. Cache/draft hashes stay equal throughout. A native cold
+reopen control will repeat this same-content sequence as well as the original
+phase-one to phase-two case. Production ordering/retry policies remain unchanged.

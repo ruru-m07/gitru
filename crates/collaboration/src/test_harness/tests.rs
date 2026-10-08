@@ -1375,8 +1375,18 @@ async fn independent_lost_marker_refuses_reopen_without_resetting_authored_cache
 
 #[tokio::test]
 async fn unavailable_fixture_vault_preserves_cache_and_draft_across_cold_reopen() {
+    unavailable_vault_cold_reopen(HarnessCoreAction::PhaseOne).await;
+}
+
+#[tokio::test]
+async fn unavailable_fixture_vault_recovers_when_remote_body_is_unchanged() {
+    unavailable_vault_cold_reopen(HarnessCoreAction::PhaseTwo).await;
+}
+
+async fn unavailable_vault_cold_reopen(initial: HarnessCoreAction) {
     let run = Run::new();
     let session = prepared(&run).await;
+    action(&session, initial).await;
     interest(&session, "test-main", HarnessActorSlot::Primary).await;
     assert!(session.runtime.harness_run_next().await);
     let first = detail(&session, HarnessActorSlot::Primary).await;
@@ -1482,6 +1492,18 @@ async fn unavailable_fixture_vault_preserves_cache_and_draft_across_cold_reopen(
     assert!(session.runtime.harness_run_next().await);
     let recovered = session.control.status(&run.nonce).await.unwrap();
     assert_eq!(recovered.committed_phase, Some(HarnessPhase::Two));
+    assert_ne!(
+        recovered.committed_facet_revision,
+        blocked.committed_facet_revision
+    );
+    assert!(
+        detail(&session, HarnessActorSlot::Primary)
+            .await
+            .evidence
+            .sync
+            .error
+            .is_none()
+    );
     assert_eq!(recovered.provider_call_count, "1");
     assert_eq!(recovered.vault_load_count, "1");
     assert_eq!(recovered.vault_unavailable_count, "1");

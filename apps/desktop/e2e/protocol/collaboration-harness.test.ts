@@ -47,12 +47,14 @@ describe("retained collaboration renderer protocol", () => {
       account_id: "ruru103:primary",
       authorization_epoch: "1",
       credential_error: "credential_store_unavailable",
+      credential_error_cleared: true,
+      facet_revisions: { before: "3", blocked: "4", recovered: "5" },
       provider_calls: { before: "3", blocked: "3", recovered: "4" },
       vault_failures: { before: "0", blocked: "1", recovered: "1" },
       body_hashes: {
         before: "a".repeat(64),
         blocked: "a".repeat(64),
-        recovered: "b".repeat(64),
+        recovered: "a".repeat(64),
       },
       draft_hashes: {
         before: "c".repeat(64),
@@ -88,6 +90,19 @@ describe("retained collaboration renderer protocol", () => {
       {
         ...evidence,
         draft_hashes: { ...evidence.draft_hashes, recovered: "d".repeat(64) },
+      },
+      { ...evidence, credential_error_cleared: false },
+      {
+        ...evidence,
+        facet_revisions: { before: "3", blocked: "4", recovered: "4" },
+      },
+      {
+        ...evidence,
+        facet_revisions: { before: "3", blocked: "2", recovered: "5" },
+      },
+      {
+        ...evidence,
+        body_hashes: { ...evidence.body_hashes, recovered: "b".repeat(64) },
       },
       { ...evidence, authorization_preserved: false },
     ])
