@@ -1284,7 +1284,7 @@ The authenticated payload binds a bounded Gitru manifest to one reviewed SQLite
 snapshot before the existing migration/quarantine recovery transaction can run.
 The device database key is never assumed to travel with the artifact. See the
 [RURU-141 work note](collaboration-work/RURU-141.md) for the staging exposure
-inventory and the remaining native keyed import/rekey qualification gate.
+inventory and the qualified native keyed import/rekey boundary.
 
 ## 19. Database migrations and schema evolution
 

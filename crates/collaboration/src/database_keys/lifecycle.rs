@@ -110,9 +110,32 @@ impl DatabaseKeyRotationReservation {
         self.next.identity()
     }
 
+    pub fn target(&self) -> &Path {
+        &self.target
+    }
+
     /// Native candidate creation only; never serialize or log these bytes.
     pub fn key(&self) -> &DatabaseKey {
         &self.next_key
+    }
+
+    /// Publish ready metadata only after a trusted native importer has created,
+    /// authenticated, integrity-checked, checkpointed and closed this exact
+    /// next-generation candidate. Publication alone grants no activation proof.
+    pub fn publish_imported_candidate_metadata(
+        &self,
+        candidate: &Path,
+    ) -> Result<(), DatabaseKeyError> {
+        let candidate = same_directory_regular(&self.target, candidate)?;
+        require_closed(&candidate)?;
+        if files::read(&candidate)?.is_some() {
+            return Err(DatabaseKeyError::InvalidMetadata);
+        }
+        files::publish(&candidate, &self.next, false)?;
+        if files::read(&candidate)?.as_ref() != Some(&self.next) {
+            return Err(DatabaseKeyError::StaleFilesystem);
+        }
+        Ok(())
     }
 
     pub fn prepare_verified_candidate(

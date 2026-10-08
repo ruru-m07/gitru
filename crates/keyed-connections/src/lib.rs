@@ -5,7 +5,13 @@
 //! Ready, migrate application schemas, choose a platform vault, or convert data.
 //! Desktop startup may select this factory only after native key metadata or an
 //! exact retained-harness marker has selected keyed storage before runtime creation.
-use collaboration::database_keys::{DatabaseKeyIdentity, DatabaseKeyMode, DatabaseKeySession};
+use collaboration::database_keys::lifecycle::{
+    DatabaseKeyRotation, DatabaseKeyRotationReservation, VerifiedRotatedDatabase,
+};
+use collaboration::database_keys::{
+    DatabaseKeyError, DatabaseKeyIdentity, DatabaseKeyMode, DatabaseKeySession,
+};
+use collaboration::portable_backup::VerifiedPortableBackup;
 use sqlx::{
     ConnectOptions, Connection, SqliteConnection, SqlitePool,
     sqlite::{
@@ -15,6 +21,7 @@ use sqlx::{
 };
 use std::{
     fmt,
+    sync::atomic::{AtomicBool, Ordering},
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -322,6 +329,209 @@ impl KeyedConnectionFactory {
             state: self.state.clone(),
         })
     }
+}
+
+struct PortableImportState {
+    key: Mutex<[u8; 32]>,
+    faulted: AtomicBool,
+}
+impl Drop for PortableImportState {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+        if let Ok(key) = self.key.get_mut() {
+            key.zeroize();
+        }
+    }
+}
+struct PortableImportOwner(Arc<PortableImportState>);
+impl fmt::Debug for PortableImportOwner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("PortableImportOwner([REDACTED])")
+    }
+}
+// SAFETY: the key is applied to the exclusive new handle before SQL, retained
+// through actual close and zeroized with the final owner. A close failure
+// permanently faults this one-shot import state.
+unsafe impl SqliteNativeHandleOwner for PortableImportOwner {
+    fn initialize(
+        &self,
+        handle: std::ptr::NonNull<libsqlite3_sys::sqlite3>,
+    ) -> Result<(), sqlx::Error> {
+        if self.0.faulted.load(Ordering::Acquire) {
+            return Err(sqlx::Error::Protocol("Portable import retired".into()));
+        }
+        let key = self
+            .0
+            .key
+            .lock()
+            .map_err(|_| sqlx::Error::Protocol("Portable import retired".into()))?;
+        let status = unsafe {
+            libsqlite3_sys::sqlite3_key(handle.as_ptr(), key.as_ptr().cast(), key.len() as i32)
+        };
+        if status == libsqlite3_sys::SQLITE_OK {
+            Ok(())
+        } else {
+            self.0.faulted.store(true, Ordering::Release);
+            Err(sqlx::Error::Protocol(
+                "Portable import keying failed".into(),
+            ))
+        }
+    }
+    fn close_failed(&self) {
+        self.0.faulted.store(true, Ordering::Release);
+    }
+}
+
+/// Import an authenticated portable backup into a fresh next-generation
+/// SQLCipher database and return the existing crash-recoverable rotation.
+/// The original device key is not read or copied into the portable artifact.
+pub async fn import_portable_backup(
+    portable: &VerifiedPortableBackup,
+    reservation: DatabaseKeyRotationReservation,
+) -> Result<DatabaseKeyRotation, DatabaseKeyError> {
+    let candidate = reservation.target().parent().unwrap().join(format!(
+        ".gitru-portable-import-{}.sqlite",
+        uuid::Uuid::new_v4()
+    ));
+    let state = Arc::new(PortableImportState {
+        key: Mutex::new(*reservation.key().expose()),
+        faulted: AtomicBool::new(false),
+    });
+    {
+        let mut create = std::fs::OpenOptions::new();
+        create.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            create.mode(0o600);
+        }
+        create
+            .open(&candidate)
+            .map_err(|_| DatabaseKeyError::Storage)?;
+    }
+    let owner = state.clone();
+    let options = SqliteConnectOptions::new()
+        .filename(&candidate)
+        .create_if_missing(false)
+        .foreign_keys(true)
+        .journal_mode(SqliteJournalMode::Delete)
+        .synchronous(SqliteSynchronous::Full)
+        .pragma("temp_store", "MEMORY")
+        .pragma("trusted_schema", "OFF")
+        .disable_statement_logging();
+    let options = unsafe {
+        options.before_initialize(move || {
+            if owner.faulted.load(Ordering::Acquire) {
+                return Err(sqlx::Error::Protocol("Portable import retired".into()));
+            }
+            Ok(Box::new(PortableImportOwner(owner.clone())))
+        })
+    };
+    let result = async {
+        let mut source = SqliteConnection::connect_with(
+            &SqliteConnectOptions::new()
+                .filename(portable.native_import_path())
+                .read_only(false)
+                .pragma("trusted_schema", "OFF"),
+        )
+        .await
+        .map_err(|_| DatabaseKeyError::WrongKeyOrCorrupt)?;
+        sqlx::query("ATTACH DATABASE ? AS portable KEY ''")
+            .bind(candidate.to_str().ok_or(DatabaseKeyError::Storage)?)
+            .execute(&mut source)
+            .await
+            .map_err(|_| DatabaseKeyError::Storage)?;
+        {
+            let mut source_handle = source
+                .lock_handle()
+                .await
+                .map_err(|_| DatabaseKeyError::Storage)?;
+            let key = reservation.key().expose();
+            let status = unsafe {
+                libsqlite3_sys::sqlite3_key_v2(
+                    source_handle.as_raw_handle().as_ptr(),
+                    c"portable".as_ptr(),
+                    key.as_ptr().cast(),
+                    key.len() as i32,
+                )
+            };
+            if status != libsqlite3_sys::SQLITE_OK {
+                return Err(DatabaseKeyError::Storage);
+            }
+        }
+        sqlx::raw_sql(
+            "PRAGMA portable.cipher_page_size=4096;
+             PRAGMA portable.kdf_iter=256000;
+             PRAGMA portable.cipher_hmac_algorithm=HMAC_SHA512;
+             PRAGMA portable.cipher_kdf_algorithm=PBKDF2_HMAC_SHA512;
+             SELECT sqlcipher_export('portable');",
+        )
+        .execute(&mut source)
+        .await
+        .map_err(|_| DatabaseKeyError::Storage)?;
+        let identity = reservation.identity();
+        sqlx::query("DELETE FROM portable.database_storage_identity")
+            .execute(&mut source)
+            .await
+            .map_err(|_| DatabaseKeyError::Storage)?;
+        sqlx::query("INSERT INTO portable.database_storage_identity VALUES(1,1,?,?,?)")
+            .bind(identity.database_id())
+            .bind(i64::try_from(identity.generation()).map_err(|_| DatabaseKeyError::Storage)?)
+            .bind(collaboration::storage::keyed::CIPHER_PROFILE)
+            .execute(&mut source)
+            .await
+            .map_err(|_| DatabaseKeyError::Storage)?;
+        sqlx::raw_sql("PRAGMA portable.journal_mode=DELETE; DETACH DATABASE portable;")
+            .execute(&mut source)
+            .await
+            .map_err(|_| DatabaseKeyError::Storage)?;
+        source
+            .close()
+            .await
+            .map_err(|_| DatabaseKeyError::Storage)?;
+
+        let mut destination = SqliteConnection::connect_with(&options)
+            .await
+            .map_err(|_| DatabaseKeyError::WrongKeyOrCorrupt)?;
+        authenticate(&mut destination)
+            .await
+            .map_err(|_| DatabaseKeyError::WrongKeyOrCorrupt)?;
+        collaboration::storage::keyed::verify_portable_import(
+            &mut destination,
+            &identity,
+            portable.summary(),
+        )
+        .await
+        .map_err(|_| DatabaseKeyError::WrongKeyOrCorrupt)?;
+        destination
+            .close()
+            .await
+            .map_err(|_| DatabaseKeyError::Storage)?;
+        if state.faulted.load(Ordering::Acquire) {
+            return Err(DatabaseKeyError::Storage);
+        }
+        reservation.publish_imported_candidate_metadata(&candidate)?;
+        let proof = unsafe {
+            VerifiedRotatedDatabase::from_native_verification(candidate.clone(), identity)
+        };
+        reservation.prepare_verified_candidate(proof)
+    }
+    .await;
+    if result.is_err() {
+        for suffix in [
+            "",
+            "-wal",
+            "-shm",
+            "-journal",
+            ".key.json",
+            ".key.json.pending",
+        ] {
+            let mut path = candidate.as_os_str().to_os_string();
+            path.push(suffix);
+            let _ = std::fs::remove_file(std::path::PathBuf::from(path));
+        }
+    }
+    result
 }
 
 pub struct KeyedConnection {

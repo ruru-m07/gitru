@@ -2315,6 +2315,8 @@ dependencies = [
  "libsqlite3-sys",
  "sqlx",
  "tokio",
+ "uuid",
+ "zeroize",
 ]
 
 [[package]]

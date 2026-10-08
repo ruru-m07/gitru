@@ -531,7 +531,7 @@ async fn read_current(path: &Path) -> Result<Option<CurrentState>> {
     }))
 }
 
-async fn summary(
+pub(crate) async fn summary(
     connection: &mut SqliteConnection,
     version: i64,
     checksum: String,

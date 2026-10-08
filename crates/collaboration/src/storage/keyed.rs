@@ -51,6 +51,28 @@ pub async fn verify_identity(
     Ok(())
 }
 
+/// Validate the native import after its destination identity has been rebound.
+/// The ciphertext digest differs by design, so compare semantic durable counts
+/// and the reviewed current schema while the authenticated keyed handle is live.
+pub async fn verify_portable_import(
+    connection: &mut SqliteConnection,
+    identity: &DatabaseKeyIdentity,
+    expected: &crate::recovery::BackupSummary,
+) -> Result<()> {
+    verify_identity(connection, identity).await?;
+    let version = crate::recovery::verify_keyed(connection).await?;
+    let actual = crate::recovery::summary(connection, version, String::new()).await?;
+    if actual.schema_version != expected.schema_version
+        || actual.revision != expected.revision
+        || actual.accounts != expected.accounts
+        || actual.drafts != expected.drafts
+        || actual.commands != expected.commands
+    {
+        return Err(keyed_recovery_required());
+    }
+    Ok(())
+}
+
 impl Store {
     /// Qualification/native embedding only. No default cipher selection changes.
     pub async fn open_keyed(factory: Arc<dyn KeyedStoreFactory>) -> Result<Self> {

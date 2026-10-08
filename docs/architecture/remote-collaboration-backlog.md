@@ -2790,7 +2790,8 @@ schema/migration/quarantine recovery transaction. Focused synthetic tests cover
 round-trip recovery, historical schema migration, wrong key, tamper, truncation,
 WAL/unknown-schema rejection, create-new publication and artifact scans. The
 [work note](collaboration-work/RURU-141.md) records the private restore-staging
-exposure boundary. Existing keyed Store backup/restore remains fail closed until
-RURU-140 supplies a trusted SQLCipher import/rekey candidate; wrapping a local
-device-key database is deliberately not presented as portable. RURU-141 remains
-in progress and no production UI/IPC is enabled by this slice.
+exposure boundary. The trusted native importer now converts verified staging to
+a fresh device-key generation through `sqlcipher_export`, exact identity/schema/
+summary verification and RURU-140's preserved-quarantine rotation transaction;
+it never wraps or requires the source device key. Production UI/IPC is not
+enabled by this slice; packaged cross-platform results remain separate evidence.

@@ -144,6 +144,99 @@ async fn current_schema_store_is_keyed_cold_reopenable_and_plaintext_paths_fail_
 }
 
 #[tokio::test]
+async fn portable_backup_imports_with_fresh_device_key_and_preserves_old_keyed_quarantine() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("source.sqlite");
+    let portable_path = temp.path().join("portable.gitru-age");
+    let credential =
+        collaboration::portable_backup::PortableBackupCredential::from_user_passphrase(
+            "synthetic portable restore credential 905173".into(),
+        )
+        .unwrap();
+    let source_store = collaboration::Store::open(&source).await.unwrap();
+    source_store
+        .upsert_account(collaboration::RemoteAccount {
+            id: "portable-source".into(),
+            provider: collaboration::ProviderKind::Github,
+            host: "github.com".into(),
+            actor_id: "portable-905173".into(),
+            login: "portable-source".into(),
+            display_name: Some(CANARY.into()),
+            authorization_epoch: "7".into(),
+            state: collaboration::AccountState::Active,
+            notifications_supported: true,
+        })
+        .await
+        .unwrap();
+    source_store
+        .portable_backup_to(&portable_path, &credential)
+        .await
+        .unwrap();
+    source_store.close().await.unwrap();
+
+    let target = temp.path().join("fresh-device.sqlite");
+    let vault = Vault::default();
+    let initial = Arc::new(KeyedConnectionFactory::new(reserve(&target, &vault)));
+    let initial_identity = initial.state.identity.clone();
+    let empty = collaboration::Store::open_keyed(initial).await.unwrap();
+    empty.close().await.unwrap();
+    released(&target, &vault).await;
+
+    let portable =
+        collaboration::portable_backup::VerifiedPortableBackup::prepare_for_keyed_import(
+            &target,
+            &portable_path,
+            &credential,
+        )
+        .await
+        .unwrap();
+    let reservation =
+        collaboration::database_keys::lifecycle::DatabaseKeyRotationReservation::prepare(
+            &target, &vault,
+        )
+        .unwrap();
+    let next_identity = reservation.identity();
+    assert_eq!(next_identity.database_id(), initial_identity.database_id());
+    assert_eq!(
+        next_identity.generation(),
+        initial_identity.generation() + 1
+    );
+    let rotation = import_portable_backup(&portable, reservation)
+        .await
+        .unwrap();
+    drop(portable);
+    let confirmation = rotation.preview().confirmation_id().to_owned();
+    let quarantine = rotation.confirm(&confirmation).unwrap();
+    assert!(quarantine.join("database.sqlite").is_file());
+    assert!(quarantine.join("database.key.json").is_file());
+    canary_absent(&quarantine.join("database.sqlite"));
+    assert!(
+        !std::fs::read(&portable_path)
+            .unwrap()
+            .windows(CANARY.len())
+            .any(|part| part == CANARY.as_bytes())
+    );
+    canary_absent(&target);
+
+    let reopened = collaboration::database_keys::DatabaseKeySession::prepare(
+        &target,
+        &vault,
+        collaboration::database_keys::DatabaseCreation::ExistingOnly,
+    )
+    .unwrap();
+    assert_eq!(reopened.identity(), next_identity);
+    let restored =
+        collaboration::Store::open_keyed(Arc::new(KeyedConnectionFactory::new(reopened)))
+            .await
+            .unwrap();
+    let accounts = restored.accounts().await.unwrap().accounts;
+    assert_eq!(accounts.len(), 1);
+    assert_eq!(accounts[0].display_name.as_deref(), Some(CANARY));
+    restored.close().await.unwrap();
+    released(&target, &vault).await;
+}
+
+#[tokio::test]
 async fn actual_cipher_all_roles_three_readers_replacement_and_cold_reopen() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("data.sqlite");

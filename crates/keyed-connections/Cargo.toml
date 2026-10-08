@@ -11,6 +11,8 @@ async-trait = "0.1"
 collaboration = { path = "../collaboration", features = ["native-keyed-store"] }
 sqlx = { version = "=0.9.0", default-features = false, features = ["runtime-tokio", "sqlite-bundled"] }
 tokio = { version = "=1.50.0", features = ["macros", "rt-multi-thread", "time", "sync"] }
+uuid = { version = "1", features = ["v4"] }
+zeroize = "1"
 
 [target.'cfg(target_vendor = "apple")'.dependencies]
 libsqlite3-sys = { version = "=0.37.0", features = ["bundled-sqlcipher"] }

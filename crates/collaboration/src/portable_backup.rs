@@ -9,7 +9,7 @@
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Write},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use age::secrecy::SecretString;
@@ -142,6 +142,53 @@ pub(crate) async fn encrypt_from_connection(
 pub struct PortableRecoverySession {
     _stage: TempDir,
     recovery: RecoverySession,
+}
+
+/// Authenticated plaintext owned only for a trusted native rekey/import. The
+/// directory is private and removed on drop; no caller can detach the path.
+pub struct VerifiedPortableBackup {
+    _stage: TempDir,
+    path: PathBuf,
+    summary: BackupSummary,
+}
+
+impl VerifiedPortableBackup {
+    pub async fn prepare_for_keyed_import(
+        target: impl AsRef<Path>,
+        encrypted_backup: impl AsRef<Path>,
+        credential: &PortableBackupCredential,
+    ) -> Result<Self> {
+        let target = target.as_ref();
+        let parent = target.parent().ok_or_else(invalid)?;
+        let stage = private_stage(parent)?;
+        let selected = stage.path().join("selected.sqlite");
+        decrypt_and_verify(encrypted_backup.as_ref(), &selected, credential).await?;
+        // Reuse the exact reviewed restore policy before crossing the native
+        // rekey boundary: migrate only staging, remove provider cache/credential
+        // references, quarantine commands and advance authorization fences.
+        let path = stage.path().join("verified.sqlite");
+        let empty = crate::Store::open(&path).await?;
+        empty.close().await?;
+        let recovery = RecoverySession::prepare(&path, &selected).await?;
+        let id = recovery.preview().confirmation_id.clone();
+        recovery.confirm(&id, crate::recovery::RestoreChoice::ReplaceCurrentData)?;
+        let summary = crate::recovery::inspect_standalone_backup(&path).await?;
+        Ok(Self {
+            _stage: stage,
+            path,
+            summary,
+        })
+    }
+
+    /// Trusted native codec seam. Callers must not copy, publish, log or expose
+    /// this path; the returned borrow cannot outlive the RAII staging owner.
+    pub fn native_import_path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn summary(&self) -> &BackupSummary {
+        &self.summary
+    }
 }
 
 impl PortableRecoverySession {
@@ -279,7 +326,6 @@ mod tests {
     use super::*;
     use crate::{AccountState, ProviderKind, RemoteAccount, Store, recovery::RestoreChoice};
     use sqlx::Connection;
-    use std::path::PathBuf;
 
     const CANARY: &str = "GITRU_PORTABLE_PRIVATE_CANARY_905173";
 

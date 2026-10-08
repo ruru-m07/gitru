@@ -50,13 +50,17 @@ snapshots and storage remanence remain outside this format's protection. A user
 who explicitly requests the existing plaintext export still creates plaintext;
 encrypting a later copy cannot erase that export, snapshots or SSD remnants.
 
-The existing keyed Store correctly rejects the plaintext backup/recovery entry
-points. A device-independent keyed restore additionally requires the still
-missing trusted SQLCipher import/rekey candidate implementation behind RURU-140's
-rotation proof boundary. Wrapping current device-key ciphertext would not be
-portable, so this slice does not do that or weaken the fail-closed guard. RURU-141
-must remain in progress until that native import path and its cross-platform
-packaged crash qualification land.
+The existing keyed Store continues to reject plaintext backup/recovery entry
+points. Device-independent restore instead decrypts and validates the portable
+artifact into RAII staging, runs the existing migration/fence/quarantine policy,
+reserves a fresh RURU-140 next-generation device key, and crosses one trusted
+native SQLCipher importer. That importer attaches a create-only candidate, keys
+it through `sqlite3_key_v2` before any export, runs `sqlcipher_export`, rebinds
+the immutable database identity, authenticates the cipher profile/schema/
+integrity/authored summary, checkpoints and closes it. Only then can it publish
+matching ready metadata and construct RURU-140's unsafe verified-rotation proof.
+Rotation confirmation preserves the prior local keyed database and metadata in
+its recovery quarantine. The source device key is neither required nor wrapped.
 
 ## Validation
 
@@ -66,8 +70,16 @@ packaged crash qualification land.
   artifact canary/header scans and staging cleanup.
 - Existing recovery tests remain the authority for migration, durable intent,
   command quarantine, authorization/epoch fences and injected crash boundaries.
-- Full all-feature collaboration tests, strict workspace Clippy and formatting
-  are recorded on the pull request after completion.
+- Actual qualified SQLCipher native suite passes 11 tests with one deliberate
+  harness helper ignored. Its portable-import test restores the artifact into a fresh
+  local key generation, byte-scans artifact/current DB/sidecars, verifies the
+  preserved old-keyed quarantine and cold-reopens authored data under the new
+  generation. The full native harness and platform CI remain separate evidence.
+- The final portable suite passes 4 tests, the qualified native strict Clippy
+  run and workspace formatting pass, and the earlier all-feature collaboration
+  run passed 937 tests with 7 ignored. The ordinary workspace Clippy command
+  cannot compile the opt-in keyed crate without the retained qualified SQLx
+  patch; that native seam is checked through its pinned harness configuration.
 
 All fixtures use synthetic accounts, content and passphrases. No personal
 credentials, device database or provider mutation is involved.
