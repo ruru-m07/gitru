@@ -1,51 +1,15 @@
 use crate::commands::collaboration::CollaborationState;
-#[cfg(not(feature = "collaboration-harness"))]
+#[cfg(not(feature = "e2e"))]
+use crate::native_vault::NativeVault;
+#[cfg(all(feature = "e2e", not(feature = "collaboration-harness")))]
 use collaboration::credentials::{CredentialError, CredentialVault, SecretToken};
 use collaboration::{CollaborationError, CollaborationRuntime, Store};
 use std::sync::Arc;
-#[cfg(not(feature = "collaboration-harness"))]
+#[cfg(all(feature = "e2e", not(feature = "collaboration-harness")))]
 use std::sync::Mutex;
 #[cfg(not(feature = "collaboration-harness"))]
 use tauri::App;
 use tauri::{Emitter, Manager};
-
-#[cfg(not(feature = "e2e"))]
-struct NativeVault {
-    service: String,
-    gate: Mutex<()>,
-}
-
-#[cfg(not(feature = "e2e"))]
-impl NativeVault {
-    fn entry(&self, reference: &str) -> Result<keyring::Entry, CredentialError> {
-        keyring::Entry::new(&self.service, reference).map_err(|_| CredentialError::Unavailable)
-    }
-}
-
-#[cfg(not(feature = "e2e"))]
-impl CredentialVault for NativeVault {
-    fn store(&self, reference: &str, token: &SecretToken) -> Result<(), CredentialError> {
-        let _gate = self.gate.lock().map_err(|_| CredentialError::Unavailable)?;
-        self.entry(reference)?
-            .set_password(token.expose())
-            .map_err(|_| CredentialError::Unavailable)
-    }
-    fn load(&self, reference: &str) -> Result<Option<SecretToken>, CredentialError> {
-        let _gate = self.gate.lock().map_err(|_| CredentialError::Unavailable)?;
-        match self.entry(reference)?.get_password() {
-            Ok(value) => SecretToken::new(value).map(Some),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(_) => Err(CredentialError::Unavailable),
-        }
-    }
-    fn delete(&self, reference: &str) -> Result<(), CredentialError> {
-        let _gate = self.gate.lock().map_err(|_| CredentialError::Unavailable)?;
-        match self.entry(reference)?.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(_) => Err(CredentialError::Unavailable),
-        }
-    }
-}
 
 // Packaged automation never opens or alters a person's native keychain.
 #[cfg(all(feature = "e2e", not(feature = "collaboration-harness")))]
@@ -145,10 +109,10 @@ pub(crate) async fn build_runtime(
             ))?;
             registry.register_provider_inbox_actions()?;
             #[cfg(not(feature = "e2e"))]
-            let vault = Arc::new(NativeVault {
-                service: format!("{}.collaboration", handle.config().identifier),
-                gate: Mutex::new(()),
-            });
+            let vault = Arc::new(NativeVault::new(format!(
+                "{}.collaboration",
+                handle.config().identifier
+            )));
             #[cfg(feature = "e2e")]
             let vault = Arc::new(TestVault::default());
             #[cfg(not(feature = "e2e"))]
