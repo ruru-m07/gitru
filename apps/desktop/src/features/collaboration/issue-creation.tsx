@@ -205,6 +205,8 @@ function useIssueDraftEditor(account: RemoteAccount, key: LocalIssueDraftKey) {
   const bodyError = validateBody(body);
   const retryAllowed =
     activeRetry !== null &&
+    !query.isError &&
+    current?.reason !== "account_unavailable" &&
     activeRetry.context.account_id === account.id &&
     activeRetry.context.repository_id === key.repository_id &&
     activeRetry.context.authorization_epoch === account.authorization_epoch &&

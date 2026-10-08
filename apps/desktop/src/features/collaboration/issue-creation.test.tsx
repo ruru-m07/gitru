@@ -4,6 +4,7 @@ import type {
   RemoteRepository,
 } from "@gitru/collaboration-client";
 import { collaboration } from "@gitru/collaboration-client";
+import { issueDraftQueryOptions } from "@gitru/collaboration-client/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -199,7 +200,7 @@ it("retains the exact command UUID when admission succeeds but its IPC receipt i
       duplicate: true,
     };
   });
-  const { user } = setup();
+  const { cache, user } = setup();
   await user.click(screen.getByRole("button", { name: "New issue" }));
   await user.click(
     await screen.findByRole("checkbox", {
@@ -212,8 +213,30 @@ it("retains the exact command UUID when admission succeeds but its IPC receipt i
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "exact request identity",
   );
+  const key = issueDraftQueryOptions(account, {
+    draft_id: snapshot.draft_id,
+    repository_id: snapshot.repository_id,
+  }).queryKey;
+  await act(async () => {
+    await cache.cancelQueries({ queryKey: key });
+    cache.setQueryData(key, {
+      ...snapshot,
+      availability: "unavailable",
+      reason: "account_unavailable",
+    });
+  });
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: "Retry exact issue submission" }),
+    ).not.toBeInTheDocument(),
+  );
+  await act(async () => {
+    cache.setQueryData(key, snapshot);
+  });
   await user.click(
-    screen.getByRole("button", { name: "Retry exact issue submission" }),
+    await screen.findByRole("button", {
+      name: "Retry exact issue submission",
+    }),
   );
   await waitFor(() => expect(submit).toHaveBeenCalledTimes(2));
   expect(submit.mock.calls[1]?.[0]).toEqual(submit.mock.calls[0]?.[0]);
