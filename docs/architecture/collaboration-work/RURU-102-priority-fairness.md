@@ -81,3 +81,9 @@ data/account/draft, refuse early retry even after renewing demand, and recover
 after the normal delay with fresh provider data. Direct storage ordering controls
 must continue proving rejection and atomic rollback; retired authority controls
 must still return `StaleView` and avoid publishing error into a replacement view.
+
+The same distinction applies to independently clocked resource metadata when
+Body was omitted: a metadata timestamp can be newer than the retained Body
+ordering barrier. A second real-runtime control reproduced immediate retry on
+that separate guard while keeping Body authority current. Only the provider
+ordering branch changes; native subject-binding failures remain `StaleView`.

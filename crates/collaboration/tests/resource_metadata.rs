@@ -407,7 +407,7 @@ async fn timestamp_less_observations_cannot_erase_metadata_or_body_ordering_barr
     page.body = known(Some("old body"));
     assert_eq!(
         store.apply_detail(page).await.unwrap_err().code,
-        ErrorCode::StaleView
+        ErrorCode::Provider
     );
     assert_eq!(
         saved(&store, &a).await.values.title.as_deref(),
@@ -626,7 +626,7 @@ async fn metadata_clock_is_preserved_when_the_body_does_not_supply_an_ordering_b
     .await;
     assert_eq!(
         store.apply_detail(page).await.unwrap_err().code,
-        ErrorCode::StaleView
+        ErrorCode::Provider
     );
     assert_eq!(saved(&store, &a).await.values.title.as_deref(), Some("new"));
 }
