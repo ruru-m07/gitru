@@ -29,6 +29,7 @@ impl Journal {
             generation: self.generation,
         }
     }
+    #[cfg(feature = "native-keyed-store")]
     pub(super) fn successor(&self) -> Result<Self, DatabaseKeyError> {
         Ok(Self {
             version: self.version,

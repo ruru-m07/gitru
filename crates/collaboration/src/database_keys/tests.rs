@@ -291,7 +291,7 @@ async fn interrupted_creation_verifies_before_ready_and_wrong_key_preserves_ever
 
 #[test]
 fn metadata_bounds_versions_pending_and_restore_fail_closed() {
-    for bytes in [b"{}".to_vec(),vec![b'x';1025],serde_json::to_vec(&serde_json::json!({"version":2,"database_id":uuid::Uuid::new_v4().to_string(),"generation":1,"ready":false})).unwrap(),serde_json::to_vec(&serde_json::json!({"version":1,"database_id":uuid::Uuid::new_v4().to_string(),"generation":2,"ready":false})).unwrap()] {
+    for bytes in [b"{}".to_vec(),vec![b'x';1025],serde_json::to_vec(&serde_json::json!({"version":2,"database_id":uuid::Uuid::new_v4().to_string(),"generation":1,"ready":false})).unwrap(),serde_json::to_vec(&serde_json::json!({"version":1,"database_id":uuid::Uuid::new_v4().to_string(),"generation":0,"ready":false})).unwrap()] {
         let temp=tempfile::tempdir().unwrap(); let path=path(&temp); let vault=Vault::default();
         write(&files::append(&path,".key.json"),&bytes);
         assert_eq!(DatabaseKeySession::prepare(&path,&vault,DatabaseCreation::AllowNew).unwrap_err(),DatabaseKeyError::InvalidMetadata);
