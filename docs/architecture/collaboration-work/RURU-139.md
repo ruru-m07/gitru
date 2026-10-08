@@ -143,3 +143,26 @@ and `core.eol=lf` for that command only, preserving every hash/version guard and
 the user's Git configuration. A real temporary Git repository with CRLF enabled
 reproduces the old behavior and passes the corrected extraction; all six Python
 controls pass. Platform/portability results remain pending the new exact head.
+
+## Exact-source remote qualification — 8 October 2026
+
+[Run 37726932167](https://github.com/ruru-m07/gitru/actions/runs/37726932167)
+completed successfully for exact signed source
+`61548a0d6daa48adf87a31a0e1ca4cc2c475e317`. All seven jobs pass:
+
+- Linux source reproduction verifies the pinned SQLCipher amalgamation hashes.
+- Native encrypted probe and copied current-engine regression pass on macOS 26,
+  Ubuntu 22.04 and Windows. Platform-specific crypto/linkage reports and source,
+  binary and license evidence are retained as workflow artifacts.
+- Each platform reads every platform's produced encrypted synthetic fixture;
+  all three cross-platform reader jobs pass, including Windows job
+  `113158042003` (the final job to finish).
+
+The ordinary PR #193 matrix also passes all 14 reported checks at that source.
+These results qualify the isolated native build and synthetic file portability,
+not production encrypted app startup. The copied engine regression remains
+unkeyed Store against the qualified cipher engine. R140 keyed application/vault
+integration and migration, Tauri packaging, R125 encrypted/current native IPC
+latency and memory measurements, and R141 portable user-key recovery remain
+unqualified. R139 therefore remains In Progress. The production safety gate,
+application dependencies and plaintext behavior are unchanged; no merge.

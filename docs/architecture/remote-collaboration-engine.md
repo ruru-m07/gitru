@@ -3742,3 +3742,16 @@ existing WAL safety gate. Production dependencies and the gate remain unchanged.
 Strict isolated Clippy/fmt pass; this is not full app encryption/vault/platform
 qualification. RURU-139/140/141 track the compatible build, native key lifecycle
 and portable encrypted recovery implementation. GA encryption is still unshipped.
+
+### RURU-139 cross-platform cipher build qualification — 8 October 2026
+
+PR #193 exact signed source `61548a0d` passes all seven jobs in
+[run 37726932167](https://github.com/ruru-m07/gitru/actions/runs/37726932167):
+Linux pinned-source reproduction, native encrypted probe/current-engine regression
+on macOS/Linux/Windows, and all three readers opening every producer's synthetic
+encrypted fixture. Its ordinary PR matrix also reports 14 passing checks.
+[The work note](collaboration-work/RURU-139.md) separates this isolated build/file
+portability evidence from still-pending keyed whole-app startup/migration (R140),
+Tauri packaged encryption, R125 native IPC latency/memory comparison and portable
+user-key recovery (R141). R139 remains In Progress; production encryption is
+unchanged and no PR merged.
