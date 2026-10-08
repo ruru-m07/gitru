@@ -319,10 +319,6 @@ pub(crate) fn accepted_matches(
 ) -> bool {
     preparation_matches(&evidence.preparation, payload, command)
         && receipt_matches(&evidence.receipt, payload)
-        && ordered_local_times(
-            &evidence.preparation.observed_at,
-            &evidence.receipt.observed_at,
-        )
 }
 
 pub(crate) fn submitted_matches(
@@ -333,11 +329,6 @@ pub(crate) fn submitted_matches(
     if !preparation_matches(&evidence.preparation, payload, command)
         || !receipt_matches(&evidence.receipt, payload)
         || !canonical_time(&evidence.confirmed_at)
-        || !ordered_local_times(
-            &evidence.preparation.observed_at,
-            &evidence.receipt.observed_at,
-        )
-        || !ordered_local_times(&evidence.receipt.observed_at, &evidence.confirmed_at)
         || evidence.comments.len() != payload.comments.len()
     {
         return false;
@@ -362,7 +353,6 @@ pub(crate) fn rejected_matches(
     preparation_matches(&evidence.preparation, payload, command)
         && matches!(evidence.status, 401 | 403 | 404 | 409 | 422 | 429)
         && canonical_time(&evidence.observed_at)
-        && ordered_local_times(&evidence.preparation.observed_at, &evidence.observed_at)
 }
 
 fn receipt_matches(receipt: &AcceptedReceiptV1, payload: &Payload) -> bool {
@@ -418,13 +408,6 @@ fn canonical_time(value: &str) -> bool {
         })
         .as_deref()
         == Some(value)
-}
-
-fn ordered_local_times(first: &str, second: &str) -> bool {
-    let parsed = [first, second]
-        .map(chrono::DateTime::parse_from_rfc3339)
-        .map(|value| value.ok().map(|value| value.with_timezone(&chrono::Utc)));
-    matches!(parsed, [Some(first), Some(second)] if first <= second)
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -958,7 +941,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_timestamp_skew_does_not_invalidate_local_receipt_causality() {
+    fn independent_provider_and_moving_local_clocks_do_not_invalidate_proof_identity() {
         let payload = payload();
         let command = command(payload.clone());
         let preparation = preparation(&payload, &command);
@@ -993,12 +976,25 @@ mod tests {
             ));
         }
 
+        // The immutable attempt/evidence ordinal and exact command/receipt
+        // identities establish causality. Wall UTC may move backwards between
+        // the preflight, POST response and exact-ID readback.
         let mut receipt = receipt(&payload);
         receipt.observed_at = "2026-10-08T01:00:59.999999999Z".into();
-        assert!(!accepted_matches(
-            &AcceptedEvidenceV1 {
-                preparation,
+        let accepted = AcceptedEvidenceV1 {
+            preparation,
+            receipt: receipt.clone(),
+        };
+        assert!(accepted_matches(&accepted, &payload, &command));
+        assert!(submitted_matches(
+            &SubmittedEvidenceV1 {
+                preparation: accepted.preparation,
                 receipt,
+                comments: vec![ConfirmedCommentV1 {
+                    comment_id: payload.comments[0].comment_id.clone(),
+                    provider_id: "901".into(),
+                }],
+                confirmed_at: "2026-10-08T00:59:59.999999999Z".into(),
             },
             &payload,
             &command,
@@ -1006,7 +1002,7 @@ mod tests {
     }
 
     #[test]
-    fn rejected_proof_accepts_only_known_no_effect_statuses_and_local_time_order() {
+    fn rejected_proof_accepts_only_known_no_effect_statuses_and_canonical_time() {
         let payload = payload();
         let command = command(payload.clone());
         let mut rejected = RejectedEvidenceV1 {
@@ -1019,6 +1015,8 @@ mod tests {
         assert!(!rejected_matches(&rejected, &payload, &command));
         rejected.status = 403;
         rejected.observed_at = "2026-10-08T01:00:59.999999999Z".into();
+        assert!(rejected_matches(&rejected, &payload, &command));
+        rejected.observed_at = "2026-10-08T01:00:59Z".into();
         assert!(!rejected_matches(&rejected, &payload, &command));
     }
 
@@ -1041,7 +1039,7 @@ mod tests {
         accepted.preparation.context.head_oid = BASE.into();
         assert!(!accepted_matches(&accepted, &payload, &command));
         accepted.preparation = preparation(&payload, &command);
-        accepted.receipt.observed_at = "2026-10-08T01:00:00.000000000Z".into();
+        accepted.receipt.observed_at = "not-a-timestamp".into();
         assert!(!accepted_matches(&accepted, &payload, &command));
 
         let mut submitted = SubmittedEvidenceV1 {

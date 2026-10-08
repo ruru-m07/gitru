@@ -1,7 +1,8 @@
 //! Authored review drafts, provider-derived anchor authority and immutable receipts.
 use super::*;
 use crate::{
-    DetailFacet, PullFileDiffRequest, ReviewContext, ReviewDiffSide,
+    DetailFacet, PullFileArtifactSnapshot, PullFileChangeKind, PullFileDiffRequest, ReviewContext,
+    ReviewDiffSide,
     commands::*,
     delivery::DeliveryCommand,
     review_submission::{anchors::*, native as n, *},
@@ -249,13 +250,27 @@ fn context(
     })
 }
 
+async fn supported_artifact_in(
+    tx: &mut Transaction<'_, Sqlite>,
+    request: PullFileDiffRequest,
+) -> Result<PullFileArtifactSnapshot> {
+    let selection = super::pull_files::selection_in(tx, &request).await?;
+    if matches!(
+        selection.file.file.change_kind,
+        PullFileChangeKind::Renamed | PullFileChangeKind::Copied | PullFileChangeKind::Unknown
+    ) {
+        return Err(stale());
+    }
+    super::pull_files::artifact_in(tx, request).await
+}
+
 async fn resolve_comments_in(
     tx: &mut Transaction<'_, Sqlite>,
     request: &SaveReviewDraftRequest,
 ) -> Result<Vec<n::ResolvedComment>> {
     let mut resolved = Vec::with_capacity(request.comments.len());
     for comment in &request.comments {
-        let snapshot = super::pull_files::artifact_in(
+        let snapshot = supported_artifact_in(
             tx,
             PullFileDiffRequest {
                 account_id: request.key.account_id.clone(),
@@ -337,7 +352,7 @@ async fn authority_in(
                 side: anchor.side,
             },
         };
-        let snapshot = super::pull_files::artifact_in(
+        let snapshot = supported_artifact_in(
             tx,
             PullFileDiffRequest {
                 account_id: account.id.clone(),

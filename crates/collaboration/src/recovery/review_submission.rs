@@ -57,6 +57,13 @@ fn payload(command: &crate::delivery::DeliveryCommand) -> Result<n::Payload> {
     .map_err(|_| invalid_backup())
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DraftComment {
+    comment_id: String,
+    body: String,
+}
+
 fn valid_anchor(anchor: &crate::GithubReviewLineAnchor, context: &crate::ReviewContext) -> bool {
     anchor.context.validate().is_ok()
         && anchor.context.base_oid == context.base_oid
@@ -163,12 +170,11 @@ pub(super) async fn verify(db: &mut SqliteConnection) -> Result<()> {
             }
         }
     }
-
     refuse(db, "SELECT 1 FROM review_submissions s JOIN commands c USING(account_id,command_id) JOIN review_drafts d USING(account_id,subject_id) WHERE c.operation_kind<>'github.submit_review' OR c.payload_version<>1 OR c.target_kind<>'pull_request' OR c.target_id<>s.subject_id OR c.repository_id IS NULL OR d.generation<s.draft_generation LIMIT 1").await?;
     refuse(db, "SELECT 1 FROM commands c LEFT JOIN review_submissions s USING(account_id,command_id) WHERE c.operation_kind='github.submit_review' AND c.payload_version=1 AND s.command_id IS NULL LIMIT 1").await?;
     {
         let mut rows = sqlx::query(
-            "SELECT c.*,d.event,d.body,d.generation AS current_generation,s.subject_id,s.draft_generation,s.content_hash,a.json AS account_json,cd.attempt_count FROM review_submissions s JOIN commands c USING(account_id,command_id) JOIN command_delivery cd USING(account_id,command_id) JOIN review_drafts d USING(account_id,subject_id) JOIN accounts a ON a.id=c.account_id",
+            "SELECT c.*,d.event,d.body,d.generation AS current_generation,s.subject_id,s.draft_generation,s.content_hash,a.json AS account_json,(SELECT count(*) FROM delivery_attempts da WHERE da.account_id=c.account_id AND da.command_id=c.command_id) AS attempt_count,coalesce((SELECT json_group_array(json_object('comment_id',comment_id,'body',body)) FROM (SELECT comment_id,body FROM review_draft_comments dc WHERE dc.account_id=s.account_id AND dc.subject_id=s.subject_id ORDER BY ordinal)),'[]') AS current_comments_json FROM review_submissions s JOIN commands c USING(account_id,command_id) JOIN review_drafts d USING(account_id,subject_id) JOIN accounts a ON a.id=c.account_id",
         )
         .fetch(&mut *db);
         while let Some(row) = rows.try_next().await.map_err(|_| invalid_backup())? {
@@ -177,19 +183,31 @@ pub(super) async fn verify(db: &mut SqliteConnection) -> Result<()> {
             let account: RemoteAccount =
                 serde_json::from_str(&column::<String>(&row, "account_json")?)
                     .map_err(|_| invalid_backup())?;
-            if account.provider != ProviderKind::Github
+            let current_comments: Vec<DraftComment> =
+                serde_json::from_str(&column::<String>(&row, "current_comments_json")?)
+                    .map_err(|_| invalid_backup())?;
+            let same_generation = column::<i64>(&row, "current_generation")?
+                == column::<i64>(&row, "draft_generation")?;
+            if command.attempt_count > 1
+                || account.provider != ProviderKind::Github
                 || account.host != "github.com"
                 || payload.actor_id != account.actor_id
                 || payload.request.draft_generation
                     != column::<i64>(&row, "draft_generation")?.to_string()
                 || payload.content_hash.as_slice()
                     != column::<Vec<u8>>(&row, "content_hash")?.as_slice()
-                || column::<i64>(&row, "current_generation")?
-                    == column::<i64>(&row, "draft_generation")?
+                || same_generation
                     && (payload.event
                         != n::parse_event(&column::<String>(&row, "event")?)
                             .ok_or_else(invalid_backup)?
-                        || payload.body != column::<String>(&row, "body")?)
+                        || payload.body != column::<String>(&row, "body")?
+                        || current_comments.len() != payload.comments.len()
+                        || current_comments.iter().zip(&payload.comments).any(
+                            |(current, sealed)| {
+                                current.comment_id != sealed.comment_id
+                                    || current.body != sealed.body
+                            },
+                        ))
             {
                 return Err(invalid_backup());
             }
@@ -198,7 +216,7 @@ pub(super) async fn verify(db: &mut SqliteConnection) -> Result<()> {
     refuse(db, "SELECT 1 FROM delivery_attempts a JOIN commands c USING(account_id,command_id) LEFT JOIN delivery_attempt_context x USING(account_id,command_id,attempt_number) WHERE c.operation_kind='github.submit_review' AND c.payload_version=1 AND (x.command_id IS NULL OR a.authorization_epoch<>c.authorization_epoch) LIMIT 1").await?;
     {
         let mut rows = sqlx::query(
-            "SELECT c.*,cd.attempt_count,x.execution_base FROM delivery_attempt_context x JOIN commands c USING(account_id,command_id) JOIN command_delivery cd USING(account_id,command_id) WHERE c.operation_kind='github.submit_review' AND c.payload_version=1",
+            "SELECT c.*,(SELECT count(*) FROM delivery_attempts da WHERE da.account_id=c.account_id AND da.command_id=c.command_id) AS attempt_count,x.execution_base FROM delivery_attempt_context x JOIN commands c USING(account_id,command_id) WHERE c.operation_kind='github.submit_review' AND c.payload_version=1",
         )
         .fetch(&mut *db);
         while let Some(row) = rows.try_next().await.map_err(|_| invalid_backup())? {
@@ -218,7 +236,7 @@ pub(super) async fn verify(db: &mut SqliteConnection) -> Result<()> {
 
     {
         let mut rows = sqlx::query(
-            "SELECT c.*,cd.attempt_count,e.kind,e.payload AS evidence_payload,e.ordinal,e.attempt_number,x.execution_base FROM command_evidence e JOIN commands c USING(account_id,command_id) JOIN command_delivery cd USING(account_id,command_id) LEFT JOIN delivery_attempt_context x ON x.account_id=e.account_id AND x.command_id=e.command_id AND x.attempt_number=e.attempt_number WHERE e.kind IN ('github.review_accepted','github.review_submitted','github.review_rejected') AND e.version=1",
+            "SELECT c.*,(SELECT count(*) FROM delivery_attempts da WHERE da.account_id=c.account_id AND da.command_id=c.command_id) AS attempt_count,e.kind,e.payload AS evidence_payload,e.ordinal,e.attempt_number,x.execution_base FROM command_evidence e JOIN commands c USING(account_id,command_id) LEFT JOIN delivery_attempt_context x ON x.account_id=e.account_id AND x.command_id=e.command_id AND x.attempt_number=e.attempt_number WHERE e.kind IN ('github.review_accepted','github.review_submitted','github.review_rejected') AND e.version=1",
         )
         .fetch(&mut *db);
         while let Some(row) = rows.try_next().await.map_err(|_| invalid_backup())? {
@@ -265,9 +283,12 @@ pub(super) async fn verify(db: &mut SqliteConnection) -> Result<()> {
     refuse(db, "SELECT 1 FROM command_evidence e JOIN commands c USING(account_id,command_id) LEFT JOIN review_resolutions r ON r.account_id=e.account_id AND r.command_id=e.command_id AND r.accepted_ordinal=e.ordinal WHERE e.kind='github.review_accepted' AND e.version=1 AND r.command_id IS NULL LIMIT 1").await?;
     refuse(db, "SELECT 1 FROM review_confirmations f JOIN commands c USING(account_id,command_id) LEFT JOIN delivery_resolutions d ON d.account_id=f.account_id AND d.command_id=f.command_id AND d.purpose='confirmed' AND d.evidence_ordinal=f.confirmed_ordinal LEFT JOIN command_evidence e ON e.account_id=f.account_id AND e.command_id=f.command_id AND e.ordinal=f.confirmed_ordinal AND e.kind='github.review_submitted' AND e.version=1 WHERE c.state<>'confirmed' OR d.command_id IS NULL OR e.command_id IS NULL LIMIT 1").await?;
     refuse(db, "SELECT 1 FROM command_evidence e JOIN commands c USING(account_id,command_id) LEFT JOIN review_confirmations f ON f.account_id=e.account_id AND f.command_id=e.command_id AND f.confirmed_ordinal=e.ordinal WHERE e.kind='github.review_submitted' AND e.version=1 AND f.command_id IS NULL LIMIT 1").await?;
+    refuse(db, "SELECT 1 FROM commands c LEFT JOIN review_resolutions r USING(account_id,command_id) WHERE c.operation_kind='github.submit_review' AND c.payload_version=1 AND c.state IN ('accepted','confirmed') AND r.command_id IS NULL LIMIT 1").await?;
+    refuse(db, "SELECT 1 FROM commands c LEFT JOIN review_confirmations f USING(account_id,command_id) WHERE c.operation_kind='github.submit_review' AND c.payload_version=1 AND (c.state='confirmed' AND f.command_id IS NULL OR c.state='accepted' AND f.command_id IS NOT NULL) LIMIT 1").await?;
+    refuse(db, "SELECT 1 FROM review_confirmations f JOIN review_resolutions r USING(account_id,command_id,provider_id) JOIN delivery_resolutions a ON a.account_id=r.account_id AND a.command_id=r.command_id AND a.purpose='accepted' AND a.evidence_ordinal=r.accepted_ordinal JOIN delivery_resolutions s ON s.account_id=f.account_id AND s.command_id=f.command_id AND s.purpose='confirmed' AND s.evidence_ordinal=f.confirmed_ordinal JOIN command_evidence ae ON ae.account_id=r.account_id AND ae.command_id=r.command_id AND ae.ordinal=r.accepted_ordinal JOIN command_evidence se ON se.account_id=f.account_id AND se.command_id=f.command_id AND se.ordinal=f.confirmed_ordinal WHERE r.accepted_ordinal>=f.confirmed_ordinal OR a.delivery_generation>=s.delivery_generation OR ae.attempt_number IS NULL OR se.attempt_number IS NULL OR ae.attempt_number<>se.attempt_number LIMIT 1").await?;
 
     let mut rows = sqlx::query(
-        "SELECT c.*,cd.attempt_count,r.*,ae.payload AS accepted_payload,f.confirmed_ordinal,se.payload AS submitted_payload,f.confirmed_at,f.inline_comment_count FROM review_resolutions r JOIN commands c USING(account_id,command_id) JOIN command_delivery cd USING(account_id,command_id) JOIN command_evidence ae ON ae.account_id=r.account_id AND ae.command_id=r.command_id AND ae.ordinal=r.accepted_ordinal LEFT JOIN review_confirmations f USING(account_id,command_id,provider_id) LEFT JOIN command_evidence se ON se.account_id=f.account_id AND se.command_id=f.command_id AND se.ordinal=f.confirmed_ordinal",
+        "SELECT c.*,(SELECT count(*) FROM delivery_attempts da WHERE da.account_id=c.account_id AND da.command_id=c.command_id) AS attempt_count,r.*,ae.payload AS accepted_payload,f.confirmed_ordinal,se.payload AS submitted_payload,f.confirmed_at,f.inline_comment_count FROM review_resolutions r JOIN commands c USING(account_id,command_id) JOIN command_evidence ae ON ae.account_id=r.account_id AND ae.command_id=r.command_id AND ae.ordinal=r.accepted_ordinal LEFT JOIN review_confirmations f USING(account_id,command_id,provider_id) LEFT JOIN command_evidence se ON se.account_id=f.account_id AND se.command_id=f.command_id AND se.ordinal=f.confirmed_ordinal",
     )
     .fetch(&mut *db);
     while let Some(row) = rows.try_next().await.map_err(|_| invalid_backup())? {

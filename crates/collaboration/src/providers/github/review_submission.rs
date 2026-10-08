@@ -1469,6 +1469,21 @@ mod tests {
         assert!(
             parse_review_comments(&operation, "80", &serde_json::to_vec(&extra).unwrap()).is_err()
         );
+        assert!(
+            parse_review_comments(&operation, "80", &serde_json::to_vec(&json!([])).unwrap())
+                .is_err()
+        );
+
+        let mut wrong_anchor = comment_json();
+        wrong_anchor["line"] = json!(13);
+        assert!(
+            parse_review_comments(
+                &operation,
+                "80",
+                &serde_json::to_vec(&json!([wrong_anchor])).unwrap(),
+            )
+            .is_err()
+        );
     }
 
     #[test]

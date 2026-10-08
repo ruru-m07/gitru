@@ -776,7 +776,7 @@ fn freshness(stale_at: Option<&str>) -> DetailFreshness {
         DetailFreshness::Stale
     }
 }
-async fn selection_in(
+pub(super) async fn selection_in(
     tx: &mut Transaction<'_, Sqlite>,
     request: &PullFileDiffRequest,
 ) -> Result<PullFileSelection> {

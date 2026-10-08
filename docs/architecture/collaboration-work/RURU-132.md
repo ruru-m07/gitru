@@ -46,7 +46,9 @@ Use only numeric GitHub.com routes rooted at the validated repository provider I
 Never fall back to mutable owner/name routes or follow redirects. Recheck provider
 quota after every response. A cooldown or retry barrier stops the remaining HTTP
 chain. Read support for the cached Reviews facet does not imply write support;
-submission has its own typed availability and permission evidence.
+submission has its own typed availability. The preflight proves current
+authenticated read access and exact target identity; GitHub's POST response is
+the authoritative write-permission result.
 
 Primary contracts checked on 8 October 2026:
 
@@ -82,7 +84,8 @@ exact `ReviewContext` (base/head/source and target repository IDs plus Body
 metadata revision), and a native review token. It is available only for an active
 GitHub.com account, selected authorized pull request, open/nonmerged target and
 known exact review context. Provider permissions remain unknown until fresh
-preflight.
+submission; the fresh preflight proves target access and identity, not write
+permission.
 
 The renderer never supplies a trusted path, provider URL, repository ID, commit
 OID, diff text or provider proof. It selects an opaque `file_key`, a requested
@@ -95,12 +98,13 @@ same exact review head can authorize an inline anchor. A local-Git artifact alon
 cannot create provider anchor authority.
 
 Rust parses the bounded provider patch and proves that the selected side and every
-line in the range occur in one valid hunk. It derives the provider path from the
-stored old/new identity: left-side lines use the old path and right-side lines use
-the new path. Mixed-side ranges, missing/omitted/oversized/binary artifacts,
-unknown change kinds and ambiguous rename/copy mappings fail closed. The resolved
-path and exact modern GitHub fields are stored in the purgeable authority row;
-the renderer cannot change them during submission.
+line in the range occur in one valid hunk. Added and deleted files require their
+present side, and a file whose old and new paths differ is not selectable in this
+slice. Renamed, copied and unknown change kinds fail closed even when stored path
+text happens to match. Mixed-side ranges and missing, omitted, oversized, binary
+or local-only artifacts also fail closed. The resolved path and exact modern
+GitHub fields are stored in the purgeable authority row; the renderer cannot
+change them during submission.
 
 This first slice never silently remaps an anchor after a file or head change.
 Changing Body context, file generation, file facet revision, path identity,
@@ -173,11 +177,12 @@ separate operation field; it does not turn cached review reads into write
 capability and it does not edit provider-side pending reviews.
 
 Preparation performs a fresh numeric PR GET and verifies the active actor,
-repository/native subject identity, open/nonmerged state, exact target/source
-repositories, base and head OIDs, current Body revision and every retained native
-anchor. Account/epoch/view, command payload, draft generation and current cache
-bindings are checked again under the writer immediately before claim. Quota or
-access loss before POST consumes no mutation attempt.
+repository/native subject identity, open/nonmerged state and exact target/source
+repositories plus base and head OIDs. Account/epoch/view, current Body revision,
+command payload, draft generation and every retained native anchor are checked
+again from local authority under the writer immediately before claim. Quota or
+access loss before POST prevents the provider mutation, while the durable local
+attempt remains available for conservative recovery.
 
 Persist the final attempt before the single POST. Once the POST may have reached
 GitHub, this command never automatically posts again. A lost connection, timeout,
@@ -263,6 +268,39 @@ provider IDs and navigation while retaining authored summary/comment bodies.
 `Submitted from Gitru` history is evidence-derived and separate from the provider
 Reviews list. It does not imply full list coverage, requested-reviewer state,
 branch protection satisfaction or current-head approval.
+
+## Implementation checkpoint — 8 October 2026
+
+The bounded GitHub.com slice is implemented through SQLite, the delivery worker,
+generated IPC/SDK and the desktop composer. Native finalization keeps the first
+strong review-ID response and the later exact-ID confirmation as separate
+append-only proofs. Recovery now verifies the reverse terminal-state links, one
+native create attempt, accepted-before-confirmed evidence and delivery order,
+and the exact ordered authored comment UUID/body sequence for an unchanged draft
+generation. Wall-clock timestamps remain canonical evidence fields but are not
+used as a causal clock.
+
+Local focused evidence at this checkpoint:
+
+- 34 review-submission provider, codec, anchor, storage and synthetic-worker
+  controls pass. The worker case performs one POST, exact review-ID readback and
+  a terminal two-comment readback, then restores a valid schema-24 backup.
+- Eleven corrupted backup variants are refused, including missing proof/mapping
+  rows, reversed proof/delivery order, a second create attempt and changed,
+  reordered or missing authored inline rows.
+- Six storage/worker cases cover lost or malformed responses with zero replay,
+  durable cooldown across cold reopen, quarantine after restore and trusted
+  renamed/copied/unknown file-kind refusal.
+- The two-file bounded native HTTP fixture correction from signed checkpoint
+  `ad9a46c1d08ab25b0aacba5a02696754e5470a9e` is included because the inherited
+  one-read fixture was not safe under fragmented/Windows socket delivery. All 16
+  provider-inbox action controls, including its three framing controls, pass.
+- Strict collaboration all-target/all-feature Clippy, Rust formatting and diff
+  checks pass. The signed frontend checkpoint separately records 908 passing
+  tests, one intentional skip, lint, workspace/E2E types and desktop build.
+
+The broad collaboration/workspace regression, packaged desktop behavior, remote
+CI and live authenticated provider behavior are not claimed by this checkpoint.
 
 ## Qualification gates
 
