@@ -259,3 +259,35 @@ targets/features, workspace Rust formatting and diff whitespace validation.
 The production claim entry always carries native authority; the prior unguarded
 entry remains only for unchanged synthetic fixture call sites. Both attempt and
 preflight-proof commits apply the final live check.
+
+### Schema25 and catalog implementation ownership
+
+Qualified R132 schema24 was merged as signed87aa445d after its owner reported
+834 library cases,11 migration cases,434 remaining-workspace cases and strict
+workspace Clippy passing. This is prerequisite evidence; it is not a test claim
+for the combined metadata branch. Its frozen24 SQL fixture has SHA384
+`a0621e2184e541a638c5326667675e8de556eee5126366a87afddb2be3f85e488f4bf8c7c8705fe7f0ca5e8dd6c1f2ec`.
+
+The additive25 migration uses `issue_draft_metadata` rather than altering the
+legacy draft row shape. Native saves update its metadata and the parent CAS
+generation in the same transaction. Identity/retention triggers protect the
+child table. The existing submission-binding trigger accepts only explicit
+payload1 with empty metadata or payload2; the created-receipt uniqueness index
+covers the frozen native-ID paths in both proof versions. Existing authored
+submission/resolution identity constraints are retained.
+
+Catalog tables are `repository_metadata_catalogs` and
+`repository_metadata_options`, with a per-family browse index and per-account
+retention indexes. The catalog module owns only these new cache tables and its
+finite tests. It retains at most2,000 options per family across runs,6,000 per
+account and48 family headers per account. Capacity removal is cache eviction,
+never remote absence evidence. Eviction emits changes for affected exact scopes.
+The native migration/registration/draft/delivery/recovery lane remains separate
+from this catalog module, while root owns SDK/UI/generated bindings.
+
+Catalog APIs are begin/resume/request/apply/fail and the local options query.
+A `CatalogLease` carries the native provider request plus accepted page count;
+`CatalogApplyReceipt` returns the committed revision and optional next lease.
+Cold-open cleanup retires Syncing while preserving valid resumable checkpoints.
+Synthetic SQLite3.54 applied all25 DDL files with an empty foreign-key check;
+Rust migration, restoration, quota and runtime integration checks remain pending.
