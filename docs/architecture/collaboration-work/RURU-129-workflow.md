@@ -96,3 +96,18 @@ Full workspace and remote CI are publication-owner gates. The numeric mutation
 alias and live authenticated provider behavior remain unqualified; no personal
 credential or provider write was used. This slice adds no merge action, issue
 state-reason selection, labels, or another provider's mutation codec.
+
+## Integrated publication evidence
+
+Full local `make verify` at signed source `6438faec` exits 0: 796 frontend tests
+(one platform skip), 1,297 Rust test executions (seven helper ignores), frontend
+lint/types/build, Rust formatting and strict workspace Clippy. The source includes
+qualified parent Windows credential-startup and cursor-resume fixture repairs.
+Log: `/tmp/gitru-workflow-full-verify.log`. Generated IPC: 151 commands/482 schemas.
+
+The review base is #183 (`ruru/ruru-131-comment-send`). The exact local receipt
+retry remains available when invalidation reveals an already-pending/context-null
+snapshot, while new intent remains disabled. There are no new schema migrations.
+Remote CI begins at publication; authenticated numeric mutation-alias support,
+platform vaults and packaged-window behavior are not established by local fixtures.
+No merge was performed. Labels and other-provider writes remain separate work.

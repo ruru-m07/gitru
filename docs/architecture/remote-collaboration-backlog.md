@@ -2504,3 +2504,23 @@ Clippy. Generated IPC: 149 commands/473 schemas. See
 [the work note](./collaboration-work/RURU-131.md) for evidence and limits.
 The PR stacks on #181; remote CI and live provider/vault/window checks remain
 separate. Numeric mutation-alias live compatibility is unqualified. No merge.
+
+
+### RURU-129 close/reopen workflow — 8 October 2026
+
+GitHub issues and PRs now have a separate durable State operation. Cached
+controls require explicit best-effort consent and retain exact local UUID retry
+after a lost receipt. Native authority captures workflow, PR head and identity
+independently of description/title; large or omitted bodies do not block action.
+Merged/unknown state and head drift refuse unsafe changes. A committed attempt
+precedes state-only PATCH; unknown results permit read-only reconciliation.
+Canonical publication retires State intent atomically and preserves other fields.
+
+Full local make verify on signed integrated source `6438faec` passes 796 frontend
+tests/one platform skip and 1,297 Rust executions/seven helper ignores, plus
+lint/types/build/fmt/strict workspace Clippy. Focused native workflow coverage:
+18 cases. Generated IPC: 151 commands/482 schemas. Independent native/frontend
+review and its fixes are recorded in [the work note](./collaboration-work/RURU-129-workflow.md).
+This slice stacks on #183 and introduces no schema change. Labels and other-provider
+writes remain outstanding, so RURU-129 stays In Progress. New remote CI and live
+numeric mutation/vault/window qualification remain separate; no merge.
