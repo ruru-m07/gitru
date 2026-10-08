@@ -155,3 +155,20 @@ Do not use upstream performance marketing as a Gitru measurement.
 RURU-108 supplies the architecture decision and bounded compatibility evidence.
 These child implementations remain Backlog and the GA gate remains open. Local
 spike checks are distinct from remote CI and live platform/provider qualification.
+
+## Windows CI watchdog repair — 8 October 2026
+
+Existing PR186 at `486a936e700fe00b863ac26f6f0b526477574a5d` completed 13
+checks successfully. The Windows Rust job `113100881716` in run `37712301903`
+was cancelled at the configured 45-minute job limit while still compiling the
+retained-feature native dependencies. Its log contains no compiler or assertion
+failure; unlike PR182's earlier cancellation, this run had not finished all
+retained checks.
+
+Apply the already reviewed platform-test watchdog increase from 45 to 60 minutes
+to this existing branch. Test commands, assertions, retry policy, dependency
+versions and encryption spike behavior remain unchanged. Local validation checks
+that the workflow parses and that this timeout is the only workflow change; diff
+checks pass. Fresh remote CI must qualify the new head independently. The prior
+13 successes remain historical evidence; no Windows success is inferred from the
+local YAML check and no encryption implementation is claimed.
