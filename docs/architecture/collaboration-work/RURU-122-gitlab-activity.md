@@ -73,3 +73,22 @@ if those components change. Run native focused/full checks, strict Clippy/fmt,
 frontend tests/types/lint and generated IPC verification when touching signatures.
 Keep local/remote CI/native-window/live-provider evidence separate. Document exact
 results; never merge a PR or claim production account validation from fixtures.
+
+## Pre-code review refinements
+
+Independent review requires family-qualified page hashes, explicit terminal
+markers and exact per-family next pages in the composite cursor. Identical empty
+pages in different families are valid; a terminal family never restarts after
+yield/reopen. Cross-family text/semantic deduplication is forbidden: differently
+identified events remain separately visible even when their prose is similar.
+The terminal always-uncertain traversal must cease work until ordinary refresh.
+
+Use `activity_filter=only_activity` for system-note pages, with fixed
+`per_page=50`, `sort=asc`, `order_by=updated_at`. Although the generated Notes docs
+list this parameter only in the issue section, the current primary
+[GitLab Notes implementation](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/api/notes.rb)
+registers the filter in the shared per-noteable list route, including merge
+requests. Treat this as source-supported GitLab.com behavior, still subject to
+synthetic HTTP/contract tests and separate live provider qualification. Pin that
+filter as part of transport operation identity: comments continuations/redirects
+must never silently change into activity-only notes or vice versa.
