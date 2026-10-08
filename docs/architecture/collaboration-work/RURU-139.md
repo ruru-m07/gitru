@@ -265,3 +265,25 @@ Python compilation and diff checks pass. Logs:
 `/tmp/gitru-r139-archive-portable-green.log`. Fresh exact-head native/Windows and
 cross-platform-reader CI remains pending; prior successful engine evidence is
 retained separately.
+
+### Windows cold-build job allowance — 8 October 2026
+
+Exact head `218723d8` in [run 37740813330](https://github.com/ruru-m07/gitru/actions/runs/37740813330)
+passed the source suite and encrypted probes on macOS/Linux. Windows job
+`113191158223` also completed the packaged encrypted probe successfully, then
+hit the outer 45-minute job limit during the separate copied engine regression.
+The log reports **736 library tests passed / 4 ignored**, followed by **24
+completed integration suites with zero failures**, before cancellation during
+`tests/tasks.rs`. The copied regression was still making progress; this is not
+an encrypted-probe, assertion, or source-hash failure. Windows artifact upload
+and the dependent cross-platform-reader matrix did not run, so they remain
+unqualified at this head. All ordinary PR checks passed.
+
+Only the Windows outer job allowance becomes 75 minutes; other platforms retain
+45 minutes. Individual test watchdogs, source pins/hashes, probe assertions,
+regression adaptation and the WAL gate are unchanged. This accommodates the
+observed cold OpenSSL/cipher build plus the independent full copied-engine build
+without weakening a test. Local qualification is limited to workflow YAML parse,
+the exact Windows/non-Windows budget expression, and `git diff --check`; no new
+native execution is claimed for this workflow-only correction. Fresh remote
+completion and cross-platform readers remain pending.
