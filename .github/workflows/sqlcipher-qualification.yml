@@ -51,7 +51,9 @@ jobs:
       matrix:
         os: [ubuntu-22.04, macos-26, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    # A cold Windows job builds OpenSSL/cipher plus the copied engine regression.
+    # Keep its individual assertion/watchdog bounds; allow both builds to finish.
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 75 || 45 }}
     steps:
       - uses: actions/checkout@v4
         with:
