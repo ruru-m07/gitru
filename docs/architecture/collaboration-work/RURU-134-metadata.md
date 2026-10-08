@@ -197,3 +197,65 @@ SQLite/owned delivery turns: interleaved other-account/foreground work, held quo
 epoch/view/context/command cancellation, expiry, restart, no attempt before final
 completion and unchanged single-step policy behavior. No schema change is needed
 for this generic native process-local mechanism.
+
+### Stepwise preparation qualification
+
+The native delivery lane now carries process-local preparation state across
+separate owned turns. A continuation does not consume another durable preparation
+budget or record an attempt. The existing background loop offers foreground reads
+between turns, and account rotation remains intact. Eight chains, 64 steps,
+64KiB context/continuation values and a 120-second monotonic lifetime bound this
+state. Repeated continuation bytes, expiry, errors, quota waits, account reset,
+command controls and shutdown discard partial authority. Cold startup redoes the
+first read; saved command/proof bytes are unchanged.
+
+Independent review found that a preclaim read alone left a writer-wait gap. The
+final native claim now receives exact authorization view/context and a native
+lifecycle/deadline callback. It rechecks them under the writer before and after
+operation validation, and checks the live callback again before committing an
+attempt. The held-writer regression proves same-epoch view/context changes and
+expiry refuse the claim; its unchanged-authority control can claim normally.
+
+Local qualification: all 40 delivery tests pass with one subprocess helper
+ignored, including 12 new runtime controls. They cover a 54-read chain using one
+durable preparation budget, foreground/peer-account interleaving, first/middle/
+final-step quota on success and error, authentication, cold reopening,
+cancellation, cache capacity, account reset, cyclic/oversized/excessive chains,
+held-vault quota/expiry, held-read shutdown and writer-held final authority.
+Initial new fixtures incorrectly expected the preparation counter to survive the
+existing successful-attempt reset, requested Pause for a never-attempted command,
+omitted a synthetic provider capability and read quota through an intentionally
+auth-blocked reader. Those fixture expectations were corrected; production
+recovery semantics and visibility gates were retained. Test source also corrected
+an unavailable quota accessor and an explicit clock-trait import during compile.
+These are synthetic native/runtime checks, not live provider, OS suspend or
+remote CI evidence. The metadata operation remains unregistered until its
+qualified schema24 prerequisite and complete schema25 storage/delivery slice.
+
+### Frozen IPC and catalog ownership contract
+
+The six planned native commands are `collaboration_issue_draft_v2(IssueDraftKey)`,
+`collaboration_issue_drafts_v2(IssueDraftQuery)`,
+`collaboration_save_issue_draft_v2(SaveIssueDraftV2Request)`,
+`collaboration_submit_issue_v2(SubmitIssueV2Request)`,
+`collaboration_issue_metadata_options(IssueMetadataQuery)` and
+`collaboration_refresh_issue_metadata(RefreshIssueMetadataRequest)`. They return,
+respectively, `IssueDraftV2Snapshot`, `IssueDraftV2Page`, `IssueDraftV2Snapshot`,
+`IssueSubmissionReceipt`, `IssueMetadataPage` and `RefreshReceipt`. The refresh
+request binds account, authorization epoch, repository and catalog kind. No
+callable stub is registered while storage/delivery remains incomplete. Existing
+leased demand gains RepositoryLabels, RepositoryAssignees and
+RepositoryMilestones, each requiring a repository and forbidding subject/facet.
+
+Catalog runs use a writer-issued monotonically increasing revision as their run
+identity, preventing ABA after eviction. Local pagination binds catalog revision,
+run generation, actor/epoch/view, repository and normalized search, while the
+ordinary global revision remains only the change-feed envelope. Repeated mutable
+traversals stay Partial; cache eviction cannot prove provider deletion. Selected
+references are authored data in the draft and survive all catalog eviction.
+
+Final stepwise checkpoint gates also passed strict collaboration Clippy with all
+targets/features, workspace Rust formatting and diff whitespace validation.
+The production claim entry always carries native authority; the prior unguarded
+entry remains only for unchanged synthetic fixture call sites. Both attempt and
+preflight-proof commits apply the final live check.

@@ -2,6 +2,10 @@
 use super::*;
 use crate::ProviderInstance;
 use crate::delivery::*;
+mod preparation;
+pub(crate) use preparation::PreparationAuthority;
+#[cfg(test)]
+pub(crate) use preparation::blocked_claim_test;
 
 pub(crate) struct DeliveryClaim {
     pub request: Option<DispatchRequest>,
@@ -130,6 +134,8 @@ impl Store {
         tx.commit().await.map_err(storage_error)?;
         Ok((request, Some(revision)))
     }
+    /// Legacy fixture entry point; production always supplies prepared authority.
+    #[cfg(test)]
     pub(crate) async fn claim_delivery(
         &self,
         expected: &DeliveryCommand,
@@ -137,6 +143,22 @@ impl Store {
         policy: &dyn CommandDeliveryPolicy,
         preparation: &[u8],
         now: &DeliveryTime,
+    ) -> Result<DeliveryClaim> {
+        self.claim_delivery_guarded(expected, account, policy, preparation, now, None)
+            .await
+    }
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "fixed native final-claim authority"
+    )]
+    pub(crate) async fn claim_delivery_guarded(
+        &self,
+        expected: &DeliveryCommand,
+        account: &RemoteAccount,
+        policy: &dyn CommandDeliveryPolicy,
+        preparation: &[u8],
+        now: &DeliveryTime,
+        authority: Option<PreparationAuthority<'_>>,
     ) -> Result<DeliveryClaim> {
         if preparation.len() > MAX_EVIDENCE_BYTES {
             return Err(CollaborationError::invalid(
@@ -188,10 +210,22 @@ impl Store {
                 revision: None,
             });
         }
-        let execution_base = match policy
+        if let Some(authority) = &authority {
+            authority
+                .validate_in(&mut tx, &command, account, policy)
+                .await?;
+        }
+        let decision = policy
             .validate_claim(&mut tx, &command, account, preparation)
-            .await?
-        {
+            .await?;
+        // The writer may have waited, and the local policy itself can await SQL.
+        // Recheck the native deadline/context immediately before any claim or proof.
+        if let Some(authority) = &authority {
+            authority
+                .validate_in(&mut tx, &command, account, policy)
+                .await?;
+        }
+        let execution_base = match decision {
             ClaimDecision::Ready(base) if base.len() <= MAX_EVIDENCE_BYTES => base,
             ClaimDecision::Ready(_) => {
                 return Err(CollaborationError::invalid("Oversized execution base"));
@@ -217,6 +251,12 @@ impl Store {
                     .await?;
                 finalization.finish().await?;
                 let revision = transition_in(&mut tx, &command, state, None, None).await?;
+                if authority
+                    .as_ref()
+                    .is_some_and(|authority| !(authority.live)())
+                {
+                    return Err(stale());
+                }
                 tx.commit().await.map_err(storage_error)?;
                 return Ok(DeliveryClaim {
                     request: None,
@@ -240,6 +280,12 @@ impl Store {
         sqlx::query("UPDATE command_delivery SET reconciliation_count=0,generation=generation+1 WHERE account_id=? AND command_id=?").bind(&command.account_id).bind(&command.command_id).execute(&mut *tx).await.map_err(storage_error)?;
         let command = load_in(&mut tx, &command.account_id, &command.command_id).await?;
         checkpoint("before_claim_commit");
+        if authority
+            .as_ref()
+            .is_some_and(|authority| !(authority.live)())
+        {
+            return Err(stale());
+        }
         tx.commit().await.map_err(storage_error)?;
         checkpoint("after_claim_commit");
         Ok(DeliveryClaim {

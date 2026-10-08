@@ -212,6 +212,11 @@ pub(crate) struct DeliveryPreparation {
     pub account_cooldown_seconds: Option<u64>,
 }
 
+/// One bounded read per owned delivery turn. Continue never records an attempt.
+pub(crate) enum PreparationStep {
+    Continue(DeliveryPreparation),
+    Complete(DeliveryPreparation),
+}
 pub(crate) enum ClaimDecision {
     Ready(Vec<u8>),
     Conflict(OperationEvidence),
@@ -244,6 +249,21 @@ pub(crate) trait CommandDeliveryPolicy: Send + Sync {
             bytes: vec![],
             account_cooldown_seconds: None,
         })
+    }
+    async fn prepare_step(
+        &self,
+        token: &SecretToken,
+        request: &ReconcileRequest,
+        continuation: Option<&[u8]>,
+    ) -> Result<PreparationStep, ProviderError> {
+        if continuation.is_some() {
+            return Err(ProviderError::new(
+                crate::providers::ProviderErrorKind::InvalidResponse,
+            ));
+        }
+        self.prepare(token, request)
+            .await
+            .map(PreparationStep::Complete)
     }
     async fn validate_claim(
         &self,

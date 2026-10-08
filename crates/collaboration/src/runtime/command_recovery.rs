@@ -32,10 +32,20 @@ impl CollaborationRuntime {
             let policy = runtime
                 .recovery_policy(&request.context.account_id, &request.context.command_id)
                 .await?;
+            let retired = (
+                request.context.account_id.clone(),
+                request.context.command_id.clone(),
+            );
             let receipt = runtime
                 .store
                 .command_recovery_action(request, policy.as_deref())
                 .await?;
+            runtime
+                .scheduler
+                .lock()
+                .await
+                .delivery_preparations
+                .remove(&retired.0, &retired.1);
             runtime.publish(receipt.revision.clone());
             runtime.notify.notify_one();
             Ok(receipt)
@@ -52,10 +62,20 @@ impl CollaborationRuntime {
             let policy = runtime
                 .recovery_policy(&request.context.account_id, &request.context.command_id)
                 .await?;
+            let retired = (
+                request.context.account_id.clone(),
+                request.context.command_id.clone(),
+            );
             let receipt = runtime
                 .store
                 .command_recovery_replace(request, policy.as_deref())
                 .await?;
+            runtime
+                .scheduler
+                .lock()
+                .await
+                .delivery_preparations
+                .remove(&retired.0, &retired.1);
             runtime.publish(receipt.revision.clone());
             runtime.notify.notify_one();
             Ok(receipt)

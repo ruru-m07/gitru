@@ -2,9 +2,11 @@
 //! credential-cutover gates. Native completion survives caller cancellation.
 use super::*;
 use crate::delivery::*;
-use crate::storage::delivery::DeliveryCompletion;
+use crate::storage::delivery::{DeliveryCompletion, PreparationAuthority};
 use futures_util::FutureExt;
 use std::panic::AssertUnwindSafe;
+pub(super) mod preparation;
+use preparation::PendingPreparation;
 
 impl CollaborationRuntime {
     pub(crate) async fn run_delivery_next(&self) -> Result<bool, CollaborationError> {
@@ -24,6 +26,7 @@ impl CollaborationRuntime {
                     .delivery_cursors
                     .insert(key.0.clone(), key.1.clone());
             }
+            let pending = self.scheduler.lock().await.delivery_preparations.take(&key);
             let command = self.store.delivery_command(&key.0, &key.1).await?;
             if command.attention.is_some() {
                 continue;
@@ -103,49 +106,105 @@ impl CollaborationRuntime {
                 .await?;
                 return Ok(true);
             }
-            let (request, revision) = self
-                .store
-                .claim_preparation(
-                    &command,
-                    &account,
-                    policy.as_ref(),
-                    &self.delivery_time().await,
-                )
-                .await?;
-            let changed = revision.is_some();
-            if let Some(revision) = revision {
-                self.publish(revision);
-            }
-            let Some(request) = request else {
-                if changed {
-                    return Ok(true);
-                }
-                continue;
-            };
-            let command = request.command.clone();
-            let Some(token) = self.delivery_token(&account, &command).await? else {
-                return Ok(true);
-            };
-            let preparation = match bounded(policy.prepare(&token, &request)).await {
-                Some(Ok(value)) => value,
-                Some(Err(error)) => {
-                    let deferred = self
-                        .defer_delivery_turn(
-                            &command,
-                            error.retry_after_seconds.unwrap_or(60).max(1),
-                        )
-                        .await;
-                    // Observed account facts survive an unrelated command
-                    // transaction failure. Preserve the primary error if both fail.
-                    let observed = self.delivery_provider_error(&account, &error).await;
-                    deferred?;
-                    observed?;
-                    return Ok(true);
-                }
-                None => {
+            let (request, mut chain) = if let Some(chain) = pending {
+                if !chain.current(&command, &account, &instance.id, self.now()) {
                     self.defer_delivery_turn(&command, 60).await?;
                     return Ok(true);
                 }
+                let request = ReconcileRequest {
+                    command: command.clone(),
+                    account: account.clone(),
+                    instance_id: instance.id.clone(),
+                    native_context: chain.context.clone(),
+                };
+                (request, chain)
+            } else {
+                let (request, revision) = self
+                    .store
+                    .claim_preparation(
+                        &command,
+                        &account,
+                        policy.as_ref(),
+                        &self.delivery_time().await,
+                    )
+                    .await?;
+                let changed = revision.is_some();
+                if let Some(revision) = revision {
+                    self.publish(revision);
+                }
+                let Some(request) = request else {
+                    if changed {
+                        return Ok(true);
+                    }
+                    continue;
+                };
+                let Some(view) = self
+                    .preparation_authority(&request, policy.as_ref(), None)
+                    .await?
+                else {
+                    return Ok(true);
+                };
+                let chain = PendingPreparation::new(&request, view, self.now());
+                (request, chain)
+            };
+            let command = request.command.clone();
+            if self
+                .preparation_authority(&request, policy.as_ref(), Some(&chain.view))
+                .await?
+                .is_none()
+            {
+                return Ok(true);
+            }
+            let Some(token) = self.delivery_token(&account, &command).await? else {
+                return Ok(true);
+            };
+            // A held vault read cannot carry stale quota, context or lifecycle
+            // authority into the next provider operation.
+            if self.is_stopping() || !chain.live(self.now()) {
+                if !self.is_stopping() {
+                    self.defer_delivery_turn(&command, 60).await?;
+                }
+                return Ok(true);
+            }
+            if let Err(error) = self.check_provider_budget(&account).await {
+                if error.code == ErrorCode::RateLimited {
+                    return Ok(true);
+                }
+                return Err(error);
+            }
+            if self
+                .preparation_authority(&request, policy.as_ref(), Some(&chain.view))
+                .await?
+                .is_none()
+            {
+                return Ok(true);
+            }
+            let step =
+                match bounded(policy.prepare_step(&token, &request, chain.continuation.as_deref()))
+                    .await
+                {
+                    Some(Ok(value)) => value,
+                    Some(Err(error)) => {
+                        let deferred = self
+                            .defer_delivery_turn(
+                                &command,
+                                error.retry_after_seconds.unwrap_or(60).max(1),
+                            )
+                            .await;
+                        // Quota/auth observations survive independent SQL failure.
+                        let observed = self.delivery_provider_error(&account, &error).await;
+                        deferred?;
+                        observed?;
+                        return Ok(true);
+                    }
+                    None => {
+                        self.defer_delivery_turn(&command, 60).await?;
+                        return Ok(true);
+                    }
+                };
+            let (preparation, complete) = match step {
+                PreparationStep::Continue(value) => (value, false),
+                PreparationStep::Complete(value) => (value, true),
             };
             if let Some(cooldown) = preparation.account_cooldown_seconds {
                 self.persist_rate_limit(&account, cooldown, None).await?;
@@ -156,14 +215,48 @@ impl CollaborationRuntime {
                 }
                 return Err(error);
             }
+            if self.is_stopping() || !chain.live(self.now()) {
+                if !self.is_stopping() {
+                    self.defer_delivery_turn(&command, 60).await?;
+                }
+                return Ok(true);
+            }
+            if self
+                .preparation_authority(&request, policy.as_ref(), Some(&chain.view))
+                .await?
+                .is_none()
+            {
+                return Ok(true);
+            }
+            if !complete {
+                let now = self.now();
+                if !chain.next(preparation.bytes, now)
+                    || !self
+                        .scheduler
+                        .lock()
+                        .await
+                        .delivery_preparations
+                        .put(key, chain, now)
+                {
+                    self.defer_delivery_turn(&command, 60).await?;
+                }
+                // Exactly one provider read per continuation turn. Foreground
+                // and peer-account work compete again after both locks release.
+                return Ok(true);
+            }
             let claim = self
                 .store
-                .claim_delivery(
+                .claim_delivery_guarded(
                     &command,
                     &account,
                     policy.as_ref(),
                     &preparation.bytes,
                     &self.delivery_time().await,
+                    Some(PreparationAuthority {
+                        view: &chain.view,
+                        context: &chain.context,
+                        live: &|| chain.live(self.now()) && !self.is_stopping(),
+                    }),
                 )
                 .await?;
             let changed = claim.revision.is_some();
@@ -191,6 +284,24 @@ impl CollaborationRuntime {
         }
         Ok(false)
     }
+    async fn preparation_authority(
+        &self,
+        request: &ReconcileRequest,
+        policy: &dyn CommandDeliveryPolicy,
+        view: Option<&str>,
+    ) -> Result<Option<String>, CollaborationError> {
+        self.store
+            .recheck_preparation(
+                &request.command,
+                &request.account,
+                policy,
+                &request.native_context,
+                view,
+                &self.delivery_time().await,
+            )
+            .await
+    }
+
     async fn delivery_keys(&self) -> Result<Vec<(String, String)>, CollaborationError> {
         for _ in 0..2 {
             let after = self.scheduler.lock().await.delivery_account_cursor.clone();

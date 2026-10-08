@@ -85,6 +85,15 @@ pub struct IssueMetadataQuery {
     pub cursor: Option<String>,
     pub limit: u32,
 }
+/// Explicit native refresh intent; reading options never fetches the provider.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RefreshIssueMetadataRequest {
+    pub account_id: String,
+    pub authorization_epoch: String,
+    pub repository_id: String,
+    pub kind: IssueMetadataKind,
+}
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IssueMetadataPage {
     pub account_id: String,

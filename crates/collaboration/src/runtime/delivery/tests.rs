@@ -111,6 +111,11 @@ struct Policy {
     prepare_release: Notify,
     guard: AtomicBool,
     finalize_fail: AtomicBool,
+    step_limit: AtomicUsize,
+    step_trace: StdMutex<Vec<(String, u32)>>,
+    step_cycle: AtomicBool,
+    step_oversized: AtomicBool,
+    context_version: AtomicU64,
 }
 impl Policy {
     fn new(remote: PathBuf) -> Self {
@@ -129,6 +134,11 @@ impl Policy {
             prepare_release: Notify::new(),
             guard: AtomicBool::new(true),
             finalize_fail: AtomicBool::new(false),
+            step_limit: AtomicUsize::new(0),
+            step_trace: StdMutex::new(vec![]),
+            step_cycle: AtomicBool::new(false),
+            step_oversized: AtomicBool::new(false),
+            context_version: AtomicU64::new(0),
         }
     }
     fn proof(&self, command: &DeliveryCommand, kind: &str) -> OperationEvidence {
@@ -219,6 +229,13 @@ impl CommandDeliveryPolicy for Policy {
         if self.mode.load(Ordering::SeqCst) == 9 {
             return Err(ProviderError::new(ProviderErrorKind::Offline));
         }
+        if self.mode.load(Ordering::SeqCst) == 12 {
+            return Err(ProviderError {
+                kind: ProviderErrorKind::Authentication,
+                retry_after_seconds: None,
+                account_cooldown_seconds: Some(120),
+            });
+        }
         Ok(DeliveryPreparation {
             bytes: vec![1, 2, 3],
             account_cooldown_seconds: match self.prepare_cooldown.load(Ordering::SeqCst) {
@@ -226,6 +243,55 @@ impl CommandDeliveryPolicy for Policy {
                 value => Some(value),
             },
         })
+    }
+    async fn prepare_context_in(
+        &self,
+        _: &mut Transaction<'_, Sqlite>,
+        _: &DeliveryCommand,
+        _: &RemoteAccount,
+    ) -> Result<Vec<u8>, CollaborationError> {
+        Ok(self
+            .context_version
+            .load(Ordering::SeqCst)
+            .to_be_bytes()
+            .to_vec())
+    }
+    async fn prepare_step(
+        &self,
+        token: &SecretToken,
+        request: &ReconcileRequest,
+        continuation: Option<&[u8]>,
+    ) -> Result<PreparationStep, ProviderError> {
+        let limit = self.step_limit.load(Ordering::SeqCst);
+        if limit == 0 {
+            return self
+                .prepare(token, request)
+                .await
+                .map(PreparationStep::Complete);
+        }
+        let step = continuation
+            .map(|b| u32::from_be_bytes(b.try_into().unwrap()))
+            .unwrap_or(0);
+        self.step_trace
+            .lock()
+            .unwrap()
+            .push((request.account.id.clone(), step));
+        let mut preparation = self.prepare(token, request).await?;
+        if step as usize + 1 >= limit {
+            return Ok(PreparationStep::Complete(preparation));
+        }
+        preparation.bytes = if self.step_oversized.load(Ordering::SeqCst) {
+            vec![0; MAX_EVIDENCE_BYTES + 1]
+        } else {
+            (if self.step_cycle.load(Ordering::SeqCst) {
+                1
+            } else {
+                step + 1
+            })
+            .to_be_bytes()
+            .to_vec()
+        };
+        Ok(PreparationStep::Continue(preparation))
     }
     async fn validate_claim(
         &self,
@@ -1494,3 +1560,6 @@ async fn text_edit_runtime_rejects_unbounded_identity_before_account_lookup() {
     }
     runtime.shutdown().await.unwrap();
 }
+
+#[path = "preparation_tests.rs"]
+mod preparation_tests;

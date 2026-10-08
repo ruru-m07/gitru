@@ -202,6 +202,7 @@ struct Scheduler {
     detail_cursor: Option<DetailDemand>,
     delivery_account_cursor: Option<String>,
     delivery_cursors: HashMap<String, String>,
+    delivery_preparations: delivery::preparation::PreparationChains,
     delivery_clock: Option<(DateTime<Utc>, Instant)>,
 }
 
@@ -1390,6 +1391,7 @@ impl CollaborationRuntime {
     async fn reset_account_scheduler(&self, account_id: &str) {
         let mut scheduler = self.scheduler.lock().await;
         scheduler.delivery_cursors.remove(account_id);
+        scheduler.delivery_preparations.remove_account(account_id);
         let prefix = format!("{account_id}:");
         scheduler.queue.retain(|job| job.account.id != account_id);
         scheduler
