@@ -162,3 +162,18 @@ This evidence is local fixture/macOS source validation. Draft publication makes
 remote CI observable but does not make it passed. Packaged desktop execution,
 live private GitHub/PAT/keyring sampling, other-platform behavior and provider
 mutation remain untested and unclaimed.
+
+## Remote CI restart-fixture repair — 8 October 2026
+
+At published `9ea42bc`, Linux and macOS Rust jobs failed only the inherited
+performance-fixture restart: dropping the session schedules asynchronous SQLite
+pool cleanup, so immediate reopen can still find the process lease held. Signed
+repair `aaa2d3a` awaits successful `Store::close` before the graceful reopen; it
+does not weaken exclusion or the retained-cache assertions. The same failure
+appeared in child #179. Actual feature-enabled harness tests pass **21/21** and
+strict collaboration Clippy with `test-harness` enabled passes. Logs:
+`/tmp/gitru-harness-graceful-restart-qualified.log` and the corresponding
+`-clippy.log`. The first no-feature selector executed zero cases and is not
+qualification evidence. Earlier complete local verification remains attributed
+to unchanged product source `5a30303`; this follow-up changes only the fixture
+and this record. New remote CI must be checked separately.
