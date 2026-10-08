@@ -1081,8 +1081,8 @@ impl Store {
         .await
         .map_err(storage_error)?;
         if page.complete && !page.not_modified && completed_run.as_deref() != Some(&page.run_id) {
-            sqlx::query("UPDATE scope_membership SET missing_count=missing_count+1,active=CASE WHEN missing_count+1>=2 THEN 0 ELSE active END WHERE account_id=? AND scope=? AND last_seen_run<>? AND NOT EXISTS(SELECT 1 FROM issue_creation_visibility v WHERE v.account_id=scope_membership.account_id AND v.entity_id=scope_membership.entity_id AND v.authorization_epoch=?)")
-                .bind(&page.account_id).bind(&page.scope).bind(&page.run_id).bind(&page.authorization_epoch).execute(&mut *tx).await.map_err(storage_error)?;
+            sqlx::query("UPDATE scope_membership SET missing_count=missing_count+1,active=CASE WHEN missing_count+1>=2 THEN 0 ELSE active END WHERE account_id=? AND scope=? AND last_seen_run<>? AND NOT EXISTS(SELECT 1 FROM issue_creation_visibility v WHERE v.account_id=scope_membership.account_id AND v.entity_id=scope_membership.entity_id AND v.authorization_epoch=?) AND NOT EXISTS(SELECT 1 FROM pull_creation_visibility v WHERE v.account_id=scope_membership.account_id AND v.entity_id=scope_membership.entity_id AND v.authorization_epoch=?)")
+                .bind(&page.account_id).bind(&page.scope).bind(&page.run_id).bind(&page.authorization_epoch).bind(&page.authorization_epoch).execute(&mut *tx).await.map_err(storage_error)?;
         }
         let coverage = Coverage {
             state: if page.complete {
@@ -2013,6 +2013,9 @@ async fn seen(tx: &mut Transaction<'_, Sqlite>, page: &PageCommit, entity_id: &s
     if page.scope.starts_with("repo:") && page.scope.ends_with(":issue") {
         sqlx::query("DELETE FROM issue_creation_visibility WHERE account_id=? AND entity_id=? AND authorization_epoch=?").bind(&page.account_id).bind(entity_id).bind(&page.authorization_epoch).execute(&mut **tx).await.map_err(storage_error)?;
     }
+    if page.scope.starts_with("repo:") && page.scope.ends_with(":pull_request") {
+        sqlx::query("DELETE FROM pull_creation_visibility WHERE account_id=? AND entity_id=? AND authorization_epoch=?").bind(&page.account_id).bind(entity_id).bind(&page.authorization_epoch).execute(&mut **tx).await.map_err(storage_error)?;
+    }
 
     Ok(())
 }
@@ -2091,6 +2094,7 @@ fn push_item_predicates(sql: &mut sqlx::QueryBuilder<Sqlite>, query: &ItemQuery)
 }
 
 pub(crate) mod issue_creation;
+pub(crate) mod pull_creation;
 
 #[cfg(test)]
 mod issue_creation_tests;

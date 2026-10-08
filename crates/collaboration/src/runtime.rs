@@ -1655,4 +1655,5 @@ pub(crate) mod credential_crash_tests;
 mod gitlab_reviews_tests;
 
 mod issue_creation;
+mod pull_creation;
 mod workflow_state;
