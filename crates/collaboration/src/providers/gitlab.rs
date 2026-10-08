@@ -2,6 +2,7 @@
 use super::*;
 use serde::Deserialize;
 mod checks;
+mod comments;
 mod commits;
 mod feeds;
 mod files;
@@ -215,6 +216,9 @@ impl CollaborationProvider for GitlabProvider {
         token: &SecretToken,
         request: DetailRequest,
     ) -> Result<DetailPage, ProviderError> {
+        if request.facet == DetailFacet::Comments {
+            return self.request_comments(token, request).await;
+        }
         self.resource_details(token, request).await
     }
 
@@ -287,6 +291,7 @@ fn implemented(facet: ResourceFacet) -> bool {
             | ResourceFacet::PullFiles
             | ResourceFacet::Reviews
             | ResourceFacet::Checks
+            | ResourceFacet::Comments
     )
 }
 

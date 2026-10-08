@@ -64,6 +64,14 @@ const bitbucket: RemoteAccount = {
   login: "bitbucket-user",
 };
 const bitbucketRepository = "33333333-3333-4333-8333-333333333333";
+const gitlab: RemoteAccount = {
+  ...account,
+  id: "gitlab-comments-one",
+  provider: "gitlab",
+  host: "gitlab.com",
+  actor_id: "303",
+  login: "gitlab-user",
+};
 const observedAt = "2026-10-05T12:00:00Z";
 const earlierAt = "2026-10-04T12:00:00Z";
 const caches: QueryClient[] = [];
@@ -103,23 +111,32 @@ function saved(
   kind: "pull_request" | "issue" = "pull_request",
 ) {
   const isBitbucket = actor.provider === "bitbucket_cloud";
+  const isGitlab = actor.provider === "gitlab";
   const repositoryProviderId = isBitbucket ? bitbucketRepository : "345";
   const repositoryId = `${actor.provider}:repository:${repositoryProviderId}`;
   const subjectId = isBitbucket
     ? `bitbucket_cloud:${kind === "pull_request" ? "pull" : "issue"}:${repositoryProviderId}:67`
-    : kind === "pull_request"
-      ? "github:pull:801"
-      : "github:issue:802";
+    : isGitlab
+      ? `gitlab:${kind === "pull_request" ? "pull" : "issue"}:${kind === "pull_request" ? "801" : "802"}`
+      : kind === "pull_request"
+        ? "github:pull:801"
+        : "github:issue:802";
   const repository = {
     ...fixtureRepositories.repositories[0],
     id: repositoryId,
     account_id: actor.id,
     provider_id: repositoryProviderId,
-    full_name: isBitbucket ? "workspace/engine" : "example-org/engine",
+    full_name: isBitbucket
+      ? "workspace/engine"
+      : isGitlab
+        ? "example-group/engine"
+        : "example-org/engine",
     name: "engine",
     web_url: isBitbucket
       ? "https://bitbucket.org/workspace/engine"
-      : "https://github.com/example-org/engine",
+      : isGitlab
+        ? "https://gitlab.com/example-group/engine"
+        : "https://github.com/example-org/engine",
   };
   const summary = {
     ...fixtureItem,
@@ -719,11 +736,8 @@ describe("cached conversation comments through the ordinary workspace", () => {
     expect(reads.hydrate).not.toHaveBeenCalled();
   });
 
-  it.each([
-    account,
-    { ...account, provider: "gitlab" as const, host: "gitlab.com" },
-  ])("mounts no query/demand/hydration for unsupported policy on $provider", async (actor) => {
-    const resource = saved(actor);
+  it("mounts no query, demand, or hydration for unsupported policy", async () => {
+    const resource = saved(account);
     const reads = boundary([resource], "unsupported");
     const { user } = await mount();
     await select(user, resource);
@@ -773,6 +787,37 @@ describe("cached conversation comments through the ordinary workspace", () => {
     if (kind === "pull_request")
       await waitFor(() => expect(interests(reads)).toHaveLength(1));
     else expect(interests(reads)).toHaveLength(0);
+    expect(reads.hydrate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "pull_request",
+    "issue",
+  ] as const)("uses the common saved Comments panel for GitLab %s", async (kind) => {
+    const entry = comment("1", {
+      id: "gitlab-note:00000000000000000001",
+      field_validations: comment().field_validations.map((field) => ({
+        ...field,
+        source: "gitlab/conversation-notes/v4",
+      })),
+    });
+    const resource = saved(gitlab, [entry], kind);
+    resource.comments.evidence.source = {
+      ...resource.comments.evidence.source!,
+      source: "gitlab/conversation-notes/v4",
+    };
+    const reads = boundary([resource]);
+    const { user } = await mount(kind);
+    await select(user, resource);
+    await user.click(panel().getByRole("button", { name: "Comments" }));
+    expect(await panel().findByText("Saved comment 1")).toBeVisible();
+    expect(
+      panel().getByText(
+        "Top-level conversation comments are saved here. System activity, inline discussions, and resolvable notes are not included.",
+      ),
+    ).toBeVisible();
+    expect(queries(reads)).toHaveLength(1);
+    await waitFor(() => expect(interests(reads)).toHaveLength(1));
     expect(reads.hydrate).not.toHaveBeenCalled();
   });
 

@@ -48,14 +48,42 @@ enum Operation {
     User,
     Todos { done: bool, page: u64 },
     Projects,
-    Feed { project: u64, route: ItemRoute },
+    Feed {
+        project: u64,
+        route: ItemRoute,
+    },
     Detail,
-    PullCommits { project: u64, iid: u64, page: u64 },
-    PullFiles { project: u64, iid: u64, page: u64 },
-    SelectedPullFile { project: u64, iid: u64, page: u64 },
-    CommitStatuses { project: u64, page: u64 },
-    Discussions { project: u64, iid: u64, page: u64 },
+    PullCommits {
+        project: u64,
+        iid: u64,
+        page: u64,
+    },
+    PullFiles {
+        project: u64,
+        iid: u64,
+        page: u64,
+    },
+    SelectedPullFile {
+        project: u64,
+        iid: u64,
+        page: u64,
+    },
+    CommitStatuses {
+        project: u64,
+        page: u64,
+    },
+    Discussions {
+        project: u64,
+        iid: u64,
+        page: u64,
+    },
     Approvals,
+    Notes {
+        project: u64,
+        iid: u64,
+        route: ItemRoute,
+        page: u64,
+    },
 }
 
 pub(super) struct GitlabHttp {
@@ -152,6 +180,43 @@ impl GitlabHttp {
         self.base
             .join(&format!("projects/{project}/{}/{iid}", route.segment()))
             .map_err(|_| invalid())
+    }
+    pub(super) fn notes(
+        &self,
+        project: u64,
+        iid: u64,
+        route: ItemRoute,
+    ) -> Result<Url, ProviderError> {
+        if project == 0 || iid == 0 {
+            return Err(invalid());
+        }
+        self.base
+            .join(&format!(
+                "projects/{project}/{}/{iid}/notes?per_page=50&page=1&sort=asc&order_by=updated_at",
+                route.segment()
+            ))
+            .map_err(|_| invalid())
+    }
+    pub(super) fn note_continuation(
+        &self,
+        raw: &str,
+        project: u64,
+        iid: u64,
+        route: ItemRoute,
+        page: u64,
+    ) -> Result<Url, ProviderError> {
+        let url = self.check_resource_raw(raw)?;
+        if self.operation(&url)?
+            != (Operation::Notes {
+                project,
+                iid,
+                route,
+                page,
+            })
+        {
+            return Err(invalid());
+        }
+        Ok(url)
     }
     pub(super) fn discussions(&self, project: u64, iid: u64) -> Result<Url, ProviderError> {
         if project == 0 || iid == 0 {
@@ -393,6 +458,23 @@ impl GitlabHttp {
             .first()
             .and_then(|v| positive_id(v))
             .ok_or_else(invalid)?;
+        if parts.len() == 4 && parts.get(3) == Some(&"notes") {
+            let route = match parts.get(1) {
+                Some(&"issues") => ItemRoute::Issues,
+                Some(&"merge_requests") => ItemRoute::MergeRequests,
+                _ => return Err(invalid()),
+            };
+            let iid = parts
+                .get(2)
+                .and_then(|v| positive_id(v))
+                .ok_or_else(invalid)?;
+            return Ok(Operation::Notes {
+                project,
+                iid,
+                route,
+                page: note_page(url, project, iid, route)?,
+            });
+        }
         if parts.len() == 4 && parts.get(1) == Some(&"merge_requests") {
             let iid = parts
                 .get(2)
@@ -550,7 +632,7 @@ impl GitlabHttp {
                     number(headers, "ratelimit-reset").map(|n| n.saturating_sub(now()).max(1));
                 let cooldown = (number(headers, "ratelimit-remaining") == Some(0))
                     .then(|| reset.unwrap_or(60));
-                observed_cooldown = max_wait(observed_cooldown, cooldown);
+                observed_cooldown = max_wait(observed_cooldown, max_wait(retry, cooldown));
                 if status == StatusCode::UNAUTHORIZED {
                     return Err(with_quota(
                         ProviderError::new(ProviderErrorKind::Authentication),
@@ -642,6 +724,18 @@ impl GitlabHttp {
                         Operation::Feed { project, route } => {
                             self.resource_continuation(next, project, route)
                         }
+                        Operation::Notes {
+                            project,
+                            iid,
+                            route,
+                            page,
+                        } => self.note_continuation(
+                            next,
+                            project,
+                            iid,
+                            route,
+                            page.checked_add(1).ok_or_else(invalid)?,
+                        ),
                         Operation::Discussions { project, iid, page } => self
                             .discussion_continuation(
                                 next,
@@ -767,6 +861,41 @@ fn commit_status_page(url: &Url, project: u64, head: &str) -> Result<u64, Provid
         .remove("id")
         .is_some_and(|value| value != project.to_string())
         || pairs.remove("sha").is_some_and(|value| value != head)
+        || !pairs.is_empty()
+    {
+        return Err(invalid());
+    }
+    Ok(page)
+}
+
+fn note_page(url: &Url, project: u64, iid: u64, route: ItemRoute) -> Result<u64, ProviderError> {
+    let mut pairs = std::collections::HashMap::new();
+    for (k, v) in url.query_pairs() {
+        if pairs.insert(k.to_string(), v.to_string()).is_some() {
+            return Err(invalid());
+        }
+    }
+    for (k, v) in [
+        ("per_page", "50"),
+        ("sort", "asc"),
+        ("order_by", "updated_at"),
+    ] {
+        if pairs.remove(k).as_deref() != Some(v) {
+            return Err(invalid());
+        }
+    }
+    let page = pairs
+        .remove("page")
+        .as_deref()
+        .and_then(positive_id)
+        .ok_or_else(invalid)?;
+    let selector = if route == ItemRoute::Issues {
+        "issue_iid"
+    } else {
+        "merge_request_iid"
+    };
+    if pairs.remove("id").is_some_and(|v| v != project.to_string())
+        || pairs.remove(selector).is_some_and(|v| v != iid.to_string())
         || !pairs.is_empty()
     {
         return Err(invalid());
