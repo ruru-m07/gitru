@@ -95,3 +95,15 @@ HTTP-to-SQLite control proves that opaque issue/repository IDs work while altere
 native subject/project bindings cannot publish. After integrating Activity
 `bb0c73c5`, all10 Comments controls pass. No provider-specific local-ID string codec
 was introduced; immutable provider identity and writer-time binding are authority.
+
+The first full workspace run found one stale inherited assertion: the cold GitLab
+resource-read fixture still expected Comments to be unsupported. Its failure was
+`Supported` versus `Unsupported` at line566, not a timeout or a runtime regression.
+The fixture now proves cold Comments reads/sync are supported but remain NotLoaded
+and read-only, while Merge remains unsupported. Its existing Body/draft/reopen
+and unchanged provider/vault counters remain intact. All four actual GitLab
+HTTP-to-SQLite resource-read controls pass after this test-only correction. The
+initial full native library result was629 passed/1 failed/4 ignored; it is not
+reported as a passing full run. Final full workspace qualification is separate.
+Strict collaboration all-target Clippy, Rust formatting and diff checks also
+pass for this narrow correction.
