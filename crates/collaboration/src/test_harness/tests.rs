@@ -1372,3 +1372,85 @@ async fn independent_lost_marker_refuses_reopen_without_resetting_authored_cache
     assert_eq!(store.revision().await.unwrap(), revision);
     store.close().await.unwrap();
 }
+
+#[tokio::test]
+async fn obsolete_provider_body_is_rejected_without_immediate_retry() {
+    let run = Run::new();
+    let session = prepared(&run).await;
+    action(&session, HarnessCoreAction::PhaseTwo).await;
+    interest(&session, "test-main", HarnessActorSlot::Primary).await;
+    assert!(session.runtime.harness_run_next().await);
+    let first = detail(&session, HarnessActorSlot::Primary).await;
+    let draft = session
+        .store
+        .draft(PRIMARY_ACCOUNT, SUBJECT_ID)
+        .await
+        .unwrap();
+    let account = session.store.account(PRIMARY_ACCOUNT).await.unwrap();
+
+    action(&session, HarnessCoreAction::PhaseOne).await;
+    action(&session, HarnessCoreAction::AdvanceRefresh).await;
+    assert!(session.runtime.harness_run_next().await);
+    let refused = session.control.status(&run.nonce).await.unwrap();
+    assert_eq!(refused.provider_call_count, "2");
+    assert_eq!(
+        detail(&session, HarnessActorSlot::Primary).await.body,
+        first.body
+    );
+    // Refreshing UI demand cannot bypass the retry barrier for an obsolete
+    // response from the provider. The old implementation immediately refetched.
+    interest(&session, "test-renewed", HarnessActorSlot::Primary).await;
+    for _ in 0..3 {
+        assert!(!session.runtime.harness_run_next().await);
+        action(&session, HarnessCoreAction::AdvanceRefresh).await;
+    }
+    let blocked = detail(&session, HarnessActorSlot::Primary).await;
+    assert_eq!(
+        blocked.evidence.sync.error.unwrap().code,
+        ErrorCode::Provider
+    );
+    assert_eq!(
+        session
+            .control
+            .status(&run.nonce)
+            .await
+            .unwrap()
+            .provider_call_count,
+        "2"
+    );
+    assert_eq!(
+        session.store.account(PRIMARY_ACCOUNT).await.unwrap(),
+        account
+    );
+    assert_eq!(
+        session
+            .store
+            .draft(PRIMARY_ACCOUNT, SUBJECT_ID)
+            .await
+            .unwrap(),
+        draft
+    );
+
+    action(&session, HarnessCoreAction::PhaseTwo).await;
+    // Three short steps plus this step exceed the existing 60-74 second first
+    // provider-error backoff. Acquire a fresh lease after the old one expires.
+    action(&session, HarnessCoreAction::AdvanceCooldown).await;
+    interest(&session, "test-recovered", HarnessActorSlot::Primary).await;
+    assert!(session.runtime.harness_run_next().await);
+    let recovered = detail(&session, HarnessActorSlot::Primary).await;
+    assert_eq!(recovered.body, first.body);
+    assert!(recovered.evidence.sync.error.is_none());
+    assert_ne!(
+        recovered.evidence.facet_revision,
+        first.evidence.facet_revision
+    );
+    assert_eq!(
+        session
+            .control
+            .status(&run.nonce)
+            .await
+            .unwrap()
+            .provider_call_count,
+        "3"
+    );
+}
