@@ -476,7 +476,6 @@ pub fn setup(app: &App) -> Result<(), Box<dyn std::error::Error>> {
                 {
                     async {
                         let database = launch.file("collaboration.sqlite")?;
-                        HarnessSession::validate_before_store_open(&launch.root, &launch.nonce)?;
                         let vault: Arc<dyn DatabaseKeyVault> =
                             Arc::new(HarnessDatabaseVault(launch.clone()));
                         let store = crate::collaboration_setup::open_keyed_store(

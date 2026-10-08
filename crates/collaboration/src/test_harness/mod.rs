@@ -47,27 +47,11 @@ pub struct HarnessSession {
 }
 
 impl HarnessSession {
-    /// Validate interrupted-fixture evidence before any Store can create or
-    /// modify the database. Keyed callers must run this immediately before
-    /// their externally owned native factory opens its first handle.
-    pub fn validate_before_store_open(
-        root: &Path,
-        run_nonce: &str,
-    ) -> Result<(), CollaborationError> {
-        let root = OwnedRoot::validate(root, run_nonce)?;
-        let database = root.file("collaboration.sqlite")?;
-        if database.exists() && root.read("harness-state.json", 4096)?.is_none() {
-            return Err(invalid());
-        }
-        Ok(())
-    }
-
     pub async fn open(
         root: &Path,
         run_nonce: &str,
         visibility: Arc<dyn Fn(&str) -> bool + Send + Sync>,
     ) -> Result<Self, CollaborationError> {
-        Self::validate_before_store_open(root, run_nonce)?;
         let root = OwnedRoot::validate(root, run_nonce)?;
         let database = root.file("collaboration.sqlite")?;
         let store = Arc::new(Store::open(&database).await?);
@@ -98,6 +82,15 @@ impl HarnessSession {
         visibility: Arc<dyn Fn(&str) -> bool + Send + Sync>,
         store: Arc<Store>,
     ) -> Result<Self, CollaborationError> {
+        // Store opening creates a fresh database before this point. Refuse a
+        // missing retained marker only when authored rows prove this is not a
+        // fresh fixture, and do so before PersistentState can recreate it.
+        if root.read("harness-state.json", 4096)?.is_none()
+            && !store.accounts().await?.accounts.is_empty()
+        {
+            store.close().await?;
+            return Err(invalid());
+        }
         let persistent = PersistentState::open(&root, run_nonce)?;
         let validated_vault = async {
             let accounts = store.accounts().await?.accounts;
