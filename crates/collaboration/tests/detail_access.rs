@@ -677,7 +677,7 @@ async fn older_comparable_facet_time_is_rejected_without_using_parent_time_or_le
     let revision = store.revision().await.unwrap();
     assert_eq!(
         store.apply_detail(older).await.unwrap_err().code,
-        ErrorCode::StaleView
+        ErrorCode::Provider
     );
     let actual = read(&store, "a", SUBJECT, DetailFacet::Body).await;
     assert_eq!(actual.body, expected.body);

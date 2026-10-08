@@ -2185,7 +2185,13 @@ pub(super) async fn apply_detail_in(
                 .zip(page.source.provider_updated_at.as_ref())
                 .is_some_and(|(old, new)| timestamp_older(new, old))
     }) {
-        return Err(stale());
+        // Account/view/traversal fences already passed. This is obsolete
+        // provider data, not retired local authority: apply normal read backoff
+        // so a still-live due demand cannot immediately fetch it in a loop.
+        return Err(CollaborationError::new(
+            ErrorCode::Provider,
+            "Provider returned an older detail observation",
+        ));
     }
     if page.not_modified
         && (previous.is_none()

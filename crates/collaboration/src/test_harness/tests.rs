@@ -1372,3 +1372,186 @@ async fn independent_lost_marker_refuses_reopen_without_resetting_authored_cache
     assert_eq!(store.revision().await.unwrap(), revision);
     store.close().await.unwrap();
 }
+
+#[tokio::test]
+async fn obsolete_provider_body_is_rejected_without_immediate_retry() {
+    obsolete_provider_observation(false).await;
+}
+
+#[tokio::test]
+async fn obsolete_provider_metadata_is_rejected_without_immediate_retry() {
+    obsolete_provider_observation(true).await;
+}
+
+async fn obsolete_provider_observation(metadata_only: bool) {
+    let run = Run::new();
+    let session = prepared(&run).await;
+    if !metadata_only {
+        action(&session, HarnessCoreAction::PhaseTwo).await;
+    }
+    interest(&session, "test-main", HarnessActorSlot::Primary).await;
+    assert!(session.runtime.harness_run_next().await);
+    if metadata_only {
+        // Retain the phase-one Body ordering barrier while observing phase-two
+        // metadata. The old response will pass Body ordering and fail only the
+        // independent metadata timestamp guard.
+        let first = detail(&session, HarnessActorSlot::Primary).await;
+        let account = session.store.account(PRIMARY_ACCOUNT).await.unwrap();
+        let lease = session
+            .store
+            .begin_detail(
+                PRIMARY_ACCOUNT,
+                &account.authorization_epoch,
+                SUBJECT_ID,
+                DetailFacet::Body,
+            )
+            .await
+            .unwrap();
+        let mut source = first.evidence.value_source.unwrap();
+        source.provider_updated_at = Some(
+            (session.control.0.shared.lock().persistent.utc_base + chrono::Duration::seconds(2))
+                .to_rfc3339(),
+        );
+        let mut metadata = first.metadata.unwrap();
+        metadata.values.title = Some("Native endpoint title phase two".into());
+        session
+            .store
+            .apply_detail(DetailCommit {
+                account_id: PRIMARY_ACCOUNT.into(),
+                authorization_epoch: account.authorization_epoch,
+                authorization_view: lease.authorization_view,
+                instance_id: lease.instance_id,
+                subject_id: SUBJECT_ID.into(),
+                facet: DetailFacet::Body,
+                run_id: lease.run_id,
+                request_cursor: lease.next_cursor,
+                reconciliation: DetailReconciliation::default(),
+                body: DetailValue {
+                    state: DetailValueState::Omitted,
+                    text: None,
+                },
+                metadata: Some(ResourceMetadataObservation {
+                    kind: RemoteItemKind::PullRequest,
+                    values: metadata.values,
+                    fields: metadata
+                        .fields
+                        .into_iter()
+                        .map(|f| MetadataObservedField {
+                            field: f.field,
+                            state: f.saved_state,
+                        })
+                        .collect(),
+                    source: MetadataSource {
+                        source: source.source.clone(),
+                        adapter_version: source.adapter_version,
+                        provider_updated_at: source.provider_updated_at.clone(),
+                        observed_at: source.observed_at.clone(),
+                    },
+                }),
+                subject_binding: Some(DetailSubjectBinding {
+                    repository_id: REPOSITORY_ID.into(),
+                    repository_provider_id: "9007199254741993".into(),
+                    provider_id: "9007199254742993".into(),
+                    number: Some("1".into()),
+                    kind: RemoteItemKind::PullRequest,
+                    head_oid: Some(HEAD_OID.into()),
+                }),
+                check_context: None,
+                review_context: None,
+                entries: vec![],
+                source,
+                next_cursor: None,
+                etag: None,
+                not_modified: false,
+                whole_scope: true,
+                complete: true,
+                freshness_seconds: 5,
+            })
+            .await
+            .unwrap();
+    }
+    let first = detail(&session, HarnessActorSlot::Primary).await;
+    let draft = session
+        .store
+        .draft(PRIMARY_ACCOUNT, SUBJECT_ID)
+        .await
+        .unwrap();
+    let account = session.store.account(PRIMARY_ACCOUNT).await.unwrap();
+
+    action(&session, HarnessCoreAction::PhaseOne).await;
+    action(&session, HarnessCoreAction::AdvanceRefresh).await;
+    assert!(session.runtime.harness_run_next().await);
+    let refused = session.control.status(&run.nonce).await.unwrap();
+    assert_eq!(refused.provider_call_count, "2");
+    assert_eq!(
+        detail(&session, HarnessActorSlot::Primary).await.body,
+        first.body
+    );
+    // Refreshing UI demand cannot bypass the retry barrier for an obsolete
+    // response from the provider. The old implementation immediately refetched.
+    interest(&session, "test-renewed", HarnessActorSlot::Primary).await;
+    for _ in 0..3 {
+        assert!(!session.runtime.harness_run_next().await);
+        action(&session, HarnessCoreAction::AdvanceRefresh).await;
+    }
+    let blocked = detail(&session, HarnessActorSlot::Primary).await;
+    assert_eq!(blocked.body, first.body);
+    assert_eq!(
+        blocked.metadata.as_ref().unwrap().values,
+        first.metadata.as_ref().unwrap().values
+    );
+    assert_eq!(
+        blocked.evidence.sync.error.unwrap().code,
+        ErrorCode::Provider
+    );
+    assert_eq!(
+        session
+            .control
+            .status(&run.nonce)
+            .await
+            .unwrap()
+            .provider_call_count,
+        "2"
+    );
+    assert_eq!(
+        session.store.account(PRIMARY_ACCOUNT).await.unwrap(),
+        account
+    );
+    assert_eq!(
+        session
+            .store
+            .draft(PRIMARY_ACCOUNT, SUBJECT_ID)
+            .await
+            .unwrap(),
+        draft
+    );
+
+    action(&session, HarnessCoreAction::PhaseTwo).await;
+    // Three short steps plus this step exceed the existing 60-74 second first
+    // provider-error backoff. Acquire a fresh lease after the old one expires.
+    action(&session, HarnessCoreAction::AdvanceCooldown).await;
+    interest(&session, "test-recovered", HarnessActorSlot::Primary).await;
+    assert!(session.runtime.harness_run_next().await);
+    let recovered = detail(&session, HarnessActorSlot::Primary).await;
+    if !metadata_only {
+        assert_eq!(recovered.body, first.body);
+    }
+    assert_eq!(
+        recovered.metadata.as_ref().unwrap().values.title,
+        first.metadata.as_ref().unwrap().values.title
+    );
+    assert!(recovered.evidence.sync.error.is_none());
+    assert_ne!(
+        recovered.evidence.facet_revision,
+        first.evidence.facet_revision
+    );
+    assert_eq!(
+        session
+            .control
+            .status(&run.nonce)
+            .await
+            .unwrap()
+            .provider_call_count,
+        "3"
+    );
+}

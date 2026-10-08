@@ -62,3 +62,62 @@ No public types or command signatures changed, so generated IPC is unchanged.
 Frontend/packaged tests were not rerun for this native arbitration-only delta.
 Remote CI and live provider/OS suspend evidence remain separate. RURU-102 stays
 In Progress for API-family budget attribution and remaining lifecycle policy.
+
+## Follow-up: obsolete provider responses must back off
+
+The RURU-107 packaged run exposed a second scheduler issue: after storing newer
+Body data, a comparable older provider timestamp is correctly rejected but
+reported as `StaleView`. That code is reserved for retired local authority and
+bypasses retry scheduling; the still-live due demand can immediately fetch the
+same obsolete response again. The retained synthetic run made 1,383 calls before
+its 90-second scenario deadline.
+
+Keep every local account/view/run fence and saved-value ordering rule intact.
+Classify only an older comparable provider observation, after those local fences
+pass, as a provider read failure. The existing bounded exponential retry delay
+then applies without a new public error type or policy. A real-runtime fixture
+control must reproduce the busy loop before the change, preserve newer canonical
+data/account/draft, refuse early retry even after renewing demand, and recover
+after the normal delay with fresh provider data. Direct storage ordering controls
+must continue proving rejection and atomic rollback; retired authority controls
+must still return `StaleView` and avoid publishing error into a replacement view.
+
+The same distinction applies to independently clocked resource metadata when
+Body was omitted: a metadata timestamp can be newer than the retained Body
+ordering barrier. A second real-runtime control reproduced immediate retry on
+that separate guard while keeping Body authority current. Only the provider
+ordering branch changes; native subject-binding failures remain `StaleView`.
+
+## Obsolete-observation qualification
+
+Both Body and independent-metadata real-runtime controls reproduce an immediate
+retry on the original error classification, then pass with the provider-failure
+classification. The repair preserves newer canonical Body/metadata, account,
+private draft and every local authority fence; renewed demand cannot bypass the
+existing delay. A fresh authorized provider response clears the error afterward.
+Independent source review passed for both guards.
+
+Local evidence on signed native source `7214d8a2`, plus test-only Darwin fixture
+repair `ffc575b6`:
+
+- The all-feature `--no-fail-fast` suite exercised 1,021 tests across 27 suites:
+  1,020 passed, one inherited inbox HTTP fixture failed, five helpers ignored.
+  That fixture inherited the listener's nonblocking mode on Darwin and tried to
+  read before request bytes arrived. Explicit blocking mode fixes it while
+  retaining the original finite socket timeouts; production code is unchanged.
+- The entire affected provider inbox-action module then passed **13/13**, and
+  both final obsolete-observation runtime controls passed **2/2**. Every test in
+  the full suite is qualified across the full run and that scoped repair rerun;
+  this is not described as a single green full-suite invocation.
+- Direct metadata ordering/rollback controls passed **11/11**; all 19 facet
+  reconciliation cases and the remaining full-suite integration targets pass.
+- Strict all-target/all-feature collaboration Clippy, rustfmt and diff checks pass.
+- Logs: `/tmp/gitru-r102-metadata-{red,green,direct,full,clippy}.log`,
+  `/tmp/gitru-r102-inbox-fixture.log`,
+  `/tmp/gitru-r102-obsolete-final-focused.log`.
+
+The earlier Body-only provider/collection fixtures were updated to the intended
+Provider classification and actual retry deadline, without weakening rollback
+or stale-local-authority assertions. No public DTO, schema, IPC or UI changes.
+Remote CI for the revised head is separate; live provider/platform gates remain
+open and no PR has been merged.

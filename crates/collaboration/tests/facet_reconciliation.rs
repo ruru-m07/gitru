@@ -250,7 +250,7 @@ async fn collection_304_without_timestamp_preserves_saved_comparable_ordering_bo
         let result = store.apply_detail(obsolete).await;
         assert_eq!(
             result.unwrap_err().code,
-            ErrorCode::StaleView,
+            ErrorCode::Provider,
             "{facet:?}: 304 validates saved truth without deleting its ordering barrier"
         );
         assert_eq!(store.revision().await.unwrap(), revision);

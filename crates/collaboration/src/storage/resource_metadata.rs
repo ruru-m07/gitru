@@ -292,7 +292,12 @@ pub(super) async fn apply_in(
                         .is_some_and(|(old, new)| timestamp_older(new, old))
             })
         {
-            return Err(stale());
+            // Local authority is still current. An obsolete provider value must
+            // enter read backoff rather than immediately reusing live demand.
+            return Err(CollaborationError::new(
+                ErrorCode::Provider,
+                "Provider returned older resource metadata",
+            ));
         }
         for index in 0..saved.fields.len() {
             let field = saved.fields[index].field;

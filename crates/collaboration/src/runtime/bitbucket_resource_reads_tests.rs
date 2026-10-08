@@ -886,8 +886,24 @@ async fn bitbucket_body_and_independent_metadata_keep_authority_on_omission_over
     assert_eq!(older.evidence.value_source, empty.evidence.value_source);
     assert_eq!(older.evidence.facet_revision, empty.evidence.facet_revision);
 
+    assert_eq!(
+        older.evidence.sync.error.as_ref().unwrap().code,
+        ErrorCode::Provider
+    );
     fixture.update(|scenario| scenario.detail = DetailMode::Conflicting);
     clock.advance(1);
+    let calls = fixture.count();
+    runtime
+        .hydrate_detail(demand(&account, REPO_A))
+        .await
+        .unwrap();
+    assert!(
+        !runtime.run_next().await,
+        "obsolete provider data still applies read backoff"
+    );
+    assert_eq!(fixture.count(), calls);
+    // This fixture has zero jitter: its first provider-error delay is 60s.
+    clock.advance(60);
     let rejected = hydrate(&runtime, &account, REPO_A).await;
     assert_eq!(rejected.body, empty.body);
     assert_eq!(
