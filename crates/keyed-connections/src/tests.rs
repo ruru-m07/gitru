@@ -615,7 +615,8 @@ async fn native_close_failure_child() {
         assert!(!statement.is_null());
     }
     eprintln!("native close fixture: native statement retained");
-    assert!(writer.close().await.is_err());
+    let close = tokio::spawn(async move { writer.close().await }).await;
+    assert!(matches!(close, Err(error) if error.is_panic()));
     eprintln!("native close fixture: worker close error observed");
     {
         let admission = factory.state.admission.lock().unwrap();
