@@ -75,6 +75,19 @@ pub(crate) fn resolve_github_anchor(
         .unified_text
         .as_deref()
         .ok_or(AnchorResolutionFailure::MissingProviderDiff)?;
+    // A changed-file identity preserves both rename/copy paths, but it does not
+    // prove which alias GitHub accepts for a review comment. Until that provider
+    // behavior is qualified, keep the diff readable without inventing authority.
+    if snapshot
+        .membership
+        .identity
+        .old_path
+        .as_ref()
+        .zip(snapshot.membership.identity.new_path.as_ref())
+        .is_some_and(|(old, new)| old != new)
+    {
+        return Err(AnchorResolutionFailure::InvalidAnchor);
+    }
     let path = match comment.anchor.side {
         ReviewDiffSide::Left => snapshot.membership.identity.old_path.as_deref(),
         ReviewDiffSide::Right => snapshot.membership.identity.new_path.as_deref(),
@@ -316,8 +329,8 @@ mod tests {
             context: context(),
             file_key: "provider:1".into(),
             identity: PullFileIdentity {
-                old_path: Some("old/src.rs".into()),
-                new_path: Some("new/src.rs".into()),
+                old_path: Some("src.rs".into()),
+                new_path: Some("src.rs".into()),
             },
         };
         PullFileArtifactSnapshot {
@@ -366,14 +379,61 @@ mod tests {
             &snapshot(patch),
         )
         .unwrap();
-        assert_eq!(left.path, "old/src.rs");
+        assert_eq!(left.path, "src.rs");
         let right = resolve_github_anchor(
             &request(),
             &selection(ReviewDiffSide::Right, 21),
             &snapshot(patch),
         )
         .unwrap();
-        assert_eq!(right.path, "new/src.rs");
+        assert_eq!(right.path, "src.rs");
+    }
+
+    #[test]
+    fn unequal_paths_never_guess_provider_rename_or_copy_anchor_semantics() {
+        let mut renamed = snapshot("@@ -1 +1 @@\n-old\n+new\n");
+        renamed.membership.identity.old_path = Some("old.rs".into());
+        renamed.artifact.as_mut().unwrap().identity = renamed.membership.identity.clone();
+        for side in [ReviewDiffSide::Left, ReviewDiffSide::Right] {
+            assert_eq!(
+                resolve_github_anchor(&request(), &selection(side, 1), &renamed),
+                Err(AnchorResolutionFailure::InvalidAnchor)
+            );
+        }
+    }
+
+    #[test]
+    fn added_and_deleted_paths_only_authorize_the_present_side() {
+        for (patch, old, new, valid_side, invalid_side) in [
+            (
+                "@@ -0,0 +1 @@\n+new\n",
+                None,
+                Some("new.rs"),
+                ReviewDiffSide::Right,
+                ReviewDiffSide::Left,
+            ),
+            (
+                "@@ -1 +0,0 @@\n-old\n",
+                Some("old.rs"),
+                None,
+                ReviewDiffSide::Left,
+                ReviewDiffSide::Right,
+            ),
+        ] {
+            let mut artifact = snapshot(patch);
+            artifact.membership.identity = PullFileIdentity {
+                old_path: old.map(str::to_owned),
+                new_path: new.map(str::to_owned),
+            };
+            artifact.artifact.as_mut().unwrap().identity = artifact.membership.identity.clone();
+            assert!(
+                resolve_github_anchor(&request(), &selection(valid_side, 1), &artifact).is_ok()
+            );
+            assert_eq!(
+                resolve_github_anchor(&request(), &selection(invalid_side, 1), &artifact),
+                Err(AnchorResolutionFailure::InvalidAnchor)
+            );
+        }
     }
 
     #[test]

@@ -678,6 +678,7 @@ function SelectedPullFile({
             account.state === "active" &&
             account.provider === "github" &&
             account.host === "github.com" &&
+            canAnchorReviewFile(file) &&
             selectedSnapshot.freshness !== "stale" &&
             selectedSnapshot.artifact?.validation?.kind === "provider"
               ? {
@@ -724,6 +725,18 @@ function SelectedPullFile({
         </p>
       ) : null}
     </div>
+  );
+}
+
+function canAnchorReviewFile(file: PullFile) {
+  const { change_kind, identity } = file.file;
+  return (
+    ["added", "modified", "deleted", "type_changed"].includes(change_kind) &&
+    !(
+      identity.old_path &&
+      identity.new_path &&
+      identity.old_path !== identity.new_path
+    )
   );
 }
 

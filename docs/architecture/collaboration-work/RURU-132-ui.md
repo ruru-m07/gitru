@@ -89,3 +89,21 @@ Local qualification on this frontend checkpoint:
 
 Native worker/recovery, packaged application, authenticated live-provider and
 remote CI evidence is separate and is not inferred from these frontend gates.
+
+## Anchor review correction — 8 October 2026
+
+Independent source review found that the initial anchor fixture assumed a
+different old/new path could be chosen solely from the selected side. That does
+not establish GitHub's rename/copy comment-path semantics. The new regression
+first failed because the resolver accepted `old.rs`; the resolver now refuses
+unequal path pairs on both sides. Added/deleted files still require the selected
+side to exist. The UI keeps saved diffs readable but offers no inline authoring
+for renamed, copied, unknown-kind or unequal-path rows. Native storage separately
+checks the trusted saved change kind during resolution and revalidation.
+
+The five native anchor controls pass after the fix. All 27 file-panel controls
+pass, including four new readable-diff/no-authoring cases, and desktop/E2E types
+and targeted Biome checks pass. This is a focused delta after the complete
+904-pass frontend checkpoint, not a repeated full-suite or live-provider claim.
+The first slice explicitly leaves rename/copy anchor submission unavailable until
+the provider semantics and native identity contract are qualified.

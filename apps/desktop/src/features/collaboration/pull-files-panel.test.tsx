@@ -661,4 +661,41 @@ describe("inline review selection from provider diffs", () => {
       screen.queryByRole("button", { name: "Add inline review comment" }),
     ).not.toBeInTheDocument();
   });
+
+  it.each([
+    "renamed",
+    "copied",
+    "unknown",
+    "unequal_paths",
+  ] as const)("keeps the saved diff readable without assuming %s review anchors", async (kind) => {
+    const file = structuredClone(files[0]);
+    file.file.change_kind = kind === "unequal_paths" ? "modified" : kind;
+    if (kind !== "unknown") file.file.identity.old_path = "old/a.ts";
+    vi.mocked(collaboration.transport.pullFiles).mockResolvedValue({
+      ...snapshot,
+      files: [file],
+    });
+    vi.mocked(collaboration.transport.pullFileArtifact).mockImplementation(
+      async (request) => {
+        const artifact = savedArtifact(
+          request,
+          "text",
+          "@@ -1 +1 @@\n-old\n+new\n",
+        );
+        artifact.identity = file.file.identity;
+        const result = artifactSnapshot(request, artifact);
+        result.membership.identity = file.file.identity;
+        return { ...result, freshness: "fresh" };
+      },
+    );
+    mountReviewFiles();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Files" }));
+    await user.click(await screen.findByRole("button", { name: /src\/a.ts/ }));
+    expect(await screen.findByTestId("safe-patch-diff")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Add inline review comment" }),
+    ).not.toBeInTheDocument();
+    expect(collaboration.transport.hydratePullFile).not.toHaveBeenCalled();
+  });
 });
