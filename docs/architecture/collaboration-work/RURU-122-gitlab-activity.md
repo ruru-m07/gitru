@@ -92,3 +92,29 @@ requests. Treat this as source-supported GitLab.com behavior, still subject to
 synthetic HTTP/contract tests and separate live provider qualification. Pin that
 filter as part of transport operation identity: comments continuations/redirects
 must never silently change into activity-only notes or vice versa.
+
+## Review refinement: a bounded window must remain refreshable
+
+SQLite qualification caught an invalid display-title field; Activity's existing
+stored representation deliberately keeps title/state/head empty. Friendly labels
+are derived from typed event kinds in the frontend, with no schema expansion.
+
+Independent review also found that retaining an exhausted 20-page cursor would
+permanently wedge future refreshes. Add native terminal `Truncated` enumeration
+evidence for Activity only: the last bounded page has no usable continuation,
+but retains Partial coverage and positive `remote_has_more`. It never grants
+absence authority or prunes history. Permit only an Uncertain-to-Truncated
+terminal transition within the same source/version/fields and subject context;
+reject that evidence on nonterminal, conditional or other-facet commits. A new
+ordinary/manual refresh can then start a new bounded traversal. Existing native
+JSON evidence is optional on older readers; no new public DTO or SQL migration.
+
+Activity system notes use the API-supported `sort=desc&order_by=updated_at` window
+so refresh can observe recent notes on large subjects. Comments remain ascending
+and cannot switch operation identity through redirects/continuations. GitLab
+state/label endpoints have no documented sort parameter; retain their provider
+order and make no newest-event guarantee for those families. Their rows and
+omitted event families remain explicitly partial. The UI states the per-sync
+limit of 20 pages (up to 1,000 returned source rows), without claiming complete
+history. Add cold cap/restart, metadata truthfulness, invalid terminal evidence,
+no pruning, and ascending-comments/descending-activity transport controls.
