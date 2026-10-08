@@ -298,3 +298,62 @@ without weakening a test. Local qualification is limited to workflow YAML parse,
 the exact Windows/non-Windows budget expression, and `git diff --check`; no new
 native execution is claimed for this workflow-only correction. Fresh remote
 completion and cross-platform readers remain pending.
+
+## Packaged keyed/plaintext R125 delta — 8 October 2026
+
+The unchanged R125 packaged protocol now runs against both real storage modes at
+signed comparison source `a50724e6c1ddf64bdf61bf8f8eefcf1fdabaabf1`, which contains
+final packaged qualification head `9bae1fef` and its R140 activation ancestor
+`e710c64e`. The release/no-bundle binaries are distinct and recorded by SHA-256:
+
+- plaintext: `d1fc9c7dd6dfb21a76f881a84b15edca22aaee5c31d32a6b06c6e77b3742faef`;
+- keyed: `66af0345a5e77044b790f3cbc4099ad57031f7f129b66bab48c3664dc729bcf5`.
+
+Both seed and cold-restart WebKit runs pass with the exact 10,000-item fixture,
+two accounts, five repositories per account, a main window and concurrent child
+view. Provider calls and vault loads remain unchanged, generated IPC validation
+passes, and both modes retain two native views. The comparison used a synthetic
+fixture key only; no personal credential or platform vault was opened.
+
+| Measurement | Plaintext | Keyed | Keyed delta |
+| --- | ---: | ---: | ---: |
+| Database | 41,971,712 B | 43,110,400 B | +1,138,688 B (+2.71%) |
+| WAL | 4,890,472 B | 4,939,912 B | +49,440 B (+1.01%) |
+| Database + WAL + SHM | 46,894,952 B | 48,083,080 B | +1,188,128 B (+2.53%) |
+| Rust RSS after seed | 158,973,952 B | 156,860,416 B | -2,113,536 B (-1.33%) |
+| Rust RSS after restart | 157,745,152 B | 159,514,624 B | +1,769,472 B (+1.12%) |
+| Native runtime open, seed | 202.246 ms | 1,205.752 ms | +1,003.506 ms |
+| Native runtime open, restart | 5.536 ms | 721.298 ms | +715.762 ms |
+
+The current keyed connection path has a material latency cost in this run. Native
+`items` query p95 increased from 8.452 to 127.187 ms for seed/main, 20.744 to
+126.299 ms for seed/child, 19.937 to 77.965 ms for restart/main and 21.425 to
+78.537 ms for restart/child. At the React useful-content boundary, list p95 was
+42/50/52/70 ms in plaintext and 112/270/72/100 ms keyed for the same four
+phase/view combinations. Search p95 was 32/31/30/30 ms plaintext and
+90/90/90/100 ms keyed. Detail p95 stayed within 30–32 ms in both modes.
+
+These are paired workstation observations, not universal thresholds. They were
+run sequentially on an Apple M4 macOS 27.0 host from an external volume reported
+87% full; the device's solid-state classification was unavailable. A single run
+cannot separate encryption cost from scheduler, filesystem and thermal effects.
+WebKit RSS is unavailable because no process could be proven as a descendant,
+and the 10,000-item fixture does not qualify the separate 100,000-summary or
+500,000-child memory target. The native-open and repeated list/search deltas are
+large enough to require profiling and repeated controlled samples before keyed
+storage is treated as performance-qualified.
+
+Retained ignored reports:
+
+- plaintext: `artifacts/collaboration-performance/2026-10-08T12-50-35-782Z-31358/performance-report.json`;
+- keyed: `artifacts/collaboration-performance/2026-10-08T12-55-07-040Z-32922/performance-report.json`.
+
+During activation, the packaged harness exposed fresh-root validation happening
+after Store creation. Final R140/R213 source now distinguishes a new empty Store
+from an interrupted authored fixture by checking retained accounts before
+recreating state. The keyed build command also uses `python3`, matching supported
+macOS hosts where no `python` alias exists. This completes the local encrypted
+R125 delta measurement, while the observed latency regression, repeated-sample
+qualification, WebKit memory attribution and large-dataset memory gates remain
+open performance work. Remote CI and platform qualification are separate from
+this local evidence.
