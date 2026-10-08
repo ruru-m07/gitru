@@ -188,3 +188,16 @@ The existing draft PR must be rebased as a stack by changing its base to R102,
 pushed by ordinary fast-forward, and independently pass a new exact-head remote
 matrix. R103 remains In Review and unmerged. R99 recovery/export still precedes
 destructive R104 retention work.
+
+## Accepted current-parent conflict repair — 8 October 2026
+
+Live PR157 at `ba45cbda093b4b178a0937441c1718691ce92e60` reports a merge conflict
+against its current R102 parent `c0a9f2f352982f185f93d7c751c052c14d9c7761`.
+A read-only merge-tree identifies only the two append-only architecture evidence
+files as textual conflicts; runtime source merges automatically. Preserve both
+histories and integrate the exact current parent with a signed merge, then run
+fresh independent-clock and native test-harness feature tests plus strict Clippy.
+This repair neither changes public DTOs nor requalifies live providers, native
+vaults, OS suspend or packaged webviews. The old 14/14 remote matrix remains
+attached to its old exact head. Publish to existing PR157 only after local gates,
+record the new source head, and let fresh remote checks qualify the updated head.
