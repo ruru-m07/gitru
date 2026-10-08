@@ -137,7 +137,27 @@ describe("provider workflow state", () => {
   it("preserves the exact request identity across a lost IPC receipt", async () => {
     const submit = mockTauriCommand(
       "collaboration_submit_workflow_state",
-      () => {
+      (payload) => {
+        const request = (payload as { request: { command_id: string } })
+          .request;
+        snapshot = {
+          ...available(),
+          context: null,
+          current_state: null,
+          availability: "unavailable",
+          reason: "pending_intent",
+          pending_intent: {
+            subject_id: subjectId,
+            commands: [
+              {
+                command_id: request.command_id,
+                state: "queued",
+                fields: ["state"],
+              },
+            ],
+          },
+          revision: "21",
+        };
         throw { code: "network" };
       },
     );
@@ -149,6 +169,11 @@ describe("provider workflow state", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Your exact request identity is preserved.",
     );
+    expect(
+      await screen.findByText(
+        "A status change is already tracked in Saved changes.",
+      ),
+    ).toBeVisible();
     await user.click(
       screen.getByRole("button", { name: "Retry exact status change" }),
     );

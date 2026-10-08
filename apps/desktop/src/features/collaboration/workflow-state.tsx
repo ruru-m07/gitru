@@ -68,7 +68,11 @@ export function ResourceWorkflowState({
       snapshot.current_state !== review.base.current_state);
   const targetLabel = kind === "pull_request" ? "pull request" : "issue";
   const actionLabel = review?.desiredState === "closed" ? "close" : "reopen";
-  const retryAllowed = retryRequest !== null && !baseChanged;
+  const retryAllowed =
+    retryRequest !== null &&
+    retryRequest.context.account_id === account.id &&
+    retryRequest.context.subject_id === subjectId &&
+    retryRequest.context.authorization_epoch === account.authorization_epoch;
 
   function begin(desiredState: "open" | "closed") {
     if (!available || query.isError) return;
@@ -212,7 +216,7 @@ export function ResourceWorkflowState({
                 This item changed after you started. Load its latest saved
                 status before queuing another request.
               </p>
-              {available && !query.isError ? (
+              {available && !query.isError && retryRequest === null ? (
                 <Button
                   type="button"
                   size="sm"
