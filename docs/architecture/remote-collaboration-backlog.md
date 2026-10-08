@@ -2771,11 +2771,11 @@ No live provider validation or merge is claimed.
 
 ### RURU-139 packaged encrypted performance delta — 8 October 2026
 
-At signed comparison source `a50724e6`, the unchanged R125 packaged protocol
+At signed comparison source `30d410a8` over packaged head `942dcd06`, the unchanged R125 protocol
 passes seed and cold restart in plaintext and real keyed Store modes. Keyed
-storage adds 2.53% to database/WAL/SHM bytes; Rust RSS changes -1.33% after seed
-and +1.12% after restart. It also adds 1,003.506 ms to seed native open and
-715.762 ms to restart native open, with material list/search p95 regressions in
+storage adds 2.53% to database/WAL/SHM bytes; Rust RSS changes -1.91% after seed
+and +1.18% after restart. It also adds 3,427.824 ms to seed native open and
+589.122 ms to restart native open, with material list/search p95 regressions in
 this single Apple M4/external-volume run. Correctness invariants pass, but the
 latency result requires profiling and repeated controlled samples. WebKit RSS
 and the 100k/500k memory targets remain unqualified. Exact binary hashes, query

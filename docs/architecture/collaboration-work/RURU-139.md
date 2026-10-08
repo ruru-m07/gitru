@@ -302,12 +302,16 @@ completion and cross-platform readers remain pending.
 ## Packaged keyed/plaintext R125 delta — 8 October 2026
 
 The unchanged R125 packaged protocol now runs against both real storage modes at
-signed comparison source `a50724e6c1ddf64bdf61bf8f8eefcf1fdabaabf1`, which contains
-final packaged qualification head `9bae1fef` and its R140 activation ancestor
-`e710c64e`. The release/no-bundle binaries are distinct and recorded by SHA-256:
+signed comparison source `30d410a86cdd5e15fe11efae94c73ac082bd5a4a`, whose direct parent is
+final packaged qualification head `942dcd06` and which retains the R140
+activation ancestry. The release/no-bundle binaries are distinct and recorded by SHA-256:
 
-- plaintext: `d1fc9c7dd6dfb21a76f881a84b15edca22aaee5c31d32a6b06c6e77b3742faef`;
-- keyed: `66af0345a5e77044b790f3cbc4099ad57031f7f129b66bab48c3664dc729bcf5`.
+- plaintext: `617e6d2451a2d1c5d4e65fc7af2b4e53fa63ed6d27d2521a0c8efc681024ad34`;
+- keyed: `3fb4ddde118b980de61b9c2dff8002471aff3364f2522407eaa83a0694e9dcac`.
+
+The earlier `a50724e6` pair remains a valid historical diagnostic, but it is not used
+for this exact-head result because the later diagnostics-only Rust change altered the
+packaged binary hashes. Both modes were rebuilt and rerun after rebasing.
 
 Both seed and cold-restart WebKit runs pass with the exact 10,000-item fixture,
 two accounts, five repositories per account, a main window and concurrent child
@@ -320,18 +324,18 @@ fixture key only; no personal credential or platform vault was opened.
 | Database | 41,971,712 B | 43,110,400 B | +1,138,688 B (+2.71%) |
 | WAL | 4,890,472 B | 4,939,912 B | +49,440 B (+1.01%) |
 | Database + WAL + SHM | 46,894,952 B | 48,083,080 B | +1,188,128 B (+2.53%) |
-| Rust RSS after seed | 158,973,952 B | 156,860,416 B | -2,113,536 B (-1.33%) |
-| Rust RSS after restart | 157,745,152 B | 159,514,624 B | +1,769,472 B (+1.12%) |
-| Native runtime open, seed | 202.246 ms | 1,205.752 ms | +1,003.506 ms |
-| Native runtime open, restart | 5.536 ms | 721.298 ms | +715.762 ms |
+| Rust RSS after seed | 159,449,088 B | 156,401,664 B | -3,047,424 B (-1.91%) |
+| Rust RSS after restart | 157,843,456 B | 159,711,232 B | +1,867,776 B (+1.18%) |
+| Native runtime open, seed | 266.612 ms | 3,694.436 ms | +3,427.824 ms |
+| Native runtime open, restart | 173.477 ms | 762.599 ms | +589.122 ms |
 
 The current keyed connection path has a material latency cost in this run. Native
-`items` query p95 increased from 8.452 to 127.187 ms for seed/main, 20.744 to
-126.299 ms for seed/child, 19.937 to 77.965 ms for restart/main and 21.425 to
-78.537 ms for restart/child. At the React useful-content boundary, list p95 was
-42/50/52/70 ms in plaintext and 112/270/72/100 ms keyed for the same four
-phase/view combinations. Search p95 was 32/31/30/30 ms plaintext and
-90/90/90/100 ms keyed. Detail p95 stayed within 30–32 ms in both modes.
+`items` query p95 increased from 8.772 to 84.582 ms for seed/main, 20.032 to
+134.114 ms for seed/child, 20.877 to 108.092 ms for restart/main and 21.429 to
+124.861 ms for restart/child. At the React useful-content boundary, list p95 was
+41/50/58/89 ms in plaintext and 120/163/140/270 ms keyed for the same four
+phase/view combinations. Search p95 was 30/30/30/38 ms plaintext and
+90/101/90/100 ms keyed. Detail p95 stayed within 30–39 ms in both modes.
 
 These are paired workstation observations, not universal thresholds. They were
 run sequentially on an Apple M4 macOS 27.0 host from an external volume reported
@@ -345,8 +349,8 @@ storage is treated as performance-qualified.
 
 Retained ignored reports:
 
-- plaintext: `artifacts/collaboration-performance/2026-10-08T12-50-35-782Z-31358/performance-report.json`;
-- keyed: `artifacts/collaboration-performance/2026-10-08T12-55-07-040Z-32922/performance-report.json`.
+- plaintext: `artifacts/collaboration-performance/2026-10-08T13-20-43-661Z-53609/performance-report.json`;
+- keyed: `artifacts/collaboration-performance/2026-10-08T13-28-55-246Z-56328/performance-report.json`.
 
 During activation, the packaged harness exposed fresh-root validation happening
 after Store creation. Final R140/R213 source now distinguishes a new empty Store
