@@ -11,6 +11,8 @@ use subtle::ConstantTimeEq;
 use zeroize::Zeroize;
 
 mod files;
+#[cfg(all(target_os = "macos", feature = "macos-file-vault"))]
+pub mod macos_vault;
 #[cfg(test)]
 mod tests;
 
@@ -78,6 +80,8 @@ pub enum DatabaseKeyError {
     MissingDatabase,
     VaultLocked,
     VaultUnavailable,
+    VaultAlreadyExists,
+    VaultInvalidKey,
     VaultWriteUncertain,
     VaultKeyMismatch,
     EntropyUnavailable,
@@ -105,6 +109,10 @@ impl fmt::Display for DatabaseKeyError {
             Self::MissingDatabase => "The expected database is missing; key metadata was preserved",
             Self::VaultLocked => "Unlock the operating system database-key vault and retry",
             Self::VaultUnavailable => "The operating system database-key vault is unavailable",
+            Self::VaultAlreadyExists => "A database key already exists; it was not replaced",
+            Self::VaultInvalidKey => {
+                "The saved database key has an invalid format; files were preserved"
+            }
             Self::VaultWriteUncertain => {
                 "Database key persistence could not be verified; retry the saved reservation"
             }

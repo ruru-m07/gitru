@@ -170,3 +170,11 @@ The isolated component has no production vault adapter or cipher factory; its
 verifier compares synthetic identity/key digests and does not encrypt anything.
 It cannot satisfy actual SQLCipher, OS-vault, application startup, plaintext
 conversion, key rotation or portable-backup acceptance. **R140 remains In Progress.**
+
+### Subsequent optional macOS adapter
+
+The [platform-vault continuation](RURU-140-platform-vault.md) adds an explicitly
+selected, create-only macOS file-keychain adapter and a disposable native OS
+fixture. Its evidence and limitations are recorded separately; it does not
+activate encryption or satisfy the remaining keyed connection factory,
+data-protection-keychain, Windows/Linux vault, conversion or backup acceptance.
