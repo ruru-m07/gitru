@@ -1,0 +1,14 @@
+[package]
+name = "gitru-sqlcipher-compat-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Isolated by design: enabling SQLCipher must not change the application build.
+[workspace]
+
+[dependencies]
+libsqlite3-sys = { version = "=0.37.0", features = ["bundled-sqlcipher"] }
+sqlx = { version = "=0.9.0", default-features = false, features = ["runtime-tokio", "sqlite-bundled", "migrate"] }
+tokio = { version = "=1.50.0", features = ["macros", "rt-multi-thread"] }
+tempfile = "=3.27.0"

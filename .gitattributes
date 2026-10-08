@@ -1,3 +1,8 @@
 # SQLx hashes exact migration bytes; historical SQL fixtures include literal text.
 crates/collaboration/migrations/*.sql text eol=lf
 crates/collaboration/tests/fixtures/migrations/**/*.sql text eol=lf
+
+# The isolated SQLCipher regression verifies this helper's exact source hash.
+scripts/spikes/sqlcipher-qualified/inbox_http_fixture.rs text eol=lf
+
+scripts/spikes/sqlcipher-connections/driver-adaptation.patch text eol=lf

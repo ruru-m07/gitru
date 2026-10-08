@@ -3944,3 +3944,64 @@ remote-CI, packaged review-flow or live authenticated-provider result is inferre
 from these local checks. See
 [the native contract](./collaboration-work/RURU-132.md) and
 [the frontend record](./collaboration-work/RURU-132-ui.md). No PR was merged.
+
+### RURU-108 at-rest policy and pinned codec evidence — 8 October 2026
+
+The architecture targets whole-store encryption for GA, with a database-specific
+OS-protected key, key-aware recovery and portable encrypted backups. Current
+prerelease SQLite remains plaintext; credential vaults and private Unix modes do
+not encrypt cached content. The detailed [decision and threat model](./collaboration-work/RURU-108.md)
+covers locked/missing keys, migration/rotation, preserved authored intent and
+artifact exposure without implying protection against a compromised user process.
+
+An isolated synthetic SQLx 0.9.0/libsqlite3-sys 0.37.0 experiment reports SQLCipher 4.10.0
+with SQLite 3.50.4 and CommonCrypto. FTS, schema 20 migration SQL, rollback, two keyed
+read-only connections, wrong/missing-key refusal, active-WAL canary controls and
+keyed VACUUM backup/restore pass. However, that actual SQLite version fails the
+existing WAL safety gate. Production dependencies and the gate remain unchanged.
+Strict isolated Clippy/fmt pass; this is not full app encryption/vault/platform
+qualification. RURU-139/140/141 track the compatible build, native key lifecycle
+and portable encrypted recovery implementation. GA encryption is still unshipped.
+
+### RURU-139 cross-platform cipher build qualification — 8 October 2026
+
+PR #193 exact signed source `61548a0d` passes all seven jobs in
+[run 37726932167](https://github.com/ruru-m07/gitru/actions/runs/37726932167):
+Linux pinned-source reproduction, native encrypted probe/current-engine regression
+on macOS/Linux/Windows, and all three readers opening every producer's synthetic
+encrypted fixture. Its ordinary PR matrix also reports 14 passing checks.
+[The work note](collaboration-work/RURU-139.md) separates this isolated build/file
+portability evidence from still-pending keyed whole-app startup/migration (R140),
+Tauri packaged encryption, R125 native IPC latency/memory comparison and portable
+user-key recovery (R141). R139 remains In Progress; production encryption is
+unchanged and no PR merged.
+
+### R140 keyed native connection checkpoint (8 October 2026)
+
+The opt-in `scripts/spikes/sqlcipher-connections` workspace advances the reviewed
+key lifecycle with actual key-before-SQL writer/read-only pool/maintenance/recovery
+handles. Four exact-hashed SQLx0.9 driver files retain one bounded owner per native
+handle through startup/cancellation and actual close. Failed close retires that
+factory and retains the key/lease; application Store/default selection is unchanged.
+See `collaboration-work/RURU-140-keyed-connections.md` for component evidence and
+remaining Store/identity/vault/conversion/platform gates. R140 stays In Progress.
+
+### RURU-140 native key vault qualification — 8 October 2026
+
+[PR200](https://github.com/ruru-m07/gitru/pull/200) adds an optional macOS file-keychain
+adapter with an explicit keychain handle and create-only SecItemAdd behavior.
+The synthetic private-keychain subprocess exercises identity isolation, competing
+creates, lock refusal, malformed key preservation and cold resume. It never
+selects a default/personal keychain. Production Store/keyed pools and plaintext
+conversion remain unimplemented; RURU-140 stays In Progress.
+
+The original source de10f464 passed 1,029 local collaboration cases/eight helper
+ignores and the actual local macOS fixture. Its remote macOS fixture passed, and
+14 of 15 reported PR checks passed; Windows Rust failed in an inherited inbox
+HTTP test socket before the expected request reached the worker. A test-only
+repair reads the complete bounded request in blocking mode under the existing
+finite deadline. All 16 affected native controls, including three framing cases,
+pass locally; a fresh remote matrix is required. Production vault/provider/data
+paths are unchanged by that repair. Full evidence and remaining platform/activation
+boundaries are in [the vault worknote](./collaboration-work/RURU-140-platform-vault.md).
+No live provider validation or merge is claimed.

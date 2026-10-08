@@ -1,0 +1,94 @@
+name: Keyed connection ownership qualification
+
+on:
+  pull_request:
+    paths:
+      - .gitattributes
+      - scripts/spikes/sqlcipher-connections/**
+      - scripts/spikes/sqlcipher-qualified/**
+      - crates/collaboration/src/database_keys.rs
+      - crates/collaboration/src/database_keys/**
+      - .github/workflows/keyed-connections.yml
+      - rust-toolchain.toml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: keyed-connections-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source:
+    name: Reproduce authenticated factory inputs
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Generate pinned SQLCipher amalgamation
+        run: python scripts/spikes/sqlcipher-qualified/prepare.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: keyed-factory-amalgamation
+          path: |
+            scripts/spikes/sqlcipher-qualified/target/verified/libsqlite3-sys/sqlcipher/sqlite3.c
+            scripts/spikes/sqlcipher-qualified/target/verified/libsqlite3-sys/sqlcipher/sqlite3.h
+          if-no-files-found: error
+
+  native:
+    name: Actual keyed handles and ownership (${{ matrix.os }})
+    needs: source
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-26, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ./.github/actions/setup-rust
+        with:
+          components: clippy, rustfmt
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+      - uses: actions/download-artifact@v4
+        with:
+          name: keyed-factory-amalgamation
+          path: scripts/spikes/sqlcipher-qualified/target/amalgamation
+      - name: Verify native and driver source boundaries
+        run: |
+          python -m unittest discover -s scripts/spikes/sqlcipher-qualified -p test_prepare.py -v
+          python -m unittest discover -s scripts/spikes/sqlcipher-connections -p test_prepare.py -v
+          python scripts/spikes/sqlcipher-qualified/prepare.py --amalgamation-dir scripts/spikes/sqlcipher-qualified/target/amalgamation
+          python scripts/spikes/sqlcipher-connections/prepare.py
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: scripts/spikes/sqlcipher-connections -> target
+          key: keyed-factory-${{ hashFiles('scripts/spikes/sqlcipher-connections/driver-adaptation.json', 'scripts/spikes/sqlcipher-qualified/pins.json') }}
+      - name: Qualify actual cipher handle initialization and lifetime
+        run: python scripts/spikes/sqlcipher-connections/run.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: keyed-factory-evidence-${{ runner.os }}
+          path: |
+            scripts/spikes/sqlcipher-connections/target/factory-evidence.txt
+            scripts/spikes/sqlcipher-connections/target/factory-report.json
+            scripts/spikes/sqlcipher-connections/target/linkage.txt
+            scripts/spikes/sqlcipher-connections/driver-adaptation.json
+            scripts/spikes/sqlcipher-connections/driver-adaptation.patch
+            scripts/spikes/sqlcipher-connections/Cargo.lock
+          if-no-files-found: warn

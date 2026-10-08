@@ -1,0 +1,159 @@
+--- a/src/connection/establish.rs
++++ b/src/connection/establish.rs
+@@ -24,6 +24,7 @@
+ static THREAD_ID: AtomicUsize = AtomicUsize::new(0);
+ 
+ pub struct EstablishParams {
++    before_initialize: Option<crate::options::BeforeInitialize>,
+     filename: CString,
+     open_flags: i32,
+     busy_timeout: Duration,
+@@ -52,6 +53,9 @@
+ 
+         // Set common flags we expect to have in sqlite
+         let mut flags = SQLITE_OPEN_URI;
++        if options.before_initialize.is_some() {
++            flags |= libsqlite3_sys::SQLITE_OPEN_NOFOLLOW;
++        }
+ 
+         // By default, we connect to an in-memory database.
+         // [SQLITE_OPEN_NOMUTEX] will instruct [sqlite3_open_v2] to return an error if it
+@@ -142,6 +146,7 @@
+         let thread_id = THREAD_ID.fetch_add(1, Ordering::AcqRel);
+ 
+         Ok(Self {
++            before_initialize: options.before_initialize.clone(),
+             filename,
+             open_flags: flags,
+             busy_timeout: options.busy_timeout,
+@@ -157,7 +162,7 @@
+     }
+ 
+     pub(crate) fn establish(&self) -> Result<ConnectionState, Error> {
+-        let mut handle = ConnectionHandle::open(&self.filename, self.open_flags)?;
++        let mut handle = ConnectionHandle::open(&self.filename, self.open_flags, self.before_initialize.clone())?;
+ 
+         #[cfg(feature = "load-extension")]
+         unsafe {
+--- a/src/connection/handle.rs
++++ b/src/connection/handle.rs
+@@ -13,7 +13,7 @@
+ /// Managed SQLite3 database handle.
+ /// The database handle will be closed when this is dropped.
+ #[derive(Debug)]
+-pub(crate) struct ConnectionHandle(NonNull<sqlite3>);
++pub(crate) struct ConnectionHandle(NonNull<sqlite3>, Option<Box<dyn crate::options::SqliteNativeHandleOwner>>);
+ 
+ // A SQLite3 handle is safe to send between threads, provided not more than
+ // one is accessing it at the same time. This is upheld as long as [SQLITE_CONFIG_MULTITHREAD] is
+@@ -26,7 +26,8 @@
+ unsafe impl Send for ConnectionHandle {}
+ 
+ impl ConnectionHandle {
+-    pub(crate) fn open(filename: &CStr, flags: c_int) -> Result<Self, Error> {
++    pub(crate) fn open(filename: &CStr, flags: c_int, initialize: Option<crate::options::BeforeInitialize>) -> Result<Self, Error> {
++        let owner = initialize.map(|reserve| reserve()).transpose()?;
+         let mut handle = ptr::null_mut();
+ 
+         // <https://www.sqlite.org/c3ref/open.html>
+@@ -39,10 +40,14 @@
+                 io::ErrorKind::OutOfMemory,
+                 "SQLite is unable to allocate memory to hold the sqlite3 object",
+             ))
+-        })?);
++        })?, owner);
+ 
+         if status != SQLITE_OK {
+             return Err(Error::Database(Box::new(handle.expect_error())));
++        }
++
++        if let Some(owner) = &handle.1 {
++            owner.initialize(handle.as_non_null_ptr())?;
+         }
+ 
+         // Enable extended result codes
+@@ -142,6 +147,13 @@
+             // https://sqlite.org/c3ref/close.html
+             let status = sqlite3_close(self.0.as_ptr());
+             if status != SQLITE_OK {
++                // Retain the native owner even if its fault callback panics.
++                // SQLite still owns an open handle; only process exit may release
++                // this exceptional key/lease reservation.
++                let owner = std::mem::ManuallyDrop::new(self.1.take());
++                if let Some(owner) = owner.as_ref() {
++                    owner.close_failed();
++                }
+                 // this should *only* happen due to an internal bug in SQLite where we left
+                 // SQLite handles open
+                 panic!("{}", SqliteError::new(self.0.as_ptr()));
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -85,6 +85,7 @@
+ pub use connection::{LockedSqliteHandle, SqliteConnection, SqliteOperation, UpdateHookResult};
+ pub use database::Sqlite;
+ pub use error::SqliteError;
++pub use options::SqliteNativeHandleOwner;
+ pub use options::{
+     SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqliteLockingMode, SqliteSynchronous,
+ };
+--- a/src/options/mod.rs
++++ b/src/options/mod.rs
+@@ -1,4 +1,19 @@
+ use std::path::Path;
++
++// Gitru qualification-only adaptation. Closure captures are never formatted.
++pub(crate) type BeforeInitialize = Arc<DebugFn<dyn Fn() -> Result<Box<dyn SqliteNativeHandleOwner>, sqlx_core::error::Error> + Send + Sync>>;
++
++/// Per-handle native owner retained through actual SQLite close.
++///
++/// # Safety
++/// `initialize` receives exclusive access before extensions or SQL. It must not
++/// close/retain the pointer or leak native statements/backups. Both callbacks
++/// must finish, must not panic, and must not expose secrets in diagnostics.
++/// `close_failed` must permanently retire its owning factory from admission.
++pub unsafe trait SqliteNativeHandleOwner: std::fmt::Debug + Send + Sync {
++    fn initialize(&self, handle: std::ptr::NonNull<libsqlite3_sys::sqlite3>) -> Result<(), sqlx_core::error::Error>;
++    fn close_failed(&self);
++}
+ 
+ mod auto_vacuum;
+ mod connect;
+@@ -60,6 +75,7 @@
+ /// ```
+ #[derive(Clone, Debug)]
+ pub struct SqliteConnectOptions {
++    pub(crate) before_initialize: Option<BeforeInitialize>,
+     pub(crate) filename: Cow<'static, Path>,
+     pub(crate) in_memory: bool,
+     pub(crate) read_only: bool,
+@@ -194,6 +210,7 @@
+         pragmas.insert("analysis_limit".into(), None);
+ 
+         Self {
++            before_initialize: None,
+             filename: Cow::Borrowed(Path::new(":memory:")),
+             in_memory: false,
+             read_only: false,
+@@ -218,6 +235,22 @@
+         }
+     }
+ 
++    /// Reserve a bounded native owner before open and initialize before SQL.
++    /// Each successful reservation lives until the actual native close succeeds.
++    /// Opens using this hook refuse symlinks with SQLITE_OPEN_NOFOLLOW.
++    ///
++    /// # Safety
++    /// The returned owner must satisfy SqliteNativeHandleOwner's safety contract.
++    /// Reservation must be bounded, fail closed after native close failure, and
++    /// must not panic or include secrets in errors. No callback may block forever.
++    pub unsafe fn before_initialize<F>(mut self, reserve: F) -> Self
++    where
++        F: Fn() -> Result<Box<dyn SqliteNativeHandleOwner>, sqlx_core::error::Error> + Send + Sync + 'static,
++    {
++        self.before_initialize = Some(Arc::new(DebugFn(reserve)));
++        self
++    }
++
+     /// Sets the name of the database file.
+     ///
+     /// This is a low-level API, and SQLx will apply no special treatment for `":memory:"` as an
