@@ -38,6 +38,9 @@ const pullCreation = await Bun.file(
 const reviewSubmission = await Bun.file(
   new URL("crates/collaboration/src/review_submission.rs", root),
 ).text();
+const issueMetadata = await Bun.file(
+  new URL("crates/collaboration/src/issue_metadata.rs", root),
+).text();
 const issueCreation = await Bun.file(
   new URL("crates/collaboration/src/issue_creation.rs", root),
 ).text();
@@ -160,14 +163,14 @@ const nativeOnlyTypes = new Set([
 // unsupported shape rather than inventing a renderer-owned wire model.
 const payloadStructs = new Map(
   [
-    ...`${participants}\n${tasks}\n${checks}\n${activity}\n${reviews}\n${reviewNative}\n${reviewSubmission}`.matchAll(
+    ...`${participants}\n${tasks}\n${checks}\n${activity}\n${reviews}\n${reviewNative}\n${reviewSubmission}\n${issueMetadata}`.matchAll(
       /pub struct (\w+)\s*\{([^}]+)\}/g,
     ),
   ].map(([, name, body]) => [name, body] as const),
 );
 const payloadEnums = new Map(
   [
-    ...`${participants}\n${tasks}\n${checks}\n${activity}\n${reviews}\n${reviewNative}\n${reviewSubmission}`.matchAll(
+    ...`${participants}\n${tasks}\n${checks}\n${activity}\n${reviews}\n${reviewNative}\n${reviewSubmission}\n${issueMetadata}`.matchAll(
       /#\[serde\(rename_all = "snake_case"\)\]\s*pub enum (\w+)\s*\{([^}]+)\}/g,
     ),
   ].map(
@@ -189,8 +192,8 @@ for (const [
   renameAll,
   name,
   body,
-] of `${reviewNative}\n${participants}\n${reviewSubmission}`.matchAll(
-  /#\[serde\(tag = "([^"]+)", content = "([^"]+)"(?:, rename_all = "(snake_case)")?\)\]\s*pub enum (\w+)\s*\{([^}]+)\}/g,
+] of `${reviewNative}\n${participants}\n${reviewSubmission}\n${issueMetadata}`.matchAll(
+  /#\[serde\(\s*tag = "([^"]+)",\s*content = "([^"]+)"(?:,\s*rename_all = "(snake_case)")?(?:,\s*deny_unknown_fields)?\s*\)\]\s*pub enum (\w+)\s*\{([^}]+)\}/g,
 )) {
   const dependencies: string[] = [];
   const visiting = new Set<string>();
@@ -385,6 +388,7 @@ for (const source of [
   guardedMerge,
   commentSend,
   issueCreation,
+  issueMetadata,
   pullCreation,
   reviewSubmission,
   providerInboxActions,
@@ -587,10 +591,8 @@ generated = generated.replace(
   const available = snapshot.availability === "available";
   const availableShape = snapshot.context !== null && snapshot.reason === null && snapshot.submission === null && snapshot.published === null;
   const unavailableShape = snapshot.context === null && snapshot.reason !== null;
-  const currentSubmission = snapshot.submission !== null && snapshot.submission.draft_generation === snapshot.generation;
-  const submissionReason = currentSubmission ? "already_submitted" : snapshot.submission !== null ? "pending_submission" : null;
-  const publishedMatches = snapshot.published === null || (snapshot.reason === "already_submitted" && snapshot.submission !== null && snapshot.published.command_id === snapshot.submission.command_id);
-  if ((available && !availableShape) || (!available && !unavailableShape) || ((snapshot.reason === "already_submitted" || snapshot.reason === "pending_submission") && snapshot.reason !== submissionReason) || !publishedMatches) {
+  const submissionReason = snapshot.submission === null ? null : snapshot.submission.state === "confirmed" ? "already_submitted" : "pending_submission";
+  if ((available && !availableShape) || (!available && !unavailableShape) || ((snapshot.reason === "already_submitted" || snapshot.reason === "pending_submission") && snapshot.reason !== submissionReason)) {
     context.addIssue({ code: "custom", path: ["availability"], message: "Issue draft availability and submission evidence must agree" });
   }
 });`,
@@ -606,6 +608,22 @@ generated = generated.replace(
     context.addIssue({ code: "custom", path: ["accept_background_delivery"], message: "Issue creation requires explicit background delivery acceptance" });
   }
 });`,
+);
+// Consent is a native boolean, never JavaScript truthiness. A missing flag or
+// the string "false" must not become permission before crossing IPC.
+const submitIssueV2Schema =
+  /(export const SubmitIssueV2RequestSchema = z\.object\(\{[\s\S]*?\n\}\));/;
+if (!submitIssueV2Schema.test(generated))
+  throw new Error("Missing generated version-two submit-issue schema");
+generated = generated.replace(submitIssueV2Schema, (declaration) =>
+  declaration.replaceAll("z.coerce.boolean()", "z.boolean()").replace(
+    /\);$/,
+    `).superRefine((request, context) => {
+  if (!request.accept_background_delivery) {
+    context.addIssue({ code: "custom", path: ["accept_background_delivery"], message: "Issue creation requires explicit background delivery acceptance" });
+  }
+});`,
+  ),
 );
 // Qualify every native family explicitly; enum growth cannot silently borrow
 // another payload's authority or widen ordinary entry limits.

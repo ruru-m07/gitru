@@ -1,14 +1,18 @@
 import type {
   IssueDraftSnapshot,
+  IssueDraftV2Snapshot,
+  IssueMetadataPage,
+  IssueMetadataSelection,
   RemoteAccount,
   RemoteRepository,
 } from "@gitru/collaboration-client";
 import { collaboration } from "@gitru/collaboration-client";
-import { issueDraftQueryOptions } from "@gitru/collaboration-client/react";
+import { issueDraftV2QueryOptions } from "@gitru/collaboration-client/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { mockForegroundDemand } from "../../../tests/mocks/collaboration-demand";
 import { mockTauriCommand } from "../../../tests/mocks/tauri";
 import { NewIssueDialog } from "./issue-creation";
 
@@ -42,6 +46,44 @@ const context = {
   review_token: "a".repeat(64),
 };
 let snapshot: IssueDraftSnapshot;
+let metadata: IssueMetadataSelection;
+let outcome: IssueDraftV2Snapshot["metadata_outcome"];
+function versionTwo(draft = snapshot): IssueDraftV2Snapshot {
+  return { draft, metadata, metadata_outcome: outcome };
+}
+
+function labelCatalog(
+  overrides: Partial<IssueMetadataPage> = {},
+): IssueMetadataPage {
+  return {
+    account_id: account.id,
+    repository_id: repository.id,
+    kind: "labels",
+    options: [
+      {
+        reference: {
+          kind: "label",
+          value: { provider_id: "19", name: "bug", color: "ff0000" },
+        },
+        availability: "unknown",
+        reason: "unobserved",
+      },
+    ],
+    next_cursor: null,
+    coverage: { state: "partial", validated_at: null, remote_has_more: true },
+    freshness: "stale",
+    sync: {
+      state: "offline",
+      last_success_at: null,
+      next_retry_at: null,
+      error: null,
+    },
+    revision: "20",
+    authorization_view: "11",
+    catalog_revision: "1",
+    ...overrides,
+  };
+}
 const caches: QueryClient[] = [];
 const stops: Array<() => void> = [];
 
@@ -71,8 +113,10 @@ beforeEach(() => {
     "11111111-1111-4111-8111-111111111111",
   );
   snapshot = localSnapshot();
-  mockTauriCommand("collaboration_issue_draft", () => snapshot);
-  mockTauriCommand("collaboration_issue_drafts", () => ({
+  metadata = { labels: [], assignees: [], milestone: null };
+  outcome = null;
+  mockTauriCommand("collaboration_issue_draft_v2", () => versionTwo());
+  mockTauriCommand("collaboration_issue_drafts_v2", () => ({
     account_id: account.id,
     drafts: [],
     next_cursor: null,
@@ -176,27 +220,35 @@ it("gives a different actor a separate editor without the previous unsaved text"
 });
 
 it("keeps opening local-only, preserves an unsaved close, then saves and explicitly queues", async () => {
-  const read = mockTauriCommand("collaboration_issue_draft", () => snapshot);
-  const save = mockTauriCommand("collaboration_save_issue_draft", (payload) => {
-    const request = (payload as { request: { title: string; body: string } })
-      .request;
-    snapshot = localSnapshot({
-      title: request.title,
-      body: request.body,
-      generation: "1",
-      availability: "available",
-      reason: null,
-      revision: "21",
-    });
-    return snapshot;
-  });
-  const submit = mockTauriCommand("collaboration_submit_issue", (payload) => ({
-    account_id: account.id,
-    command_id: (payload as { request: { command_id: string } }).request
-      .command_id,
-    admitted_revision: "22",
-    duplicate: false,
-  }));
+  const read = mockTauriCommand("collaboration_issue_draft_v2", () =>
+    versionTwo(),
+  );
+  const save = mockTauriCommand(
+    "collaboration_save_issue_draft_v2",
+    (payload) => {
+      const request = (payload as { request: { title: string; body: string } })
+        .request;
+      snapshot = localSnapshot({
+        title: request.title,
+        body: request.body,
+        generation: "1",
+        availability: "available",
+        reason: null,
+        revision: "21",
+      });
+      return versionTwo();
+    },
+  );
+  const submit = mockTauriCommand(
+    "collaboration_submit_issue_v2",
+    (payload) => ({
+      account_id: account.id,
+      command_id: (payload as { request: { command_id: string } }).request
+        .command_id,
+      admitted_revision: "22",
+      duplicate: false,
+    }),
+  );
   const { user } = setup();
   expect(read).not.toHaveBeenCalled();
   await user.click(screen.getByRole("button", { name: "New issue" }));
@@ -241,36 +293,39 @@ it("retains the exact command UUID when admission succeeds but its IPC receipt i
     reason: null,
   });
   let calls = 0;
-  const submit = mockTauriCommand("collaboration_submit_issue", (payload) => {
-    calls += 1;
-    const request = (payload as { request: { command_id: string } }).request;
-    if (calls === 1) {
-      snapshot = localSnapshot({
-        title: "Saved title",
-        body: "Saved body",
-        generation: "1",
-        context: null,
-        availability: "unavailable",
-        reason: "pending_submission",
-        submission: {
-          command_id: request.command_id,
-          draft_generation: "1",
-          state: "queued",
-          attempt_count: 0,
-          quarantined: false,
-          attention: null,
-        },
-        revision: "21",
-      });
-      throw { code: "network" };
-    }
-    return {
-      account_id: account.id,
-      command_id: request.command_id,
-      admitted_revision: "21",
-      duplicate: true,
-    };
-  });
+  const submit = mockTauriCommand(
+    "collaboration_submit_issue_v2",
+    (payload) => {
+      calls += 1;
+      const request = (payload as { request: { command_id: string } }).request;
+      if (calls === 1) {
+        snapshot = localSnapshot({
+          title: "Saved title",
+          body: "Saved body",
+          generation: "1",
+          context: null,
+          availability: "unavailable",
+          reason: "pending_submission",
+          submission: {
+            command_id: request.command_id,
+            draft_generation: "1",
+            state: "queued",
+            attempt_count: 0,
+            quarantined: false,
+            attention: null,
+          },
+          revision: "21",
+        });
+        throw { code: "network" };
+      }
+      return {
+        account_id: account.id,
+        command_id: request.command_id,
+        admitted_revision: "21",
+        duplicate: true,
+      };
+    },
+  );
   const { cache, user } = setup();
   await user.click(screen.getByRole("button", { name: "New issue" }));
   await user.click(
@@ -284,17 +339,20 @@ it("retains the exact command UUID when admission succeeds but its IPC receipt i
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "exact request identity",
   );
-  const key = issueDraftQueryOptions(account, {
+  const key = issueDraftV2QueryOptions(account, {
     draft_id: snapshot.draft_id,
     repository_id: snapshot.repository_id,
   }).queryKey;
   await act(async () => {
     await cache.cancelQueries({ queryKey: key });
-    cache.setQueryData(key, {
-      ...snapshot,
-      availability: "unavailable",
-      reason: "account_unavailable",
-    });
+    cache.setQueryData(
+      key,
+      versionTwo({
+        ...snapshot,
+        availability: "unavailable",
+        reason: "account_unavailable",
+      }),
+    );
   });
   await waitFor(() =>
     expect(
@@ -302,7 +360,7 @@ it("retains the exact command UUID when admission succeeds but its IPC receipt i
     ).not.toBeInTheDocument(),
   );
   await act(async () => {
-    cache.setQueryData(key, snapshot);
+    cache.setQueryData(key, versionTwo());
   });
   await user.click(
     await screen.findByRole("button", {
@@ -339,9 +397,8 @@ it("does not offer a separate draft while a submission outcome is unresolved", a
 });
 
 it("reports native title boundaries before attempting a save", async () => {
-  const save = mockTauriCommand(
-    "collaboration_save_issue_draft",
-    () => snapshot,
+  const save = mockTauriCommand("collaboration_save_issue_draft_v2", () =>
+    versionTwo(),
   );
   const { user } = setup();
   await user.click(screen.getByRole("button", { name: "New issue" }));
@@ -405,9 +462,9 @@ it("keeps an open draft but immediately hides provider authority when disconnect
     },
   });
   let reads = 0;
-  const read = mockTauriCommand("collaboration_issue_draft", () => {
+  const read = mockTauriCommand("collaboration_issue_draft_v2", () => {
     reads += 1;
-    if (reads === 1) return snapshot;
+    if (reads === 1) return versionTwo();
     throw { code: "storage", message: "fixture reset refetch failed" };
   });
   mockTauriCommand("collaboration_changes_since", () => ({
@@ -478,21 +535,24 @@ it("a definite admission refusal allows shortening the saved issue without repla
     availability: "available",
     reason: null,
   });
-  const submit = mockTauriCommand("collaboration_submit_issue", () => {
+  const submit = mockTauriCommand("collaboration_submit_issue_v2", () => {
     throw { code: "invalid_input", message: "provider secret must not render" };
   });
-  const save = mockTauriCommand("collaboration_save_issue_draft", (payload) => {
-    const request = (payload as { request: { title: string; body: string } })
-      .request;
-    snapshot = localSnapshot({
-      title: request.title,
-      body: request.body,
-      generation: "2",
-      availability: "available",
-      reason: null,
-    });
-    return snapshot;
-  });
+  const save = mockTauriCommand(
+    "collaboration_save_issue_draft_v2",
+    (payload) => {
+      const request = (payload as { request: { title: string; body: string } })
+        .request;
+      snapshot = localSnapshot({
+        title: request.title,
+        body: request.body,
+        generation: "2",
+        availability: "available",
+        reason: null,
+      });
+      return versionTwo();
+    },
+  );
   const { user } = setup();
   await user.click(screen.getByRole("button", { name: "New issue" }));
   const consent = await screen.findByRole("checkbox", {
@@ -503,7 +563,7 @@ it("a definite admission refusal allows shortening the saved issue without repla
     screen.getByRole("button", { name: "Queue issue submission" }),
   );
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "try a shorter title or description",
+    "Check the saved title, description and metadata",
   );
   expect(screen.getByRole("alert")).not.toHaveTextContent("provider secret");
   expect(
@@ -520,4 +580,346 @@ it("a definite admission refusal allows shortening the saved issue without repla
   expect(
     screen.getByRole("button", { name: "Queue issue submission" }),
   ).toBeDisabled();
+});
+
+it("saves metadata atomically with text and requires separate best-effort consent", async () => {
+  snapshot = localSnapshot({
+    title: "Saved title",
+    body: "Body",
+    generation: "1",
+    availability: "available",
+    reason: null,
+  });
+  mockForegroundDemand();
+  mockTauriCommand("collaboration_issue_metadata_options", () =>
+    labelCatalog(),
+  );
+  const save = mockTauriCommand(
+    "collaboration_save_issue_draft_v2",
+    (payload) => {
+      const request = (
+        payload as {
+          request: {
+            title: string;
+            body: string;
+            metadata: IssueMetadataSelection;
+          };
+        }
+      ).request;
+      metadata = request.metadata;
+      snapshot = {
+        ...snapshot,
+        title: request.title,
+        body: request.body,
+        generation: "2",
+        revision: "21",
+      };
+      return versionTwo();
+    },
+  );
+  const submit = mockTauriCommand(
+    "collaboration_submit_issue_v2",
+    (payload) => ({
+      account_id: account.id,
+      command_id: (payload as { request: { command_id: string } }).request
+        .command_id,
+      duplicate: false,
+      admitted_revision: "22",
+    }),
+  );
+  const { user } = setup();
+  await user.click(screen.getByRole("button", { name: "New issue" }));
+  await user.click(
+    await screen.findByRole("button", { name: "Choose labels" }),
+  );
+  await user.click(
+    await screen.findByRole("button", {
+      name: /bug · Availability not yet verified/,
+    }),
+  );
+  await user.click(screen.getByRole("button", { name: "Save issue draft" }));
+  await waitFor(() => expect(save).toHaveBeenCalledOnce());
+  expect(save.mock.calls[0]?.[0]).toMatchObject({
+    request: {
+      title: "Saved title",
+      body: "Body",
+      expected_generation: "1",
+      metadata: {
+        labels: [{ provider_id: "19", name: "bug" }],
+        assignees: [],
+        milestone: null,
+      },
+    },
+  });
+  await user.click(
+    screen.getByRole("checkbox", {
+      name: /exact saved issue may be submitted/i,
+    }),
+  );
+  const queue = screen.getByRole("button", { name: "Queue issue submission" });
+  expect(queue).toBeDisabled();
+  await user.click(
+    screen.getByRole("checkbox", {
+      name: /issue may be created even if GitHub/i,
+    }),
+  );
+  expect(queue).toBeEnabled();
+  await user.click(queue);
+  await waitFor(() => expect(submit).toHaveBeenCalledOnce());
+  expect(submit.mock.calls[0]?.[0]).toMatchObject({
+    request: {
+      draft_generation: "2",
+      accept_metadata_best_effort: true,
+      accept_background_delivery: true,
+    },
+  });
+});
+
+it("retires both consents after metadata removal and reselection, and keeps saved names offline", async () => {
+  snapshot = localSnapshot({
+    title: "Saved title",
+    generation: "1",
+    availability: "available",
+    reason: null,
+  });
+  metadata = {
+    labels: [{ provider_id: "19", name: "bug", color: "ff0000" }],
+    assignees: [],
+    milestone: null,
+  };
+  mockForegroundDemand();
+  mockTauriCommand("collaboration_issue_metadata_options", () =>
+    labelCatalog(),
+  );
+  const { user, rerenderAccount } = setup();
+  await user.click(screen.getByRole("button", { name: "New issue" }));
+  const deliveryConsent = await screen.findByRole("checkbox", {
+    name: /exact saved issue may be submitted/i,
+  });
+  await user.click(deliveryConsent);
+  await user.click(
+    screen.getByRole("checkbox", {
+      name: /issue may be created even if GitHub/i,
+    }),
+  );
+  await user.click(screen.getByRole("button", { name: "Remove bug" }));
+  await user.click(screen.getByRole("button", { name: "Choose labels" }));
+  await user.click(
+    await screen.findByRole("button", {
+      name: /bug · Availability not yet verified/,
+    }),
+  );
+  expect(deliveryConsent).not.toBeChecked();
+  expect(
+    screen.getByRole("checkbox", {
+      name: /issue may be created even if GitHub/i,
+    }),
+  ).not.toBeChecked();
+  expect(screen.getByRole("button", { name: "Draft saved" })).toBeDisabled();
+  rerenderAccount({ ...account, state: "disconnected" });
+  expect(
+    screen.queryByRole("button", { name: "Choose labels" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Remove bug" })).toBeEnabled();
+  await user.click(screen.getByRole("button", { name: "Remove bug" }));
+  expect(
+    screen.getByRole("button", { name: "Save issue draft" }),
+  ).toBeEnabled();
+});
+
+it("bounds catalog pages and search, refuses unavailable options and releases demand on close", async () => {
+  snapshot = localSnapshot({
+    title: "Saved title",
+    generation: "1",
+    availability: "available",
+    reason: null,
+  });
+  const demand = mockForegroundDemand();
+  const read = mockTauriCommand(
+    "collaboration_issue_metadata_options",
+    (payload) => {
+      const query = (
+        payload as { query: { cursor: string | null; search: string } }
+      ).query;
+      if (query.cursor === "page-two")
+        return labelCatalog({ options: [], next_cursor: null });
+      return labelCatalog({
+        next_cursor: "page-two",
+        options: [
+          {
+            reference: {
+              kind: "label",
+              value: { provider_id: "20", name: "archived", color: null },
+            },
+            availability: "unavailable",
+            reason: "archived",
+          },
+        ],
+      });
+    },
+  );
+  const refresh = mockTauriCommand(
+    "collaboration_refresh_issue_metadata",
+    () => ({ job_id: "metadata-refresh" }),
+  );
+  const { user, cache } = setup();
+  mockTauriCommand("collaboration_changes_since", () => ({
+    revision: "20",
+    authorization_view: "11",
+    changes: [],
+    has_more: false,
+    reset_required: false,
+  }));
+  vi.spyOn(collaboration.transport, "listen").mockResolvedValue(() => {});
+  vi.spyOn(collaboration.transport, "listenRuntimeReset").mockResolvedValue(
+    () => {},
+  );
+  vi.spyOn(collaboration.transport, "listenLocalChanges").mockResolvedValue(
+    () => {},
+  );
+  stops.push(collaboration.installBridge(cache));
+  await act(async () => collaboration.wake());
+  await user.click(screen.getByRole("button", { name: "New issue" }));
+  expect(read).not.toHaveBeenCalled();
+  await user.click(
+    await screen.findByRole("button", { name: "Choose labels" }),
+  );
+  expect(
+    await screen.findByRole("button", { name: "archived · Unavailable" }),
+  ).toBeDisabled();
+  expect(screen.getByText(/Saved options cover part/)).toBeVisible();
+  expect(refresh).not.toHaveBeenCalled();
+  await waitFor(() => expect(demand.acquire).toHaveBeenCalledOnce());
+  await user.click(screen.getByRole("button", { name: "Next saved options" }));
+  await waitFor(() =>
+    expect(read).toHaveBeenLastCalledWith({
+      query: {
+        account_id: account.id,
+        repository_id: repository.id,
+        kind: "labels",
+        search: "",
+        cursor: "page-two",
+        limit: 50,
+      },
+    }),
+  );
+  await user.type(screen.getByLabelText("Search saved labels"), "bug");
+  await waitFor(() =>
+    expect(read).toHaveBeenLastCalledWith({
+      query: {
+        account_id: account.id,
+        repository_id: repository.id,
+        kind: "labels",
+        search: "bug",
+        cursor: null,
+        limit: 50,
+      },
+    }),
+  );
+  await waitFor(() =>
+    expect(
+      cache
+        .getQueryCache()
+        .findAll({ predicate: (q) => q.queryKey.includes("issue-metadata") }),
+    ).toHaveLength(1),
+  );
+  await user.click(screen.getByRole("button", { name: "Close" }));
+  await waitFor(() => expect(demand.release).toHaveBeenCalledOnce());
+});
+
+it("preserves a conflicting local metadata edit when loading another window's draft", async () => {
+  snapshot = localSnapshot({
+    title: "Saved title",
+    generation: "1",
+    availability: "available",
+    reason: null,
+  });
+  metadata = {
+    labels: [{ provider_id: "19", name: "bug", color: null }],
+    assignees: [],
+    milestone: null,
+  };
+  const { user, cache } = setup();
+  await user.click(screen.getByRole("button", { name: "New issue" }));
+  await user.type(
+    await screen.findByLabelText("Description"),
+    "My unsaved description",
+  );
+  const queryKey = issueDraftV2QueryOptions(account, {
+    draft_id: snapshot.draft_id,
+    repository_id: repository.id,
+  }).queryKey;
+  await act(async () => {
+    cache.setQueryData(queryKey, {
+      draft: { ...snapshot, generation: "2", title: "Other window" },
+      metadata: {
+        labels: [],
+        assignees: [],
+        milestone: { provider_id: "88", number: "2", title: "Later" },
+      },
+      metadata_outcome: null,
+    });
+  });
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Save issue draft" }),
+    ).toBeDisabled(),
+  );
+  await user.click(
+    await screen.findByRole("button", { name: "Load latest issue draft" }),
+  );
+  expect(screen.getByLabelText("Title")).toHaveValue("Other window");
+  expect(screen.getByRole("button", { name: "Remove Later" })).toBeVisible();
+  await user.click(screen.getByText("Your previous draft"));
+  expect(screen.getByText("My unsaved description")).toBeVisible();
+  expect(screen.getByText("bug")).toBeVisible();
+});
+
+it("shows partial metadata success alongside the confirmed issue without a corrective submission", async () => {
+  const commandId = "22222222-2222-4222-8222-222222222222";
+  snapshot = localSnapshot({
+    title: "Published",
+    generation: "1",
+    context: null,
+    reason: "already_submitted",
+    published: {
+      command_id: commandId,
+      subject_id: "issue-77",
+      provider_id: "77",
+      number: "12",
+      url: "https://github.com/owner/project/issues/12",
+    },
+  });
+  metadata = {
+    labels: [{ provider_id: "19", name: "bug", color: null }],
+    assignees: [{ provider_id: "4", login: "writer" }],
+    milestone: null,
+  };
+  outcome = {
+    command_id: commandId,
+    needs_attention: true,
+    fields: [
+      { field: "labels", result: "different", reason: null },
+      { field: "assignees", result: "unobserved", reason: "malformed" },
+      { field: "milestone", result: "not_requested", reason: null },
+    ],
+  };
+  const { user, onOpenCreated, rerenderAccount } = setup();
+  await user.click(screen.getByRole("button", { name: "New issue" }));
+  expect(
+    await screen.findByText(/some requested metadata needs attention/),
+  ).toBeVisible();
+  expect(screen.getByText(/Labels: differed/)).toBeVisible();
+  expect(screen.getByText(/Assignees: could not be verified/)).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "Open created issue" }));
+  expect(onOpenCreated).toHaveBeenCalledWith("issue-77");
+  await user.click(screen.getByRole("button", { name: "New issue" }));
+  rerenderAccount({ ...account, state: "disconnected" });
+  expect(
+    screen.queryByText(/some requested metadata needs attention/),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Open created issue" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Remove bug" })).toBeVisible();
 });

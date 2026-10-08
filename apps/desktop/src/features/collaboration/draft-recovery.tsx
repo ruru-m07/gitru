@@ -6,7 +6,7 @@ import {
 import {
   commentDraftsQueryOptions,
   draftsQueryOptions,
-  issueDraftsQueryOptions,
+  issueDraftsV2QueryOptions,
   pullDraftsQueryOptions,
   reviewDraftsQueryOptions,
   useCollaborationVersion,
@@ -23,6 +23,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { CommentComposer } from "./comment-composer";
 import { RecoveredIssueDraft } from "./issue-creation";
+import { issueMetadataSummary } from "./issue-metadata";
 import { SavedDraftEditor } from "./private-draft";
 import { RecoveredPullDraft } from "./pull-creation";
 import { RecoveredReviewDraft } from "./review-submission";
@@ -221,7 +222,7 @@ function AccountIssueDrafts({
     [account.id],
   );
   const query = useQuery(
-    issueDraftsQueryOptions(account, {
+    issueDraftsV2QueryOptions(account, {
       cursor: cursors.at(-1) ?? null,
       limit: 50,
     }),
@@ -259,7 +260,7 @@ function AccountIssueDrafts({
               No saved issue drafts for this account.
             </p>
           ) : (
-            query.data.drafts.map((draft) => (
+            query.data.drafts.map(({ draft, metadata }) => (
               <Button
                 key={draft.draft_id}
                 variant="ghost"
@@ -278,6 +279,9 @@ function AccountIssueDrafts({
                 </span>
                 <span className="line-clamp-2 w-full break-words text-xs text-muted-foreground">
                   {draft.preview || "Empty description"}
+                </span>
+                <span className="line-clamp-2 w-full break-words text-xs text-muted-foreground">
+                  {issueMetadataSummary(metadata)}
                 </span>
                 {draft.submission ? (
                   <span className="text-xs text-muted-foreground">

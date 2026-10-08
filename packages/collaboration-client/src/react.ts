@@ -13,6 +13,10 @@ import type {
   IssueDraftPage,
   IssueDraftQuery,
   IssueDraftSnapshot,
+  IssueDraftV2Page,
+  IssueDraftV2Snapshot,
+  IssueMetadataPage,
+  IssueMetadataQuery,
   ItemQuery,
   PullCommitQuery,
   PullDraftKey,
@@ -170,6 +174,52 @@ export function createdCommentsQueryOptions(
     }),
     queryFn: ({ signal }) =>
       collaboration.forAccount(account).createdComments(query, signal),
+  });
+}
+
+/** Authored metadata uses a separate cache shape from legacy title/body drafts. */
+export function issueDraftV2QueryOptions(
+  account: RemoteAccount,
+  key: Omit<IssueDraftKey, "account_id">,
+) {
+  return queryOptions<IssueDraftV2Snapshot>({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.issueDraftV2(account, {
+      ...key,
+      account_id: account.id,
+    }),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).issueDraftV2(key, signal),
+  });
+}
+export function issueDraftsV2QueryOptions(
+  account: RemoteAccount,
+  query: Omit<IssueDraftQuery, "account_id">,
+) {
+  return queryOptions<IssueDraftV2Page>({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.issueDraftsV2(account, {
+      ...query,
+      account_id: account.id,
+    }),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).issueDraftsV2(query, signal),
+  });
+}
+/** SQLite only. Visible demand and explicit refresh own provider requests. */
+export function issueMetadataOptionsQueryOptions(
+  account: RemoteAccount,
+  query: Omit<IssueMetadataQuery, "account_id">,
+) {
+  return queryOptions<IssueMetadataPage>({
+    ...localQueryPolicy,
+    gcTime: 0,
+    queryKey: collaborationKeys.issueMetadataOptions(account, {
+      ...query,
+      account_id: account.id,
+    }),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).issueMetadataOptions(query, signal),
   });
 }
 

@@ -4,13 +4,15 @@ import {
   type IssueDraftKey,
   type IssueDraftReason,
   type IssueDraftSnapshot,
+  type IssueDraftV2Snapshot,
+  type IssueMetadataSelection,
   type RemoteAccount,
   type RemoteRepository,
-  type SubmitIssueRequest,
+  type SubmitIssueV2Request,
 } from "@gitru/collaboration-client";
 import {
-  issueDraftQueryOptions,
-  issueDraftsQueryOptions,
+  issueDraftsV2QueryOptions,
+  issueDraftV2QueryOptions,
   useCollaborationAuthorityVersion,
 } from "@gitru/collaboration-client/react";
 import { Button } from "@gitru/ui/components/button";
@@ -35,6 +37,13 @@ import { Textarea } from "@gitru/ui/components/textarea";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CirclePlus } from "lucide-react";
 import { type FormEvent, useId, useState } from "react";
+import {
+  emptyIssueMetadata,
+  hasIssueMetadata,
+  IssueMetadataEditor,
+  IssueMetadataReceipt,
+  issueMetadataSummary,
+} from "./issue-metadata";
 import { ProviderLink } from "./provider-link";
 
 const MAX_TITLE_BYTES = 1024;
@@ -135,9 +144,15 @@ function NewIssueSession({
           </DialogDescription>
         </DialogHeader>
         <DialogPanel className="max-h-[65dvh] overflow-y-auto">
-          <IssueDraftForm editor={editor} onOpenCreated={onOpenCreated} />
+          <IssueDraftForm
+            editor={editor}
+            onOpenCreated={onOpenCreated}
+            visible={open}
+          />
         </DialogPanel>
-        {editor.base?.generation !== "0" &&
+        {editor.base &&
+        editor.current &&
+        editor.base.generation !== "0" &&
         !editor.dirty &&
         (editor.current?.submission === null ||
           editor.current?.published !== null) ? (
@@ -172,7 +187,7 @@ export function RecoveredIssueDraft({
 
 function useIssueDraftEditor(account: RemoteAccount, key: LocalIssueDraftKey) {
   const queryClient = useQueryClient();
-  const queryOptions = issueDraftQueryOptions(account, key);
+  const queryOptions = issueDraftV2QueryOptions(account, key);
   const query = useQuery(queryOptions);
   const authorityVersion = useCollaborationAuthorityVersion();
   const authorityIdentity = `${authorityVersion}:${account.authorization_epoch}:${account.state}`;
@@ -183,33 +198,45 @@ function useIssueDraftEditor(account: RemoteAccount, key: LocalIssueDraftKey) {
   const [body, setBody] = useState("");
   const [savedTitle, setSavedTitle] = useState("");
   const [savedBody, setSavedBody] = useState("");
+  const [metadata, setMetadata] =
+    useState<IssueMetadataSelection>(emptyIssueMetadata);
+  const [savedMetadata, setSavedMetadata] =
+    useState<IssueMetadataSelection>(emptyIssueMetadata);
+  const [metadataConsentContext, setMetadataConsentContext] = useState<
+    string | null
+  >(null);
   const [previous, setPrevious] = useState<{
     title: string;
     body: string;
+    metadata: IssueMetadataSelection;
   } | null>(null);
   const [consentContext, setConsentContext] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [retryRequest, setRetryRequest] = useState<SubmitIssueRequest | null>(
+  const [retryRequest, setRetryRequest] = useState<SubmitIssueV2Request | null>(
     null,
   );
   const [retryAuthority, setRetryAuthority] = useState<number | null>(null);
   if (seenAuthority !== authorityIdentity || seenError !== query.isError) {
     setSeenAuthority(authorityIdentity);
     setSeenError(query.isError);
-    if (seenAuthority !== authorityIdentity || query.isError)
+    if (seenAuthority !== authorityIdentity || query.isError) {
       setConsentContext(null);
+      setMetadataConsentContext(null);
+    }
   }
   if (query.data && base === null) {
-    setBase(query.data);
-    setTitle(query.data.title);
-    setBody(query.data.body);
-    setSavedTitle(query.data.title);
-    setSavedBody(query.data.body);
+    setBase(query.data.draft);
+    setTitle(query.data.draft.title);
+    setBody(query.data.draft.body);
+    setSavedTitle(query.data.draft.title);
+    setSavedBody(query.data.draft.body);
+    setMetadata(query.data.metadata);
+    setSavedMetadata(query.data.metadata);
   }
-  const current = query.data;
+  const current = query.data?.draft;
   const contextCurrent =
     !query.isError &&
     account.state === "active" &&
@@ -221,7 +248,17 @@ function useIssueDraftEditor(account: RemoteAccount, key: LocalIssueDraftKey) {
   function setConsent(checked: boolean) {
     setConsentContext(checked ? contextKey : null);
   }
-  const dirty = title !== savedTitle || body !== savedBody;
+  const metadataConsent =
+    contextKey !== null && metadataConsentContext === contextKey;
+  const metadataRequested = hasIssueMetadata(metadata);
+  function retireConsent() {
+    setConsentContext(null);
+    setMetadataConsentContext(null);
+  }
+  const dirty =
+    title !== savedTitle ||
+    body !== savedBody ||
+    JSON.stringify(metadata) !== JSON.stringify(savedMetadata);
   const baseChanged =
     base !== null &&
     current !== undefined &&
@@ -275,17 +312,20 @@ function useIssueDraftEditor(account: RemoteAccount, key: LocalIssueDraftKey) {
     current.submission === null &&
     current.published === null &&
     consent &&
+    (!metadataRequested || metadataConsent) &&
     titleError === null &&
     bodyError === null;
 
-  function accept(snapshot: IssueDraftSnapshot) {
+  function accept(snapshot: IssueDraftV2Snapshot) {
     queryClient.setQueryData(queryOptions.queryKey, snapshot);
-    setBase(snapshot);
-    setTitle(snapshot.title);
-    setBody(snapshot.body);
-    setSavedTitle(snapshot.title);
-    setSavedBody(snapshot.body);
-    setConsent(false);
+    setBase(snapshot.draft);
+    setTitle(snapshot.draft.title);
+    setBody(snapshot.draft.body);
+    setSavedTitle(snapshot.draft.title);
+    setSavedBody(snapshot.draft.body);
+    setMetadata(snapshot.metadata);
+    setSavedMetadata(snapshot.metadata);
+    retireConsent();
   }
 
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -295,18 +335,21 @@ function useIssueDraftEditor(account: RemoteAccount, key: LocalIssueDraftKey) {
     setError(null);
     setStatus(null);
     try {
-      const snapshot = await collaboration.forAccount(account).saveIssueDraft({
-        draft_id: key.draft_id,
-        repository_id: key.repository_id,
-        authorization_view: base.authorization_view,
-        expected_generation: base.generation,
-        title,
-        body,
-      });
+      const snapshot = await collaboration
+        .forAccount(account)
+        .saveIssueDraftV2({
+          draft_id: key.draft_id,
+          repository_id: key.repository_id,
+          authorization_view: base.authorization_view,
+          expected_generation: base.generation,
+          title,
+          body,
+          metadata,
+        });
       accept(snapshot);
       setStatus("Issue draft saved on this device.");
       void queryClient.invalidateQueries({
-        queryKey: issueDraftsQueryOptions(account, {
+        queryKey: issueDraftsV2QueryOptions(account, {
           cursor: null,
           limit: 50,
         }).queryKey.slice(0, -1),
@@ -319,7 +362,7 @@ function useIssueDraftEditor(account: RemoteAccount, key: LocalIssueDraftKey) {
     }
   }
 
-  async function submit(request: SubmitIssueRequest) {
+  async function submit(request: SubmitIssueV2Request) {
     setSubmitting(true);
     setRetryRequest(request);
     setRetryAuthority(authorityVersion);
@@ -328,9 +371,9 @@ function useIssueDraftEditor(account: RemoteAccount, key: LocalIssueDraftKey) {
     try {
       const receipt = await collaboration
         .forAccount(account)
-        .submitIssue(request);
+        .submitIssueV2(request);
       setRetryRequest(null);
-      setConsent(false);
+      retireConsent();
       setStatus(
         receipt.duplicate
           ? "This exact issue draft was already queued."
@@ -348,11 +391,11 @@ function useIssueDraftEditor(account: RemoteAccount, key: LocalIssueDraftKey) {
         failure.code === "invalid_input";
       if (refused) {
         setRetryRequest(null);
-        setConsent(false);
+        retireConsent();
       }
       setError(
         refused
-          ? "Check the saved issue and try a shorter title or description before submitting again."
+          ? "Check the saved title, description and metadata before submitting again. Shortening the text or removing optional selections may help."
           : collaborationErrorMessage(failure),
       );
       void queryClient.invalidateQueries({ queryKey: queryOptions.queryKey });
@@ -369,13 +412,14 @@ function useIssueDraftEditor(account: RemoteAccount, key: LocalIssueDraftKey) {
       draft_generation: base.generation,
       command_id: crypto.randomUUID(),
       accept_background_delivery: true,
+      accept_metadata_best_effort: metadataRequested && metadataConsent,
     });
   }
 
   function loadCurrent() {
-    if (!current) return;
-    if (dirty) setPrevious({ title, body });
-    accept(current);
+    if (!query.data) return;
+    if (dirty) setPrevious({ title, body, metadata });
+    accept(query.data);
     setRetryRequest(null);
     setError(null);
     setStatus(null);
@@ -391,6 +435,13 @@ function useIssueDraftEditor(account: RemoteAccount, key: LocalIssueDraftKey) {
     body,
     savedTitle,
     savedBody,
+    metadata,
+    metadataRequested,
+    metadataConsent,
+    metadataOutcome:
+      !query.isError && account.state === "active" && current?.published
+        ? query.data?.metadata_outcome
+        : null,
     previous,
     consent,
     saving,
@@ -408,13 +459,19 @@ function useIssueDraftEditor(account: RemoteAccount, key: LocalIssueDraftKey) {
     canSubmit,
     setTitle: (value: string) => {
       setTitle(value);
-      setConsent(false);
+      retireConsent();
     },
     setBody: (value: string) => {
       setBody(value);
-      setConsent(false);
+      retireConsent();
     },
     setConsent,
+    setMetadata: (value: IssueMetadataSelection) => {
+      setMetadata(value);
+      retireConsent();
+    },
+    setMetadataConsent: (checked: boolean) =>
+      setMetadataConsentContext(checked ? contextKey : null),
     save,
     submit,
     queue,
@@ -427,13 +484,16 @@ type IssueDraftEditor = ReturnType<typeof useIssueDraftEditor>;
 function IssueDraftForm({
   editor,
   onOpenCreated,
+  visible = true,
 }: {
   editor: IssueDraftEditor;
+  visible?: boolean;
   onOpenCreated?: (subjectId: string) => void;
 }) {
   const titleId = useId();
   const bodyId = useId();
   const consentId = useId();
+  const metadataConsentId = useId();
   const {
     query,
     base,
@@ -518,6 +578,21 @@ function IssueDraftForm({
           </p>
         ) : null}
       </Field>
+      <IssueMetadataEditor
+        account={editor.account}
+        repositoryId={editor.key.repository_id}
+        value={editor.metadata}
+        onChange={editor.setMetadata}
+        disabled={
+          saving ||
+          submitting ||
+          activeRetry !== null ||
+          current.published !== null
+        }
+        visible={
+          visible && !query.isError && current.reason !== "account_unavailable"
+        }
+      />
       {baseChanged ? (
         <div className="space-y-2 text-xs text-muted-foreground">
           <p>
@@ -538,10 +613,13 @@ function IssueDraftForm({
       ) : null}
       {previous ? (
         <details className="text-xs text-muted-foreground">
-          <summary className="cursor-pointer">Your previous draft text</summary>
+          <summary className="cursor-pointer">Your previous draft</summary>
           <p className="mt-2 font-medium">{previous.title || "Untitled"}</p>
           <p className="mt-1 whitespace-pre-wrap break-words">
             {previous.body || "Empty description"}
+          </p>
+          <p className="mt-1 break-words">
+            {issueMetadataSummary(previous.metadata)}
           </p>
         </details>
       ) : null}
@@ -558,6 +636,24 @@ function IssueDraftForm({
           creation request.
         </span>
       </div>
+      {editor.metadataRequested ? (
+        <div className="flex items-start gap-2 text-xs text-muted-foreground">
+          <Checkbox
+            aria-labelledby={metadataConsentId}
+            checked={editor.metadataConsent}
+            disabled={saving || submitting || activeRetry !== null}
+            onCheckedChange={(checked) =>
+              editor.setMetadataConsent(checked === true)
+            }
+          />
+          <span id={metadataConsentId}>
+            I understand the issue may be created even if GitHub does not apply
+            all selected labels, assignees or milestone. Gitru will report the
+            creation receipt without automatically retrying or correcting
+            metadata.
+          </span>
+        </div>
+      ) : null}
       {current.reason ? (
         <p className="text-xs text-muted-foreground">
           {reasonMessage(current.reason)}
@@ -570,11 +666,16 @@ function IssueDraftForm({
             : "This issue submission is tracked in Saved changes."}
         </p>
       ) : null}
-      {current.published ? (
+      {current.published &&
+      !query.isError &&
+      editor.account.state === "active" ? (
         <div className="space-y-2 rounded-md border p-3">
           <p role="status" className="text-sm font-medium">
             Issue #{current.published.number} was confirmed by GitHub.
           </p>
+          {editor.metadataOutcome ? (
+            <IssueMetadataReceipt outcome={editor.metadataOutcome} />
+          ) : null}
           <div className="flex flex-wrap gap-2">
             {onOpenCreated ? (
               <Button
@@ -631,8 +732,7 @@ function IssueDraftForm({
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        Labels, assignees, milestones and issue types are not available in this
-        first creation slice.
+        Issue types are not available in this creation flow.
       </p>
     </form>
   );

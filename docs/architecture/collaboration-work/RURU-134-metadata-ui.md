@@ -88,3 +88,46 @@ The initial new-worktree test attempt had no installed Vitest; a frozen copyfile
 Bun install completed before validation. This checkpoint still uses version-one
 issue APIs: metadata selectors, version-two SDK and native integration remain
 pending the native schema24 qualification and version-two IPC registration.
+
+## Integrated implementation in progress — 8 October 2026
+
+The SDK now has separate version-two draft/page keys and six native operations,
+captured immutable save selections and request UUIDs, synchronous reset redaction,
+and exact repository/family catalog invalidation. Historical metadata outcomes
+bind the canonical published command, independently of a later draft submission.
+Nine new SDK controls and the existing 62 client controls pass (71 total).
+
+The existing issue editor and global draft recovery now use the version-two
+snapshot. Local catalog choosers keep one 50-option page observed, allow removal
+without catalog access, distinguish missing/partial/stale observations, and release
+visible demand when closed. Metadata and title/body share one CAS save; selected
+metadata requires a separate best-effort acknowledgement. Edits retire both
+consents. Creation outcomes remain separate from metadata observations. Pending
+integration checks cover the generated adjacent-tag wire shape, offline recovery,
+selection/edit consent, catalog paging and demand release, multiwindow conflict,
+and partial-success receipt rendering. These UI checks and full types/build are
+not qualified by the SDK-only result; type generation is now running against the
+six implemented native methods.
+
+## Generated wire and frontend checkpoint
+
+`make typegen` now emits 176 commands and 605 executable schemas. The generator
+source includes the new Rust DTO file, handles its multiline adjacent-tag enum,
+preserves nullable values, and requires actual boolean consent values. No generated
+file was hand edited. A four-test RED demonstrated missing/incorrect consent and
+same-generation queued/unknown state handling before the generator correction.
+The shared issue-draft validator now follows native confirmed-only completion;
+a historical publication remains independent of a newer submission.
+
+All 28 focused SDK/wire/schema-order controls and 26 editor/recovery controls pass.
+The UI controls include single CAS text+metadata saves, separate consent, removal
+and reselection, offline names/removal, bounded search/page retention, visible
+demand release, multiwindow authored conflict recovery and partial metadata
+success alongside the canonical issue. Independent read-only native/SDK/UI review
+found no further blocker in these paths. Full lint, workspace/desktop/E2E types
+and an uncached desktop production build pass. The first full frontend run has
+930 passes, one pre-existing skip, and two failures in existing conversation/task
+timing controls (missing awaited list row / five-second test timeout). Those
+controls are being rechecked at bounded worker concurrency; this checkpoint does
+not claim the full frontend suite passed. Native migration/delivery/recovery gates
+remain separate and in progress. No authenticated live provider test ran.

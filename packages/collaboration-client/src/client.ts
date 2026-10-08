@@ -42,6 +42,10 @@ import {
   type IssueDraftPage,
   type IssueDraftQuery,
   type IssueDraftSnapshot,
+  type IssueDraftV2Page,
+  type IssueDraftV2Snapshot,
+  type IssueMetadataPage,
+  type IssueMetadataQuery,
   type IssueSubmissionReceipt,
   type ItemPage,
   type ItemQuery,
@@ -81,6 +85,7 @@ import {
   type PullFileSnapshot,
   type PullSubmissionReceipt,
   type QueueProviderInboxActionRequest,
+  type RefreshIssueMetadataRequest,
   type RefreshReceipt,
   type RefreshRequest,
   type RemoteAccount,
@@ -94,11 +99,13 @@ import {
   type ReviewSubmissionReceipt,
   type SaveCommentDraftRequest,
   type SaveIssueDraftRequest,
+  type SaveIssueDraftV2Request,
   type SavePullDraftRequest,
   type SaveReviewDraftRequest,
   type SendCommentRequest,
   type SetLocalInboxStateRequest,
   type SubmitIssueRequest,
+  type SubmitIssueV2Request,
   type SubmitPullRequest,
   type SubmitReviewRequest,
   type SubmittedReviewPage,
@@ -190,6 +197,16 @@ export interface CollaborationTransport extends DemandTransport {
     request: PreviewPullCreationRequest,
   ): Promise<PullCreationPreview>;
   submitPull(request: SubmitPullRequest): Promise<PullSubmissionReceipt>;
+  issueDraftV2(key: IssueDraftKey): Promise<IssueDraftV2Snapshot>;
+  issueDraftsV2(query: IssueDraftQuery): Promise<IssueDraftV2Page>;
+  saveIssueDraftV2(
+    request: SaveIssueDraftV2Request,
+  ): Promise<IssueDraftV2Snapshot>;
+  submitIssueV2(request: SubmitIssueV2Request): Promise<IssueSubmissionReceipt>;
+  issueMetadataOptions(query: IssueMetadataQuery): Promise<IssueMetadataPage>;
+  refreshIssueMetadata(
+    request: RefreshIssueMetadataRequest,
+  ): Promise<RefreshReceipt>;
   issueDraft(key: IssueDraftKey): Promise<IssueDraftSnapshot>;
   issueDrafts(query: IssueDraftQuery): Promise<IssueDraftPage>;
   saveIssueDraft(request: SaveIssueDraftRequest): Promise<IssueDraftSnapshot>;
@@ -376,6 +393,28 @@ export const collaborationKeys = {
       ...collaborationKeys.account(account.id),
       "local",
       "pull-drafts",
+      query,
+    ] as const,
+  issueDraftV2: (account: RemoteAccount, key: IssueDraftKey) =>
+    [
+      ...collaborationKeys.account(account.id),
+      "local",
+      "issue-draft-v2",
+      key.draft_id,
+      key.repository_id,
+    ] as const,
+  issueDraftsV2: (account: RemoteAccount, query: IssueDraftQuery) =>
+    [
+      ...collaborationKeys.account(account.id),
+      "local",
+      "issue-drafts-v2",
+      query,
+    ] as const,
+  issueMetadataOptions: (account: RemoteAccount, query: IssueMetadataQuery) =>
+    [
+      ...collaborationKeys.account(account.id),
+      account.authorization_epoch,
+      "issue-metadata",
       query,
     ] as const,
   issueDraft: (account: RemoteAccount, key: IssueDraftKey) =>
@@ -1175,6 +1214,121 @@ export class CollaborationClient {
           throw new StaleAuthorizationError();
         return receipt;
       },
+      issueDraftV2: async (
+        key: Omit<IssueDraftKey, "account_id">,
+        signal?: AbortSignal,
+      ) => {
+        const captured = { ...key, account_id: account.id };
+        const value = await this.fence.read(
+          account.id,
+          () => this.transport.issueDraftV2(captured),
+          signal,
+        );
+        assertIssueDraftV2(value, captured, account);
+        this.acceptSnapshot(value.draft);
+        return value;
+      },
+      issueDraftsV2: async (
+        query: Omit<IssueDraftQuery, "account_id">,
+        signal?: AbortSignal,
+      ) => {
+        const captured = { ...query, account_id: account.id };
+        const value = await this.fence.read(
+          account.id,
+          () => this.transport.issueDraftsV2(captured),
+          signal,
+        );
+        if (value.account_id !== account.id)
+          throw new StaleAuthorizationError();
+        this.acceptSnapshot(value);
+        return value;
+      },
+      saveIssueDraftV2: async (
+        request: Omit<
+          SaveIssueDraftV2Request,
+          "account_id" | "authorization_epoch"
+        >,
+      ) => {
+        // Capture every mutable authored selection before crossing native IPC.
+        const captured = {
+          ...request,
+          account_id: account.id,
+          authorization_epoch: account.authorization_epoch,
+          metadata: {
+            labels: request.metadata.labels.map((value) => ({ ...value })),
+            assignees: request.metadata.assignees.map((value) => ({
+              ...value,
+            })),
+            milestone: request.metadata.milestone
+              ? { ...request.metadata.milestone }
+              : null,
+          },
+        };
+        const value = await this.fence.read(account.id, () =>
+          this.transport.saveIssueDraftV2(captured),
+        );
+        assertIssueDraftV2(value, captured, account);
+        this.acceptSnapshot(value.draft);
+        return value;
+      },
+      submitIssueV2: async (request: SubmitIssueV2Request) => {
+        const captured = {
+          ...request,
+          context: reviewedIssueDraftContext(request.context),
+        };
+        const receipt = await this.fence.read(account.id, () =>
+          this.transport.submitIssueV2(captured),
+        );
+        if (
+          receipt.account_id !== account.id ||
+          receipt.command_id !== captured.command_id
+        )
+          throw new StaleAuthorizationError();
+        return receipt;
+      },
+      issueMetadataOptions: async (
+        query: Omit<IssueMetadataQuery, "account_id">,
+        signal?: AbortSignal,
+      ) => {
+        const captured = { ...query, account_id: account.id };
+        const value = await this.fence.read(
+          account.id,
+          () => this.transport.issueMetadataOptions(captured),
+          signal,
+        );
+        if (
+          value.account_id !== account.id ||
+          value.repository_id !== captured.repository_id ||
+          value.kind !== captured.kind ||
+          value.options.some(
+            (option) =>
+              option.reference.kind !==
+              (captured.kind === "labels"
+                ? "label"
+                : captured.kind === "assignees"
+                  ? "assignee"
+                  : "milestone"),
+          )
+        )
+          throw new StaleAuthorizationError();
+        this.acceptSnapshot(value);
+        return value;
+      },
+      refreshIssueMetadata: async (
+        request: Omit<
+          RefreshIssueMetadataRequest,
+          "account_id" | "authorization_epoch"
+        >,
+      ) => {
+        const captured = {
+          ...request,
+          account_id: account.id,
+          authorization_epoch: account.authorization_epoch,
+        };
+        return this.fence.read(account.id, () =>
+          this.transport.refreshIssueMetadata(captured),
+        );
+      },
       issueDraft: async (
         key: Omit<IssueDraftKey, "account_id">,
         signal?: AbortSignal,
@@ -1803,6 +1957,24 @@ export class CollaborationClient {
     const cache = this.queryClient;
     if (!cache) return;
     for (const query of cache.getQueryCache().findAll({ queryKey })) {
+      if (query.queryKey[4] === "issue-draft-v2") {
+        cache.setQueryData<IssueDraftV2Snapshot>(query.queryKey, (value) =>
+          value
+            ? {
+                ...value,
+                draft: {
+                  ...value.draft,
+                  context: null,
+                  availability: "unavailable",
+                  reason: "account_unavailable",
+                  published: null,
+                },
+                metadata_outcome: null,
+              }
+            : value,
+        );
+        continue;
+      }
       if (query.queryKey[4] !== "issue-draft") continue;
       cache.setQueryData<IssueDraftSnapshot>(query.queryKey, (snapshot) => {
         if (!snapshot) return snapshot;
@@ -1863,6 +2035,8 @@ function isAuthoredDraft(key: readonly unknown[]) {
       key[4] === "comment-drafts" ||
       key[4] === "issue-draft" ||
       key[4] === "issue-drafts" ||
+      key[4] === "issue-draft-v2" ||
+      key[4] === "issue-drafts-v2" ||
       key[4] === "review-draft" ||
       key[4] === "review-drafts" ||
       key[4] === "pull-draft" ||
@@ -1872,6 +2046,15 @@ function isAuthoredDraft(key: readonly unknown[]) {
 
 function projectionAffected(key: readonly unknown[], scope: string) {
   const projection = key[4];
+  if (projection === "issue-metadata") {
+    const query = key[5] as IssueMetadataQuery;
+    return (
+      scope === "repositories" ||
+      scope === "provider:rest" ||
+      scope === `repository_metadata:${query.repository_id}:${query.kind}`
+    );
+  }
+
   if (projection === "provider-inbox-actions")
     return (
       scope === "notifications" ||
@@ -1942,11 +2125,11 @@ function projectionAffected(key: readonly unknown[], scope: string) {
     );
   if (projection === "pull-drafts")
     return scope === "commands" || scope.startsWith("pull_draft:");
-  if (projection === "issue-draft") {
+  if (projection === "issue-draft" || projection === "issue-draft-v2") {
     const draftId = key[5];
     return scope === "commands" || scope === `issue_draft:${draftId}`;
   }
-  if (projection === "issue-drafts")
+  if (projection === "issue-drafts" || projection === "issue-drafts-v2")
     return scope === "commands" || scope.startsWith("issue_draft:");
   if (projection === "text-edit") {
     const subject = key[5];
@@ -2111,6 +2294,31 @@ function assertReviewSnapshot(
       context.subject_id !== key.subject_id ||
       context.authorization_epoch !== account.authorization_epoch ||
       context.authorization_view !== snapshot.authorization_view)
+  )
+    throw new StaleAuthorizationError();
+}
+
+function assertIssueDraftV2(
+  value: IssueDraftV2Snapshot,
+  key: IssueDraftKey,
+  account: RemoteAccount,
+) {
+  const draft = value.draft;
+  if (
+    draft.account_id !== account.id ||
+    draft.draft_id !== key.draft_id ||
+    draft.repository_id !== key.repository_id ||
+    (draft.context !== null &&
+      (draft.context.account_id !== account.id ||
+        draft.context.repository_id !== key.repository_id ||
+        draft.context.authorization_epoch !== account.authorization_epoch ||
+        draft.context.authorization_view !== draft.authorization_view))
+  )
+    throw new StaleAuthorizationError();
+  if (
+    value.metadata_outcome !== null &&
+    (draft.published === null ||
+      draft.published.command_id !== value.metadata_outcome.command_id)
   )
     throw new StaleAuthorizationError();
 }

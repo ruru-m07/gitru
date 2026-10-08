@@ -476,39 +476,51 @@ it("recovers and edits a dedicated issue draft while its account and repository 
   readMocks();
   const draftId = "123e4567-e89b-42d3-a456-426614174000";
   const repositoryId = "missing-repository";
-  const issueDrafts = mockTauriCommandResult("collaboration_issue_drafts", {
+  const metadata = {
+    labels: [{ provider_id: "15", name: "offline label", color: null }],
+    assignees: [],
+    milestone: null,
+  };
+  const issueDrafts = mockTauriCommandResult("collaboration_issue_drafts_v2", {
     account_id: account.id,
     drafts: [
       {
-        draft_id: draftId,
-        repository_id: repositoryId,
-        title: "Offline issue",
-        preview: "Authored issue body",
-        generation: "3",
-        submission: null,
+        metadata,
+        draft: {
+          draft_id: draftId,
+          repository_id: repositoryId,
+          title: "Offline issue",
+          preview: "Authored issue body",
+          generation: "3",
+          submission: null,
+        },
       },
     ],
     next_cursor: null,
     revision: "10",
     authorization_view: "2",
   });
-  const issueDraft = mockTauriCommandResult("collaboration_issue_draft", {
-    account_id: account.id,
-    draft_id: draftId,
-    repository_id: repositoryId,
-    title: "Offline issue",
-    body: "Authored issue body",
-    generation: "3",
-    context: null,
-    availability: "unavailable",
-    reason: "account_unavailable",
-    submission: null,
-    published: null,
-    revision: "10",
-    authorization_view: "2",
+  const issueDraft = mockTauriCommandResult("collaboration_issue_draft_v2", {
+    metadata,
+    metadata_outcome: null,
+    draft: {
+      account_id: account.id,
+      draft_id: draftId,
+      repository_id: repositoryId,
+      title: "Offline issue",
+      body: "Authored issue body",
+      generation: "3",
+      context: null,
+      availability: "unavailable",
+      reason: "account_unavailable",
+      submission: null,
+      published: null,
+      revision: "10",
+      authorization_view: "2",
+    },
   });
   const saveIssue = mockTauriCommand(
-    "collaboration_save_issue_draft",
+    "collaboration_save_issue_draft_v2",
     (payload) => {
       const request = (
         payload as {
@@ -519,19 +531,23 @@ it("recovers and edits a dedicated issue draft while its account and repository 
         }
       ).request;
       return {
-        account_id: account.id,
-        draft_id: draftId,
-        repository_id: repositoryId,
-        title: request.title,
-        body: request.body,
-        generation: "4",
-        context: null,
-        availability: "unavailable",
-        reason: "account_unavailable",
-        submission: null,
-        published: null,
-        revision: "11",
-        authorization_view: "2",
+        metadata,
+        metadata_outcome: null,
+        draft: {
+          account_id: account.id,
+          draft_id: draftId,
+          repository_id: repositoryId,
+          title: request.title,
+          body: request.body,
+          generation: "4",
+          context: null,
+          availability: "unavailable",
+          reason: "account_unavailable",
+          submission: null,
+          published: null,
+          revision: "11",
+          authorization_view: "2",
+        },
       };
     },
   );
