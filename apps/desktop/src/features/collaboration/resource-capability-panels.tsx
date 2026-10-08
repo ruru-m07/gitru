@@ -12,6 +12,7 @@ import { Badge } from "@gitru/ui/components/badge";
 import { Button } from "@gitru/ui/components/button";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { CachedActivityPanel } from "./cached-activity-panel";
 import { CachedChecksPanel } from "./cached-checks-panel";
 import {
   CachedReviewsPanel,
@@ -36,6 +37,7 @@ import { PullFilesPanel } from "./pull-files-panel";
 
 const facetLabels: Record<DetailFacet, string> = {
   body: "Full description",
+  activity: "Activity",
   comments: "Comments",
   reviews: "Reviews",
   review_summaries: "Review decisions",
@@ -130,6 +132,19 @@ export function ResourceCapabilityPanels({
         subjectId={subjectId}
         authorizationView={snapshot?.authorization_view}
         policy={facetPolicy(snapshot, "comments")}
+      />
+      <CachedActivityPanel
+        key={JSON.stringify([
+          "activity",
+          account.id,
+          account.actor_id,
+          account.authorization_epoch,
+          subjectId,
+        ])}
+        account={account}
+        subjectId={subjectId}
+        authorizationView={snapshot?.authorization_view}
+        policy={facetPolicy(snapshot, "activity")}
       />
       {kind === "pull_request" ? (
         <PullFilesPanel

@@ -35,6 +35,9 @@ const tasks = await Bun.file(
 const checks = await Bun.file(
   new URL("crates/collaboration/src/checks.rs", root),
 ).text();
+const activity = await Bun.file(
+  new URL("crates/collaboration/src/activity.rs", root),
+).text();
 const reviewNative = await Bun.file(
   new URL("crates/collaboration/src/review_native.rs", root),
 ).text();
@@ -137,14 +140,14 @@ const nativeOnlyTypes = new Set([
 // unsupported shape rather than inventing a renderer-owned wire model.
 const payloadStructs = new Map(
   [
-    ...`${participants}\n${tasks}\n${checks}\n${reviews}\n${reviewNative}`.matchAll(
+    ...`${participants}\n${tasks}\n${checks}\n${activity}\n${reviews}\n${reviewNative}`.matchAll(
       /pub struct (\w+)\s*\{([^}]+)\}/g,
     ),
   ].map(([, name, body]) => [name, body] as const),
 );
 const payloadEnums = new Map(
   [
-    ...`${participants}\n${tasks}\n${checks}\n${reviews}\n${reviewNative}`.matchAll(
+    ...`${participants}\n${tasks}\n${checks}\n${activity}\n${reviews}\n${reviewNative}`.matchAll(
       /#\[serde\(rename_all = "snake_case"\)\]\s*pub enum (\w+)\s*\{([^}]+)\}/g,
     ),
   ].map(
@@ -320,6 +323,7 @@ for (const source of [
   participants,
   tasks,
   checks,
+  activity,
   reviews,
   reviewNative,
   contextualCapabilities,
@@ -455,10 +459,11 @@ generated = generated.replace(
 // Qualify every native family explicitly; enum growth cannot silently borrow
 // another payload's authority or widen ordinary entry limits.
 if (
-  nativePayloadKinds.size !== 5 ||
+  nativePayloadKinds.size !== 6 ||
   !nativePayloadKinds.has("participant.v1") ||
   !nativePayloadKinds.has("task.v1") ||
   !nativePayloadKinds.has("check.v1") ||
+  !nativePayloadKinds.has("activity.v1") ||
   !nativePayloadKinds.has("review.v1") ||
   !nativePayloadKinds.has("review_thread.v1")
 )
@@ -481,6 +486,13 @@ const checkOnlyFields = familyFields("check", 1);
 const checkFields = [...checkOnlyFields, "head_oid"];
 const reviewSummaryFields = familyFields("review_summary", 6);
 const reviewThreadFields = familyFields("review_thread", 5);
+const activityFields = ["activity", "body", "author", "updated_at"];
+if (
+  !/DetailFacet::Activity\s*=>\s*matches!\([\s\S]*?Self::Activity\s*\|\s*Self::Body\s*\|\s*Self::Author\s*\|\s*Self::UpdatedAt[\s\S]*?\)/.test(
+    detail,
+  )
+)
+  throw new Error("Extend qualified Rust activity field-family bound");
 const fieldsEnum = detail.match(/pub enum DetailField\s*\{([^}]+)\}/);
 if (!fieldsEnum) throw new Error("Missing Rust detail field enum");
 const fields = fieldsEnum[1]
@@ -494,13 +506,14 @@ const nativeFields = new Set([
   ...checkOnlyFields,
   "review",
   "review_thread",
+  "activity",
 ]);
 const genericFields = fields.filter((field) => !nativeFields.has(field));
 if (
-  nativeFields.size !== 21 ||
+  nativeFields.size !== 22 ||
   genericFields.length !== 6 ||
   checkFields.length !== 2 ||
-  fields.length !== 27 ||
+  fields.length !== 28 ||
   new Set(fields).size !== fields.length ||
   [...nativeFields].some((field) => !fields.includes(field))
 )
@@ -511,7 +524,7 @@ if (!entrySchema.test(generated))
   throw new Error("Missing generated detail entry schema for family guard");
 generated = generated.replace(
   entrySchema,
-  `const detailFieldFamilies = {\n  generic: new Set<string>(${JSON.stringify(genericFields)}),\n  "participant.v1": new Set<string>(${JSON.stringify(participantFields)}),\n  "task.v1": new Set<string>(${JSON.stringify(taskFields)}),\n  "check.v1": new Set<string>(${JSON.stringify(checkFields)}),\n  "review.v1": new Set<string>(${JSON.stringify(reviewSummaryFields)}),\n  "review_thread.v1": new Set<string>(${JSON.stringify(reviewThreadFields)}),\n};\n\n$1.superRefine((entry, context) => {\n  const family = detailFieldFamilies[entry.native?.kind ?? "generic"];\n  const mask = new Set<string>(entry.field_mask);\n  const validations = entry.field_validations.map((validation) => validation.field);\n  const validated = new Set<string>(validations);\n  const exactNativeEvidence = entry.native?.kind === "check.v1" || entry.native?.kind === "review.v1" || entry.native?.kind === "review_thread.v1";\n  const invalidExactEvidence = exactNativeEvidence && (mask.size !== family.size || validated.size !== family.size || [...family].some((field) => !mask.has(field) || !validated.has(field)));\n  if (invalidExactEvidence || entry.field_mask.length > family.size || validations.length > family.size || mask.size !== entry.field_mask.length || validated.size !== validations.length || entry.field_mask.some((field) => !family.has(field)) || validations.some((field) => !family.has(field))) {\n    context.addIssue({ code: "custom", path: ["native"], message: "Detail entry fields do not match its native payload" });\n  }\n});`,
+  `const detailFieldFamilies = {\n  generic: new Set<string>(${JSON.stringify(genericFields)}),\n  "participant.v1": new Set<string>(${JSON.stringify(participantFields)}),\n  "task.v1": new Set<string>(${JSON.stringify(taskFields)}),\n  "check.v1": new Set<string>(${JSON.stringify(checkFields)}),\n  "activity.v1": new Set<string>(${JSON.stringify(activityFields)}),\n  "review.v1": new Set<string>(${JSON.stringify(reviewSummaryFields)}),\n  "review_thread.v1": new Set<string>(${JSON.stringify(reviewThreadFields)}),\n};\n\n$1.superRefine((entry, context) => {\n  const family = detailFieldFamilies[entry.native?.kind ?? "generic"];\n  const mask = new Set<string>(entry.field_mask);\n  const validations = entry.field_validations.map((validation) => validation.field);\n  const validated = new Set<string>(validations);\n  const exactNativeEvidence = entry.native?.kind === "check.v1" || entry.native?.kind === "review.v1" || entry.native?.kind === "review_thread.v1";\n  const invalidExactEvidence = exactNativeEvidence && (mask.size !== family.size || validated.size !== family.size || [...family].some((field) => !mask.has(field) || !validated.has(field)));\n  if (invalidExactEvidence || entry.field_mask.length > family.size || validations.length > family.size || mask.size !== entry.field_mask.length || validated.size !== validations.length || entry.field_mask.some((field) => !family.has(field)) || validations.some((field) => !family.has(field))) {\n    context.addIssue({ code: "custom", path: ["native"], message: "Detail entry fields do not match its native payload" });\n  }\n});`,
 );
 generated = generated.replace(
   /(export const Collaboration\w+ParamsSchema = z\.object\(\{)([\s\S]*?)(\n\}\);)/g,

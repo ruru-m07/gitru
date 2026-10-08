@@ -67,6 +67,7 @@ import { CollaborationClient } from "./client";
 export type {
   AccountSyncDiagnostics,
   AcquireDemandRequest,
+  ActivityEvent,
   CanonicalResource,
   CapabilitySnapshot,
   CapabilityTarget,

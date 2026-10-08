@@ -186,11 +186,11 @@ export const KeySchema = "key";
     const generated = await import("@gitru/commands");
     expect(
       Object.keys(generated).filter((name) => name.endsWith("Schema")),
-    ).toHaveLength(478);
+    ).toHaveLength(479);
     expect(
       generated.TaskV1Schema.shape.content.parse({ state: "known", text: "" }),
     ).toEqual({ state: "known", text: "" });
-    expect(generated.NativeDetailPayloadSchema.options).toHaveLength(5);
+    expect(generated.NativeDetailPayloadSchema.options).toHaveLength(6);
   });
 
   it("parses boxed native GitLab review position evidence without flattening its provider tag", async () => {
