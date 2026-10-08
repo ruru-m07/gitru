@@ -1,6 +1,6 @@
 # RURU-129 — GitHub label desired-state intent
 
-Status: bounded pre-code contract, 8 October 2026.
+Status: implemented and locally qualified, 8 October 2026.
 
 This follow-up adds label membership edits for saved GitHub.com issues and pull
 requests. It starts from the qualified RURU-53 integration head `f0b8801d` and
@@ -152,3 +152,36 @@ authored label draft; durable admitted intent remains under native recovery.
 - Focused Rust/SDK/UI tests, strict Clippy/format, generated IPC through
   `make typegen`, then `make verify`. Remote CI, live GitHub mutation and packaged
   vault/platform evidence are reported separately.
+
+## Implementation and qualification record
+
+The implementation is split into signed checkpoints for the frozen contract,
+native command/effect/provider/recovery path, generated IPC and SDK, desktop
+editor, and review fixes. It is stacked on the published RURU-107 qualification
+dependency branch so the scheduler and provider ordering repairs used by the
+label worker are explicit prerequisites. No database migration was added; the
+schema-22 recovery policy and byte-exact legacy version-1 codecs remain in force.
+
+Local evidence on the final integrated source is staged because the last
+dependency corrections are native-only:
+
+- `make typegen` completed with 159 commands. The parent merge made the generator
+  reorder unchanged output, so the checked-in generated files were retained after
+  confirming there was no semantic label API delta.
+- Generated SDK label wire tests passed 4/4; desktop label and metadata tests
+  passed 10/10.
+- The label native suite passed 12/12. Focused metadata ordering passed 11/11,
+  obsolete response controls 2/2, and the bounded inbox-action HTTP module passed
+  13/13 after the inherited Darwin fixture repair.
+- The final workspace native run passed 1,435 tests with
+  seven helper-only ignores. Strict workspace all-target Clippy,
+  `cargo fmt --all -- --check`, and `git diff --check` passed on that source.
+- Before the native-only dependency corrections, the exact integrated branch
+  completed the frontend portion of `make verify`: 860 tests passed with one
+  intentional skip, followed by lint, types, build, format and workspace Clippy.
+  The feature-only full gate also passed 847 frontend tests with one skip and
+  1,432 Rust tests with seven helper-only ignores.
+
+These are local synthetic HTTP/SQLite/UI checks. No authenticated GitHub mutation,
+packaged desktop/vault run, or remote CI result is claimed here. Remote CI is
+recorded from the eventual pull-request head separately.
