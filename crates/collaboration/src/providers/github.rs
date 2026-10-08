@@ -16,6 +16,7 @@ mod commits;
 mod files;
 pub(crate) mod guarded_merge;
 mod issue_details;
+mod issue_metadata;
 mod notification_subject_discovery;
 pub mod notification_subjects;
 mod pull_details;
@@ -70,6 +71,20 @@ impl CollaborationProvider for GithubProvider {
             .await
     }
 
+    async fn fetch_issue_metadata_catalog(
+        &self,
+        token: &SecretToken,
+        request: IssueMetadataCatalogRequest,
+    ) -> Result<IssueMetadataCatalogPage, ProviderError> {
+        self.issue_metadata_catalog(token, request).await
+    }
+    async fn fetch_issue_metadata_point(
+        &self,
+        token: &SecretToken,
+        request: IssueMetadataPointRequest,
+    ) -> Result<IssueMetadataPointRead, ProviderError> {
+        self.issue_metadata_point(token, request).await
+    }
     fn profile(&self, account: &RemoteAccount) -> ProviderProfile {
         let mut profile = ProviderProfile::read_only(
             InboxSemantics::NativeNotifications,

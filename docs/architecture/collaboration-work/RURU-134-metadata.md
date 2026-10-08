@@ -121,3 +121,51 @@ separately. No credentials or provider mutations are needed for these controls.
   `/user/{account_id}` distinguishes durable identity from mutable login.
 - [Milestones](https://docs.github.com/en/rest/issues/milestones#get-a-milestone):
   native ID and repository number differ; listing supports state=open/closed/all.
+
+## First native checkpoint — 8 October, schema gate still held
+
+The native-only DTO/codec/read slice is implemented. Public v2 DTOs are in
+`crates/collaboration/src/issue_metadata.rs`; nested draft snapshots/pages retain
+legacy display/context shapes without changing their serialization. The frozen
+v2 payload uses explicit private selection carriers and tagged fields; its
+receipt uses explicit FrameV2/PreparationV2/CreatedCoreV2 carriers rather than
+serializing extensible public repository/item models. It is not registered for
+admission or dispatch and has no callable desktop commands yet.
+
+GitHub catalog/point methods are on the provider read trait with Unsupported
+by default. Catalogs explicitly return Partial, including terminal empty pages;
+continuations bind native catalog_generation, account/actor/epoch/view/repository/
+path/family, without unrelated global revisions. Page20+next becomes terminal
+truncated and a new run restarts page1. No absence pruning is implemented or
+claimed. Point reads perform exactly one HTTP operation: strict200 JSON or exact
+204 assignability, no redirect/continuation, retained cooldown on success/error.
+The configured header and checked docs both use2026-03-10. Missing archived_at is
+Unknown, not false; it does not itself forbid selecting/revalidating a matched
+label. Explicit archived/closed observations remain unavailable.
+
+Required201 core parsing now survives missing/malformed/oversized/different
+optional collections. Selected native-ID membership produces independent
+historical outcomes; unrequested defaults do not consume the causal proof.
+Preparation/request/core reservations count actual escaped text plus a bounded
+4KiB observation/wrapper reserve. Strict v1 operation/proof source is untouched.
+
+Local qualification:26 focused native model/HTTP/receipt controls pass, including
+all three catalogs, immutable identity/alias checks, exact204, foreign/cyclic
+continuations, cap reset, hostile routes, quota preservation, canonical/tampered
+v2 bytes and worst escaped frame/proof boundary. Strict all-target/all-feature
+collaboration Clippy passes. These are synthetic reads/receipt codecs; they do
+not qualify live numeric aliases, real credentials or enabled v2 delivery.
+
+Before runtime integration, a shared preparation limitation was identified:
+existing delivery accounts one read for policy.prepare, while metadata can need
+54 reads. A hidden loop cannot provide the agreed live quota/account boundary.
+The proposed native-only stepwise preparation protocol must check account and
+budget and persist every successful/error observation before the next HTTP;
+continuations are bounded and process-local, never restored permission authority.
+Its exact integration is under review; no shared delivery code changed here.
+Schema25 and recovery still wait for qualified schema24. Root's separate UI
+preparation checkpoint55ecab1b changes authority/editor behavior only; it does not
+expose a metadata send path.
+Existing v1 issue creation/publication/budget/restore regressions also pass29/29;
+workspace Rust formatting and diff checks pass. No full-suite or remote-CI result
+is attributed to this unpublished checkpoint.

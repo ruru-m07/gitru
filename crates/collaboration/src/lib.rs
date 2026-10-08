@@ -64,6 +64,8 @@ pub use storage::notification_subjects::{NotificationDiscoveryIntent, Notificati
 pub use tasks::*;
 pub use text_edits::*;
 
+mod issue_metadata;
+pub use issue_metadata::*;
 mod issue_creation;
 mod pull_creation;
 pub use issue_creation::*;

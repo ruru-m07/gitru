@@ -11,6 +11,8 @@ mod pull_files;
 pub use pull_file_selection::{
     PullFileArtifactRead, PullFileSelectedRequest, PullFileSourceRequest,
 };
+mod issue_metadata;
+pub use issue_metadata::*;
 mod registry;
 pub(crate) mod transport;
 
@@ -187,6 +189,20 @@ pub trait CollaborationProvider: Send + Sync + 'static {
             retry_after_seconds: None,
             account_cooldown_seconds: None,
         })
+    }
+    async fn fetch_issue_metadata_catalog(
+        &self,
+        _token: &SecretToken,
+        _request: IssueMetadataCatalogRequest,
+    ) -> Result<IssueMetadataCatalogPage, ProviderError> {
+        Err(ProviderError::new(ProviderErrorKind::Unsupported))
+    }
+    async fn fetch_issue_metadata_point(
+        &self,
+        _token: &SecretToken,
+        _request: IssueMetadataPointRequest,
+    ) -> Result<IssueMetadataPointRead, ProviderError> {
+        Err(ProviderError::new(ProviderErrorKind::Unsupported))
     }
     async fn fetch_checks(
         &self,
