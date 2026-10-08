@@ -1,6 +1,6 @@
 # RURU-130 — provider inbox actions
 
-Status: implementation contract, 8 October 2026. This isolated external worktree consumes clean R117 and R127 through an explicit integration-only base; no user pull request is merged. Rust owns native operation admission, provider HTTP, delivery, reconciliation and recovery. The root agent owns desktop IPC, generated bindings and selected-item UI.
+Status: implemented for draft review, 8 October 2026. This isolated external worktree consumes clean R117 and R127 through an explicit integration-only base; no user pull request is merged. Rust owns native operation admission, provider HTTP, delivery, reconciliation and recovery. The root agent owns desktop IPC, generated bindings and selected-item UI.
 
 ## Selected scope
 
@@ -33,3 +33,47 @@ GitLab preflight explicitly reads `state=pending`, while reconciliation explicit
 Canonical confirmation updates provider unread/completion evidence and effective projection coherently while preserving Gitru-local disposition. GitHub subject type remains unchanged; GitLab unread remains unknown. Recovery retains the original immutable command and exposes a reviewed, explicit replacement of the fixed action with a new native activity base. Generic resource write capability remains unchanged because these endpoint-specific descriptors are the authority for the selected inbox actions.
 
 Local qualification at the native checkpoint: 19 selected-action tests pass, covering finite providers, SQLite admission, real delivery workers, exact receipt replay, stale activity/view/epoch, unsupported actions, malformed responses, pending/done separation, successful quota persistence, cold restart, unknown reconciliation and explicit recovery. Strict all-target collaboration Clippy, Rust formatting and diff checks pass. The two shared transport follow-up files are signed separately as `2b0e3a8` for reuse by other native write codecs; their 14 tests pass. Full combined verification, final prerequisite integration, publication and remote CI are recorded separately below when complete. No live provider operation or personal credential was used.
+
+## Combined local verification and integration
+
+Product source `363aeaaf` passed full local `make verify` on 8 October 2026:
+778 frontend test cases with one platform skip and 1,273 Rust test executions
+with seven standalone helper ignores, plus lint, types, production desktop
+build, Rust formatting and strict workspace Clippy. The log is
+`/tmp/gitru-r130-full-verify.log`. Generated IPC on the qualified recovery base
+contains 144 commands and 459 schemas. This is local source qualification;
+remote CI and live GitHub/GitLab credentials or mutations are separate gates.
+
+The selected-item UI reads native local action descriptors, binds admission to
+the original notification identity and activity token, and requires the explicit
+best-effort policy. An uncertain IPC receipt preserves its exact command UUID
+and captured request. Success says that intent was saved locally, while Saved
+changes provides delivery/recovery status. Frontend tests cover unsupported
+provider differences, current-activity changes, exact retry and account isolation.
+The generic resource write capability remains unchanged; the specialized action
+descriptor controls these two operations.
+
+The stack includes RURU-117's final canonical-feed and recovery fixes and the
+qualified test-harness graceful store shutdown. Review additionally propagated
+RURU-102's discovery admission and full-duration provider cooldown correction;
+its production and regression changes are separately signed. Later integration
+qualification is appended below rather than attributed to the earlier full run.
+
+Final integration source `a975887f` retains the full-duration clock repair and
+cold direct-admission guard. The first clock integration passed the complete
+collaboration suite (853 test executions, five helper ignores). Its later direct
+admission delta passes all 16 clock-lifecycle controls. Explicit feature-enabled
+qualification caught an integration-only performance fixture initializer missing
+`native_inbox: None`; signed `f7997203` supplies that absent synthetic field.
+All 21 feature-harness cases then pass. The inherited Windows credential-startup
+handshake passes all 14 crash parent cases (one helper ignored), and the bounded
+revision-driven bootstrap fixture passes all nine runtime_sync integration cases.
+Strict all-target collaboration Clippy with test-harness enabled and full Rust
+formatting pass on the final source.
+
+Evidence: `/tmp/gitru-r130-clock-integration-tests.log`,
+`/tmp/gitru-r130-final-clock.log`, `/tmp/gitru-r130-final-harness.log`,
+`/tmp/gitru-r130-final-credential.log`, `/tmp/gitru-r130-final-sync.log` and
+`/tmp/gitru-r130-final-sync-clippy.log`. The subsequent documentation commit
+changes no measured code. No live provider mutation, personal credential or
+platform vault was used; remote CI starts separately after draft publication.

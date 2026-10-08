@@ -2455,3 +2455,26 @@ IPC contains 142 commands/446 schemas. The independent native review and pause
 eligibility repair are recorded in [the work note](./collaboration-work/RURU-117.md).
 Remote CI is pending publication; live provider and vault qualification remain
 separate. No PR has been merged.
+
+
+### RURU-130 provider inbox actions — 8 October 2026
+
+Implemented GitHub mark-read and GitLab mark-done as explicit native operations,
+separate from Gitru-local disposition. The saved notification/action descriptor
+binds exact identity, account/view and activity. Explicit best-effort consent
+acknowledges that newer activity can race these unfenced provider endpoints.
+Unsupported actions never dispatch; unknown delivery only reconciles by read.
+GitLab preflight/reconciliation uses one project-filtered page of 100 todos and
+never infers completion from an absent row. Canonical receipt publication updates
+provider evidence, effective rows and counts coherently.
+
+The review base `ruru/ruru-130-dependencies` at `e813547` combines RURU-117 and
+RURU-127. Full local `make verify` at `363aeaaf` passes 778 frontend cases/one
+skip and 1,273 Rust executions/seven helper ignores, lint/types/build/fmt and
+strict workspace Clippy. Later qualified source `a975887f` includes the shared
+clock and fixture repairs: 853 collaboration test executions/five helper ignores
+on the first clock integration, then 16 clock-lifecycle, 21 feature-harness,
+14 credential-crash and nine runtime_sync cases with strict feature Clippy.
+Generated IPC is 144 commands/459 schemas. Exact scope, logs and limitations are
+in [the work note](./collaboration-work/RURU-130.md). Remote CI and live provider
+validation remain separate; no PR has been merged.
