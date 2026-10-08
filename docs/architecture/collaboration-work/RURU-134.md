@@ -192,3 +192,9 @@ or packaged execution. No PR is merged.
 The separate feature-enabled native harness passes all 21 cases on the same
 product source, with strict all-target collaboration Clippy under `test-harness`.
 These synthetic native results do not add a packaged GUI or live-vault claim.
+
+
+The platform-test job also consumes R130's diagnosed45→60-minute CI budget
+repair: Windows job113090183418 passed both Rust test steps before its cache
+upload was cancelled at the old job boundary. This workflow-only delta changes
+no test/assertion/retry behavior; source qualification above remains unchanged.
