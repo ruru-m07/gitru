@@ -26,6 +26,9 @@ const textEdits = await Bun.file(
 const workflowState = await Bun.file(
   new URL("crates/collaboration/src/workflow_state.rs", root),
 ).text();
+const labelSets = await Bun.file(
+  new URL("crates/collaboration/src/label_sets.rs", root),
+).text();
 const commentSend = await Bun.file(
   new URL("crates/collaboration/src/comment_send.rs", root),
 ).text();
@@ -370,6 +373,7 @@ for (const source of [
   commandRecovery,
   textEdits,
   workflowState,
+  labelSets,
   commentSend,
   issueCreation,
   providerInboxActions,
@@ -510,6 +514,55 @@ generated = generated.replace(
   `$1.superRefine((request, context) => {
   if (!request.accept_best_effort) {
     context.addIssue({ code: "custom", path: ["accept_best_effort"], message: "Workflow-state changes require explicit best-effort acceptance" });
+  }
+});`,
+);
+const labelIdentitySchema =
+  /(export const LabelIdentitySchema = z\.object\(\{[\s\S]*?\n\}\));/;
+if (!labelIdentitySchema.test(generated))
+  throw new Error("Missing generated label identity schema");
+generated = generated.replace(
+  labelIdentitySchema,
+  `$1.superRefine((label, context) => {
+  const canonicalId = /^[1-9][0-9]{0,19}$/.test(label.provider_id) && BigInt(label.provider_id) <= 18446744073709551615n;
+  const nameBytes = new TextEncoder().encode(label.name).length;
+  const canonicalName = label.name.trim() === label.name && nameBytes > 0 && nameBytes <= 1024 && label.name !== "." && label.name !== ".." && !/[\\u0000-\\u001f\\u007f]/u.test(label.name);
+  const canonicalColor = label.color === null || /^[0-9a-f]{6}$/.test(label.color);
+  if (!canonicalId || !canonicalName || !canonicalColor) {
+    context.addIssue({ code: "custom", path: ["provider_id"], message: "Label identity must use canonical provider ID, name, and color evidence" });
+  }
+});`,
+);
+const labelSetSnapshotSchema =
+  /(export const LabelSetSnapshotSchema = z\.object\(\{[\s\S]*?\n\}\));/;
+if (!labelSetSnapshotSchema.test(generated))
+  throw new Error("Missing generated label-set snapshot schema");
+generated = generated.replace(
+  labelSetSnapshotSchema,
+  `$1.superRefine((snapshot, context) => {
+  const available = snapshot.availability === "available";
+  const availableShape = snapshot.context !== null && snapshot.reason === null && snapshot.pending_intent === null;
+  const unavailableShape = snapshot.context === null && snapshot.reason !== null;
+  const pendingMatches = (snapshot.reason === "pending_intent") === (snapshot.pending_intent !== null);
+  const bounded = snapshot.canonical_labels.length <= 100 && snapshot.effective_labels.length <= 100 && snapshot.available_labels.length <= 100;
+  if ((available && !availableShape) || (!available && !unavailableShape) || !pendingMatches || !bounded || snapshot.catalog_complete) {
+    context.addIssue({ code: "custom", path: ["availability"], message: "Label availability and bounded local evidence must agree" });
+  }
+});`,
+);
+const labelSetRequestSchema =
+  /(export const LabelSetRequestSchema = z\.object\(\{[\s\S]*?\n\}\));/;
+if (!labelSetRequestSchema.test(generated))
+  throw new Error("Missing generated label-set request schema");
+generated = generated.replace(
+  labelSetRequestSchema,
+  `$1.superRefine((request, context) => {
+  const touched = request.add_labels.length + request.remove_labels.length;
+  const all = [...request.add_labels, ...request.remove_labels];
+  const ids = new Set(all.map((label) => label.provider_id));
+  const names = new Set(all.map((label) => label.name.toLowerCase()));
+  if (!request.accept_best_effort || touched === 0 || touched > 32 || ids.size !== touched || names.size !== touched) {
+    context.addIssue({ code: "custom", path: ["accept_best_effort"], message: "Label changes require explicit best-effort acceptance and a bounded non-empty delta" });
   }
 });`,
 );

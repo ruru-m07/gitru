@@ -41,6 +41,10 @@ import {
   type ItemPage,
   type ItemQuery,
   type ItemSnapshot,
+  type LabelSetContext,
+  type LabelSetReceipt,
+  type LabelSetRequest,
+  type LabelSetSnapshot,
   type LoadLocalPullFileRequest,
   type LocalCloneRequest,
   type LocalCloneSnapshot,
@@ -138,6 +142,11 @@ export interface CollaborationTransport extends DemandTransport {
   submitWorkflowState(
     request: WorkflowStateRequest,
   ): Promise<WorkflowStateReceipt>;
+  labelSetSnapshot(
+    accountId: string,
+    subjectId: string,
+  ): Promise<LabelSetSnapshot>;
+  submitLabelSet(request: LabelSetRequest): Promise<LabelSetReceipt>;
   commentDraft(
     accountId: string,
     subjectId: string,
@@ -270,6 +279,13 @@ export const collaborationKeys = {
       ...collaborationKeys.account(account.id),
       account.authorization_epoch,
       "workflow-state",
+      subjectId,
+    ] as const,
+  labelSet: (account: RemoteAccount, subjectId: string) =>
+    [
+      ...collaborationKeys.account(account.id),
+      account.authorization_epoch,
+      "label-set",
       subjectId,
     ] as const,
   commentDraft: (account: RemoteAccount, subjectId: string) =>
@@ -591,6 +607,14 @@ export class CollaborationClient {
         throw new StaleAuthorizationError();
       return { ...context };
     };
+    const reviewedLabelSetContext = (context: LabelSetContext) => {
+      if (
+        context.account_id !== account.id ||
+        context.authorization_epoch !== account.authorization_epoch
+      )
+        throw new StaleAuthorizationError();
+      return { ...context };
+    };
     const reviewedCommentSendContext = (context: CommentSendContext) => {
       if (
         context.account_id !== account.id ||
@@ -757,6 +781,41 @@ export class CollaborationClient {
         const context = reviewedWorkflowStateContext(request.context);
         const receipt = await this.fence.read(account.id, () =>
           this.transport.submitWorkflowState({ ...request, context }),
+        );
+        if (
+          receipt.account_id !== account.id ||
+          receipt.command_id !== request.command_id
+        )
+          throw new StaleAuthorizationError();
+        return receipt;
+      },
+      labelSetSnapshot: async (subjectId: string, signal?: AbortSignal) => {
+        const snapshot = await this.fence.read(
+          account.id,
+          () => this.transport.labelSetSnapshot(account.id, subjectId),
+          signal,
+        );
+        if (
+          snapshot.context !== null &&
+          (snapshot.context.account_id !== account.id ||
+            snapshot.context.subject_id !== subjectId ||
+            snapshot.context.authorization_epoch !==
+              account.authorization_epoch ||
+            snapshot.context.authorization_view !== snapshot.authorization_view)
+        )
+          throw new StaleAuthorizationError();
+        this.acceptSnapshot(snapshot);
+        return snapshot;
+      },
+      submitLabelSet: async (request: LabelSetRequest) => {
+        const context = reviewedLabelSetContext(request.context);
+        const receipt = await this.fence.read(account.id, () =>
+          this.transport.submitLabelSet({
+            ...request,
+            context,
+            add_labels: request.add_labels.map((label) => ({ ...label })),
+            remove_labels: request.remove_labels.map((label) => ({ ...label })),
+          }),
         );
         if (
           receipt.account_id !== account.id ||
@@ -1512,6 +1571,7 @@ function projectionAffected(key: readonly unknown[], scope: string) {
     const subject = scope.slice("effective:".length);
     if (projection === "text-edit") return key[5] === subject;
     if (projection === "workflow-state") return key[5] === subject;
+    if (projection === "label-set") return key[5] === subject;
     if (projection === "detail") {
       const query = key[5] as DetailQuery;
       return query.subject_id === subject && query.facet === "body";
@@ -1547,6 +1607,16 @@ function projectionAffected(key: readonly unknown[], scope: string) {
     );
   }
   if (projection === "workflow-state") {
+    const subject = key[5];
+    return (
+      scope === "commands" ||
+      scope === "repositories" ||
+      scope.startsWith("repo:") ||
+      scope === `effective:${subject}` ||
+      scope === `detail:${subject}:body`
+    );
+  }
+  if (projection === "label-set") {
     const subject = key[5];
     return (
       scope === "commands" ||

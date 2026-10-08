@@ -96,6 +96,8 @@ function fixture() {
     submitTextEdit: unexpected,
     workflowStateSnapshot: unexpected,
     submitWorkflowState: unexpected,
+    labelSetSnapshot: unexpected,
+    submitLabelSet: unexpected,
     commentDraft: unexpected,
     commentDrafts: unexpected,
     saveCommentDraft: unexpected,

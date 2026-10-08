@@ -22,6 +22,8 @@ mod comment_send;
 pub use comment_send::*;
 mod issue_creation;
 pub use issue_creation::*;
+mod label_sets;
+pub use label_sets::*;
 mod text_edits;
 pub use text_edits::*;
 mod workflow_state;
@@ -70,6 +72,7 @@ pub(super) enum Operation {
     CommandRecovery,
     CommentSend,
     IssueCreation,
+    LabelSet,
     TextEdit,
     WorkflowState,
     ProviderInboxAction,
@@ -637,6 +640,7 @@ mod tests {
         Operation::ExportDraft,
         Operation::CommentSend,
         Operation::IssueCreation,
+        Operation::LabelSet,
         Operation::TextEdit,
         Operation::WorkflowState,
         Operation::ProviderInboxAction,

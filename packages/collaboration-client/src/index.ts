@@ -35,6 +35,7 @@ import {
   collaborationIssueDrafts,
   collaborationItem,
   collaborationItems,
+  collaborationLabelSetSnapshot,
   collaborationLoadLocalPullFile,
   collaborationLocalClones,
   collaborationLocalLinks,
@@ -61,6 +62,7 @@ import {
   collaborationSendComment,
   collaborationSetLocalInboxState,
   collaborationSubmitIssue,
+  collaborationSubmitLabelSet,
   collaborationSubmitTextEdit,
   collaborationSubmitWorkflowState,
   collaborationTextEditSnapshot,
@@ -148,6 +150,11 @@ export type {
   IssueSubmissionReceipt,
   IssueSubmissionStatus,
   ItemQuery,
+  LabelIdentity,
+  LabelSetContext,
+  LabelSetReceipt,
+  LabelSetRequest,
+  LabelSetSnapshot,
   LoadLocalPullFileRequest,
   LocalCloneRecord,
   LocalCloneSnapshot,
@@ -283,6 +290,11 @@ export type WorkflowStateAvailability =
 export type WorkflowStateReason = NonNullable<
   import("@gitru/commands").WorkflowStateSnapshot["reason"]
 >;
+export type LabelSetAvailability =
+  import("@gitru/commands").LabelSetSnapshot["availability"];
+export type LabelSetReason = NonNullable<
+  import("@gitru/commands").LabelSetSnapshot["reason"]
+>;
 export type CommentSendAvailability =
   import("@gitru/commands").CommentDraftSnapshot["availability"];
 export type CommentSendReason = NonNullable<
@@ -314,6 +326,9 @@ export const collaboration = new CollaborationClient({
     collaborationWorkflowStateSnapshot({ accountId, subjectId }),
   submitWorkflowState: (request) =>
     collaborationSubmitWorkflowState({ request }),
+  labelSetSnapshot: (accountId, subjectId) =>
+    collaborationLabelSetSnapshot({ accountId, subjectId }),
+  submitLabelSet: (request) => collaborationSubmitLabelSet({ request }),
   commentDraft: (accountId, subjectId) =>
     collaborationCommentDraft({ accountId, subjectId }),
   commentDrafts: (query) => collaborationCommentDrafts({ query }),

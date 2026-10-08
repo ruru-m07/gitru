@@ -14,6 +14,7 @@ import type {
   IssueDraftQuery,
   IssueDraftSnapshot,
   ItemQuery,
+  LabelSetSnapshot,
   PullCommitQuery,
   PullFileDiffRequest,
   PullFileQuery,
@@ -103,6 +104,19 @@ export function workflowStateQueryOptions(
       collaboration
         .forAccount(account)
         .workflowStateSnapshot(subjectId, signal),
+  });
+}
+
+/** Cache-only label membership and bounded saved label choices. */
+export function labelSetQueryOptions(
+  account: RemoteAccount,
+  subjectId: string,
+) {
+  return queryOptions<LabelSetSnapshot>({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.labelSet(account, subjectId),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).labelSetSnapshot(subjectId, signal),
   });
 }
 
