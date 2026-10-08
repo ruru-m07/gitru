@@ -1170,6 +1170,7 @@ export class CollaborationClient {
       queryKey: ["collaboration", "local-links"],
     });
     this.fence.invalidate(accountId);
+    this.redactCommentDraftAuthority(collaborationKeys.account(accountId));
     this.refreshAuthoredDrafts(collaborationKeys.account(accountId));
     this.queryClient?.removeQueries({
       queryKey: collaborationKeys.account(accountId),
@@ -1182,6 +1183,7 @@ export class CollaborationClient {
     this.demands.clear();
     this.fence.invalidate();
     this.authorizationView = null;
+    this.redactCommentDraftAuthority(collaborationKeys.all);
     // Authored text belongs to the local actor partition, independent of a
     // provider grant. Keep an open editor intact while clearing remote data.
     this.refreshAuthoredDrafts(collaborationKeys.all);
@@ -1190,6 +1192,23 @@ export class CollaborationClient {
       predicate: (query) => !isAuthoredDraft(query.queryKey),
     });
     this.publish();
+  }
+
+  private redactCommentDraftAuthority(queryKey: readonly unknown[]) {
+    const cache = this.queryClient;
+    if (!cache) return;
+    for (const query of cache.getQueryCache().findAll({ queryKey })) {
+      if (query.queryKey[4] !== "comment-draft") continue;
+      cache.setQueryData<CommentDraftSnapshot>(query.queryKey, (snapshot) => {
+        if (!snapshot) return snapshot;
+        return {
+          ...snapshot,
+          context: null,
+          availability: "unavailable",
+          reason: "account_unavailable",
+        };
+      });
+    }
   }
 
   private refreshAuthoredDrafts(queryKey: readonly unknown[]) {
