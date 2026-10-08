@@ -859,7 +859,7 @@ INSERT INTO cache_retention_entries VALUES('a','pull','comments',123,2);").execu
             .fetch_one(&mut db)
             .await
             .unwrap(),
-        23
+        24
     );
     db.close().await.unwrap();
 }
