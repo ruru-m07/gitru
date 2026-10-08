@@ -12,6 +12,7 @@ impl CollaborationRuntime {
         &self,
         request: TextEditRequest,
     ) -> Result<TextEditReceipt, CollaborationError> {
+        crate::text_edits::native::validate_request(&request)?;
         self.owned_operation(move |runtime| async move {
             let _lifecycle = runtime.lifecycle.lock().await;
             let account = runtime.active_account(&request.context.account_id).await?;
