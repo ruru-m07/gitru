@@ -26,6 +26,7 @@ impl CommandAdmissionPolicy for Admission {
         {
             return Err(stale());
         }
+        super::issue_metadata::require_empty_in(tx, &account.id, &p.request.draft_id).await?;
         let old = draft_in(
             tx,
             &account.id,
@@ -98,7 +99,14 @@ pub(crate) async fn capture_in(
             .map_err(storage_error)?
             .ok_or_else(stale)?;
     let mut repository: RemoteRepository = decode(&json)?;
-    if !repository.selected {
+    let selected: bool =
+        sqlx::query_scalar("SELECT selected FROM repositories WHERE account_id=? AND id=?")
+            .bind(&a.id)
+            .bind(repo)
+            .fetch_one(&mut **tx)
+            .await
+            .map_err(storage_error)?;
+    if !selected {
         return Err(stale());
     }
     repository.description = None;
@@ -119,7 +127,7 @@ pub(crate) async fn validate_frame_in(
     }
     Ok(())
 }
-async fn draft_in(
+pub(crate) async fn draft_in(
     tx: &mut Transaction<'_, Sqlite>,
     account: &str,
     draft: &str,
@@ -132,7 +140,7 @@ async fn draft_in(
         None => Ok((String::new(), String::new(), 0)),
     }
 }
-async fn submission_in(
+pub(crate) async fn submission_in(
     tx: &mut Transaction<'_, Sqlite>,
     account: &str,
     draft: &str,
@@ -148,7 +156,7 @@ async fn submission_in(
         attention: r.get("attention"),
     }))
 }
-async fn snapshot_in(
+pub(crate) async fn snapshot_in(
     tx: &mut Transaction<'_, Sqlite>,
     a: &RemoteAccount,
     key: &IssueDraftKey,
@@ -267,6 +275,7 @@ impl Store {
         if a.authorization_epoch != r.authorization_epoch || view != r.authorization_view {
             return Err(stale());
         }
+        super::issue_metadata::require_empty_in(&mut tx, &r.account_id, &r.draft_id).await?;
         let old = draft_in(&mut tx, &r.account_id, &r.draft_id, &r.repository_id).await?;
         let expected = n::revision(&r.expected_generation, false)?;
         if old.2 != expected {

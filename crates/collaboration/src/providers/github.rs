@@ -17,6 +17,7 @@ mod files;
 pub(crate) mod guarded_merge;
 mod issue_details;
 mod issue_metadata;
+pub(crate) mod issue_metadata_delivery;
 mod notification_subject_discovery;
 pub mod notification_subjects;
 mod pull_details;

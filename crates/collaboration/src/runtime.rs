@@ -96,6 +96,10 @@ macro_rules! credential_boundary {
 
 #[derive(Clone)]
 enum JobKind {
+    RepositoryMetadata {
+        repository_id: String,
+        kind: crate::IssueMetadataKind,
+    },
     PullFileArtifact {
         request: Box<PullFileDiffRequest>,
     },
@@ -1170,6 +1174,13 @@ impl CollaborationRuntime {
         }
         let diagnostic_started = Instant::now();
         let result = match job.kind.clone() {
+            JobKind::RepositoryMetadata {
+                repository_id,
+                kind,
+            } => {
+                self.sync_issue_metadata(&mut job, &repository_id, kind)
+                    .await
+            }
             JobKind::PullFileArtifact { request } => {
                 self.sync_pull_file_artifact(&mut job, *request).await
             }
@@ -1219,6 +1230,7 @@ impl CollaborationRuntime {
         let interested = scheduler.demands.interested(&job);
         let explicit = scheduler.explicit_keys.contains(&job.key);
         let page_limit = match job.kind {
+            JobKind::RepositoryMetadata { .. } => 20,
             JobKind::Detail {
                 facet: DetailFacet::Commits,
                 ..
@@ -1658,5 +1670,8 @@ pub(crate) mod credential_crash_tests;
 mod gitlab_reviews_tests;
 
 mod issue_creation;
+mod issue_metadata;
+#[cfg(test)]
+mod issue_metadata_tests;
 mod pull_creation;
 mod workflow_state;

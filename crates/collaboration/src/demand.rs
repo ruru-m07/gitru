@@ -10,6 +10,9 @@ pub enum DemandTargetKind {
     PullRequests,
     Issues,
     Detail,
+    RepositoryLabels,
+    RepositoryAssignees,
+    RepositoryMilestones,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

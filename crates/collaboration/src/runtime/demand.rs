@@ -80,6 +80,16 @@ impl Demands {
                             job.repository.as_ref().is_some_and(|repo| &repo.id == id)
                         })
                     }
+                    (
+                        target,
+                        JobKind::RepositoryMetadata {
+                            repository_id,
+                            kind,
+                        },
+                    ) => {
+                        issue_metadata::metadata_kind(target) == Some(*kind)
+                            && lease.target.repository_id.as_ref() == Some(repository_id)
+                    }
                     (DemandTargetKind::Detail, JobKind::Detail { subject_id, facet }) => {
                         lease.target.subject_id.as_ref() == Some(subject_id)
                             && lease.target.facet == Some(*facet)
@@ -120,6 +130,15 @@ impl CollaborationRuntime {
         drop(scheduler);
         if automatic {
             let target = match &job.kind {
+                JobKind::RepositoryMetadata {
+                    repository_id,
+                    kind,
+                } => DemandTarget {
+                    kind: issue_metadata::demand_kind(*kind),
+                    repository_id: Some(repository_id.clone()),
+                    subject_id: None,
+                    facet: None,
+                },
                 JobKind::NotificationSubject { .. } => return Err(stale()),
                 JobKind::PullFileArtifact { request } => DemandTarget {
                     kind: DemandTargetKind::Detail,
@@ -269,6 +288,21 @@ impl CollaborationRuntime {
             }
             let target = lease.target;
             let jobs = match target.kind {
+                DemandTargetKind::RepositoryLabels
+                | DemandTargetKind::RepositoryAssignees
+                | DemandTargetKind::RepositoryMilestones => {
+                    let kind = issue_metadata::metadata_kind(target.kind).ok_or_else(stale)?;
+                    let repo = target.repository_id.ok_or_else(stale)?;
+                    let repository = self.store.repository(&lease.account.id, &repo).await?;
+                    vec![(
+                        Some(repository),
+                        JobKind::RepositoryMetadata {
+                            repository_id: repo.clone(),
+                            kind,
+                        },
+                        issue_metadata::scope(&repo, kind),
+                    )]
+                }
                 DemandTargetKind::Detail => {
                     let subject_id = target.subject_id.ok_or_else(stale)?;
                     let facet = target.facet.ok_or_else(stale)?;
@@ -599,6 +633,13 @@ impl CollaborationRuntime {
             }
         }
         let shape = match target.kind {
+            DemandTargetKind::RepositoryLabels
+            | DemandTargetKind::RepositoryAssignees
+            | DemandTargetKind::RepositoryMilestones => {
+                target.repository_id.is_some()
+                    && target.subject_id.is_none()
+                    && target.facet.is_none()
+            }
             DemandTargetKind::Repositories | DemandTargetKind::Inbox => {
                 target.repository_id.is_none()
                     && target.subject_id.is_none()
@@ -621,6 +662,22 @@ impl CollaborationRuntime {
         let account = self.active_account(account_id).await?;
         if account.authorization_epoch != epoch {
             return Err(stale());
+        }
+        if let Some(kind) = issue_metadata::metadata_kind(target.kind) {
+            if account.provider != ProviderKind::Github || account.host != "github.com" {
+                return Err(unsupported());
+            }
+            self.store
+                .issue_metadata_options(crate::IssueMetadataQuery {
+                    account_id: account.id.clone(),
+                    repository_id: target.repository_id.clone().ok_or_else(stale)?,
+                    kind,
+                    search: String::new(),
+                    cursor: None,
+                    limit: 1,
+                })
+                .await?;
+            return Ok(account);
         }
         let instance = self.store.provider_instance(account_id).await?;
         let (context_target, facet) = match target.kind {
@@ -652,7 +709,10 @@ impl CollaborationRuntime {
                     DemandTargetKind::Inbox => ResourceFacet::Inbox,
                     DemandTargetKind::PullRequests => ResourceFacet::PullRequests,
                     DemandTargetKind::Issues => ResourceFacet::Issues,
-                    DemandTargetKind::Detail => unreachable!(),
+                    DemandTargetKind::Detail
+                    | DemandTargetKind::RepositoryLabels
+                    | DemandTargetKind::RepositoryAssignees
+                    | DemandTargetKind::RepositoryMilestones => unreachable!(),
                 };
                 (
                     if let Some(repository_id) = &target.repository_id {

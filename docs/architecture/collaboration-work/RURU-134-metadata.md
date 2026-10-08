@@ -291,3 +291,65 @@ A `CatalogLease` carries the native provider request plus accepted page count;
 Cold-open cleanup retires Syncing while preserving valid resumable checkpoints.
 Synthetic SQLite3.54 applied all25 DDL files with an empty foreign-key check;
 Rust migration, restoration, quota and runtime integration checks remain pending.
+
+### Native integration checkpoint
+
+The six commands now have functional native implementations. Authored metadata
+uses the parent draft's CAS generation and a frozen selection carrier; v1 saves
+and new v1 sends reject nonempty v2 selections instead of dropping them. Current
+context hashes title/body/metadata, generation, account actor/epoch and repository
+identity. An exact admitted UUID returns its existing durable receipt. Editing a
+draft cannot bypass a pending or uncertain submission.
+
+The version2 delivery policy performs repository permission plus every selected
+label, numeric assignee identity and assignability, and milestone point read as
+separate native turns. At the product maxima this is54 reads, bounded by the
+shared64-step/120-second preparation contract. Label archive status omitted by
+the pinned API remains Unknown; an explicit archived label, closed milestone,
+changed identity/name or missing metadata permission prevents a POST. The exact
+zero-attempt `github.issue_creation_declined` version2 proof records that refusal.
+A decline does not prove a remote outcome. Recovery cannot replace the operation;
+a never-attempted command may be cancelled through existing controls.
+
+The final claim rechecks native account/repository/context and encoded receipt
+budget under the writer. Only the authenticated strict201 core confirms creation.
+Optional returned fields yield Applied, Different or Unobserved independently;
+there is no second POST or automatic PATCH. The receipt retains selected-ID
+membership rather than claiming a complete label/assignee set. Canonical cache
+publication therefore marks those optional collections Omitted and retains normal
+provider refresh authority. Created identity and the historical metadata outcome
+bind the same immutable confirmed command. Both are hidden when provider access
+retires; authored selections remain local.
+
+Catalogs use the existing fair read scheduler, one page per turn and at most20
+pages per traversal. Reads are local; visible leased demand and explicit refresh
+admit network work. Cold continuation resumes exact native generation/cursor.
+Budget is checked before and after vault access; observed quota is persisted
+before another page. Captured binding includes actor/provider/host plus immutable
+repository ID and path. Each lease also carries catalog revision, so a later
+same-epoch denial, eviction or cold cleanup retires an older held page. Terminal
+local eviction preserves traversal completion but marks freshness stale. Repository
+deselection removes only catalog caches and prevents ABA resurrection. The shared
+issue-creation capture now checks the canonical selected column instead of stale
+repository JSON.
+
+Current local evidence:47 metadata controls pass across the focused runs
+(26 frozen codec/HTTP controls,11 SQLite catalog controls, seven
+authored/delivery/publication controls and three
+actual runtime catalog controls). These cover independent global-revision paging,
+bounded retention, denial/view/epoch/binding fences, cold continuation, offline
+CAS, v1 refusal, uncertain201, optional-field differences, no work for local reads,
+hidden-owner termination, persisted quota and held-response deselection. The
+maximum-selection control observes all54 point reads followed by exactly one
+POST; the escaped-body control refuses encoded-budget overflow before any outbox
+admission while retaining authored text. The initial maximum-selection fixture
+served numeric-ID order instead of the frozen payload's lexicographic order;
+the adapter correctly refused it, and correcting only that fixture produced the
+seven-case authored/delivery pass. The final three runtime controls also pass;
+the successful depleted page persists RateLimited rather than leaving the catalog
+indefinitely Syncing while continuation waits. Strict collaboration Clippy passes
+with all targets/features; its initial two collapsible-if diagnostics were fixed
+without changing behavior. The complete workspace gate remains pending at this
+checkpoint. One
+intermediate compile saw the recovery module declaration before its concurrently
+owned source file existed; it was an integration checkpoint, not a runtime fault.

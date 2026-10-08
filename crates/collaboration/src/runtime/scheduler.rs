@@ -37,7 +37,8 @@ impl Scheduler {
         }
         if !matches!(
             kind,
-            JobKind::Detail { .. }
+            JobKind::RepositoryMetadata { .. }
+                | JobKind::Detail { .. }
                 | JobKind::PullFileArtifact { .. }
                 | JobKind::NotificationSubject { .. }
         ) {
@@ -173,7 +174,8 @@ impl Scheduler {
                     && self.interactive(job)
                     && matches!(
                         job.kind,
-                        JobKind::Detail { .. }
+                        JobKind::RepositoryMetadata { .. }
+                            | JobKind::Detail { .. }
                             | JobKind::PullFileArtifact { .. }
                             | JobKind::NotificationSubject { .. }
                     )
@@ -189,7 +191,8 @@ impl Scheduler {
                 && (!interactive
                     || matches!(
                         job.kind,
-                        JobKind::Detail { .. }
+                        JobKind::RepositoryMetadata { .. }
+                            | JobKind::Detail { .. }
                             | JobKind::PullFileArtifact { .. }
                             | JobKind::NotificationSubject { .. }
                     ) == detail)
@@ -425,6 +428,27 @@ impl CollaborationRuntime {
             return Ok(cached.unwrap_or_else(|| self.now()));
         }
         let seconds = match kind {
+            JobKind::RepositoryMetadata {
+                repository_id,
+                kind,
+            } => {
+                let page = self
+                    .store
+                    .issue_metadata_options(crate::IssueMetadataQuery {
+                        account_id: account.id.clone(),
+                        repository_id: repository_id.clone(),
+                        kind: *kind,
+                        search: String::new(),
+                        cursor: None,
+                        limit: 1,
+                    })
+                    .await?;
+                return Ok(if page.freshness != DetailFreshness::Fresh {
+                    cached.unwrap_or_else(|| self.now())
+                } else {
+                    cached.unwrap_or_else(|| self.deadline_after(300))
+                });
+            }
             JobKind::NotificationSubject { .. } => return Ok(self.now()),
             JobKind::PullFileArtifact { request } => {
                 let artifact = self.store.pull_file_artifact((**request).clone()).await?;

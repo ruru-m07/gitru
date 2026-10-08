@@ -192,6 +192,7 @@ impl Store {
             })?;
             pull_commits::cleanup_abandoned_in(&mut *writer).await?;
             pull_files::cleanup_abandoned_in(&mut *writer).await?;
+            issue_metadata_catalog::cleanup_abandoned_in(&mut *writer).await?;
             secure_database_files(path)?;
             let readers = SqlitePoolOptions::new()
                 .max_connections(3)
@@ -642,6 +643,14 @@ impl Store {
             return Err(not_found());
         }
         if !selected {
+            sqlx::query(
+                "DELETE FROM repository_metadata_catalogs WHERE account_id=? AND repository_id=?",
+            )
+            .bind(account_id)
+            .bind(repository_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(storage_error)?;
             // Invalidates responses already in flight even when credentials did
             // not change. Cached observations remain available for re-selection.
             for kind in [RemoteItemKind::PullRequest, RemoteItemKind::Issue] {
@@ -2097,10 +2106,14 @@ fn push_item_predicates(sql: &mut sqlx::QueryBuilder<Sqlite>, query: &ItemQuery)
 }
 
 pub(crate) mod issue_creation;
+pub(crate) mod issue_metadata;
+pub(crate) mod issue_metadata_catalog;
 pub(crate) mod pull_creation;
 
 #[cfg(test)]
 mod issue_creation_tests;
+#[cfg(test)]
+mod issue_metadata_tests;
 pub(crate) mod workflow_state;
 
 #[cfg(test)]

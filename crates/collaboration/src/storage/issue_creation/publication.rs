@@ -73,7 +73,7 @@ pub(crate) async fn publish_in(
     {
         return Err(stale());
     }
-    let permitted: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM commands WHERE account_id=? AND command_id=? AND target_kind='repository' AND target_id=? AND operation_kind='github.create_issue' AND payload_version=1 AND CAST(authorization_epoch AS TEXT)=?) AND NOT EXISTS(SELECT 1 FROM sync_scopes WHERE account_id=? AND scope IN (?,?) AND access_denied=1)")
+    let permitted: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM commands WHERE account_id=? AND command_id=? AND target_kind='repository' AND target_id=? AND operation_kind='github.create_issue' AND payload_version IN(1,2) AND CAST(authorization_epoch AS TEXT)=?) AND NOT EXISTS(SELECT 1 FROM sync_scopes WHERE account_id=? AND scope IN (?,?) AND access_denied=1)")
         .bind(&account.id).bind(command_id).bind(&repository.id).bind(&account.authorization_epoch)
         .bind(&account.id).bind(&scope).bind(DetailFacet::Body.scope(&item.id))
         .fetch_one(&mut **tx).await.map_err(storage_error)?;

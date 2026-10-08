@@ -366,9 +366,7 @@ impl GithubProvider {
     }
 }
 
-#[allow(dead_code, reason = "receipt2 integration follows qualified schema24")]
 pub(crate) mod observations;
-#[allow(dead_code, reason = "receipt2 integration follows qualified schema24")]
 pub(crate) mod receipt;
 #[cfg(test)]
 mod tests;

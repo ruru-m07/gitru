@@ -1,8 +1,4 @@
 //! Frozen github.create_issue payload2 carriers; v1 remains in issue_creation.
-#![allow(
-    dead_code,
-    reason = "v2 delivery is gated on the qualified schema24 prerequisite"
-)]
 use super::*;
 use crate::{
     CollaborationError,
@@ -622,4 +618,36 @@ pub(crate) fn validate_receipt_budget(p: &PayloadV2, preparation: &PreparationV2
         ));
     }
     Ok(())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum DeclineReasonV2 {
+    MetadataPermission,
+    SelectionUnavailable,
+    SelectionChanged,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DeclinedV2 {
+    pub frame: FrameV2,
+    pub actor: String,
+    pub epoch: String,
+    pub command_hash: String,
+    pub reason: DeclineReasonV2,
+}
+pub(crate) fn declined_matches(e: &DeclinedV2, p: &PayloadV2) -> bool {
+    // Validate the sealed identity without claiming that the declined selection was
+    // ever revalidated. A decline authorizes no attempt and has no remote outcome.
+    preparation_matches(
+        &PreparationV2 {
+            frame: e.frame.clone(),
+            actor: e.actor.clone(),
+            epoch: e.epoch.clone(),
+            command_hash: e.command_hash.clone(),
+            revalidated_metadata: p.metadata.clone(),
+            metadata_push_access: Some(true),
+        },
+        p,
+    )
 }

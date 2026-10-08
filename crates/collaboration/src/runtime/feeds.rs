@@ -5,7 +5,9 @@ impl CollaborationRuntime {
     pub(super) async fn sync_feed_page(&self, job: &mut Job) -> Result<bool, CollaborationError> {
         self.ensure_demand_dispatch(job).await?;
         let kind = match &job.kind {
-            JobKind::NotificationSubject { .. } | JobKind::PullFileArtifact { .. } => {
+            JobKind::RepositoryMetadata { .. }
+            | JobKind::NotificationSubject { .. }
+            | JobKind::PullFileArtifact { .. } => {
                 return Err(unsupported());
             }
             JobKind::Detail { subject_id, facet } => {
