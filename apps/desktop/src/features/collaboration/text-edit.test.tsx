@@ -92,6 +92,9 @@ describe("provider title and description editing", () => {
     );
     const { user } = setup();
     const fields = await openEditor(user);
+    expect(fields.consent).toHaveAccessibleName(
+      /a simultaneous edit may overwrite my change, or my change may overwrite theirs/i,
+    );
     await user.clear(fields.body);
     await user.click(fields.consent);
     await user.click(screen.getByRole("button", { name: "Save and queue" }));

@@ -788,7 +788,7 @@ async fn text_edit_issue_uses_issue_endpoint_and_explicit_empty_string_body() {
         .await
         .unwrap();
     let requests = server.join().unwrap();
-    assert!(requests[1].starts_with("PATCH /repos/owner/project/issues/2 "));
+    assert!(requests[1].starts_with("PATCH /repositories/1/issues/2 "));
     assert!(requests[1].ends_with("{\"body\":\"\"}"));
     assert_eq!(
         store

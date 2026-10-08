@@ -38,7 +38,13 @@ impl GithubTextEditPolicy {
         }
     }
     fn route(frame: &NativeFrame) -> Result<String, ProviderError> {
-        if !valid_repository_path(&frame.repository.full_name)
+        if frame
+            .repository
+            .provider_id
+            .parse::<u64>()
+            .ok()
+            .is_none_or(|id| id == 0 || id.to_string() != frame.repository.provider_id)
+            || !valid_repository_path(&frame.repository.full_name)
             || frame
                 .subject
                 .number
@@ -53,8 +59,8 @@ impl GithubTextEditPolicy {
             _ => return Err(resource_details::invalid()),
         };
         Ok(format!(
-            "repos/{}/{resource}/{}",
-            frame.repository.full_name,
+            "repositories/{}/{resource}/{}",
+            frame.repository.provider_id,
             frame.subject.number.as_deref().unwrap_or("")
         ))
     }

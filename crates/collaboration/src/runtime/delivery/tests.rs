@@ -1465,3 +1465,32 @@ async fn recovery_action_completion_survives_cancelled_caller_and_shutdown_drain
     );
     reopened.close().await.unwrap();
 }
+
+#[tokio::test]
+async fn text_edit_runtime_rejects_unbounded_identity_before_account_lookup() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(dir.path().join("bounded.db")).await.unwrap();
+    let runtime =
+        CollaborationRuntime::new(Arc::new(store), Arc::new(Vault), Arc::new(ReadProvider));
+    for account_id in ["a".repeat(1025), "nul\0account".into()] {
+        let error = runtime
+            .submit_text_edit(crate::TextEditRequest {
+                context: crate::TextEditContext {
+                    account_id,
+                    subject_id: "issue".into(),
+                    authorization_epoch: "1".into(),
+                    authorization_view: "0".into(),
+                    review_token: "a".repeat(64),
+                },
+                command_id: FIRST.into(),
+                accept_best_effort: true,
+                title: Some("New title".into()),
+                body: None,
+            })
+            .await
+            .unwrap_err();
+        // An account lookup on this empty database would instead return NotFound.
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+    }
+    runtime.shutdown().await.unwrap();
+}

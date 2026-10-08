@@ -3672,3 +3672,23 @@ IPC contains 142 commands/446 schemas. The independent native review and pause
 eligibility repair are recorded in [the work note](./collaboration-work/RURU-117.md).
 Remote CI is pending publication; live provider and vault qualification remain
 separate. No PR has been merged.
+
+
+### RURU-129 first GitHub desired-state edit slice — 8 October 2026
+
+The reviewable title/body operation uses cache-only admission, immutable intent,
+explicit best-effort consent, preflight identity/base checks, and durable attempt
+records before native PATCH. Canonical confirmation retires effective projections
+atomically; an unknown response only permits read-only reconciliation. A newer
+head after an attempt does not prevent observing the exact authored values, but
+never establishes command causality or authorizes a repeated mutation. Native
+recovery edits only originally authored fields. GitHub.com issues/PRs are supported;
+state/labels and other-provider writes remain future chunks, so RURU-129 stays In
+Progress despite this reviewable slice.
+
+Full local `make verify` at `17db925` passes 774 frontend tests/one platform skip,
+1,254 Rust executions/seven helper ignores, lint/types/build/fmt and strict Clippy.
+Final `f01b0392` deltas pass 20 text-operation, 14 transport, 21 feature-harness and
+4 UI cases with strict feature-enabled Clippy. Generated IPC: 144 commands/454
+schemas. Details and honest remaining gates are in [the work note](./collaboration-work/RURU-129.md).
+Remote CI begins on publication; live provider/vault validation is unclaimed.
