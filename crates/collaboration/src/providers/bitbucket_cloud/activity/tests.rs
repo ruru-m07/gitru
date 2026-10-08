@@ -1101,3 +1101,32 @@ async fn terminal_cap_still_rejects_repeated_opaque_continuation_with_quota() {
     assert_eq!(failure.account_cooldown_seconds, Some(120));
     assert_eq!(calls.join().unwrap().len(), 20);
 }
+
+#[tokio::test]
+async fn known_parent_destination_must_match_while_unrecognized_families_need_no_parent_shape() {
+    let mut top = event_row("approval", 1);
+    top["pull_request"]["destination"] = json!({"repository":{"uuid":format!("{{{ACTOR}}}")}});
+    let mut nested = event_row("approval", 1);
+    nested["approval"]["pullrequest"]["destination"] =
+        json!({"repository":{"uuid":format!("{{{ACTOR}}}")}});
+    let unknown = json!({"future_family":{"future_parent_shape":[]}});
+    let (provider, calls) = server(|_| {
+        vec![
+            response(200, "Retry-After: 9\r\n", &collection(vec![top], None)),
+            response(200, "Retry-After: 9\r\n", &collection(vec![nested], None)),
+            ok(collection(vec![unknown, event_row("approval", 1)], None)),
+        ]
+    });
+    for _ in 0..2 {
+        let e = provider
+            .fetch_detail(&token(), request())
+            .await
+            .unwrap_err();
+        assert_eq!(e.kind, ProviderErrorKind::InvalidResponse);
+        assert_eq!(e.account_cooldown_seconds, Some(9));
+    }
+    let page = provider.fetch_detail(&token(), request()).await.unwrap();
+    assert_eq!(page.entries.len(), 1);
+    assert_eq!(page.reconciliation, DetailReconciliation::default());
+    assert_eq!(calls.join().unwrap().len(), 3);
+}

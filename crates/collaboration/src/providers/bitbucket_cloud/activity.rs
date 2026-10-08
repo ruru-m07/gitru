@@ -210,10 +210,21 @@ fn body(value: Option<&Value>) -> Result<DetailValue, ProviderError> {
         _ => return Err(invalid()),
     })
 }
-fn pull_identity(value: &Value, pull: u64) -> Result<(), ProviderError> {
+fn pull_identity(value: &Value, repository: &str, pull: u64) -> Result<(), ProviderError> {
     let value = value.as_object().ok_or_else(invalid)?;
     if native_id(value.get("id").ok_or_else(invalid)?)? != pull {
         return Err(invalid());
+    }
+    if let Some(destination) = value.get("destination").filter(|v| !v.is_null()) {
+        let destination = destination.as_object().ok_or_else(invalid)?;
+        if let Some(target) = destination.get("repository").filter(|v| !v.is_null()) {
+            let target = target.as_object().ok_or_else(invalid)?;
+            if let Some(uuid) = target.get("uuid") {
+                if canonical_uuid(uuid.as_str().ok_or_else(invalid)?)? != repository {
+                    return Err(invalid());
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -265,7 +276,6 @@ fn activity(
     repository: &str,
     pull: u64,
 ) -> Result<Option<DetailEntry>, ProviderError> {
-    pull_identity(row.get("pull_request").ok_or_else(invalid)?, pull)?;
     let families: Vec<_> = ["comment", "update", "approval", "changes_requested"]
         .into_iter()
         .filter(|key| row.contains_key(*key))
@@ -276,10 +286,15 @@ fn activity(
     if families.len() != 1 {
         return Err(invalid());
     }
+    pull_identity(
+        row.get("pull_request").ok_or_else(invalid)?,
+        repository,
+        pull,
+    )?;
     let family = families[0];
     let value = row[family].as_object().ok_or_else(invalid)?;
     if let Some(parent) = value.get("pullrequest") {
-        pull_identity(parent, pull)?;
+        pull_identity(parent, repository, pull)?;
     }
     let (identity, kind, occurred_at, updated_at, author, body, description) =
         if family == "comment" {
