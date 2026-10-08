@@ -2618,3 +2618,35 @@ diff checks. No public IPC/schema/provider quota changes. See
 [the work note](./collaboration-work/RURU-102-priority-fairness.md). RURU-102
 remains In Progress for API-family attribution and broader lifecycle/platform
 criteria. Remote CI is separate; no implementation PR was merged.
+
+
+### RURU-120 durable PR drafts and guarded online creation — 8 October 2026
+
+The GitHub.com same-repository slice now saves PR drafts locally and maps an
+explicit provider account/repository to a confirmed native local link. Uncached
+Git observations and fresh authenticated repository/branch checks precede explicit
+current-branches consent. One process-local grant permits one durable POST attempt;
+expiry, restart, changed caller or local registration cannot recreate authority.
+A strict causal 201 publishes the canonical cached PR and preserves inspected
+versus returned branch-tip drift. Lost, malformed or 202 responses retain unknown
+intent and never trigger a second POST. Offline authoring/recovery, exact UUID
+receipt retry, field-aware cache publication and provisional visibility preserve
+private text and protect the created item from older in-flight feed pages.
+
+Schema23 adds immutable authored/submission/resolution history and purgeable
+visibility; typed restore proof verification and the frozen schema22 migration
+fixture are qualified. The composer uses generated IPC, local queries and explicit
+preview/consent; unsupported provider/fork creation stays unavailable. Encoded
+receipt budgets are checked before dispatch and unrequested metadata is omitted
+truthfully. See [the contract and qualification record](./collaboration-work/RURU-120.md)
+and [the UI contract](./collaboration-work/RURU-120-ui.md).
+
+Signed qualified source `83e14bcb` passes the full frontend suite (877 passes/one skip) plus eleven final
+composer controls, lint/types/uncached build, 165-command/551-schema typegen, and
+1,484 Rust test executions/seven helper ignores across the full native run plus
+a scoped temporary-Git signing-isolation repair. Final strict workspace Clippy,
+formatting and diff checks pass. The work note distinguishes the failed initial
+fixture checks, corrected deltas and complete remaining-workspace run; no single
+uninterrupted full-verify invocation is claimed. Publication targets the explicit
+R133 dependency branch. New-head remote CI, numeric mutation compatibility and
+live provider/platform qualification remain separate; no PR was merged.

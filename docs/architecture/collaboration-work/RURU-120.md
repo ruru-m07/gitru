@@ -294,3 +294,39 @@ state change. Initial complete collaboration testing passed 1,046 cases with fiv
 helper ignores and found one historical restore test still expecting 22 migrations;
 the recovery checkpoint corrected it to 23 and qualified the affected suite. The
 final workspace test/Clippy gates are recorded separately after integration.
+
+## Final integrated local qualification — 8 October 2026
+
+Qualified product source is `83e14bcbbea551d4a3ab71c5390d91d36a4b55c2`.
+The frontend checkpoint `dfb2338e` passes the complete frontend suite (877 passes,
+one platform skip), lint, workspace type checks and an uncached production build.
+Its final eleven composer controls, desktop/E2E types and build also pass after
+the canonical uncertain-state and encoded-size guidance refinements. Generated
+IPC has 165 commands and 551 validated schemas; `make typegen` completed normally
+after marking the native-only observation/owner as outside the wire graph.
+
+The native workspace run qualified all 1,050 collaboration test executions with
+five intentional subprocess-entry ignores. It then caught a temporary Git
+fixture inheriting the machine's signing setting: a fixture commit's external
+signer failed to allocate memory. The repair sets `commit.gpgsign=false` only in
+temporary `TestRepo` constructors (ordinary, SHA256 and blobless), preserving all
+real repository/global signing configuration. The complete remaining workspace
+was rerun: 434 passing test executions and two helper ignores, including all six
+new temporary-Git integration controls, desktop, IPC and logger. Total qualified
+Rust executions across the complete run and scoped repair are 1,484, with seven
+helper ignores. This is not described as one uninterrupted green `make verify`
+invocation. Final strict workspace all-target Clippy, Rust formatting and diff
+checks pass on the repaired source.
+
+Local evidence logs: `/tmp/gitru-r120-native-review-final.log`,
+`/tmp/gitru-r120-workspace-tests.log`, `/tmp/gitru-r120-workspace-remainder.log`,
+`/tmp/gitru-r120-final-clippy.log` and `/tmp/gitru-r120-final-fmt.log`. The first
+whole-crate run's historical migration-count assertion and the later Git fixture
+failure are retained in this record; neither required a production rollback.
+
+This slice is ready for a draft PR stacked on the explicit R133 dependency
+`ruru/ruru-133-guarded-merge`. That parent PR195 at `435599c7` was independently
+observed with 14/14 successful remote checks. The new creation PR's own remote
+CI remains a separate publication gate. No live provider mutation, personal
+credential read, real-webview lifecycle, or packaged creation flow was used to
+claim these local results. No PR has been merged.
