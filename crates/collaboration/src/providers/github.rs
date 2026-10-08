@@ -14,6 +14,7 @@ pub(crate) mod comment_send;
 mod comments;
 mod commits;
 mod files;
+pub(crate) mod guarded_merge;
 mod issue_details;
 mod notification_subject_discovery;
 pub mod notification_subjects;

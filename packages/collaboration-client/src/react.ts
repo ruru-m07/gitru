@@ -91,6 +91,19 @@ export function textEditQueryOptions(
   });
 }
 
+/** Local merge receipt/status only; provider preview is explicitly requested. */
+export function guardedMergeQueryOptions(
+  account: RemoteAccount,
+  subjectId: string,
+) {
+  return queryOptions({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.guardedMerge(account, subjectId),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).guardedMergeSnapshot(subjectId, signal),
+  });
+}
+
 /** Cache-only workflow state. Provider reads and delivery remain native-owned. */
 export function workflowStateQueryOptions(
   account: RemoteAccount,

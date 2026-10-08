@@ -66,7 +66,10 @@ pub(crate) async fn mutate(
         || url.query().is_some()
         || url.fragment().is_some()
         || url.as_str().len() > 2048
-        || !matches!(method, Method::PATCH | Method::POST | Method::DELETE)
+        || !matches!(
+            method,
+            Method::PATCH | Method::POST | Method::DELETE | Method::PUT
+        )
         || body.len() > 65_536
     {
         return Err(invalid());

@@ -44,6 +44,7 @@ mod github_comments_tests;
 mod gitlab_probe_backoff_tests;
 #[cfg(test)]
 mod gitlab_tests;
+mod guarded_merge;
 #[cfg(feature = "test-harness")]
 mod harness;
 #[cfg(test)]

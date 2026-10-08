@@ -20,6 +20,7 @@ import {
   feedFacet,
   resourceCapabilityTarget,
 } from "./capability-policy";
+import { GuardedPullMerge } from "./guarded-merge";
 import { SavedDraftEditor } from "./private-draft";
 import { PullRequestCheckoutButton } from "./pull-checkout-dialog";
 import { ResourceCapabilityPanels } from "./resource-capability-panels";
@@ -183,6 +184,15 @@ export function SavedItemDetail({
                 kind={kind}
               />
               <ResourceTextEditor account={account} subjectId={itemId} />
+              {kind === "pull_request" &&
+              account.provider === "github" &&
+              account.host === "github.com" ? (
+                <GuardedPullMerge
+                  account={account}
+                  subjectId={itemId}
+                  headOid={item.head_oid}
+                />
+              ) : null}
             </>
           ) : null}
           {kind === "notification" || !canReadSaved(bodyPolicy) ? (

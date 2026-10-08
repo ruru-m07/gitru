@@ -24,6 +24,8 @@ mod issue_creation;
 pub use issue_creation::*;
 mod text_edits;
 pub use text_edits::*;
+mod guarded_merge;
+pub use guarded_merge::*;
 mod workflow_state;
 pub use workflow_state::*;
 mod lifecycle;
@@ -72,6 +74,7 @@ pub(super) enum Operation {
     IssueCreation,
     TextEdit,
     WorkflowState,
+    GuardedMerge,
     ProviderInboxAction,
     Recovery,
     Capabilities,
@@ -639,6 +642,7 @@ mod tests {
         Operation::IssueCreation,
         Operation::TextEdit,
         Operation::WorkflowState,
+        Operation::GuardedMerge,
         Operation::ProviderInboxAction,
         Operation::CommandRecovery,
         Operation::Recovery,

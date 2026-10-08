@@ -135,6 +135,7 @@ pub(crate) async fn build_runtime(
             registry.register(Arc::new(provider))?;
             registry.register_github_text_edits()?;
             registry.register_github_workflow_state()?;
+            registry.register_github_guarded_merge()?;
             registry.register_github_comments()?;
             registry.register_github_issue_creation()?;
             registry.register(Arc::new(

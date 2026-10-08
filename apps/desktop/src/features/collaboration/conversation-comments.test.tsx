@@ -591,7 +591,7 @@ describe("cached conversation comments through the ordinary workspace", () => {
     });
     expect(reads.hydrate).not.toHaveBeenCalled();
     expect(
-      article.getByRole("button", { name: "Merge pull request unavailable" }),
+      article.getByRole("button", { name: "Check merge online" }),
     ).toBeDisabled();
     await user.click(panel().getByRole("button", { name: "Comments" }));
     expect(

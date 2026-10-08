@@ -23,6 +23,9 @@ const commandRecovery = await Bun.file(
 const textEdits = await Bun.file(
   new URL("crates/collaboration/src/text_edits.rs", root),
 ).text();
+const guardedMerge = await Bun.file(
+  new URL("crates/collaboration/src/guarded_merge.rs", root),
+).text();
 const workflowState = await Bun.file(
   new URL("crates/collaboration/src/workflow_state.rs", root),
 ).text();
@@ -370,6 +373,7 @@ for (const source of [
   commandRecovery,
   textEdits,
   workflowState,
+  guardedMerge,
   commentSend,
   issueCreation,
   providerInboxActions,
@@ -482,6 +486,24 @@ generated = generated.replace(
   `$1.superRefine((request, context) => {
   if (!request.accept_best_effort || (request.title === null && request.body === null)) {
     context.addIssue({ code: "custom", path: ["accept_best_effort"], message: "Text edits require explicit best-effort acceptance and at least one changed field" });
+  }
+});`,
+);
+// Online consent is literal and provider preview evidence is internally coherent.
+generated = generated.replace(
+  /(export const GuardedMergeRequestSchema = z\.object\(\{[\s\S]*?)confirm_inspected_head: z\.coerce\.boolean\(\)/,
+  "$1confirm_inspected_head: z.literal(true)",
+);
+const guardedMergePreviewSchema =
+  /(export const GuardedMergePreviewSchema = z\.object\(\{[\s\S]*?\n\}\));/;
+if (!guardedMergePreviewSchema.test(generated))
+  throw new Error("Missing generated guarded merge preview");
+generated = generated.replace(
+  guardedMergePreviewSchema,
+  `$1.superRefine((preview, context) => {
+  const available = preview.context !== null;
+  if (available ? (preview.reason !== null || preview.can_push !== true || preview.mergeable !== true || preview.provider_mergeability !== "clean" || preview.methods.length === 0 || preview.expected_head !== preview.context?.expected_head || preview.authorization_view !== preview.context?.authorization_view || preview.expires_in_seconds !== 60) : (preview.reason === null || preview.expires_in_seconds !== 0)) {
+    context.addIssue({code:"custom", path:["context"], message:"Online merge evidence must agree with its grant"});
   }
 });`,
 );

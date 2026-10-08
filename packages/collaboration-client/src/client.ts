@@ -29,6 +29,11 @@ import {
   type DraftQuery,
   type ExecutePullCheckoutRequest,
   type GithubCliDiscovery,
+  type GuardedMergePreview,
+  type GuardedMergeQuery,
+  type GuardedMergeReceipt,
+  type GuardedMergeRequest,
+  type GuardedMergeSnapshot,
   type HydrateDetailRequest,
   type InboxPage,
   type InboxQuery,
@@ -131,6 +136,11 @@ export interface CollaborationTransport extends DemandTransport {
     subjectId: string,
   ): Promise<TextEditSnapshot>;
   submitTextEdit(request: TextEditRequest): Promise<TextEditReceipt>;
+  guardedMergeSnapshot(query: GuardedMergeQuery): Promise<GuardedMergeSnapshot>;
+  previewGuardedMerge(query: GuardedMergeQuery): Promise<GuardedMergePreview>;
+  submitGuardedMerge(
+    request: GuardedMergeRequest,
+  ): Promise<GuardedMergeReceipt>;
   workflowStateSnapshot(
     accountId: string,
     subjectId: string,
@@ -263,6 +273,13 @@ export const collaborationKeys = {
       ...collaborationKeys.account(account.id),
       account.authorization_epoch,
       "text-edit",
+      subjectId,
+    ] as const,
+  guardedMerge: (account: RemoteAccount, subjectId: string) =>
+    [
+      ...collaborationKeys.account(account.id),
+      account.authorization_epoch,
+      "guarded-merge",
       subjectId,
     ] as const,
   workflowState: (account: RemoteAccount, subjectId: string) =>
@@ -724,6 +741,56 @@ export class CollaborationClient {
         const context = reviewedTextEditContext(request.context);
         const receipt = await this.fence.read(account.id, () =>
           this.transport.submitTextEdit({ ...request, context }),
+        );
+        if (
+          receipt.account_id !== account.id ||
+          receipt.command_id !== request.command_id
+        )
+          throw new StaleAuthorizationError();
+        return receipt;
+      },
+      guardedMergeSnapshot: (subjectId: string, signal?: AbortSignal) =>
+        read(
+          () =>
+            this.transport.guardedMergeSnapshot({
+              account_id: account.id,
+              subject_id: subjectId,
+            }),
+          signal,
+        ),
+      previewGuardedMerge: async (subjectId: string, signal?: AbortSignal) => {
+        const preview = await this.fence.read(
+          account.id,
+          () =>
+            this.transport.previewGuardedMerge({
+              account_id: account.id,
+              subject_id: subjectId,
+            }),
+          signal,
+        );
+        const context = preview.context;
+        if (
+          context !== null &&
+          (context.account_id !== account.id ||
+            context.subject_id !== subjectId ||
+            context.authorization_epoch !== account.authorization_epoch ||
+            context.authorization_view !== preview.authorization_view ||
+            context.expected_head !== preview.expected_head)
+        )
+          throw new StaleAuthorizationError();
+        return preview;
+      },
+      submitGuardedMerge: async (request: GuardedMergeRequest) => {
+        if (
+          request.context.account_id !== account.id ||
+          request.context.authorization_epoch !== account.authorization_epoch
+        )
+          throw new StaleAuthorizationError();
+        const receipt = await this.fence.read(account.id, () =>
+          this.transport.submitGuardedMerge({
+            ...request,
+            context: { ...request.context },
+          }),
         );
         if (
           receipt.account_id !== account.id ||
@@ -1511,7 +1578,8 @@ function projectionAffected(key: readonly unknown[], scope: string) {
   if (scope.startsWith("effective:")) {
     const subject = scope.slice("effective:".length);
     if (projection === "text-edit") return key[5] === subject;
-    if (projection === "workflow-state") return key[5] === subject;
+    if (projection === "workflow-state" || projection === "guarded-merge")
+      return key[5] === subject;
     if (projection === "detail") {
       const query = key[5] as DetailQuery;
       return query.subject_id === subject && query.facet === "body";
@@ -1546,7 +1614,7 @@ function projectionAffected(key: readonly unknown[], scope: string) {
       scope === `detail:${subject}:body`
     );
   }
-  if (projection === "workflow-state") {
+  if (projection === "workflow-state" || projection === "guarded-merge") {
     const subject = key[5];
     return (
       scope === "commands" ||

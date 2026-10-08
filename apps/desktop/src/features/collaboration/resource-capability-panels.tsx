@@ -205,14 +205,15 @@ export function ResourceCapabilityPanels({
           policy={facetPolicy(snapshot, "tasks")}
         />
       ) : null}
-      {kind === "pull_request" ? (
+      {kind === "pull_request" &&
+      (account.provider !== "github" || account.host !== "github.com") ? (
         <section
           className="space-y-2 border-t pt-4"
           aria-label="Remote actions"
         >
           <p className="text-xs text-muted-foreground">
-            Remote actions are not implemented. Save a private draft locally or
-            open the provider to make changes.
+            Direct merging is not available for this provider. Open the provider
+            to merge this pull request.
           </p>
           <Button
             size="sm"

@@ -70,3 +70,6 @@ mod workflow_state;
 pub use workflow_state::*;
 
 mod stored_item_v1;
+
+mod guarded_merge;
+pub use guarded_merge::*;

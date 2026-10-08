@@ -3811,3 +3811,22 @@ on the first clock integration, then 16 clock-lifecycle, 21 feature-harness,
 Generated IPC is 144 commands/459 schemas. Exact scope, logs and limitations are
 in [the work note](./collaboration-work/RURU-130.md). Remote CI and live provider
 validation remain separate; no PR has been merged.
+
+
+### RURU-133 guarded online direct merge — 8 October 2026
+
+GitHub.com direct merge now has a native online preview, explicit expected-head
+and merge-method consent, and a process-local 60-second grant. The existing
+durable delivery ledger records attempts before one fixed expected-SHA PUT.
+Success receipts are Accepted until an exact repository/PR/head/merge-result read
+publishes canonical merged state; 202/lost/malformed responses only reconcile by
+GET. Expired or cold-restarted grants cannot dispatch. No optimistic merged state,
+auto-merge, merge queue, stacked/downstack operation, schema migration or offline
+replacement is introduced. Other-provider merges remain unavailable.
+
+The selected PR UI keeps local receipt, accepted, uncertain and confirmed states
+separate. Existing cached checks/reviews show their own coverage and do not grant
+merge authority. See [RURU-133's contract and evidence](./collaboration-work/RURU-133.md).
+Focused native19 and new UI/SDK9 controls pass; full qualification and a draft PR
+on integration PR190 remain in progress. Live numeric mutation-route compatibility
+and real-provider/platform checks are not claimed. No PR was merged.

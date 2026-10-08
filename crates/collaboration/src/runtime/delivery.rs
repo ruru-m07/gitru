@@ -302,7 +302,7 @@ impl CollaborationRuntime {
         provider?;
         Ok(())
     }
-    async fn delivery_provider_error(
+    pub(super) async fn delivery_provider_error(
         &self,
         account: &RemoteAccount,
         error: &ProviderError,

@@ -23,6 +23,9 @@ mod comment_send_tests;
 mod contextual_capabilities;
 pub(crate) mod delivery;
 pub(crate) mod effective;
+pub(crate) mod guarded_merge;
+#[cfg(test)]
+mod guarded_merge_tests;
 mod shutdown;
 pub(crate) mod text_edits;
 #[cfg(test)]

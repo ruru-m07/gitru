@@ -42,9 +42,11 @@ visible for explicit recovery; it cannot silently reactivate on reconnect. Merge
 recovery supports inspection/cancel/pause under existing limits, not offline
 replacement or replay. New merge consent must come through a new online preview.
 
-Only a structurally valid 200 response with merged=true and a bounded merge OID
-can prove direct completion; its evidence binds the exact request guard/method
-and native subject. Unexpected 202 remains accepted, never confirmed. Lost,
+A structurally valid 200 response with merged=true and a bounded merge OID
+is saved as Accepted first; its evidence binds the exact request guard/method
+and native subject. Only a later exact-head merged GET supplies canonical
+timestamps and permits Confirmed publication. Unexpected 202 also remains
+accepted, never confirmed. Lost,
 malformed, transport or uncertain responses never authorize a second PUT. Bounded
 read-only reconciliation requires authenticated repository/PR/head identity and
 actual merged state plus merge-result evidence. Matching desired state proves
@@ -82,4 +84,40 @@ Clippy and applicable full workspace gates. Record local results separately from
 new-head remote CI and live provider/platform boundaries. Open and attach a
 reviewable draft PR explicitly dependent on PR190. Never merge it automatically.
 
-Implementation and qualification are pending.
+## Implemented source and focused evidence
+
+The selected PR view now exposes a local status read plus explicit online preview
+and confirmation. Native preview is its own specialized action authority, rather
+than widening the generic cached `Merge` capability or authorizing from saved
+checks/reviews. The GitHub dummy merge button is removed; other-provider merge
+remains unavailable. UI requires a selected method and inspected-head checkbox,
+hides stale authorization evidence, preserves the exact command UUID after lost
+IPC receipt, and labels local/accepted/unknown outcomes separately from confirmed
+provider state. Account/subject/head changes remount the consent session.
+
+The existing native delivery lane owns the complete operation. The new immutable
+payload additionally binds actor identity; previews and results use bounded,
+strict typed codecs and the existing frozen item-v1 shape. No migration, offline
+replacement policy, effect overlay or second outbox was added. The only shared
+HTTP addition admits native PUT alongside existing fixed-method mutation calls.
+Successful provider cooldowns prevent preview grant issuance; native preview
+rechecks budget after a held vault load, and every later codec failure retains
+captured cooldown facts. Accepted or uncertain commands may reconcile under fresh
+validated account authority after reconnect, without reconstructing send consent.
+
+Focused local evidence on the current source: 19 synthetic native tests pass,
+covering exact SHA/method wire bytes, persisted attempts, direct receipt/readback,
+head/permission/method drift, expiry across vault/preflight/claim, quota while a
+vault is held, strict proof binding, 202/lost/malformed outcomes, cold restart,
+reauthenticated read-only reconciliation, wrong repository/PR/head/result refusal,
+immutable restore quarantine and bounded renderer inputs. Nine new UI/SDK cases
+pass; the affected four-file frontend delta passes 49 tests. Generated IPC has
+160 commands/530 schemas; desktop/E2E and client TypeScript pass. An initial full
+frontend run found only obsolete dummy-button/schema-inventory fixtures; the
+updated focused controls pass. Strict Clippy and full verification are pending.
+
+Primary API and synthetic transport evidence do not verify authenticated numeric
+mutation routing, real repository rules/stack/queue behavior, production vault
+prompts or packaged GUI behavior on every platform. Those remain live/provider
+or platform gates; no personal credential was inspected and no real merge was
+attempted. The synchronous route has no async/downstack or merge-queue fallback.
