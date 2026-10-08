@@ -655,7 +655,6 @@ function AccountWorkspace({
         ) : null}
         {kind === "issue" && creationRepository ? (
           <NewIssueDialog
-            key={`${account.id}:${account.authorization_epoch}:${creationRepository.id}`}
             account={account}
             repository={creationRepository}
             onOpenCreated={setCreatedSubjectId}

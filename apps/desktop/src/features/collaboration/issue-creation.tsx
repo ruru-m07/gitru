@@ -11,6 +11,7 @@ import {
 import {
   issueDraftQueryOptions,
   issueDraftsQueryOptions,
+  useCollaborationAuthorityVersion,
 } from "@gitru/collaboration-client/react";
 import { Button } from "@gitru/ui/components/button";
 import { Checkbox } from "@gitru/ui/components/checkbox";
@@ -42,15 +43,26 @@ const MAX_BODY_BYTES = 16 * 1024;
 
 type LocalIssueDraftKey = Omit<IssueDraftKey, "account_id">;
 
-export function NewIssueDialog({
-  account,
-  repository,
-  onOpenCreated,
-}: {
+type NewIssueDialogProps = {
   account: RemoteAccount;
   repository: RemoteRepository;
   onOpenCreated: (subjectId: string) => void;
-}) {
+};
+
+export function NewIssueDialog(props: NewIssueDialogProps) {
+  return (
+    <OwnedIssueDialog
+      key={`${props.account.id}:${props.account.actor_id}:${props.repository.id}`}
+      {...props}
+    />
+  );
+}
+
+function OwnedIssueDialog({
+  account,
+  repository,
+  onOpenCreated,
+}: NewIssueDialogProps) {
   const [session, setSession] = useState<{
     draftId: string;
     open: boolean;
@@ -162,6 +174,10 @@ function useIssueDraftEditor(account: RemoteAccount, key: LocalIssueDraftKey) {
   const queryClient = useQueryClient();
   const queryOptions = issueDraftQueryOptions(account, key);
   const query = useQuery(queryOptions);
+  const authorityVersion = useCollaborationAuthorityVersion();
+  const authorityIdentity = `${authorityVersion}:${account.authorization_epoch}:${account.state}`;
+  const [seenAuthority, setSeenAuthority] = useState(authorityIdentity);
+  const [seenError, setSeenError] = useState(false);
   const [base, setBase] = useState<IssueDraftSnapshot | null>(null);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -171,7 +187,7 @@ function useIssueDraftEditor(account: RemoteAccount, key: LocalIssueDraftKey) {
     title: string;
     body: string;
   } | null>(null);
-  const [consent, setConsent] = useState(false);
+  const [consentContext, setConsentContext] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -179,6 +195,13 @@ function useIssueDraftEditor(account: RemoteAccount, key: LocalIssueDraftKey) {
   const [retryRequest, setRetryRequest] = useState<SubmitIssueRequest | null>(
     null,
   );
+  const [retryAuthority, setRetryAuthority] = useState<number | null>(null);
+  if (seenAuthority !== authorityIdentity || seenError !== query.isError) {
+    setSeenAuthority(authorityIdentity);
+    setSeenError(query.isError);
+    if (seenAuthority !== authorityIdentity || query.isError)
+      setConsentContext(null);
+  }
   if (query.data && base === null) {
     setBase(query.data);
     setTitle(query.data.title);
@@ -187,6 +210,17 @@ function useIssueDraftEditor(account: RemoteAccount, key: LocalIssueDraftKey) {
     setSavedBody(query.data.body);
   }
   const current = query.data;
+  const contextCurrent =
+    !query.isError &&
+    account.state === "active" &&
+    current?.context?.authorization_epoch === account.authorization_epoch;
+  const contextKey = contextCurrent
+    ? JSON.stringify([authorityIdentity, current?.generation, current?.context])
+    : null;
+  const consent = contextKey !== null && consentContext === contextKey;
+  function setConsent(checked: boolean) {
+    setConsentContext(checked ? contextKey : null);
+  }
   const dirty = title !== savedTitle || body !== savedBody;
   const baseChanged =
     base !== null &&
@@ -205,11 +239,14 @@ function useIssueDraftEditor(account: RemoteAccount, key: LocalIssueDraftKey) {
   const bodyError = validateBody(body);
   const retryAllowed =
     activeRetry !== null &&
+    retryAuthority === authorityVersion &&
+    account.state === "active" &&
     !query.isError &&
     current?.reason !== "account_unavailable" &&
     activeRetry.context.account_id === account.id &&
     activeRetry.context.repository_id === key.repository_id &&
     activeRetry.context.authorization_epoch === account.authorization_epoch &&
+    activeRetry.context.authorization_view === current?.authorization_view &&
     activeRetry.draft_id === key.draft_id;
   const canSave =
     base !== null &&
@@ -234,6 +271,7 @@ function useIssueDraftEditor(account: RemoteAccount, key: LocalIssueDraftKey) {
     base.generation !== "0" &&
     current.availability === "available" &&
     current.context !== null &&
+    contextCurrent &&
     current.submission === null &&
     current.published === null &&
     consent &&
@@ -284,6 +322,7 @@ function useIssueDraftEditor(account: RemoteAccount, key: LocalIssueDraftKey) {
   async function submit(request: SubmitIssueRequest) {
     setSubmitting(true);
     setRetryRequest(request);
+    setRetryAuthority(authorityVersion);
     setError(null);
     setStatus(null);
     try {
@@ -367,8 +406,14 @@ function useIssueDraftEditor(account: RemoteAccount, key: LocalIssueDraftKey) {
     bodyError,
     canSave,
     canSubmit,
-    setTitle,
-    setBody,
+    setTitle: (value: string) => {
+      setTitle(value);
+      setConsent(false);
+    },
+    setBody: (value: string) => {
+      setBody(value);
+      setConsent(false);
+    },
     setConsent,
     save,
     submit,

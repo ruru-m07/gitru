@@ -92,17 +92,88 @@ function setup(onOpenCreated = vi.fn()) {
     defaultOptions: { queries: { retry: false } },
   });
   caches.push(cache);
-  render(
+  const content = (currentAccount: RemoteAccount) => (
     <QueryClientProvider client={cache}>
       <NewIssueDialog
-        account={account}
+        account={currentAccount}
         repository={repository}
         onOpenCreated={onOpenCreated}
       />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
-  return { cache, user: userEvent.setup(), onOpenCreated };
+  const view = render(content(account));
+  return {
+    cache,
+    user: userEvent.setup(),
+    onOpenCreated,
+    rerenderAccount: (next: RemoteAccount) => view.rerender(content(next)),
+  };
 }
+
+it("retires consent when an edit is reverted to the same saved text", async () => {
+  snapshot = localSnapshot({
+    title: "Saved title",
+    body: "Saved body",
+    generation: "1",
+    availability: "available",
+    reason: null,
+  });
+  const { user } = setup();
+  await user.click(screen.getByRole("button", { name: "New issue" }));
+  const consent = await screen.findByRole("checkbox", {
+    name: /exact saved issue may be submitted/i,
+  });
+  await user.click(consent);
+  expect(
+    screen.getByRole("button", { name: "Queue issue submission" }),
+  ).toBeEnabled();
+  await user.type(screen.getByLabelText("Title"), "x{Backspace}");
+  expect(screen.getByLabelText("Title")).toHaveValue("Saved title");
+  expect(consent).not.toBeChecked();
+  expect(
+    screen.getByRole("button", { name: "Queue issue submission" }),
+  ).toBeDisabled();
+});
+
+it("preserves unsaved text while an account epoch change retires submission consent", async () => {
+  snapshot = localSnapshot({
+    title: "Saved title",
+    body: "Saved body",
+    generation: "1",
+    availability: "available",
+    reason: null,
+  });
+  const { user, rerenderAccount } = setup();
+  await user.click(screen.getByRole("button", { name: "New issue" }));
+  const consent = await screen.findByRole("checkbox", {
+    name: /exact saved issue may be submitted/i,
+  });
+  await user.click(consent);
+  rerenderAccount({ ...account, authorization_epoch: "8" });
+  expect(screen.getByRole("dialog")).toBeVisible();
+  expect(consent).not.toBeChecked();
+  expect(
+    screen.getByRole("button", { name: "Queue issue submission" }),
+  ).toBeDisabled();
+  await user.type(screen.getByLabelText("Description"), " unsaved");
+  rerenderAccount({ ...account, authorization_epoch: "9" });
+  expect(screen.getByLabelText("Description")).toHaveValue(
+    "Saved body unsaved",
+  );
+});
+
+it("gives a different actor a separate editor without the previous unsaved text", async () => {
+  const { user, rerenderAccount } = setup();
+  await user.click(screen.getByRole("button", { name: "New issue" }));
+  await user.type(
+    await screen.findByLabelText("Title"),
+    "Private unsaved title",
+  );
+  rerenderAccount({ ...account, actor_id: "55" });
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "New issue" }));
+  expect(await screen.findByLabelText("Title")).toHaveValue("");
+});
 
 it("keeps opening local-only, preserves an unsaved close, then saves and explicitly queues", async () => {
   const read = mockTauriCommand("collaboration_issue_draft", () => snapshot);
