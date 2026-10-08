@@ -20,6 +20,7 @@ impl CommandAdmissionPolicy for Admission {
     ) -> Result<Vec<CommandProtection>> {
         let p = n::decode_submission(s)?;
         let frame = capture_in(tx, account, s.target().id()).await?;
+        n::validate_dispatch_budget(&frame, &p.title, &p.body)?;
         if context(account, &frame)? != p.request.context
             || frame.repository.provider_id != p.repository_native
         {
@@ -161,13 +162,11 @@ async fn snapshot_in(
     } else if a.state != AccountState::Active {
         Some(IssueDraftReason::AccountUnavailable)
     } else if let Some(s) = &submission {
-        Some(
-            if s.state == "confirmed" || s.draft_generation == g.to_string() {
-                IssueDraftReason::AlreadySubmitted
-            } else {
-                IssueDraftReason::PendingSubmission
-            },
-        )
+        Some(if s.state == "confirmed" {
+            IssueDraftReason::AlreadySubmitted
+        } else {
+            IssueDraftReason::PendingSubmission
+        })
     } else if title.is_empty() {
         Some(IssueDraftReason::EmptyTitle)
     } else {

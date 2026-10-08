@@ -373,6 +373,9 @@ async fn comment_send_lost_post_and_restart_never_match_text_or_post_again() {
             .comments
             .is_empty()
     );
+    let pending = store.comment_draft("a", "pull").await.unwrap();
+    assert_eq!(pending.reason, Some(CommentSendReason::PendingSubmission));
+    assert_eq!(pending.submission.unwrap().state, "outcome_unknown");
     assert_eq!(
         save(&store, "changed text cannot bypass").await.reason,
         Some(CommentSendReason::PendingSubmission)
@@ -600,7 +603,7 @@ async fn comment_send_restore_preserves_authored_link_and_quarantines_zero_attem
     );
     let draft = store.comment_draft("a", "pull").await.unwrap();
     assert_eq!(draft.body, "restored draft");
-    assert_eq!(draft.reason, Some(CommentSendReason::AlreadySubmitted));
+    assert_eq!(draft.reason, Some(CommentSendReason::PendingSubmission));
     assert!(store.send_comment(r).await.is_err());
     store.close().await.unwrap();
 }
@@ -904,3 +907,6 @@ async fn comment_send_restore_refuses_missing_link_or_mismatched_proof_without_m
         assert_eq!(std::fs::read(&target_path).unwrap(), original);
     }
 }
+
+#[path = "comment_send_budget_tests.rs"]
+mod budgets;

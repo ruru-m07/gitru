@@ -230,7 +230,22 @@ function CommentDraftForm({
       });
       void collaboration.wake();
     } catch (failure) {
-      setError(collaborationErrorMessage(failure));
+      // Native InvalidInput is returned before admission commits. It is a
+      // definite refusal, unlike a lost IPC receipt that needs the same UUID.
+      const refused =
+        typeof failure === "object" &&
+        failure !== null &&
+        "code" in failure &&
+        failure.code === "invalid_input";
+      if (refused) {
+        setRetryRequest(null);
+        setConsent(false);
+      }
+      setError(
+        refused
+          ? "Check the saved comment and try a shorter body before sending again."
+          : collaborationErrorMessage(failure),
+      );
       void queryClient.invalidateQueries({
         queryKey: commentDraftQueryOptions(account, subjectId).queryKey,
       });

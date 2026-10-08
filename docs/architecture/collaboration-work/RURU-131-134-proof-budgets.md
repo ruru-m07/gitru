@@ -44,3 +44,51 @@ metadata omission; strict existing proof/restore and tamper controls; exact UUID
 receipt retry; unknown state labeling and no second POST. Run focused suites,
 recovery gates and strict Clippy, then wider native checks as justified. Record
 local and remote evidence separately. All scoped commits are signed; no merges.
+
+## Source checkpoint and observed controls
+
+The actual prior-source HTTP diagnostics failed3/3: comment and issue requests
+with10,900 allowed control characters fit the64KiB HTTP limit (comment65,411
+bytes) but their valid201 receipts became Unknown;100 valid large issue labels
+also made an ordinary-body receipt unencodable. Both current-generation queued
+snapshot controls failed by reporting AlreadySubmitted. Logs are
+`/tmp/gitru-creation-budget-red.log` and `/tmp/gitru-creation-state-red.log`.
+
+The implemented gate counts escaped frame/body bytes and, for issues, both title
+copies, with24KiB reserved for bounded mandatory identities/URLs/actor/clocks and
+fixed wrappers. It applies to new admission, preparation before HTTP, and the
+writer-held final claim. Raw16KiB drafts and immutable v1 codecs remain unchanged.
+Old queued intent keeps its exact UUID receipt but oversized intent cannot create
+an attempt; preparation uses the existing finite deferred-read policy. An old
+already-claimed valid receipt still confirms and passes real restore inspection.
+Unknown post-attempt intent keeps its original no-replay semantics.
+
+New issue receipts omit unrequested labels, assignees and milestones, including
+rich valid response values, and omit the optional author URL. No known-empty
+collection is invented. Confirmed-only snapshot wording is independent from the
+actual queued/outcome_unknown state retained in each submission.
+
+The approved narrow UI follow-up clears retry/consent only on definitive native
+InvalidInput and offers safe shortening guidance while preserving the editor.
+All native validation/admission errors precede the writer commit; after commit
+the runtime only publishes/notifies and returns the receipt. Commit failures map
+to Storage, and SDK late-authority checks are StaleAuthorizationError. Unknown
+IPC failures therefore retain their exact UUID; no raw provider message is shown.
+The existing coss controls, labels and local query flow remain unchanged; React
+state changes stay in the explicit submission event handler.
+
+Local checkpoint:21 comment cases and28 issue/publication cases pass, plus the
+added maximal-frame control. The latter uses1024-byte control-character local
+IDs, the longest allowed repository path, max u64 native IDs, escaped title/login
+and an exact last-admissible control-body boundary. Its actual201 proof fits64KiB
+and one additional escaped character fails admission. Prior valid large proofs
+above the new conservative boundary remain byte-identical and restoreable. Strict
+all-target/all-feature collaboration Clippy passes on the initial nine budget
+controls. The two affected UI suites pass14 cases, including both lost-receipt
+controls and definite-refusal editing; desktop/E2E TypeScript and scoped Biome
+pass. Complete all-feature native and full frontend gates are still running;
+remote CI, packaged UI and live provider checks are not claimed.
+
+Independent native review verified the reserve algebra, unchanged v1 decoding,
+three admission/claim gates and explicit Omitted metadata. No schema, public DTO,
+command signature or generated binding change is required.

@@ -389,3 +389,41 @@ describe("dedicated conversation comment composer", () => {
     ).toContain("created-comments");
   });
 });
+
+it("a definite admission refusal retains text and allows editing without an exact retry", async () => {
+  const send = mockTauriCommand("collaboration_send_comment", () => {
+    throw { code: "invalid_input", message: "provider secret must not render" };
+  });
+  const save = mockTauriCommand(
+    "collaboration_save_comment_draft",
+    (payload) => {
+      const request = (payload as { request: { body: string } }).request;
+      snapshot = available({ body: request.body, generation: "5" });
+      return snapshot;
+    },
+  );
+  const { user } = setup();
+  const editor = await screen.findByRole("textbox", { name: "Comment" });
+  const consent = screen.getByRole("checkbox", {
+    name: /delivered in the background/i,
+  });
+  await user.click(consent);
+  await user.click(screen.getByRole("button", { name: "Queue saved comment" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "try a shorter body",
+  );
+  expect(screen.getByRole("alert")).not.toHaveTextContent("provider secret");
+  expect(
+    screen.queryByRole("button", { name: "Retry exact comment" }),
+  ).not.toBeInTheDocument();
+  expect(consent).not.toBeChecked();
+  expect(editor).toHaveValue("Saved comment");
+  await user.clear(editor);
+  await user.type(editor, "Short comment");
+  await user.click(screen.getByRole("button", { name: "Save comment draft" }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(
+    screen.getByRole("button", { name: "Queue saved comment" }),
+  ).toBeDisabled();
+});

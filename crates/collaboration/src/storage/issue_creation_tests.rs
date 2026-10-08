@@ -321,7 +321,10 @@ async fn issue_creation_lost_response_and_restart_never_posts_or_matches_again()
         p.reconcile(&token(), req.unwrap()).await.unwrap().outcome,
         DeliveryOutcome::Unknown
     ));
-    assert!(store.issue_draft(key()).await.unwrap().published.is_none());
+    let pending = store.issue_draft(key()).await.unwrap();
+    assert!(pending.published.is_none());
+    assert_eq!(pending.reason, Some(IssueDraftReason::PendingSubmission));
+    assert_eq!(pending.submission.unwrap().state, "outcome_unknown");
     assert!(save(&store, "new edited body").await.context.is_none());
     assert_eq!(server.join().unwrap().len(), 2);
     store.close().await.unwrap();
@@ -818,3 +821,6 @@ async fn issue_creation_submission_link_failure_rolls_back_command_and_generatio
     assert!(store.submit_issue(r).await.unwrap().duplicate);
     store.close().await.unwrap();
 }
+
+#[path = "issue_creation_budget_tests.rs"]
+mod budgets;

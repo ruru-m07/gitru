@@ -136,6 +136,25 @@ impl GithubIssueCreationPolicy {
         };
         let (_, mut metadata) =
             issue_details::normalize(&request, bytes, "github/issue-detail/2026-03-10")?;
+        // These fields were not authored by this operation. Retaining them can
+        // consume the causal proof budget after an otherwise valid creation.
+        // Omitted keeps normal metadata reads authoritative; it is not known-empty.
+        metadata.values.labels.clear();
+        metadata.values.assignees.clear();
+        metadata.values.milestone = None;
+        if let Some(author) = &mut metadata.values.author {
+            author.web_url = None;
+        }
+        for field in &mut metadata.fields {
+            if matches!(
+                field.field,
+                crate::MetadataField::Labels
+                    | crate::MetadataField::Assignees
+                    | crate::MetadataField::Milestone
+            ) {
+                field.state = DetailValueState::Omitted;
+            }
+        }
         metadata.values.updated_at = Some(item.updated_at.clone());
         metadata.source.provider_updated_at = Some(item.updated_at.clone());
         Ok(n::CreatedReceipt {
@@ -178,6 +197,9 @@ impl CommandDeliveryPolicy for GithubIssueCreationPolicy {
     ) -> Result<DeliveryPreparation, ProviderError> {
         let f: n::Frame =
             n::decode_json(&r.native_context).map_err(|_| resource_details::invalid())?;
+        let payload = n::decode(&r.command).map_err(|_| resource_details::invalid())?;
+        n::validate_dispatch_budget(&f, &payload.title, &payload.body)
+            .map_err(|_| resource_details::invalid())?;
         Self::route(&f)?;
         let response = self
             .http
@@ -237,6 +259,8 @@ impl CommandDeliveryPolicy for GithubIssueCreationPolicy {
             return Err(n::invalid());
         }
         store::validate_frame_in(tx, a, &p.frame).await?;
+        let payload = n::decode(c)?;
+        n::validate_dispatch_budget(&p.frame, &payload.title, &payload.body)?;
         Ok(ClaimDecision::Ready(bytes.to_vec()))
     }
     fn validate_evidence(
