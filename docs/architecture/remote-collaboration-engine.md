@@ -3692,3 +3692,34 @@ Final `f01b0392` deltas pass 20 text-operation, 14 transport, 21 feature-harness
 4 UI cases with strict feature-enabled Clippy. Generated IPC: 144 commands/454
 schemas. Details and honest remaining gates are in [the work note](./collaboration-work/RURU-129.md).
 Remote CI begins on publication; live provider/vault validation is unclaimed.
+
+
+### RURU-129 title/body follow-up qualification — 8 October 2026
+
+PR #181 now includes fixed numeric repository addressing, full-duration provider
+cooldowns and cold direct-admission seeding. The production delta at `36e6f153`
+passes 567 native library tests/four helper ignores, 21 clock controls and strict
+Clippy; the numeric routes pass 20 operation cases. A separate Windows credential
+fixture correction at `a6dd0572` passes all 14 crash parent tests and preserves
+the original credential-boundary watchdog. These are deltas to the recorded full
+workspace baseline. Live authenticated numeric mutation compatibility is still
+unqualified. RURU-129 remains In Progress for the separate workflow-state and
+label slices; new-head CI is distinct from these local results.
+
+
+### RURU-131 durable comment creation — 8 October 2026
+
+A separate saved comment draft/composer now admits immutable per-generation
+GitHub creation commands. Validated 201 receipts retain canonical comment IDs;
+unknown delivery preserves intent without POST replay, UUID bypass or text/time
+heuristics. Schema 0020 and restore validation protect draft/submission linkage;
+private notes stay separate and disconnected draft recovery remains local.
+
+Full local make verify at `1895c542`: 787 frontend tests/one platform skip,
+1,279 Rust executions/seven helper ignores, lint/types/build/fmt/strict workspace
+Clippy. Final parent integration `5eab2109` separately passes nine runtime-sync,
+14 credential-crash and 21 feature-harness cases with strict feature-enabled
+Clippy. Generated IPC: 149 commands/473 schemas. See
+[the work note](./collaboration-work/RURU-131.md) for evidence and limits.
+The PR stacks on #181; remote CI and live provider/vault/window checks remain
+separate. Numeric mutation-alias live compatibility is unqualified. No merge.
