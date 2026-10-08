@@ -429,9 +429,13 @@ for (const source of [
     if (!pattern.test(generated) && nativeOnlyTypes.has(name)) continue;
     if (!pattern.test(generated))
       throw new Error(`Missing generated enum ${name}`);
+    const schema = `export const ${name}Schema = z.enum(${JSON.stringify(variants.map(snake))});`;
+    const hasType = new RegExp(`export type ${name}\\b`).test(generated);
     generated = generated.replace(
       pattern,
-      `export const ${name}Schema = z.enum(${JSON.stringify(variants.map(snake))});`,
+      hasType
+        ? schema
+        : `${schema}\n\nexport type ${name} = z.infer<typeof ${name}Schema>;`,
     );
   }
   for (const match of source.matchAll(/pub struct (\w+)\s*\{([^}]+)\}/g)) {
