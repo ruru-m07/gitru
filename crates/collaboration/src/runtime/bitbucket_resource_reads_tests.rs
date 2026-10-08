@@ -135,7 +135,20 @@ enum ListMode {
     DuplicateFilter,
 }
 #[derive(Clone, Copy, Default)]
+enum CommentMode {
+    #[default]
+    Normal,
+    Edit,
+    Deleted,
+    Older,
+    Partial,
+    Empty,
+    Paged,
+    Denied,
+}
+#[derive(Clone, Copy, Default)]
 struct Scenario {
+    comments: CommentMode,
     detail: DetailMode,
     list: ListMode,
     renamed: bool,
@@ -341,7 +354,25 @@ impl HttpFixture {
                         } else {
                             let repository = [REPO_A,REPO_B].into_iter().find(|repository| target.starts_with(&route(repository))).expect("unknown fixture route");
                             let path = route(repository);
-                            if target == format!("{path}/67") {
+                            if target.starts_with(&format!("{path}/67/comments?")) {
+                                let url = base.join(target).unwrap();
+                                assert_eq!(url.query_pairs().find(|(k,_)|k=="pagelen").unwrap().1,"50");
+                                let page=url.query_pairs().find(|(k,_)|k=="page").map(|(_,v)|v.parse::<u64>().unwrap()).unwrap_or(1);
+                                let mode=scenario.comments;
+                                let updated=if matches!(mode,CommentMode::Deleted){"2026-10-05T00:00:00Z"}else if matches!(mode,CommentMode::Edit){"2026-10-04T00:00:00Z"}else{"2026-10-02T00:00:00Z"};
+                                let mut value=serde_json::json!({"type":"pullrequest_comment","id":1,"created_on":"2026-10-01T00:00:00Z","updated_on":updated,"deleted":matches!(mode,CommentMode::Deleted),"content":{"raw":if matches!(mode,CommentMode::Edit){"edited text"}else{"original text"}},"user":{"uuid":format!("{{{}}}",if token=="actor-b"{ACTOR_B}else{ACTOR_A}),"nickname":token},"pullrequest":{"id":67}});
+                                if token == "actor-a" && repository == REPO_A && held.armed.swap(false,Ordering::SeqCst) {
+                                    value["content"]["raw"]="obsolete held comment".into();value["updated_on"]="2026-10-05T00:00:00Z".into();held.wait();
+                                    response(if held.rate_limited.load(Ordering::SeqCst){429}else{200},"Retry-After: 120\r\n",&serde_json::json!({"values":[value]}).to_string())
+                                } else if matches!(mode,CommentMode::Denied) { response(403,"","synthetic comment grant denied") }
+                                else {
+                                    let mut rows=if matches!(mode,CommentMode::Empty|CommentMode::Paged){vec![]}else{vec![value]};
+                                    if matches!(mode,CommentMode::Partial){rows[0]["inline"]=serde_json::json!({"path":"not a conversation"});}
+                                    let mut body=serde_json::json!({"values":rows});
+                                    if matches!(mode,CommentMode::Paged)&&page==1 {body["next"]=format!("{}{path}/67/comments?pagelen=50&page=2",base.origin().ascii_serialization()).into();}
+                                    response(200,"",&body.to_string())
+                                }
+                            } else if target == format!("{path}/67") {
                                 if token == "actor-a" && repository == REPO_A && held.armed.swap(false,Ordering::SeqCst) {
                                     let mut old = pull(repository,67,token,Scenario::default(),tick);
                                     old["description"] = "obsolete old-epoch Body".into();
@@ -1003,7 +1034,7 @@ async fn bitbucket_pr_scope_denial_preserves_repository_grant_other_resource_act
     let calls = fixture.count();
     let error = runtime
         .hydrate_detail(HydrateDetailRequest {
-            facet: DetailFacet::Comments,
+            facet: DetailFacet::Reviews,
             ..demand(&other, REPO_A)
         })
         .await
@@ -1013,7 +1044,7 @@ async fn bitbucket_pr_scope_denial_preserves_repository_grant_other_resource_act
     assert_eq!(
         fixture.count(),
         calls,
-        "unsupported participants/comments/tasks never trigger an invented request"
+        "unsupported review facets never trigger an invented request"
     );
 }
 
@@ -1674,4 +1705,262 @@ async fn bitbucket_actual_http_summary_head_change_vetoes_a_held_runtime_singlet
             .unwrap(),
         Some(draft)
     );
+}
+
+fn comments_demand(account: &RemoteAccount, repository: &str) -> HydrateDetailRequest {
+    HydrateDetailRequest {
+        facet: DetailFacet::Comments,
+        ..demand(account, repository)
+    }
+}
+fn comments_query(account: &RemoteAccount, repository: &str) -> DetailQuery {
+    DetailQuery {
+        facet: DetailFacet::Comments,
+        ..query(account, repository)
+    }
+}
+async fn hydrate_comments(
+    runtime: &CollaborationRuntime,
+    account: &RemoteAccount,
+    repository: &str,
+) -> DetailSnapshot {
+    runtime
+        .hydrate_detail(comments_demand(account, repository))
+        .await
+        .unwrap();
+    assert!(runtime.run_next().await);
+    runtime
+        .store
+        .detail(comments_query(account, repository))
+        .await
+        .unwrap()
+}
+#[tokio::test]
+async fn bitbucket_comments_own_clock_tombstone_partial_absence_and_offline_reopen() {
+    let dir = tempfile::tempdir().unwrap();
+    let database = store(dir.path()).await;
+    let fixture = HttpFixture::new();
+    let vault = Arc::new(Vault::default());
+    let clock = Clock::new();
+    let runtime = make_runtime(database.clone(), vault.clone(), &fixture, clock.clone());
+    let account = connected(&runtime, "actor-a").await;
+    select(&runtime, &account, REPO_A).await;
+    let draft = authored(&runtime, &account, REPO_A, "private draft").await;
+    let initial = hydrate_comments(&runtime, &account, REPO_A).await;
+    assert_eq!(
+        initial.entries[0].body.text.as_deref(),
+        Some("original text")
+    );
+    fixture.update(|s| s.comments = CommentMode::Edit);
+    let edited = hydrate_comments(&runtime, &account, REPO_A).await;
+    assert_eq!(edited.entries[0].body.text.as_deref(), Some("edited text"));
+    fixture.update(|s| s.comments = CommentMode::Older);
+    let older = hydrate_comments(&runtime, &account, REPO_A).await;
+    assert_eq!(older.entries[0].body, edited.entries[0].body);
+    fixture.update(|s| s.comments = CommentMode::Deleted);
+    let deleted = hydrate_comments(&runtime, &account, REPO_A).await;
+    assert_eq!(deleted.entries[0].state.as_deref(), Some("deleted"));
+    assert!(deleted.entries[0].body.text.is_none() && deleted.entries[0].author.is_none());
+    fixture.update(|s| s.comments = CommentMode::Older);
+    let older = hydrate_comments(&runtime, &account, REPO_A).await;
+    assert_eq!(older.entries[0].body, deleted.entries[0].body);
+    assert_eq!(older.entries[0].state, deleted.entries[0].state);
+    fixture.update(|s| s.comments = CommentMode::Partial);
+    let partial = hydrate_comments(&runtime, &account, REPO_A).await;
+    assert_eq!(partial.entries.len(), 1);
+    assert_eq!(partial.evidence.coverage.state, CoverageState::Partial);
+    runtime.shutdown().await.unwrap();
+    drop(runtime);
+    database.close().await.unwrap();
+    drop(database);
+    let database = store(dir.path()).await;
+    let runtime = make_runtime(database.clone(), vault, &fixture, clock);
+    let before = fixture.count();
+    let saved = database
+        .detail(comments_query(&account, REPO_A))
+        .await
+        .unwrap();
+    assert_eq!(saved.entries[0].state.as_deref(), Some("deleted"));
+    assert_eq!(fixture.count(), before);
+    assert_eq!(
+        database
+            .draft(&account.id, &draft.subject_id)
+            .await
+            .unwrap(),
+        Some(draft)
+    );
+    fixture.update(|s| s.comments = CommentMode::Empty);
+    let empty = hydrate_comments(&runtime, &account, REPO_A).await;
+    assert!(empty.entries.is_empty());
+}
+#[tokio::test]
+async fn bitbucket_comments_continuation_cold_reopen_and_scope_denial_keep_authored_data() {
+    let dir = tempfile::tempdir().unwrap();
+    let database = store(dir.path()).await;
+    let fixture = HttpFixture::new();
+    let vault = Arc::new(Vault::default());
+    let clock = Clock::new();
+    let runtime = make_runtime(database.clone(), vault.clone(), &fixture, clock.clone());
+    let account = connected(&runtime, "actor-a").await;
+    select(&runtime, &account, REPO_A).await;
+    let draft = authored(&runtime, &account, REPO_A, "private draft").await;
+    hydrate_comments(&runtime, &account, REPO_A).await;
+    fixture.update(|s| s.comments = CommentMode::Paged);
+    let first = hydrate_comments(&runtime, &account, REPO_A).await;
+    assert_eq!(first.entries.len(), 1);
+    assert!(first.evidence.coverage.remote_has_more);
+    runtime.shutdown().await.unwrap();
+    drop(runtime);
+    database.close().await.unwrap();
+    drop(database);
+    let database = store(dir.path()).await;
+    let runtime = make_runtime(database.clone(), vault, &fixture, clock);
+    let terminal = hydrate_comments(&runtime, &account, REPO_A).await;
+    assert!(!terminal.evidence.coverage.remote_has_more);
+    assert_eq!(terminal.entries.len(), 1);
+    assert_eq!(terminal.evidence.coverage.state, CoverageState::Partial);
+    let calls = fixture.calls.lock().unwrap().clone();
+    assert!(
+        calls
+            .last()
+            .unwrap()
+            .0
+            .ends_with("/comments?pagelen=50&page=2")
+    );
+    fixture.update(|s| s.comments = CommentMode::Denied);
+    let denied = hydrate_comments(&runtime, &account, REPO_A).await;
+    assert!(denied.entries.is_empty());
+    assert_eq!(
+        database.account(&account.id).await.unwrap().state,
+        AccountState::Active
+    );
+    assert_eq!(
+        database
+            .draft(&account.id, &draft.subject_id)
+            .await
+            .unwrap(),
+        Some(draft)
+    );
+}
+#[tokio::test]
+async fn bitbucket_comments_held_old_epoch_success_and_quota_error_cannot_mutate_replacement_or_other_actor()
+ {
+    for rate_limited in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let database = store(dir.path()).await;
+        let fixture = HttpFixture::new();
+        let runtime = make_runtime(
+            database.clone(),
+            Arc::new(Vault::default()),
+            &fixture,
+            Clock::new(),
+        );
+        let first = connected(&runtime, "actor-a").await;
+        select(&runtime, &first, REPO_A).await;
+        let draft = authored(&runtime, &first, REPO_A, "old actor private draft").await;
+        hydrate_comments(&runtime, &first, REPO_A).await;
+        let other = connected(&runtime, "actor-b").await;
+        select(&runtime, &other, REPO_A).await;
+        let theirs = authored(&runtime, &other, REPO_A, "other actor private draft").await;
+        hydrate_comments(&runtime, &other, REPO_A).await;
+        fixture
+            .held
+            .rate_limited
+            .store(rate_limited, Ordering::SeqCst);
+        fixture.held.armed.store(true, Ordering::SeqCst);
+        runtime
+            .hydrate_detail(comments_demand(&first, REPO_A))
+            .await
+            .unwrap();
+        let worker = runtime.clone();
+        let pending = tokio::spawn(async move { worker.run_next().await });
+        tokio::time::timeout(Duration::from_secs(2), fixture.held.entered.notified())
+            .await
+            .unwrap();
+        let replacement = runtime
+            .connect_bitbucket_cloud("replacement-a".into())
+            .await
+            .unwrap();
+        assert_eq!(replacement.id, first.id);
+        assert_eq!(replacement.authorization_epoch, "2");
+        let accounts = database.accounts().await.unwrap();
+        let current = database
+            .detail(comments_query(&replacement, REPO_A))
+            .await
+            .unwrap();
+        let other_saved = database
+            .detail(comments_query(&other, REPO_A))
+            .await
+            .unwrap();
+        let own_items = database
+            .query_items(items(&replacement, REPO_A))
+            .await
+            .unwrap();
+        let other_items = database.query_items(items(&other, REPO_A)).await.unwrap();
+        let revision = database.revision().await.unwrap();
+        fixture.held.release();
+        assert!(
+            tokio::time::timeout(Duration::from_secs(2), pending)
+                .await
+                .unwrap()
+                .unwrap()
+        );
+        assert_eq!(
+            database.revision().await.unwrap(),
+            revision,
+            "an obsolete grant publishes neither data nor failure/quota revisions"
+        );
+        assert_eq!(database.accounts().await.unwrap(), accounts);
+        assert_eq!(
+            database
+                .detail(comments_query(&replacement, REPO_A))
+                .await
+                .unwrap(),
+            current
+        );
+        assert_eq!(
+            database
+                .detail(comments_query(&other, REPO_A))
+                .await
+                .unwrap(),
+            other_saved
+        );
+        assert_eq!(
+            database
+                .query_items(items(&replacement, REPO_A))
+                .await
+                .unwrap(),
+            own_items
+        );
+        assert_eq!(
+            database.query_items(items(&other, REPO_A)).await.unwrap(),
+            other_items
+        );
+        for account in [&replacement, &other] {
+            assert!(
+                database
+                    .scope_state(&account.id, "provider:rest")
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
+        }
+        for saved in [draft, theirs] {
+            assert_eq!(
+                database
+                    .draft(&saved.account_id, &saved.subject_id)
+                    .await
+                    .unwrap(),
+                Some(saved)
+            );
+        }
+        assert_eq!(
+            runtime
+                .hydrate_detail(comments_demand(&first, REPO_A))
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::StaleView
+        );
+    }
 }

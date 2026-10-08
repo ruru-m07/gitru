@@ -56,7 +56,8 @@ impl Store {
             presentation(scope_in(&mut tx, &account.id, "provider:rest").await?);
         let mut facets = Vec::with_capacity(FACETS.len());
         for facet in FACETS {
-            let relevant = applicable(&request.target, facet);
+            let relevant = applicable(&request.target, facet)
+                && comments_kind_supported(&profile, &request.target, facet);
             let mut evidence = if relevant && account.state == AccountState::Active {
                 facet_evidence(&mut tx, &account, &request.target, &target, facet).await?
             } else {
@@ -285,6 +286,27 @@ async fn target_evidence(
         evidence.notified = true;
     }
     Ok(evidence)
+}
+
+// A cross-kind detail declaration cannot invent a resource family that the
+// adapter explicitly excludes. Missing or temporarily unavailable declarations
+// remain unknown/unavailable evidence; only Unsupported is a semantic boundary.
+fn comments_kind_supported(
+    profile: &ProviderProfile,
+    target: &CapabilityTarget,
+    facet: ResourceFacet,
+) -> bool {
+    if facet != ResourceFacet::Comments || target.kind != CapabilityTargetKind::Resource {
+        return true;
+    }
+    let primary = match target.resource_kind {
+        Some(ResourceKind::PullRequest) => ResourceFacet::PullRequests,
+        Some(ResourceKind::Issue) => ResourceFacet::Issues,
+        _ => return true,
+    };
+    !profile.facets.iter().any(|declaration| {
+        declaration.facet == primary && declaration.state == CapabilityState::Unsupported
+    })
 }
 
 fn applicable(target: &CapabilityTarget, facet: ResourceFacet) -> bool {
