@@ -72,3 +72,14 @@ above belong to the earlier production checkpoint; they were not rerun for this
 fixture-only delta. Existing draft179 is updated in place; fresh exact-head remote
 CI, particularly Windows, remains a separate required gate. No unchanged failed
 run was retried and no merge was performed.
+
+The qualified R123 parent `25c14c7d` is now integrated by signed merge, retaining
+`92a7e152`. Its separate Windows bootstrap fixture repair uses native revision
+hints to witness the exact durable ten-page cap and explicit two-page continuation,
+with all cursor/run/call-count/validator assertions preserved. This parent changes
+only tests and evidence. On the combined R128 tree, all nine runtime_sync controls,
+strict all-target collaboration Clippy and formatting/diff checks pass. Logs:
+`/tmp/gitru-r128-parent-checkpoint-tests.log` and
+`/tmp/gitru-r128-parent-checkpoint-clippy.log`. The earlier 14 crash controls remain
+attributed to the unchanged credential fixture above. New exact-head remote CI is
+still required after the existing PR update; no production or schema changes.
