@@ -129,6 +129,9 @@ first source checkpoint; after that, typegen and wire fixtures freeze it.
   quarantined, attention }`
 - `ReviewDraftSnapshot { key, event, body, comments, generation, context,
   availability, reason, submission, revision, authorization_view }`
+- `ReviewDraftQuery/Page/Summary` for bounded authored-draft recovery after a
+  subject or account is no longer available; summaries contain no provider path,
+  commit or URL authority.
 - `SaveReviewDraftRequest { key, authorization_epoch, authorization_view,
   expected_generation, event, body, comments }`
 - `SubmitReviewRequest { context, draft_generation, command_id,
@@ -142,6 +145,7 @@ IPC commands are local SQLite operations except the scheduler-owned provider
 worker:
 
 - `collaboration_review_draft(key) -> ReviewDraftSnapshot`
+- `collaboration_review_drafts(query) -> ReviewDraftPage`
 - `collaboration_save_review_draft(request) -> ReviewDraftSnapshot`
 - `collaboration_submit_review(request) -> ReviewSubmissionReceipt`
 - `collaboration_submitted_reviews(query) -> SubmittedReviewPage`
