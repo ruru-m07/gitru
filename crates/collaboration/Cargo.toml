@@ -12,15 +12,23 @@ test-harness = []
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["clock", "serde"] }
 futures-util = "0.3"
+getrandom = "0.4"
 # Pin both drivers together: this bundles SQLite 3.51.3, including its WAL-reset fix.
 libsqlite3-sys = { version = "=0.37.0", features = ["bundled"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
+subtle = "2"
 sqlx = { version = "=0.9.0", default-features = false, features = ["runtime-tokio", "sqlite-bundled", "migrate", "macros"] }
 tempfile = "3"
 tokio = { version = "1", features = ["sync", "rt", "macros", "time", "process", "io-util"] }
 url = "2"
 uuid = { version = "1", features = ["v4"] }
 zeroize = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }

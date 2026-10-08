@@ -39,9 +39,19 @@ acceptance evidence. Production activation requires that qualification.
   and unresolved restore state fail closed.
 - Persist and sync a reservation before storing any new secret. Ready publication
   uses a separately synced metadata file and atomic replacement under the lease.
-  Retain the previous valid metadata when writing, syncing or rename fails.
+  A write/file-sync/replacement failure retains the previous reservation and any
+  pending evidence. A directory-sync failure after publication is ambiguous: the
+  complete Ready record may already exist, so the call fails and cold restart must
+  verify the existing database again. It never regenerates the key.
   Directory durability on Windows remains a platform qualification, not a claim
   based on Unix fsync tests.
+- Filesystem observations include opened regular-file identity, length and
+  modification time for the main DB, WAL, SHM, rollback journal and key metadata.
+  Reads refuse symlinks/reparse points and recheck the opened handle and path.
+  Held vault/verification calls cannot publish Ready after ordinary file
+  replacement, in-place modification or same-byte metadata replacement. These
+  stamps supplement the cooperating writer lease; they are not a claim against a
+  process able to restore timestamps and modify arbitrary application files.
 
 ## Startup and crash states
 
@@ -118,7 +128,45 @@ never rewrite existing DB bytes or disclose key bytes in sidecar/error output.
 Actual platform vault behavior and full encrypted migration/backup/application
 qualification remain open acceptance; no synthetic result substitutes for them.
 
+## Platform publication details
+
+Unix metadata uses create-new private pending files, file `sync_all`, same-directory
+hard-link admission or replacement rename, then directory `sync_all`. Windows
+uses the same create-new/file-sync protocol and explicit
+[`MoveFileExW(REPLACE_EXISTING | WRITE_THROUGH)`](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexw)
+for Ready replacement, with no cross-volume copy fallback. File identity uses
+[`GetFileInformationByHandle`](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfileinformationbyhandle)
+on the live no-reparse handle. A pending metadata file is retained on failure and
+blocks automatic startup; explicit repair remains future recovery work. Native
+Windows execution and power-loss durability remain separate qualification.
+
 ## Evidence
 
-Design only at this checkpoint. Implementation and validation results will be
-recorded here with exact scope; R140 remains In Progress.
+Local qualification on macOS 27 arm64 / Rust 1.94.1:
+
+- `cargo test --locked --offline -p collaboration --all-targets --features test-harness`:
+  **1,028 passed, 6 ignored subprocess helpers across 27 suites**, zero failures.
+- Final focused lifecycle rerun: **12 passed / 1 ignored child helper**. Its parent
+  actually launches the helper for four independent process-death phases:
+  durable reservation, completed vault write, created database and Ready.
+- Strict all-target collaboration Clippy with `test-harness`, workspace Rust
+  formatting and diff checks pass. No public IPC or schema changed; no generated
+  bindings were edited or needed regeneration.
+- Controls cover ambiguous vault writes/readback, existing empty or nonempty
+  DB/WAL/SHM/journal evidence, locked/missing keys, missing DB, wrong-key proof,
+  private bounded metadata, symlinks, publication faults, writer contention,
+  held-file replacement/modification and failed revalidation after prior success.
+- Independent source review identified stale `Verified` state after a failed
+  second verification. Verification now revokes that state before checking files
+  or awaiting the native verifier; data/journal/missing-DB regressions pass.
+
+Evidence logs are `/tmp/gitru-r140-native-regression.log`,
+`/tmp/gitru-r140-final-focused.log` and `/tmp/gitru-r140-final-clippy.log` on the
+qualification host. Remote PR CI is separate and pending at publication. Windows
+source is implemented, but native Windows execution and actual power-loss/OS-vault
+behavior are not inferred from these macOS tests.
+
+The isolated component has no production vault adapter or cipher factory; its
+verifier compares synthetic identity/key digests and does not encrypt anything.
+It cannot satisfy actual SQLCipher, OS-vault, application startup, plaintext
+conversion, key rotation or portable-backup acceptance. **R140 remains In Progress.**

@@ -8,6 +8,7 @@ pub mod commands;
 pub mod comment_send;
 pub mod contextual_capabilities;
 pub mod credentials;
+pub mod database_keys;
 pub(crate) mod delivery;
 pub mod demand;
 pub mod detail;
