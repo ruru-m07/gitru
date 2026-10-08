@@ -217,3 +217,13 @@ The PR remains the title/body slice. State close/reopen is being developed in a
 separate bounded follow-up; labels and other provider writes remain outstanding.
 Remote CI restarts on the new published head and live numeric mutation, vault and
 packaged-window qualification remain separate. No merge was performed.
+
+## Windows disk-backed sync fixture follow-up
+
+Test-only source `fb7418c5` incorporates the qualified RURU-123 cursor-resume
+fixture repair. The capped-bootstrap test subscribes before startup and awaits
+its precise committed cursor/run/coverage milestones with a bounded 30-second
+watchdog; it retains the original request-count, continuation and completeness
+assertions. All nine runtime-sync tests and strict all-target collaboration
+Clippy/fmt pass. This is a focused delta to the recorded full workspace baseline;
+fresh remote Windows CI remains pending.
