@@ -59,6 +59,7 @@ import {
 } from "./capability-policy";
 import { CommandRecoveryButton } from "./command-recovery";
 import { DraftRecovery } from "./draft-recovery";
+import { NewIssueDialog } from "./issue-creation";
 import { OpenLocalCloneButton } from "./local-clone-picker";
 import { LocalInboxFeed } from "./local-inbox-feed";
 import type { LocalLinkRouteTarget } from "./local-link-navigation";
@@ -125,6 +126,11 @@ export function CollaborationWorkspace({
   const accounts = useCollaborationAccounts();
   const [accountId, setAccountId] = useState<string | null>(null);
   const [recoverDrafts, setRecoverDrafts] = useState(false);
+  const [recoveredIssue, setRecoveredIssue] = useState<{
+    accountId: string;
+    repositoryId: string;
+    subjectId: string;
+  } | null>(null);
   const connected = useMemo(
     () =>
       accounts.data?.accounts.filter(
@@ -163,7 +169,10 @@ export function CollaborationWorkspace({
             <Select
               items={accountItems}
               value={account.id}
-              onValueChange={setAccountId}
+              onValueChange={(nextAccountId) => {
+                setAccountId(nextAccountId);
+                setRecoveredIssue(null);
+              }}
             >
               <SelectTrigger
                 size="sm"
@@ -219,7 +228,18 @@ export function CollaborationWorkspace({
           {collaborationErrorMessage(accounts.error)}
         </CollaborationStatePanel>
       ) : !target && recoverDrafts ? (
-        <DraftRecovery accounts={accounts.data?.accounts ?? []} />
+        <DraftRecovery
+          accounts={accounts.data?.accounts ?? []}
+          onOpenIssue={(account, repositoryId, subjectId) => {
+            setAccountId(account.id);
+            setRecoveredIssue({
+              accountId: account.id,
+              repositoryId,
+              subjectId,
+            });
+            setRecoverDrafts(false);
+          }}
+        />
       ) : target && !account ? (
         <CollaborationStatePanel title="Linked account unavailable">
           Reconnect and open this link again from Local Git. No other account
@@ -237,6 +257,11 @@ export function CollaborationWorkspace({
           kind={kind}
           target={target}
           maintainProviderDemand={maintainProviderDemand}
+          openIssue={
+            kind === "issue" && recoveredIssue?.accountId === account.id
+              ? recoveredIssue
+              : null
+          }
         />
       )}
     </PageLayout>
@@ -257,11 +282,13 @@ function AccountContextWorkspace({
   kind,
   target,
   maintainProviderDemand,
+  openIssue,
 }: {
   account: RemoteAccount;
   kind: RemoteItemKind;
   target?: LocalLinkRouteTarget;
   maintainProviderDemand: boolean;
+  openIssue: { repositoryId: string; subjectId: string } | null;
 }) {
   const context = useContextualCapabilities(account, accountCapabilityTarget);
   const [metadata, setMetadata] = useState<{
@@ -317,6 +344,7 @@ function AccountContextWorkspace({
         context.isError ? collaborationErrorMessage(context.error) : undefined
       }
       maintainProviderDemand={maintainProviderDemand}
+      openIssue={openIssue}
     />
   );
 }
@@ -330,6 +358,7 @@ function AccountWorkspace({
   semantics,
   contextError,
   maintainProviderDemand,
+  openIssue,
 }: {
   account: RemoteAccount;
   kind: RemoteItemKind;
@@ -339,6 +368,7 @@ function AccountWorkspace({
   semantics: InboxSemantics | null;
   contextError: string | undefined;
   maintainProviderDemand: boolean;
+  openIssue: { repositoryId: string; subjectId: string } | null;
 }) {
   const repositoryPolicy = facetPolicy(snapshot, "repositories");
   const repositories = useCollaborationRepositories(
@@ -349,7 +379,7 @@ function AccountWorkspace({
   const [observedSemantics, setObservedSemantics] = useState(semantics);
   const [manageRepositories, setManageRepositories] = useState(false);
   const [repositoryId, setRepositoryId] = useState<string | null>(
-    target?.repository_id ?? null,
+    target?.repository_id ?? openIssue?.repositoryId ?? null,
   );
   const [search, setSearch] = useState("");
   const searchValue = useDeferredValue(search.trim());
@@ -364,6 +394,9 @@ function AccountWorkspace({
   }
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [createdIssueId, setCreatedIssueId] = useState<string | null>(
+    openIssue?.subjectId ?? null,
+  );
   const selected =
     repositories.data?.repositories.filter(
       (repository) => repository.selected,
@@ -376,9 +409,14 @@ function AccountWorkspace({
       : undefined;
   const selectedRepositoryId = target
     ? target.repository_id
-    : selected.some((repository) => repository.id === repositoryId)
-      ? repositoryId
-      : null;
+    : openIssue
+      ? openIssue.repositoryId
+      : selected.some((repository) => repository.id === repositoryId)
+        ? repositoryId
+        : null;
+  const creationRepository =
+    selected.find((repository) => repository.id === selectedRepositoryId) ??
+    (selected.length === 1 ? selected[0] : undefined);
   const context = useContextualCapabilities(
     account,
     selectedRepositoryId && instanceId
@@ -493,7 +531,10 @@ function AccountWorkspace({
             placeholder="Search saved items…"
             maxLength={256}
             value={search}
-            onChange={(event) => setSearch(event.currentTarget.value)}
+            onChange={(event) => {
+              setSearch(event.currentTarget.value);
+              setCreatedIssueId(null);
+            }}
             className="pl-6"
           />
           <Search
@@ -505,7 +546,10 @@ function AccountWorkspace({
           key={`${kind}:${semantics ?? "unknown"}`}
           items={filterItems}
           value={state ?? "all"}
-          onValueChange={(value) => setState(value === "all" ? null : value)}
+          onValueChange={(value) => {
+            setState(value === "all" ? null : value);
+            setCreatedIssueId(null);
+          }}
         >
           <SelectTrigger
             size="sm"
@@ -565,9 +609,10 @@ function AccountWorkspace({
             ]}
             disabled={!!target}
             value={selectedRepositoryId ?? "all"}
-            onValueChange={(value) =>
-              setRepositoryId(value === "all" ? null : value)
-            }
+            onValueChange={(value) => {
+              setRepositoryId(value === "all" ? null : value);
+              setCreatedIssueId(null);
+            }}
           >
             <SelectTrigger
               size="sm"
@@ -585,6 +630,23 @@ function AccountWorkspace({
               ))}
             </SelectPopup>
           </Select>
+        ) : null}
+        {kind === "issue" && creationRepository ? (
+          <NewIssueDialog
+            key={`${account.id}:${account.authorization_epoch}:${creationRepository.id}`}
+            account={account}
+            repository={creationRepository}
+            onOpenCreated={setCreatedIssueId}
+          />
+        ) : kind === "issue" ? (
+          <Button
+            type="button"
+            size="sm"
+            disabled
+            title="Choose one selected repository to create an issue"
+          >
+            New issue
+          </Button>
         ) : null}
         {!target ? (
           <Button
@@ -676,7 +738,7 @@ function AccountWorkspace({
         />
       ) : (
         <ItemFeed
-          key={`${kind}:${repositoryId}:${state}:${searchValue}`}
+          key={`${kind}:${repositoryId}:${state}:${searchValue}:${createdIssueId ?? ""}`}
           account={account}
           kind={kind}
           instanceId={instanceId}
@@ -698,6 +760,7 @@ function AccountWorkspace({
           refresh={refresh}
           refreshing={refreshing}
           maintainProviderDemand={maintainProviderDemand}
+          initialSelectedItem={createdIssueId}
         />
       )}
     </>
@@ -875,6 +938,7 @@ function ItemFeed({
   contextError,
   recheck,
   maintainProviderDemand,
+  initialSelectedItem,
 }: {
   account: RemoteAccount;
   kind: RemoteItemKind;
@@ -884,6 +948,7 @@ function ItemFeed({
   contextError: string | undefined;
   recheck: () => void;
   maintainProviderDemand: boolean;
+  initialSelectedItem: string | null;
   repositoryId: string | null;
   repositories: RemoteRepository[];
   state: string | null;
@@ -922,7 +987,9 @@ function ItemFeed({
     },
     canReadSaved(policy),
   );
-  const [selectedItem, setSelectedItem] = useState<string | null>(null);
+  const [selectedItem, setSelectedItem] = useState<string | null>(
+    initialSelectedItem,
+  );
   const Icon = icons[kind];
   const page = canReadSaved(policy) ? query.data : undefined;
   const pendingSubjects = new Set(

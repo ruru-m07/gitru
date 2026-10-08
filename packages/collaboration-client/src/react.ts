@@ -9,6 +9,10 @@ import type {
   DetailQuery,
   DraftQuery,
   InboxQuery,
+  IssueDraftKey,
+  IssueDraftPage,
+  IssueDraftQuery,
+  IssueDraftSnapshot,
   ItemQuery,
   PullCommitQuery,
   PullFileDiffRequest,
@@ -116,6 +120,38 @@ export function createdCommentsQueryOptions(
     }),
     queryFn: ({ signal }) =>
       collaboration.forAccount(account).createdComments(query, signal),
+  });
+}
+
+/** Local authored issue draft plus cached native submission authority. */
+export function issueDraftQueryOptions(
+  account: RemoteAccount,
+  key: Omit<IssueDraftKey, "account_id">,
+) {
+  return queryOptions<IssueDraftSnapshot>({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.issueDraft(account, {
+      ...key,
+      account_id: account.id,
+    }),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).issueDraft(key, signal),
+  });
+}
+
+/** Local recovery index for authored issue drafts, including missing repositories. */
+export function issueDraftsQueryOptions(
+  account: RemoteAccount,
+  query: Omit<IssueDraftQuery, "account_id">,
+) {
+  return queryOptions<IssueDraftPage>({
+    ...localQueryPolicy,
+    queryKey: collaborationKeys.issueDrafts(account, {
+      ...query,
+      account_id: account.id,
+    }),
+    queryFn: ({ signal }) =>
+      collaboration.forAccount(account).issueDrafts(query, signal),
   });
 }
 

@@ -470,3 +470,95 @@ it("recovers a dedicated comment draft for a missing subject without using the P
     subjectId: saved.subject_id,
   });
 });
+
+it("recovers and edits a dedicated issue draft while its account and repository are unavailable", async () => {
+  onlineManager.setOnline(false);
+  readMocks();
+  const draftId = "123e4567-e89b-42d3-a456-426614174000";
+  const repositoryId = "missing-repository";
+  const issueDrafts = mockTauriCommandResult("collaboration_issue_drafts", {
+    account_id: account.id,
+    drafts: [
+      {
+        draft_id: draftId,
+        repository_id: repositoryId,
+        title: "Offline issue",
+        preview: "Authored issue body",
+        generation: "3",
+        submission: null,
+      },
+    ],
+    next_cursor: null,
+    revision: "10",
+    authorization_view: "2",
+  });
+  const issueDraft = mockTauriCommandResult("collaboration_issue_draft", {
+    account_id: account.id,
+    draft_id: draftId,
+    repository_id: repositoryId,
+    title: "Offline issue",
+    body: "Authored issue body",
+    generation: "3",
+    context: null,
+    availability: "unavailable",
+    reason: "account_unavailable",
+    submission: null,
+    published: null,
+    revision: "10",
+    authorization_view: "2",
+  });
+  const saveIssue = mockTauriCommand(
+    "collaboration_save_issue_draft",
+    (payload) => {
+      const request = (
+        payload as {
+          request: {
+            title: string;
+            body: string;
+          };
+        }
+      ).request;
+      return {
+        account_id: account.id,
+        draft_id: draftId,
+        repository_id: repositoryId,
+        title: request.title,
+        body: request.body,
+        generation: "4",
+        context: null,
+        availability: "unavailable",
+        reason: "account_unavailable",
+        submission: null,
+        published: null,
+        revision: "11",
+        authorization_view: "2",
+      };
+    },
+  );
+  const user = userEvent.setup();
+  mount(<DraftRecovery accounts={[account]} />);
+  await user.click(screen.getByRole("button", { name: "Issue drafts" }));
+  await user.click(
+    await screen.findByRole("button", {
+      name: "Open issue draft Offline issue",
+    }),
+  );
+  const title = await screen.findByRole("textbox", { name: "Title" });
+  const body = screen.getByRole("textbox", { name: "Description" });
+  expect(title).toHaveValue("Offline issue");
+  expect(body).toHaveValue("Authored issue body");
+  expect(await screen.findByText(/Reconnect this account/i)).toBeVisible();
+  await user.type(title, " edited");
+  await user.click(screen.getByRole("button", { name: "Save issue draft" }));
+  await waitFor(() => expect(saveIssue).toHaveBeenCalledTimes(1));
+  expect(issueDrafts).toHaveBeenCalledWith({
+    query: { account_id: account.id, cursor: null, limit: 50 },
+  });
+  expect(issueDraft).toHaveBeenCalledWith({
+    key: {
+      account_id: account.id,
+      draft_id: draftId,
+      repository_id: repositoryId,
+    },
+  });
+});

@@ -32,6 +32,12 @@ import {
   type HydrateDetailRequest,
   type InboxPage,
   type InboxQuery,
+  type IssueDraftContext,
+  type IssueDraftKey,
+  type IssueDraftPage,
+  type IssueDraftQuery,
+  type IssueDraftSnapshot,
+  type IssueSubmissionReceipt,
   type ItemPage,
   type ItemQuery,
   type ItemSnapshot,
@@ -66,8 +72,10 @@ import {
   type ResourceLocator,
   type ResourceResolution,
   type SaveCommentDraftRequest,
+  type SaveIssueDraftRequest,
   type SendCommentRequest,
   type SetLocalInboxStateRequest,
+  type SubmitIssueRequest,
   type SyncDiagnosticsExportReceipt,
   type SyncDiagnosticsSnapshot,
   type TextEditContext,
@@ -119,6 +127,10 @@ export interface CollaborationTransport extends DemandTransport {
   ): Promise<CommentDraftSnapshot>;
   sendComment(request: SendCommentRequest): Promise<CommentSubmissionReceipt>;
   createdComments(query: CreatedCommentQuery): Promise<CreatedCommentPage>;
+  issueDraft(key: IssueDraftKey): Promise<IssueDraftSnapshot>;
+  issueDrafts(query: IssueDraftQuery): Promise<IssueDraftPage>;
+  saveIssueDraft(request: SaveIssueDraftRequest): Promise<IssueDraftSnapshot>;
+  submitIssue(request: SubmitIssueRequest): Promise<IssueSubmissionReceipt>;
   localLinks(localRepositoryId: string): Promise<LocalLinkInspection>;
   confirmLocalLink(
     request: ConfirmLocalLinkPreview,
@@ -244,6 +256,21 @@ export const collaborationKeys = {
       ...collaborationKeys.account(account.id),
       account.authorization_epoch,
       "created-comments",
+      query,
+    ] as const,
+  issueDraft: (account: RemoteAccount, key: IssueDraftKey) =>
+    [
+      ...collaborationKeys.account(account.id),
+      "local",
+      "issue-draft",
+      key.draft_id,
+      key.repository_id,
+    ] as const,
+  issueDrafts: (account: RemoteAccount, query: IssueDraftQuery) =>
+    [
+      ...collaborationKeys.account(account.id),
+      "local",
+      "issue-drafts",
       query,
     ] as const,
   all: ["collaboration"] as const,
@@ -529,6 +556,14 @@ export class CollaborationClient {
         throw new StaleAuthorizationError();
       return { ...context };
     };
+    const reviewedIssueDraftContext = (context: IssueDraftContext) => {
+      if (
+        context.account_id !== account.id ||
+        context.authorization_epoch !== account.authorization_epoch
+      )
+        throw new StaleAuthorizationError();
+      return { ...context };
+    };
     return {
       commandRecoveryList: (
         query: Omit<CommandRecoveryQuery, "account_id">,
@@ -715,6 +750,87 @@ export class CollaborationClient {
           throw new StaleAuthorizationError();
         this.acceptSnapshot(page);
         return page;
+      },
+      issueDraft: async (
+        key: Omit<IssueDraftKey, "account_id">,
+        signal?: AbortSignal,
+      ) => {
+        const fullKey = { ...key, account_id: account.id };
+        const snapshot = await this.fence.read(
+          account.id,
+          () => this.transport.issueDraft(fullKey),
+          signal,
+        );
+        if (
+          snapshot.account_id !== account.id ||
+          snapshot.draft_id !== key.draft_id ||
+          snapshot.repository_id !== key.repository_id ||
+          (snapshot.context !== null &&
+            (snapshot.context.account_id !== account.id ||
+              snapshot.context.repository_id !== key.repository_id ||
+              snapshot.context.authorization_epoch !==
+                account.authorization_epoch ||
+              snapshot.context.authorization_view !==
+                snapshot.authorization_view))
+        )
+          throw new StaleAuthorizationError();
+        this.acceptSnapshot(snapshot);
+        return snapshot;
+      },
+      issueDrafts: async (
+        query: Omit<IssueDraftQuery, "account_id">,
+        signal?: AbortSignal,
+      ) => {
+        const page = await this.fence.read(
+          account.id,
+          () =>
+            this.transport.issueDrafts({ ...query, account_id: account.id }),
+          signal,
+        );
+        if (page.account_id !== account.id) throw new StaleAuthorizationError();
+        this.acceptSnapshot(page);
+        return page;
+      },
+      saveIssueDraft: async (
+        request: Omit<
+          SaveIssueDraftRequest,
+          "account_id" | "authorization_epoch"
+        >,
+      ) => {
+        const snapshot = await this.fence.read(account.id, () =>
+          this.transport.saveIssueDraft({
+            ...request,
+            account_id: account.id,
+            authorization_epoch: account.authorization_epoch,
+          }),
+        );
+        if (
+          snapshot.account_id !== account.id ||
+          snapshot.draft_id !== request.draft_id ||
+          snapshot.repository_id !== request.repository_id ||
+          (snapshot.context !== null &&
+            (snapshot.context.account_id !== account.id ||
+              snapshot.context.repository_id !== request.repository_id ||
+              snapshot.context.authorization_epoch !==
+                account.authorization_epoch ||
+              snapshot.context.authorization_view !==
+                snapshot.authorization_view))
+        )
+          throw new StaleAuthorizationError();
+        this.acceptSnapshot(snapshot);
+        return snapshot;
+      },
+      submitIssue: async (request: SubmitIssueRequest) => {
+        const context = reviewedIssueDraftContext(request.context);
+        const receipt = await this.fence.read(account.id, () =>
+          this.transport.submitIssue({ ...request, context }),
+        );
+        if (
+          receipt.account_id !== account.id ||
+          receipt.command_id !== request.command_id
+        )
+          throw new StaleAuthorizationError();
+        return receipt;
       },
       retainDemand: (target: DemandTarget) =>
         this.retainDemand(account, target),
@@ -1090,7 +1206,8 @@ export class CollaborationClient {
           // Authored writes have their own generation/authorization fences.
           if (
             change.scope !== "drafts" &&
-            !change.scope.startsWith("comment_draft:")
+            !change.scope.startsWith("comment_draft:") &&
+            !change.scope.startsWith("issue_draft:")
           )
             await queryClient.cancelQueries(affectedQueries);
           if (!isCurrent()) return;
@@ -1218,7 +1335,9 @@ function isAuthoredDraft(key: readonly unknown[]) {
     (key[4] === "draft" ||
       key[4] === "drafts" ||
       key[4] === "comment-draft" ||
-      key[4] === "comment-drafts")
+      key[4] === "comment-drafts" ||
+      key[4] === "issue-draft" ||
+      key[4] === "issue-drafts")
   );
 }
 
@@ -1252,6 +1371,12 @@ function projectionAffected(key: readonly unknown[], scope: string) {
     const query = key[5] as CreatedCommentQuery;
     return scope === `created_comments:${query.subject_id}`;
   }
+  if (projection === "issue-draft") {
+    const draftId = key[5];
+    return scope === "commands" || scope === `issue_draft:${draftId}`;
+  }
+  if (projection === "issue-drafts")
+    return scope === "commands" || scope.startsWith("issue_draft:");
   if (projection === "text-edit") {
     const subject = key[5];
     return (

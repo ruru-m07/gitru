@@ -93,6 +93,10 @@ function fixture() {
     saveCommentDraft: unexpected,
     sendComment: unexpected,
     createdComments: unexpected,
+    issueDraft: unexpected,
+    issueDrafts: unexpected,
+    saveIssueDraft: unexpected,
+    submitIssue: unexpected,
     accounts: async () => ({
       accounts: [account],
       revision,

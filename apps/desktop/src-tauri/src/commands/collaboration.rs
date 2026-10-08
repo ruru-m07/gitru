@@ -18,6 +18,8 @@ mod draft_export;
 pub use command_recovery::*;
 mod comment_send;
 pub use comment_send::*;
+mod issue_creation;
+pub use issue_creation::*;
 mod text_edits;
 pub use text_edits::*;
 mod lifecycle;
@@ -63,6 +65,7 @@ pub(super) enum Operation {
     ExportDiagnostics,
     CommandRecovery,
     CommentSend,
+    IssueCreation,
     TextEdit,
     Recovery,
     Capabilities,
@@ -627,6 +630,7 @@ mod tests {
         Operation::Drafts,
         Operation::ExportDraft,
         Operation::CommentSend,
+        Operation::IssueCreation,
         Operation::TextEdit,
         Operation::CommandRecovery,
         Operation::Recovery,

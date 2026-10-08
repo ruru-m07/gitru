@@ -23,6 +23,9 @@ const textEdits = await Bun.file(
 const commentSend = await Bun.file(
   new URL("crates/collaboration/src/comment_send.rs", root),
 ).text();
+const issueCreation = await Bun.file(
+  new URL("crates/collaboration/src/issue_creation.rs", root),
+).text();
 const detail = await Bun.file(
   new URL("crates/collaboration/src/detail.rs", root),
 ).text();
@@ -317,6 +320,7 @@ for (const source of [
   commandRecovery,
   textEdits,
   commentSend,
+  issueCreation,
   domain,
   error,
   detail,
@@ -453,6 +457,36 @@ generated = generated.replace(
   `$1.superRefine((request, context) => {
   if (!request.accept_background_delivery) {
     context.addIssue({ code: "custom", path: ["accept_background_delivery"], message: "Comment send requires explicit background delivery acceptance" });
+  }
+});`,
+);
+const issueDraftSnapshotSchema =
+  /(export const IssueDraftSnapshotSchema = z\.object\(\{[\s\S]*?\n\}\));/;
+if (!issueDraftSnapshotSchema.test(generated))
+  throw new Error("Missing generated issue-draft snapshot schema");
+generated = generated.replace(
+  issueDraftSnapshotSchema,
+  `$1.superRefine((snapshot, context) => {
+  const available = snapshot.availability === "available";
+  const availableShape = snapshot.context !== null && snapshot.reason === null && snapshot.submission === null && snapshot.published === null;
+  const unavailableShape = snapshot.context === null && snapshot.reason !== null;
+  const currentSubmission = snapshot.submission !== null && snapshot.submission.draft_generation === snapshot.generation;
+  const submissionReason = currentSubmission ? "already_submitted" : snapshot.submission !== null ? "pending_submission" : null;
+  const publishedMatches = snapshot.published === null || (snapshot.reason === "already_submitted" && snapshot.submission !== null && snapshot.published.command_id === snapshot.submission.command_id);
+  if ((available && !availableShape) || (!available && !unavailableShape) || ((snapshot.reason === "already_submitted" || snapshot.reason === "pending_submission") && snapshot.reason !== submissionReason) || !publishedMatches) {
+    context.addIssue({ code: "custom", path: ["availability"], message: "Issue draft availability and submission evidence must agree" });
+  }
+});`,
+);
+const submitIssueRequestSchema =
+  /(export const SubmitIssueRequestSchema = z\.object\(\{[\s\S]*?\n\}\));/;
+if (!submitIssueRequestSchema.test(generated))
+  throw new Error("Missing generated submit-issue request schema");
+generated = generated.replace(
+  submitIssueRequestSchema,
+  `$1.superRefine((request, context) => {
+  if (!request.accept_background_delivery) {
+    context.addIssue({ code: "custom", path: ["accept_background_delivery"], message: "Issue creation requires explicit background delivery acceptance" });
   }
 });`,
 );

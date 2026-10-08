@@ -31,6 +31,8 @@ import {
   collaborationHydrateDetail,
   collaborationHydratePullFile,
   collaborationInbox,
+  collaborationIssueDraft,
+  collaborationIssueDrafts,
   collaborationItem,
   collaborationItems,
   collaborationLoadLocalPullFile,
@@ -51,10 +53,12 @@ import {
   collaborationResolveResource,
   collaborationSaveCommentDraft,
   collaborationSaveDraft,
+  collaborationSaveIssueDraft,
   collaborationSaveTransportBinding,
   collaborationSelectRepository,
   collaborationSendComment,
   collaborationSetLocalInboxState,
+  collaborationSubmitIssue,
   collaborationSubmitTextEdit,
   collaborationTextEditSnapshot,
   collaborationValidateLocalNavigation,
@@ -101,6 +105,7 @@ export type {
   CreatedCommentPage,
   CreatedCommentQuery,
   CreatedCommentReceipt,
+  CreatedIssueIdentity,
   DemandLeaseReceipt,
   DemandOwnerActivity,
   DemandRenewalReceipt,
@@ -130,6 +135,14 @@ export type {
   InboxEntry,
   InboxPage,
   InboxQuery,
+  IssueDraftContext,
+  IssueDraftKey,
+  IssueDraftPage,
+  IssueDraftQuery,
+  IssueDraftSnapshot,
+  IssueDraftSummary,
+  IssueSubmissionReceipt,
+  IssueSubmissionStatus,
   ItemQuery,
   LoadLocalPullFileRequest,
   LocalCloneRecord,
@@ -193,9 +206,11 @@ export type {
   ReviewThreadV1,
   ReviewV1,
   SaveCommentDraftRequest,
+  SaveIssueDraftRequest,
   SendCommentRequest,
   SetLocalInboxStateRequest,
   StorageDiagnostics,
+  SubmitIssueRequest,
   SyncDiagnosticsExportReceipt,
   SyncDiagnosticsSnapshot,
   SyncLatencyDiagnostics,
@@ -247,6 +262,11 @@ export type CommentSendAvailability =
 export type CommentSendReason = NonNullable<
   import("@gitru/commands").CommentDraftSnapshot["reason"]
 >;
+export type IssueDraftAvailability =
+  import("@gitru/commands").IssueDraftSnapshot["availability"];
+export type IssueDraftReason = NonNullable<
+  import("@gitru/commands").IssueDraftSnapshot["reason"]
+>;
 
 export const collaboration = new CollaborationClient({
   commandRecoveryList: (query) => collaborationCommandRecoveryList({ query }),
@@ -267,6 +287,10 @@ export const collaboration = new CollaborationClient({
   saveCommentDraft: (request) => collaborationSaveCommentDraft({ request }),
   sendComment: (request) => collaborationSendComment({ request }),
   createdComments: (query) => collaborationCreatedComments({ query }),
+  issueDraft: (key) => collaborationIssueDraft({ key }),
+  issueDrafts: (query) => collaborationIssueDrafts({ query }),
+  saveIssueDraft: (request) => collaborationSaveIssueDraft({ request }),
+  submitIssue: (request) => collaborationSubmitIssue({ request }),
   demandActivity: () => collaborationDemandActivity({}),
   acquireDemand: (request) => collaborationAcquireDemand({ request }),
   renewDemand: (request) => collaborationRenewDemand({ request }),

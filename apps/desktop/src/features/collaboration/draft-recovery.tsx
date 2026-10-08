@@ -6,6 +6,7 @@ import {
 import {
   commentDraftsQueryOptions,
   draftsQueryOptions,
+  issueDraftsQueryOptions,
   useCollaborationVersion,
 } from "@gitru/collaboration-client/react";
 import { Button } from "@gitru/ui/components/button";
@@ -19,11 +20,24 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { CommentComposer } from "./comment-composer";
+import { RecoveredIssueDraft } from "./issue-creation";
 import { SavedDraftEditor } from "./private-draft";
 import { CollaborationStatePanel } from "./state-panel";
 
-export function DraftRecovery({ accounts }: { accounts: RemoteAccount[] }) {
-  const [draftKind, setDraftKind] = useState<"private" | "comment">("private");
+export function DraftRecovery({
+  accounts,
+  onOpenIssue,
+}: {
+  accounts: RemoteAccount[];
+  onOpenIssue?: (
+    account: RemoteAccount,
+    repositoryId: string,
+    subjectId: string,
+  ) => void;
+}) {
+  const [draftKind, setDraftKind] = useState<"private" | "comment" | "issue">(
+    "private",
+  );
   const [accountId, setAccountId] = useState<string | null>(
     accounts[0]?.id ?? null,
   );
@@ -46,11 +60,15 @@ export function DraftRecovery({ accounts }: { accounts: RemoteAccount[] }) {
         <h2 className="text-sm font-medium">
           {draftKind === "private"
             ? "Saved private drafts"
-            : "Saved comment drafts"}
+            : draftKind === "comment"
+              ? "Saved comment drafts"
+              : "Saved issue drafts"}
         </h2>
         <p className="text-xs text-muted-foreground">
           Recover your text even when an account is disconnected or an item is
           unavailable. Private notes and provider comment drafts stay separate.
+          Issue drafts keep their own temporary local identities until the
+          provider confirms creation.
         </p>
         <div className="flex flex-wrap gap-2" aria-label="Draft kind">
           <Button
@@ -70,6 +88,15 @@ export function DraftRecovery({ accounts }: { accounts: RemoteAccount[] }) {
             onClick={() => setDraftKind("comment")}
           >
             Comment drafts
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={draftKind === "issue" ? "secondary" : "outline"}
+            aria-pressed={draftKind === "issue"}
+            onClick={() => setDraftKind("issue")}
+          >
+            Issue drafts
           </Button>
         </div>
         {account ? (
@@ -108,14 +135,172 @@ export function DraftRecovery({ accounts }: { accounts: RemoteAccount[] }) {
       </div>
       {account && draftKind === "private" ? (
         <AccountDrafts key={account.id} account={account} />
-      ) : account ? (
+      ) : account && draftKind === "comment" ? (
         <AccountCommentDrafts key={account.id} account={account} />
+      ) : account ? (
+        <AccountIssueDrafts
+          key={account.id}
+          account={account}
+          onOpenIssue={onOpenIssue}
+        />
       ) : (
         <CollaborationStatePanel title="No saved accounts">
           Saved drafts from your connected accounts will appear here.
         </CollaborationStatePanel>
       )}
     </section>
+  );
+}
+
+function AccountIssueDrafts({
+  account,
+  onOpenIssue,
+}: {
+  account: RemoteAccount;
+  onOpenIssue?: (
+    account: RemoteAccount,
+    repositoryId: string,
+    subjectId: string,
+  ) => void;
+}) {
+  const [cursors, setCursors] = useState<Array<string | null>>([null]);
+  const [selected, setSelected] = useState<{
+    draftId: string;
+    repositoryId: string;
+  } | null>(null);
+  useEffect(
+    () =>
+      collaboration.subscribeChanges((change) => {
+        if (
+          change.account_id === account.id &&
+          change.scope.startsWith("issue_draft:")
+        ) {
+          setCursors((values) => (values.length > 1 ? [null] : values));
+        }
+      }),
+    [account.id],
+  );
+  const query = useQuery(
+    issueDraftsQueryOptions(account, {
+      cursor: cursors.at(-1) ?? null,
+      limit: 50,
+    }),
+  );
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        className={`grid min-h-0 flex-1 ${selected ? "md:grid-cols-2" : "grid-cols-1"}`}
+      >
+        <div
+          className={`min-w-0 overflow-y-auto ${selected ? "hidden md:block" : ""}`}
+        >
+          {query.isPending ? (
+            <p
+              className="px-5 py-4 text-sm text-muted-foreground"
+              role="status"
+            >
+              Loading saved issue drafts…
+            </p>
+          ) : query.isError ? (
+            <div className="space-y-2 p-5">
+              <p role="alert" className="text-sm text-destructive-foreground">
+                {collaborationErrorMessage(query.error)}
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void query.refetch()}
+              >
+                Retry issue drafts
+              </Button>
+            </div>
+          ) : !query.data?.drafts.length ? (
+            <p className="px-5 py-4 text-sm text-muted-foreground">
+              No saved issue drafts for this account.
+            </p>
+          ) : (
+            query.data.drafts.map((draft) => (
+              <Button
+                key={draft.draft_id}
+                variant="ghost"
+                className="h-auto w-full min-w-0 flex-col items-start gap-1 rounded-none border-b px-5 py-3 text-left whitespace-normal"
+                aria-label={`Open issue draft ${draft.title || draft.draft_id}`}
+                aria-pressed={selected?.draftId === draft.draft_id}
+                onClick={() =>
+                  setSelected({
+                    draftId: draft.draft_id,
+                    repositoryId: draft.repository_id,
+                  })
+                }
+              >
+                <span className="line-clamp-2 w-full break-words text-sm font-medium">
+                  {draft.title || "Untitled issue"}
+                </span>
+                <span className="line-clamp-2 w-full break-words text-xs text-muted-foreground">
+                  {draft.preview || "Empty description"}
+                </span>
+                {draft.submission ? (
+                  <span className="text-xs text-muted-foreground">
+                    Submission tracked in Saved changes
+                  </span>
+                ) : null}
+              </Button>
+            ))
+          )}
+        </div>
+        {selected ? (
+          <article
+            className="min-w-0 overflow-y-auto border-l p-5"
+            aria-label="Recovered issue draft"
+          >
+            <Button size="sm" variant="ghost" onClick={() => setSelected(null)}>
+              Back to issue drafts
+            </Button>
+            <h3 className="mt-4 text-sm font-medium">Recovered issue draft</h3>
+            <p className="mt-2 break-all text-xs text-muted-foreground">
+              Repository: {selected.repositoryId}
+            </p>
+            <div className="mt-4">
+              <RecoveredIssueDraft
+                key={`${selected.draftId}:${selected.repositoryId}`}
+                account={account}
+                draftId={selected.draftId}
+                repositoryId={selected.repositoryId}
+                onOpenCreated={
+                  onOpenIssue
+                    ? (subjectId) =>
+                        onOpenIssue(account, selected.repositoryId, subjectId)
+                    : undefined
+                }
+              />
+            </div>
+          </article>
+        ) : null}
+      </div>
+      {query.data?.next_cursor || cursors.length > 1 ? (
+        <footer className="flex shrink-0 gap-2 border-t px-5 py-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={cursors.length <= 1}
+            onClick={() => setCursors((values) => values.slice(0, -1))}
+          >
+            Previous issue drafts
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={!query.data?.next_cursor}
+            onClick={() => {
+              if (query.data?.next_cursor)
+                setCursors((values) => [...values, query.data.next_cursor]);
+            }}
+          >
+            Next issue drafts
+          </Button>
+        </footer>
+      ) : null}
+    </div>
   );
 }
 
