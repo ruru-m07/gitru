@@ -169,3 +169,31 @@ expose a metadata send path.
 Existing v1 issue creation/publication/budget/restore regressions also pass29/29;
 workspace Rust formatting and diff checks pass. No full-suite or remote-CI result
 is attributed to this unpublished checkpoint.
+
+## Approved stepwise delivery preparation contract — before shared edits
+
+The native preparation protocol adds Continue versus Complete while default
+policies keep their existing single Complete behavior. One delivery turn performs
+at most one preparation read. Continue persists observed quota/auth state before
+saving bounded process-local continuation and returning, releasing dispatch and
+lifecycle locks. It never reaches the attempt writer or POST. Later turns preserve
+account/foreground scheduling opportunities and load the current command/account.
+
+Each continuation binds command hash/generation, actor/epoch/installation, native
+context and authorization_view. A writer-held read rechecks current authorization,
+command state/controls/dependencies and fresh policy context without incrementing
+its durable preparation/reconciliation budget again. Only Complete reaches the
+existing final writer-held claim. A paused/cancelled/replaced command, context or
+view change, credential cutover, stop, quota wait or monotonic expiry drops the
+chain. Restart loses every continuation; it restores no permission authority.
+
+Memory is bounded to eight chains, each with <=64KiB native context and <=64KiB
+continuation, <=64 read steps, and <=120 seconds monotonic lifetime. Capacity or
+invalid/oversized/cyclic continuation refuses/defer safely; it never evicts into
+POST. A step returning byte-identical continuation is invalid. The final read's
+quota is persisted before considering claim, and expiry/stop/current budget are
+checked after a held vault/read too. New runtime controls must exercise real
+SQLite/owned delivery turns: interleaved other-account/foreground work, held quota,
+epoch/view/context/command cancellation, expiry, restart, no attempt before final
+completion and unchanged single-step policy behavior. No schema change is needed
+for this generic native process-local mechanism.
