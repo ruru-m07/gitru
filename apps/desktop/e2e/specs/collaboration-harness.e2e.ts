@@ -194,6 +194,7 @@ describe("retained native collaboration synchronization", () => {
       "reload-and-expiry",
       "normal-tab-lifecycle",
       "authority",
+      "vault-unavailable",
       "disconnect",
     ] satisfies HarnessScenario[]) {
       it(`qualifies ${name} through the compiled native scenario`, async () => {
@@ -205,6 +206,10 @@ describe("retained native collaboration synchronization", () => {
         if (result.status.authorized_hydrate_requests !== "0")
           throw new Error(
             "Automatic visible interest became a durable hydration request",
+          );
+        if (name === "vault-unavailable" && !result.vault)
+          throw new Error(
+            "Native vault qualification omitted failure/recovery evidence",
           );
         if (name === "authority") {
           const evidence = result.authority;

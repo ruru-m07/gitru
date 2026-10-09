@@ -92,6 +92,8 @@ impl HarnessSession {
             return Err(invalid());
         }
         let persistent = PersistentState::open(&root, run_nonce)?;
+        let clock = HarnessClock::new(persistent.utc_base, persistent.elapsed);
+        let shared = SharedState::new(persistent.clone());
         let validated_vault = async {
             let accounts = store.accounts().await?.accounts;
             if !persistent.prepared && !accounts.is_empty() {
@@ -116,7 +118,7 @@ impl HarnessSession {
             {
                 return Err(invalid());
             }
-            vault::FixtureVault::new(root.clone(), run_nonce)
+            vault::FixtureVault::new(root.clone(), run_nonce, shared.clone())
         }
         .await;
         let vault = match validated_vault {
@@ -128,8 +130,6 @@ impl HarnessSession {
                 return Err(error);
             }
         };
-        let clock = HarnessClock::new(persistent.utc_base, persistent.elapsed);
-        let shared = SharedState::new(persistent);
         let provider = Arc::new(provider::FixtureProvider {
             shared: shared.clone(),
             clock: clock.clone(),

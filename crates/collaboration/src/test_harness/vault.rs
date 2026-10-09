@@ -1,8 +1,11 @@
 //! A durable allowlisted synthetic vault. Native keyring is never constructed.
-use super::{HarnessActorSlot, files::OwnedRoot};
+use super::{HarnessActorSlot, HarnessPhase, files::OwnedRoot, state::SharedState};
 use crate::credentials::{CredentialError, CredentialVault, SecretToken};
 use sha2::{Digest, Sha256};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 pub(super) const PRIMARY_TOKEN: &str = "ruru103-synthetic-primary-only";
 pub(super) const ALTERNATE_TOKEN: &str = "ruru103-synthetic-alternate-only";
@@ -24,6 +27,7 @@ pub(super) fn token_slot(value: &SecretToken) -> Result<HarnessActorSlot, Creden
 }
 
 pub(super) struct FixtureVault {
+    shared: Arc<SharedState>,
     root: OwnedRoot,
     files: OwnedRoot,
     primary: String,
@@ -31,12 +35,18 @@ pub(super) struct FixtureVault {
     pub loads: AtomicU64,
     pub stores: AtomicU64,
     pub deletes: AtomicU64,
+    pub unavailable: AtomicU64,
 }
 
 impl FixtureVault {
-    pub fn new(root: OwnedRoot, nonce: &str) -> Result<Self, crate::CollaborationError> {
+    pub fn new(
+        root: OwnedRoot,
+        nonce: &str,
+        shared: Arc<SharedState>,
+    ) -> Result<Self, crate::CollaborationError> {
         let files = root.vault()?;
         Ok(Self {
+            shared,
             root,
             files,
             primary: format!("ruru103:{nonce}:primary"),
@@ -44,7 +54,16 @@ impl FixtureVault {
             loads: AtomicU64::new(0),
             stores: AtomicU64::new(0),
             deletes: AtomicU64::new(0),
+            unavailable: AtomicU64::new(0),
         })
+    }
+
+    fn require_available(&self) -> Result<(), CredentialError> {
+        if self.shared.lock().persistent.phase == HarnessPhase::VaultUnavailable {
+            self.unavailable.fetch_add(1, Ordering::SeqCst);
+            return Err(CredentialError::Unavailable);
+        }
+        Ok(())
     }
 
     pub fn reference(&self, slot: HarnessActorSlot) -> &str {
@@ -79,6 +98,7 @@ impl CredentialVault for FixtureVault {
         if token_slot(value)? != slot {
             return Err(CredentialError::InvalidToken);
         }
+        self.require_available()?;
         self.files
             .write_bytes(&key, value.expose().as_bytes())
             .map_err(|_| CredentialError::Unavailable)?;
@@ -88,6 +108,7 @@ impl CredentialVault for FixtureVault {
 
     fn load(&self, reference: &str) -> Result<Option<SecretToken>, CredentialError> {
         let (key, slot) = self.key(reference)?;
+        self.require_available()?;
         let Some(bytes) = self
             .files
             .read(&key, 256)
@@ -107,6 +128,7 @@ impl CredentialVault for FixtureVault {
 
     fn delete(&self, reference: &str) -> Result<(), CredentialError> {
         let (key, _) = self.key(reference)?;
+        self.require_available()?;
         self.files
             .remove(&key)
             .map_err(|_| CredentialError::Unavailable)?;

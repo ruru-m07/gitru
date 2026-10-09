@@ -20,6 +20,7 @@ import {
   HarnessScenarioError,
   HarnessScenarioResultSchema,
   HarnessScenarioSchema,
+  HarnessVaultEvidenceSchema,
   matchesHarnessPeerLease,
   matchesHarnessRequest,
   readHarnessDiagnostic,
@@ -40,6 +41,74 @@ const receipt = {
 };
 
 describe("retained collaboration renderer protocol", () => {
+  it("requires an actual vault refusal, retained cache and later provider recovery", () => {
+    const evidence = {
+      scope: "synthetic-native-vault",
+      account_id: "ruru103:primary",
+      authorization_epoch: "1",
+      credential_error: "credential_store_unavailable",
+      credential_error_cleared: true,
+      facet_revisions: { before: "3", blocked: "4", recovered: "5" },
+      provider_calls: { before: "3", blocked: "3", recovered: "4" },
+      vault_failures: { before: "0", blocked: "1", recovered: "1" },
+      body_hashes: {
+        before: "a".repeat(64),
+        blocked: "a".repeat(64),
+        recovered: "a".repeat(64),
+      },
+      draft_hashes: {
+        before: "c".repeat(64),
+        blocked: "c".repeat(64),
+        recovered: "c".repeat(64),
+      },
+      authorization_preserved: true,
+    };
+    expect(HarnessVaultEvidenceSchema.safeParse(evidence).success).toBe(true);
+    for (const changed of [
+      { ...evidence, token: "forbidden" },
+      { ...evidence, scope: "production-native-vault" },
+      {
+        ...evidence,
+        vault_failures: { before: "invalid", blocked: "1", recovered: "1" },
+      },
+      {
+        ...evidence,
+        provider_calls: { before: "3", blocked: "4", recovered: "5" },
+      },
+      {
+        ...evidence,
+        provider_calls: { before: "3", blocked: "3", recovered: "3" },
+      },
+      {
+        ...evidence,
+        vault_failures: { before: "0", blocked: "0", recovered: "0" },
+      },
+      {
+        ...evidence,
+        body_hashes: { ...evidence.body_hashes, blocked: "b".repeat(64) },
+      },
+      {
+        ...evidence,
+        draft_hashes: { ...evidence.draft_hashes, recovered: "d".repeat(64) },
+      },
+      { ...evidence, credential_error_cleared: false },
+      {
+        ...evidence,
+        facet_revisions: { before: "3", blocked: "4", recovered: "4" },
+      },
+      {
+        ...evidence,
+        facet_revisions: { before: "3", blocked: "2", recovered: "5" },
+      },
+      {
+        ...evidence,
+        body_hashes: { ...evidence.body_hashes, recovered: "b".repeat(64) },
+      },
+      { ...evidence, authorization_preserved: false },
+    ])
+      expect(HarnessVaultEvidenceSchema.safeParse(changed).success).toBe(false);
+  });
+
   it("bounds performance samples to finite fixed native cases", () => {
     const sample = { duration_ms: 4.25, payload_bytes: 4096 };
     const cases = [

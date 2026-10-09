@@ -23,6 +23,8 @@ mod app_menu;
 mod collaboration_harness;
 mod collaboration_setup;
 mod commands;
+#[cfg(not(feature = "e2e"))]
+mod native_vault;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

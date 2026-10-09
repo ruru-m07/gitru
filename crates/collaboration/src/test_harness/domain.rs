@@ -26,6 +26,7 @@ pub enum HarnessPhase {
     Denied,
     RateLimited,
     NotModified,
+    VaultUnavailable,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,6 +41,7 @@ pub enum HarnessCoreAction {
     PhaseDenied,
     PhaseRateLimited,
     PhaseNotModified,
+    PhaseVaultUnavailable,
     ArmProviderGate,
     ReleaseProviderGate,
     AdvanceRefresh,
@@ -123,6 +125,7 @@ pub struct HarnessCoreStatus {
     pub vault_load_count: String,
     pub vault_store_count: String,
     pub vault_delete_count: String,
+    pub vault_unavailable_count: String,
     pub durable_detail_requests: u32,
     pub demand_lease_count: u32,
     pub clock_elapsed_seconds: u32,

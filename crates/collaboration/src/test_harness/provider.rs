@@ -310,6 +310,9 @@ impl FixtureProvider {
 
     fn phase_error(phase: HarnessPhase) -> Option<ProviderError> {
         match phase {
+            HarnessPhase::VaultUnavailable => {
+                Some(ProviderError::new(ProviderErrorKind::Unavailable))
+            }
             HarnessPhase::Offline => Some(ProviderError::new(ProviderErrorKind::Offline)),
             HarnessPhase::Denied => Some(ProviderError::new(ProviderErrorKind::Permission)),
             HarnessPhase::RateLimited => Some(ProviderError {
