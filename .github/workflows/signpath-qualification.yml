@@ -31,7 +31,7 @@ jobs:
       artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
     steps:
       - name: Check out the requested revision
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
 
@@ -122,7 +122,23 @@ jobs:
           }
 
           $signature = Get-AuthenticodeSignature -FilePath $installers[0].FullName
-          if ($signature.Status -ne 'Valid') {
+          $expectedTestSigner = "CN=Test certificate for 'Gitru [OSS]'"
+          if ($signature.SignatureType -ne 'Authenticode') {
+            throw "Expected an Authenticode signature; got '$($signature.SignatureType)'."
+          }
+          if ($signature.SignerCertificate.Subject -ne $expectedTestSigner) {
+            throw "Unexpected test signer '$($signature.SignerCertificate.Subject)'."
+          }
+          if ($signature.SignerCertificate.Issuer -ne $expectedTestSigner) {
+            throw "The SignPath test certificate must be self-issued; got '$($signature.SignerCertificate.Issuer)'."
+          }
+          if ($signature.Status -eq 'UnknownError') {
+            $expectedTrustFailure = 'terminated in a root certificate which is not trusted by the trust provider'
+            if ($signature.StatusMessage -notlike "*$expectedTrustFailure*") {
+              $signature | Format-List * | Out-String | Write-Host
+              throw "Unexpected Authenticode verification error: '$($signature.StatusMessage)'."
+            }
+          } elseif ($signature.Status -ne 'Valid') {
             $signature | Format-List * | Out-String | Write-Host
             throw "Authenticode verification failed with '$($signature.Status)'."
           }
