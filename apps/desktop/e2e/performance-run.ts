@@ -8,7 +8,6 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
-  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -26,7 +25,7 @@ const repository = resolve(desktop, "../..");
 const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-${process.pid}`;
 const retained = resolve(repository, "artifacts/collaboration-performance", id);
 mkdirSync(retained, { recursive: true, mode: 0o700 });
-const root = realpathSync(mkdtempSync(join(retained, ".fixture-")));
+const root = canonicalHarnessPath(mkdtempSync(join(retained, ".fixture-")));
 const runNonce = randomUUID();
 const gitConfig = join(root, "global.gitconfig");
 const driverEnvironment = join(root, "driver.env");

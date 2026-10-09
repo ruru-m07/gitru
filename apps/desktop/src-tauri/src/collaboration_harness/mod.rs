@@ -263,17 +263,16 @@ fn canonical_input(canonical: &std::path::Path, input: &std::path::Path) -> bool
     // Node's realpathSync supplies the equivalent drive path (`D:\...`). Keep
     // rejecting aliases and traversal while accepting that representation-only
     // difference at the native harness boundary.
-    let canonical = canonical.to_string_lossy();
-    let input = input.to_string_lossy();
-    let comparable = if let Some(path) = canonical.strip_prefix(r"\\?\UNC\") {
-        format!(r"\\{path}")
-    } else {
-        canonical
-            .strip_prefix(r"\\?\")
-            .unwrap_or(&canonical)
-            .to_owned()
-    };
-    comparable.eq_ignore_ascii_case(&input)
+    fn comparable(path: &std::path::Path) -> String {
+        let path = path.to_string_lossy();
+        if let Some(path) = path.strip_prefix(r"\\?\UNC\") {
+            format!(r"\\{path}")
+        } else {
+            path.strip_prefix(r"\\?\").unwrap_or(&path).to_owned()
+        }
+    }
+
+    comparable(canonical).eq_ignore_ascii_case(&comparable(input))
 }
 
 #[cfg(feature = "native-keyed-storage")]
