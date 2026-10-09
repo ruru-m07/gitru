@@ -1,0 +1,142 @@
+name: SignPath qualification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ruru/signpath-release-signing
+    paths:
+      - .github/workflows/signpath-qualification.yml
+      - .github/actions/setup-rust/action.yml
+      - apps/desktop/package.json
+      - apps/desktop/src-tauri/**
+      - bun.lock
+      - package.json
+      - rust-toolchain.toml
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: signpath-qualification-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-unsigned-installer:
+    name: Build unsigned Windows installer
+    runs-on: windows-latest
+    timeout-minutes: 45
+    outputs:
+      artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+    steps:
+      - name: Check out the requested revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - name: Install pinned Rust toolchain
+        uses: ./.github/actions/setup-rust
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build unsigned NSIS installer
+        shell: pwsh
+        run: >-
+          bun --cwd=apps/desktop tauri build
+          --bundles nsis
+          --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: Resolve and validate unsigned installer
+        id: installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installers = @(Get-ChildItem -Path 'target/release/bundle/nsis' -Filter '*-setup.exe' -File)
+          if ($installers.Count -ne 1) {
+            throw "Expected exactly one NSIS installer, found $($installers.Count)."
+          }
+
+          $installer = $installers[0]
+          $version = (Get-Content 'apps/desktop/package.json' | ConvertFrom-Json).version
+          if ($installer.Name -notmatch [regex]::Escape($version)) {
+            throw "Installer filename '$($installer.Name)' does not contain version '$version'."
+          }
+
+          $signature = Get-AuthenticodeSignature -FilePath $installer.FullName
+          if ($signature.Status -ne 'NotSigned') {
+            throw "Qualification input must be unsigned; got '$($signature.Status)'."
+          }
+
+          $metadata = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($installer.FullName)
+          Write-Host "Installer: $($installer.Name)"
+          Write-Host "ProductName: $($metadata.ProductName)"
+          Write-Host "ProductVersion: $($metadata.ProductVersion)"
+          Write-Host "FileVersion: $($metadata.FileVersion)"
+          Write-Host "CompanyName: $($metadata.CompanyName)"
+          "path=$($installer.FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Upload unsigned installer for verified signing
+        id: unsigned
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: gitru-windows-unsigned
+          path: ${{ steps.installer.outputs.path }}
+          archive: false
+          if-no-files-found: error
+          retention-days: 1
+
+  sign-test-installer:
+    name: Test-sign and verify Windows installer
+    needs: build-unsigned-installer
+    runs-on: windows-latest
+    timeout-minutes: 30
+    environment: signpath-test
+    steps:
+      - name: Submit SignPath test-signing request
+        id: signpath
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: 04fa5494-2eb3-4db0-8e67-b24a47ea3781
+          project-slug: gitru
+          signing-policy-slug: test-signing
+          artifact-configuration-slug: initial
+          github-artifact-id: ${{ needs.build-unsigned-installer.outputs.artifact-id }}
+          skip-decompress: true
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 1200
+          output-artifact-directory: signpath-signed
+
+      - name: Verify signed installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installers = @(Get-ChildItem -Path 'signpath-signed' -Filter '*-setup.exe' -File -Recurse)
+          if ($installers.Count -ne 1) {
+            throw "Expected exactly one signed installer, found $($installers.Count)."
+          }
+
+          $signature = Get-AuthenticodeSignature -FilePath $installers[0].FullName
+          if ($signature.Status -ne 'Valid') {
+            $signature | Format-List * | Out-String | Write-Host
+            throw "Authenticode verification failed with '$($signature.Status)'."
+          }
+          if ($null -eq $signature.TimeStamperCertificate) {
+            throw 'The signed installer does not contain a timestamped signature.'
+          }
+
+          Write-Host "Signer: $($signature.SignerCertificate.Subject)"
+          Write-Host "Timestamp authority: $($signature.TimeStamperCertificate.Subject)"
+
+      - name: Retain signed qualification artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: gitru-windows-test-signed
+          path: signpath-signed/*-setup.exe
+          if-no-files-found: error
+          retention-days: 7
