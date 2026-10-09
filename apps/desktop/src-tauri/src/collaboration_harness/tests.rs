@@ -100,6 +100,19 @@ fn launch_root_fails_closed_on_identifier_marker_and_run_mismatch() {
     fs::write(fixture.0.join("run.json"), b"{}").unwrap();
     assert!(launch.check().is_err());
 }
+
+#[cfg(windows)]
+#[test]
+fn launch_root_accepts_node_realpath_without_windows_verbatim_prefix() {
+    let nonce = uuid::Uuid::new_v4().to_string();
+    let fixture = RootFixture::new(&nonce);
+    let canonical = fixture.0.to_string_lossy();
+    let node_path = canonical
+        .strip_prefix(r"\\?\")
+        .expect("Windows canonical paths use the verbatim prefix");
+    let launch = LaunchRoot::open(APPLICATION_ID, PathBuf::from(node_path), nonce).unwrap();
+    assert_eq!(launch.root, fixture.0);
+}
 #[test]
 fn durable_checkpoint_retains_previous_native_session_without_accepting_wrong_run() {
     let nonce = uuid::Uuid::new_v4().to_string();

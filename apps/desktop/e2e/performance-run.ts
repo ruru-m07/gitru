@@ -3,10 +3,11 @@ import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
   createReadStream,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
-  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -24,7 +25,7 @@ const repository = resolve(desktop, "../..");
 const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-${process.pid}`;
 const retained = resolve(repository, "artifacts/collaboration-performance", id);
 mkdirSync(retained, { recursive: true, mode: 0o700 });
-const root = realpathSync(mkdtempSync(join(retained, ".fixture-")));
+const root = canonicalHarnessPath(mkdtempSync(join(retained, ".fixture-")));
 const runNonce = randomUUID();
 const gitConfig = join(root, "global.gitconfig");
 const driverEnvironment = join(root, "driver.env");
@@ -159,6 +160,26 @@ async function runPhase(mode: "seed" | "restart") {
       done(code ?? 1);
     });
   });
+  if (exitCode !== 0) {
+    for (const entry of readdirSync(output, { withFileTypes: true })) {
+      if (
+        !entry.isFile() ||
+        !/^wdio(?:-[A-Za-z0-9_.-]+)?\.log$/.test(entry.name)
+      )
+        continue;
+      const source = join(output, entry.name);
+      const stat = lstatSync(source);
+      if (stat.isSymbolicLink() || stat.size > 1024 * 1024) continue;
+      writeFileSync(
+        join(retained, `${mode}-${entry.name}`),
+        readFileSync(source),
+        {
+          flag: "wx",
+          mode: 0o600,
+        },
+      );
+    }
+  }
   if (expired)
     throw new Error(`Performance ${mode} phase exceeded ten minutes`);
   if (exitCode !== 0)
