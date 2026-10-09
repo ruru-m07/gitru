@@ -115,6 +115,15 @@ export const Route = createRootRoute({
       return content;
     }
 
+    if (import.meta.env.MODE === "e2e-collaboration-harness") {
+      return (
+        <>
+          <WindowStatePersistence />
+          {content}
+        </>
+      );
+    }
+
     return (
       <PostHogProvider
         apiKey={import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN || "disabled"}

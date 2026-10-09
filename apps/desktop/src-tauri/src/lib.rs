@@ -12,24 +12,32 @@ use tauri::{App, Manager};
 use tauri_plugin_store::StoreExt;
 use tokio::sync::RwLock;
 
-#[cfg(feature = "e2e")]
+#[cfg(all(feature = "e2e", not(feature = "collaboration-harness")))]
 const E2E_RESET_ENV: &str = "GITRU_E2E_RESET";
-#[cfg(feature = "e2e")]
+#[cfg(all(feature = "e2e", not(feature = "collaboration-harness")))]
 const E2E_IDENTIFIER: &str = "com.ruru.gitru.e2e";
 
 #[cfg(target_os = "macos")]
 mod app_menu;
+#[cfg(feature = "collaboration-harness")]
+mod collaboration_harness;
+mod collaboration_setup;
 mod commands;
+#[cfg(not(feature = "e2e"))]
+mod native_vault;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default()
-        .plugin(tauri_plugin_updater::Builder::new().build())
+    let builder = tauri::Builder::default();
+    #[cfg(not(feature = "collaboration-harness"))]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    let builder = builder
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
+        .plugin(commands::collaboration_local_links::lifetime_plugin())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level_for("tao", LevelFilter::Off)
@@ -39,6 +47,8 @@ pub fn run() {
             services: RwLock::new(HashMap::new()),
         })
         .manage(RepoContextRuntime::default())
+        .manage(commands::collaboration::CollaborationState::default())
+        .manage(commands::collaboration_recovery::RecoveryUiState::default())
         .manage(Arc::new(SessionManager::new()));
 
     #[cfg(target_os = "macos")]
@@ -53,12 +63,118 @@ pub fn run() {
 
     builder
         .setup(|app| {
-            #[cfg(feature = "e2e")]
+            #[cfg(all(feature = "e2e", not(feature = "collaboration-harness")))]
             reset_e2e_state(app)?;
+            #[cfg(feature = "collaboration-harness")]
+            collaboration_harness::setup(app)?;
             setup_managers(app);
+            #[cfg(not(feature = "collaboration-harness"))]
+            collaboration_setup::setup(app);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            #[cfg(feature = "collaboration-harness")]
+            commands::collaboration_harness::collaboration_harness_control,
+            #[cfg(feature = "collaboration-harness")]
+            commands::collaboration_harness::collaboration_harness_status,
+            #[cfg(feature = "collaboration-harness")]
+            commands::collaboration_harness::collaboration_harness_view_manifest,
+            #[cfg(all(feature = "e2e", not(feature = "collaboration-harness")))]
+            commands::collaboration_recovery::collaboration_e2e_recovery_picker,
+            commands::collaboration_recovery::collaboration_backup,
+            commands::collaboration_recovery::collaboration_prepare_restore,
+            commands::collaboration_recovery::collaboration_inspect_interrupted_recovery,
+            commands::collaboration_recovery::collaboration_cancel_recovery,
+            commands::collaboration_recovery::collaboration_confirm_recovery,
+            commands::collaboration::collaboration_accounts,
+            commands::collaboration::collaboration_connect_github,
+            commands::collaboration::collaboration_connect_gitlab,
+            commands::collaboration::collaboration_connect_bitbucket_cloud,
+            commands::collaboration::collaboration_discover_github_cli,
+            commands::collaboration::collaboration_connect_github_cli,
+            commands::collaboration::collaboration_disconnect,
+            commands::collaboration::collaboration_repositories,
+            commands::collaboration::collaboration_select_repository,
+            commands::collaboration::collaboration_items,
+            commands::collaboration::collaboration_item,
+            commands::collaboration::collaboration_inbox,
+            commands::collaboration::collaboration_set_local_inbox_state,
+            commands::collaboration::collaboration_refresh,
+            commands::collaboration::collaboration_diagnostics,
+            commands::collaboration::collaboration_export_diagnostics,
+            commands::collaboration::collaboration_changes_since,
+            commands::collaboration::collaboration_save_draft,
+            commands::collaboration::collaboration_draft,
+            commands::collaboration::collaboration_drafts,
+            commands::collaboration::collaboration_export_draft,
+            commands::collaboration::collaboration_provider_inbox_actions,
+            commands::collaboration::collaboration_queue_provider_inbox_action,
+            commands::collaboration::collaboration_command_recovery_list,
+            commands::collaboration::collaboration_command_recovery_detail,
+            commands::collaboration::collaboration_command_recovery_action,
+            commands::collaboration::collaboration_command_recovery_replace,
+            commands::collaboration::collaboration_command_recovery_export,
+            commands::collaboration::collaboration_text_edit_snapshot,
+            commands::collaboration::collaboration_submit_text_edit,
+            commands::collaboration::collaboration_guarded_merge_snapshot,
+            commands::collaboration::collaboration_preview_guarded_merge,
+            commands::collaboration::collaboration_submit_guarded_merge,
+            commands::collaboration::collaboration_workflow_state_snapshot,
+            commands::collaboration::collaboration_submit_workflow_state,
+            commands::collaboration::collaboration_comment_draft,
+            commands::collaboration::collaboration_comment_drafts,
+            commands::collaboration::collaboration_save_comment_draft,
+            commands::collaboration::collaboration_send_comment,
+            commands::collaboration::collaboration_created_comments,
+            commands::collaboration_pull_creation::collaboration_pull_draft,
+            commands::collaboration_pull_creation::collaboration_pull_drafts,
+            commands::collaboration_pull_creation::collaboration_save_pull_draft,
+            commands::collaboration_pull_creation::collaboration_preview_pull_creation,
+            commands::collaboration_pull_creation::collaboration_submit_pull,
+            commands::collaboration::collaboration_issue_draft_v2,
+            commands::collaboration::collaboration_issue_drafts_v2,
+            commands::collaboration::collaboration_save_issue_draft_v2,
+            commands::collaboration::collaboration_submit_issue_v2,
+            commands::collaboration::collaboration_issue_metadata_options,
+            commands::collaboration::collaboration_refresh_issue_metadata,
+            commands::collaboration::collaboration_issue_draft,
+            commands::collaboration::collaboration_issue_drafts,
+            commands::collaboration::collaboration_save_issue_draft,
+            commands::collaboration::collaboration_submit_issue,
+            commands::collaboration::collaboration_review_draft,
+            commands::collaboration::collaboration_review_drafts,
+            commands::collaboration::collaboration_save_review_draft,
+            commands::collaboration::collaboration_submit_review,
+            commands::collaboration::collaboration_submitted_reviews,
+            commands::collaboration::collaboration_capabilities,
+            commands::collaboration::collaboration_contextual_capabilities,
+            commands::collaboration::collaboration_resolve_resource,
+            commands::collaboration::collaboration_detail,
+            commands::collaboration::collaboration_pull_commits,
+            commands::collaboration_pull_files::collaboration_pull_files,
+            commands::collaboration_pull_files::collaboration_pull_file_artifact,
+            commands::collaboration_pull_files::collaboration_hydrate_pull_file,
+            commands::collaboration_pull_files::collaboration_load_local_pull_file,
+            commands::collaboration::collaboration_hydrate_detail,
+            commands::collaboration_demand::collaboration_demand_activity,
+            commands::collaboration_demand::collaboration_acquire_demand,
+            commands::collaboration_demand::collaboration_renew_demand,
+            commands::collaboration_demand::collaboration_release_demand,
+            commands::collaboration_demand::collaboration_inspect_demand_owner,
+            commands::collaboration_demand::collaboration_set_demand_owner_activity,
+            commands::collaboration_demand::collaboration_dispose_demand_owner,
+            commands::collaboration_local_links::collaboration_local_links,
+            commands::collaboration_local_links::collaboration_confirm_local_link,
+            commands::collaboration_local_links::collaboration_remove_local_link,
+            commands::collaboration_local_links::collaboration_save_transport_binding,
+            commands::collaboration_local_links::collaboration_remove_transport_binding,
+            commands::collaboration_local_links::collaboration_local_clones,
+            commands::collaboration_local_links::collaboration_validate_local_navigation,
+            commands::collaboration_notification_subjects::collaboration_notification_subject,
+            commands::collaboration_notification_subjects::collaboration_discover_notification_subject,
+            commands::collaboration_pull_checkout::collaboration_plan_pull_checkout,
+            commands::collaboration_pull_checkout::collaboration_execute_pull_checkout,
+            commands::collaboration_pull_commit_navigation::collaboration_open_local_pull_commit,
             ipc::commands::add_local_git_repo,
             ipc::commands::clone_repository,
             ipc::commands::cancel_clone_repository,
@@ -130,7 +246,9 @@ pub fn run() {
             commands::rebase::rebase_update_todo,
             commands::rebase::rebase_set_commit_message,
             commands::rebase::rebase_resolve_conflict,
+            #[cfg(not(feature = "collaboration-harness"))]
             commands::updater::check_for_update_by_channel,
+            #[cfg(not(feature = "collaboration-harness"))]
             commands::updater::download_and_install_update_by_channel,
             // Session Navigation Commands
             ipc::commands::session_push_to_history,
@@ -143,7 +261,7 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-#[cfg(feature = "e2e")]
+#[cfg(all(feature = "e2e", not(feature = "collaboration-harness")))]
 fn reset_e2e_state(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     if std::env::var(E2E_RESET_ENV).as_deref() != Ok("1") {
         return Ok(());
@@ -158,7 +276,13 @@ fn reset_e2e_state(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let data_dir = app.path().app_data_dir()?;
-    for file_name in [STORE_FILE, "app-state.json"] {
+    for file_name in [
+        STORE_FILE,
+        "app-state.json",
+        "collaboration.sqlite3",
+        "collaboration.sqlite3-wal",
+        "collaboration.sqlite3-shm",
+    ] {
         let path = data_dir.join(file_name);
         match std::fs::remove_file(path) {
             Ok(()) => {}

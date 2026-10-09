@@ -1,0 +1,16 @@
+{
+  "id": 9007199254740997,
+  "number": 68,
+  "url": "https://api.github.com/repos/fixture/project/issues/68",
+  "repository_url": "https://api.github.com/repos/fixture/project",
+  "repository": {"id": 9007199254741021},
+  "html_url": "https://github.com/fixture/project/issues/68",
+  "title": "A verified notification issue",
+  "body": null,
+  "state": "open",
+  "updated_at": "2026-10-03T12:00:00Z",
+  "user": null,
+  "labels": ["name-only-label"],
+  "assignees": [],
+  "milestone": null
+}

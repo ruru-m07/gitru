@@ -9,9 +9,10 @@ const controlledGitEnvironment = (globalConfig: string) => ({
 export function isolatedGitEnvironment(
   globalConfig: string,
   overrides: NodeJS.ProcessEnv = {},
+  inherited: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
   const environment = Object.fromEntries(
-    Object.entries(process.env).filter(
+    Object.entries(inherited).filter(
       ([name]) => !GIT_ENVIRONMENT_VARIABLE.test(name),
     ),
   );

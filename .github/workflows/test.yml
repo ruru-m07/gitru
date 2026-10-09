@@ -62,7 +62,7 @@ jobs:
   rust-quality:
     name: Rust formatting and Clippy
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -90,10 +90,15 @@ jobs:
         if: ${{ !cancelled() }}
         run: make clippy
 
+      - name: Check retained harness feature
+        if: ${{ !cancelled() }}
+        run: cargo clippy --workspace --all-targets --features gitru/collaboration-harness -- -D warnings
+
   platform-tests:
     name: Rust tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    # Windows also compiles the retained native-caller feature after both suites.
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 90 || 60 }}
     strategy:
       fail-fast: false
       matrix:
@@ -119,6 +124,92 @@ jobs:
 
       - name: Run Rust workspace tests
         run: cargo test --workspace --verbose
+
+      - name: Run retained collaboration core and native caller tests
+        if: ${{ !cancelled() }}
+        run: |
+          cargo test -p collaboration --features test-harness
+          cargo test -p gitru --features collaboration-harness --lib
+
+  native-vault:
+    name: Native credential vault (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-26, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev dbus-x11 gnome-keyring
+
+      - name: Install pinned Rust toolchain
+        uses: ./.github/actions/setup-rust
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      - name: Qualify isolated Linux Secret Service
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          GITRU_NATIVE_VAULT_QUALIFICATION: github-hosted-v1
+        run: |
+          set -euo pipefail
+          isolated_root="$RUNNER_TEMP/gitru-native-vault-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -p "$isolated_root/data" "$isolated_root/runtime"
+          chmod 700 "$isolated_root" "$isolated_root/data" "$isolated_root/runtime"
+          cleanup() {
+            rm -rf "$isolated_root"
+          }
+          trap cleanup EXIT
+          dbus-run-session -- bash -euo pipefail -c '
+            isolated_root="$1"
+            export XDG_DATA_HOME="$isolated_root/data"
+            export XDG_RUNTIME_DIR="$isolated_root/runtime"
+            control="$XDG_RUNTIME_DIR/keyring"
+            mkdir -p "$control"
+            chmod 700 "$control"
+            gnome-keyring-daemon --foreground --unlock --components=secrets --control-directory="$control" \
+              <<<"gitru-ci-keyring" >"$isolated_root/daemon.out" 2>"$isolated_root/daemon.err" &
+            daemon_pid=$!
+            stop_daemon() {
+              kill "$daemon_pid" 2>/dev/null || true
+              wait "$daemon_pid" 2>/dev/null || true
+            }
+            trap stop_daemon EXIT
+            ready=false
+            for _ in $(seq 1 100); do
+              if dbus-send --session --dest=org.freedesktop.DBus --type=method_call --print-reply \
+                /org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner \
+                string:org.freedesktop.secrets 2>/dev/null | grep -q "boolean true"; then
+                ready=true
+                break
+              fi
+              sleep 0.1
+            done
+            if [ "$ready" != true ]; then
+              echo "The isolated Secret Service did not become ready" >&2
+              exit 1
+            fi
+            cargo test -p gitru --lib native_vault::tests::native_vault_platform_round_trip -- \
+              --ignored --exact --nocapture
+          ' _ "$isolated_root"
+
+      - name: Qualify native credential store
+        if: runner.os != 'Linux'
+        env:
+          GITRU_NATIVE_VAULT_QUALIFICATION: github-hosted-v1
+        run: cargo test -p gitru --lib native_vault::tests::native_vault_platform_round_trip -- --ignored --exact --nocapture
 
   desktop-e2e:
     name: Desktop E2E (${{ matrix.os }})
@@ -175,4 +266,61 @@ jobs:
         with:
           name: desktop-e2e-${{ runner.os }}
           path: artifacts/e2e/**
+          if-no-files-found: warn
+
+  desktop-collaboration:
+    name: Collaboration harness (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-26, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev xvfb
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install pinned Rust toolchain
+        uses: ./.github/actions/setup-rust
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('package.json', 'bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run retained native collaboration scenarios (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x16" bun --cwd=apps/desktop run e2e:harness
+
+      - name: Run retained native collaboration scenarios
+        if: runner.os != 'Linux'
+        run: bun --cwd=apps/desktop run e2e:harness
+
+      - name: Upload desktop end-to-end artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: collaboration-harness-${{ runner.os }}
+          path: artifacts/e2e-harness/**
           if-no-files-found: warn

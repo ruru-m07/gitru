@@ -1,0 +1,33 @@
+[package]
+name = "gitru-keyed-connections"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[lib]
+path = "../../../crates/keyed-connections/src/lib.rs"
+
+[dependencies]
+async-trait = "0.1"
+collaboration = { path = "../../../crates/collaboration", features = ["native-keyed-store"] }
+sqlx = { version = "=0.9.0", default-features = false, features = ["runtime-tokio", "sqlite-bundled"] }
+tokio = { version = "=1.50.0", features = ["macros", "rt-multi-thread", "time", "sync"] }
+uuid = { version = "1", features = ["v4"] }
+zeroize = "1"
+
+[target.'cfg(target_vendor = "apple")'.dependencies]
+libsqlite3-sys = { version = "=0.37.0", features = ["bundled-sqlcipher"] }
+
+[target.'cfg(not(target_vendor = "apple"))'.dependencies]
+libsqlite3-sys = { version = "=0.37.0", features = ["bundled-sqlcipher-vendored-openssl"] }
+
+[dev-dependencies]
+tempfile = "=3.27.0"
+log = "0.4"
+
+[patch.crates-io]
+sqlx-sqlite = { path = "target/verified/sqlx-sqlite" }
+libsqlite3-sys = { path = "../sqlcipher-qualified/target/verified/libsqlite3-sys" }
+openssl-src = { path = "../sqlcipher-qualified/target/verified/openssl-src" }

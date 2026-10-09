@@ -8,7 +8,9 @@ use crate::{
     service::{
         actions::ActionService, branch::BranchService, commit::CommitService, diff::DiffService,
         history::HistoryService, operation::OperationService, origin::OriginService,
-        pickaxe::PickaxeService, query::QueryService, rebase::RebaseService, stash::StashService,
+        pickaxe::PickaxeService, pull_checkout::PullCheckoutService,
+        pull_creation::PullCreationService, pull_file::PullFileService, query::QueryService,
+        rebase::RebaseService, remotes::RemotesService, stash::StashService,
     },
 };
 
@@ -39,6 +41,10 @@ impl RepoServices {
         OriginService::new(self.ctx.clone())
     }
 
+    pub fn remotes(&self) -> RemotesService {
+        RemotesService::new(self.ctx.clone())
+    }
+
     pub fn commit(&self) -> CommitService {
         CommitService::new(self.ctx.clone())
     }
@@ -61,6 +67,18 @@ impl RepoServices {
 
     pub fn operation(&self) -> OperationService {
         OperationService::new(self.ctx.clone())
+    }
+
+    pub fn pull_checkout(&self) -> PullCheckoutService {
+        PullCheckoutService::new(self.ctx.clone())
+    }
+
+    pub fn pull_file(&self) -> PullFileService {
+        PullFileService::new(self.ctx.clone())
+    }
+
+    pub fn pull_creation(&self) -> PullCreationService {
+        PullCreationService::new(self.ctx.clone())
     }
 
     pub fn rebase(&self) -> RebaseService {

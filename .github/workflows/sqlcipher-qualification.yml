@@ -1,0 +1,144 @@
+name: SQLCipher qualification
+
+on:
+  pull_request:
+    paths:
+      - .gitattributes
+      - scripts/spikes/sqlcipher-qualified/**
+      - crates/collaboration/migrations/**
+      - .github/workflows/sqlcipher-qualification.yml
+      - rust-toolchain.toml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sqlcipher-qualification-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source:
+    name: Verify and reproduce pinned SQLCipher source
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test source verification boundaries
+        working-directory: scripts/spikes/sqlcipher-qualified
+        run: python -m unittest -v test_prepare.py
+      - name: Generate pinned native source
+        run: python scripts/spikes/sqlcipher-qualified/prepare.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sqlcipher-verified-amalgamation
+          path: |
+            scripts/spikes/sqlcipher-qualified/target/verified/libsqlite3-sys/sqlcipher/sqlite3.c
+            scripts/spikes/sqlcipher-qualified/target/verified/libsqlite3-sys/sqlcipher/sqlite3.h
+          if-no-files-found: error
+
+  native:
+    name: Native encrypted probe (${{ matrix.os }})
+    needs: source
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-26, windows-latest]
+    runs-on: ${{ matrix.os }}
+    # A cold Windows job builds OpenSSL/cipher plus the copied engine regression.
+    # Keep its individual assertion/watchdog bounds; allow both builds to finish.
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 75 || 45 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify source boundaries on the native checkout
+        working-directory: scripts/spikes/sqlcipher-qualified
+        run: python -m unittest -v test_prepare.py
+      - uses: ./.github/actions/setup-rust
+        with:
+          components: clippy, rustfmt
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+      - uses: actions/download-artifact@v4
+        with:
+          name: sqlcipher-verified-amalgamation
+          path: scripts/spikes/sqlcipher-qualified/target/amalgamation
+      - name: Verify native inputs and prepare local patch
+        run: python scripts/spikes/sqlcipher-qualified/prepare.py --amalgamation-dir scripts/spikes/sqlcipher-qualified/target/amalgamation
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: scripts/spikes/sqlcipher-qualified -> target
+          key: sqlcipher-4.19.0-${{ hashFiles('scripts/spikes/sqlcipher-qualified/pins.json') }}
+      - name: Build and execute packaged qualification probe
+        run: python scripts/spikes/sqlcipher-qualified/run.py
+      - name: Run current collaboration regression with exact native identity adaptation
+        run: python scripts/spikes/sqlcipher-qualified/regression.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sqlcipher-fixture-${{ runner.os }}
+          path: scripts/spikes/sqlcipher-qualified/target/portability/*.sqlite
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sqlcipher-build-evidence-${{ runner.os }}
+          path: |
+            scripts/spikes/sqlcipher-qualified/target/linkage.txt
+            scripts/spikes/sqlcipher-qualified/target/probe-evidence.txt
+            scripts/spikes/sqlcipher-qualified/target/build-report.json
+            scripts/spikes/sqlcipher-qualified/target/verified/pins.json
+            scripts/spikes/sqlcipher-qualified/target/verified/SQLCIPHER-LICENSE.md
+            scripts/spikes/sqlcipher-qualified/target/verified/OPENSSL-LICENSE.txt
+            scripts/spikes/sqlcipher-qualified/Cargo.lock
+            scripts/spikes/sqlcipher-qualified/regression.lock
+          if-no-files-found: error
+
+  portability:
+    name: Read every platform's encrypted file (${{ matrix.os }})
+    needs: native
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-26, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ./.github/actions/setup-rust
+        with:
+          components: clippy, rustfmt
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+      - uses: actions/download-artifact@v4
+        with:
+          name: sqlcipher-verified-amalgamation
+          path: scripts/spikes/sqlcipher-qualified/target/amalgamation
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sqlcipher-fixture-*
+          merge-multiple: true
+          path: scripts/spikes/sqlcipher-qualified/target/foreign-fixtures
+      - name: Verify native inputs
+        run: python scripts/spikes/sqlcipher-qualified/prepare.py --amalgamation-dir scripts/spikes/sqlcipher-qualified/target/amalgamation
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: scripts/spikes/sqlcipher-qualified -> target
+          key: sqlcipher-4.19.0-${{ hashFiles('scripts/spikes/sqlcipher-qualified/pins.json') }}
+      - name: Verify encrypted files from every producer platform
+        run: python scripts/spikes/sqlcipher-qualified/run.py --portability-dir scripts/spikes/sqlcipher-qualified/target/foreign-fixtures

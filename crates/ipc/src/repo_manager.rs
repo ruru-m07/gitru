@@ -10,6 +10,53 @@ pub const REPO_STORE_KEY: &str = "repositories";
 pub const STORE_FILE: &str = "repositories.json";
 pub const SELECTED_REPO_KEY: &str = "selected_repo_id";
 
+fn safe_origin(value: &str) -> Option<String> {
+    git::parsers::remotes::sanitize_remote_url(value).sanitized_url
+}
+
+/// Redact only the known property in the stored JSON, retaining unknown fields.
+fn sanitize_repository_origins(value: &mut serde_json::Value) -> bool {
+    let Some(repositories) = value.as_array_mut() else {
+        return false;
+    };
+    let mut changed = false;
+    for repository in repositories {
+        let Some(object) = repository.as_object_mut() else {
+            continue;
+        };
+        let Some(origin) = object.get("origin") else {
+            continue;
+        };
+        let safe = origin
+            .as_str()
+            .and_then(safe_origin)
+            .map_or(serde_json::Value::Null, serde_json::Value::String);
+        if *origin != safe {
+            object.insert("origin".into(), safe);
+            changed = true;
+        }
+    }
+    changed
+}
+
+#[cfg(test)]
+mod origin_privacy_tests {
+    use super::*;
+    #[test]
+    fn old_origin_json_is_redacted_without_rewriting_ids_or_unknown_properties() {
+        let mut value = serde_json::json!([{ "id":"durable-id", "name":"local name", "path":"/fixture/repo", "origin":"https://synthetic-user:synthetic-secret@example.invalid/team/repo.git?token=synthetic-query#synthetic-fragment", "future":{"nested":[1,2,3]}, "last_updated":42 }, {"id":"legacy", "origin":"bad-helper::synthetic-secret"}]);
+        let original = value.clone();
+        assert!(sanitize_repository_origins(&mut value));
+        for key in ["id", "name", "path", "future", "last_updated"] {
+            assert_eq!(value[0][key], original[0][key]);
+        }
+        assert_eq!(value[0]["origin"], "https://example.invalid/team/repo.git");
+        assert!(value[1]["origin"].is_null());
+        assert!(!value.to_string().contains("synthetic-"));
+        assert!(!sanitize_repository_origins(&mut value));
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct RepositoryInfo {
     pub id: String,
@@ -28,7 +75,7 @@ impl From<RepoSitoryStore> for RepositoryInfo {
             id: store.id,
             name: store.name,
             path: store.path,
-            origin: store.origin,
+            origin: store.origin.as_deref().and_then(safe_origin),
             current_branch: None,
             ahead_behind: None,
             has_uncommitted_changes: false,
@@ -42,6 +89,14 @@ pub struct RepoManager {
 }
 
 impl RepoManager {
+    /// Lookup by the durable registration ID, never by a renderer-supplied path.
+    pub fn repository_for_link(&self, id: &str) -> Result<Option<RepositoryInfo>, String> {
+        uuid::Uuid::parse_str(id).map_err(|_| "Invalid repository registration".to_owned())?;
+        Ok(self
+            .list_repositories_sync()?
+            .into_iter()
+            .find(|repo| repo.id == id))
+    }
     pub fn new(app: AppHandle) -> Self {
         Self { app }
     }
@@ -61,9 +116,17 @@ impl RepoManager {
 
     fn list_repositories_sync(&self) -> Result<Vec<RepositoryInfo>, String> {
         let store = self.get_store()?;
-        let repos: Vec<RepositoryInfo> = store
-            .get(REPO_STORE_KEY)
-            .and_then(|v| serde_json::from_value(v.clone()).ok())
+        let mut value = store.get(REPO_STORE_KEY);
+        if let Some(value) = &mut value
+            && sanitize_repository_origins(value)
+        {
+            store.set(REPO_STORE_KEY, value.clone());
+            store
+                .save()
+                .map_err(|_| "Could not save safe repository metadata".to_owned())?;
+        }
+        let repos: Vec<RepositoryInfo> = value
+            .and_then(|v| serde_json::from_value(v).ok())
             .unwrap_or_default();
         Ok(repos)
     }
@@ -109,6 +172,7 @@ impl RepoManager {
     }
 
     pub async fn add_repository(&self, mut repo: RepositoryInfo) -> Result<RepositoryInfo, String> {
+        repo.origin = repo.origin.as_deref().and_then(safe_origin);
         let mut repos = self.list_repositories_sync()?;
 
         if repos.iter().any(|r| r.path == repo.path) {
