@@ -1,0 +1,23 @@
+{
+  "id": 9007199254741011,
+  "number": 68,
+  "url": "https://api.github.com/repos/fixture/project/issues/68",
+  "repository_url": "https://api.github.com/repos/fixture/project",
+  "html_url": "https://github.com/fixture/project/pull/68",
+  "title": "Issue-side pull request representation",
+  "body": "Synthetic pull-request content must never become canonical issue details.",
+  "state": "open",
+  "user": null,
+  "labels": [],
+  "assignees": [],
+  "milestone": null,
+  "pull_request": {
+    "url": "https://api.github.com/repos/fixture/project/pulls/68",
+    "html_url": "https://github.com/fixture/project/pull/68",
+    "diff_url": "https://github.com/fixture/project/pull/68.diff",
+    "patch_url": "https://github.com/fixture/project/pull/68.patch"
+  },
+  "created_at": "2026-10-01T12:00:00Z",
+  "updated_at": "2026-10-03T12:00:00Z",
+  "closed_at": null
+}

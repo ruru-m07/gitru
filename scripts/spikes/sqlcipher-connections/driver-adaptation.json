@@ -1,0 +1,86 @@
+{
+  "version": "0.9.0",
+  "archive_sha256": "488e99c397a62007e4229aec669a179816339afc6d2620ca6fa420dbee2e982c",
+  "files": {
+    "src/options/mod.rs": {
+      "input_sha256": "ff5005abc6408f2df073d95bf3440c2a3ee96c1a312d73468bf66123f8ab2f1e",
+      "output_sha256": "e1b2e4cec2d742c5b14a74dadf4a1037d7102d7645c6b8abf23270d43ba20773",
+      "replacements": [
+        [
+          "use std::path::Path;",
+          "use std::path::Path;\n\n// Gitru qualification-only adaptation. Closure captures are never formatted.\npub(crate) type BeforeInitialize = Arc<DebugFn<dyn Fn() -> Result<Box<dyn SqliteNativeHandleOwner>, sqlx_core::error::Error> + Send + Sync>>;\n\n/// Per-handle native owner retained through actual SQLite close.\n///\n/// # Safety\n/// `initialize` receives exclusive access before extensions or SQL. It must not\n/// close/retain the pointer or leak native statements/backups. Both callbacks\n/// must finish, must not panic, and must not expose secrets in diagnostics.\n/// `close_failed` must permanently retire its owning factory from admission.\npub unsafe trait SqliteNativeHandleOwner: std::fmt::Debug + Send + Sync {\n    fn initialize(&self, handle: std::ptr::NonNull<libsqlite3_sys::sqlite3>) -> Result<(), sqlx_core::error::Error>;\n    fn close_failed(&self);\n}"
+        ],
+        [
+          "    pub(crate) filename: Cow<'static, Path>,",
+          "    pub(crate) before_initialize: Option<BeforeInitialize>,\n    pub(crate) filename: Cow<'static, Path>,"
+        ],
+        [
+          "        Self {\n            filename:",
+          "        Self {\n            before_initialize: None,\n            filename:"
+        ],
+        [
+          "    /// Sets the name of the database file.",
+          "    /// Reserve a bounded native owner before open and initialize before SQL.\n    /// Each successful reservation lives until the actual native close succeeds.\n    /// Opens using this hook refuse symlinks with SQLITE_OPEN_NOFOLLOW.\n    ///\n    /// # Safety\n    /// The returned owner must satisfy SqliteNativeHandleOwner's safety contract.\n    /// Reservation must be bounded, fail closed after native close failure, and\n    /// must not panic or include secrets in errors. No callback may block forever.\n    pub unsafe fn before_initialize<F>(mut self, reserve: F) -> Self\n    where\n        F: Fn() -> Result<Box<dyn SqliteNativeHandleOwner>, sqlx_core::error::Error> + Send + Sync + 'static,\n    {\n        self.before_initialize = Some(Arc::new(DebugFn(reserve)));\n        self\n    }\n\n    /// Sets the name of the database file."
+        ]
+      ]
+    },
+    "src/connection/establish.rs": {
+      "input_sha256": "447d5067838ec05c713a53b381df4b8ae16652917b4206c553cdea6d3a1fe92a",
+      "output_sha256": "ca9208e36b56587cafdb61d6e4555357c6879192988d3ad296868383ccc1be8a",
+      "replacements": [
+        [
+          "    filename: CString,",
+          "    before_initialize: Option<crate::options::BeforeInitialize>,\n    filename: CString,"
+        ],
+        [
+          "        let mut flags = SQLITE_OPEN_URI;",
+          "        let mut flags = SQLITE_OPEN_URI;\n        if options.before_initialize.is_some() {\n            flags |= libsqlite3_sys::SQLITE_OPEN_NOFOLLOW;\n        }"
+        ],
+        [
+          "        Ok(Self {\n            filename,",
+          "        Ok(Self {\n            before_initialize: options.before_initialize.clone(),\n            filename,"
+        ],
+        [
+          "ConnectionHandle::open(&self.filename, self.open_flags)?",
+          "ConnectionHandle::open(&self.filename, self.open_flags, self.before_initialize.clone())?"
+        ]
+      ]
+    },
+    "src/connection/handle.rs": {
+      "input_sha256": "63d9b11374ebd453f3f7d0be95a728030f05997d5ccdc756fd8057ee0d31dc6f",
+      "output_sha256": "623e2c9eacffd65aad63edf0d9d84b575ccce0826aa5ce749ca1a65d61e78595",
+      "replacements": [
+        [
+          "pub(crate) struct ConnectionHandle(NonNull<sqlite3>);",
+          "pub(crate) struct ConnectionHandle(NonNull<sqlite3>, Option<Box<dyn crate::options::SqliteNativeHandleOwner>>);"
+        ],
+        [
+          "pub(crate) fn open(filename: &CStr, flags: c_int) -> Result<Self, Error> {",
+          "pub(crate) fn open(filename: &CStr, flags: c_int, initialize: Option<crate::options::BeforeInitialize>) -> Result<Self, Error> {\n        let owner = initialize.map(|reserve| reserve()).transpose()?;"
+        ],
+        [
+          "        })?);",
+          "        })?, owner);"
+        ],
+        [
+          "        // Enable extended result codes",
+          "        if let Some(owner) = &handle.1 {\n            owner.initialize(handle.as_non_null_ptr())?;\n        }\n\n        // Enable extended result codes"
+        ],
+        [
+          "            if status != SQLITE_OK {\n                // this should",
+          "            if status != SQLITE_OK {\n                // Retain the native owner even if its fault callback panics.\n                // SQLite still owns an open handle; only process exit may release\n                // this exceptional key/lease reservation.\n                let owner = std::mem::ManuallyDrop::new(self.1.take());\n                if let Some(owner) = owner.as_ref() {\n                    owner.close_failed();\n                }\n                // this should"
+        ]
+      ]
+    },
+    "src/lib.rs": {
+      "replacements": [
+        [
+          "pub use options::{",
+          "pub use options::SqliteNativeHandleOwner;\npub use options::{"
+        ]
+      ],
+      "input_sha256": "6e19e45ffc8e018912798e2290527a2a332ecc775b70bd86223efffc06d6e57b",
+      "output_sha256": "7684138deebdd50720794ab79c533b729f1c920eb021b89fe7b509cf0ea97d76"
+    }
+  }
+}

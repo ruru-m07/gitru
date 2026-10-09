@@ -16,7 +16,7 @@ export const Route = createFileRoute("/app")({
 
 function RouteComponent() {
   const routerState = useRouterState();
-  const searchParams = new URLSearchParams(routerState.location.search);
+  const searchParams = new URLSearchParams(routerState.location.searchStr);
   const hasEmbeddedSearchFlag =
     searchParams.get("embedded") === "1" ||
     searchParams.get("embedded") === "true";

@@ -1,0 +1,1120 @@
+//! Recovery policy accepts only frozen recognized schemas; historical bytes are
+//! never edited or migrated in place. Every fixture database is synthetic.
+use collaboration::recovery::{RecoverySession, RestoreChoice};
+use collaboration::{AccountState, ProviderKind, RemoteAccount, Store};
+use sha2::{Digest, Sha384};
+use sqlx::{
+    Connection, SqlSafeStr, SqliteConnection,
+    migrate::{Migration, MigrationType, Migrator},
+    sqlite::SqliteConnectOptions,
+};
+static CURRENT: Migrator = sqlx::migrate!("./migrations");
+const OLD_SQL: [&str; 24] = [
+    include_str!("fixtures/migrations/v8/0001_local_collaboration.sql"),
+    include_str!("fixtures/migrations/v8/0002_credential_cutover.sql"),
+    include_str!("fixtures/migrations/v8/0003_provider_identities.sql"),
+    include_str!("fixtures/migrations/v8/0004_detail_scopes.sql"),
+    include_str!("fixtures/migrations/v8/0005_resource_metadata.sql"),
+    include_str!("fixtures/migrations/v8/0006_local_repository_links.sql"),
+    include_str!("fixtures/migrations/v8/0007_notification_subjects.sql"),
+    include_str!("fixtures/migrations/v8/0008_participant_facets.sql"),
+    include_str!("fixtures/migrations/v12/0009_task_facets.sql"),
+    include_str!("fixtures/migrations/v12/0010_cache_retention.sql"),
+    include_str!("fixtures/migrations/v12/0011_pull_commit_generations.sql"),
+    include_str!("fixtures/migrations/v12/0012_local_inbox_state.sql"),
+    include_str!("fixtures/migrations/v13/0013_command_admission.sql"),
+    include_str!("fixtures/migrations/v14/0014_pull_file_generations.sql"),
+    include_str!("fixtures/migrations/v15/0015_recovery_quarantine.sql"),
+    include_str!("fixtures/migrations/v16/0016_command_delivery.sql"),
+    include_str!("fixtures/migrations/v17/0017_effective_intent.sql"),
+    include_str!("fixtures/migrations/v18/0018_review_facets.sql"),
+    include_str!("fixtures/migrations/v19/0019_command_recovery.sql"),
+    include_str!("fixtures/migrations/v20/0020_comment_submissions.sql"),
+    include_str!("fixtures/migrations/v21/0021_activity_facets.sql"),
+    include_str!("fixtures/migrations/v22/0022_issue_creation.sql"),
+    include_str!("fixtures/migrations/v23/0023_pull_creation.sql"),
+    include_str!("fixtures/migrations/v24/0024_review_submission.sql"),
+];
+const CHECKSUMS: [&str; 24] = [
+    "a0b4863d56b1620dae93b13df7ef2b38074c3ac5a5d5bf639b01899204cb61f6796ba9fb37bfd3b085f79e928e475e3d",
+    "2fe47653ace5f705b32a819739da13bd9faf40a56a268da416a9f9d39c770ec74a42377268670c40a5478c898137929b",
+    "6f5925a0690563071eeaeeb43bc3eec634c280582b9971e94effe266eedb804fb7773b85a5a4d9ad2492439c575e67e9",
+    "36b4ccaf02a8a00eee143d81bd9b8505c5831bbfb6ee4ee02412c3232aef92a8e5b08fdadbdb097a5e0bff3b42f281da",
+    "7ad6d3309e04d14db8f65a11954f5310a41cfd960493d69d489abebb9c454463e1e19af5f4200348fd3f7ac700d28435",
+    "dcdf2e80cd9c78d32ca1f5c5284635b55ac4e5ffd1f728baf171f964e7e84024702c506a335f5b55775b2261bc337c34",
+    "ba94402e7b3671eb73aab3da890a484447b5b4f0d622afccbd2b474fa90f925fe867cb34b6bf379c1964a7e5917b1e8c",
+    "fb8de37dba851bbe428aafc8685e6cf572294de30a00f8d52138e6c0acd06a26911d31c19f54c80b12d74bc857290073",
+    "d0d0ac8e029c92dbc3ad804518219c5849edb4c8dd2818578202dee4596dcf56d173aef92e3d0c49d5e717685d606f8a",
+    "441544b7f7125838a5532096dd40487323537ea7e4f9917c1174498a0b24c5695d07783a2ca7a149500cce9e00a80621",
+    "28c0e19477d1d940af1508ace6bf353529f0393bc8d0c27e8529e8fde3764ae9bcafc932e93bd466c04e340095c089c4",
+    "65b06409d491935ea19d209a0317f96894e6c3e2cbb69ee03e130bb983ddc28e7aa720521f9963b5957db1d97fe5dd1b",
+    "d29215527787e5b66230af7d8f1f1a915c969a52f54b49bace77247936b2138a361b82f3b167142341d914562d3b1109",
+    "0e8e926a667a1e02a62edbcdf2886dc25e65a66c02c079ededd5a1db82f263673f4ffcdaab1b81dc5aada67c86281c15",
+    "75cedf38449a30de9ec6ea7dae41582e09d34d746909ce6af16ee52c615c6a70f94b0f882c677b65ec40284b4fd6d88f",
+    "f29b1e22717899ef34a8159790fde4388d3573ed67a8051d970dad690191ac6daf28c9a0bf8905e0e78bb848dc93c3db",
+    "8630ad7104e36c9db4006ceef2516fcea090d99259ffe44efac97fa21df3723fe2e5a75bb23b121fc221df8702f0efd6",
+    "9996235d71d8f439634cbef4a6890d2000b78110143e39c2a2f8f0418bb2645376c256d7121ae516c1ff8a11541b889b",
+    "6b69e1a7faf40b2abd19452dc2a216ae74ae7be26376e4ea581247fd758d072bb7f9893f0b2e905bdd726880cb4e1bc6",
+    "971930fd1663b42852f321c8ac5b7ea68e5793a057557284eb4123b14fd32c71b9f69fc7e2ba98ac84064beb65309686",
+    "ca8b6e743a95b5f457ef13ce254c3e9c4ac563b27179d1206e5ae86a43712d8469ef69c96e867573d99866379a8a1b1e",
+    "48c80b4dd9bd4594e02cb1e4108f84e1325cea2b6df0ab9926b3094903974813c86851f400352d8fc4c97b05c0b032c6",
+    "f321217fe0dc81d29a4a82eba42c4270b698dd0250dc2104332c65e928185f252621f9d992d8ed732675972b57683b3e",
+    "a0621e2184e541a638c5326667675e8de556eee5126366a87afddb2be3f85e488f4bf8c7c8705fe7f0ca5e8dd6c1f2ec",
+];
+fn historical(version: usize) -> Migrator {
+    Migrator::with_migrations(
+        OLD_SQL
+            .iter()
+            .take(version)
+            .enumerate()
+            .map(|(i, sql)| {
+                Migration::new(
+                    i as i64 + 1,
+                    "frozen recovery schema".into(),
+                    MigrationType::Simple,
+                    (*sql).into_sql_str(),
+                    false,
+                )
+            })
+            .collect(),
+    )
+}
+async fn database(path: &std::path::Path) -> SqliteConnection {
+    SqliteConnection::connect_with(
+        &SqliteConnectOptions::new()
+            .filename(path)
+            .create_if_missing(true)
+            .foreign_keys(true),
+    )
+    .await
+    .unwrap()
+}
+#[test]
+fn accepted_historical_sql_and_checksums_are_frozen() {
+    for (index, sql) in OLD_SQL.iter().enumerate() {
+        assert_eq!(
+            format!("{:x}", Sha384::digest(sql.as_bytes())),
+            CHECKSUMS[index]
+        );
+        assert_eq!(CURRENT.iter().nth(index).unwrap().sql.as_ref(), *sql);
+        assert_eq!(
+            CURRENT.iter().nth(index).unwrap().checksum.as_ref(),
+            Sha384::digest(sql.as_bytes()).as_slice()
+        );
+    }
+}
+#[tokio::test]
+async fn every_recognized_historical_schema_restores_without_modifying_the_selected_file() {
+    let dir = tempfile::tempdir().unwrap();
+    for version in 1..=24 {
+        let target = dir.path().join(format!("target-{version}.db"));
+        let source = dir.path().join(format!("v{version}.db"));
+        let store = Store::open(&target).await.unwrap();
+        store.close().await.unwrap();
+        drop(store);
+        let mut db = database(&source).await;
+        historical(version).run(&mut db).await.unwrap();
+        let account = RemoteAccount {
+            id: "a".into(),
+            provider: ProviderKind::Github,
+            host: "github.com".into(),
+            actor_id: "actor-a".into(),
+            login: "a".into(),
+            display_name: None,
+            authorization_epoch: "19".into(),
+            state: AccountState::Active,
+            notifications_supported: true,
+        };
+        sqlx::query(
+            "INSERT INTO accounts VALUES('a','github','github.com','actor-a',19,'active',?)",
+        )
+        .bind(serde_json::to_string(&account).unwrap())
+        .execute(&mut db)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO drafts VALUES('a','missing-subject','Retain authored 雪 text',37)",
+        )
+        .execute(&mut db)
+        .await
+        .unwrap();
+        if version >= 20 {
+            sqlx::query("INSERT INTO comment_drafts VALUES('a','missing-comment-subject','Separate authored comment 雪',7)").execute(&mut db).await.unwrap();
+        }
+        if version >= 22 {
+            sqlx::query("INSERT INTO issue_drafts VALUES('a','11111111-1111-4111-8111-111111111111','missing-repository','Preserved issue title','Separate issue body 雪',11)").execute(&mut db).await.unwrap();
+        }
+        if version >= 23 {
+            sqlx::query("INSERT INTO pull_drafts VALUES('a','22222222-2222-4222-8222-222222222222','missing-repository','Preserved pull title','Separate pull body 雪','feature','main','local','link','3',0,13)").execute(&mut db).await.unwrap();
+        }
+        if version >= 24 {
+            sqlx::query("INSERT INTO review_drafts VALUES('a','missing-review-subject','comment','Separate review body 雪',17)").execute(&mut db).await.unwrap();
+        }
+        if version >= 3 {
+            sqlx::raw_sql("INSERT INTO provider_instances VALUES('github:https://github.com/','github','https://github.com/'); INSERT INTO account_instances VALUES('a','github:https://github.com/');").execute(&mut db).await.unwrap();
+        }
+        db.close().await.unwrap();
+        let before = std::fs::read(&source).unwrap();
+        let session = RecoverySession::prepare(&target, &source).await.unwrap();
+        assert_eq!(session.preview().incoming.schema_version, version as i64);
+        assert_eq!(session.preview().quarantined_commands, 0);
+        let id = session.preview().confirmation_id.clone();
+        session
+            .confirm(&id, RestoreChoice::ReplaceCurrentData)
+            .unwrap();
+        assert_eq!(
+            std::fs::read(&source).unwrap(),
+            before,
+            "source version {version}"
+        );
+        let store = Store::open(&target).await.unwrap();
+        let draft = store.draft("a", "missing-subject").await.unwrap().unwrap();
+        assert_eq!(draft.body, "Retain authored 雪 text");
+        assert_eq!(draft.generation, "37");
+        if version >= 20 {
+            let comment = store
+                .comment_draft("a", "missing-comment-subject")
+                .await
+                .unwrap();
+            assert_eq!(comment.body, "Separate authored comment 雪");
+            assert_eq!(comment.generation, "7");
+        }
+        if version >= 22 {
+            let issue = store
+                .issue_draft(collaboration::IssueDraftKey {
+                    account_id: "a".into(),
+                    draft_id: "11111111-1111-4111-8111-111111111111".into(),
+                    repository_id: "missing-repository".into(),
+                })
+                .await
+                .unwrap();
+            assert_eq!(issue.body, "Separate issue body 雪");
+            assert_eq!(issue.generation, "11");
+            assert!(issue.context.is_none());
+        }
+        if version >= 23 {
+            let pull = store
+                .pull_draft(collaboration::PullDraftKey {
+                    account_id: "a".into(),
+                    draft_id: "22222222-2222-4222-8222-222222222222".into(),
+                    repository_id: "missing-repository".into(),
+                })
+                .await
+                .unwrap();
+            assert_eq!(pull.values.body, "Separate pull body 雪");
+            assert_eq!(pull.generation, "13");
+        }
+        if version >= 24 {
+            let mut db = database(&target).await;
+            assert_eq!(
+                sqlx::query_scalar::<_, String>("SELECT body FROM review_drafts")
+                    .fetch_one(&mut db)
+                    .await
+                    .unwrap(),
+                "Separate review body 雪"
+            );
+            db.close().await.unwrap();
+        }
+        assert_eq!(store.account("a").await.unwrap().authorization_epoch, "20");
+        store.close().await.unwrap();
+    }
+}
+#[tokio::test]
+async fn failed_quarantine_migration_rolls_back_existing_schema_and_intent() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("history.db");
+    let mut db = database(&path).await;
+    historical(14).run(&mut db).await.unwrap();
+    let before: Vec<String> =
+        sqlx::query_scalar("SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY name")
+            .fetch_all(&mut db)
+            .await
+            .unwrap();
+    let mut migrations = historical(14).iter().cloned().collect::<Vec<_>>();
+    migrations.push(Migration::new(
+        15,
+        "failed recovery".into(),
+        MigrationType::Simple,
+        sqlx::AssertSqlSafe(format!(
+            "{}\nSELECT * FROM missing_recovery_table;",
+            include_str!("../migrations/0015_recovery_quarantine.sql")
+        ))
+        .into_sql_str(),
+        false,
+    ));
+    assert!(
+        Migrator::with_migrations(migrations)
+            .run(&mut db)
+            .await
+            .is_err()
+    );
+    let after: Vec<String> =
+        sqlx::query_scalar("SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY name")
+            .fetch_all(&mut db)
+            .await
+            .unwrap();
+    assert_eq!(before, after);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT max(version) FROM _sqlx_migrations")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        14
+    );
+    CURRENT.run(&mut db).await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT generation FROM recovery_meta")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        0
+    );
+    db.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn actual_interrupt_and_full_disk_leave_v14_retryable() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+    for interrupt in [true, false] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fault.db");
+        let mut db = database(&path).await;
+        historical(14).run(&mut db).await.unwrap();
+        let observed = Arc::new(AtomicBool::new(false));
+        if interrupt {
+            let mut handle = db.lock_handle().await.unwrap();
+            let signal = observed.clone();
+            handle.set_update_hook(move |update| {
+                if update.table == "recovery_meta" {
+                    signal.store(true, Ordering::SeqCst);
+                }
+            });
+            let signal = observed.clone();
+            let mut fired = false;
+            handle.set_progress_handler(1, move || {
+                if signal.load(Ordering::SeqCst) && !fired {
+                    fired = true;
+                    false
+                } else {
+                    true
+                }
+            });
+        } else {
+            let pages: i64 = sqlx::query_scalar("PRAGMA page_count")
+                .fetch_one(&mut db)
+                .await
+                .unwrap();
+            sqlx::query(sqlx::AssertSqlSafe(format!(
+                "PRAGMA max_page_count={pages}"
+            )))
+            .execute(&mut db)
+            .await
+            .unwrap();
+        }
+        let error = CURRENT.run_direct(None, &mut db, false).await.unwrap_err();
+        let code = match &error {
+            sqlx::migrate::MigrateError::Execute(error)
+            | sqlx::migrate::MigrateError::ExecuteMigration(error, _) => error
+                .as_database_error()
+                .and_then(|error| error.code())
+                .map(|code| code.into_owned()),
+            _ => None,
+        };
+        assert_eq!(
+            code.as_deref(),
+            Some(if interrupt { "9" } else { "13" }),
+            "{error:?}"
+        );
+        if interrupt {
+            assert!(observed.load(Ordering::SeqCst));
+            let mut handle = db.lock_handle().await.unwrap();
+            handle.remove_progress_handler();
+            handle.remove_update_hook();
+        }
+        sqlx::query("PRAGMA max_page_count=1073741823")
+            .execute(&mut db)
+            .await
+            .unwrap();
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>(
+                "SELECT count(*) FROM sqlite_schema WHERE name='recovery_meta'"
+            )
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+            0
+        );
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>("SELECT max(version) FROM _sqlx_migrations")
+                .fetch_one(&mut db)
+                .await
+                .unwrap(),
+            14
+        );
+        db.close().await.unwrap();
+        let store = Store::open(&path).await.unwrap();
+        store.close().await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn actual_interrupt_and_full_disk_leave_v15_retryable() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+    for interrupt in [true, false] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fault.db");
+        let mut db = database(&path).await;
+        historical(15).run(&mut db).await.unwrap();
+        let observed = Arc::new(AtomicBool::new(false));
+        if interrupt {
+            let mut handle = db.lock_handle().await.unwrap();
+            let signal = observed.clone();
+            handle.set_update_hook(move |update| {
+                if update.table == "_sqlx_migrations" {
+                    signal.store(true, Ordering::SeqCst);
+                }
+            });
+            let signal = observed.clone();
+            let mut fired = false;
+            handle.set_progress_handler(1, move || {
+                if signal.load(Ordering::SeqCst) && !fired {
+                    fired = true;
+                    false
+                } else {
+                    true
+                }
+            });
+        } else {
+            let pages: i64 = sqlx::query_scalar("PRAGMA page_count")
+                .fetch_one(&mut db)
+                .await
+                .unwrap();
+            sqlx::query(sqlx::AssertSqlSafe(format!(
+                "PRAGMA max_page_count={pages}"
+            )))
+            .execute(&mut db)
+            .await
+            .unwrap();
+        }
+        let error = CURRENT.run_direct(None, &mut db, false).await.unwrap_err();
+        let code = match &error {
+            sqlx::migrate::MigrateError::Execute(error)
+            | sqlx::migrate::MigrateError::ExecuteMigration(error, _) => error
+                .as_database_error()
+                .and_then(|error| error.code())
+                .map(|code| code.into_owned()),
+            _ => None,
+        };
+        assert_eq!(
+            code.as_deref(),
+            Some(if interrupt { "9" } else { "13" }),
+            "{error:?}"
+        );
+        if interrupt {
+            assert!(observed.load(Ordering::SeqCst));
+            let mut handle = db.lock_handle().await.unwrap();
+            handle.remove_progress_handler();
+            handle.remove_update_hook();
+        }
+        sqlx::query("PRAGMA max_page_count=1073741823")
+            .execute(&mut db)
+            .await
+            .unwrap();
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>(
+                "SELECT count(*) FROM sqlite_schema WHERE name='command_delivery'"
+            )
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+            0
+        );
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>("SELECT max(version) FROM _sqlx_migrations")
+                .fetch_one(&mut db)
+                .await
+                .unwrap(),
+            15
+        );
+        db.close().await.unwrap();
+        let store = Store::open(&path).await.unwrap();
+        store.close().await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn delivery_keysets_seek_partial_indexes_without_terminal_history_or_temp_sort() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut db = database(&dir.path().join("plans.db")).await;
+    CURRENT.run(&mut db).await.unwrap();
+    for (sql, index) in [
+        (
+            "EXPLAIN QUERY PLAN SELECT id FROM accounts INDEXED BY command_delivery_active_accounts WHERE state='active' AND id>'a' ORDER BY id LIMIT 32",
+            "command_delivery_active_accounts",
+        ),
+        (
+            "EXPLAIN QUERY PLAN SELECT account_id,command_id FROM commands INDEXED BY command_delivery_pending WHERE account_id='a' AND command_id>'123e4567-e89b-12d3-a456-426614174000' AND state IN ('queued','sending','retry_wait','accepted','outcome_unknown') ORDER BY command_id LIMIT 32",
+            "command_delivery_pending",
+        ),
+        (
+            "EXPLAIN QUERY PLAN SELECT 1 FROM commands WHERE account_id='a' AND target_kind='issue' AND target_id='issue' AND enqueue_order<90 AND state IN ('queued','sending','retry_wait','accepted','outcome_unknown','conflict') LIMIT 1",
+            "command_delivery_target_order",
+        ),
+    ] {
+        use sqlx::Row;
+        let rows = sqlx::query(sql).fetch_all(&mut db).await.unwrap();
+        let plan = rows
+            .iter()
+            .map(|r| r.get::<String, _>("detail"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(plan.contains(index), "{plan}");
+        assert!(plan.contains("SEARCH"), "{plan}");
+        assert!(!plan.contains("TEMP B-TREE"), "{plan}");
+    }
+    db.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn failed_effect_migration_preserves_v16_authored_rows_and_retries_cleanly() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut db = database(&dir.path().join("v16.db")).await;
+    historical(16).run(&mut db).await.unwrap();
+    let account = RemoteAccount {
+        id: "a".into(),
+        provider: ProviderKind::Github,
+        host: "github.com".into(),
+        actor_id: "actor-a".into(),
+        login: "a".into(),
+        display_name: None,
+        authorization_epoch: "17".into(),
+        state: AccountState::Active,
+        notifications_supported: true,
+    };
+    sqlx::query("INSERT INTO accounts VALUES('a','github','github.com','actor-a',17,'active',?)")
+        .bind(serde_json::to_string(&account).unwrap())
+        .execute(&mut db)
+        .await
+        .unwrap();
+    sqlx::raw_sql("INSERT INTO commands VALUES ('a','11111111-1111-4111-8111-111111111111',17,1,'fixture.comment',1,'pull_request','pull',NULL,x'010203',x'0405',x'0607',zeroblob(32),1,9004,'2026-10-08T00:00:00Z','queued');
+INSERT INTO command_target_protections(account_id,command_id,reference_kind,reference_id,facet) VALUES ('a','11111111-1111-4111-8111-111111111111','facet','pull','files');
+INSERT INTO command_evidence(account_id,command_id,ordinal,kind,version,payload,recorded_at) VALUES ('a','11111111-1111-4111-8111-111111111111',0,'validation',1,x'0102','2026-10-08T00:00:00Z');")
+        .execute(&mut db)
+        .await
+        .unwrap();
+    let before:Vec<String>=sqlx::query_scalar("SELECT json_array(account_id,command_id,hex(canonical_envelope),hex(submission_hash),state) FROM commands ORDER BY account_id,command_id").fetch_all(&mut db).await.unwrap();
+    let mut migrations = historical(16).iter().cloned().collect::<Vec<_>>();
+    migrations.push(Migration::new(
+        17,
+        "failed effects".into(),
+        MigrationType::Simple,
+        sqlx::AssertSqlSafe(format!(
+            "{}\nSELECT * FROM missing_effect_migration;",
+            include_str!("../migrations/0017_effective_intent.sql")
+        ))
+        .into_sql_str(),
+        false,
+    ));
+    assert!(
+        Migrator::with_migrations(migrations)
+            .run(&mut db)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT max(version) FROM _sqlx_migrations")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        16
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM sqlite_schema WHERE name='command_effects'"
+        )
+        .fetch_one(&mut db)
+        .await
+        .unwrap(),
+        0
+    );
+    let after:Vec<String>=sqlx::query_scalar("SELECT json_array(account_id,command_id,hex(canonical_envelope),hex(submission_hash),state) FROM commands ORDER BY account_id,command_id").fetch_all(&mut db).await.unwrap();
+    assert_eq!(before, after);
+    CURRENT.run(&mut db).await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM command_effects")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        0
+    );
+    db.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn failed_activity_migration_preserves_v20_facets_authorship_and_retention_ledger() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut db = database(&dir.path().join("v20.db")).await;
+    historical(20).run(&mut db).await.unwrap();
+    let account = RemoteAccount {
+        id: "a".into(),
+        provider: ProviderKind::Github,
+        host: "github.com".into(),
+        actor_id: "7".into(),
+        login: "actor".into(),
+        display_name: None,
+        authorization_epoch: "1".into(),
+        state: AccountState::Active,
+        notifications_supported: false,
+    };
+    sqlx::query("INSERT INTO accounts VALUES('a','github','github.com','7',1,'active',?)")
+        .bind(serde_json::to_string(&account).unwrap())
+        .execute(&mut db)
+        .await
+        .unwrap();
+    sqlx::raw_sql("INSERT INTO comment_drafts VALUES('a','missing-subject','Preserve authored comment',9);
+INSERT INTO detail_observations VALUES('a','pull','comments','1','2','{}','{}',NULL,'not_loaded',NULL);
+INSERT INTO detail_entries VALUES('a','pull','comments','entry','{}','retained-run');
+INSERT INTO detail_demand VALUES('a','pull','comments','1',1);
+INSERT INTO cache_retention_entries VALUES('a','pull','comments',123,2);").execute(&mut db).await.unwrap();
+    let schema: Vec<String> =
+        sqlx::query_scalar("SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY name")
+            .fetch_all(&mut db)
+            .await
+            .unwrap();
+    let mut migrations = historical(20).iter().cloned().collect::<Vec<_>>();
+    migrations.push(Migration::new(
+        21,
+        "failed activity".into(),
+        MigrationType::Simple,
+        sqlx::AssertSqlSafe(format!(
+            "{}\nSELECT * FROM missing_activity_migration;",
+            include_str!("../migrations/0021_activity_facets.sql")
+        ))
+        .into_sql_str(),
+        false,
+    ));
+    assert!(
+        Migrator::with_migrations(migrations)
+            .run(&mut db)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT max(version) FROM _sqlx_migrations")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        20
+    );
+    let after: Vec<String> =
+        sqlx::query_scalar("SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY name")
+            .fetch_all(&mut db)
+            .await
+            .unwrap();
+    assert_eq!(schema, after);
+    CURRENT.run(&mut db).await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT body FROM comment_drafts")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        "Preserve authored comment"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT last_seen_run FROM detail_entries")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        "retained-run"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT requested FROM detail_demand")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        sqlx::query_as::<_, (i64, i64)>(
+            "SELECT indexed_logical_bytes,indexed_facet_count FROM cache_retention_state"
+        )
+        .fetch_one(&mut db)
+        .await
+        .unwrap(),
+        (123, 1)
+    );
+    assert!(
+        sqlx::query("PRAGMA foreign_key_check")
+            .fetch_optional(&mut db)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    db.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn failed_issue_creation_migration_preserves_v21_authorship_and_retries_cleanly() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut db = database(&dir.path().join("v21.db")).await;
+    historical(21).run(&mut db).await.unwrap();
+    let account = RemoteAccount {
+        id: "a".into(),
+        provider: ProviderKind::Github,
+        host: "github.com".into(),
+        actor_id: "7".into(),
+        login: "actor".into(),
+        display_name: None,
+        authorization_epoch: "1".into(),
+        state: AccountState::Active,
+        notifications_supported: false,
+    };
+    sqlx::query("INSERT INTO accounts VALUES('a','github','github.com','7',1,'active',?)")
+        .bind(serde_json::to_string(&account).unwrap())
+        .execute(&mut db)
+        .await
+        .unwrap();
+    sqlx::raw_sql("INSERT INTO comment_drafts VALUES('a','missing-subject','Preserve authored comment',9);
+INSERT INTO detail_observations VALUES('a','pull','comments','1','2','{}','{}',NULL,'not_loaded',NULL);
+INSERT INTO detail_entries VALUES('a','pull','comments','entry','{}','retained-run');
+INSERT INTO detail_demand VALUES('a','pull','comments','1',1);
+INSERT INTO cache_retention_entries VALUES('a','pull','comments',123,2);").execute(&mut db).await.unwrap();
+    let schema: Vec<String> =
+        sqlx::query_scalar("SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY name")
+            .fetch_all(&mut db)
+            .await
+            .unwrap();
+    let mut migrations = historical(21).iter().cloned().collect::<Vec<_>>();
+    migrations.push(Migration::new(
+        22,
+        "failed issue creation".into(),
+        MigrationType::Simple,
+        sqlx::AssertSqlSafe(format!(
+            "{}\nSELECT * FROM missing_issue_creation_migration;",
+            include_str!("../migrations/0022_issue_creation.sql")
+        ))
+        .into_sql_str(),
+        false,
+    ));
+    assert!(
+        Migrator::with_migrations(migrations)
+            .run(&mut db)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT max(version) FROM _sqlx_migrations")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        21
+    );
+    let after: Vec<String> =
+        sqlx::query_scalar("SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY name")
+            .fetch_all(&mut db)
+            .await
+            .unwrap();
+    assert_eq!(schema, after);
+    CURRENT.run(&mut db).await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT body FROM comment_drafts")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        "Preserve authored comment"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT last_seen_run FROM detail_entries")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        "retained-run"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT requested FROM detail_demand")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        sqlx::query_as::<_, (i64, i64)>(
+            "SELECT indexed_logical_bytes,indexed_facet_count FROM cache_retention_state"
+        )
+        .fetch_one(&mut db)
+        .await
+        .unwrap(),
+        (123, 1)
+    );
+    assert!(
+        sqlx::query("PRAGMA foreign_key_check")
+            .fetch_optional(&mut db)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    db.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn failed_pull_creation_migration_preserves_v22_authorship_and_retries_cleanly() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut db = database(&dir.path().join("v22.db")).await;
+    historical(22).run(&mut db).await.unwrap();
+    let account = RemoteAccount {
+        id: "a".into(),
+        provider: ProviderKind::Github,
+        host: "github.com".into(),
+        actor_id: "7".into(),
+        login: "actor".into(),
+        display_name: None,
+        authorization_epoch: "1".into(),
+        state: AccountState::Active,
+        notifications_supported: false,
+    };
+    sqlx::query("INSERT INTO accounts VALUES('a','github','github.com','7',1,'active',?)")
+        .bind(serde_json::to_string(&account).unwrap())
+        .execute(&mut db)
+        .await
+        .unwrap();
+    sqlx::raw_sql("INSERT INTO comment_drafts VALUES('a','missing-subject','Preserve authored comment',9);
+INSERT INTO issue_drafts VALUES('a','11111111-1111-4111-8111-111111111111','missing-repository','Retained issue','Retained issue body',4);
+INSERT INTO detail_observations VALUES('a','pull','comments','1','2','{}','{}',NULL,'not_loaded',NULL);
+INSERT INTO detail_entries VALUES('a','pull','comments','entry','{}','retained-run');
+INSERT INTO detail_demand VALUES('a','pull','comments','1',1);
+INSERT INTO cache_retention_entries VALUES('a','pull','comments',123,2);").execute(&mut db).await.unwrap();
+    let schema: Vec<String> =
+        sqlx::query_scalar("SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY name")
+            .fetch_all(&mut db)
+            .await
+            .unwrap();
+    let mut migrations = historical(22).iter().cloned().collect::<Vec<_>>();
+    migrations.push(Migration::new(
+        23,
+        "failed pull creation".into(),
+        MigrationType::Simple,
+        sqlx::AssertSqlSafe(format!(
+            "{}\nSELECT * FROM missing_pull_creation_migration;",
+            include_str!("../migrations/0023_pull_creation.sql")
+        ))
+        .into_sql_str(),
+        false,
+    ));
+    assert!(
+        Migrator::with_migrations(migrations)
+            .run(&mut db)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT max(version) FROM _sqlx_migrations")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        22
+    );
+    let after: Vec<String> =
+        sqlx::query_scalar("SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY name")
+            .fetch_all(&mut db)
+            .await
+            .unwrap();
+    assert_eq!(schema, after);
+    CURRENT.run(&mut db).await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT body FROM comment_drafts")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        "Preserve authored comment"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT last_seen_run FROM detail_entries")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        "retained-run"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT requested FROM detail_demand")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        sqlx::query_as::<_, (i64, i64)>(
+            "SELECT indexed_logical_bytes,indexed_facet_count FROM cache_retention_state"
+        )
+        .fetch_one(&mut db)
+        .await
+        .unwrap(),
+        (123, 1)
+    );
+    assert!(
+        sqlx::query("PRAGMA foreign_key_check")
+            .fetch_optional(&mut db)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT body FROM issue_drafts")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        "Retained issue body"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT max(version) FROM _sqlx_migrations")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        26
+    );
+    db.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn failed_review_submission_migration_preserves_v23_authorship_and_retries_cleanly() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut db = database(&dir.path().join("v23.db")).await;
+    historical(23).run(&mut db).await.unwrap();
+    let account = RemoteAccount {
+        id: "a".into(),
+        provider: ProviderKind::Github,
+        host: "github.com".into(),
+        actor_id: "7".into(),
+        login: "actor".into(),
+        display_name: None,
+        authorization_epoch: "1".into(),
+        state: AccountState::Active,
+        notifications_supported: false,
+    };
+    sqlx::query("INSERT INTO accounts VALUES('a','github','github.com','7',1,'active',?)")
+        .bind(serde_json::to_string(&account).unwrap())
+        .execute(&mut db)
+        .await
+        .unwrap();
+    sqlx::raw_sql(
+        "INSERT INTO comment_drafts VALUES('a','missing-subject','Preserve authored comment',9);\
+         INSERT INTO issue_drafts VALUES('a','11111111-1111-4111-8111-111111111111','missing-repository','Retained issue','Retained issue body',4);\
+         INSERT INTO pull_drafts VALUES('a','22222222-2222-4222-8222-222222222222','missing-repository','Retained pull','Retained pull body','feature','main','local','link','1',0,3);\
+         INSERT INTO detail_observations VALUES('a','pull','comments','1','2','{}','{}',NULL,'not_loaded',NULL);\
+         INSERT INTO detail_entries VALUES('a','pull','comments','entry','{}','retained-run');\
+         INSERT INTO detail_demand VALUES('a','pull','comments','1',1);\
+         INSERT INTO cache_retention_entries VALUES('a','pull','comments',123,2);",
+    )
+    .execute(&mut db)
+    .await
+    .unwrap();
+    let schema: Vec<String> =
+        sqlx::query_scalar("SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY name")
+            .fetch_all(&mut db)
+            .await
+            .unwrap();
+    let mut migrations = historical(23).iter().cloned().collect::<Vec<_>>();
+    migrations.push(Migration::new(
+        24,
+        "failed review submission".into(),
+        MigrationType::Simple,
+        sqlx::AssertSqlSafe(format!(
+            "{}\nSELECT * FROM missing_review_submission_migration;",
+            include_str!("../migrations/0024_review_submission.sql")
+        ))
+        .into_sql_str(),
+        false,
+    ));
+    assert!(
+        Migrator::with_migrations(migrations)
+            .run(&mut db)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT max(version) FROM _sqlx_migrations")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        23
+    );
+    let after: Vec<String> =
+        sqlx::query_scalar("SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY name")
+            .fetch_all(&mut db)
+            .await
+            .unwrap();
+    assert_eq!(schema, after);
+
+    CURRENT.run(&mut db).await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT body FROM comment_drafts")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        "Preserve authored comment"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT body FROM issue_drafts")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        "Retained issue body"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT body FROM pull_drafts")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        "Retained pull body"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT last_seen_run FROM detail_entries")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        "retained-run"
+    );
+    assert_eq!(
+        sqlx::query_as::<_, (i64, i64)>(
+            "SELECT indexed_logical_bytes,indexed_facet_count FROM cache_retention_state"
+        )
+        .fetch_one(&mut db)
+        .await
+        .unwrap(),
+        (123, 1)
+    );
+    assert!(
+        sqlx::query("PRAGMA foreign_key_check")
+            .fetch_optional(&mut db)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT max(version) FROM _sqlx_migrations")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        26
+    );
+    db.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn failed_metadata_migration_preserves_v24_authored_rows_and_exact_v1_binding() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut db = database(&dir.path().join("v24.db")).await;
+    historical(24).run(&mut db).await.unwrap();
+    let a = RemoteAccount {
+        id: "a".into(),
+        provider: ProviderKind::Github,
+        host: "github.com".into(),
+        actor_id: "7".into(),
+        login: "actor".into(),
+        display_name: None,
+        authorization_epoch: "1".into(),
+        state: AccountState::Active,
+        notifications_supported: false,
+    };
+    sqlx::query("INSERT INTO accounts VALUES('a','github','github.com','7',1,'active',?)")
+        .bind(serde_json::to_string(&a).unwrap())
+        .execute(&mut db)
+        .await
+        .unwrap();
+    // Deliberately opaque byte canaries exercise migration preservation, not
+    // operation acceptance. Actual version-one proof restore is covered separately.
+    sqlx::raw_sql("INSERT INTO issue_drafts VALUES('a','22222222-2222-4222-8222-222222222222','repo','Retained title','Retained body',1);\
+INSERT INTO review_drafts VALUES('a','missing-pull','comment','Retained review',3);\
+INSERT INTO commands VALUES('a','11111111-1111-4111-8111-111111111111',1,1,'github.create_issue',1,'repository','repo','repo',x'0102',x'0304',x'0506',zeroblob(32),1,1,'2026-10-08T00:00:00Z','queued');\
+INSERT INTO issue_submissions VALUES('a','22222222-2222-4222-8222-222222222222',1,'11111111-1111-4111-8111-111111111111',zeroblob(32),zeroblob(32));").execute(&mut db).await.unwrap();
+    let schema: Vec<String> =
+        sqlx::query_scalar("SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY name")
+            .fetch_all(&mut db)
+            .await
+            .unwrap();
+    let ledger:Vec<String>=sqlx::query_scalar("SELECT json_array(hex(canonical_envelope),hex(payload_bytes),hex(guard_bytes),hex(submission_hash),state) FROM commands").fetch_all(&mut db).await.unwrap();
+    let mut migrations = historical(24).iter().cloned().collect::<Vec<_>>();
+    migrations.push(Migration::new(
+        25,
+        "failed metadata".into(),
+        MigrationType::Simple,
+        sqlx::AssertSqlSafe(format!(
+            "{}\nSELECT * FROM missing_metadata_migration;",
+            include_str!("../migrations/0025_issue_metadata.sql")
+        ))
+        .into_sql_str(),
+        false,
+    ));
+    assert!(
+        Migrator::with_migrations(migrations)
+            .run(&mut db)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT max(version) FROM _sqlx_migrations")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        24
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>(
+            "SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY name"
+        )
+        .fetch_all(&mut db)
+        .await
+        .unwrap(),
+        schema
+    );
+    CURRENT.run(&mut db).await.unwrap();
+    assert_eq!(sqlx::query_scalar::<_,String>("SELECT json_array(hex(canonical_envelope),hex(payload_bytes),hex(guard_bytes),hex(submission_hash),state) FROM commands").fetch_all(&mut db).await.unwrap(),ledger);
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT body FROM issue_drafts")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        "Retained body"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT body FROM review_drafts")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        "Retained review"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM issue_submissions")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM issue_draft_metadata")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT max(version) FROM _sqlx_migrations")
+            .fetch_one(&mut db)
+            .await
+            .unwrap(),
+        26
+    );
+    assert!(
+        sqlx::query("PRAGMA foreign_key_check")
+            .fetch_optional(&mut db)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    db.close().await.unwrap();
+}

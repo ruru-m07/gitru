@@ -1,5 +1,15 @@
 pub mod actions;
 pub mod branch;
+pub mod collaboration;
+pub mod collaboration_demand;
+#[cfg(feature = "collaboration-harness")]
+pub mod collaboration_harness;
+pub mod collaboration_local_links;
+pub mod collaboration_notification_subjects;
+pub mod collaboration_pull_checkout;
+pub mod collaboration_pull_commit_navigation;
+pub mod collaboration_pull_creation;
+pub mod collaboration_pull_files;
 pub mod commit;
 pub mod diff;
 pub mod history;
@@ -8,4 +18,7 @@ pub mod pickaxe;
 pub mod rebase;
 pub mod security;
 pub mod stash;
+#[cfg(not(feature = "collaboration-harness"))]
 pub mod updater;
+
+pub mod collaboration_recovery;

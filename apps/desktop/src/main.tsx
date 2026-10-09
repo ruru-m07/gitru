@@ -7,7 +7,10 @@ import { enableDevDiagnostics } from "./bootstrap/runtime-utils";
 import { redirectToLastPage } from "./bootstrap/session-restore";
 import "./app.css";
 
-if (import.meta.env.MODE === "e2e") {
+if (
+  import.meta.env.MODE === "e2e" ||
+  import.meta.env.MODE === "e2e-collaboration-harness"
+) {
   // Embedded WebDriver can retain Base UI transition nodes after they close
   // and treats a starting popup as hidden. Scope the workaround to those
   // portal lifecycle states so the rest of the app keeps its real motion.
@@ -32,6 +35,8 @@ if (import.meta.env.MODE === "e2e") {
   `;
   document.head.append(style);
   await import("@wdio/tauri-plugin");
+  if (import.meta.env.MODE === "e2e")
+    await import("./bootstrap/e2e-collaboration");
 }
 
 try {
@@ -45,6 +50,40 @@ const rootElement = document.getElementById("root");
 if (rootElement && !rootElement.innerHTML) {
   const root = ReactDOM.createRoot(rootElement);
   root.render(<AppRoot />);
+}
+
+if (import.meta.env.MODE === "e2e-collaboration-harness") {
+  const { collaborationHarnessStatus, collaborationHarnessViewManifest } =
+    await import("@gitru/commands");
+  const { installCollaborationHarnessProbe } = await import(
+    "./bootstrap/e2e-collaboration-harness"
+  );
+  const { waitForHarnessManifest } = await import(
+    "./bootstrap/e2e-collaboration-harness-startup"
+  );
+  const readManifest = () =>
+    waitForHarnessManifest(() => collaborationHarnessViewManifest({}));
+  const manifest = await readManifest();
+  const measureInitialPerformanceLanding =
+    new URLSearchParams(window.location.search).get(
+      "collaborationPerformance",
+    ) === "1" ||
+    (manifest.role === "main" &&
+      (
+        await collaborationHarnessStatus({
+          request: { run_nonce: manifest.run_nonce },
+        })
+      ).core.fixture === "performance");
+  const probe = await installCollaborationHarnessProbe(
+    readManifest,
+    measureInitialPerformanceLanding,
+  );
+  if (manifest.role === "main") {
+    const { installCollaborationHarnessExecutor } = await import(
+      "./bootstrap/e2e-collaboration-harness-executor"
+    );
+    await installCollaborationHarnessExecutor(probe);
+  }
 }
 
 if (enableDevDiagnostics()) {

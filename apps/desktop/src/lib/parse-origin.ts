@@ -15,18 +15,17 @@ interface ParseOriginResult {
   href?: string;
 }
 
-/**
- * if we get origin like
- * git@github.com:ruru-m07/gitru.git or
- * https://github.com/ruru-m07/gitru.git
- *
- * we need to parse origin to get github.com
- * @return {ParseOriginResult}
- */
+/** Present native-sanitized origins; this does not resolve repository identity. */
 export function parseOrigin(
-  origin: string | undefined,
+  origin: string | null | undefined,
 ): ParseOriginResult | undefined {
-  if (!origin) return undefined;
+  if (
+    !origin ||
+    origin.length > 4_096 ||
+    /[\u0000-\u001f\u007f]/.test(origin)
+  ) {
+    return undefined;
+  }
 
   let host = "";
   let owner = "";
@@ -36,17 +35,16 @@ export function parseOrigin(
   let avatarUrl: string | undefined = undefined;
   let href: string | undefined = undefined;
 
-  if (origin.startsWith("git@")) {
-    // ? SSH format
-    const match = origin.match(/^git@([^:]+):([^/]+)\/(.+?)(\.git)?$/);
-    if (match) {
-      host = match[1];
-      owner = match[2];
-      repo = match[3];
-      protocol = "ssh";
-    }
+  let path = "";
+  const scp = !origin.includes("://")
+    ? origin.match(/^(?:[^@/\s]+@)?([^:/?#\s]+):([^?#\s]+)(?:[?#].*)?$/)
+    : null;
+  if (scp) {
+    // The native sanitizer removes the optional user from SCP origins.
+    host = scp[1].toLowerCase();
+    path = scp[2];
+    protocol = "ssh";
   } else {
-    // ? HTTPS format
     let url: URL;
     try {
       url = new URL(origin);
@@ -54,21 +52,23 @@ export function parseOrigin(
       return undefined;
     }
 
-    if (url.protocol !== "https:" && url.protocol !== "http:") {
+    if (!["https:", "http:", "ssh:"].includes(url.protocol)) {
       return undefined;
     }
 
     host = url.hostname;
     protocol = url.protocol.replace(":", "");
-    const pathParts = url.pathname
-      .replace(/^\//, "")
-      .replace(/\.git$/, "")
-      .split("/");
-    if (pathParts.length >= 2) {
-      owner = pathParts[0];
-      // join remaining parts as repo to support subgroups (gitlab etc)
-      repo = pathParts.slice(1).join("/");
-    }
+    path = url.pathname;
+  }
+
+  const pathParts = path
+    .replace(/^\/+/, "")
+    .replace(/\.git$/, "")
+    .split("/");
+  if (pathParts.length >= 2) {
+    owner = pathParts[0];
+    // Keep subgroup display paths without interpreting provider identity.
+    repo = pathParts.slice(1).join("/");
   }
 
   // ? Determine provider

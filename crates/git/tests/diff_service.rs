@@ -135,6 +135,40 @@ fn image_diff_history_commit_has_before_and_after() {
 
 #[test]
 #[serial]
+fn history_diff_does_not_hydrate_missing_promisor_blobs() {
+    run_async(async {
+        let source = TestRepo::new();
+        source.commit_file("large.txt", &"a".repeat(200_000), "Initial content");
+        source.commit_file("large.txt", &"b".repeat(200_000), "Changed content");
+        let commit_oid = source.head_commit();
+        let blob_oid = source.git(&["rev-parse", "HEAD:large.txt"]);
+        let clone = TestRepo::blobless_clone(&source);
+        assert!(!clone.has_local_object(&blob_oid));
+
+        let service = setup_diff_service(&clone);
+        assert!(
+            service
+                .get_patch_by_file_path(
+                    "large.txt",
+                    None,
+                    Some(&[FileStatusKind::IndexModified]),
+                    None,
+                    Some(&commit_oid),
+                    Some(1),
+                    None,
+                )
+                .await
+                .is_err()
+        );
+        assert!(
+            !clone.has_local_object(&blob_oid),
+            "local history diff must not hydrate a promisor blob"
+        );
+    });
+}
+
+#[test]
+#[serial]
 fn image_diff_new_file_has_only_after() {
     run_async(async {
         let repo = TestRepo::new();

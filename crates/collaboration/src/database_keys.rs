@@ -1,0 +1,419 @@
+//! Native database-key bootstrap, deliberately independent of provider tokens.
+//!
+//! Not wired to Store::open until the cipher and all keyed connection paths are
+//! qualified. Call synchronous preparation on an owned blocking task. Keep this
+//! session alive until every connection using its key has actually closed.
+use std::{
+    fmt,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+};
+use subtle::ConstantTimeEq;
+use zeroize::Zeroize;
+
+/// Stable native vault namespace shared by activation and application startup.
+pub const DATABASE_KEY_SERVICE: &str = "com.gitru.collaboration.database-key.v1";
+
+#[cfg(feature = "native-keyed-store")]
+pub mod activation;
+mod files;
+#[cfg(feature = "native-keyed-store")]
+pub mod lifecycle;
+#[cfg(all(target_os = "macos", feature = "macos-file-vault"))]
+pub mod macos_vault;
+#[cfg(test)]
+mod tests;
+
+pub struct DatabaseKey([u8; 32]);
+impl DatabaseKey {
+    /// Native vault/codec boundary only. No text/IPC representation is provided.
+    pub fn from_bytes(bytes: [u8; 32]) -> Self {
+        Self(bytes)
+    }
+    pub fn expose(&self) -> &[u8; 32] {
+        &self.0
+    }
+    fn generate() -> Result<Self, DatabaseKeyError> {
+        let mut key = Self([0; 32]);
+        getrandom::fill(&mut key.0).map_err(|_| DatabaseKeyError::EntropyUnavailable)?;
+        Ok(key)
+    }
+    fn same(&self, other: &Self) -> bool {
+        bool::from(self.0.ct_eq(&other.0))
+    }
+}
+impl fmt::Debug for DatabaseKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("DatabaseKey([REDACTED])")
+    }
+}
+impl Drop for DatabaseKey {
+    fn drop(&mut self) {
+        self.0.zeroize();
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatabaseKeyIdentity {
+    database_id: String,
+    generation: u64,
+}
+impl DatabaseKeyIdentity {
+    pub fn database_id(&self) -> &str {
+        &self.database_id
+    }
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+    /// Database-only namespace; never pass this to provider CredentialVault.
+    pub fn vault_reference(&self) -> String {
+        format!(
+            "gitru.collaboration.database.v1.{}.{}",
+            self.database_id, self.generation
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DatabaseKeyError {
+    Busy,
+    Storage,
+    InvalidMetadata,
+    InterruptedMetadata,
+    InterruptedRestore,
+    CreationNotAuthorized,
+    PlaintextMigrationRequired,
+    MissingKeyMetadata,
+    MissingKey,
+    MissingDatabase,
+    VaultLocked,
+    VaultUnavailable,
+    VaultAlreadyExists,
+    VaultInvalidKey,
+    VaultWriteUncertain,
+    VaultKeyMismatch,
+    EntropyUnavailable,
+    WrongKeyOrCorrupt,
+    StaleFilesystem,
+    ConfirmationRequired,
+}
+impl fmt::Display for DatabaseKeyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Busy => "Database storage is already owned by another session",
+            Self::Storage => "Database key metadata could not be stored safely",
+            Self::InvalidMetadata => "Database key metadata is invalid; files were preserved",
+            Self::InterruptedMetadata => {
+                "Database key metadata publication was interrupted; files were preserved"
+            }
+            Self::InterruptedRestore => "Database recovery is pending; files were preserved",
+            Self::CreationNotAuthorized => "A new database key reservation was not requested",
+            Self::PlaintextMigrationRequired => {
+                "The existing database requires verified encrypted migration"
+            }
+            Self::MissingKeyMetadata => {
+                "Existing database data has no key metadata; files were preserved"
+            }
+            Self::MissingKey => "The database key is missing; files were preserved",
+            Self::MissingDatabase => "The expected database is missing; key metadata was preserved",
+            Self::VaultLocked => "Unlock the operating system database-key vault and retry",
+            Self::VaultUnavailable => "The operating system database-key vault is unavailable",
+            Self::VaultAlreadyExists => "A database key already exists; it was not replaced",
+            Self::VaultInvalidKey => {
+                "The saved database key has an invalid format; files were preserved"
+            }
+            Self::VaultWriteUncertain => {
+                "Database key persistence could not be verified; retry the saved reservation"
+            }
+            Self::VaultKeyMismatch => {
+                "Database key readback differs; the saved key was not replaced"
+            }
+            Self::EntropyUnavailable => "Secure database key generation is unavailable",
+            Self::WrongKeyOrCorrupt => {
+                "The database key or encrypted data could not be verified; files were preserved"
+            }
+            Self::StaleFilesystem => {
+                "Database files changed during key startup; retry without replacing them"
+            }
+            Self::ConfirmationRequired => "Confirm the inspected database-key operation",
+        })
+    }
+}
+impl std::error::Error for DatabaseKeyError {}
+
+/// OS adapter operations are blocking. A failed store can still have persisted
+/// the key. Never replace an existing entry: preparation always loads first and
+/// verifies readback after store. There is intentionally no deletion operation.
+pub trait DatabaseKeyVault: Send + Sync {
+    fn load(&self, identity: &DatabaseKeyIdentity)
+    -> Result<Option<DatabaseKey>, DatabaseKeyError>;
+    fn store_new(
+        &self,
+        identity: &DatabaseKeyIdentity,
+        key: &DatabaseKey,
+    ) -> Result<(), DatabaseKeyError>;
+}
+
+/// Select the native keyed startup path whenever any key metadata evidence is
+/// present. Malformed or interrupted evidence still returns `true` so callers
+/// fail closed in `DatabaseKeySession::prepare` instead of opening plaintext.
+pub fn requires_keyed_open(path: &Path) -> bool {
+    files::require_no_pending(path).is_err()
+        || {
+            #[cfg(feature = "native-keyed-store")]
+            {
+                lifecycle::require_no_pending(path).is_err()
+            }
+            #[cfg(not(feature = "native-keyed-store"))]
+            {
+                false
+            }
+        }
+        || !matches!(files::read(path), Ok(None))
+}
+
+/// Trusted native codec seam. Must authenticate an existing database read-only,
+/// prove this identity from encrypted content, reject plaintext/unkeyed handles,
+/// and close its handle before returning. No default or production adapter exists.
+#[async_trait::async_trait]
+pub trait DatabaseKeyVerifier: Send + Sync {
+    async fn verify(
+        &self,
+        path: &Path,
+        identity: &DatabaseKeyIdentity,
+        key: &DatabaseKey,
+    ) -> Result<(), DatabaseKeyError>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DatabaseCreation {
+    ExistingOnly,
+    AllowNew,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DatabaseKeyMode {
+    CreateNew,
+    VerifyInterruptedCreation,
+    VerifyExisting,
+    Verified,
+}
+
+struct VerificationPhase {
+    journal: files::Journal,
+    mode: DatabaseKeyMode,
+}
+pub struct DatabaseKeySession {
+    path: PathBuf,
+    identity: DatabaseKeyIdentity,
+    phase: Mutex<VerificationPhase>,
+    verification: tokio::sync::Mutex<()>,
+    key: DatabaseKey,
+    _lease: crate::storage::WriterLease,
+}
+impl fmt::Debug for DatabaseKeySession {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DatabaseKeySession")
+            .field("identity", &self.identity())
+            .field("mode", &self.mode())
+            .finish_non_exhaustive()
+    }
+}
+impl DatabaseKeySession {
+    /// Native-only bootstrap. Existing DB/sidecar evidence can never authorize
+    /// generation, even when the journal says Reserved or the file is empty.
+    pub fn prepare(
+        path: &Path,
+        vault: &dyn DatabaseKeyVault,
+        creation: DatabaseCreation,
+    ) -> Result<Self, DatabaseKeyError> {
+        let path = files::canonical_path(path)?;
+        let lease = crate::storage::acquire_writer_lease(&path).map_err(|e| {
+            if e.code == crate::ErrorCode::Busy {
+                DatabaseKeyError::Busy
+            } else {
+                DatabaseKeyError::Storage
+            }
+        })?;
+        crate::recovery::require_no_pending_restore(&path)
+            .map_err(|_| DatabaseKeyError::InterruptedRestore)?;
+        #[cfg(feature = "native-keyed-store")]
+        activation::require_no_pending(&path).map_err(|_| DatabaseKeyError::InterruptedRestore)?;
+        #[cfg(feature = "native-keyed-store")]
+        lifecycle::require_no_pending(&path)?;
+        files::require_no_pending(&path)?;
+        let mut before = files::observe(&path)?;
+        let journal = match files::read(&path)? {
+            Some(journal) => journal,
+            None if before.any() => return Err(files::unmanaged_error(&path, &before)?),
+            None if creation == DatabaseCreation::ExistingOnly => {
+                return Err(DatabaseKeyError::CreationNotAuthorized);
+            }
+            None => {
+                let journal = files::Journal::reserved();
+                files::publish(&path, &journal, false)?;
+                before = files::observe(&path)?;
+                journal
+            }
+        };
+        if journal.ready && before.database.is_none() {
+            return Err(DatabaseKeyError::MissingDatabase);
+        }
+        let identity = journal.identity();
+        let key = match vault.load(&identity)? {
+            Some(key) => key,
+            None if journal.ready || before.any() => return Err(DatabaseKeyError::MissingKey),
+            None => {
+                if files::observe(&path)? != before {
+                    return Err(DatabaseKeyError::StaleFilesystem);
+                }
+                let generated = DatabaseKey::generate()?;
+                let stored = vault.store_new(&identity, &generated);
+                match vault.load(&identity) {
+                    Ok(Some(saved)) if generated.same(&saved) => saved,
+                    Ok(Some(_)) => return Err(DatabaseKeyError::VaultKeyMismatch),
+                    Ok(None) => {
+                        return Err(stored
+                            .err()
+                            .unwrap_or(DatabaseKeyError::VaultWriteUncertain));
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+        };
+        files::require_no_pending(&path)?;
+        if files::observe(&path)? != before || files::read(&path)?.as_ref() != Some(&journal) {
+            return Err(DatabaseKeyError::StaleFilesystem);
+        }
+        let mode = if journal.ready {
+            DatabaseKeyMode::VerifyExisting
+        } else if before.database.is_some() {
+            DatabaseKeyMode::VerifyInterruptedCreation
+        } else if before.any() {
+            return Err(DatabaseKeyError::MissingDatabase);
+        } else {
+            DatabaseKeyMode::CreateNew
+        };
+        Ok(Self {
+            path,
+            identity: journal.identity(),
+            phase: Mutex::new(VerificationPhase { journal, mode }),
+            verification: tokio::sync::Mutex::new(()),
+            key,
+            _lease: lease,
+        })
+    }
+    pub fn identity(&self) -> DatabaseKeyIdentity {
+        self.identity.clone()
+    }
+    pub fn mode(&self) -> DatabaseKeyMode {
+        self.phase
+            .lock()
+            .map_or(DatabaseKeyMode::VerifyExisting, |phase| phase.mode)
+    }
+    /// Only a native keyed connection factory may consume these bytes. The
+    /// factory must retain this session/lease until its last SQLite handle closes.
+    pub fn key(&self) -> &DatabaseKey {
+        &self.key
+    }
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+    pub async fn verify(
+        &mut self,
+        verifier: &dyn DatabaseKeyVerifier,
+    ) -> Result<(), DatabaseKeyError> {
+        let _serial = self.verification.lock().await;
+        let (journal, before) = self.begin_verification()?;
+        verifier
+            .verify(&self.path, &self.identity(), &self.key)
+            .await?;
+        self.finish_verification(journal, before)
+    }
+
+    /// Native keyed factories retain this same session on every worker. A
+    /// cancelled verifier cannot release its key or OS lease while C is alive.
+    pub async fn verify_retained(
+        self: &Arc<Self>,
+        verifier: &dyn RetainedDatabaseKeyVerifier,
+    ) -> Result<(), DatabaseKeyError> {
+        let _serial = self.verification.lock().await;
+        let (journal, before) = self.begin_verification()?;
+        verifier.verify(self.clone()).await?;
+        self.finish_verification(journal, before)
+    }
+
+    fn begin_verification(&self) -> Result<(files::Journal, files::Files), DatabaseKeyError> {
+        let journal = {
+            let mut phase = self.phase.lock().map_err(|_| DatabaseKeyError::Storage)?;
+            phase.mode = if phase.journal.ready {
+                DatabaseKeyMode::VerifyExisting
+            } else {
+                DatabaseKeyMode::VerifyInterruptedCreation
+            };
+            phase.journal.clone()
+        };
+        files::require_no_pending(&self.path)?;
+        if files::read(&self.path)?.as_ref() != Some(&journal) {
+            return Err(DatabaseKeyError::StaleFilesystem);
+        }
+        let before = files::observe(&self.path)?;
+        if before.database.is_none() {
+            return Err(DatabaseKeyError::MissingDatabase);
+        }
+        Ok((journal, before))
+    }
+    fn finish_verification(
+        &self,
+        journal: files::Journal,
+        before: files::Files,
+    ) -> Result<(), DatabaseKeyError> {
+        files::require_no_pending(&self.path)?;
+        if files::observe(&self.path)? != before
+            || files::read(&self.path)?.as_ref() != Some(&journal)
+        {
+            return Err(DatabaseKeyError::StaleFilesystem);
+        }
+        let mut phase = self.phase.lock().map_err(|_| DatabaseKeyError::Storage)?;
+        if phase.journal != journal {
+            return Err(DatabaseKeyError::StaleFilesystem);
+        }
+        if !journal.ready {
+            let mut ready = journal;
+            ready.ready = true;
+            files::publish(&self.path, &ready, true)?;
+            phase.journal = ready;
+        }
+        phase.mode = DatabaseKeyMode::Verified;
+        Ok(())
+    }
+}
+
+/// Trusted native verifier. It must authenticate encrypted identity/schema on
+/// the same retained session and close its native handle before returning.
+/// Callbacks may not turn a successful key call alone into verification.
+#[async_trait::async_trait]
+pub trait RetainedDatabaseKeyVerifier: Send + Sync {
+    async fn verify(&self, session: Arc<DatabaseKeySession>) -> Result<(), DatabaseKeyError>;
+}
+
+/// Refuse the legacy plaintext open/export path whenever keyed ownership metadata
+/// exists, including malformed/pending metadata. Never interpret a parse failure
+/// as permission to create or fall back to plaintext.
+pub(crate) fn refuse_unkeyed_path(path: &Path) -> Result<(), crate::CollaborationError> {
+    #[cfg(feature = "native-keyed-store")]
+    activation::require_no_pending(path)?;
+    #[cfg(feature = "native-keyed-store")]
+    lifecycle::require_no_pending(path).map_err(|_| {
+        crate::CollaborationError::new(
+            crate::ErrorCode::NotReady,
+            "Database key lifecycle recovery is pending; files were preserved",
+        )
+    })?;
+    if files::require_no_pending(path).is_err() || !matches!(files::read(path), Ok(None)) {
+        return Err(crate::CollaborationError::new(
+            crate::ErrorCode::NotReady,
+            "Keyed storage requires its native database key; files were preserved",
+        ));
+    }
+    Ok(())
+}

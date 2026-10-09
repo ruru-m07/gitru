@@ -11,6 +11,9 @@ base64 = "0.22"
 logger = { path = "../logger" }
 log = "0.4"
 git2 = "0.20.3"
+url = "2"
+sha2 = "0.10"
+serde_json = "1"
 
 [lib]
 name = "git"
@@ -20,3 +23,4 @@ path = "lib.rs"
 tokio = { version = "1", features = ["full", "test-util", "macros"] }
 tempfile = "3"
 serial_test = "3"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }

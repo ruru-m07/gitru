@@ -1,0 +1,52 @@
+name: Database key vault qualification
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/database-key-vault.yml'
+      - '.github/actions/setup-rust/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'crates/collaboration/Cargo.toml'
+      - 'crates/collaboration/src/database_keys.rs'
+      - 'crates/collaboration/src/database_keys/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: database-key-vault-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos-file-keychain:
+    name: Explicit private macOS file keychain
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+      - name: Record native fixture platform
+        run: |
+          sw_vers
+          uname -m
+          rustc -Vv
+      - name: Check optional adapter and synthetic lifecycle
+        run: |
+          cargo clippy --locked -p collaboration --all-targets --features macos-file-vault,test-harness -- -D warnings
+          cargo test --locked -p collaboration --features macos-file-vault --lib database_keys::
+      - name: Qualify create-only storage in an owned disposable keychain
+        env:
+          GITRU_TEST_DISPOSABLE_DATABASE_KEYCHAIN: '1'
+        # The parent creates a private directory; only its child processes touch
+        # that exact keychain. No default keychain or personal entry is queried.
+        run: cargo test --locked -p collaboration --features macos-file-vault --lib database_keys::macos_vault::tests::actual_private_keychain_create_only_lock_and_crash_resume -- --exact --ignored --nocapture

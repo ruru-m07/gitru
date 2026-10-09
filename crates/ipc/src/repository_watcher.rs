@@ -608,6 +608,28 @@ pub struct RepoContextRuntime {
 }
 
 impl RepoContextRuntime {
+    /// Native caller lifetime evidence. Scope IDs are never accepted as caller
+    /// authority: only owners whose native webview label matches participate.
+    pub fn webview_owner_generations(&self, label: &str) -> Result<Vec<(String, u64)>, String> {
+        let registry = self
+            .registry
+            .lock()
+            .map_err(|_| "Repository context registry is unavailable".to_owned())?;
+        let mut generations: Vec<_> = registry
+            .owner_generations
+            .iter()
+            .filter_map(|(owner, generation)| {
+                let parts: Vec<String> = serde_json::from_str(owner).ok()?;
+                (parts.len() == 2 && parts[0] == label).then(|| (owner.clone(), *generation))
+            })
+            .collect();
+        generations.sort();
+        if generations.len() > 256 || generations.iter().any(|(owner, _)| owner.len() > 1024) {
+            return Err("Repository context owner evidence exceeds its limit".to_owned());
+        }
+        Ok(generations)
+    }
+
     pub fn begin_owner_context(&self, owner_id: &str) -> Result<(u64, Vec<String>), String> {
         let (generation, context_ids, watchers) = self
             .registry
@@ -664,8 +686,8 @@ mod tests {
     #[cfg(target_os = "linux")]
     use super::RepositoryWatcher;
     use super::{
-        ALL_REPOSITORY_CHANGE_KINDS, ChangeCoalescer, ContextRegistry, RepositoryChangeKind,
-        cache_namespaces_for_changes, classify_path, watch_targets,
+        ALL_REPOSITORY_CHANGE_KINDS, ChangeCoalescer, ContextRegistry, RepoContextRuntime,
+        RepositoryChangeKind, cache_namespaces_for_changes, classify_path, watch_targets,
     };
     use git::context::RepositoryWatchPaths;
     #[cfg(target_os = "linux")]
@@ -971,6 +993,29 @@ mod tests {
         assert!(next_generation > generation);
         assert_eq!(context_ids, vec!["context-1"]);
         assert_eq!(values.len(), 1);
+    }
+
+    #[test]
+    fn native_webview_evidence_tracks_retirement_and_excludes_other_views() {
+        let runtime = RepoContextRuntime::default();
+        let owner = serde_json::to_string(&["tab-webview:local", "scope"]).unwrap();
+        let other = serde_json::to_string(&["tab-webview:other", "scope"]).unwrap();
+        runtime.begin_owner_context(&owner).unwrap();
+        runtime.begin_owner_context(&other).unwrap();
+        assert_eq!(
+            runtime
+                .webview_owner_generations("tab-webview:local")
+                .unwrap(),
+            vec![(owner.clone(), 1)]
+        );
+        runtime.dispose_owner(&owner).unwrap();
+        assert_eq!(
+            runtime
+                .webview_owner_generations("tab-webview:local")
+                .unwrap(),
+            vec![(owner, 2)]
+        );
+        assert_eq!(runtime.webview_owner_generations("main").unwrap(), vec![]);
     }
 
     #[test]

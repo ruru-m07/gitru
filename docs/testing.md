@@ -7,7 +7,8 @@ bun run test
 ```
 
 The root Vitest configuration defines projects for the desktop app, marketing
-site, and the `@gitru/ui`, `@gitru/icon`, and `@gitru/mascot` workspaces. It also
+site, and the `@gitru/ui`, `@gitru/icon`, `@gitru/mascot`, and
+`@gitru/collaboration-client` workspaces. It also
 discovers unit tests for the generated `@gitru/commands` package without
 modifying generated source. A matching `*.test.ts`, `*.test.tsx`, `*.spec.ts`,
 or `*.spec.tsx` file in one of those workspaces automatically joins the root
@@ -55,11 +56,18 @@ Tauri application, and drives critical workflows across the UI, Tauri, Rust,
 and Git boundaries. Every scenario creates its repository fixture beneath the
 operating system's temporary directory. Application state uses the separate
 `com.ruru.gitru.e2e` Tauri identifier; the harness resets only that namespace's
-`repositories.json` and `app-state.json` before launch. Tests never reuse or
+`repositories.json`, `app-state.json`, and the collaboration database/WAL/SHM
+before launch. Collaboration uses an in-memory test vault in E2E builds and
+never accesses the developer's native credential store. Tests never reuse or
 mutate repositories registered in the developer's Gitru data. Destructive Git
 operations are scoped to the disposable fixtures, which are cleaned up after
 the run. The fixture uses a local bare origin and local avatar fallbacks, so the
 workflow does not depend on credentials or public network access.
+
+The collaboration smoke also reads the real native account and change-log
+snapshots, validating them against generated wire schemas. This proves isolated
+storage initialization and local IPC without an account. It does not verify a
+live provider token or a production OS credential store.
 
 The suite opens `/app/git?embedded=1` in the packaged main webview. This covers
 the real Git UI, Tauri commands, Rust services, and Git subprocesses, but
@@ -105,6 +113,41 @@ the payload or when the test must assert how a command was called. Never install
 an allow-all IPC handler: an unexpected command should fail the test before any
 native boundary can be crossed. Packaged Tauri behavior belongs in end-to-end
 tests, not jsdom tests.
+
+Collaboration storage/provider/runtime tests run with `cargo test -p collaboration`.
+They cover authorization epochs, late responses, pagination continuation,
+conditional requests, membership reconciliation, rate cooldowns, drafts,
+migrations and writer ownership. Frontend fixtures under `tests/fixtures` are
+synthetic IPC responses and must never seed production storage. The read
+benchmark under `crates/collaboration/examples` uses a temporary database;
+storage latency is distinct from IPC/rendering latency and app memory usage.
+
+GitHub CLI tests use an injected runner or an executable created under an
+isolated temporary directory, never the developer's actual `gh` credentials.
+They cover metadata-only discovery, explicit account choice, candidate expiry,
+credential identity mismatch with no persistence, executable installation and
+replacement, environment filtering, bounded output, timeout and child cleanup.
+Default standalone runtimes and packaged E2E disable personal CLI discovery;
+the collaboration E2E spec asserts the disabled result. Frontend tests exercise
+the picker, unavailable accounts, retries, token creation links, manual PAT
+fallback and connection without submitting the PAT form. Actual production-vault
+and provider authentication need a separate live integration run.
+
+Account-dialog tests cover child-to-host requests, main-only credential controls,
+listener/lease cleanup, close/reopen races, delayed native view creation and
+visibility changes, and restoration of the current tab. The packaged collaboration
+spec navigates into the real host/native-child layout before opening Accounts from
+Inbox; the ordinary Git smoke retains its embedded startup. WDIO addresses native
+WebviewWindows rather than child Webviews. One async driver call retains the main
+executor while children exist, then restores the embedded route before returning.
+An E2E-only fixed-action bootstrap hook navigates the host, clicks the child's
+actual controls, and reports only route/label/instance and form/button booleans.
+It accepts no arbitrary scripts or credentials and is excluded from production
+output. Native visibility sequencing is separately covered by controlled
+asynchronous surface tests.
+
+Close other E2E-feature builds before starting the packaged suite; the embedded
+driver uses port 4445 by default and does not retry a failed bind.
 
 ## Coverage expectations
 
