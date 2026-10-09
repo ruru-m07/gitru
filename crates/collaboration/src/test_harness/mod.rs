@@ -256,13 +256,15 @@ impl HarnessControl {
             | HarnessCoreAction::PhaseOffline
             | HarnessCoreAction::PhaseDenied
             | HarnessCoreAction::PhaseRateLimited
-            | HarnessCoreAction::PhaseNotModified => {
+            | HarnessCoreAction::PhaseNotModified
+            | HarnessCoreAction::PhaseVaultUnavailable => {
                 let phase = match request.action {
                     HarnessCoreAction::PhaseOne => HarnessPhase::One,
                     HarnessCoreAction::PhaseTwo => HarnessPhase::Two,
                     HarnessCoreAction::PhaseOffline => HarnessPhase::Offline,
                     HarnessCoreAction::PhaseDenied => HarnessPhase::Denied,
                     HarnessCoreAction::PhaseRateLimited => HarnessPhase::RateLimited,
+                    HarnessCoreAction::PhaseVaultUnavailable => HarnessPhase::VaultUnavailable,
                     _ => HarnessPhase::NotModified,
                 };
                 let mut next = self.0.shared.lock().persistent.clone();
@@ -679,6 +681,7 @@ impl HarnessControl {
             vault_load_count: self.0.vault.loads.load(Ordering::SeqCst).to_string(),
             vault_store_count: self.0.vault.stores.load(Ordering::SeqCst).to_string(),
             vault_delete_count: self.0.vault.deletes.load(Ordering::SeqCst).to_string(),
+            vault_unavailable_count: self.0.vault.unavailable.load(Ordering::SeqCst).to_string(),
             durable_detail_requests: self.0.store.pending_details().await?.len() as u32,
             demand_lease_count: self.0.runtime.harness_lease_count().await,
             clock_elapsed_seconds: state.elapsed,
