@@ -44,8 +44,9 @@ store and is never exported to GitHub Actions or a maintainer computer.
 
 ## Privacy
 
-Gitru does not transfer repository paths, source code, diffs, remotes, branches,
-commit data, credentials, or hosted-service tokens to Gitru or SignPath.
+The Gitru desktop app does not transfer repository paths, source code, diffs,
+remotes, branches, commit data, credentials, or hosted-service tokens to Gitru
+or SignPath.
 
 Anonymous usage analytics is disabled until the user explicitly enables it. If
 enabled, Gitru sends fixed app-open and presence event names and basic runtime
@@ -56,8 +57,9 @@ identifier is memory-only and changes between launches. The in-app setting stops
 collection immediately.
 
 During release signing, GitHub and SignPath process the release artifact and its
-build provenance. This is a maintainer-controlled release operation and does not
-contain user repository data.
+build provenance, including the official repository, workflow, and source commit.
+This is a maintainer-controlled release operation and does not contain data from
+repositories opened by Gitru users.
 
 ## Verification
 

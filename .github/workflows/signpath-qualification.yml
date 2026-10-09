@@ -2,17 +2,6 @@ name: SignPath qualification
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - ruru/signpath-release-signing
-    paths:
-      - .github/workflows/signpath-qualification.yml
-      - .github/actions/setup-rust/action.yml
-      - apps/desktop/package.json
-      - apps/desktop/src-tauri/**
-      - bun.lock
-      - package.json
-      - rust-toolchain.toml
 
 permissions:
   actions: read
@@ -37,6 +26,8 @@ jobs:
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          no-cache: true
 
       - name: Install pinned Rust toolchain
         uses: ./.github/actions/setup-rust

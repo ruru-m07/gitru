@@ -8,6 +8,9 @@ with Gitru's Tauri release pipeline.
 - SignPath organization: `Gitru [OSS]`
 - SignPath project slug: `gitru`
 - Trusted build system: GitHub.com, linked to the project
+- SignPath GitHub App: installed only for `ruru-m07/gitru`; it has read access
+  to Actions, code, and metadata plus the repository-administration access that
+  SignPath uses for audit-log and ruleset verification
 - Test policy: `test-signing`, valid, no approval or origin requirement
 - Release policy: `release-signing`, one approval, trusted-build and origin
   verification enabled
@@ -71,6 +74,14 @@ release assets or update manifests. The build job has no signing secret. A
 separate signing job uses the protected `signpath-test` GitHub environment and
 runs no repository build scripts.
 
+The qualified trusted-build request, `03f51bbd-c0f7-42a7-9cb8-7846a4ec39fb`,
+completed on 2026-10-09. SignPath verified the official repository and workflow,
+completed its malware scan, and returned a timestamped installer with a distinct
+post-signing SHA-256 hash. The qualification certificate is intentionally
+self-issued, so Windows reports only the expected untrusted-root condition. The
+workflow still requires the exact Gitru test-certificate subject and issuer,
+rejects every other Authenticode error, and requires a timestamp certificate.
+
 This stage establishes:
 
 - the actual Tauri output path and filename;
@@ -98,7 +109,9 @@ all required platform assets.
 
 - `SIGNPATH_API_TOKEN` is an encrypted GitHub Actions environment secret. The
   test token is scoped to `signpath-test`; production must use a separate
-  protected environment. Build jobs do not receive either token.
+  protected environment, CI identity, and token. Build jobs do not receive
+  either token. The test CI identity must lose access to `release-signing`
+  before production signing is enabled.
 - SignPath's certificate private key is non-exportable and must remain in its
   configured HSM-backed key store.
 - `TAURI_SIGNING_PRIVATE_KEY` remains a separate GitHub Actions secret. It is

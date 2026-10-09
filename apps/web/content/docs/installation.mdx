@@ -14,8 +14,10 @@ Gitru's [Code signing policy](https://github.com/ruru-m07/gitru/blob/dev/CODE_SI
 Free code signing is provided by SignPath.io, certificate by SignPath
 Foundation.
 
-Before running an installer, open **Properties > Digital Signatures** and verify
-that Windows reports a valid signature. You can also use PowerShell:
+Current public releases predate production SignPath signing and may be unsigned.
+Once a release is identified as signed in its release notes, open **Properties >
+Digital Signatures** before running the installer and verify that Windows reports
+a valid signature. You can also use PowerShell:
 
 ```powershell
 Get-AuthenticodeSignature .\Gitru_*_x64-setup.exe | Format-List
