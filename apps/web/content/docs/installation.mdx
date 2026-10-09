@@ -1,5 +1,27 @@
 ---
 title: Installation
-description: Not Documented
+description: Install official Gitru releases and verify Windows signatures.
 icon: Download
 ---
+
+Download Gitru only from the
+[official GitHub Releases page](https://github.com/ruru-m07/gitru/releases).
+
+## Windows signature
+
+Official Windows releases are intended to be Authenticode-signed according to
+Gitru's [Code signing policy](https://github.com/ruru-m07/gitru/blob/dev/CODE_SIGNING.md).
+Free code signing is provided by SignPath.io, certificate by SignPath
+Foundation.
+
+Current public releases predate production SignPath signing and may be unsigned.
+Once a release is identified as signed in its release notes, open **Properties >
+Digital Signatures** before running the installer and verify that Windows reports
+a valid signature. You can also use PowerShell:
+
+```powershell
+Get-AuthenticodeSignature .\Gitru_*_x64-setup.exe | Format-List
+```
+
+Gitru's in-app updater also verifies a separate updater signature before it
+installs a downloaded release.
