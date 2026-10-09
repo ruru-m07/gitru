@@ -2795,3 +2795,22 @@ a fresh device-key generation through `sqlcipher_export`, exact identity/schema/
 summary verification and RURU-140's preserved-quarantine rotation transaction;
 it never wraps or requires the source device key. Production UI/IPC is not
 enabled by this slice; packaged cross-platform results remain separate evidence.
+
+### RURU-102 obsolete provider observation backoff — 8 October 2026
+
+The real packaged vault scenario exposed a tight read loop: a comparable older
+provider response was rejected as retired local authority, so live demand could
+retry immediately. Both Body and independently newer metadata timestamp guards
+now enter existing provider read backoff; all account/view/run/binding/head
+fences retain their original behavior. Two actual-runtime controls reproduce the
+old loop, preserve canonical data and private drafts, block renewed-demand early
+retry, and recover after the normal delay. Independent review passed.
+
+Local all-feature no-fail-fast qualification passed 1,020 of 1,021 tests; the sole
+failure was a Darwin inbox test socket inheriting nonblocking mode. The scoped
+test-only repair keeps existing timeouts and passes all 13 inbox-action controls;
+both final retry controls and strict Clippy/fmt/diff checks also pass. All 27
+suite targets are covered across the full run and scoped repair rerun (five
+helper ignores), not a claimed single green full run. See
+[the work note](./collaboration-work/RURU-102-priority-fairness.md). Remote CI for
+the revised PR191 head is separate. API-family/lifecycle gates remain open.

@@ -688,6 +688,9 @@ fn multi_policy(
                     Err(e) => panic!("Fixture accept: {e}"),
                 }
             };
+            // Darwin may inherit O_NONBLOCK from the listener on accept.
+            // Normalize the accepted socket before the bounded request read.
+            s.set_nonblocking(false).unwrap();
             let deadline = start + Duration::from_secs(8);
             let request = test_http::read_request(&mut s, deadline).unwrap();
             s.set_write_timeout(Some(
@@ -700,6 +703,17 @@ fn multi_policy(
             .unwrap();
             s.write_all(response.as_bytes()).unwrap();
             requests.push(String::from_utf8(request).unwrap());
+=======
+            // Darwin inherits O_NONBLOCK from the listener on accept. The
+            // bounded request read must wait for bytes on every platform.
+            s.set_nonblocking(false).unwrap();
+            s.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+            s.set_write_timeout(Some(Duration::from_secs(2))).unwrap();
+            let mut b = [0u8; 8192];
+            let n = s.read(&mut b).unwrap();
+            let _ = s.write_all(response.as_bytes());
+            requests.push(String::from_utf8(b[..n].to_vec()).unwrap());
+>>>>>>> theirs
         }
         requests
     });
